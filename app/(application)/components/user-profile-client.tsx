@@ -43,7 +43,8 @@ export function UserProfileClient({ userProfileData }: UserProfileClientProps) {
   const { user, isLoggedIn } = userProfileData;
   const userFullName = user.name;
   const userEmail = user.email;
-  const userRole = user.role;
+  const userRoles = user.roles || [];
+  const userRole = user.role; // For backward compatibility
 
   // Get initials for avatar fallback
   const nameParts = user.name.split(" ");
@@ -359,10 +360,36 @@ export function UserProfileClient({ userProfileData }: UserProfileClientProps) {
                     <p className={`text-xs ${iconColor}`}>{userEmail}</p>
                   </div>
                 </div>
-                <div className="mt-3">
-                  <Badge className="bg-blue-500 text-white border-0 text-xs">
-                    {userRole}
-                  </Badge>
+                <div className="mt-3 flex flex-wrap gap-1">
+                  {userRoles.length > 0 ? (
+                    userRoles.map((role, index) => {
+                      // Define different colors for different roles
+                      const colors = [
+                        "bg-blue-500",
+                        "bg-green-500",
+                        "bg-purple-500",
+                        "bg-amber-500",
+                        "bg-rose-500",
+                        "bg-cyan-500",
+                        "bg-emerald-500",
+                        "bg-indigo-500",
+                      ];
+                      const colorIndex = index % colors.length;
+                      return (
+                        <Badge
+                          key={role.id}
+                          className={`${colors[colorIndex]} text-white border-0 text-xs`}
+                          title={role.description}
+                        >
+                          {role.name}
+                        </Badge>
+                      );
+                    })
+                  ) : (
+                    <Badge className="bg-blue-500 text-white border-0 text-xs">
+                      {userRole || "User"}
+                    </Badge>
+                  )}
                 </div>
               </div>
 

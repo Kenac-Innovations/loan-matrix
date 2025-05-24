@@ -40,6 +40,23 @@ import type {
 } from "@/lib/affordability-calculator";
 import { Badge } from "@/components/ui/badge";
 import { AffordabilityCalculator } from "./affordability-calculator";
+import { ClientRegistrationForm } from "./client-registration-form";
+
+// Define the type for the client form data
+type ClientFormData = {
+  offices: any[];
+  legalForms: any[];
+  genders: any[];
+  clientTypes: any[];
+  clientClassifications: any[];
+  savingsProducts: any[];
+  activationDate: Date | null;
+};
+
+// Props for the NewLeadForm component
+interface NewLeadFormProps {
+  clientFormData: ClientFormData;
+}
 
 // Form validation schema
 const leadFormSchema = z.object({
@@ -69,7 +86,7 @@ const leadFormSchema = z.object({
 
 type LeadFormValues = z.infer<typeof leadFormSchema>;
 
-export function NewLeadForm() {
+export function NewLeadForm({ clientFormData }: NewLeadFormProps) {
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [affordabilityResult, setAffordabilityResult] =
@@ -176,13 +193,12 @@ export function NewLeadForm() {
         <div className="flex items-center gap-2">
           <Button
             variant="outline"
-            size="sm"
+            size="icon"
             asChild
-            className="border-[#1a2035] hover:bg-[#1a2035]"
+            className="h-8 w-8 border-[#1a2035]"
           >
             <Link href="/leads">
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Back to Leads
+              <ArrowLeft className="h-4 w-4" />
             </Link>
           </Button>
           <h1 className="text-2xl font-bold tracking-tight text-white">
@@ -241,90 +257,7 @@ export function NewLeadForm() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="flex items-center space-x-2">
-                  <Switch
-                    id="isExistingClient"
-                    checked={form.watch("isExistingClient")}
-                    onCheckedChange={(checked) =>
-                      form.setValue("isExistingClient", checked)
-                    }
-                  />
-                  <Label htmlFor="isExistingClient">Existing Client</Label>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="clientName">
-                      Client Name <span className="text-red-500">*</span>
-                    </Label>
-                    <Input
-                      id="clientName"
-                      placeholder="Enter client name"
-                      className="border-[#1a2035] bg-[#0a0e17]"
-                      {...form.register("clientName")}
-                    />
-                    {form.formState.errors.clientName && (
-                      <p className="text-sm text-red-500">
-                        {form.formState.errors.clientName.message}
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="clientEmail">
-                      Email Address <span className="text-red-500">*</span>
-                    </Label>
-                    <Input
-                      id="clientEmail"
-                      type="email"
-                      placeholder="Enter email address"
-                      className="border-[#1a2035] bg-[#0a0e17]"
-                      {...form.register("clientEmail")}
-                    />
-                    {form.formState.errors.clientEmail && (
-                      <p className="text-sm text-red-500">
-                        {form.formState.errors.clientEmail.message}
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="clientPhone">
-                      Phone Number <span className="text-red-500">*</span>
-                    </Label>
-                    <Input
-                      id="clientPhone"
-                      placeholder="Enter phone number"
-                      className="border-[#1a2035] bg-[#0a0e17]"
-                      {...form.register("clientPhone")}
-                    />
-                    {form.formState.errors.clientPhone && (
-                      <p className="text-sm text-red-500">
-                        {form.formState.errors.clientPhone.message}
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="clientCompany">Company Name</Label>
-                    <Input
-                      id="clientCompany"
-                      placeholder="Enter company name (if applicable)"
-                      className="border-[#1a2035] bg-[#0a0e17]"
-                      {...form.register("clientCompany")}
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="clientAddress">Address</Label>
-                  <Textarea
-                    id="clientAddress"
-                    placeholder="Enter client address"
-                    className="border-[#1a2035] bg-[#0a0e17] min-h-[100px]"
-                    {...form.register("clientAddress")}
-                  />
-                </div>
+                <ClientRegistrationForm formData={clientFormData} />
 
                 <div className="flex justify-end">
                   <Button

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSession } from "@/app/actions/auth";
+import { getSession } from "@/lib/auth";
 
 export async function GET() {
   try {
@@ -12,9 +12,9 @@ export async function GET() {
     // Return user info without the access token for security
     return NextResponse.json({
       user: {
-        id: session.id,
-        name: session.name,
-        email: session.email,
+        id: session.user.id,
+        name: session.user.name,
+        email: session.user.email,
       },
     });
   } catch (error) {

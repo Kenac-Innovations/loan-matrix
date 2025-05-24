@@ -42,7 +42,6 @@ export default function LeadDetailPage({ params }: { params: { id: string } }) {
           >
             <Link href="/leads">
               <ArrowLeft className="h-4 w-4" />
-              <span className="sr-only">Back to leads</span>
             </Link>
           </Button>
           <div>

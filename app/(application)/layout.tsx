@@ -23,6 +23,7 @@ import { Suspense } from "react";
 
 import { UserProfileClient } from "./components/user-profile-client";
 import { MobileSidebar } from "./components/mobile-sidebar";
+import MenuItemWithSubmenu from "@/components/menu-with-sub";
 
 export default async function DashboardLayout({
   children,
@@ -77,13 +78,15 @@ export default async function DashboardLayout({
               Dashboard
             </Link>
             <div className="space-y-1">
-              <Link
+              <MenuItemWithSubmenu
+                icon={<TrendingUp />}
+                label="Leads"
                 href="/leads"
-                className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-[#1a2035] dark:hover:text-white"
-              >
-                <TrendingUp className="h-4 w-4 text-gray-500 dark:text-gray-400" />
-                Leads
-              </Link>
+                subMenuItems={[
+                  { label: "Pipeline", href: "/leads" },
+                  { label: "Configuration", href: "/leads/config" },
+                ]}
+              />
             </div>
             <Link
               href="#"

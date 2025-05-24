@@ -1,0 +1,137 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../app/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Lead {
+  id                String    @id @default(cuid())
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  status            String    @default("DRAFT") // DRAFT, SUBMITTED, CLOSED
+  closedReason      String?
+  
+  // Client Information
+  officeId          Int?
+  officeName        String?
+  legalFormId       Int?
+  legalFormName     String?
+  externalId        String?   // National ID
+  firstname         String?
+  middlename        String?
+  lastname          String?
+  dateOfBirth       DateTime?
+  gender            String?
+  genderId          Int?
+  isStaff           Boolean   @default(false)
+  mobileNo          String?
+  countryCode       String?   @default("+1")
+  emailAddress      String?
+  clientTypeId      Int?
+  clientTypeName    String?
+  clientClassificationId Int?
+  clientClassificationName String?
+  submittedOnDate   DateTime?
+  active            Boolean   @default(true)
+  activationDate    DateTime?
+  openSavingsAccount Boolean  @default(false)
+  savingsProductId  Int?
+  savingsProductName String?
+  
+  // Response data
+  clientId          Int?
+  resourceId        Int?
+  
+  // Family Members / Next of Kin
+  familyMembers     FamilyMember[]
+  
+  // User relationship
+  userId            String
+  user              User     @relation(fields: [userId], references: [id])
+  
+  // Tracking
+  currentStep       Int      @default(1)
+  lastModified      DateTime @default(now())
+  
+  @@index([userId])
+  @@index([status])
+}
+
+model FamilyMember {
+  id                String   @id @default(cuid())
+  firstname         String
+  lastname          String
+  middlename        String?
+  relationship      String
+  dateOfBirth       DateTime?
+  mobileNo          String?
+  emailAddress      String?
+  isDependent       Boolean  @default(false)
+  
+  leadId            String
+  lead              Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  
+  @@index([leadId])
+}
+
+model User {
+  id                String   @id @default(cuid())
+  name              String?
+  email             String   @unique
+  leads             Lead[]
+}
+
+// Lookup tables
+model Office {
+  id                Int      @id @default(autoincrement())
+  name              String
+  description       String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model LegalForm {
+  id                Int      @id @default(autoincrement())
+  name              String
+  description       String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model Gender {
+  id                Int      @id @default(autoincrement())
+  name              String
+  description       String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model ClientType {
+  id                Int      @id @default(autoincrement())
+  name              String
+  description       String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model ClientClassification {
+  id                Int      @id @default(autoincrement())
+  name              String
+  description       String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model SavingsProduct {
+  id                Int      @id @default(autoincrement())
+  name              String
+  description       String?
+  interestRate      Float    @default(0)
+  minBalance        Float    @default(0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
