@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { SignJWT, jwtVerify } from "jose";
 import { z } from "zod";
+import { SpecificPermission } from "@/types/auth";
 
 // Type for user details
 export type UserDetails = {

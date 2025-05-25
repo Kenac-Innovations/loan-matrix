@@ -35,7 +35,6 @@ export async function getUserProfileData(): Promise<UserProfileData> {
     const session = await getSession();
     if (session && session.user) {
       try {
-        console.log("Session::", JSON.stringify(session));
         // Fetch detailed user information from Fineract API
         if (!session.user.id) {
           throw new Error("User ID is undefined");

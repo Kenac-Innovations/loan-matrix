@@ -1,10 +1,10 @@
 import { getServerSession } from "next-auth";
-import { cookies } from "next/headers";
 import { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import https from "https";
 import fetch from "node-fetch";
-import { fetchFineractAPI } from "./api";
+import { SpecificPermission } from "@/types/auth";
+import { mapApiPermissionsToSpecific } from "./authorization";
 
 // Define the NextAuth options
 export const authOptions: NextAuthOptions = {
@@ -23,7 +23,7 @@ export const authOptions: NextAuthOptions = {
         try {
           // Make a request to the Fineract API for authentication
           const response = await fetch(
-            "https://localhost:8443/fineract-provider/api/v1/authentication",
+            "https://demo.mifos.io/fineract-provider/api/v1/authentication",
             {
               method: "POST",
               headers: {
@@ -56,6 +56,11 @@ export const authOptions: NextAuthOptions = {
 
           console.log("Data::", data);
 
+          // Map API permissions to our specific permissions
+          const mappedPermissions = mapApiPermissionsToSpecific(
+            data.permissions
+          );
+
           // Return the user object with all the authentication data
           return {
             id: data.userId.toString(),
@@ -67,7 +72,8 @@ export const authOptions: NextAuthOptions = {
             officeId: data.officeId,
             officeName: data.officeName,
             roles: data.roles,
-            permissions: data.permissions,
+            permissions: mappedPermissions,
+            rawPermissions: data.permissions, // Keep the original permissions
             shouldRenewPassword: data.shouldRenewPassword, //TODO handle scenario where user must set a new password
             //TODO handle scenario where 2FA is enabled and required
             isTwoFactorAuthenticationRequired:
@@ -106,12 +112,13 @@ export const authOptions: NextAuthOptions = {
 
       // Add user data to session.user
       if (session.user) {
-        session.user.id = token.sub;
+        session.user.id = token.sub ?? "";
         session.user.userId = token.userId as number;
         session.user.officeId = token.officeId as number;
         session.user.officeName = token.officeName as string;
         session.user.roles = token.roles as any[];
-        session.user.permissions = token.permissions as string[];
+        session.user.permissions = token.permissions as SpecificPermission[];
+        session.user.rawPermissions = token.rawPermissions as string[];
         session.user.shouldRenewPassword = token.shouldRenewPassword as boolean;
         session.user.isTwoFactorAuthenticationRequired =
           token.isTwoFactorAuthenticationRequired as boolean;
@@ -139,9 +146,9 @@ export async function getSession() {
 /**
  * Get the current user's access token
  */
-export async function getAccessToken() {
+export async function getAccessToken(): Promise<string | undefined> {
   const session = await getSession();
-  return session?.accessToken as string | undefined;
+  return session?.accessToken;
 }
 
 /**
@@ -159,10 +166,10 @@ export async function isAuthenticated() {
 export async function getCurrentUserDetails(userId: String) {
   try {
     // Use the hardcoded Basic authentication token from the curl command
-    const url = `https://localhost:8443/fineract-provider/api/v1/users/${userId}`;
+    const url = `https://demo.mifos.io/fineract-provider/api/v1/users/${userId}`;
     const headers = {
       Accept: "application/json, text/plain, */*",
-      Authorization: "Basic a3VkemFpbWFjaGV5bzpVbmxlYXNoZWQuYjNhc3Q0Mio=",
+      Authorization: "Basic bWlmb3M6cGFzc3dvcmQ=",
       "Fineract-Platform-TenantId": "default",
       Origin: "http://localhost:4200",
       Referer: "http://localhost:4200/",

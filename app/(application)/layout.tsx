@@ -11,8 +11,10 @@ import {
   FileText,
   Home,
   Lock,
+  PlusCircle,
   Settings,
   Shield,
+  ShieldCheck,
   Users,
   TrendingUp,
 } from "lucide-react";
@@ -71,12 +73,19 @@ export default async function DashboardLayout({
         <div className="py-4 h-[calc(100vh-4rem)] overflow-y-auto">
           <nav className="space-y-1 px-2">
             <Link
-              href="/dashboard"
-              className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-[#1a2035] dark:hover:text-white"
+              href="/leads/new"
+              className="flex items-center gap-3 rounded-lg px-3 py-2 text-gray-500 transition-all hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-50"
             >
-              <Home className="h-4 w-4 text-gray-500 dark:text-gray-400" />
-              Dashboard
+              <PlusCircle className="h-4 w-4" />
+              New Lead
             </Link>
+            {/* <Link
+              href="/auth-demo"
+              className="flex items-center gap-3 rounded-lg px-3 py-2 text-gray-500 transition-all hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-50"
+            >
+              <ShieldCheck className="h-4 w-4" />
+              Auth Demo
+            </Link> */}
             <div className="space-y-1">
               <MenuItemWithSubmenu
                 icon={<TrendingUp />}
