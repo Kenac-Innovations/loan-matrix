@@ -65,6 +65,10 @@ import {
   addSavingsProduct,
   getActivationDate,
 } from "@/app/actions/client-actions";
+import {
+  autoSaveField,
+  getLeadStageHistory,
+} from "@/app/actions/client-actions-with-autosave";
 import { toast } from "@/components/ui/use-toast";
 import { useThemeColors } from "@/lib/theme-utils";
 import { Calendar } from "@/components/ui/calender";
@@ -232,13 +236,16 @@ export function ClientRegistrationForm({
   const [familyMembers, setFamilyMembers] = useState<any[]>([]);
   const [showFamilyMemberDialog, setShowFamilyMemberDialog] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [isAutoSaving, setIsAutoSaving] = useState(false);
+  const [lastSavedField, setLastSavedField] = useState<string | null>(null);
+  const [stageHistory, setStageHistory] = useState<any[]>([]);
 
   const [clientIdLookup, setClientIdLookup] = useState("");
   const [isSearchingClient, setIsSearchingClient] = useState(false);
   const [clientLookupStatus, setClientLookupStatus] = useState<
     "idle" | "not_found" | "found" | "error"
   >("idle");
-  const [isFormDisabled, setIsFormDisabled] = useState(true);
+  const [isFormDisabled, setIsFormDisabled] = useState(false);
 
   // State for dropdown options
   const [offices, setOffices] = useState<any[]>([]);
@@ -261,10 +268,9 @@ export function ClientRegistrationForm({
     useState(false);
   const [isAddingNew, setIsAddingNew] = useState(false);
 
-  // Auto-save timer
-  const [autoSaveTimer, setAutoSaveTimer] = useState<NodeJS.Timeout | null>(
-    null
-  );
+  // Field change debounce timer
+  const [fieldChangeTimer, setFieldChangeTimer] =
+    useState<NodeJS.Timeout | null>(null);
 
   // Initialize form
   const form = useForm<ClientFormValues>({
@@ -484,28 +490,54 @@ export function ClientRegistrationForm({
     loadData();
   }, [leadId, form, searchParams]);
 
-  // Set up auto-save
+  // Load stage history when leadId changes
   useEffect(() => {
-    const handleAutoSave = async () => {
-      const formData = form.getValues();
-      await handleSaveDraft(formData);
-    };
-
-    // Clear existing timer
-    if (autoSaveTimer) {
-      clearTimeout(autoSaveTimer);
-    }
-
-    // Set new timer for auto-save (every 30 seconds)
-    const timer = setTimeout(handleAutoSave, 30000);
-    setAutoSaveTimer(timer);
-
-    return () => {
-      if (autoSaveTimer) {
-        clearTimeout(autoSaveTimer);
+    const loadStageHistory = async () => {
+      if (leadId) {
+        try {
+          const history = await getLeadStageHistory(leadId);
+          setStageHistory(history);
+        } catch (error) {
+          console.error("Error loading stage history:", error);
+        }
       }
     };
-  }, [form.formState.isDirty]);
+
+    loadStageHistory();
+  }, [leadId]);
+
+  // Handle field blur for auto-save
+  const handleFieldBlur = async (fieldName: string, value: any) => {
+    setIsAutoSaving(true);
+    setLastSavedField(fieldName);
+
+    try {
+      const formData = form.getValues();
+      console.log("Auto-saving field:", fieldName, "with value:", value);
+
+      const result = await autoSaveField(
+        {
+          ...formData,
+          [fieldName]: value,
+          fieldName: fieldName,
+        },
+        leadId
+      );
+
+      console.log("Auto-save result:", result);
+
+      if (result.success && !leadId) {
+        // If no leadId yet, update URL with the new leadId
+        router.push(`/leads/new?id=${result.leadId}`);
+      }
+    } catch (error) {
+      console.error("Error auto-saving field:", error);
+    } finally {
+      setTimeout(() => {
+        setIsAutoSaving(false);
+      }, 1000); // Show saving indicator for at least 1 second
+    }
+  };
 
   // Handle client lookup by ID
   const handleClientLookup = async () => {
@@ -1338,9 +1370,17 @@ export function ClientRegistrationForm({
                         id="firstname"
                         placeholder="Enter first name"
                         className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
-                        {...form.register("firstname")}
+                        {...form.register("firstname", {
+                          onBlur: (e) =>
+                            handleFieldBlur("firstname", e.target.value),
+                        })}
                         disabled={isFormDisabled}
                       />
+                      {lastSavedField === "firstname" && isAutoSaving && (
+                        <span className="text-xs text-blue-500 animate-pulse">
+                          Saving...
+                        </span>
+                      )}
                       <p className={`text-xs ${colors.textColorMuted}`}>
                         Client's legal first name
                       </p>
@@ -1361,9 +1401,17 @@ export function ClientRegistrationForm({
                         id="middlename"
                         placeholder="Enter middle name"
                         className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
-                        {...form.register("middlename")}
+                        {...form.register("middlename", {
+                          onBlur: (e) =>
+                            handleFieldBlur("middlename", e.target.value),
+                        })}
                         disabled={isFormDisabled}
                       />
+                      {lastSavedField === "middlename" && isAutoSaving && (
+                        <span className="text-xs text-blue-500 animate-pulse">
+                          Saving...
+                        </span>
+                      )}
                       <p className={`text-xs ${colors.textColorMuted}`}>
                         Client's middle name (if applicable)
                       </p>
@@ -1379,9 +1427,17 @@ export function ClientRegistrationForm({
                         id="lastname"
                         placeholder="Enter last name"
                         className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
-                        {...form.register("lastname")}
+                        {...form.register("lastname", {
+                          onBlur: (e) =>
+                            handleFieldBlur("lastname", e.target.value),
+                        })}
                         disabled={isFormDisabled}
                       />
+                      {lastSavedField === "lastname" && isAutoSaving && (
+                        <span className="text-xs text-blue-500 animate-pulse">
+                          Saving...
+                        </span>
+                      )}
                       <p className={`text-xs ${colors.textColorMuted}`}>
                         Client's legal last name/surname
                       </p>
@@ -1495,9 +1551,17 @@ export function ClientRegistrationForm({
                         id="externalId"
                         placeholder="Enter national ID"
                         className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
-                        {...form.register("externalId")}
+                        {...form.register("externalId", {
+                          onBlur: (e) =>
+                            handleFieldBlur("externalId", e.target.value),
+                        })}
                         disabled={isFormDisabled}
                       />
+                      {lastSavedField === "externalId" && isAutoSaving && (
+                        <span className="text-xs text-blue-500 animate-pulse">
+                          Saving...
+                        </span>
+                      )}
                       <p className={`text-xs ${colors.textColorMuted}`}>
                         Government-issued identification number
                       </p>
@@ -1563,9 +1627,17 @@ export function ClientRegistrationForm({
                           id="mobileNo"
                           placeholder="Enter mobile number"
                           className={`h-10 flex-1 border-${colors.borderColor} ${colors.inputBg}`}
-                          {...form.register("mobileNo")}
+                          {...form.register("mobileNo", {
+                            onBlur: (e) =>
+                              handleFieldBlur("mobileNo", e.target.value),
+                          })}
                           disabled={isFormDisabled}
                         />
+                        {lastSavedField === "mobileNo" && isAutoSaving && (
+                          <span className="text-xs text-blue-500 animate-pulse">
+                            Saving...
+                          </span>
+                        )}
                       </div>
                       <p className={`text-xs ${colors.textColorMuted}`}>
                         Primary contact number for notifications
@@ -1591,9 +1663,17 @@ export function ClientRegistrationForm({
                         type="email"
                         placeholder="Enter email address"
                         className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
-                        {...form.register("emailAddress")}
+                        {...form.register("emailAddress", {
+                          onBlur: (e) =>
+                            handleFieldBlur("emailAddress", e.target.value),
+                        })}
                         disabled={isFormDisabled}
                       />
+                      {lastSavedField === "emailAddress" && isAutoSaving && (
+                        <span className="text-xs text-blue-500 animate-pulse">
+                          Saving...
+                        </span>
+                      )}
                       <p className={`text-xs ${colors.textColorMuted}`}>
                         Email for statements and notifications
                       </p>

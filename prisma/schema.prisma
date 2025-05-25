@@ -51,8 +51,6 @@ model Lead {
   
   // User relationship
   userId            String
-  user              User     @relation(fields: [userId], references: [id])
-  
   // Tracking
   currentStep       Int      @default(1)
   lastModified      DateTime @default(now())
@@ -76,13 +74,6 @@ model FamilyMember {
   lead              Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
   
   @@index([leadId])
-}
-
-model User {
-  id                String   @id @default(cuid())
-  name              String?
-  email             String   @unique
-  leads             Lead[]
 }
 
 // Lookup tables
