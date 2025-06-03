@@ -287,3 +287,84 @@ export async function getLeadStageHistory(leadId: string) {
     return [];
   }
 }
+
+// Cancel prospect and save reason
+export async function cancelProspect(leadId: string, reason: string) {
+  try {
+    console.log("Canceling prospect:", leadId, "with reason:", reason);
+
+    // Update the lead status to CLOSED and save the reason
+    const updatedLead = await prisma.lead.update({
+      where: { id: leadId },
+      data: {
+        status: "CLOSED",
+        closedReason: reason,
+        lastModified: new Date(),
+      },
+    });
+
+    console.log("Prospect canceled successfully:", updatedLead.id);
+    return { success: true, leadId: updatedLead.id };
+  } catch (error) {
+    console.error("Error canceling prospect:", error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    return {
+      success: false,
+      error: "Failed to cancel prospect: " + errorMessage,
+    };
+  }
+}
+
+// Get lead by ID for restoration
+export async function getLeadById(leadId: string) {
+  try {
+    console.log("Fetching lead by ID:", leadId);
+
+    const lead = await prisma.lead.findUnique({
+      where: { id: leadId },
+      include: {
+        familyMembers: true,
+      },
+    });
+
+    if (!lead) {
+      return { success: false, error: "Lead not found" };
+    }
+
+    console.log("Lead fetched successfully:", lead.id);
+    return { success: true, lead };
+  } catch (error) {
+    console.error("Error fetching lead:", error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    return {
+      success: false,
+      error: "Failed to fetch lead: " + errorMessage,
+    };
+  }
+}
+
+// Mark lead as converted to client (clear from local storage)
+export async function markLeadAsConverted(leadId: string) {
+  try {
+    console.log("Marking lead as converted:", leadId);
+
+    // Update the lead status to indicate it's been converted
+    const updatedLead = await prisma.lead.update({
+      where: { id: leadId },
+      data: {
+        status: "CONVERTED",
+        lastModified: new Date(),
+      },
+    });
+
+    console.log("Lead marked as converted successfully:", updatedLead.id);
+    return { success: true, leadId: updatedLead.id };
+  } catch (error) {
+    console.error("Error marking lead as converted:", error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    return {
+      success: false,
+      error: "Failed to mark lead as converted: " + errorMessage,
+    };
+  }
+}

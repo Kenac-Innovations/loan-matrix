@@ -68,11 +68,17 @@ import {
 import {
   autoSaveField,
   getLeadStageHistory,
+  cancelProspect,
+  getLeadById,
+  markLeadAsConverted,
 } from "@/app/actions/client-actions-with-autosave";
+import { LeadLocalStorage } from "@/lib/lead-local-storage";
+import { ProspectContinuationDialog } from "@/app/(application)/leads/new/components/prospect-continuation-dialog";
 import { toast } from "@/components/ui/use-toast";
 import { useThemeColors } from "@/lib/theme-utils";
 import { Calendar } from "@/components/ui/calender";
 import { SkeletonForm } from "./client-registration-form-skeleton";
+import { AddOfficeDialog } from "./add-office-dialogue";
 
 // Form validation schema
 const clientFormSchema = z
@@ -154,15 +160,6 @@ const familyMemberSchema = z.object({
   isDependent: z.boolean().default(false),
 });
 
-// New office schema
-const officeSchema = z.object({
-  name: z.string().min(1, "Office name is required"),
-  code: z.string().min(1, "Office code is required"),
-  address: z.string().optional(),
-  phone: z.string().optional(),
-  email: z.string().email("Invalid email address").optional(),
-});
-
 // New legal form schema
 const legalFormSchema = z.object({
   name: z.string().min(1, "Legal form name is required"),
@@ -196,7 +193,6 @@ const savingsProductSchema = z.object({
 
 type ClientFormValues = z.infer<typeof clientFormSchema>;
 type FamilyMemberValues = z.infer<typeof familyMemberSchema>;
-type OfficeFormValues = z.infer<typeof officeSchema>;
 type LegalFormValues = z.infer<typeof legalFormSchema>;
 type GenderFormValues = z.infer<typeof genderSchema>;
 type ClientTypeValues = z.infer<typeof clientTypeSchema>;
@@ -245,7 +241,7 @@ export function ClientRegistrationForm({
   const [clientLookupStatus, setClientLookupStatus] = useState<
     "idle" | "not_found" | "found" | "error"
   >("idle");
-  const [isFormDisabled, setIsFormDisabled] = useState(false);
+  const [isFormDisabled, setIsFormDisabled] = useState(true);
 
   // State for dropdown options
   const [offices, setOffices] = useState<any[]>([]);
@@ -268,9 +264,21 @@ export function ClientRegistrationForm({
     useState(false);
   const [isAddingNew, setIsAddingNew] = useState(false);
 
-  // Field change debounce timer
-  const [fieldChangeTimer, setFieldChangeTimer] =
-    useState<NodeJS.Timeout | null>(null);
+  // Local storage and prospect continuation state
+  const [showProspectDialog, setShowProspectDialog] = useState(false);
+  const [existingProspectData, setExistingProspectData] = useState<{
+    leadId: string;
+    firstname?: string;
+    lastname?: string;
+    emailAddress?: string;
+    mobileNo?: string;
+    timestamp: number;
+  } | null>(null);
+  const [currentLeadId, setCurrentLeadId] = useState<string | undefined>(
+    leadId
+  );
+  const [isSettingLeadIdFromAutoSave, setIsSettingLeadIdFromAutoSave] =
+    useState(false);
 
   // Initialize form
   const form = useForm<ClientFormValues>({
@@ -302,18 +310,6 @@ export function ClientRegistrationForm({
       middlename: "",
       relationship: "",
       isDependent: false,
-    },
-  });
-
-  // Office form
-  const officeForm = useForm<OfficeFormValues>({
-    resolver: zodResolver(officeSchema) as any,
-    defaultValues: {
-      name: "",
-      code: "",
-      address: "",
-      phone: "",
-      email: "",
     },
   });
 
@@ -396,9 +392,72 @@ export function ClientRegistrationForm({
     label: product.name,
   }));
 
+  // Check for existing prospects on mount
+  useEffect(() => {
+    const checkExistingProspect = async () => {
+      console.log("Checking for existing prospect...", {
+        leadId,
+        localStorageExists: LeadLocalStorage.exists(),
+        isExpired: LeadLocalStorage.isExpired(),
+      });
+
+      // Only check if no leadId is provided (new form)
+      if (
+        !leadId &&
+        LeadLocalStorage.exists() &&
+        !LeadLocalStorage.isExpired()
+      ) {
+        const existingData = LeadLocalStorage.load();
+        console.log("Found existing data in localStorage:", existingData);
+
+        if (existingData) {
+          try {
+            // Fetch the lead data from the server to verify it still exists
+            const result = await getLeadById(existingData.leadId);
+            console.log("Server response for existing lead:", result);
+
+            if (result.success && result.lead) {
+              setExistingProspectData({
+                leadId: existingData.leadId,
+                firstname: result.lead.firstname || undefined,
+                lastname: result.lead.lastname || undefined,
+                emailAddress: result.lead.emailAddress || undefined,
+                mobileNo: result.lead.mobileNo || undefined,
+                timestamp: existingData.timestamp,
+              });
+              setShowProspectDialog(true);
+              console.log("Showing prospect continuation dialog");
+            } else {
+              // Lead not found on server, clear local storage
+              console.log("Lead not found on server, clearing localStorage");
+              LeadLocalStorage.clear();
+            }
+          } catch (error) {
+            console.error("Error fetching existing prospect:", error);
+            // Clear invalid data
+            LeadLocalStorage.clear();
+          }
+        }
+      } else {
+        console.log("No existing prospect check needed:", {
+          hasLeadId: !!leadId,
+          localStorageExists: LeadLocalStorage.exists(),
+          isExpired: LeadLocalStorage.isExpired(),
+        });
+      }
+    };
+
+    checkExistingProspect();
+  }, [leadId]);
+
   // Load data on mount or from props
   useEffect(() => {
     const loadData = async () => {
+      if (isSettingLeadIdFromAutoSave) {
+        setIsSettingLeadIdFromAutoSave(false);
+        return;
+      }
+
       setIsLoading(true);
 
       try {
@@ -444,8 +503,8 @@ export function ClientRegistrationForm({
         }
 
         // If leadId is provided, load the lead data
-        if (leadId) {
-          const lead = await getLead(leadId);
+        if (currentLeadId) {
+          const lead = await getLead(currentLeadId);
           if (lead) {
             // Set form values
             form.reset({
@@ -488,14 +547,14 @@ export function ClientRegistrationForm({
     };
 
     loadData();
-  }, [leadId, form, searchParams]);
+  }, [currentLeadId, form, searchParams]);
 
   // Load stage history when leadId changes
   useEffect(() => {
     const loadStageHistory = async () => {
-      if (leadId) {
+      if (currentLeadId) {
         try {
-          const history = await getLeadStageHistory(leadId);
+          const history = await getLeadStageHistory(currentLeadId);
           setStageHistory(history);
         } catch (error) {
           console.error("Error loading stage history:", error);
@@ -504,7 +563,113 @@ export function ClientRegistrationForm({
     };
 
     loadStageHistory();
-  }, [leadId]);
+  }, [currentLeadId]);
+
+  // Handle prospect continuation
+  useEffect(() => {
+    const loadStageHistory = async () => {
+      if (currentLeadId) {
+        try {
+          const history = await getLeadStageHistory(currentLeadId);
+          setStageHistory(history);
+        } catch (error) {
+          console.error("Error loading stage history:", error);
+        }
+      }
+    };
+
+    loadStageHistory();
+  }, [currentLeadId]);
+
+  // Handle prospect continuation
+  const handleContinueProspect = async () => {
+    console.log("Continuing with existing prospect:", existingProspectData);
+
+    if (existingProspectData) {
+      // Set the current lead ID and navigate to the existing prospect
+      setCurrentLeadId(existingProspectData.leadId);
+
+      // Update the URL to reflect the leadId
+      const newUrl = `/leads/new?id=${existingProspectData.leadId}`;
+      router.replace(newUrl);
+
+      setShowProspectDialog(false);
+
+      toast({
+        title: "Prospect Restored",
+        description: "Continuing with your existing prospect.",
+        variant: "default",
+      });
+    }
+  };
+
+  const handleCancelProspect = async (reason: string) => {
+    console.log("Canceling existing prospect with reason:", reason);
+
+    if (existingProspectData) {
+      try {
+        // Cancel the prospect in the database
+        const result = await cancelProspect(
+          existingProspectData.leadId,
+          reason
+        );
+
+        if (result.success) {
+          // Clear local storage
+          LeadLocalStorage.clear();
+
+          toast({
+            title: "Prospect Canceled",
+            description:
+              "The previous prospect has been canceled. You can now start a new one.",
+            variant: "default",
+          });
+
+          // Reset the form for a new prospect
+          form.reset({
+            officeId: 1,
+            legalFormId: 1,
+            externalId: "",
+            firstname: "",
+            middlename: "",
+            lastname: "",
+            isStaff: false,
+            mobileNo: "",
+            countryCode: "+1",
+            emailAddress: "",
+            submittedOnDate: new Date(),
+            active: true,
+            openSavingsAccount: false,
+            currentStep: 1,
+          });
+
+          setFamilyMembers([]);
+          setCurrentLeadId(undefined);
+        } else {
+          toast({
+            title: "Error",
+            description: result.error || "Failed to cancel prospect",
+            variant: "destructive",
+          });
+        }
+      } catch (error) {
+        console.error("Error canceling prospect:", error);
+        toast({
+          title: "Error",
+          description:
+            "An unexpected error occurred while canceling the prospect",
+          variant: "destructive",
+        });
+      }
+    }
+
+    setShowProspectDialog(false);
+    setExistingProspectData(null);
+  };
+
+  const handleCloseProspectDialog = () => {
+    setShowProspectDialog(false);
+  };
 
   // Handle field blur for auto-save
   const handleFieldBlur = async (fieldName: string, value: any) => {
@@ -521,14 +686,27 @@ export function ClientRegistrationForm({
           [fieldName]: value,
           fieldName: fieldName,
         },
-        leadId
+        currentLeadId
       );
 
       console.log("Auto-save result:", result);
 
-      if (result.success && !leadId) {
-        // If no leadId yet, update URL with the new leadId
-        router.push(`/leads/new?id=${result.leadId}`);
+      if (result.success) {
+        const leadId = result.leadId;
+
+        if (!currentLeadId && leadId) {
+          setIsSettingLeadIdFromAutoSave(true);
+          // If no leadId yet, update URL and state with the new leadId
+          setCurrentLeadId(leadId);
+        }
+
+        // Save to local storage
+        LeadLocalStorage.save({
+          leadId: leadId!,
+          formData: formData,
+          timestamp: Date.now(),
+          step: "lead",
+        });
       }
     } catch (error) {
       console.error("Error auto-saving field:", error);
@@ -711,6 +889,9 @@ export function ClientRegistrationForm({
         return;
       }
 
+      // Clear local storage on successful submission
+      LeadLocalStorage.clear();
+
       toast({
         title: "Success",
         description: "Client registered successfully",
@@ -820,7 +1001,6 @@ export function ClientRegistrationForm({
       setShowCloseDialog(false);
     }
   };
-
   // Handle adding family member
   const handleAddFamilyMember = async (data: FamilyMemberValues) => {
     if (!leadId) {
@@ -909,49 +1089,6 @@ export function ClientRegistrationForm({
         description: "An unexpected error occurred",
         variant: "destructive",
       });
-    }
-  };
-
-  // Handle adding new office
-  const handleAddOffice = async (data: OfficeFormValues) => {
-    setIsAddingNew(true);
-    try {
-      // In a real implementation, this would call the API to add a new office
-      // For now, we'll simulate adding a new office
-      // const result = await addOffice(data as any);
-
-      // Simulate a successful response
-      const mockResult = {
-        success: true,
-        id: Math.floor(Math.random() * 1000) + 100, // Generate a random ID
-        name: data.name,
-        description: null,
-      };
-
-      toast({
-        title: "Success",
-        description: "Office added successfully",
-        variant: "default",
-      });
-
-      // Add the new office to the local state
-      setOffices([...offices, mockResult]);
-
-      // Select the new office
-      form.setValue("officeId", mockResult.id);
-
-      // Close dialog and reset form
-      setShowAddOfficeDialog(false);
-      officeForm.reset();
-    } catch (error) {
-      console.error("Error adding office:", error);
-      toast({
-        title: "Error",
-        description: "An unexpected error occurred",
-        variant: "destructive",
-      });
-    } finally {
-      setIsAddingNew(false);
     }
   };
 
@@ -1155,922 +1292,341 @@ export function ClientRegistrationForm({
   };
 
   return (
-    <div className="space-y-6">
-      {isLoading ? (
-        <SkeletonForm />
-      ) : (
-        <>
-          {/* Client ID Lookup Section */}
-          <Card className={`border-${colors.borderColor} ${colors.cardBg}`}>
-            <CardHeader>
-              <CardTitle className={colors.textColor}>
-                Client Registration
-              </CardTitle>
-              <CardDescription className={colors.textColorMuted}>
-                Enter client ID number to search for an existing client or
-                create a new one.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="clientIdLookup" className={colors.textColor}>
-                    Client ID Number <span className="text-red-500">*</span>
-                  </Label>
-                  <div className="flex space-x-2">
-                    <Input
-                      id="clientIdLookup"
-                      placeholder="Enter client ID number"
-                      value={clientIdLookup}
-                      onChange={(e) => setClientIdLookup(e.target.value)}
-                      className={`h-10 flex-1 border-${colors.borderColor} ${colors.inputBg}`}
-                      disabled={isSearchingClient}
-                    />
-                    <Button
-                      type="button"
-                      onClick={handleClientLookup}
-                      disabled={isSearchingClient || !clientIdLookup.trim()}
-                      className="bg-blue-500 hover:bg-blue-600 min-w-[100px]"
-                    >
-                      {isSearchingClient ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Searching...
-                        </>
-                      ) : (
-                        <>
-                          <Search className="mr-2 h-4 w-4" />
-                          Search
-                        </>
-                      )}
-                    </Button>
-                    {clientLookupStatus !== "idle" && (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={handleClearClientLookup}
-                        className={`border-${colors.borderColor} hover:bg-${colors.hoverBgColor}`}
-                      >
-                        <X className="h-4 w-4" />
-                      </Button>
-                    )}
-                  </div>
-                  <p className={`text-xs ${colors.textColorMuted}`}>
-                    Enter the client's unique ID number to search for existing
-                    records
-                  </p>
-                </div>
-
-                {clientLookupStatus === "found" && (
-                  <Alert className="border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950">
-                    <UserCheck className="h-4 w-4 text-green-600 dark:text-green-400" />
-                    <AlertDescription className="text-green-800 dark:text-green-200">
-                      <strong>Client Found:</strong> The form has been
-                      pre-populated with the existing client's information. You
-                      can review and update the details as needed.
-                    </AlertDescription>
-                  </Alert>
-                )}
-
-                {clientLookupStatus === "not_found" && (
-                  <Alert className="border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950">
-                    <UserPlus className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                    <AlertDescription className="text-blue-800 dark:text-blue-200">
-                      <strong>New Client:</strong> No client found with this ID.
-                      Please proceed with entering the client's information.
-                    </AlertDescription>
-                  </Alert>
-                )}
-
-                {clientLookupStatus === "error" && (
-                  <Alert className="border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950">
-                    <AlertCircle className="h-4 w-4 text-red-600 dark:text-red-400" />
-                    <AlertDescription className="text-red-800 dark:text-red-200">
-                      <strong>Error:</strong> Failed to look up client. Please
-                      try again or proceed with manual entry.
-                    </AlertDescription>
-                  </Alert>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-
-          <form onSubmit={form.handleSubmit(onSubmit as any)}>
+    <>
+      {/* Prospect Continuation Dialog */}
+      <div className="flex items-center justify-center p-4">
+        <ProspectContinuationDialog
+          isOpen={showProspectDialog}
+          onContinue={handleContinueProspect}
+          onCancel={handleCancelProspect}
+          onClose={handleCloseProspectDialog}
+          prospectData={existingProspectData || undefined}
+        />
+      </div>
+      <div className="space-y-6">
+        {isLoading ? (
+          <SkeletonForm />
+        ) : (
+          <>
+            {/* Client ID Lookup Section */}
             <Card className={`border-${colors.borderColor} ${colors.cardBg}`}>
               <CardHeader>
                 <CardTitle className={colors.textColor}>
-                  Client Information
+                  Client Registration
                 </CardTitle>
                 <CardDescription className={colors.textColorMuted}>
-                  {clientLookupStatus === "found"
-                    ? "Review and update the client's information as needed."
-                    : "Enter the client's information to register them."}
+                  Enter client ID number to search for an existing client or
+                  create a new one.
                 </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-8">
-                {/* Administrative Information Section */}
-                <div className="space-y-6 mb-8">
-                  <div className="border-b border-gray-200 dark:border-gray-700 pb-3 mb-6">
-                    <h3 className={`text-lg font-medium ${colors.textColor}`}>
-                      Administrative Information
-                    </h3>
-                    <p className={`text-sm ${colors.textColorMuted}`}>
-                      Office and legal classification details
-                    </p>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {/* Office */}
-                    <div className="space-y-3">
-                      <Label htmlFor="officeId" className={colors.textColor}>
-                        Office <span className="text-red-500">*</span>
-                      </Label>
-                      <Controller
-                        control={form.control}
-                        name="officeId"
-                        render={({ field }) => (
-                          <SearchableSelect
-                            options={officeOptions}
-                            value={field.value?.toString()}
-                            onValueChange={(value) =>
-                              field.onChange(Number.parseInt(value))
-                            }
-                            placeholder="Select office"
-                            className={`border-${colors.borderColor} ${colors.inputBg}`}
-                            onAddNew={() => setShowAddOfficeDialog(true)}
-                            addNewLabel="Add new office"
-                            disabled={isFormDisabled}
-                          />
-                        )}
-                      />
-                      <p className={`text-xs ${colors.textColorMuted}`}>
-                        Select the branch office managing this client
-                      </p>
-                      {form.formState.errors.officeId && (
-                        <p className="text-sm text-red-500">
-                          {form.formState.errors.officeId.message}
-                        </p>
-                      )}
-                    </div>
-
-                    {/* Legal Form */}
-                    <div className="space-y-3">
-                      <Label htmlFor="legalFormId" className={colors.textColor}>
-                        Legal Form <span className="text-red-500">*</span>
-                      </Label>
-                      <Controller
-                        control={form.control}
-                        name="legalFormId"
-                        render={({ field }) => (
-                          <SearchableSelect
-                            options={legalFormOptions}
-                            value={field.value?.toString()}
-                            onValueChange={(value) =>
-                              field.onChange(Number.parseInt(value))
-                            }
-                            placeholder="Select legal form"
-                            className={`border-${colors.borderColor} ${colors.inputBg}`}
-                            onAddNew={() => setShowAddLegalFormDialog(true)}
-                            addNewLabel="Add new legal form"
-                            disabled={isFormDisabled}
-                          />
-                        )}
-                      />
-                      <p className={`text-xs ${colors.textColorMuted}`}>
-                        Legal classification of the client
-                      </p>
-                      {form.formState.errors.legalFormId && (
-                        <p className="text-sm text-red-500">
-                          {form.formState.errors.legalFormId.message}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Personal Information Section */}
-                <div className="space-y-6 mb-8">
-                  <div className="border-b border-gray-200 dark:border-gray-700 pb-3 mb-6">
-                    <h3 className={`text-lg font-medium ${colors.textColor}`}>
-                      Personal Information
-                    </h3>
-                    <p className={`text-sm ${colors.textColorMuted}`}>
-                      Client's personal identification details
-                    </p>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    {/* First Name */}
-                    <div className="space-y-3">
-                      <Label htmlFor="firstname" className={colors.textColor}>
-                        First Name <span className="text-red-500">*</span>
-                      </Label>
-
-                      <Input
-                        id="firstname"
-                        placeholder="Enter first name"
-                        className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
-                        {...form.register("firstname", {
-                          onBlur: (e) =>
-                            handleFieldBlur("firstname", e.target.value),
-                        })}
-                        disabled={isFormDisabled}
-                      />
-                      {lastSavedField === "firstname" && isAutoSaving && (
-                        <span className="text-xs text-blue-500 animate-pulse">
-                          Saving...
-                        </span>
-                      )}
-                      <p className={`text-xs ${colors.textColorMuted}`}>
-                        Client's legal first name
-                      </p>
-                      {form.formState.errors.firstname && (
-                        <p className="text-sm text-red-500">
-                          {form.formState.errors.firstname.message}
-                        </p>
-                      )}
-                    </div>
-
-                    {/* Middle Name */}
-                    <div className="space-y-3">
-                      <Label htmlFor="middlename" className={colors.textColor}>
-                        Middle Name
-                      </Label>
-
-                      <Input
-                        id="middlename"
-                        placeholder="Enter middle name"
-                        className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
-                        {...form.register("middlename", {
-                          onBlur: (e) =>
-                            handleFieldBlur("middlename", e.target.value),
-                        })}
-                        disabled={isFormDisabled}
-                      />
-                      {lastSavedField === "middlename" && isAutoSaving && (
-                        <span className="text-xs text-blue-500 animate-pulse">
-                          Saving...
-                        </span>
-                      )}
-                      <p className={`text-xs ${colors.textColorMuted}`}>
-                        Client's middle name (if applicable)
-                      </p>
-                    </div>
-
-                    {/* Last Name */}
-                    <div className="space-y-3">
-                      <Label htmlFor="lastname" className={colors.textColor}>
-                        Last Name <span className="text-red-500">*</span>
-                      </Label>
-
-                      <Input
-                        id="lastname"
-                        placeholder="Enter last name"
-                        className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
-                        {...form.register("lastname", {
-                          onBlur: (e) =>
-                            handleFieldBlur("lastname", e.target.value),
-                        })}
-                        disabled={isFormDisabled}
-                      />
-                      {lastSavedField === "lastname" && isAutoSaving && (
-                        <span className="text-xs text-blue-500 animate-pulse">
-                          Saving...
-                        </span>
-                      )}
-                      <p className={`text-xs ${colors.textColorMuted}`}>
-                        Client's legal last name/surname
-                      </p>
-                      {form.formState.errors.lastname && (
-                        <p className="text-sm text-red-500">
-                          {form.formState.errors.lastname.message}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    {/* Date of Birth */}
-                    <div className="space-y-3">
-                      <Label htmlFor="dateOfBirth" className={colors.textColor}>
-                        Date of Birth <span className="text-red-500">*</span>
-                      </Label>
-
-                      <Controller
-                        control={form.control}
-                        name="dateOfBirth"
-                        render={({ field }) => (
-                          <Popover>
-                            <PopoverTrigger asChild>
-                              <Button
-                                variant="outline"
-                                className={cn(
-                                  "h-10 w-full justify-start text-left font-normal",
-                                  !field.value && "text-muted-foreground",
-                                  `border-${colors.borderColor} ${colors.inputBg}`
-                                )}
-                                disabled={isFormDisabled}
-                              >
-                                <CalendarIcon className="mr-2 h-4 w-4" />
-                                {field.value ? (
-                                  format(field.value, "PPP")
-                                ) : (
-                                  <span>Pick a date</span>
-                                )}
-                              </Button>
-                            </PopoverTrigger>
-                            <PopoverContent
-                              className="w-auto p-0"
-                              align="start"
-                            >
-                              <Calendar
-                                mode="single"
-                                selected={field.value}
-                                onSelect={field.onChange}
-                                disabled={(date) =>
-                                  date > new Date() ||
-                                  date < new Date("1900-01-01")
-                                }
-                                initialFocus
-                              />
-                            </PopoverContent>
-                          </Popover>
-                        )}
-                      />
-                      <p className={`text-xs ${colors.textColorMuted}`}>
-                        Client's date of birth for verification
-                      </p>
-                      {form.formState.errors.dateOfBirth && (
-                        <p className="text-sm text-red-500">
-                          {form.formState.errors.dateOfBirth.message}
-                        </p>
-                      )}
-                    </div>
-
-                    {/* Gender */}
-                    <div className="space-y-3">
-                      <Label htmlFor="genderId" className={colors.textColor}>
-                        Gender <span className="text-red-500">*</span>
-                      </Label>
-
-                      <Controller
-                        control={form.control}
-                        name="genderId"
-                        render={({ field }) => (
-                          <SearchableSelect
-                            options={genderOptions}
-                            value={field.value?.toString()}
-                            onValueChange={(value) =>
-                              field.onChange(Number.parseInt(value))
-                            }
-                            placeholder="Select gender"
-                            className={`border-${colors.borderColor} ${colors.inputBg}`}
-                            onAddNew={() => setShowAddGenderDialog(true)}
-                            addNewLabel="Add new gender"
-                            disabled={isFormDisabled}
-                          />
-                        )}
-                      />
-                      <p className={`text-xs ${colors.textColorMuted}`}>
-                        Client's gender for demographic purposes
-                      </p>
-                      {form.formState.errors.genderId && (
-                        <p className="text-sm text-red-500">
-                          {form.formState.errors.genderId.message}
-                        </p>
-                      )}
-                    </div>
-
-                    {/* External ID (National ID) */}
-                    <div className="space-y-3">
-                      <Label htmlFor="externalId" className={colors.textColor}>
-                        National ID <span className="text-red-500">*</span>
-                      </Label>
-
-                      <Input
-                        id="externalId"
-                        placeholder="Enter national ID"
-                        className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
-                        {...form.register("externalId", {
-                          onBlur: (e) =>
-                            handleFieldBlur("externalId", e.target.value),
-                        })}
-                        disabled={isFormDisabled}
-                      />
-                      {lastSavedField === "externalId" && isAutoSaving && (
-                        <span className="text-xs text-blue-500 animate-pulse">
-                          Saving...
-                        </span>
-                      )}
-                      <p className={`text-xs ${colors.textColorMuted}`}>
-                        Government-issued identification number
-                      </p>
-                      {form.formState.errors.externalId && (
-                        <p className="text-sm text-red-500">
-                          {form.formState.errors.externalId.message}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Contact Information Section */}
-                <div className="space-y-6 mb-8">
-                  <div className="border-b border-gray-200 dark:border-gray-700 pb-3 mb-6">
-                    <h3 className={`text-lg font-medium ${colors.textColor}`}>
-                      Contact Information
-                    </h3>
-                    <p className={`text-sm ${colors.textColorMuted}`}>
-                      Client's contact details for communication
-                    </p>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {/* Mobile Number */}
-                    <div className="space-y-3">
-                      <Label htmlFor="mobileNo" className={colors.textColor}>
-                        Mobile Number <span className="text-red-500">*</span>
-                      </Label>
-                      <div className="flex space-x-2">
-                        <Controller
-                          control={form.control}
-                          name="countryCode"
-                          render={({ field }) => (
-                            <Select
-                              onValueChange={field.onChange}
-                              defaultValue={field.value}
-                              disabled={isFormDisabled}
-                            >
-                              <SelectTrigger
-                                className={`h-10 w-24 border-${colors.borderColor} ${colors.inputBg}`}
-                              >
-                                <SelectValue placeholder="+1" />
-                              </SelectTrigger>
-                              <SelectContent
-                                className={`border-${colors.borderColor} ${colors.dropdownBg} ${colors.textColor}`}
-                              >
-                                <SelectItem value="+1">🇺🇸 +1</SelectItem>
-                                <SelectItem value="+44">🇬🇧 +44</SelectItem>
-                                <SelectItem value="+33">🇫🇷 +33</SelectItem>
-                                <SelectItem value="+49">🇩🇪 +49</SelectItem>
-                                <SelectItem value="+81">🇯🇵 +81</SelectItem>
-                                <SelectItem value="+86">🇨🇳 +86</SelectItem>
-                                <SelectItem value="+91">🇮🇳 +91</SelectItem>
-                                <SelectItem value="+61">🇦🇺 +61</SelectItem>
-                                <SelectItem value="+55">🇧🇷 +55</SelectItem>
-                                <SelectItem value="+52">🇲🇽 +52</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          )}
-                        />
-                        <Input
-                          id="mobileNo"
-                          placeholder="Enter mobile number"
-                          className={`h-10 flex-1 border-${colors.borderColor} ${colors.inputBg}`}
-                          {...form.register("mobileNo", {
-                            onBlur: (e) =>
-                              handleFieldBlur("mobileNo", e.target.value),
-                          })}
-                          disabled={isFormDisabled}
-                        />
-                        {lastSavedField === "mobileNo" && isAutoSaving && (
-                          <span className="text-xs text-blue-500 animate-pulse">
-                            Saving...
-                          </span>
-                        )}
-                      </div>
-                      <p className={`text-xs ${colors.textColorMuted}`}>
-                        Primary contact number for notifications
-                      </p>
-                      {form.formState.errors.mobileNo && (
-                        <p className="text-sm text-red-500">
-                          {form.formState.errors.mobileNo.message}
-                        </p>
-                      )}
-                    </div>
-
-                    {/* Email Address */}
-                    <div className="space-y-3">
-                      <Label
-                        htmlFor="emailAddress"
-                        className={colors.textColor}
-                      >
-                        Email Address <span className="text-red-500">*</span>
-                      </Label>
-
-                      <Input
-                        id="emailAddress"
-                        type="email"
-                        placeholder="Enter email address"
-                        className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
-                        {...form.register("emailAddress", {
-                          onBlur: (e) =>
-                            handleFieldBlur("emailAddress", e.target.value),
-                        })}
-                        disabled={isFormDisabled}
-                      />
-                      {lastSavedField === "emailAddress" && isAutoSaving && (
-                        <span className="text-xs text-blue-500 animate-pulse">
-                          Saving...
-                        </span>
-                      )}
-                      <p className={`text-xs ${colors.textColorMuted}`}>
-                        Email for statements and notifications
-                      </p>
-                      {form.formState.errors.emailAddress && (
-                        <p className="text-sm text-red-500">
-                          {form.formState.errors.emailAddress.message}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Classification Information Section */}
-                <div className="space-y-6 mb-8">
-                  <div className="border-b border-gray-200 dark:border-gray-700 pb-3 mb-6">
-                    <h3 className={`text-lg font-medium ${colors.textColor}`}>
-                      Client Classification
-                    </h3>
-                    <p className={`text-sm ${colors.textColorMuted}`}>
-                      Client categorization for service offerings
-                    </p>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {/* Client Type */}
-                    <div className="space-y-3">
-                      <Label
-                        htmlFor="clientTypeId"
-                        className={colors.textColor}
-                      >
-                        Client Type <span className="text-red-500">*</span>
-                      </Label>
-
-                      <Controller
-                        control={form.control}
-                        name="clientTypeId"
-                        render={({ field }) => (
-                          <SearchableSelect
-                            options={clientTypeOptions}
-                            value={field.value?.toString()}
-                            onValueChange={(value) =>
-                              field.onChange(Number.parseInt(value))
-                            }
-                            placeholder="Select client type"
-                            className={`border-${colors.borderColor} ${colors.inputBg}`}
-                            onAddNew={() => setShowAddClientTypeDialog(true)}
-                            addNewLabel="Add new client type"
-                            disabled={isFormDisabled}
-                          />
-                        )}
-                      />
-                      <p className={`text-xs ${colors.textColorMuted}`}>
-                        Type of client for service eligibility
-                      </p>
-                      {form.formState.errors.clientTypeId && (
-                        <p className="text-sm text-red-500">
-                          {form.formState.errors.clientTypeId.message}
-                        </p>
-                      )}
-                    </div>
-
-                    {/* Client Classification */}
-                    <div className="space-y-3">
-                      <Label
-                        htmlFor="clientClassificationId"
-                        className={colors.textColor}
-                      >
-                        Client Classification{" "}
-                        <span className="text-red-500">*</span>
-                      </Label>
-
-                      <Controller
-                        control={form.control}
-                        name="clientClassificationId"
-                        render={({ field }) => (
-                          <SearchableSelect
-                            options={clientClassificationOptions}
-                            value={field.value?.toString()}
-                            onValueChange={(value) =>
-                              field.onChange(Number.parseInt(value))
-                            }
-                            placeholder="Select client classification"
-                            className={`border-${colors.borderColor} ${colors.inputBg}`}
-                            onAddNew={() =>
-                              setShowAddClientClassificationDialog(true)
-                            }
-                            addNewLabel="Add new classification"
-                            disabled={isFormDisabled}
-                          />
-                        )}
-                      />
-                      <p className={`text-xs ${colors.textColorMuted}`}>
-                        Classification for risk assessment
-                      </p>
-                      {form.formState.errors.clientClassificationId && (
-                        <p className="text-sm text-red-500">
-                          {form.formState.errors.clientClassificationId.message}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Additional Information Section */}
-                <div className="space-y-6 mb-8">
-                  <div className="border-b border-gray-200 dark:border-gray-700 pb-3 mb-6">
-                    <h3 className={`text-lg font-medium ${colors.textColor}`}>
-                      Additional Information
-                    </h3>
-                    <p className={`text-sm ${colors.textColorMuted}`}>
-                      Submission details and special status
-                    </p>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {/* Submitted On Date */}
-                    <div className="space-y-3">
-                      <Label
-                        htmlFor="submittedOnDate"
-                        className={colors.textColor}
-                      >
-                        Submitted On <span className="text-red-500">*</span>
-                      </Label>
-
-                      <Controller
-                        control={form.control}
-                        name="submittedOnDate"
-                        render={({ field }) => (
-                          <Popover>
-                            <PopoverTrigger asChild>
-                              <Button
-                                variant="outline"
-                                className={cn(
-                                  "h-10 w-full justify-start text-left font-normal",
-                                  !field.value && "text-muted-foreground",
-                                  `border-${colors.borderColor} ${colors.inputBg}`
-                                )}
-                                disabled={isFormDisabled}
-                              >
-                                <CalendarIcon className="mr-2 h-4 w-4" />
-                                {field.value ? (
-                                  format(field.value, "PPP")
-                                ) : (
-                                  <span>Pick a date</span>
-                                )}
-                              </Button>
-                            </PopoverTrigger>
-                            <PopoverContent
-                              className="w-auto p-0"
-                              align="start"
-                            >
-                              <Calendar
-                                mode="single"
-                                selected={field.value}
-                                onSelect={field.onChange}
-                                disabled={(date) =>
-                                  date > new Date() ||
-                                  date < new Date("1900-01-01")
-                                }
-                                initialFocus
-                              />
-                            </PopoverContent>
-                          </Popover>
-                        )}
-                      />
-                      <p className={`text-xs ${colors.textColorMuted}`}>
-                        Date when application was submitted
-                      </p>
-                      {form.formState.errors.submittedOnDate && (
-                        <p className="text-sm text-red-500">
-                          {form.formState.errors.submittedOnDate.message}
-                        </p>
-                      )}
-                    </div>
-
-                    {/* Is Staff */}
-                    <div className="space-y-3">
-                      <Label htmlFor="isStaff" className={colors.textColor}>
-                        Staff Status
-                      </Label>
-                      <Card
-                        className={`border-${colors.borderColor} ${colors.cardBg} flex flex-row items-center justify-between p-4`}
-                      >
-                        <div className="flex items-center space-x-2">
-                          <Controller
-                            control={form.control}
-                            name="isStaff"
-                            render={({ field }) => (
-                              <Checkbox
-                                id="isStaff"
-                                checked={field.value}
-                                onCheckedChange={field.onChange}
-                                disabled={isFormDisabled}
-                              />
-                            )}
-                          />
-                          <Label htmlFor="isStaff" className={colors.textColor}>
-                            Is staff member
-                          </Label>
-                        </div>
-                        <p className={`text-xs ${colors.textColorMuted}`}>
-                          Indicate if client is a staff member
-                        </p>
-                      </Card>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Next of Kin (Family Members) Section */}
-                <div className="space-y-6 mb-8">
-                  <div className="border-b border-gray-200 dark:border-gray-700 pb-3 mb-6 flex justify-between items-center">
-                    <div>
-                      <h3 className={`text-lg font-medium ${colors.textColor}`}>
-                        Next of Kin
-                      </h3>
-                      <p className={`text-sm ${colors.textColorMuted}`}>
-                        Add next of kin details
-                      </p>
-                    </div>
-
-                    <Button
-                      type="button"
-                      onClick={() => setShowFamilyMemberDialog(true)}
-                      className="bg-blue-500 hover:bg-blue-600"
-                      disabled={isFormDisabled}
+              <CardContent>
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label
+                      htmlFor="clientIdLookup"
+                      className={colors.textColor}
                     >
-                      Add Next of Kin
-                    </Button>
-                  </div>
-
-                  {familyMembers.length === 0 ? (
-                    <div
-                      className={`text-center py-8 ${colors.textColorMuted}`}
-                    >
-                      No next of kin added yet. Click the button above to add
-                      one.
-                    </div>
-                  ) : (
-                    <div className="space-y-6">
-                      {familyMembers.map((member) => (
-                        <Card
-                          key={member.id}
-                          className={`border-${colors.borderColor} ${colors.cardBg}`}
+                      Client ID Number <span className="text-red-500">*</span>
+                    </Label>
+                    <div className="flex space-x-2">
+                      <Input
+                        id="clientIdLookup"
+                        placeholder="Enter client ID number"
+                        value={clientIdLookup}
+                        onChange={(e) => setClientIdLookup(e.target.value)}
+                        className={`h-10 flex-1 border-${colors.borderColor} ${colors.inputBg}`}
+                        disabled={isSearchingClient}
+                      />
+                      <Button
+                        type="button"
+                        onClick={handleClientLookup}
+                        disabled={isSearchingClient || !clientIdLookup.trim()}
+                        className="bg-blue-500 hover:bg-blue-600 min-w-[100px]"
+                      >
+                        {isSearchingClient ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Searching...
+                          </>
+                        ) : (
+                          <>
+                            <Search className="mr-2 h-4 w-4" />
+                            Search
+                          </>
+                        )}
+                      </Button>
+                      {clientLookupStatus !== "idle" && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={handleClearClientLookup}
+                          className={`border-${colors.borderColor} hover:bg-${colors.hoverBgColor}`}
                         >
-                          <CardContent className="p-4">
-                            <div className="flex justify-between items-start">
-                              <div>
-                                <h4
-                                  className={`font-medium ${colors.textColor}`}
-                                >
-                                  {member.firstname}{" "}
-                                  {member.middlename
-                                    ? `${member.middlename} `
-                                    : ""}
-                                  {member.lastname}
-                                </h4>
-                                <p
-                                  className={`text-sm ${colors.textColorMuted}`}
-                                >
-                                  Relationship: {member.relationship}
-                                </p>
-                                {member.mobileNo && (
-                                  <p
-                                    className={`text-sm ${colors.textColorMuted}`}
-                                  >
-                                    Phone: {member.mobileNo}
-                                  </p>
-                                )}
-                                {member.emailAddress && (
-                                  <p
-                                    className={`text-sm ${colors.textColorMuted}`}
-                                  >
-                                    Email: {member.emailAddress}
-                                  </p>
-                                )}
-                                {member.isDependent && (
-                                  <Badge className="mt-2 bg-blue-500">
-                                    Dependent
-                                  </Badge>
-                                )}
-                              </div>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                onClick={() =>
-                                  handleRemoveFamilyMember(member.id)
-                                }
-                                className="text-red-500 hover:text-red-700 hover:bg-red-100"
-                              >
-                                <X className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          </CardContent>
-                        </Card>
-                      ))}
+                          <X className="h-4 w-4" />
+                        </Button>
+                      )}
                     </div>
+                    <p className={`text-xs ${colors.textColorMuted}`}>
+                      Enter the client's unique ID number to search for existing
+                      records
+                    </p>
+                  </div>
+
+                  {clientLookupStatus === "found" && (
+                    <Alert className="border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950">
+                      <UserCheck className="h-4 w-4 text-green-600 dark:text-green-400" />
+                      <AlertDescription className="text-green-800 dark:text-green-200">
+                        <strong>Client Found:</strong> The form has been
+                        pre-populated with the existing client's information.
+                        You can review and update the details as needed.
+                      </AlertDescription>
+                    </Alert>
+                  )}
+
+                  {clientLookupStatus === "not_found" && (
+                    <Alert className="border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950">
+                      <UserPlus className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                      <AlertDescription className="text-blue-800 dark:text-blue-200">
+                        <strong>New Client:</strong> No client found with this
+                        ID. Please proceed with entering the client's
+                        information.
+                      </AlertDescription>
+                    </Alert>
+                  )}
+
+                  {clientLookupStatus === "error" && (
+                    <Alert className="border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950">
+                      <AlertCircle className="h-4 w-4 text-red-600 dark:text-red-400" />
+                      <AlertDescription className="text-red-800 dark:text-red-200">
+                        <strong>Error:</strong> Failed to look up client. Please
+                        try again or proceed with manual entry.
+                      </AlertDescription>
+                    </Alert>
                   )}
                 </div>
+              </CardContent>
+            </Card>
 
-                {/* Account Settings Section */}
-                <div className="space-y-6 mb-8">
-                  <div className="border-b border-gray-200 dark:border-gray-700 pb-3 mb-6">
-                    <h3 className={`text-lg font-medium ${colors.textColor}`}>
-                      Account Settings
-                    </h3>
-                    <p className={`text-sm ${colors.textColorMuted}`}>
-                      Configure account activation settings
-                    </p>
-                  </div>
+            <form onSubmit={form.handleSubmit(onSubmit as any)}>
+              <Card className={`border-${colors.borderColor} ${colors.cardBg}`}>
+                <CardHeader>
+                  <CardTitle className={colors.textColor}>
+                    Client Information
+                  </CardTitle>
+                  <CardDescription className={colors.textColorMuted}>
+                    {clientLookupStatus === "found"
+                      ? "Review and update the client's information as needed."
+                      : "Enter the client's information to register them."}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-8">
+                  {/* Administrative Information Section */}
+                  <div className="space-y-6 mb-8">
+                    <div className="border-b border-gray-200 dark:border-gray-700 pb-3 mb-6">
+                      <h3 className={`text-lg font-medium ${colors.textColor}`}>
+                        Administrative Information
+                      </h3>
+                      <p className={`text-sm ${colors.textColorMuted}`}>
+                        Office and legal classification details
+                      </p>
+                    </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {/* Active */}
-                    <div className="space-y-3">
-                      <Label htmlFor="active" className={colors.textColor}>
-                        Account Status
-                      </Label>
-                      <Card
-                        className={`border-${colors.borderColor} ${colors.cardBg} flex flex-row items-center justify-between p-4`}
-                      >
-                        <div className="flex items-center space-x-2">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {/* Office */}
+                      <div className="space-y-3">
+                        <Label htmlFor="officeId" className={colors.textColor}>
+                          Office <span className="text-red-500">*</span>
+                        </Label>
+                        <div className="relative">
                           <Controller
                             control={form.control}
-                            name="active"
+                            name="officeId"
                             render={({ field }) => (
-                              <Checkbox
-                                id="active"
-                                checked={field.value}
-                                onCheckedChange={field.onChange}
+                              <SearchableSelect
+                                options={officeOptions}
+                                value={field.value?.toString()}
+                                onValueChange={(value) =>
+                                  field.onChange(Number.parseInt(value))
+                                }
+                                placeholder="Select office"
+                                className={`border-${colors.borderColor} ${colors.inputBg}`}
+                                onAddNew={() => setShowAddOfficeDialog(true)}
+                                addNewLabel="Add new office"
                                 disabled={isFormDisabled}
                               />
                             )}
                           />
-                          <Label htmlFor="active" className={colors.textColor}>
-                            Active account
-                          </Label>
                         </div>
                         <p className={`text-xs ${colors.textColorMuted}`}>
-                          Set whether the account is active upon creation
+                          Select the branch office managing this client
                         </p>
-                      </Card>
-                    </div>
+                        {form.formState.errors.officeId && (
+                          <p className="text-sm text-red-500">
+                            {form.formState.errors.officeId.message}
+                          </p>
+                        )}
+                      </div>
 
-                    {/* Open Savings Account */}
-                    <div className="space-y-3">
-                      <Label
-                        htmlFor="openSavingsAccount"
-                        className={colors.textColor}
-                      >
-                        Savings Account
-                      </Label>
-                      <Card
-                        className={`border-${colors.borderColor} ${colors.cardBg} flex flex-row items-center justify-between p-4`}
-                      >
-                        <div className="flex items-center space-x-2">
-                          <Controller
-                            control={form.control}
-                            name="openSavingsAccount"
-                            render={({ field }) => (
-                              <Checkbox
-                                id="openSavingsAccount"
-                                checked={field.value}
-                                onCheckedChange={field.onChange}
-                                disabled={isFormDisabled}
-                              />
-                            )}
-                          />
-                          <Label
-                            htmlFor="openSavingsAccount"
-                            className={colors.textColor}
-                          >
-                            Open savings account
-                          </Label>
-                        </div>
-                        <p className={`text-xs ${colors.textColorMuted}`}>
-                          Create a savings account for this client
-                        </p>
-                      </Card>
-                    </div>
-                  </div>
-
-                  {/* Conditional Fields */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
-                    {/* Activation Date - Only shown when active is true */}
-                    {form.watch("active") && (
+                      {/* Legal Form */}
                       <div className="space-y-3">
                         <Label
-                          htmlFor="activationDate"
+                          htmlFor="legalFormId"
                           className={colors.textColor}
                         >
-                          Activation Date{" "}
-                          <span className="text-red-500">*</span>
+                          Legal Form <span className="text-red-500">*</span>
+                        </Label>
+                        <div className="relative">
+                          <Controller
+                            control={form.control}
+                            name="legalFormId"
+                            render={({ field }) => (
+                              <SearchableSelect
+                                options={legalFormOptions}
+                                value={field.value?.toString()}
+                                onValueChange={(value) =>
+                                  field.onChange(Number.parseInt(value))
+                                }
+                                placeholder="Select legal form"
+                                className={`border-${colors.borderColor} ${colors.inputBg}`}
+                                onAddNew={() => setShowAddLegalFormDialog(true)}
+                                addNewLabel="Add new legal form"
+                                disabled={isFormDisabled}
+                              />
+                            )}
+                          />
+                        </div>
+                        <p className={`text-xs ${colors.textColorMuted}`}>
+                          Legal classification of the client
+                        </p>
+                        {form.formState.errors.legalFormId && (
+                          <p className="text-sm text-red-500">
+                            {form.formState.errors.legalFormId.message}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Personal Information Section */}
+                  <div className="space-y-6 mb-8">
+                    <div className="border-b border-gray-200 dark:border-gray-700 pb-3 mb-6">
+                      <h3 className={`text-lg font-medium ${colors.textColor}`}>
+                        Personal Information
+                      </h3>
+                      <p className={`text-sm ${colors.textColorMuted}`}>
+                        Client's personal identification details
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                      {/* First Name */}
+                      <div className="space-y-3">
+                        <Label htmlFor="firstname" className={colors.textColor}>
+                          First Name <span className="text-red-500">*</span>
+                        </Label>
+                        <div className="relative">
+                          <Input
+                            id="firstname"
+                            placeholder="Enter first name"
+                            className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
+                            {...form.register("firstname", {
+                              onBlur: (e) =>
+                                handleFieldBlur("firstname", e.target.value),
+                            })}
+                            disabled={isFormDisabled}
+                          />
+                          {lastSavedField === "firstname" && isAutoSaving && (
+                            <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                              <div className="w-3 h-3 border border-gray-300 border-t-gray-600 rounded-full animate-spin"></div>
+                            </div>
+                          )}
+                        </div>
+                        <p className={`text-xs ${colors.textColorMuted}`}>
+                          Client's legal first name
+                        </p>
+                        {form.formState.errors.firstname && (
+                          <p className="text-sm text-red-500">
+                            {form.formState.errors.firstname.message}
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Middle Name */}
+                      <div className="space-y-3">
+                        <Label
+                          htmlFor="middlename"
+                          className={colors.textColor}
+                        >
+                          Middle Name
+                        </Label>
+                        <div className="relative">
+                          <Input
+                            id="middlename"
+                            placeholder="Enter middle name"
+                            className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
+                            {...form.register("middlename", {
+                              onBlur: (e) =>
+                                handleFieldBlur("middlename", e.target.value),
+                            })}
+                            disabled={isFormDisabled}
+                          />
+                          {lastSavedField === "middlename" && isAutoSaving && (
+                            <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                              <div className="w-3 h-3 border border-gray-300 border-t-gray-600 rounded-full animate-spin"></div>
+                            </div>
+                          )}
+                        </div>
+                        <p className={`text-xs ${colors.textColorMuted}`}>
+                          Client's middle name (if applicable)
+                        </p>
+                      </div>
+
+                      {/* Last Name */}
+                      <div className="space-y-3">
+                        <Label htmlFor="lastname" className={colors.textColor}>
+                          Last Name <span className="text-red-500">*</span>
+                        </Label>
+                        <div className="relative">
+                          <Input
+                            id="lastname"
+                            placeholder="Enter last name"
+                            className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
+                            {...form.register("lastname", {
+                              onBlur: (e) =>
+                                handleFieldBlur("lastname", e.target.value),
+                            })}
+                            disabled={isFormDisabled}
+                          />
+                          {lastSavedField === "lastname" && isAutoSaving && (
+                            <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                              <div className="w-3 h-3 border border-gray-300 border-t-gray-600 rounded-full animate-spin"></div>
+                            </div>
+                          )}
+                        </div>
+                        <p className={`text-xs ${colors.textColorMuted}`}>
+                          Client's legal last name/surname
+                        </p>
+                        {form.formState.errors.lastname && (
+                          <p className="text-sm text-red-500">
+                            {form.formState.errors.lastname.message}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                      {/* Date of Birth */}
+                      <div className="space-y-3">
+                        <Label
+                          htmlFor="dateOfBirth"
+                          className={colors.textColor}
+                        >
+                          Date of Birth <span className="text-red-500">*</span>
                         </Label>
 
                         <Controller
                           control={form.control}
-                          name="activationDate"
+                          name="dateOfBirth"
                           render={({ field }) => (
                             <Popover>
                               <PopoverTrigger asChild>
@@ -2110,962 +1666,1517 @@ export function ClientRegistrationForm({
                           )}
                         />
                         <p className={`text-xs ${colors.textColorMuted}`}>
-                          Date when the account becomes active
+                          Client's date of birth for verification
                         </p>
-                        {form.formState.errors.activationDate && (
+                        {form.formState.errors.dateOfBirth && (
                           <p className="text-sm text-red-500">
-                            {form.formState.errors.activationDate.message}
+                            {form.formState.errors.dateOfBirth.message}
                           </p>
                         )}
                       </div>
-                    )}
 
-                    {/* Savings Product - Only shown when openSavingsAccount is true */}
-                    {form.watch("openSavingsAccount") && (
+                      {/* Gender */}
                       <div className="space-y-3">
-                        <Label
-                          htmlFor="savingsProductId"
-                          className={colors.textColor}
-                        >
-                          Savings Product{" "}
-                          <span className="text-red-500">*</span>
+                        <Label htmlFor="genderId" className={colors.textColor}>
+                          Gender <span className="text-red-500">*</span>
                         </Label>
 
                         <Controller
                           control={form.control}
-                          name="savingsProductId"
+                          name="genderId"
                           render={({ field }) => (
                             <SearchableSelect
-                              options={savingsProductOptions}
+                              options={genderOptions}
                               value={field.value?.toString()}
                               onValueChange={(value) =>
                                 field.onChange(Number.parseInt(value))
                               }
-                              placeholder="Select savings product"
+                              placeholder="Select gender"
                               className={`border-${colors.borderColor} ${colors.inputBg}`}
-                              onAddNew={() =>
-                                setShowAddSavingsProductDialog(true)
-                              }
-                              addNewLabel="Add new savings product"
+                              onAddNew={() => setShowAddGenderDialog(true)}
+                              addNewLabel="Add new gender"
                               disabled={isFormDisabled}
                             />
                           )}
                         />
                         <p className={`text-xs ${colors.textColorMuted}`}>
-                          Type of savings account to open
+                          Client's gender for demographic purposes
                         </p>
-                        {form.formState.errors.savingsProductId && (
+                        {form.formState.errors.genderId && (
                           <p className="text-sm text-red-500">
-                            {form.formState.errors.savingsProductId.message}
+                            {form.formState.errors.genderId.message}
                           </p>
                         )}
                       </div>
+
+                      {/* External ID (National ID) */}
+                      <div className="space-y-3">
+                        <Label
+                          htmlFor="externalId"
+                          className={colors.textColor}
+                        >
+                          National ID <span className="text-red-500">*</span>
+                        </Label>
+                        <div className="relative">
+                          <Input
+                            id="externalId"
+                            placeholder="Enter national ID"
+                            className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
+                            {...form.register("externalId", {
+                              onBlur: (e) =>
+                                handleFieldBlur("externalId", e.target.value),
+                            })}
+                            disabled={isFormDisabled}
+                          />
+                          {lastSavedField === "externalId" && isAutoSaving && (
+                            <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                              <div className="w-3 h-3 border border-gray-300 border-t-gray-600 rounded-full animate-spin"></div>
+                            </div>
+                          )}
+                        </div>
+                        <p className={`text-xs ${colors.textColorMuted}`}>
+                          Government-issued identification number
+                        </p>
+                        {form.formState.errors.externalId && (
+                          <p className="text-sm text-red-500">
+                            {form.formState.errors.externalId.message}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Contact Information Section */}
+                  <div className="space-y-6 mb-8">
+                    <div className="border-b border-gray-200 dark:border-gray-700 pb-3 mb-6">
+                      <h3 className={`text-lg font-medium ${colors.textColor}`}>
+                        Contact Information
+                      </h3>
+                      <p className={`text-sm ${colors.textColorMuted}`}>
+                        Client's contact details for communication
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {/* Mobile Number */}
+                      <div className="space-y-3">
+                        <Label htmlFor="mobileNo" className={colors.textColor}>
+                          Mobile Number <span className="text-red-500">*</span>
+                        </Label>
+                        <div className="flex space-x-2">
+                          <Controller
+                            control={form.control}
+                            name="countryCode"
+                            render={({ field }) => (
+                              <Select
+                                onValueChange={field.onChange}
+                                defaultValue={field.value}
+                                disabled={isFormDisabled}
+                              >
+                                <SelectTrigger
+                                  className={`h-10 w-24 border-${colors.borderColor} ${colors.inputBg}`}
+                                >
+                                  <SelectValue placeholder="+1" />
+                                </SelectTrigger>
+                                <SelectContent
+                                  className={`border-${colors.borderColor} ${colors.dropdownBg} ${colors.textColor}`}
+                                >
+                                  <SelectItem value="+1">🇺🇸 +1</SelectItem>
+                                  <SelectItem value="+44">🇬🇧 +44</SelectItem>
+                                  <SelectItem value="+33">🇫🇷 +33</SelectItem>
+                                  <SelectItem value="+49">🇩🇪 +49</SelectItem>
+                                  <SelectItem value="+81">🇯🇵 +81</SelectItem>
+                                  <SelectItem value="+86">🇨🇳 +86</SelectItem>
+                                  <SelectItem value="+91">🇮🇳 +91</SelectItem>
+                                  <SelectItem value="+61">🇦🇺 +61</SelectItem>
+                                  <SelectItem value="+55">🇧🇷 +55</SelectItem>
+                                  <SelectItem value="+52">🇲🇽 +52</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            )}
+                          />
+                          <div className="relative">
+                            <Input
+                              id="mobileNo"
+                              placeholder="Enter mobile number"
+                              className={`h-10 flex-1 border-${colors.borderColor} ${colors.inputBg}`}
+                              {...form.register("mobileNo", {
+                                onBlur: (e) =>
+                                  handleFieldBlur("mobileNo", e.target.value),
+                              })}
+                              disabled={isFormDisabled}
+                            />
+                            {lastSavedField === "mobileNo" && isAutoSaving && (
+                              <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                                <div className="w-3 h-3 border border-gray-300 border-t-gray-600 rounded-full animate-spin"></div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        <p className={`text-xs ${colors.textColorMuted}`}>
+                          Primary contact number for notifications
+                        </p>
+                        {form.formState.errors.mobileNo && (
+                          <p className="text-sm text-red-500">
+                            {form.formState.errors.mobileNo.message}
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Email Address */}
+                      <div className="space-y-3">
+                        <Label
+                          htmlFor="emailAddress"
+                          className={colors.textColor}
+                        >
+                          Email Address <span className="text-red-500">*</span>
+                        </Label>
+                        <div className="relative">
+                          <Input
+                            id="emailAddress"
+                            type="email"
+                            placeholder="Enter email address"
+                            className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
+                            {...form.register("emailAddress", {
+                              onBlur: (e) =>
+                                handleFieldBlur("emailAddress", e.target.value),
+                            })}
+                            disabled={isFormDisabled}
+                          />
+                          {lastSavedField === "emailAddress" &&
+                            isAutoSaving && (
+                              <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                                <div className="w-3 h-3 border border-gray-300 border-t-gray-600 rounded-full animate-spin"></div>
+                              </div>
+                            )}
+                        </div>
+                        <p className={`text-xs ${colors.textColorMuted}`}>
+                          Email for statements and notifications
+                        </p>
+                        {form.formState.errors.emailAddress && (
+                          <p className="text-sm text-red-500">
+                            {form.formState.errors.emailAddress.message}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Classification Information Section */}
+                  <div className="space-y-6 mb-8">
+                    <div className="border-b border-gray-200 dark:border-gray-700 pb-3 mb-6">
+                      <h3 className={`text-lg font-medium ${colors.textColor}`}>
+                        Client Classification
+                      </h3>
+                      <p className={`text-sm ${colors.textColorMuted}`}>
+                        Client categorization for service offerings
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {/* Client Type */}
+                      <div className="space-y-3">
+                        <Label
+                          htmlFor="clientTypeId"
+                          className={colors.textColor}
+                        >
+                          Client Type <span className="text-red-500">*</span>
+                        </Label>
+
+                        <Controller
+                          control={form.control}
+                          name="clientTypeId"
+                          render={({ field }) => (
+                            <SearchableSelect
+                              options={clientTypeOptions}
+                              value={field.value?.toString()}
+                              onValueChange={(value) =>
+                                field.onChange(Number.parseInt(value))
+                              }
+                              placeholder="Select client type"
+                              className={`border-${colors.borderColor} ${colors.inputBg}`}
+                              onAddNew={() => setShowAddClientTypeDialog(true)}
+                              addNewLabel="Add new client type"
+                              disabled={isFormDisabled}
+                            />
+                          )}
+                        />
+                        <p className={`text-xs ${colors.textColorMuted}`}>
+                          Type of client for service eligibility
+                        </p>
+                        {form.formState.errors.clientTypeId && (
+                          <p className="text-sm text-red-500">
+                            {form.formState.errors.clientTypeId.message}
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Client Classification */}
+                      <div className="space-y-3">
+                        <Label
+                          htmlFor="clientClassificationId"
+                          className={colors.textColor}
+                        >
+                          Client Classification{" "}
+                          <span className="text-red-500">*</span>
+                        </Label>
+
+                        <Controller
+                          control={form.control}
+                          name="clientClassificationId"
+                          render={({ field }) => (
+                            <SearchableSelect
+                              options={clientClassificationOptions}
+                              value={field.value?.toString()}
+                              onValueChange={(value) =>
+                                field.onChange(Number.parseInt(value))
+                              }
+                              placeholder="Select client classification"
+                              className={`border-${colors.borderColor} ${colors.inputBg}`}
+                              onAddNew={() =>
+                                setShowAddClientClassificationDialog(true)
+                              }
+                              addNewLabel="Add new classification"
+                              disabled={isFormDisabled}
+                            />
+                          )}
+                        />
+                        <p className={`text-xs ${colors.textColorMuted}`}>
+                          Classification for risk assessment
+                        </p>
+                        {form.formState.errors.clientClassificationId && (
+                          <p className="text-sm text-red-500">
+                            {
+                              form.formState.errors.clientClassificationId
+                                .message
+                            }
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Additional Information Section */}
+                  <div className="space-y-6 mb-8">
+                    <div className="border-b border-gray-200 dark:border-gray-700 pb-3 mb-6">
+                      <h3 className={`text-lg font-medium ${colors.textColor}`}>
+                        Additional Information
+                      </h3>
+                      <p className={`text-sm ${colors.textColorMuted}`}>
+                        Submission details and special status
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {/* Submitted On Date */}
+                      <div className="space-y-3">
+                        <Label
+                          htmlFor="submittedOnDate"
+                          className={colors.textColor}
+                        >
+                          Submitted On <span className="text-red-500">*</span>
+                        </Label>
+
+                        <Controller
+                          control={form.control}
+                          name="submittedOnDate"
+                          render={({ field }) => (
+                            <Popover>
+                              <PopoverTrigger asChild>
+                                <Button
+                                  variant="outline"
+                                  className={cn(
+                                    "h-10 w-full justify-start text-left font-normal",
+                                    !field.value && "text-muted-foreground",
+                                    `border-${colors.borderColor} ${colors.inputBg}`
+                                  )}
+                                  disabled={isFormDisabled}
+                                >
+                                  <CalendarIcon className="mr-2 h-4 w-4" />
+                                  {field.value ? (
+                                    format(field.value, "PPP")
+                                  ) : (
+                                    <span>Pick a date</span>
+                                  )}
+                                </Button>
+                              </PopoverTrigger>
+                              <PopoverContent
+                                className="w-auto p-0"
+                                align="start"
+                              >
+                                <Calendar
+                                  mode="single"
+                                  selected={field.value}
+                                  onSelect={field.onChange}
+                                  disabled={(date) =>
+                                    date > new Date() ||
+                                    date < new Date("1900-01-01")
+                                  }
+                                  initialFocus
+                                />
+                              </PopoverContent>
+                            </Popover>
+                          )}
+                        />
+                        <p className={`text-xs ${colors.textColorMuted}`}>
+                          Date when application was submitted
+                        </p>
+                        {form.formState.errors.submittedOnDate && (
+                          <p className="text-sm text-red-500">
+                            {form.formState.errors.submittedOnDate.message}
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Is Staff */}
+                      <div className="space-y-3">
+                        <Label htmlFor="isStaff" className={colors.textColor}>
+                          Staff Status
+                        </Label>
+                        <Card
+                          className={`border-${colors.borderColor} ${colors.cardBg} flex flex-row items-center justify-between p-4`}
+                        >
+                          <div className="flex items-center space-x-2">
+                            <Controller
+                              control={form.control}
+                              name="isStaff"
+                              render={({ field }) => (
+                                <Checkbox
+                                  id="isStaff"
+                                  checked={field.value}
+                                  onCheckedChange={field.onChange}
+                                  disabled={isFormDisabled}
+                                />
+                              )}
+                            />
+                            <Label
+                              htmlFor="isStaff"
+                              className={colors.textColor}
+                            >
+                              Is staff member
+                            </Label>
+                          </div>
+                          <p className={`text-xs ${colors.textColorMuted}`}>
+                            Indicate if client is a staff member
+                          </p>
+                        </Card>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Next of Kin (Family Members) Section */}
+                  <div className="space-y-6 mb-8">
+                    <div className="border-b border-gray-200 dark:border-gray-700 pb-3 mb-6 flex justify-between items-center">
+                      <div>
+                        <h3
+                          className={`text-lg font-medium ${colors.textColor}`}
+                        >
+                          Next of Kin
+                        </h3>
+                        <p className={`text-sm ${colors.textColorMuted}`}>
+                          Add next of kin details
+                        </p>
+                      </div>
+
+                      <Button
+                        type="button"
+                        onClick={() => setShowFamilyMemberDialog(true)}
+                        className="bg-blue-500 hover:bg-blue-600"
+                        disabled={isFormDisabled}
+                      >
+                        Add Next of Kin
+                      </Button>
+                    </div>
+
+                    {familyMembers.length === 0 ? (
+                      <div
+                        className={`text-center py-8 ${colors.textColorMuted}`}
+                      >
+                        No next of kin added yet. Click the button above to add
+                        one.
+                      </div>
+                    ) : (
+                      <div className="space-y-6">
+                        {familyMembers.map((member) => (
+                          <Card
+                            key={member.id}
+                            className={`border-${colors.borderColor} ${colors.cardBg}`}
+                          >
+                            <CardContent className="p-4">
+                              <div className="flex justify-between items-start">
+                                <div>
+                                  <h4
+                                    className={`font-medium ${colors.textColor}`}
+                                  >
+                                    {member.firstname}{" "}
+                                    {member.middlename
+                                      ? `${member.middlename} `
+                                      : ""}
+                                    {member.lastname}
+                                  </h4>
+                                  <p
+                                    className={`text-sm ${colors.textColorMuted}`}
+                                  >
+                                    Relationship: {member.relationship}
+                                  </p>
+                                  {member.mobileNo && (
+                                    <p
+                                      className={`text-sm ${colors.textColorMuted}`}
+                                    >
+                                      Phone: {member.mobileNo}
+                                    </p>
+                                  )}
+                                  {member.emailAddress && (
+                                    <p
+                                      className={`text-sm ${colors.textColorMuted}`}
+                                    >
+                                      Email: {member.emailAddress}
+                                    </p>
+                                  )}
+                                  {member.isDependent && (
+                                    <Badge className="mt-2 bg-blue-500">
+                                      Dependent
+                                    </Badge>
+                                  )}
+                                </div>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() =>
+                                    handleRemoveFamilyMember(member.id)
+                                  }
+                                  className="text-red-500 hover:text-red-700 hover:bg-red-100"
+                                >
+                                  <X className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </CardContent>
+                          </Card>
+                        ))}
+                      </div>
                     )}
+                  </div>
+
+                  {/* Account Settings Section */}
+                  <div className="space-y-6 mb-8">
+                    <div className="border-b border-gray-200 dark:border-gray-700 pb-3 mb-6">
+                      <h3 className={`text-lg font-medium ${colors.textColor}`}>
+                        Account Settings
+                      </h3>
+                      <p className={`text-sm ${colors.textColorMuted}`}>
+                        Configure account activation settings
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {/* Active */}
+                      <div className="space-y-3">
+                        <Label htmlFor="active" className={colors.textColor}>
+                          Account Status
+                        </Label>
+                        <Card
+                          className={`border-${colors.borderColor} ${colors.cardBg} flex flex-row items-center justify-between p-4`}
+                        >
+                          <div className="flex items-center space-x-2">
+                            <Controller
+                              control={form.control}
+                              name="active"
+                              render={({ field }) => (
+                                <Checkbox
+                                  id="active"
+                                  checked={field.value}
+                                  onCheckedChange={field.onChange}
+                                  disabled={isFormDisabled}
+                                />
+                              )}
+                            />
+                            <Label
+                              htmlFor="active"
+                              className={colors.textColor}
+                            >
+                              Active account
+                            </Label>
+                          </div>
+                          <p className={`text-xs ${colors.textColorMuted}`}>
+                            Set whether the account is active upon creation
+                          </p>
+                        </Card>
+                      </div>
+
+                      {/* Open Savings Account */}
+                      <div className="space-y-3">
+                        <Label
+                          htmlFor="openSavingsAccount"
+                          className={colors.textColor}
+                        >
+                          Savings Account
+                        </Label>
+                        <Card
+                          className={`border-${colors.borderColor} ${colors.cardBg} flex flex-row items-center justify-between p-4`}
+                        >
+                          <div className="flex items-center space-x-2">
+                            <Controller
+                              control={form.control}
+                              name="openSavingsAccount"
+                              render={({ field }) => (
+                                <Checkbox
+                                  id="openSavingsAccount"
+                                  checked={field.value}
+                                  onCheckedChange={field.onChange}
+                                  disabled={isFormDisabled}
+                                />
+                              )}
+                            />
+                            <Label
+                              htmlFor="openSavingsAccount"
+                              className={colors.textColor}
+                            >
+                              Open savings account
+                            </Label>
+                          </div>
+                          <p className={`text-xs ${colors.textColorMuted}`}>
+                            Create a savings account for this client
+                          </p>
+                        </Card>
+                      </div>
+                    </div>
+
+                    {/* Conditional Fields */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
+                      {/* Activation Date - Only shown when active is true */}
+                      {form.watch("active") && (
+                        <div className="space-y-3">
+                          <Label
+                            htmlFor="activationDate"
+                            className={colors.textColor}
+                          >
+                            Activation Date{" "}
+                            <span className="text-red-500">*</span>
+                          </Label>
+
+                          <Controller
+                            control={form.control}
+                            name="activationDate"
+                            render={({ field }) => (
+                              <Popover>
+                                <PopoverTrigger asChild>
+                                  <Button
+                                    variant="outline"
+                                    className={cn(
+                                      "h-10 w-full justify-start text-left font-normal",
+                                      !field.value && "text-muted-foreground",
+                                      `border-${colors.borderColor} ${colors.inputBg}`
+                                    )}
+                                    disabled={isFormDisabled}
+                                  >
+                                    <CalendarIcon className="mr-2 h-4 w-4" />
+                                    {field.value ? (
+                                      format(field.value, "PPP")
+                                    ) : (
+                                      <span>Pick a date</span>
+                                    )}
+                                  </Button>
+                                </PopoverTrigger>
+                                <PopoverContent
+                                  className="w-auto p-0"
+                                  align="start"
+                                >
+                                  <Calendar
+                                    mode="single"
+                                    selected={field.value}
+                                    onSelect={field.onChange}
+                                    disabled={(date) =>
+                                      date > new Date() ||
+                                      date < new Date("1900-01-01")
+                                    }
+                                    initialFocus
+                                  />
+                                </PopoverContent>
+                              </Popover>
+                            )}
+                          />
+                          <p className={`text-xs ${colors.textColorMuted}`}>
+                            Date when the account becomes active
+                          </p>
+                          {form.formState.errors.activationDate && (
+                            <p className="text-sm text-red-500">
+                              {form.formState.errors.activationDate.message}
+                            </p>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Savings Product - Only shown when openSavingsAccount is true */}
+                      {form.watch("openSavingsAccount") && (
+                        <div className="space-y-3">
+                          <Label
+                            htmlFor="savingsProductId"
+                            className={colors.textColor}
+                          >
+                            Savings Product{" "}
+                            <span className="text-red-500">*</span>
+                          </Label>
+
+                          <Controller
+                            control={form.control}
+                            name="savingsProductId"
+                            render={({ field }) => (
+                              <SearchableSelect
+                                options={savingsProductOptions}
+                                value={field.value?.toString()}
+                                onValueChange={(value) =>
+                                  field.onChange(Number.parseInt(value))
+                                }
+                                placeholder="Select savings product"
+                                className={`border-${colors.borderColor} ${colors.inputBg}`}
+                                onAddNew={() =>
+                                  setShowAddSavingsProductDialog(true)
+                                }
+                                addNewLabel="Add new savings product"
+                                disabled={isFormDisabled}
+                              />
+                            )}
+                          />
+                          <p className={`text-xs ${colors.textColorMuted}`}>
+                            Type of savings account to open
+                          </p>
+                          {form.formState.errors.savingsProductId && (
+                            <p className="text-sm text-red-500">
+                              {form.formState.errors.savingsProductId.message}
+                            </p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </CardContent>
+                <CardFooter className="flex justify-between border-t border-gray-200 dark:border-gray-800 pt-4">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => router.push("/leads")}
+                    className={`border-${colors.borderColor} hover:bg-${colors.hoverBgColor}`}
+                  >
+                    Cancel
+                  </Button>
+
+                  <Button
+                    type="submit"
+                    className="bg-blue-500 hover:bg-blue-600"
+                    disabled={isSubmitting || isFormDisabled}
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Submitting...
+                      </>
+                    ) : (
+                      "Submit"
+                    )}
+                  </Button>
+                </CardFooter>
+              </Card>
+            </form>
+          </>
+        )}
+
+        {/* Add Office Dialog */}
+        {showAddOfficeDialog && (
+          <AddOfficeDialog
+            {...{
+              setIsAddingNew,
+              isAddingNew,
+              setShowAddOfficeDialog,
+              setOffices,
+              offices,
+              form,
+            }}
+          />
+        )}
+        {/* TODO package out thes components */}
+        {/* Add Legal Form Dialog */}
+        {showAddLegalFormDialog && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <Card
+              className={`w-full max-w-md border-${colors.borderColor} ${colors.cardBg}`}
+            >
+              <CardHeader>
+                <CardTitle className={colors.textColor}>
+                  Add New Legal Form
+                </CardTitle>
+                <CardDescription className={colors.textColorMuted}>
+                  Enter the details of the new legal form.
+                </CardDescription>
+              </CardHeader>
+              <form onSubmit={legalFormForm.handleSubmit(handleAddLegalForm)}>
+                <CardContent>
+                  <div className="space-y-6">
+                    <div className="space-y-3">
+                      <Label htmlFor="name" className={colors.textColor}>
+                        Legal Form Name <span className="text-red-500">*</span>
+                      </Label>
+                      <Input
+                        id="name"
+                        placeholder="Enter legal form name"
+                        className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
+                        {...legalFormForm.register("name")}
+                      />
+                      {legalFormForm.formState.errors.name && (
+                        <p className="text-sm text-red-500">
+                          {legalFormForm.formState.errors.name.message}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="space-y-3">
+                      <Label htmlFor="description" className={colors.textColor}>
+                        Description
+                      </Label>
+                      <Input
+                        id="description"
+                        placeholder="Enter description"
+                        className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
+                        {...legalFormForm.register("description")}
+                      />
+                    </div>
+                  </div>
+                </CardContent>
+                <CardFooter className="flex justify-between">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setShowAddLegalFormDialog(false)}
+                    className={`border-${colors.borderColor} hover:bg-${colors.hoverBgColor}`}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    className="bg-blue-500 hover:bg-blue-600"
+                    disabled={isAddingNew}
+                  >
+                    {isAddingNew ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Adding...
+                      </>
+                    ) : (
+                      "Add Legal Form"
+                    )}
+                  </Button>
+                </CardFooter>
+              </form>
+            </Card>
+          </div>
+        )}
+
+        {/* Add Gender Dialog */}
+        {showAddGenderDialog && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <Card
+              className={`w-full max-w-md border-${colors.borderColor} ${colors.cardBg}`}
+            >
+              <CardHeader>
+                <CardTitle className={colors.textColor}>
+                  Add New Gender
+                </CardTitle>
+                <CardDescription className={colors.textColorMuted}>
+                  Enter the details of the new gender.
+                </CardDescription>
+              </CardHeader>
+              <form onSubmit={genderForm.handleSubmit(handleAddGender)}>
+                <CardContent>
+                  <div className="space-y-6">
+                    <div className="space-y-3">
+                      <Label htmlFor="name" className={colors.textColor}>
+                        Gender Name <span className="text-red-500">*</span>
+                      </Label>
+                      <Input
+                        id="name"
+                        placeholder="Enter gender name"
+                        className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
+                        {...genderForm.register("name")}
+                      />
+                      {genderForm.formState.errors.name && (
+                        <p className="text-sm text-red-500">
+                          {genderForm.formState.errors.name.message}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </CardContent>
+                <CardFooter className="flex justify-between">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setShowAddGenderDialog(false)}
+                    className={`border-${colors.borderColor} hover:bg-${colors.hoverBgColor}`}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    className="bg-blue-500 hover:bg-blue-600"
+                    disabled={isAddingNew}
+                  >
+                    {isAddingNew ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Adding...
+                      </>
+                    ) : (
+                      "Add Gender"
+                    )}
+                  </Button>
+                </CardFooter>
+              </form>
+            </Card>
+          </div>
+        )}
+
+        {/* Add Client Type Dialog */}
+        {showAddClientTypeDialog && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <Card
+              className={`w-full max-w-md border-${colors.borderColor} ${colors.cardBg}`}
+            >
+              <CardHeader>
+                <CardTitle className={colors.textColor}>
+                  Add New Client Type
+                </CardTitle>
+                <CardDescription className={colors.textColorMuted}>
+                  Enter the details of the new client type.
+                </CardDescription>
+              </CardHeader>
+              <form onSubmit={clientTypeForm.handleSubmit(handleAddClientType)}>
+                <CardContent>
+                  <div className="space-y-6">
+                    <div className="space-y-3">
+                      <Label htmlFor="name" className={colors.textColor}>
+                        Client Type Name <span className="text-red-500">*</span>
+                      </Label>
+                      <Input
+                        id="name"
+                        placeholder="Enter client type name"
+                        className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
+                        {...clientTypeForm.register("name")}
+                      />
+                      {clientTypeForm.formState.errors.name && (
+                        <p className="text-sm text-red-500">
+                          {clientTypeForm.formState.errors.name.message}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="space-y-3">
+                      <Label htmlFor="description" className={colors.textColor}>
+                        Description
+                      </Label>
+                      <Input
+                        id="description"
+                        placeholder="Enter description"
+                        className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
+                        {...clientTypeForm.register("description")}
+                      />
+                    </div>
+                  </div>
+                </CardContent>
+                <CardFooter className="flex justify-between">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setShowAddClientTypeDialog(false)}
+                    className={`border-${colors.borderColor} hover:bg-${colors.hoverBgColor}`}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    className="bg-blue-500 hover:bg-blue-600"
+                    disabled={isAddingNew}
+                  >
+                    {isAddingNew ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Adding...
+                      </>
+                    ) : (
+                      "Add Client Type"
+                    )}
+                  </Button>
+                </CardFooter>
+              </form>
+            </Card>
+          </div>
+        )}
+
+        {/* Add Client Classification Dialog */}
+        {showAddClientClassificationDialog && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <Card
+              className={`w-full max-w-md border-${colors.borderColor} ${colors.cardBg}`}
+            >
+              <CardHeader>
+                <CardTitle className={colors.textColor}>
+                  Add New Client Classification
+                </CardTitle>
+                <CardDescription className={colors.textColorMuted}>
+                  Enter the details of the new client classification.
+                </CardDescription>
+              </CardHeader>
+              <form
+                onSubmit={clientClassificationForm.handleSubmit(
+                  handleAddClientClassification
+                )}
+              >
+                <CardContent>
+                  <div className="space-y-6">
+                    <div className="space-y-3">
+                      <Label htmlFor="name" className={colors.textColor}>
+                        Classification Name{" "}
+                        <span className="text-red-500">*</span>
+                      </Label>
+                      <Input
+                        id="name"
+                        placeholder="Enter classification name"
+                        className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
+                        {...clientClassificationForm.register("name")}
+                      />
+                      {clientClassificationForm.formState.errors.name && (
+                        <p className="text-sm text-red-500">
+                          {
+                            clientClassificationForm.formState.errors.name
+                              .message
+                          }
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="space-y-3">
+                      <Label htmlFor="description" className={colors.textColor}>
+                        Description
+                      </Label>
+                      <Input
+                        id="description"
+                        placeholder="Enter description"
+                        className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
+                        {...clientClassificationForm.register("description")}
+                      />
+                    </div>
+                  </div>
+                </CardContent>
+                <CardFooter className="flex justify-between">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setShowAddClientClassificationDialog(false)}
+                    className={`border-${colors.borderColor} hover:bg-${colors.hoverBgColor}`}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    className="bg-blue-500 hover:bg-blue-600"
+                    disabled={isAddingNew}
+                  >
+                    {isAddingNew ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Adding...
+                      </>
+                    ) : (
+                      "Add Classification"
+                    )}
+                  </Button>
+                </CardFooter>
+              </form>
+            </Card>
+          </div>
+        )}
+
+        {/* Add Savings Product Dialog */}
+        {showAddSavingsProductDialog && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <Card
+              className={`w-full max-w-md border-${colors.borderColor} ${colors.cardBg}`}
+            >
+              <CardHeader>
+                <CardTitle className={colors.textColor}>
+                  Add New Savings Product
+                </CardTitle>
+                <CardDescription className={colors.textColorMuted}>
+                  Enter the details of the new savings product.
+                </CardDescription>
+              </CardHeader>
+              <form
+                onSubmit={savingsProductForm.handleSubmit(
+                  handleAddSavingsProduct
+                )}
+              >
+                <CardContent>
+                  <div className="space-y-6">
+                    <div className="space-y-3">
+                      <Label htmlFor="name" className={colors.textColor}>
+                        Product Name <span className="text-red-500">*</span>
+                      </Label>
+                      <Input
+                        id="name"
+                        placeholder="Enter product name"
+                        className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
+                        {...savingsProductForm.register("name")}
+                      />
+                      {savingsProductForm.formState.errors.name && (
+                        <p className="text-sm text-red-500">
+                          {savingsProductForm.formState.errors.name.message}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="space-y-3">
+                      <Label htmlFor="code" className={colors.textColor}>
+                        Product Code <span className="text-red-500">*</span>
+                      </Label>
+                      <Input
+                        id="code"
+                        placeholder="Enter product code"
+                        className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
+                        {...savingsProductForm.register("code")}
+                      />
+                      {savingsProductForm.formState.errors.code && (
+                        <p className="text-sm text-red-500">
+                          {savingsProductForm.formState.errors.code.message}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="space-y-3">
+                      <Label
+                        htmlFor="interestRate"
+                        className={colors.textColor}
+                      >
+                        Interest Rate (%){" "}
+                        <span className="text-red-500">*</span>
+                      </Label>
+                      <Input
+                        id="interestRate"
+                        placeholder="Enter interest rate"
+                        className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
+                        {...savingsProductForm.register("interestRate")}
+                      />
+                      {savingsProductForm.formState.errors.interestRate && (
+                        <p className="text-sm text-red-500">
+                          {
+                            savingsProductForm.formState.errors.interestRate
+                              .message
+                          }
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="space-y-3">
+                      <Label htmlFor="description" className={colors.textColor}>
+                        Description
+                      </Label>
+                      <Input
+                        id="description"
+                        placeholder="Enter description"
+                        className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
+                        {...savingsProductForm.register("description")}
+                      />
+                    </div>
+                  </div>
+                </CardContent>
+                <CardFooter className="flex justify-between">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setShowAddSavingsProductDialog(false)}
+                    className={`border-${colors.borderColor} hover:bg-${colors.hoverBgColor}`}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    className="bg-blue-500 hover:bg-blue-600"
+                    disabled={isAddingNew}
+                  >
+                    {isAddingNew ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Adding...
+                      </>
+                    ) : (
+                      "Add Savings Product"
+                    )}
+                  </Button>
+                </CardFooter>
+              </form>
+            </Card>
+          </div>
+        )}
+
+        {/* Close Lead Dialog */}
+        {showCloseDialog && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <Card
+              className={`w-full max-w-md border-${colors.borderColor} ${colors.cardBg}`}
+            >
+              <CardHeader>
+                <CardTitle className={colors.textColor}>Close Lead</CardTitle>
+                <CardDescription className={colors.textColorMuted}>
+                  Please provide a reason for closing this lead.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-6">
+                  <div className="space-y-3">
+                    <Label htmlFor="closeReason" className={colors.textColor}>
+                      Reason <span className="text-red-500">*</span>
+                    </Label>
+                    <textarea
+                      id="closeReason"
+                      value={closeReason}
+                      onChange={(e) => setCloseReason(e.target.value)}
+                      className={`w-full p-2 border rounded-md ${colors.inputBg} ${colors.textColor} border-${colors.borderColor}`}
+                      rows={4}
+                      placeholder="Enter reason for closing this lead"
+                    />
                   </div>
                 </div>
               </CardContent>
-              <CardFooter className="flex justify-between border-t border-gray-200 dark:border-gray-800 pt-4">
+              <CardFooter className="flex justify-between">
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => router.push("/leads")}
+                  onClick={() => setShowCloseDialog(false)}
                   className={`border-${colors.borderColor} hover:bg-${colors.hoverBgColor}`}
                 >
                   Cancel
                 </Button>
-
                 <Button
-                  type="submit"
-                  className="bg-blue-500 hover:bg-blue-600"
-                  disabled={isSubmitting || isFormDisabled}
+                  type="button"
+                  onClick={handleCloseLead}
+                  disabled={isClosing || !closeReason}
+                  className="bg-red-500 hover:bg-red-600"
                 >
-                  {isSubmitting ? (
+                  {isClosing ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Submitting...
+                      Closing...
                     </>
                   ) : (
-                    "Submit"
+                    "Close Lead"
                   )}
                 </Button>
               </CardFooter>
             </Card>
-          </form>
-        </>
-      )}
+          </div>
+        )}
 
-      {/* Add Office Dialog */}
-      {showAddOfficeDialog && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <Card
-            className={`w-full max-w-md border-${colors.borderColor} ${colors.cardBg}`}
-          >
-            <CardHeader>
-              <CardTitle className={colors.textColor}>Add New Office</CardTitle>
-              <CardDescription className={colors.textColorMuted}>
-                Enter the details of the new office.
-              </CardDescription>
-            </CardHeader>
-            <form onSubmit={officeForm.handleSubmit(handleAddOffice)}>
-              <CardContent>
-                <div className="space-y-6">
-                  <div className="space-y-3">
-                    <Label htmlFor="name" className={colors.textColor}>
-                      Office Name <span className="text-red-500">*</span>
-                    </Label>
-                    <Input
-                      id="name"
-                      placeholder="Enter office name"
-                      className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
-                      {...officeForm.register("name")}
-                    />
-                    {officeForm.formState.errors.name && (
-                      <p className="text-sm text-red-500">
-                        {officeForm.formState.errors.name.message}
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="space-y-3">
-                    <Label htmlFor="code" className={colors.textColor}>
-                      Office Code <span className="text-red-500">*</span>
-                    </Label>
-                    <Input
-                      id="code"
-                      placeholder="Enter office code"
-                      className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
-                      {...officeForm.register("code")}
-                    />
-                    {officeForm.formState.errors.code && (
-                      <p className="text-sm text-red-500">
-                        {officeForm.formState.errors.code.message}
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="space-y-3">
-                    <Label htmlFor="address" className={colors.textColor}>
-                      Address
-                    </Label>
-                    <Input
-                      id="address"
-                      placeholder="Enter office address"
-                      className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
-                      {...officeForm.register("address")}
-                    />
-                  </div>
-
-                  <div className="space-y-3">
-                    <Label htmlFor="phone" className={colors.textColor}>
-                      Phone Number
-                    </Label>
-                    <Input
-                      id="phone"
-                      placeholder="Enter phone number"
-                      className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
-                      {...officeForm.register("phone")}
-                    />
-                  </div>
-
-                  <div className="space-y-3">
-                    <Label htmlFor="email" className={colors.textColor}>
-                      Email Address
-                    </Label>
-                    <Input
-                      id="email"
-                      type="email"
-                      placeholder="Enter email address"
-                      className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
-                      {...officeForm.register("email")}
-                    />
-                    {officeForm.formState.errors.email && (
-                      <p className="text-sm text-red-500">
-                        {officeForm.formState.errors.email.message}
-                      </p>
-                    )}
-                  </div>
-                </div>
-              </CardContent>
-              <CardFooter className="flex justify-between">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setShowAddOfficeDialog(false)}
-                  className={`border-${colors.borderColor} hover:bg-${colors.hoverBgColor}`}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="submit"
-                  className="bg-blue-500 hover:bg-blue-600"
-                  disabled={isAddingNew}
-                >
-                  {isAddingNew ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Adding...
-                    </>
-                  ) : (
-                    "Add Office"
-                  )}
-                </Button>
-              </CardFooter>
-            </form>
-          </Card>
-        </div>
-      )}
-
-      {/* Add Legal Form Dialog */}
-      {showAddLegalFormDialog && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <Card
-            className={`w-full max-w-md border-${colors.borderColor} ${colors.cardBg}`}
-          >
-            <CardHeader>
-              <CardTitle className={colors.textColor}>
-                Add New Legal Form
-              </CardTitle>
-              <CardDescription className={colors.textColorMuted}>
-                Enter the details of the new legal form.
-              </CardDescription>
-            </CardHeader>
-            <form onSubmit={legalFormForm.handleSubmit(handleAddLegalForm)}>
-              <CardContent>
-                <div className="space-y-6">
-                  <div className="space-y-3">
-                    <Label htmlFor="name" className={colors.textColor}>
-                      Legal Form Name <span className="text-red-500">*</span>
-                    </Label>
-                    <Input
-                      id="name"
-                      placeholder="Enter legal form name"
-                      className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
-                      {...legalFormForm.register("name")}
-                    />
-                    {legalFormForm.formState.errors.name && (
-                      <p className="text-sm text-red-500">
-                        {legalFormForm.formState.errors.name.message}
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="space-y-3">
-                    <Label htmlFor="description" className={colors.textColor}>
-                      Description
-                    </Label>
-                    <Input
-                      id="description"
-                      placeholder="Enter description"
-                      className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
-                      {...legalFormForm.register("description")}
-                    />
-                  </div>
-                </div>
-              </CardContent>
-              <CardFooter className="flex justify-between">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setShowAddLegalFormDialog(false)}
-                  className={`border-${colors.borderColor} hover:bg-${colors.hoverBgColor}`}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="submit"
-                  className="bg-blue-500 hover:bg-blue-600"
-                  disabled={isAddingNew}
-                >
-                  {isAddingNew ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Adding...
-                    </>
-                  ) : (
-                    "Add Legal Form"
-                  )}
-                </Button>
-              </CardFooter>
-            </form>
-          </Card>
-        </div>
-      )}
-
-      {/* Add Gender Dialog */}
-      {showAddGenderDialog && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <Card
-            className={`w-full max-w-md border-${colors.borderColor} ${colors.cardBg}`}
-          >
-            <CardHeader>
-              <CardTitle className={colors.textColor}>Add New Gender</CardTitle>
-              <CardDescription className={colors.textColorMuted}>
-                Enter the details of the new gender.
-              </CardDescription>
-            </CardHeader>
-            <form onSubmit={genderForm.handleSubmit(handleAddGender)}>
-              <CardContent>
-                <div className="space-y-6">
-                  <div className="space-y-3">
-                    <Label htmlFor="name" className={colors.textColor}>
-                      Gender Name <span className="text-red-500">*</span>
-                    </Label>
-                    <Input
-                      id="name"
-                      placeholder="Enter gender name"
-                      className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
-                      {...genderForm.register("name")}
-                    />
-                    {genderForm.formState.errors.name && (
-                      <p className="text-sm text-red-500">
-                        {genderForm.formState.errors.name.message}
-                      </p>
-                    )}
-                  </div>
-                </div>
-              </CardContent>
-              <CardFooter className="flex justify-between">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setShowAddGenderDialog(false)}
-                  className={`border-${colors.borderColor} hover:bg-${colors.hoverBgColor}`}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="submit"
-                  className="bg-blue-500 hover:bg-blue-600"
-                  disabled={isAddingNew}
-                >
-                  {isAddingNew ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Adding...
-                    </>
-                  ) : (
-                    "Add Gender"
-                  )}
-                </Button>
-              </CardFooter>
-            </form>
-          </Card>
-        </div>
-      )}
-
-      {/* Add Client Type Dialog */}
-      {showAddClientTypeDialog && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <Card
-            className={`w-full max-w-md border-${colors.borderColor} ${colors.cardBg}`}
-          >
-            <CardHeader>
-              <CardTitle className={colors.textColor}>
-                Add New Client Type
-              </CardTitle>
-              <CardDescription className={colors.textColorMuted}>
-                Enter the details of the new client type.
-              </CardDescription>
-            </CardHeader>
-            <form onSubmit={clientTypeForm.handleSubmit(handleAddClientType)}>
-              <CardContent>
-                <div className="space-y-6">
-                  <div className="space-y-3">
-                    <Label htmlFor="name" className={colors.textColor}>
-                      Client Type Name <span className="text-red-500">*</span>
-                    </Label>
-                    <Input
-                      id="name"
-                      placeholder="Enter client type name"
-                      className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
-                      {...clientTypeForm.register("name")}
-                    />
-                    {clientTypeForm.formState.errors.name && (
-                      <p className="text-sm text-red-500">
-                        {clientTypeForm.formState.errors.name.message}
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="space-y-3">
-                    <Label htmlFor="description" className={colors.textColor}>
-                      Description
-                    </Label>
-                    <Input
-                      id="description"
-                      placeholder="Enter description"
-                      className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
-                      {...clientTypeForm.register("description")}
-                    />
-                  </div>
-                </div>
-              </CardContent>
-              <CardFooter className="flex justify-between">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setShowAddClientTypeDialog(false)}
-                  className={`border-${colors.borderColor} hover:bg-${colors.hoverBgColor}`}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="submit"
-                  className="bg-blue-500 hover:bg-blue-600"
-                  disabled={isAddingNew}
-                >
-                  {isAddingNew ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Adding...
-                    </>
-                  ) : (
-                    "Add Client Type"
-                  )}
-                </Button>
-              </CardFooter>
-            </form>
-          </Card>
-        </div>
-      )}
-
-      {/* Add Client Classification Dialog */}
-      {showAddClientClassificationDialog && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <Card
-            className={`w-full max-w-md border-${colors.borderColor} ${colors.cardBg}`}
-          >
-            <CardHeader>
-              <CardTitle className={colors.textColor}>
-                Add New Client Classification
-              </CardTitle>
-              <CardDescription className={colors.textColorMuted}>
-                Enter the details of the new client classification.
-              </CardDescription>
-            </CardHeader>
-            <form
-              onSubmit={clientClassificationForm.handleSubmit(
-                handleAddClientClassification
-              )}
+        {/* Add Family Member Dialog */}
+        {showFamilyMemberDialog && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <Card
+              className={`w-full max-w-md border-${colors.borderColor} ${colors.cardBg}`}
             >
-              <CardContent>
-                <div className="space-y-6">
-                  <div className="space-y-3">
-                    <Label htmlFor="name" className={colors.textColor}>
-                      Classification Name{" "}
-                      <span className="text-red-500">*</span>
-                    </Label>
-                    <Input
-                      id="name"
-                      placeholder="Enter classification name"
-                      className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
-                      {...clientClassificationForm.register("name")}
-                    />
-                    {clientClassificationForm.formState.errors.name && (
-                      <p className="text-sm text-red-500">
-                        {clientClassificationForm.formState.errors.name.message}
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="space-y-3">
-                    <Label htmlFor="description" className={colors.textColor}>
-                      Description
-                    </Label>
-                    <Input
-                      id="description"
-                      placeholder="Enter description"
-                      className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
-                      {...clientClassificationForm.register("description")}
-                    />
-                  </div>
-                </div>
-              </CardContent>
-              <CardFooter className="flex justify-between">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setShowAddClientClassificationDialog(false)}
-                  className={`border-${colors.borderColor} hover:bg-${colors.hoverBgColor}`}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="submit"
-                  className="bg-blue-500 hover:bg-blue-600"
-                  disabled={isAddingNew}
-                >
-                  {isAddingNew ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Adding...
-                    </>
-                  ) : (
-                    "Add Classification"
-                  )}
-                </Button>
-              </CardFooter>
-            </form>
-          </Card>
-        </div>
-      )}
-
-      {/* Add Savings Product Dialog */}
-      {showAddSavingsProductDialog && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <Card
-            className={`w-full max-w-md border-${colors.borderColor} ${colors.cardBg}`}
-          >
-            <CardHeader>
-              <CardTitle className={colors.textColor}>
-                Add New Savings Product
-              </CardTitle>
-              <CardDescription className={colors.textColorMuted}>
-                Enter the details of the new savings product.
-              </CardDescription>
-            </CardHeader>
-            <form
-              onSubmit={savingsProductForm.handleSubmit(
-                handleAddSavingsProduct
-              )}
-            >
-              <CardContent>
-                <div className="space-y-6">
-                  <div className="space-y-3">
-                    <Label htmlFor="name" className={colors.textColor}>
-                      Product Name <span className="text-red-500">*</span>
-                    </Label>
-                    <Input
-                      id="name"
-                      placeholder="Enter product name"
-                      className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
-                      {...savingsProductForm.register("name")}
-                    />
-                    {savingsProductForm.formState.errors.name && (
-                      <p className="text-sm text-red-500">
-                        {savingsProductForm.formState.errors.name.message}
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="space-y-3">
-                    <Label htmlFor="code" className={colors.textColor}>
-                      Product Code <span className="text-red-500">*</span>
-                    </Label>
-                    <Input
-                      id="code"
-                      placeholder="Enter product code"
-                      className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
-                      {...savingsProductForm.register("code")}
-                    />
-                    {savingsProductForm.formState.errors.code && (
-                      <p className="text-sm text-red-500">
-                        {savingsProductForm.formState.errors.code.message}
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="space-y-3">
-                    <Label htmlFor="interestRate" className={colors.textColor}>
-                      Interest Rate (%) <span className="text-red-500">*</span>
-                    </Label>
-                    <Input
-                      id="interestRate"
-                      placeholder="Enter interest rate"
-                      className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
-                      {...savingsProductForm.register("interestRate")}
-                    />
-                    {savingsProductForm.formState.errors.interestRate && (
-                      <p className="text-sm text-red-500">
-                        {
-                          savingsProductForm.formState.errors.interestRate
-                            .message
-                        }
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="space-y-3">
-                    <Label htmlFor="description" className={colors.textColor}>
-                      Description
-                    </Label>
-                    <Input
-                      id="description"
-                      placeholder="Enter description"
-                      className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
-                      {...savingsProductForm.register("description")}
-                    />
-                  </div>
-                </div>
-              </CardContent>
-              <CardFooter className="flex justify-between">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setShowAddSavingsProductDialog(false)}
-                  className={`border-${colors.borderColor} hover:bg-${colors.hoverBgColor}`}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="submit"
-                  className="bg-blue-500 hover:bg-blue-600"
-                  disabled={isAddingNew}
-                >
-                  {isAddingNew ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Adding...
-                    </>
-                  ) : (
-                    "Add Savings Product"
-                  )}
-                </Button>
-              </CardFooter>
-            </form>
-          </Card>
-        </div>
-      )}
-
-      {/* Close Lead Dialog */}
-      {showCloseDialog && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <Card
-            className={`w-full max-w-md border-${colors.borderColor} ${colors.cardBg}`}
-          >
-            <CardHeader>
-              <CardTitle className={colors.textColor}>Close Lead</CardTitle>
-              <CardDescription className={colors.textColorMuted}>
-                Please provide a reason for closing this lead.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-6">
-                <div className="space-y-3">
-                  <Label htmlFor="closeReason" className={colors.textColor}>
-                    Reason <span className="text-red-500">*</span>
-                  </Label>
-                  <textarea
-                    id="closeReason"
-                    value={closeReason}
-                    onChange={(e) => setCloseReason(e.target.value)}
-                    className={`w-full p-2 border rounded-md ${colors.inputBg} ${colors.textColor} border-${colors.borderColor}`}
-                    rows={4}
-                    placeholder="Enter reason for closing this lead"
-                  />
-                </div>
-              </div>
-            </CardContent>
-            <CardFooter className="flex justify-between">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setShowCloseDialog(false)}
-                className={`border-${colors.borderColor} hover:bg-${colors.hoverBgColor}`}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                onClick={handleCloseLead}
-                disabled={isClosing || !closeReason}
-                className="bg-red-500 hover:bg-red-600"
-              >
-                {isClosing ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Closing...
-                  </>
-                ) : (
-                  "Close Lead"
+              <CardHeader>
+                <CardTitle className={colors.textColor}>
+                  Add Next of Kin
+                </CardTitle>
+                <CardDescription className={colors.textColorMuted}>
+                  Enter the details of the client's next of kin.
+                </CardDescription>
+              </CardHeader>
+              <form
+                onSubmit={familyMemberForm.handleSubmit(
+                  handleAddFamilyMember as any
                 )}
-              </Button>
-            </CardFooter>
-          </Card>
-        </div>
-      )}
-
-      {/* Add Family Member Dialog */}
-      {showFamilyMemberDialog && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <Card
-            className={`w-full max-w-md border-${colors.borderColor} ${colors.cardBg}`}
-          >
-            <CardHeader>
-              <CardTitle className={colors.textColor}>
-                Add Next of Kin
-              </CardTitle>
-              <CardDescription className={colors.textColorMuted}>
-                Enter the details of the client's next of kin.
-              </CardDescription>
-            </CardHeader>
-            <form
-              onSubmit={familyMemberForm.handleSubmit(
-                handleAddFamilyMember as any
-              )}
-            >
-              <CardContent>
-                <div className="space-y-6">
-                  <div className="grid grid-cols-2 gap-6">
-                    {/* First Name */}
-                    <div className="space-y-3">
-                      <Label htmlFor="firstname" className={colors.textColor}>
-                        First Name <span className="text-red-500">*</span>
-                      </Label>
-                      <p className={`text-xs ${colors.textColorMuted}`}>
-                        First name of next of kin
-                      </p>
-                      <Input
-                        id="firstname"
-                        placeholder="Enter first name"
-                        className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
-                        {...familyMemberForm.register("firstname")}
-                      />
-                      {familyMemberForm.formState.errors.firstname && (
-                        <p className="text-sm text-red-500">
-                          {familyMemberForm.formState.errors.firstname.message}
+              >
+                <CardContent>
+                  <div className="space-y-6">
+                    <div className="grid grid-cols-2 gap-6">
+                      {/* First Name */}
+                      <div className="space-y-3">
+                        <Label htmlFor="firstname" className={colors.textColor}>
+                          First Name <span className="text-red-500">*</span>
+                        </Label>
+                        <p className={`text-xs ${colors.textColorMuted}`}>
+                          First name of next of kin
                         </p>
-                      )}
+                        <Input
+                          id="firstname"
+                          placeholder="Enter first name"
+                          className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
+                          {...familyMemberForm.register("firstname")}
+                        />
+                        {familyMemberForm.formState.errors.firstname && (
+                          <p className="text-sm text-red-500">
+                            {
+                              familyMemberForm.formState.errors.firstname
+                                .message
+                            }
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Last Name */}
+                      <div className="space-y-3">
+                        <Label htmlFor="lastname" className={colors.textColor}>
+                          Last Name <span className="text-red-500">*</span>
+                        </Label>
+                        <p className={`text-xs ${colors.textColorMuted}`}>
+                          Last name of next of kin
+                        </p>
+                        <Input
+                          id="lastname"
+                          placeholder="Enter last name"
+                          className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
+                          {...familyMemberForm.register("lastname")}
+                        />
+                        {familyMemberForm.formState.errors.lastname && (
+                          <p className="text-sm text-red-500">
+                            {familyMemberForm.formState.errors.lastname.message}
+                          </p>
+                        )}
+                      </div>
                     </div>
 
-                    {/* Last Name */}
+                    {/* Middle Name */}
                     <div className="space-y-3">
-                      <Label htmlFor="lastname" className={colors.textColor}>
-                        Last Name <span className="text-red-500">*</span>
+                      <Label htmlFor="middlename" className={colors.textColor}>
+                        Middle Name
                       </Label>
                       <p className={`text-xs ${colors.textColorMuted}`}>
-                        Last name of next of kin
+                        Middle name of next of kin (if applicable)
                       </p>
                       <Input
-                        id="lastname"
-                        placeholder="Enter last name"
+                        id="middlename"
+                        placeholder="Enter middle name"
                         className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
-                        {...familyMemberForm.register("lastname")}
+                        {...familyMemberForm.register("middlename")}
                       />
-                      {familyMemberForm.formState.errors.lastname && (
-                        <p className="text-sm text-red-500">
-                          {familyMemberForm.formState.errors.lastname.message}
-                        </p>
-                      )}
                     </div>
-                  </div>
 
-                  {/* Middle Name */}
-                  <div className="space-y-3">
-                    <Label htmlFor="middlename" className={colors.textColor}>
-                      Middle Name
-                    </Label>
-                    <p className={`text-xs ${colors.textColorMuted}`}>
-                      Middle name of next of kin (if applicable)
-                    </p>
-                    <Input
-                      id="middlename"
-                      placeholder="Enter middle name"
-                      className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
-                      {...familyMemberForm.register("middlename")}
-                    />
-                  </div>
-
-                  {/* Relationship */}
-                  <div className="space-y-3">
-                    <Label htmlFor="relationship" className={colors.textColor}>
-                      Relationship <span className="text-red-500">*</span>
-                    </Label>
-                    <p className={`text-xs ${colors.textColorMuted}`}>
-                      Relationship to the client
-                    </p>
-                    <Controller
-                      control={familyMemberForm.control}
-                      name="relationship"
-                      render={({ field }) => (
-                        <Select
-                          onValueChange={field.onChange}
-                          defaultValue={field.value}
-                        >
-                          <SelectTrigger
-                            className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
+                    {/* Relationship */}
+                    <div className="space-y-3">
+                      <Label
+                        htmlFor="relationship"
+                        className={colors.textColor}
+                      >
+                        Relationship <span className="text-red-500">*</span>
+                      </Label>
+                      <p className={`text-xs ${colors.textColorMuted}`}>
+                        Relationship to the client
+                      </p>
+                      <Controller
+                        control={familyMemberForm.control}
+                        name="relationship"
+                        render={({ field }) => (
+                          <Select
+                            onValueChange={field.onChange}
+                            defaultValue={field.value}
                           >
-                            <SelectValue placeholder="Select relationship" />
+                            <SelectTrigger
+                              className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
+                            >
+                              <SelectValue placeholder="Select relationship" />
+                            </SelectTrigger>
+                            <SelectContent
+                              className={`border-${colors.borderColor} ${colors.dropdownBg} ${colors.textColor}`}
+                            >
+                              <SelectItem value="Spouse">Spouse</SelectItem>
+                              <SelectItem value="Child">Child</SelectItem>
+                              <SelectItem value="Parent">Parent</SelectItem>
+                              <SelectItem value="Sibling">Sibling</SelectItem>
+                              <SelectItem value="Other">Other</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        )}
+                      />
+                      {familyMemberForm.formState.errors.relationship && (
+                        <p className="text-sm text-red-500">
+                          {
+                            familyMemberForm.formState.errors.relationship
+                              .message
+                          }
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Date of Birth */}
+                    <div className="space-y-3">
+                      <Label htmlFor="dateOfBirth" className={colors.textColor}>
+                        Date of Birth
+                      </Label>
+                      <p className={`text-xs ${colors.textColorMuted}`}>
+                        Date of birth of next of kin
+                      </p>
+                      <Controller
+                        control={familyMemberForm.control}
+                        name="dateOfBirth"
+                        render={({ field }) => (
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <Button
+                                variant="outline"
+                                className={cn(
+                                  "h-10 w-full justify-start text-left font-normal",
+                                  !field.value && "text-muted-foreground",
+                                  `border-${colors.borderColor} ${colors.inputBg}`
+                                )}
+                              >
+                                <CalendarIcon className="mr-2 h-4 w-4" />
+                                {field.value ? (
+                                  format(field.value, "PPP")
+                                ) : (
+                                  <span>Pick a date</span>
+                                )}
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent
+                              className="w-auto p-0"
+                              align="start"
+                            >
+                              <Calendar
+                                mode="single"
+                                selected={field.value}
+                                onSelect={field.onChange}
+                                disabled={(date) =>
+                                  date > new Date() ||
+                                  date < new Date("1900-01-01")
+                                }
+                                initialFocus
+                              />
+                            </PopoverContent>
+                          </Popover>
+                        )}
+                      />
+                    </div>
+
+                    {/* Mobile Number */}
+                    <div className="space-y-3">
+                      <Label htmlFor="mobileNo" className={colors.textColor}>
+                        Mobile Number
+                      </Label>
+                      <p className={`text-xs ${colors.textColorMuted}`}>
+                        Contact number for next of kin
+                      </p>
+                      <div className="flex space-x-2">
+                        <Select defaultValue="+1">
+                          <SelectTrigger
+                            className={`h-10 w-24 border-${colors.borderColor} ${colors.inputBg}`}
+                          >
+                            <SelectValue placeholder="+1" />
                           </SelectTrigger>
                           <SelectContent
                             className={`border-${colors.borderColor} ${colors.dropdownBg} ${colors.textColor}`}
                           >
-                            <SelectItem value="Spouse">Spouse</SelectItem>
-                            <SelectItem value="Child">Child</SelectItem>
-                            <SelectItem value="Parent">Parent</SelectItem>
-                            <SelectItem value="Sibling">Sibling</SelectItem>
-                            <SelectItem value="Other">Other</SelectItem>
+                            <SelectItem value="+1">🇺🇸 +1</SelectItem>
+                            <SelectItem value="+44">🇬🇧 +44</SelectItem>
+                            <SelectItem value="+33">🇫🇷 +33</SelectItem>
+                            <SelectItem value="+49">🇩🇪 +49</SelectItem>
+                            <SelectItem value="+81">🇯🇵 +81</SelectItem>
+                            <SelectItem value="+86">🇨🇳 +86</SelectItem>
+                            <SelectItem value="+91">🇮🇳 +91</SelectItem>
+                            <SelectItem value="+61">🇦🇺 +61</SelectItem>
+                            <SelectItem value="+55">🇧🇷 +55</SelectItem>
+                            <SelectItem value="+52">🇲🇽 +52</SelectItem>
                           </SelectContent>
                         </Select>
-                      )}
-                    />
-                    {familyMemberForm.formState.errors.relationship && (
-                      <p className="text-sm text-red-500">
-                        {familyMemberForm.formState.errors.relationship.message}
+                        <Input
+                          id="mobileNo"
+                          placeholder="Enter mobile number"
+                          className={`h-10 flex-1 border-${colors.borderColor} ${colors.inputBg}`}
+                          {...familyMemberForm.register("mobileNo")}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Email Address */}
+                    <div className="space-y-3">
+                      <Label
+                        htmlFor="emailAddress"
+                        className={colors.textColor}
+                      >
+                        Email Address
+                      </Label>
+                      <p className={`text-xs ${colors.textColorMuted}`}>
+                        Email address for next of kin
                       </p>
-                    )}
-                  </div>
-
-                  {/* Date of Birth */}
-                  <div className="space-y-3">
-                    <Label htmlFor="dateOfBirth" className={colors.textColor}>
-                      Date of Birth
-                    </Label>
-                    <p className={`text-xs ${colors.textColorMuted}`}>
-                      Date of birth of next of kin
-                    </p>
-                    <Controller
-                      control={familyMemberForm.control}
-                      name="dateOfBirth"
-                      render={({ field }) => (
-                        <Popover>
-                          <PopoverTrigger asChild>
-                            <Button
-                              variant="outline"
-                              className={cn(
-                                "h-10 w-full justify-start text-left font-normal",
-                                !field.value && "text-muted-foreground",
-                                `border-${colors.borderColor} ${colors.inputBg}`
-                              )}
-                            >
-                              <CalendarIcon className="mr-2 h-4 w-4" />
-                              {field.value ? (
-                                format(field.value, "PPP")
-                              ) : (
-                                <span>Pick a date</span>
-                              )}
-                            </Button>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-auto p-0" align="start">
-                            <Calendar
-                              mode="single"
-                              selected={field.value}
-                              onSelect={field.onChange}
-                              disabled={(date) =>
-                                date > new Date() ||
-                                date < new Date("1900-01-01")
-                              }
-                              initialFocus
-                            />
-                          </PopoverContent>
-                        </Popover>
-                      )}
-                    />
-                  </div>
-
-                  {/* Mobile Number */}
-                  <div className="space-y-3">
-                    <Label htmlFor="mobileNo" className={colors.textColor}>
-                      Mobile Number
-                    </Label>
-                    <p className={`text-xs ${colors.textColorMuted}`}>
-                      Contact number for next of kin
-                    </p>
-                    <div className="flex space-x-2">
-                      <Select defaultValue="+1">
-                        <SelectTrigger
-                          className={`h-10 w-24 border-${colors.borderColor} ${colors.inputBg}`}
-                        >
-                          <SelectValue placeholder="+1" />
-                        </SelectTrigger>
-                        <SelectContent
-                          className={`border-${colors.borderColor} ${colors.dropdownBg} ${colors.textColor}`}
-                        >
-                          <SelectItem value="+1">🇺🇸 +1</SelectItem>
-                          <SelectItem value="+44">🇬🇧 +44</SelectItem>
-                          <SelectItem value="+33">🇫🇷 +33</SelectItem>
-                          <SelectItem value="+49">🇩🇪 +49</SelectItem>
-                          <SelectItem value="+81">🇯🇵 +81</SelectItem>
-                          <SelectItem value="+86">🇨🇳 +86</SelectItem>
-                          <SelectItem value="+91">🇮🇳 +91</SelectItem>
-                          <SelectItem value="+61">🇦🇺 +61</SelectItem>
-                          <SelectItem value="+55">🇧🇷 +55</SelectItem>
-                          <SelectItem value="+52">🇲🇽 +52</SelectItem>
-                        </SelectContent>
-                      </Select>
                       <Input
-                        id="mobileNo"
-                        placeholder="Enter mobile number"
-                        className={`h-10 flex-1 border-${colors.borderColor} ${colors.inputBg}`}
-                        {...familyMemberForm.register("mobileNo")}
+                        id="emailAddress"
+                        type="email"
+                        placeholder="Enter email address"
+                        className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
+                        {...familyMemberForm.register("emailAddress")}
                       />
+                      {familyMemberForm.formState.errors.emailAddress && (
+                        <p className="text-sm text-red-500">
+                          {
+                            familyMemberForm.formState.errors.emailAddress
+                              .message
+                          }
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Is Dependent */}
+                    <div className="space-y-3">
+                      <Label htmlFor="isDependent" className={colors.textColor}>
+                        Dependency Status
+                      </Label>
+                      <Card
+                        className={`border-${colors.borderColor} ${colors.cardBg} flex flex-row items-center justify-between p-4`}
+                      >
+                        <div className="flex items-center space-x-2">
+                          <Controller
+                            control={familyMemberForm.control}
+                            name="isDependent"
+                            render={({ field }) => (
+                              <Checkbox
+                                id="isDependent"
+                                checked={field.value}
+                                onCheckedChange={field.onChange}
+                              />
+                            )}
+                          />
+                          <Label
+                            htmlFor="isDependent"
+                            className={colors.textColor}
+                          >
+                            Is dependent
+                          </Label>
+                        </div>
+                        <p className={`text-xs ${colors.textColorMuted}`}>
+                          Indicate if this person is financially dependent on
+                          the client
+                        </p>
+                      </Card>
                     </div>
                   </div>
-
-                  {/* Email Address */}
-                  <div className="space-y-3">
-                    <Label htmlFor="emailAddress" className={colors.textColor}>
-                      Email Address
-                    </Label>
-                    <p className={`text-xs ${colors.textColorMuted}`}>
-                      Email address for next of kin
-                    </p>
-                    <Input
-                      id="emailAddress"
-                      type="email"
-                      placeholder="Enter email address"
-                      className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
-                      {...familyMemberForm.register("emailAddress")}
-                    />
-                    {familyMemberForm.formState.errors.emailAddress && (
-                      <p className="text-sm text-red-500">
-                        {familyMemberForm.formState.errors.emailAddress.message}
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Is Dependent */}
-                  <div className="space-y-3">
-                    <Label htmlFor="isDependent" className={colors.textColor}>
-                      Dependency Status
-                    </Label>
-                    <Card
-                      className={`border-${colors.borderColor} ${colors.cardBg} flex flex-row items-center justify-between p-4`}
-                    >
-                      <div className="flex items-center space-x-2">
-                        <Controller
-                          control={familyMemberForm.control}
-                          name="isDependent"
-                          render={({ field }) => (
-                            <Checkbox
-                              id="isDependent"
-                              checked={field.value}
-                              onCheckedChange={field.onChange}
-                            />
-                          )}
-                        />
-                        <Label
-                          htmlFor="isDependent"
-                          className={colors.textColor}
-                        >
-                          Is dependent
-                        </Label>
-                      </div>
-                      <p className={`text-xs ${colors.textColorMuted}`}>
-                        Indicate if this person is financially dependent on the
-                        client
-                      </p>
-                    </Card>
-                  </div>
-                </div>
-              </CardContent>
-              <CardFooter className="flex justify-between">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setShowFamilyMemberDialog(false)}
-                  className={`border-${colors.borderColor} hover:bg-${colors.hoverBgColor}`}
-                >
-                  Cancel
-                </Button>
-                <Button type="submit" className="bg-blue-500 hover:bg-blue-600">
-                  Add
-                </Button>
-              </CardFooter>
-            </form>
-          </Card>
-        </div>
-      )}
-    </div>
+                </CardContent>
+                <CardFooter className="flex justify-between">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setShowFamilyMemberDialog(false)}
+                    className={`border-${colors.borderColor} hover:bg-${colors.hoverBgColor}`}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    className="bg-blue-500 hover:bg-blue-600"
+                  >
+                    Add
+                  </Button>
+                </CardFooter>
+              </form>
+            </Card>
+          </div>
+        )}
+      </div>
+    </>
   );
 }
