@@ -71,8 +71,8 @@ export default function LoginPage() {
       </div>
 
       {/* Left side - Image and Marketing */}
-      <div className="hidden md:block md:w-3/5 relative z-10">
-        <div className="absolute inset-0 z-20 flex flex-col justify-between p-12">
+      <div className="hidden md:block md:w-1/2 relative z-10">
+        <div className="absolute inset-0 z-20 flex flex-col justify-between p-12 mx-auto max-w-4xl">
           <div>
             <LoanSystemLogo className="h-12 w-auto" />
           </div>
@@ -150,8 +150,8 @@ export default function LoginPage() {
       </div>
 
       {/* Right side - Login Form */}
-      <div className="flex flex-col justify-center items-center p-6 md:p-12 lg:p-16 w-full md:w-2/5 relative z-10">
-        <div className="w-full max-w-md space-y-8">
+      <div className="flex flex-col justify-center items-center p-6 md:p-12 lg:p-16 w-full md:w-1/2 relative z-10">
+        <div className="w-full max-w-md space-y-8 mx-auto">
           <div className="md:hidden flex justify-center mb-8">
             <LoanSystemLogo className="h-12 w-auto" />
           </div>
