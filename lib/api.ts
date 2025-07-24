@@ -1,6 +1,7 @@
-import { getSession } from "next-auth/react";
+import { getSession } from "./auth";
 
-const API_BASE_URL = "https://localhost:8443/fineract-provider/api/v1";
+
+const API_BASE_URL = "http://10.10.0.143:8443/fineract-provider/api/v1";
 
 /**
  * Makes an authenticated request to the Fineract API
@@ -15,6 +16,8 @@ export async function fetchFineractAPI(
   const session = await getSession();
   const accessToken = session?.accessToken as string | undefined;
 
+  
+
   if (!accessToken) {
     throw new Error("No access token available");
   }
@@ -26,7 +29,7 @@ export async function fetchFineractAPI(
   const headers = {
     ...options.headers,
     Authorization: `Basic ${accessToken}`,
-    "Fineract-Platform-TenantId": "default",
+    "Fineract-Platform-TenantId": "demo",
     "Content-Type": "application/json",
   };
 
@@ -42,6 +45,8 @@ export async function fetchFineractAPI(
       //@ts-ignore
       agent,
     });
+
+    console.log("Response:::", response);
 
     if (!response.ok) {
       throw new Error(`API error: ${response.status} ${response.statusText}`);
