@@ -14,6 +14,7 @@ import { BorderBeam } from "@/components/magicui/border-beam";
 import { Meteors } from "@/components/magicui/meteors";
 import { useAuth } from "@/contexts/auth-context";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 
 export default function LoginPage() {
   const [username, setUsername] = useState("");
@@ -74,7 +75,12 @@ export default function LoginPage() {
       <div className="hidden md:block md:w-1/2 relative z-10">
         <div className="absolute inset-0 z-20 flex flex-col justify-between p-12 mx-auto max-w-4xl">
           <div>
-            <LoanSystemLogo className="h-12 w-auto" />
+            <Image
+              src="/kenac_logo.png"
+              alt="Kenac Logo"
+              width={150}
+              height={150}
+            />
           </div>
 
           <div className="space-y-8 max-w-md">

@@ -3,8 +3,9 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm } from "react-hook-form";
+import { useForm, Controller } from "react-hook-form";
 import { z } from "zod";
+import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -25,6 +26,13 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
+import { Calendar } from "@/components/ui/calendar";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { CalendarIcon } from "lucide-react";
 import {
   ArrowLeft,
   Save,
@@ -68,6 +76,7 @@ const leadFormSchema = z.object({
     .min(10, { message: "Valid phone number is required" }),
   clientCompany: z.string().optional(),
   clientAddress: z.string().optional(),
+  applicationDate: z.date().default(() => new Date()),
 
   // Loan Information
   loanType: z.string().min(1, { message: "Loan type is required" }),
@@ -95,14 +104,15 @@ export function NewLeadForm({ clientFormData }: NewLeadFormProps) {
   const [activeTab, setActiveTab] = useState("client");
 
   // Initialize form with default values
-  const form = useForm<LeadFormValues>({
-    resolver: zodResolver(leadFormSchema),
+  const form = useForm({
+    resolver: zodResolver(leadFormSchema) as any,
     defaultValues: {
       clientName: "",
       clientEmail: "",
       clientPhone: "",
       clientCompany: "",
       clientAddress: "",
+      applicationDate: new Date(),
       loanType: "",
       loanAmount: "",
       loanPurpose: "",
@@ -447,12 +457,48 @@ export function NewLeadForm({ clientFormData }: NewLeadFormProps) {
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="interestRate">Interest Rate (%)</Label>
-                    <Input
-                      id="interestRate"
-                      placeholder="Enter interest rate"
-                      className="border-[#1a2035] bg-[#0a0e17]"
-                      {...form.register("interestRate")}
+                    <Label htmlFor="clientAddress">Client Address</Label>
+                    <Textarea
+                      id="clientAddress"
+                      placeholder="Enter client address"
+                      className="border-[#1a2035] bg-[#0a0e17] min-h-[100px]"
+                      {...form.register("clientAddress")}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="applicationDate">Application Date</Label>
+                    <Controller
+                      control={form.control}
+                      name="applicationDate"
+                      render={({ field: { value, onChange } }) => (
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button
+                              variant="outline"
+                              className="w-full justify-start text-left font-normal border-[#1a2035] bg-[#0a0e17]"
+                            >
+                              <CalendarIcon className="mr-2 h-4 w-4" />
+                              {value ? (
+                                format(value, "PPP")
+                              ) : (
+                                <span>Pick a date</span>
+                              )}
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0 border-[#1a2035] bg-[#0d121f]">
+                            <Calendar
+                              mode="single"
+                              selected={value}
+                              onSelect={onChange}
+                              initialFocus
+                              captionLayout="dropdown-buttons"
+                              fromYear={2020}
+                              toYear={2030}
+                            />
+                          </PopoverContent>
+                        </Popover>
+                      )}
                     />
                   </div>
                 </div>
