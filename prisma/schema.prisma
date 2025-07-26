@@ -126,3 +126,73 @@ model SavingsProduct {
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 }
+
+// RAG and Fineract Integration Tables
+model FineractDocument {
+  id                String   @id @default(cuid())
+  title             String
+  content           String
+  documentType      String   // "client", "loan", "product", "report", "policy"
+  fineractId        String?  // Reference to Fineract entity ID
+  metadata          Json?    // Additional metadata
+  embedding         String?  // Vector embedding as string (will be converted to vector)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  @@index([documentType])
+  @@index([fineractId])
+  @@unique([fineractId, documentType])
+}
+
+model FineractDataCache {
+  id                String   @id @default(cuid())
+  endpoint          String   // Fineract API endpoint
+  entityId          String?  // Specific entity ID if applicable
+  data              Json     // Cached Fineract data
+  embedding         String?  // Vector embedding as string
+  lastUpdated       DateTime @default(now())
+  expiresAt         DateTime // TTL for cache
+  
+  @@index([endpoint])
+  @@index([entityId])
+  @@index([expiresAt])
+}
+
+model ChatSession {
+  id                String   @id @default(cuid())
+  userId            String
+  sessionData       Json?    // Conversation context
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  messages          ChatMessage[]
+  
+  @@index([userId])
+}
+
+model ChatMessage {
+  id                String      @id @default(cuid())
+  sessionId         String
+  role              String      // "user" or "assistant"
+  content           String
+  fineractData      Json?       // Referenced Fineract data
+  sources           Json?       // Source documents/data used
+  createdAt         DateTime    @default(now())
+  
+  session           ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  
+  @@index([sessionId])
+}
+
+model QueryLog {
+  id                String   @id @default(cuid())
+  userId            String
+  userQuery         String
+  fineractDataUsed  Json?    // What Fineract data was accessed
+  response          String
+  responseTime      Int      // Response time in milliseconds
+  timestamp         DateTime @default(now())
+  
+  @@index([userId])
+  @@index([timestamp])
+}

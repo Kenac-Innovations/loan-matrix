@@ -79,6 +79,13 @@ export default async function DashboardLayout({
               <PlusCircle className="h-4 w-4" />
               New Lead
             </Link>
+            <Link
+              href="/dashboard"
+              className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-[#1a2035] dark:hover:text-white"
+            >
+              <Home className="h-4 w-4 text-gray-500 dark:text-gray-400" />
+              Dashboard
+            </Link>
             {/* <Link
               href="/auth-demo"
               className="flex items-center gap-3 rounded-lg px-3 py-2 text-gray-500 transition-all hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-50"
@@ -139,13 +146,17 @@ export default async function DashboardLayout({
               <Lock className="h-4 w-4 text-gray-500 dark:text-gray-400" />
               Security
             </Link>
-            <Link
-              href="/dashboard/rag"
-              className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-[#1a2035] dark:hover:text-white"
-            >
-              <Bot className="h-4 w-4 text-gray-500 dark:text-gray-400" />
-              AI Assistant
-            </Link>
+            <div className="space-y-1">
+              <MenuItemWithSubmenu
+                icon={<Bot />}
+                label="AI Assistant"
+                href="/ai-assistant"
+                subMenuItems={[
+                  { label: "Chat", href: "/ai-assistant" },
+                  { label: "Admin", href: "/rag-admin" },
+                ]}
+              />
+            </div>
             <Link
               href="#"
               className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-[#1a2035] dark:hover:text-white"

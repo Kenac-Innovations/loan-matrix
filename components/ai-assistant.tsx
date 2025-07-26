@@ -372,66 +372,61 @@ export function AIAssistant() {
     e.preventDefault();
     if (!query.trim()) return;
 
+    const userQuery = query.trim();
+
     // Add user message
-    setMessages((prev) => [...prev, { role: "user", content: query }]);
+    setMessages((prev) => [...prev, { role: "user", content: userQuery }]);
 
     // Clear input and set loading
     setQuery("");
     setIsLoading(true);
 
-    // Simulate AI response with retrieved documents
-    setTimeout(() => {
-      let response: Message;
+    try {
+      // Call the RAG API
+      const response = await fetch("/api/rag/query", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ query: userQuery }),
+      });
 
-      if (
-        query.toLowerCase().includes("mortgage") ||
-        query.toLowerCase().includes("loan")
-      ) {
-        response = {
-          role: "assistant",
-          content:
-            "Based on our loan policies, mortgage loans above $200,000 require additional verification steps including income verification, credit history review, and property appraisal. The current interest rates for mortgage loans range from 3.5% to 5.2% depending on the loan term and applicant's credit score.",
-          sources: [sampleDocuments[0], sampleDocuments[1]],
-        };
-      } else if (
-        query.toLowerCase().includes("kyc") ||
-        query.toLowerCase().includes("verification")
-      ) {
-        response = {
-          role: "assistant",
-          content:
-            "According to our KYC Procedure Manual, client verification must include government-issued ID, proof of address, and income verification. All documents must be current within the last 3 months. For high-value loans, additional verification steps may be required.",
-          sources: [sampleDocuments[2]],
-        };
-      } else if (
-        query.toLowerCase().includes("risk") ||
-        query.toLowerCase().includes("assessment")
-      ) {
-        response = {
-          role: "assistant",
-          content:
-            "The risk assessment metrics on your dashboard show the distribution of loans by risk category. Currently, 68% of loans are classified as low risk (green), 24% as medium risk (yellow), and 8% as high risk (red). This is within our target risk profile of maintaining at least 65% low-risk loans.",
-        };
-      } else if (
-        query.toLowerCase().includes("document") ||
-        query.toLowerCase().includes("knowledge base")
-      ) {
-        response = {
-          role: "assistant",
-          content:
-            "To add new documents to the knowledge base, use the 'Upload Document' button in the Documents tab. The system supports PDF, DOCX, and XLSX formats. Once uploaded, documents will be processed and indexed automatically, making their content available for AI-powered searches and responses.",
-        };
-      } else {
-        response = {
-          role: "assistant",
-          content:
-            "I don't have specific information about that in my knowledge base. Would you like me to help you with information about our loan policies, interest rates, or verification procedures?",
-        };
+      if (!response.ok) {
+        throw new Error("Failed to get response from RAG system");
       }
 
-      setMessages((prev) => [...prev, response]);
+      const ragResponse = await response.json();
+
+      // Format sources for display
+      const formattedSources =
+        ragResponse.sources?.map((source: any) => ({
+          title: source.document.title,
+          excerpt: source.document.content.substring(0, 200) + "...",
+          documentType: source.document.documentType,
+          similarity: source.similarity,
+        })) || [];
+
+      const assistantMessage: Message = {
+        role: "assistant",
+        content: ragResponse.answer,
+        sources: formattedSources,
+      };
+
+      setMessages((prev) => [...prev, assistantMessage]);
+    } catch (error) {
+      console.error("Error querying RAG system:", error);
+
+      // Fallback to sample response
+      const fallbackResponse: Message = {
+        role: "assistant",
+        content:
+          "I'm sorry, I'm having trouble accessing the knowledge base right now. Please try again later or contact support if the issue persists.",
+      };
+
+      setMessages((prev) => [...prev, fallbackResponse]);
+    } finally {
       setIsLoading(false);
-    }, 1500);
+    }
   };
 
   const handleSuggestionClick = (suggestion: string) => {
@@ -502,167 +497,183 @@ export function AIAssistant() {
 
       {/* AI Assistant Dialog */}
       {isOpen && (
-        <div
-          className="fixed bottom-0 right-0 z-50 w-full sm:bottom-6 sm:right-6 sm:w-full sm:max-w-md"
-          style={{
-            animation: "slideUp 0.3s ease-out",
-          }}
-        >
-          <Card className="border-[#1a2035] bg-[#0d121f] text-white shadow-xl sm:rounded-lg rounded-b-none rounded-t-lg h-[80vh] sm:h-auto flex flex-col">
-            <CardHeader className="border-b border-[#1a2035] pb-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Avatar className="h-8 w-8 bg-blue-500">
-                    <AvatarImage
-                      src="/placeholder.svg?key=ai-assistant"
-                      alt="AI"
-                    />
-                    <AvatarFallback>AI</AvatarFallback>
-                  </Avatar>
-                  <div>
-                    <CardTitle className="text-sm">
-                      KENAC AI Assistant
-                    </CardTitle>
-                    <CardDescription className="text-xs text-gray-400">
-                      Powered by RAG technology
-                    </CardDescription>
-                  </div>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setIsOpen(false)}
-                  className="h-8 w-8 rounded-full text-gray-400 hover:text-white"
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              </div>
-            </CardHeader>
-            <ScrollArea className="flex-1">
-              <CardContent className="p-4">
-                <div className="space-y-4">
-                  {messages.map((message, index) => (
-                    <div
-                      key={index}
-                      className={`flex ${
-                        message.role === "user"
-                          ? "justify-end"
-                          : "justify-start"
-                      }`}
-                    >
-                      <div
-                        className={`max-w-[80%] rounded-lg p-3 ${
-                          message.role === "user"
-                            ? "bg-blue-500 text-white"
-                            : "bg-[#1a2035] text-white"
-                        }`}
-                      >
-                        <p className="text-sm">{message.content}</p>
+        <>
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 bg-black/20 backdrop-blur-sm z-40 sm:hidden"
+            onClick={() => setIsOpen(false)}
+          />
 
-                        {/* Sources section */}
-                        {message.sources && message.sources.length > 0 && (
-                          <div className="mt-2 border-t border-[#2a3045] pt-2">
-                            <p className="text-xs font-semibold text-gray-300">
-                              Sources:
+          {/* Dialog */}
+          <div
+            className="fixed bottom-0 right-0 z-50 w-full sm:bottom-6 sm:right-6 sm:w-96 sm:max-w-[calc(100vw-3rem)]"
+            style={{
+              animation: "slideUp 0.3s ease-out",
+            }}
+          >
+            <Card className="border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-2xl sm:rounded-lg rounded-b-none rounded-t-lg h-[85vh] sm:h-[600px] flex flex-col">
+              <CardHeader className="border-b border-gray-200 dark:border-gray-700 pb-3 flex-shrink-0">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Avatar className="h-8 w-8 bg-blue-500">
+                      <AvatarFallback className="bg-blue-500 text-white">
+                        <Bot className="h-4 w-4" />
+                      </AvatarFallback>
+                    </Avatar>
+                    <div>
+                      <CardTitle className="text-sm text-gray-900 dark:text-white">
+                        KENAC AI Assistant
+                      </CardTitle>
+                      <CardDescription className="text-xs text-gray-500 dark:text-gray-400">
+                        Powered by RAG technology
+                      </CardDescription>
+                    </div>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setIsOpen(false)}
+                    className="h-8 w-8 rounded-full text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              </CardHeader>
+
+              <div className="flex-1 overflow-hidden">
+                <ScrollArea className="h-full">
+                  <CardContent className="p-4">
+                    <div className="space-y-4">
+                      {messages.map((message, index) => (
+                        <div
+                          key={index}
+                          className={`flex ${
+                            message.role === "user"
+                              ? "justify-end"
+                              : "justify-start"
+                          }`}
+                        >
+                          <div
+                            className={`max-w-[85%] rounded-lg p-3 ${
+                              message.role === "user"
+                                ? "bg-blue-500 text-white"
+                                : "bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white"
+                            }`}
+                          >
+                            <p className="text-sm whitespace-pre-wrap">
+                              {message.content}
                             </p>
-                            <div className="mt-1 space-y-2">
-                              {message.sources.map((source, idx) => (
-                                <div
-                                  key={idx}
-                                  className="rounded-md bg-[#0a0e17] p-2"
-                                >
-                                  <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-1">
-                                      <FileText className="h-3 w-3 text-blue-400" />
-                                      <p className="text-xs font-medium">
-                                        {source.title}
+
+                            {/* Sources section */}
+                            {message.sources && message.sources.length > 0 && (
+                              <div className="mt-3 border-t border-gray-200 dark:border-gray-600 pt-2">
+                                <p className="text-xs font-semibold text-gray-600 dark:text-gray-300 mb-2">
+                                  Sources:
+                                </p>
+                                <div className="space-y-2">
+                                  {message.sources.map((source, idx) => (
+                                    <div
+                                      key={idx}
+                                      className="rounded-md bg-white dark:bg-gray-700 p-2 border border-gray-200 dark:border-gray-600"
+                                    >
+                                      <div className="flex items-center justify-between mb-1">
+                                        <div className="flex items-center gap-1">
+                                          <FileText className="h-3 w-3 text-blue-500" />
+                                          <p className="text-xs font-medium text-gray-900 dark:text-white">
+                                            {source.title}
+                                          </p>
+                                        </div>
+                                        <Badge
+                                          variant="outline"
+                                          className="border-blue-500 bg-blue-50 dark:bg-blue-900/20 px-1.5 py-0 text-[10px] text-blue-600 dark:text-blue-400"
+                                        >
+                                          {source.documentType}
+                                        </Badge>
+                                      </div>
+                                      <p className="text-[11px] text-gray-600 dark:text-gray-400">
+                                        {source.excerpt}
                                       </p>
                                     </div>
-                                    <Badge
-                                      variant="outline"
-                                      className="border-blue-500 bg-blue-500/10 px-1.5 py-0 text-[10px] text-blue-400"
-                                    >
-                                      {source.documentType}
-                                    </Badge>
-                                  </div>
-                                  <p className="mt-1 text-[11px] text-gray-400">
-                                    {source.excerpt}
-                                  </p>
+                                  ))}
                                 </div>
-                              ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                      {isLoading && (
+                        <div className="flex justify-start">
+                          <div className="max-w-[85%] rounded-lg bg-gray-100 dark:bg-gray-800 p-3">
+                            <div className="flex items-center gap-2">
+                              <div className="h-2 w-2 animate-pulse rounded-full bg-blue-500"></div>
+                              <div
+                                className="h-2 w-2 animate-pulse rounded-full bg-blue-500"
+                                style={{ animationDelay: "0.2s" }}
+                              ></div>
+                              <div
+                                className="h-2 w-2 animate-pulse rounded-full bg-blue-500"
+                                style={{ animationDelay: "0.4s" }}
+                              ></div>
                             </div>
                           </div>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                  {isLoading && (
-                    <div className="flex justify-start">
-                      <div className="max-w-[80%] rounded-lg bg-[#1a2035] p-3">
-                        <div className="flex items-center gap-2">
-                          <div className="h-2 w-2 animate-pulse rounded-full bg-blue-400"></div>
-                          <div
-                            className="h-2 w-2 animate-pulse rounded-full bg-blue-400"
-                            style={{ animationDelay: "0.2s" }}
-                          ></div>
-                          <div
-                            className="h-2 w-2 animate-pulse rounded-full bg-blue-400"
-                            style={{ animationDelay: "0.4s" }}
-                          ></div>
                         </div>
-                      </div>
+                      )}
+                      <div ref={messagesEndRef} />
                     </div>
-                  )}
-                  <div ref={messagesEndRef} />
-                </div>
-              </CardContent>
-            </ScrollArea>
-            <CardFooter className="border-t border-[#1a2035] p-3 mt-auto">
-              <form
-                onSubmit={handleSubmit}
-                className="flex w-full items-center gap-2"
-              >
-                <Textarea
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Ask about loan policies, procedures, or requirements..."
-                  className="min-h-10 border-[#1a2035] bg-[#0a0e17] text-sm text-white placeholder:text-gray-500 focus-visible:ring-blue-500"
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      handleSubmit(e);
-                    }
-                  }}
-                />
-                <Button
-                  type="submit"
-                  size="icon"
-                  disabled={isLoading || !query.trim()}
-                  className="h-10 w-10 rounded-full bg-blue-500 p-0 hover:bg-blue-600 flex-shrink-0"
-                >
-                  <Send className="h-4 w-4" />
-                </Button>
-              </form>
-            </CardFooter>
-
-            {/* Quick suggestion chips - now context-aware */}
-            <div className="px-3 pb-3 overflow-x-auto">
-              <div className="flex flex-nowrap gap-2 pb-1">
-                {quickSuggestions.map((suggestion, index) => (
-                  <Button
-                    key={index}
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleSuggestionClick(suggestion)}
-                    className="rounded-full border-[#1a2035] bg-[#0a0e17] text-xs text-white hover:bg-[#1a2035] whitespace-nowrap flex-shrink-0"
-                  >
-                    {suggestion}
-                  </Button>
-                ))}
+                  </CardContent>
+                </ScrollArea>
               </div>
-            </div>
-          </Card>
-        </div>
+
+              {/* Quick suggestion chips */}
+              <div className="px-3 py-2 border-t border-gray-200 dark:border-gray-700 flex-shrink-0">
+                <div className="flex flex-wrap gap-1">
+                  {quickSuggestions.slice(0, 3).map((suggestion, index) => (
+                    <Button
+                      key={index}
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleSuggestionClick(suggestion)}
+                      className="rounded-full text-xs h-6 px-2 border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
+                    >
+                      {suggestion}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+
+              <CardFooter className="border-t border-gray-200 dark:border-gray-700 p-3 flex-shrink-0">
+                <form
+                  onSubmit={handleSubmit}
+                  className="flex w-full items-end gap-2"
+                >
+                  <div className="flex-1">
+                    <Textarea
+                      value={query}
+                      onChange={(e) => setQuery(e.target.value)}
+                      placeholder="Ask about loan policies, procedures, or requirements..."
+                      className="min-h-[40px] max-h-[120px] resize-none border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder:text-gray-500 dark:placeholder:text-gray-400 focus-visible:ring-blue-500"
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !e.shiftKey) {
+                          e.preventDefault();
+                          handleSubmit(e);
+                        }
+                      }}
+                      rows={1}
+                    />
+                  </div>
+                  <Button
+                    type="submit"
+                    size="icon"
+                    disabled={isLoading || !query.trim()}
+                    className="h-10 w-10 rounded-full bg-blue-500 hover:bg-blue-600 flex-shrink-0"
+                  >
+                    <Send className="h-4 w-4" />
+                  </Button>
+                </form>
+              </CardFooter>
+            </Card>
+          </div>
+        </>
       )}
 
       {/* Add CSS animations */}
