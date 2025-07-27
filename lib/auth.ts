@@ -23,7 +23,9 @@ export const authOptions: NextAuthOptions = {
         try {
           // Make a request to the Fineract API for authentication
           const response = await fetch(
-            "https://demo.mifos.io/fineract-provider/api/v1/authentication",
+            `${
+              process.env.FINERACT_BASE_URL || "https://demo.mifos.io"
+            }/fineract-provider/api/v1/authentication`,
             {
               method: "POST",
               headers: {
@@ -53,8 +55,6 @@ export const authOptions: NextAuthOptions = {
           if (!accessToken) {
             return null;
           }
-
-          console.log("Data::", data);
 
           // Map API permissions to our specific permissions
           const mappedPermissions = mapApiPermissionsToSpecific(

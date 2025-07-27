@@ -14,13 +14,16 @@ export async function GET(
     }
 
     const fineractService = await getFineractServiceWithSession();
-    const client = await fineractService.getClient(clientId);
 
-    return NextResponse.json(client);
+    // Note: This would need a getClientDocuments method in the service
+    // For now, return empty array as documents endpoint needs to be implemented
+    const documents: any[] = [];
+
+    return NextResponse.json(documents);
   } catch (error) {
-    console.error("Failed to get client:", error);
+    console.error("Failed to get client documents:", error);
     return NextResponse.json(
-      { error: "Failed to get client" },
+      { error: "Failed to get client documents" },
       { status: 500 }
     );
   }

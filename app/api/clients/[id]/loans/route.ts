@@ -14,13 +14,13 @@ export async function GET(
     }
 
     const fineractService = await getFineractServiceWithSession();
-    const client = await fineractService.getClient(clientId);
+    const loans = await fineractService.getClientLoans(clientId);
 
-    return NextResponse.json(client);
+    return NextResponse.json(loans);
   } catch (error) {
-    console.error("Failed to get client:", error);
+    console.error("Failed to get client loans:", error);
     return NextResponse.json(
-      { error: "Failed to get client" },
+      { error: "Failed to get client loans" },
       { status: 500 }
     );
   }

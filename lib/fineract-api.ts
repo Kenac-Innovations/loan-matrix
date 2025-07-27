@@ -1,4 +1,5 @@
 import axios, { AxiosInstance, AxiosResponse } from "axios";
+import { error } from "console";
 
 export interface FineractConfig {
   baseUrl: string;
@@ -345,21 +346,45 @@ export interface FineractTransaction {
 
 export class FineractAPIService {
   private client: AxiosInstance;
+  private clientV2: AxiosInstance;
   private config: FineractConfig;
 
-  constructor(config: FineractConfig) {
+  constructor(config: FineractConfig, authToken?: string) {
     this.config = config;
+
+    const headers: any = {
+      "Fineract-Platform-TenantId": config.tenantId,
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    };
+
+    // Use session token if provided, otherwise fall back to username/password
+    if (authToken) {
+      headers.Authorization = `Basic ${authToken}`;
+    }
+
     this.client = axios.create({
       baseURL: `${config.baseUrl}/fineract-provider/api/v1`,
-      auth: {
-        username: config.username,
-        password: config.password,
-      },
-      headers: {
-        "Fineract-Platform-TenantId": config.tenantId,
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
+      ...(!authToken && {
+        auth: {
+          username: config.username,
+          password: config.password,
+        },
+      }),
+      headers,
+      timeout: 30000,
+    });
+
+    // Create a separate client for v2 endpoints
+    this.clientV2 = axios.create({
+      baseURL: `${config.baseUrl}/fineract-provider/api/v2`,
+      ...(!authToken && {
+        auth: {
+          username: config.username,
+          password: config.password,
+        },
+      }),
+      headers,
       timeout: 30000,
     });
 
@@ -394,6 +419,21 @@ export class FineractAPIService {
   async searchClients(query: string): Promise<FineractClient[]> {
     const response: AxiosResponse<FineractClient[]> = await this.client.get(
       `/search?query=${encodeURIComponent(query)}&resource=clients`
+    );
+    return response.data;
+  }
+
+  async searchClientsV2(
+    query?: string,
+    offset = 0,
+    limit = 100
+  ): Promise<FineractClient[]> {
+    let url = `/clients/search?offset=${offset}&limit=${limit}`;
+    if (query) {
+      url += `&query=${encodeURIComponent(query)}`;
+    }
+    const response: AxiosResponse<FineractClient[]> = await this.clientV2.get(
+      url
     );
     return response.data;
   }
@@ -527,10 +567,22 @@ export class FineractAPIService {
   }
 }
 
-// Singleton instance
+// Singleton instance for fallback
 let fineractService: FineractAPIService | null = null;
 
-export function getFineractService(): FineractAPIService {
+export function getFineractService(authToken: string): FineractAPIService {
+  // If we have an auth token, create a new instance with it
+  if (authToken) {
+    const config: FineractConfig = {
+      baseUrl: process.env.FINERACT_BASE_URL || "https://demo.fineract.dev",
+      username: "", // Not needed when using token
+      password: "", // Not needed when using token
+      tenantId: process.env.FINERACT_TENANT_ID || "default",
+    };
+    return new FineractAPIService(config, authToken);
+  }
+
+  // Fallback to singleton with env credentials
   if (!fineractService) {
     const config: FineractConfig = {
       baseUrl: process.env.FINERACT_BASE_URL || "https://demo.fineract.dev",
@@ -541,4 +593,15 @@ export function getFineractService(): FineractAPIService {
     fineractService = new FineractAPIService(config);
   }
   return fineractService;
+}
+
+export async function getFineractServiceWithSession(): Promise<FineractAPIService> {
+  const { getSession } = await import("./auth");
+  const session = await getSession();
+
+  if (session?.base64EncodedAuthenticationKey) {
+    return getFineractService(session.base64EncodedAuthenticationKey);
+  }
+
+  throw error({ message: "Invalid Authentication" });
 }
