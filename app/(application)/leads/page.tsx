@@ -14,21 +14,28 @@ import Link from "next/link";
 import { LeadMetrics } from "./components/lead-metrics";
 import { PipelineView } from "./components/pipeline-view";
 import { LeadsTable } from "./components/leads-table";
+import { getLeadsData } from "@/app/actions/leads-actions";
+import { headers } from "next/headers";
 
 export const metadata: Metadata = {
   title: "Lead Management | KENAC Loan Matrix",
   description: "Track and manage loan leads through the sales pipeline",
 };
 
-export default function LeadsPage() {
+export default async function LeadsPage() {
+  // Get tenant slug from headers (set by middleware)
+  const headersList = await headers();
+  const tenantSlug = headersList.get("x-tenant-slug") || "default";
+
+  // Fetch leads data server-side
+  const leadsData = await getLeadsData(tenantSlug);
+
   return (
     <>
       <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-white">
-            Lead Management
-          </h2>
-          <p className="text-gray-400">
+          <h2 className="text-2xl font-bold tracking-tight">Lead Management</h2>
+          <p className="text-muted-foreground">
             Track leads through the loan processing pipeline
           </p>
         </div>
@@ -40,10 +47,10 @@ export default function LeadsPage() {
         </Button>
       </div>
 
-      <LeadMetrics className="mt-6" />
+      <LeadMetrics className="mt-6" metrics={leadsData.metrics} />
 
       <Tabs defaultValue="pipeline" className="mt-6">
-        <TabsList className="bg-[#0d121f] border border-[#1a2035] w-full sm:w-auto overflow-x-auto">
+        <TabsList className="w-full sm:w-auto overflow-x-auto">
           <TabsTrigger
             value="pipeline"
             className="data-[state=active]:bg-blue-500"
@@ -60,18 +67,18 @@ export default function LeadsPage() {
           </TabsTrigger>
         </TabsList>
         <TabsContent value="pipeline" className="mt-4">
-          <PipelineView />
+          <PipelineView initialData={leadsData} />
         </TabsContent>
         <TabsContent value="table" className="mt-4">
-          <Card className="border-[#1a2035] bg-[#0d121f] text-white">
+          <Card>
             <CardHeader>
               <CardTitle>All Leads</CardTitle>
-              <CardDescription className="text-gray-400">
+              <CardDescription>
                 Manage and track all leads in the system
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <LeadsTable />
+              <LeadsTable initialData={leadsData} />
             </CardContent>
           </Card>
         </TabsContent>

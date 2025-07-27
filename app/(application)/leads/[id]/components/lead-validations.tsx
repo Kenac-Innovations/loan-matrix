@@ -165,7 +165,7 @@ export function LeadValidations({ leadId, stage }: LeadValidationsProps) {
   const canProceed = failedCount === 0;
 
   return (
-    <Card className="border-[#1a2035] bg-[#0d121f] text-white">
+    <Card>
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
           <div>
@@ -177,7 +177,7 @@ export function LeadValidations({ leadId, stage }: LeadValidationsProps) {
                 <AlertCircle className="h-5 w-5 text-red-500" />
               )}
             </CardTitle>
-            <CardDescription className="text-gray-400">
+            <CardDescription>
               {canProceed
                 ? "All required validations have passed"
                 : `${failedCount} validation${
@@ -191,7 +191,7 @@ export function LeadValidations({ leadId, stage }: LeadValidationsProps) {
             variant="ghost"
             size="sm"
             onClick={() => setExpanded(!expanded)}
-            className="text-gray-400 hover:text-white"
+            className="text-muted-foreground hover:text-foreground"
           >
             {expanded ? (
               <ChevronUp className="h-4 w-4" />
@@ -204,13 +204,13 @@ export function LeadValidations({ leadId, stage }: LeadValidationsProps) {
       <CardContent>
         <div className="space-y-4">
           <div className="space-y-2">
-            <div className="flex items-center justify-between text-sm">
+            <div className="flex items-center justify-between text-sm text-foreground">
               <span>Validation Progress</span>
               <span>
                 {passedCount} of {totalCount} passed
               </span>
             </div>
-            <div className="relative h-2 w-full overflow-hidden rounded-full bg-[#1a2035]">
+            <div className="relative h-2 w-full overflow-hidden rounded-full bg-muted">
               <div
                 className="h-full bg-green-500"
                 style={{
@@ -219,7 +219,7 @@ export function LeadValidations({ leadId, stage }: LeadValidationsProps) {
                 }}
               />
             </div>
-            <div className="flex justify-between text-xs text-gray-400">
+            <div className="flex justify-between text-xs text-muted-foreground">
               <div className="flex items-center gap-1">
                 <div className="h-2 w-2 rounded-full bg-green-500" />
                 <span>Passed: {passedCount}</span>
@@ -245,24 +245,24 @@ export function LeadValidations({ leadId, stage }: LeadValidationsProps) {
                       ? "border-red-500/20 bg-red-500/5"
                       : result.status === "warning"
                       ? "border-yellow-500/20 bg-yellow-500/5"
-                      : "border-[#1a2035] bg-[#0a0e17]"
+                      : "border-border bg-card"
                   }`}
                 >
                   <div className="flex items-start gap-3">
                     <div className="mt-0.5">{getStatusIcon(result.status)}</div>
                     <div className="flex-1">
                       <div className="flex flex-wrap items-center gap-2">
-                        <h4 className="text-sm font-medium text-white">
+                        <h4 className="text-sm font-medium text-foreground">
                           {result.name}
                         </h4>
                         {getStatusBadge(result.status)}
                         {getSeverityBadge(result.severity)}
                       </div>
-                      <p className="mt-1 text-xs text-gray-400">
+                      <p className="mt-1 text-xs text-muted-foreground">
                         {result.description}
                       </p>
                       {result.message && (
-                        <p className="mt-2 text-sm text-white">
+                        <p className="mt-2 text-sm text-foreground">
                           {result.message}
                         </p>
                       )}
@@ -271,7 +271,7 @@ export function LeadValidations({ leadId, stage }: LeadValidationsProps) {
                           <Button
                             size="sm"
                             variant="outline"
-                            className="h-8 border-[#2a304d] text-blue-400 hover:bg-[#1a2035] hover:text-blue-300"
+                            className="h-8 text-blue-500 hover:text-blue-600"
                             asChild
                           >
                             <a href={result.actionUrl}>
@@ -292,7 +292,7 @@ export function LeadValidations({ leadId, stage }: LeadValidationsProps) {
             <div className="rounded-md border border-red-500/20 bg-red-500/5 p-3 mt-2">
               <div className="flex items-center gap-2">
                 <AlertCircle className="h-5 w-5 text-red-500" />
-                <p className="text-sm text-white">
+                <p className="text-sm text-foreground">
                   Cannot proceed to next stage until all blocking validations
                   are resolved.
                 </p>

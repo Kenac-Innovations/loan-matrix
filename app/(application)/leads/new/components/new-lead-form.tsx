@@ -3,8 +3,9 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm } from "react-hook-form";
+import { useForm, Controller } from "react-hook-form";
 import { z } from "zod";
+import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -25,6 +26,13 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
+import { Calendar } from "@/components/ui/calendar";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { CalendarIcon } from "lucide-react";
 import {
   ArrowLeft,
   Save,
@@ -68,6 +76,7 @@ const leadFormSchema = z.object({
     .min(10, { message: "Valid phone number is required" }),
   clientCompany: z.string().optional(),
   clientAddress: z.string().optional(),
+  applicationDate: z.date().default(() => new Date()),
 
   // Loan Information
   loanType: z.string().min(1, { message: "Loan type is required" }),
@@ -95,14 +104,15 @@ export function NewLeadForm({ clientFormData }: NewLeadFormProps) {
   const [activeTab, setActiveTab] = useState("client");
 
   // Initialize form with default values
-  const form = useForm<LeadFormValues>({
-    resolver: zodResolver(leadFormSchema),
+  const form = useForm({
+    resolver: zodResolver(leadFormSchema) as any,
     defaultValues: {
       clientName: "",
       clientEmail: "",
       clientPhone: "",
       clientCompany: "",
       clientAddress: "",
+      applicationDate: new Date(),
       loanType: "",
       loanAmount: "",
       loanPurpose: "",
@@ -191,19 +201,12 @@ export function NewLeadForm({ clientFormData }: NewLeadFormProps) {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="icon"
-            asChild
-            className="h-8 w-8 border-[#1a2035]"
-          >
+          <Button variant="outline" size="icon" asChild className="h-8 w-8">
             <Link href="/leads">
               <ArrowLeft className="h-4 w-4" />
             </Link>
           </Button>
-          <h1 className="text-2xl font-bold tracking-tight text-white">
-            Create New Lead
-          </h1>
+          <h1 className="text-2xl font-bold tracking-tight">Create New Lead</h1>
         </div>
       </div>
 
@@ -213,7 +216,7 @@ export function NewLeadForm({ clientFormData }: NewLeadFormProps) {
           onValueChange={setActiveTab}
           className="space-y-4"
         >
-          <TabsList className="bg-[#0d121f] border border-[#1a2035] w-full sm:w-auto overflow-x-auto">
+          <TabsList className="w-full sm:w-auto overflow-x-auto">
             <TabsTrigger
               value="client"
               className="data-[state=active]:bg-blue-500"
@@ -249,10 +252,10 @@ export function NewLeadForm({ clientFormData }: NewLeadFormProps) {
 
           {/* Client Information Tab */}
           <TabsContent value="client">
-            <Card className="border-[#1a2035] bg-[#0d121f] text-white">
+            <Card>
               <CardHeader>
                 <CardTitle>Client Information</CardTitle>
-                <CardDescription className="text-gray-400">
+                <CardDescription>
                   Enter the client's personal and contact information.
                 </CardDescription>
               </CardHeader>
@@ -274,10 +277,10 @@ export function NewLeadForm({ clientFormData }: NewLeadFormProps) {
 
           {/* Affordability Tab */}
           <TabsContent value="affordability">
-            <Card className="border-[#1a2035] bg-[#0d121f] text-white">
+            <Card>
               <CardHeader>
                 <CardTitle>Affordability Calculator</CardTitle>
-                <CardDescription className="text-gray-400">
+                <CardDescription>
                   Calculate loan affordability and generate offers based on
                   client's financial situation
                 </CardDescription>
@@ -288,11 +291,10 @@ export function NewLeadForm({ clientFormData }: NewLeadFormProps) {
                   onOfferSelect={handleOfferSelect}
                 />
 
-                <div className="flex justify-between mt-6 pt-6 border-t border-[#1a2035]">
+                <div className="flex justify-between mt-6 pt-6 border-t">
                   <Button
                     type="button"
                     variant="outline"
-                    className="border-[#1a2035] hover:bg-[#1a2035]"
                     onClick={() => setActiveTab("client")}
                   >
                     Back: Client Information
@@ -315,10 +317,10 @@ export function NewLeadForm({ clientFormData }: NewLeadFormProps) {
 
           {/* Loan Details Tab */}
           <TabsContent value="loan">
-            <Card className="border-[#1a2035] bg-[#0d121f] text-white">
+            <Card>
               <CardHeader>
                 <CardTitle>Loan Details</CardTitle>
-                <CardDescription className="text-gray-400">
+                <CardDescription>
                   {selectedOffer
                     ? "Review and confirm the selected loan offer details"
                     : "Enter information about the requested loan"}
@@ -385,10 +387,10 @@ export function NewLeadForm({ clientFormData }: NewLeadFormProps) {
                       }
                       defaultValue={form.watch("loanType")}
                     >
-                      <SelectTrigger className="border-[#1a2035] bg-[#0a0e17]">
+                      <SelectTrigger>
                         <SelectValue placeholder="Select loan type" />
                       </SelectTrigger>
-                      <SelectContent className="border-[#1a2035] bg-[#0d121f] text-white">
+                      <SelectContent>
                         <SelectItem value="business">Business Loan</SelectItem>
                         <SelectItem value="personal">Personal Loan</SelectItem>
                         <SelectItem value="mortgage">Mortgage</SelectItem>
@@ -413,7 +415,7 @@ export function NewLeadForm({ clientFormData }: NewLeadFormProps) {
                     <Input
                       id="loanAmount"
                       placeholder="Enter loan amount"
-                      className="border-[#1a2035] bg-[#0a0e17]"
+                      className=""
                       {...form.register("loanAmount")}
                     />
                     {form.formState.errors.loanAmount && (
@@ -431,10 +433,10 @@ export function NewLeadForm({ clientFormData }: NewLeadFormProps) {
                       }
                       value={form.watch("loanTerm")}
                     >
-                      <SelectTrigger className="border-[#1a2035] bg-[#0a0e17]">
+                      <SelectTrigger>
                         <SelectValue placeholder="Select loan term" />
                       </SelectTrigger>
-                      <SelectContent className="border-[#1a2035] bg-[#0d121f] text-white">
+                      <SelectContent>
                         <SelectItem value="3">3 years</SelectItem>
                         <SelectItem value="5">5 years</SelectItem>
                         <SelectItem value="7">7 years</SelectItem>
@@ -447,12 +449,48 @@ export function NewLeadForm({ clientFormData }: NewLeadFormProps) {
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="interestRate">Interest Rate (%)</Label>
-                    <Input
-                      id="interestRate"
-                      placeholder="Enter interest rate"
-                      className="border-[#1a2035] bg-[#0a0e17]"
-                      {...form.register("interestRate")}
+                    <Label htmlFor="clientAddress">Client Address</Label>
+                    <Textarea
+                      id="clientAddress"
+                      placeholder="Enter client address"
+                      className="min-h-[100px]"
+                      {...form.register("clientAddress")}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="applicationDate">Application Date</Label>
+                    <Controller
+                      control={form.control}
+                      name="applicationDate"
+                      render={({ field: { value, onChange } }) => (
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button
+                              variant="outline"
+                              className="w-full justify-start text-left font-normal"
+                            >
+                              <CalendarIcon className="mr-2 h-4 w-4" />
+                              {value ? (
+                                format(value, "PPP")
+                              ) : (
+                                <span>Pick a date</span>
+                              )}
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0">
+                            <Calendar
+                              mode="single"
+                              selected={value}
+                              onSelect={onChange}
+                              initialFocus
+                              captionLayout="dropdown-buttons"
+                              fromYear={2020}
+                              toYear={2030}
+                            />
+                          </PopoverContent>
+                        </Popover>
+                      )}
                     />
                   </div>
                 </div>
@@ -462,7 +500,7 @@ export function NewLeadForm({ clientFormData }: NewLeadFormProps) {
                   <Textarea
                     id="loanPurpose"
                     placeholder="Describe the purpose of the loan"
-                    className="border-[#1a2035] bg-[#0a0e17] min-h-[100px]"
+                    className="min-h-[100px]"
                     {...form.register("loanPurpose")}
                   />
                 </div>
@@ -472,16 +510,16 @@ export function NewLeadForm({ clientFormData }: NewLeadFormProps) {
                   <Textarea
                     id="collateral"
                     placeholder="Describe any collateral for the loan"
-                    className="border-[#1a2035] bg-[#0a0e17] min-h-[100px]"
+                    className="min-h-[100px]"
                     {...form.register("collateral")}
                   />
                 </div>
 
-                <div className="flex justify-between mt-6 pt-6 border-t border-[#1a2035]">
+                <div className="flex justify-between mt-6 pt-6 border-t">
                   <Button
                     type="button"
                     variant="outline"
-                    className="border-[#1a2035] hover:bg-[#1a2035]"
+                    className=""
                     onClick={() => setActiveTab("affordability")}
                   >
                     Back: Affordability
@@ -501,10 +539,10 @@ export function NewLeadForm({ clientFormData }: NewLeadFormProps) {
 
           {/* Additional Information Tab */}
           <TabsContent value="additional">
-            <Card className="border-[#1a2035] bg-[#0d121f] text-white">
+            <Card>
               <CardHeader>
                 <CardTitle>Additional Information</CardTitle>
-                <CardDescription className="text-gray-400">
+                <CardDescription>
                   Add notes, assign team members, and set priority.
                 </CardDescription>
               </CardHeader>
@@ -518,10 +556,10 @@ export function NewLeadForm({ clientFormData }: NewLeadFormProps) {
                       }
                       defaultValue={form.watch("priority")}
                     >
-                      <SelectTrigger className="border-[#1a2035] bg-[#0a0e17]">
+                      <SelectTrigger>
                         <SelectValue placeholder="Select priority" />
                       </SelectTrigger>
-                      <SelectContent className="border-[#1a2035] bg-[#0d121f] text-white">
+                      <SelectContent>
                         <SelectItem value="low">Low</SelectItem>
                         <SelectItem value="medium">Medium</SelectItem>
                         <SelectItem value="high">High</SelectItem>
@@ -538,10 +576,10 @@ export function NewLeadForm({ clientFormData }: NewLeadFormProps) {
                       }
                       defaultValue={form.watch("assignTo")}
                     >
-                      <SelectTrigger className="border-[#1a2035] bg-[#0a0e17]">
+                      <SelectTrigger>
                         <SelectValue placeholder="Select team member" />
                       </SelectTrigger>
-                      <SelectContent className="border-[#1a2035] bg-[#0d121f] text-white">
+                      <SelectContent>
                         <SelectItem value="jd">
                           John Doe (Lead Qualification)
                         </SelectItem>
@@ -567,16 +605,16 @@ export function NewLeadForm({ clientFormData }: NewLeadFormProps) {
                   <Textarea
                     id="notes"
                     placeholder="Add any additional notes or comments"
-                    className="border-[#1a2035] bg-[#0a0e17] min-h-[150px]"
+                    className="min-h-[150px]"
                     {...form.register("notes")}
                   />
                 </div>
 
-                <div className="flex justify-between mt-6 pt-6 border-t border-[#1a2035]">
+                <div className="flex justify-between mt-6 pt-6 border-t">
                   <Button
                     type="button"
                     variant="outline"
-                    className="border-[#1a2035] hover:bg-[#1a2035]"
+                    className=""
                     onClick={() => setActiveTab("loan")}
                   >
                     Back: Loan Details

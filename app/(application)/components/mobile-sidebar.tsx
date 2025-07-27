@@ -255,23 +255,54 @@ export function MobileSidebar({ userProfileData }: MobileSidebarProps) {
               <Lock className={`h-5 w-5 ${iconColor}`} />
               Security
             </Link>
-            <Link
-              href="/dashboard/rag"
-              className={`flex items-center gap-3 rounded-md px-3 py-3 text-sm font-medium ${
-                pathname.startsWith("/dashboard/rag")
-                  ? `${activeBgColor} ${textColor}`
-                  : `${textColorMuted} ${hoverBgColor} hover:${textColor}`
-              }`}
-            >
-              <Bot
-                className={`h-5 w-5 ${
-                  pathname.startsWith("/dashboard/rag")
-                    ? iconColorActive
-                    : iconColor
+            <div className="space-y-1">
+              <Link
+                href="/ai-assistant"
+                className={`flex items-center gap-3 rounded-md px-3 py-3 text-sm font-medium ${
+                  pathname.startsWith("/ai-assistant") ||
+                  pathname.startsWith("/rag-admin")
+                    ? `${activeBgColor} ${textColor}`
+                    : `${textColorMuted} ${hoverBgColor} hover:${textColor}`
                 }`}
-              />
-              AI Assistant
-            </Link>
+              >
+                <Bot
+                  className={`h-5 w-5 ${
+                    pathname.startsWith("/ai-assistant") ||
+                    pathname.startsWith("/rag-admin")
+                      ? iconColorActive
+                      : iconColor
+                  }`}
+                />
+                AI Assistant
+              </Link>
+
+              {/* Sub-menu items for AI Assistant */}
+              {(pathname.startsWith("/ai-assistant") ||
+                pathname.startsWith("/rag-admin")) && (
+                <div className="pl-10 space-y-1">
+                  <Link
+                    href="/ai-assistant"
+                    className={`flex items-center gap-3 rounded-md px-3 py-2 text-xs font-medium ${
+                      pathname === "/ai-assistant"
+                        ? iconColorActive
+                        : `${iconColor} hover:${textColor}`
+                    }`}
+                  >
+                    Chat
+                  </Link>
+                  <Link
+                    href="/rag-admin"
+                    className={`flex items-center gap-3 rounded-md px-3 py-2 text-xs font-medium ${
+                      pathname === "/rag-admin"
+                        ? iconColorActive
+                        : `${iconColor} hover:${textColor}`
+                    }`}
+                  >
+                    Admin
+                  </Link>
+                </div>
+              )}
+            </div>
             <Link
               href="#"
               className={`flex items-center gap-3 rounded-md px-3 py-3 text-sm font-medium ${textColorMuted} ${hoverBgColor} hover:${textColor}`}

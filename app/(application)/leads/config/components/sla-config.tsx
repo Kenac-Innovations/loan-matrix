@@ -225,29 +225,31 @@ export function SLAConfig() {
   return (
     <div className="space-y-6">
       <div className="space-y-4">
-        <h3 className="text-lg font-medium text-white">SLA Configuration</h3>
-        <p className="text-sm text-gray-400">
+        <h3 className="text-lg font-medium">SLA Configuration</h3>
+        <p className="text-sm text-muted-foreground">
           Configure Service Level Agreements for each stage in your pipeline
         </p>
       </div>
 
       <div className="grid gap-4">
         {stageSLAs.map((sla) => (
-          <Card key={sla.id} className="bg-[#0d121f] border-[#1a2035]">
-            <div className="bg-[#1a2035] p-4 flex justify-between items-start">
+          <Card key={sla.id}>
+            <div className="bg-muted/50 p-4 flex justify-between items-start">
               <div>
-                <h4 className="font-medium flex items-center text-white">
+                <h4 className="font-medium flex items-center">
                   <Clock className="h-4 w-4 mr-2 text-blue-400" />
                   {sla.stageName}
                 </h4>
-                <p className="text-sm text-gray-400 mt-1">{sla.description}</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  {sla.description}
+                </p>
               </div>
               <div className="flex space-x-2">
                 <Button
                   variant="ghost"
                   size="icon"
                   onClick={() => handleEditSLA(sla)}
-                  className="text-gray-400 hover:text-white hover:bg-[#2a304d]"
+                  className="text-muted-foreground hover:text-foreground"
                 >
                   <Edit2 className="h-4 w-4" />
                 </Button>
@@ -255,23 +257,21 @@ export function SLAConfig() {
                   variant="ghost"
                   size="icon"
                   onClick={() => handleDeleteStageSLA(sla.id)}
-                  className="text-gray-400 hover:text-white hover:bg-[#2a304d]"
+                  className="text-muted-foreground hover:text-foreground"
                 >
                   <Trash2 className="h-4 w-4" />
                 </Button>
               </div>
             </div>
-            <CardContent className="p-4 bg-[#0d121f]">
+            <CardContent className="p-4">
               <div className="space-y-4">
-                <h5 className="text-sm font-medium text-gray-300">
-                  SLA Levels:
-                </h5>
+                <h5 className="text-sm font-medium">SLA Levels:</h5>
                 {sla.slaLevels.length > 0 ? (
                   <div className="space-y-2">
                     {sla.slaLevels.map((level) => (
                       <div
                         key={level.id}
-                        className="flex items-center justify-between bg-[#1a2035] p-3 rounded-md"
+                        className="flex items-center justify-between bg-muted/50 p-3 rounded-md"
                       >
                         <div className="flex items-center space-x-3">
                           <div
@@ -279,10 +279,10 @@ export function SLAConfig() {
                             style={{ backgroundColor: level.color }}
                           />
                           <div>
-                            <div className="font-medium text-sm text-white">
+                            <div className="font-medium text-sm">
                               {level.name}
                             </div>
-                            <div className="text-xs text-gray-400">
+                            <div className="text-xs text-muted-foreground">
                               {level.timeframe}{" "}
                               {getTimeUnitLabel(
                                 level.timeUnit,
@@ -291,7 +291,7 @@ export function SLAConfig() {
                               {level.escalation && (
                                 <Badge
                                   variant="outline"
-                                  className="ml-2 text-xs border-[#2a304d] text-gray-300"
+                                  className="ml-2 text-xs"
                                 >
                                   <AlertTriangle className="h-3 w-3 mr-1 text-amber-500" />
                                   Escalation
@@ -304,7 +304,7 @@ export function SLAConfig() {
                     ))}
                   </div>
                 ) : (
-                  <div className="text-sm text-gray-500">
+                  <div className="text-sm text-muted-foreground">
                     No SLA levels configured for this stage
                   </div>
                 )}
@@ -325,18 +325,16 @@ export function SLAConfig() {
       </div>
 
       {editingSLA && (
-        <Card className="bg-[#0d121f] border-[#1a2035]">
+        <Card>
           <CardContent className="pt-6">
             <div className="space-y-4">
-              <h3 className="text-lg font-medium text-white">
+              <h3 className="text-lg font-medium">
                 Edit SLA for {editingSLA.stageName}
               </h3>
 
               <div className="space-y-4">
                 <div className="grid gap-2">
-                  <Label htmlFor="stage-description" className="text-gray-300">
-                    Stage Description
-                  </Label>
+                  <Label htmlFor="stage-description">Stage Description</Label>
                   <Input
                     id="stage-description"
                     value={editingSLA.description}
@@ -347,28 +345,25 @@ export function SLAConfig() {
                       })
                     }
                     placeholder="Enter stage description"
-                    className="bg-[#1a2035] border-[#2a304d] text-white placeholder:text-gray-500"
                   />
                 </div>
 
-                <div className="border-t border-[#2a304d] pt-4">
-                  <h4 className="text-sm font-medium mb-4 text-white">
-                    SLA Levels
-                  </h4>
+                <div className="border-t pt-4">
+                  <h4 className="text-sm font-medium mb-4">SLA Levels</h4>
 
                   {editingSLA.slaLevels.map((level) => (
                     <div
                       key={level.id}
-                      className="mb-4 p-4 border border-[#2a304d] rounded-md bg-[#1a2035]"
+                      className="mb-4 p-4 border rounded-md bg-muted/50"
                     >
                       <div className="flex justify-between items-start mb-4">
-                        <h5 className="font-medium text-white">{level.name}</h5>
+                        <h5 className="font-medium">{level.name}</h5>
                         <div className="flex space-x-2">
                           <Button
                             variant="ghost"
                             size="icon"
                             onClick={() => handleEditSLALevel(level)}
-                            className="text-gray-400 hover:text-white hover:bg-[#2a304d]"
+                            className="text-muted-foreground hover:text-foreground"
                           >
                             <Edit2 className="h-4 w-4" />
                           </Button>
@@ -376,7 +371,7 @@ export function SLAConfig() {
                             variant="ghost"
                             size="icon"
                             onClick={() => handleDeleteSLALevel(level.id)}
-                            className="text-gray-400 hover:text-white hover:bg-[#2a304d]"
+                            className="text-muted-foreground hover:text-foreground"
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
@@ -385,56 +380,41 @@ export function SLAConfig() {
 
                       <div className="grid gap-2">
                         <div className="flex items-center justify-between">
-                          <span className="text-sm text-gray-400">
+                          <span className="text-sm text-muted-foreground">
                             Timeframe:
                           </span>
-                          <span className="font-medium text-white">
+                          <span className="font-medium">
                             {level.timeframe}{" "}
                             {getTimeUnitLabel(level.timeUnit, level.timeframe)}
                           </span>
                         </div>
                         <div className="flex items-center justify-between">
-                          <span className="text-sm text-gray-400">
+                          <span className="text-sm text-muted-foreground">
                             Escalation:
                           </span>
                           <Badge
                             variant={level.escalation ? "default" : "outline"}
-                            className={
-                              level.escalation
-                                ? "bg-blue-600 text-white"
-                                : "border-[#2a304d] text-gray-300"
-                            }
                           >
                             {level.escalation ? "Enabled" : "Disabled"}
                           </Badge>
                         </div>
                         <div className="flex items-center justify-between">
-                          <span className="text-sm text-gray-400">
+                          <span className="text-sm text-muted-foreground">
                             Notify Team:
                           </span>
                           <Badge
                             variant={level.notifyTeam ? "default" : "outline"}
-                            className={
-                              level.notifyTeam
-                                ? "bg-blue-600 text-white"
-                                : "border-[#2a304d] text-gray-300"
-                            }
                           >
                             {level.notifyTeam ? "Yes" : "No"}
                           </Badge>
                         </div>
                         <div className="flex items-center justify-between">
-                          <span className="text-sm text-gray-400">
+                          <span className="text-sm text-muted-foreground">
                             Notify Manager:
                           </span>
                           <Badge
                             variant={
                               level.notifyManager ? "default" : "outline"
-                            }
-                            className={
-                              level.notifyManager
-                                ? "bg-blue-600 text-white"
-                                : "border-[#2a304d] text-gray-300"
                             }
                           >
                             {level.notifyManager ? "Yes" : "No"}
@@ -445,15 +425,11 @@ export function SLAConfig() {
                   ))}
 
                   {editingSLALevel ? (
-                    <div className="border border-[#2a304d] p-4 rounded-md mt-4 bg-[#1a2035]">
-                      <h5 className="font-medium mb-4 text-white">
-                        Edit SLA Level
-                      </h5>
+                    <div className="border p-4 rounded-md mt-4 bg-muted/50">
+                      <h5 className="font-medium mb-4">Edit SLA Level</h5>
                       <div className="space-y-4">
                         <div className="grid gap-2">
-                          <Label htmlFor="level-name" className="text-gray-300">
-                            Level Name
-                          </Label>
+                          <Label htmlFor="level-name">Level Name</Label>
                           <Input
                             id="level-name"
                             value={editingSLALevel.name}
@@ -464,12 +440,11 @@ export function SLAConfig() {
                               })
                             }
                             placeholder="Enter level name"
-                            className="bg-[#1a2035] border-[#2a304d] text-white placeholder:text-gray-500"
                           />
                         </div>
 
                         <div className="grid gap-2">
-                          <Label className="text-gray-300">Timeframe</Label>
+                          <Label>Timeframe</Label>
                           <div className="flex items-center space-x-4">
                             <div className="flex-1">
                               <Slider
@@ -489,7 +464,6 @@ export function SLAConfig() {
                                     timeframe: value[0],
                                   })
                                 }
-                                className="[&>span]:bg-blue-500"
                               />
                             </div>
                             <div className="w-16">
@@ -504,7 +478,6 @@ export function SLAConfig() {
                                   })
                                 }
                                 min={1}
-                                className="bg-[#1a2035] border-[#2a304d] text-white"
                               />
                             </div>
                             <Select
@@ -519,28 +492,13 @@ export function SLAConfig() {
                                 })
                               }
                             >
-                              <SelectTrigger className="w-24 bg-[#1a2035] border-[#2a304d] text-white">
+                              <SelectTrigger className="w-24">
                                 <SelectValue />
                               </SelectTrigger>
-                              <SelectContent className="bg-[#1a2035] border-[#2a304d] text-white">
-                                <SelectItem
-                                  value="minutes"
-                                  className="focus:bg-[#2a304d] focus:text-white"
-                                >
-                                  Minutes
-                                </SelectItem>
-                                <SelectItem
-                                  value="hours"
-                                  className="focus:bg-[#2a304d] focus:text-white"
-                                >
-                                  Hours
-                                </SelectItem>
-                                <SelectItem
-                                  value="days"
-                                  className="focus:bg-[#2a304d] focus:text-white"
-                                >
-                                  Days
-                                </SelectItem>
+                              <SelectContent>
+                                <SelectItem value="minutes">Minutes</SelectItem>
+                                <SelectItem value="hours">Hours</SelectItem>
+                                <SelectItem value="days">Days</SelectItem>
                               </SelectContent>
                             </Select>
                           </div>
@@ -550,7 +508,7 @@ export function SLAConfig() {
                           <div className="flex items-center justify-between">
                             <Label
                               htmlFor="escalation"
-                              className="cursor-pointer text-gray-300"
+                              className="cursor-pointer"
                             >
                               Enable Escalation
                             </Label>
@@ -563,14 +521,13 @@ export function SLAConfig() {
                                   escalation: checked,
                                 })
                               }
-                              className="data-[state=checked]:bg-blue-600"
                             />
                           </div>
 
                           <div className="flex items-center justify-between">
                             <Label
                               htmlFor="notify-team"
-                              className="cursor-pointer text-gray-300"
+                              className="cursor-pointer"
                             >
                               Notify Team
                             </Label>
@@ -583,14 +540,13 @@ export function SLAConfig() {
                                   notifyTeam: checked,
                                 })
                               }
-                              className="data-[state=checked]:bg-blue-600"
                             />
                           </div>
 
                           <div className="flex items-center justify-between">
                             <Label
                               htmlFor="notify-manager"
-                              className="cursor-pointer text-gray-300"
+                              className="cursor-pointer"
                             >
                               Notify Manager
                             </Label>
@@ -603,7 +559,6 @@ export function SLAConfig() {
                                   notifyManager: checked,
                                 })
                               }
-                              className="data-[state=checked]:bg-blue-600"
                             />
                           </div>
                         </div>
@@ -618,7 +573,6 @@ export function SLAConfig() {
                           <Button
                             variant="outline"
                             onClick={() => setEditingSLALevel(null)}
-                            className="border-[#2a304d] text-gray-300 hover:bg-[#2a304d] hover:text-white"
                           >
                             Cancel
                           </Button>
@@ -626,18 +580,11 @@ export function SLAConfig() {
                       </div>
                     </div>
                   ) : (
-                    <div className="border border-[#2a304d] p-4 rounded-md mt-4 bg-[#1a2035]">
-                      <h5 className="font-medium mb-4 text-white">
-                        Add New SLA Level
-                      </h5>
+                    <div className="border p-4 rounded-md mt-4 bg-muted/50">
+                      <h5 className="font-medium mb-4">Add New SLA Level</h5>
                       <div className="space-y-4">
                         <div className="grid gap-2">
-                          <Label
-                            htmlFor="new-level-name"
-                            className="text-gray-300"
-                          >
-                            Level Name
-                          </Label>
+                          <Label htmlFor="new-level-name">Level Name</Label>
                           <Input
                             id="new-level-name"
                             value={newSLALevel.name}
@@ -648,12 +595,11 @@ export function SLAConfig() {
                               })
                             }
                             placeholder="Enter level name"
-                            className="bg-[#1a2035] border-[#2a304d] text-white placeholder:text-gray-500"
                           />
                         </div>
 
                         <div className="grid gap-2">
-                          <Label className="text-gray-300">Timeframe</Label>
+                          <Label>Timeframe</Label>
                           <div className="flex items-center space-x-4">
                             <div className="flex-1">
                               <Slider
@@ -673,7 +619,6 @@ export function SLAConfig() {
                                     timeframe: value[0],
                                   })
                                 }
-                                className="[&>span]:bg-blue-500"
                               />
                             </div>
                             <div className="w-16">
@@ -688,7 +633,6 @@ export function SLAConfig() {
                                   })
                                 }
                                 min={1}
-                                className="bg-[#1a2035] border-[#2a304d] text-white"
                               />
                             </div>
                             <Select
@@ -703,28 +647,13 @@ export function SLAConfig() {
                                 })
                               }
                             >
-                              <SelectTrigger className="w-24 bg-[#1a2035] border-[#2a304d] text-white">
+                              <SelectTrigger className="w-24">
                                 <SelectValue />
                               </SelectTrigger>
-                              <SelectContent className="bg-[#1a2035] border-[#2a304d] text-white">
-                                <SelectItem
-                                  value="minutes"
-                                  className="focus:bg-[#2a304d] focus:text-white"
-                                >
-                                  Minutes
-                                </SelectItem>
-                                <SelectItem
-                                  value="hours"
-                                  className="focus:bg-[#2a304d] focus:text-white"
-                                >
-                                  Hours
-                                </SelectItem>
-                                <SelectItem
-                                  value="days"
-                                  className="focus:bg-[#2a304d] focus:text-white"
-                                >
-                                  Days
-                                </SelectItem>
+                              <SelectContent>
+                                <SelectItem value="minutes">Minutes</SelectItem>
+                                <SelectItem value="hours">Hours</SelectItem>
+                                <SelectItem value="days">Days</SelectItem>
                               </SelectContent>
                             </Select>
                           </div>
@@ -734,7 +663,7 @@ export function SLAConfig() {
                           <div className="flex items-center justify-between">
                             <Label
                               htmlFor="new-escalation"
-                              className="cursor-pointer text-gray-300"
+                              className="cursor-pointer"
                             >
                               Enable Escalation
                             </Label>
@@ -747,14 +676,13 @@ export function SLAConfig() {
                                   escalation: checked,
                                 })
                               }
-                              className="data-[state=checked]:bg-blue-600"
                             />
                           </div>
 
                           <div className="flex items-center justify-between">
                             <Label
                               htmlFor="new-notify-team"
-                              className="cursor-pointer text-gray-300"
+                              className="cursor-pointer"
                             >
                               Notify Team
                             </Label>
@@ -767,14 +695,13 @@ export function SLAConfig() {
                                   notifyTeam: checked,
                                 })
                               }
-                              className="data-[state=checked]:bg-blue-600"
                             />
                           </div>
 
                           <div className="flex items-center justify-between">
                             <Label
                               htmlFor="new-notify-manager"
-                              className="cursor-pointer text-gray-300"
+                              className="cursor-pointer"
                             >
                               Notify Manager
                             </Label>
@@ -787,7 +714,6 @@ export function SLAConfig() {
                                   notifyManager: checked,
                                 })
                               }
-                              className="data-[state=checked]:bg-blue-600"
                             />
                           </div>
                         </div>
@@ -817,7 +743,6 @@ export function SLAConfig() {
                       setEditingSLA(null);
                       setEditingSLALevel(null);
                     }}
-                    className="border-[#2a304d] text-gray-300 hover:bg-[#2a304d] hover:text-white"
                   >
                     Cancel
                   </Button>

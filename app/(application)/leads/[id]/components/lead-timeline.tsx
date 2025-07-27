@@ -116,7 +116,7 @@ export function LeadTimeline({ leadId }: LeadTimelineProps) {
   return (
     <div className="relative space-y-6 py-2">
       {/* Timeline line */}
-      <div className="absolute left-6 top-0 bottom-0 w-px bg-[#1a2035]"></div>
+      <div className="absolute left-6 top-0 bottom-0 w-px bg-border"></div>
 
       {/* Timeline events */}
       {timelineEvents.map((event, index) => (
@@ -130,13 +130,15 @@ export function LeadTimeline({ leadId }: LeadTimelineProps) {
             className={`flex-1 rounded-md border ${
               event.type === "current"
                 ? "border-blue-500 bg-blue-500/10"
-                : "border-[#1a2035] bg-[#0a0e17]"
+                : "border-border bg-card"
             } p-3`}
           >
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
               <div>
                 <div className="flex items-center gap-2">
-                  <h4 className="text-sm font-medium">{event.title}</h4>
+                  <h4 className="text-sm font-medium text-foreground">
+                    {event.title}
+                  </h4>
                   {event.type === "stage-change" && (
                     <Badge className="bg-green-500 text-white border-0 text-xs">
                       Stage Change
@@ -153,13 +155,17 @@ export function LeadTimeline({ leadId }: LeadTimelineProps) {
                     </Badge>
                   )}
                 </div>
-                <p className="text-xs text-gray-400 mt-1">
+                <p className="text-xs text-muted-foreground mt-1">
                   {event.description}
                 </p>
               </div>
               <div className="flex flex-col items-start sm:items-end">
-                <span className="text-xs text-gray-400">{event.timestamp}</span>
-                <span className="text-xs text-gray-500">{event.user}</span>
+                <span className="text-xs text-muted-foreground">
+                  {event.timestamp}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {event.user}
+                </span>
               </div>
             </div>
           </div>

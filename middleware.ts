@@ -1,9 +1,16 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
+import { tenantMiddleware } from "./lib/tenant-middleware";
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  // Apply tenant middleware first
+  const tenantResponse = await tenantMiddleware(request);
+  if (tenantResponse && tenantResponse.status !== 200) {
+    return tenantResponse;
+  }
 
   // Check if the path is a protected route
   const isProtectedRoute =
@@ -19,7 +26,7 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith("/auth") ||
     pathname.includes(".") // Files like favicon.ico, etc.
   ) {
-    return NextResponse.next();
+    return tenantResponse || NextResponse.next();
   }
 
   // Get the NextAuth.js token
@@ -45,7 +52,7 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL("/dashboard", request.url));
   }
 
-  return NextResponse.next();
+  return tenantResponse || NextResponse.next();
 }
 
 // Configure the middleware to run on specific paths

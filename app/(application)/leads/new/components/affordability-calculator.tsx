@@ -60,6 +60,7 @@ const affordabilityFormSchema = z.object({
 
   // Employer based model
   employerType: z.string().optional(),
+  yearsEmployed: z.number().optional(),
 
   // Expenditure estimation model
   location: z.string().optional(),
@@ -263,17 +264,13 @@ export function AffordabilityCalculator({
         onValueChange={setActiveTab}
         className="space-y-4"
       >
-        <TabsList className="bg-[#0d121f] border border-[#1a2035] w-full sm:w-auto overflow-x-auto">
-          <TabsTrigger
-            value="calculator"
-            className="data-[state=active]:bg-blue-500"
-          >
+        <TabsList className="w-full sm:w-auto overflow-x-auto">
+          <TabsTrigger value="calculator">
             <Calculator className="mr-2 h-4 w-4" />
             <span className="whitespace-nowrap">Affordability Calculator</span>
           </TabsTrigger>
           <TabsTrigger
             value="offers"
-            className="data-[state=active]:bg-blue-500"
             disabled={
               !calculationResult || calculationResult.offers.length === 0
             }
@@ -285,20 +282,20 @@ export function AffordabilityCalculator({
 
         {/* Calculator Tab */}
         <TabsContent value="calculator">
-          <Card className="border-[#1a2035] bg-[#0d121f] text-white">
+          <Card>
             <CardHeader>
               <CardTitle>Affordability Calculator</CardTitle>
-              <CardDescription className="text-gray-400">
+              <CardDescription>
                 Enter income and expenditure details to calculate loan
                 affordability
               </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-6">
-                <div className="mb-4 border-b border-[#1a2035] pb-4">
+                <div className="mb-4 border-b border-border pb-4">
                   <Label
                     htmlFor="affordability-model"
-                    className="text-gray-300 mb-2 block"
+                    className="text-foreground mb-2 block"
                   >
                     Affordability Model
                   </Label>
@@ -306,28 +303,21 @@ export function AffordabilityCalculator({
                     value={selectedModelId}
                     onValueChange={(value) => setSelectedModelId(value)}
                   >
-                    <SelectTrigger
-                      id="affordability-model"
-                      className="bg-[#1a2035] border-[#2a304d] text-white"
-                    >
+                    <SelectTrigger id="affordability-model">
                       <SelectValue placeholder="Select affordability model" />
                     </SelectTrigger>
-                    <SelectContent className="bg-[#1a2035] border-[#2a304d] text-white">
+                    <SelectContent>
                       {affordabilityModels
                         .filter((model) => model.isActive)
                         .map((model) => (
-                          <SelectItem
-                            key={model.id}
-                            value={model.id}
-                            className="focus:bg-[#2a304d] focus:text-white"
-                          >
+                          <SelectItem key={model.id} value={model.id}>
                             {model.name}
                             {model.isDefault && " (Default)"}
                           </SelectItem>
                         ))}
                     </SelectContent>
                   </Select>
-                  <p className="text-sm text-gray-400 mt-2">
+                  <p className="text-sm text-muted-foreground mt-2">
                     {selectedModel.type === "dti" &&
                       "Evaluates loan affordability based on debt-to-income ratio"}
                     {selectedModel.type === "disposableIncome" &&
@@ -340,19 +330,19 @@ export function AffordabilityCalculator({
                 </div>
                 {/* Income Section */}
                 <div>
-                  <h3 className="text-lg font-medium mb-4 flex items-center">
-                    <DollarSign className="mr-2 h-5 w-5 text-green-400" />
+                  <h3 className="text-lg font-medium mb-4 flex items-center text-foreground">
+                    <DollarSign className="mr-2 h-5 w-5 text-green-500" />
                     Monthly Income
                   </h3>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="primaryIncome">Primary Income</Label>
                       <div className="relative">
-                        <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                        <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                         <Input
                           id="primaryIncome"
                           placeholder="0"
-                          className="pl-8 border-[#1a2035] bg-[#0a0e17]"
+                          className="pl-8"
                           {...form.register("primaryIncome")}
                         />
                       </div>
@@ -361,11 +351,11 @@ export function AffordabilityCalculator({
                     <div className="space-y-2">
                       <Label htmlFor="secondaryIncome">Secondary Income</Label>
                       <div className="relative">
-                        <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                        <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                         <Input
                           id="secondaryIncome"
                           placeholder="0"
-                          className="pl-8 border-[#1a2035] bg-[#0a0e17]"
+                          className="pl-8"
                           {...form.register("secondaryIncome")}
                         />
                       </div>
@@ -374,11 +364,11 @@ export function AffordabilityCalculator({
                     <div className="space-y-2">
                       <Label htmlFor="otherIncome">Other Income</Label>
                       <div className="relative">
-                        <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                        <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                         <Input
                           id="otherIncome"
                           placeholder="0"
-                          className="pl-8 border-[#1a2035] bg-[#0a0e17]"
+                          className="pl-8"
                           {...form.register("otherIncome")}
                         />
                       </div>
@@ -387,66 +377,37 @@ export function AffordabilityCalculator({
                 </div>
 
                 {selectedModel.type === "employerBased" && (
-                  <div className="pt-2 border-t border-[#1a2035] mt-2">
-                    <h4 className="text-md font-medium text-white mb-4">
+                  <div className="pt-2 border-t border-border mt-2">
+                    <h4 className="text-md font-medium text-foreground mb-4">
                       Employment Information
                     </h4>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <Label htmlFor="employerType" className="text-gray-300">
-                          Employer Type
-                        </Label>
+                        <Label htmlFor="employerType">Employer Type</Label>
                         <Select
                           onValueChange={(value) =>
                             form.setValue("employerType", value)
                           }
                           defaultValue={form.watch("employerType")}
                         >
-                          <SelectTrigger
-                            id="employerType"
-                            className="bg-[#1a2035] border-[#2a304d] text-white"
-                          >
+                          <SelectTrigger id="employerType">
                             <SelectValue placeholder="Select employer type" />
                           </SelectTrigger>
-                          <SelectContent className="bg-[#1a2035] border-[#2a304d] text-white">
-                            <SelectItem
-                              value="government"
-                              className="focus:bg-[#2a304d] focus:text-white"
-                            >
+                          <SelectContent>
+                            <SelectItem value="government">
                               Government
                             </SelectItem>
-                            <SelectItem
-                              value="corporate"
-                              className="focus:bg-[#2a304d] focus:text-white"
-                            >
-                              Corporate
-                            </SelectItem>
-                            <SelectItem
-                              value="sme"
-                              className="focus:bg-[#2a304d] focus:text-white"
-                            >
-                              SME
-                            </SelectItem>
-                            <SelectItem
-                              value="startup"
-                              className="focus:bg-[#2a304d] focus:text-white"
-                            >
-                              Startup
-                            </SelectItem>
-                            <SelectItem
-                              value="selfEmployed"
-                              className="focus:bg-[#2a304d] focus:text-white"
-                            >
+                            <SelectItem value="corporate">Corporate</SelectItem>
+                            <SelectItem value="sme">SME</SelectItem>
+                            <SelectItem value="startup">Startup</SelectItem>
+                            <SelectItem value="selfEmployed">
                               Self-Employed
                             </SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
                       <div className="space-y-2">
-                        <Label
-                          htmlFor="yearsEmployed"
-                          className="text-gray-300"
-                        >
+                        <Label htmlFor="yearsEmployed">
                           Years at Current Job
                         </Label>
                         <Input
@@ -455,7 +416,6 @@ export function AffordabilityCalculator({
                           min="0"
                           step="1"
                           defaultValue="2"
-                          className="bg-[#1a2035] border-[#2a304d] text-white"
                           onChange={(e) =>
                             form.setValue(
                               "yearsEmployed",
@@ -470,8 +430,8 @@ export function AffordabilityCalculator({
 
                 {/* Expenditure Section */}
                 <div>
-                  <h3 className="text-lg font-medium mb-4 flex items-center">
-                    <ShoppingCart className="mr-2 h-5 w-5 text-red-400" />
+                  <h3 className="text-lg font-medium mb-4 flex items-center text-foreground">
+                    <ShoppingCart className="mr-2 h-5 w-5 text-red-500" />
                     Monthly Expenditure
                   </h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -480,11 +440,11 @@ export function AffordabilityCalculator({
                         Housing (Rent/Mortgage)
                       </Label>
                       <div className="relative">
-                        <Home className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                        <Home className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                         <Input
                           id="housingCost"
                           placeholder="0"
-                          className="pl-8 border-[#1a2035] bg-[#0a0e17]"
+                          className="pl-8"
                           {...form.register("housingCost")}
                         />
                       </div>
@@ -493,11 +453,11 @@ export function AffordabilityCalculator({
                     <div className="space-y-2">
                       <Label htmlFor="utilitiesCost">Utilities & Bills</Label>
                       <div className="relative">
-                        <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                        <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                         <Input
                           id="utilitiesCost"
                           placeholder="0"
-                          className="pl-8 border-[#1a2035] bg-[#0a0e17]"
+                          className="pl-8"
                           {...form.register("utilitiesCost")}
                         />
                       </div>
@@ -508,11 +468,11 @@ export function AffordabilityCalculator({
                         Existing Loan Repayments
                       </Label>
                       <div className="relative">
-                        <CreditCard className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                        <CreditCard className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                         <Input
                           id="loanRepayments"
                           placeholder="0"
-                          className="pl-8 border-[#1a2035] bg-[#0a0e17]"
+                          className="pl-8"
                           {...form.register("loanRepayments")}
                         />
                       </div>
@@ -521,11 +481,11 @@ export function AffordabilityCalculator({
                     <div className="space-y-2">
                       <Label htmlFor="otherExpenses">Other Expenses</Label>
                       <div className="relative">
-                        <ShoppingCart className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                        <ShoppingCart className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                         <Input
                           id="otherExpenses"
                           placeholder="0"
-                          className="pl-8 border-[#1a2035] bg-[#0a0e17]"
+                          className="pl-8"
                           {...form.register("otherExpenses")}
                         />
                       </div>
@@ -534,45 +494,25 @@ export function AffordabilityCalculator({
                 </div>
 
                 {selectedModel.type === "expenditureEstimation" && (
-                  <div className="pt-2 border-t border-[#1a2035] mt-2">
-                    <h4 className="text-md font-medium text-white mb-4">
+                  <div className="pt-2 border-t border-border mt-2">
+                    <h4 className="text-md font-medium text-foreground mb-4">
                       Location Information
                     </h4>
                     <div className="space-y-2">
-                      <Label htmlFor="location" className="text-gray-300">
-                        Location Type
-                      </Label>
+                      <Label htmlFor="location">Location Type</Label>
                       <Select
                         onValueChange={(value) =>
                           form.setValue("location", value)
                         }
                         defaultValue={form.watch("location")}
                       >
-                        <SelectTrigger
-                          id="location"
-                          className="bg-[#1a2035] border-[#2a304d] text-white"
-                        >
+                        <SelectTrigger id="location">
                           <SelectValue placeholder="Select location type" />
                         </SelectTrigger>
-                        <SelectContent className="bg-[#1a2035] border-[#2a304d] text-white">
-                          <SelectItem
-                            value="urban"
-                            className="focus:bg-[#2a304d] focus:text-white"
-                          >
-                            Urban
-                          </SelectItem>
-                          <SelectItem
-                            value="suburban"
-                            className="focus:bg-[#2a304d] focus:text-white"
-                          >
-                            Suburban
-                          </SelectItem>
-                          <SelectItem
-                            value="rural"
-                            className="focus:bg-[#2a304d] focus:text-white"
-                          >
-                            Rural
-                          </SelectItem>
+                        <SelectContent>
+                          <SelectItem value="urban">Urban</SelectItem>
+                          <SelectItem value="suburban">Suburban</SelectItem>
+                          <SelectItem value="rural">Rural</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -581,8 +521,8 @@ export function AffordabilityCalculator({
 
                 {/* Loan Details Section */}
                 <div>
-                  <h3 className="text-lg font-medium mb-4 flex items-center">
-                    <CreditCard className="mr-2 h-5 w-5 text-blue-400" />
+                  <h3 className="text-lg font-medium mb-4 flex items-center text-foreground">
+                    <CreditCard className="mr-2 h-5 w-5 text-blue-500" />
                     Loan Details
                   </h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -591,11 +531,11 @@ export function AffordabilityCalculator({
                         Requested Loan Amount
                       </Label>
                       <div className="relative">
-                        <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                        <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                         <Input
                           id="requestedAmount"
                           placeholder="0"
-                          className="pl-8 border-[#1a2035] bg-[#0a0e17]"
+                          className="pl-8"
                           {...form.register("requestedAmount")}
                         />
                       </div>
@@ -606,7 +546,6 @@ export function AffordabilityCalculator({
                       <Input
                         id="creditScore"
                         placeholder="650"
-                        className="border-[#1a2035] bg-[#0a0e17]"
                         {...form.register("creditScore")}
                       />
                     </div>
@@ -627,8 +566,8 @@ export function AffordabilityCalculator({
 
               {/* Results Section */}
               {calculationResult && (
-                <div className="mt-6 pt-6 border-t border-[#1a2035]">
-                  <h3 className="text-lg font-medium mb-4">
+                <div className="mt-6 pt-6 border-t border-border">
+                  <h3 className="text-lg font-medium mb-4 text-foreground">
                     Affordability Results
                   </h3>
 
@@ -636,26 +575,30 @@ export function AffordabilityCalculator({
                     <div className="space-y-4">
                       <div>
                         <div className="flex justify-between mb-1">
-                          <span className="text-sm">Total Monthly Income</span>
-                          <span className="text-sm font-medium text-green-400">
+                          <span className="text-sm text-muted-foreground">
+                            Total Monthly Income
+                          </span>
+                          <span className="text-sm font-medium text-green-500">
                             {formatCurrency(
                               calculationResult.totalMonthlyIncome
                             )}
                           </span>
                         </div>
                         <div className="flex justify-between mb-1">
-                          <span className="text-sm">
+                          <span className="text-sm text-muted-foreground">
                             Total Monthly Expenditure
                           </span>
-                          <span className="text-sm font-medium text-red-400">
+                          <span className="text-sm font-medium text-red-500">
                             {formatCurrency(
                               calculationResult.totalMonthlyExpenditure
                             )}
                           </span>
                         </div>
                         <div className="flex justify-between mb-1">
-                          <span className="text-sm">Disposable Income</span>
-                          <span className="text-sm font-medium text-blue-400">
+                          <span className="text-sm text-muted-foreground">
+                            Disposable Income
+                          </span>
+                          <span className="text-sm font-medium text-blue-500">
                             {formatCurrency(calculationResult.disposableIncome)}
                           </span>
                         </div>
@@ -663,14 +606,16 @@ export function AffordabilityCalculator({
 
                       <div>
                         <div className="flex justify-between mb-1">
-                          <span className="text-sm">Debt-to-Income Ratio</span>
+                          <span className="text-sm text-muted-foreground">
+                            Debt-to-Income Ratio
+                          </span>
                           <span
                             className={`text-sm font-medium ${
                               calculationResult.debtToIncomeRatio > 0.43
-                                ? "text-red-400"
+                                ? "text-red-500"
                                 : calculationResult.debtToIncomeRatio > 0.36
-                                ? "text-yellow-400"
-                                : "text-green-400"
+                                ? "text-yellow-500"
+                                : "text-green-500"
                             }`}
                           >
                             {(
@@ -682,9 +627,9 @@ export function AffordabilityCalculator({
                         <Progress
                           value={calculationResult.debtToIncomeRatio * 100}
                           max={50}
-                          className="h-2 bg-[#1a2035]"
+                          className="h-2"
                         />
-                        <div className="flex justify-between text-xs mt-1 text-gray-400">
+                        <div className="flex justify-between text-xs mt-1 text-muted-foreground">
                           <span>0%</span>
                           <span>36%</span>
                           <span>43%</span>
@@ -695,16 +640,16 @@ export function AffordabilityCalculator({
 
                     <div className="space-y-4">
                       <div>
-                        <h4 className="text-sm font-medium mb-2">
+                        <h4 className="text-sm font-medium mb-2 text-foreground">
                           Maximum Affordable Loan
                         </h4>
-                        <div className="text-3xl font-bold text-blue-400">
+                        <div className="text-3xl font-bold text-blue-500">
                           {formatCurrency(calculationResult.maxLoanAmount)}
                         </div>
 
                         {calculationResult.maxLoanAmount <
                           Number(form.getValues().requestedAmount) && (
-                          <div className="mt-2 flex items-start gap-2 text-sm text-yellow-400">
+                          <div className="mt-2 flex items-start gap-2 text-sm text-yellow-500">
                             <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
                             <span>
                               The maximum affordable loan amount is less than
@@ -722,7 +667,7 @@ export function AffordabilityCalculator({
                         {calculationResult.offers.length > 0 ? (
                           <div className="flex flex-col gap-2">
                             <div className="flex justify-between items-center">
-                              <h4 className="text-sm font-medium">
+                              <h4 className="text-sm font-medium text-foreground">
                                 Available Loan Offers
                               </h4>
                               <Badge className="bg-green-500 text-white">
@@ -731,14 +676,14 @@ export function AffordabilityCalculator({
                             </div>
                             <Button
                               variant="outline"
-                              className="border-[#1a2035] hover:bg-[#1a2035] text-blue-400"
+                              className="text-blue-500 hover:text-blue-600"
                               onClick={() => setActiveTab("offers")}
                             >
                               View Loan Offers
                             </Button>
                           </div>
                         ) : (
-                          <div className="flex items-start gap-2 text-sm text-red-400">
+                          <div className="flex items-start gap-2 text-sm text-red-500">
                             <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
                             <span>
                               Based on the provided information, we cannot offer
@@ -758,10 +703,10 @@ export function AffordabilityCalculator({
 
         {/* Offers Tab */}
         <TabsContent value="offers">
-          <Card className="border-[#1a2035] bg-[#0d121f] text-white">
+          <Card>
             <CardHeader>
               <CardTitle>Available Loan Offers</CardTitle>
-              <CardDescription className="text-gray-400">
+              <CardDescription>
                 Select the loan offer that best suits your needs
               </CardDescription>
             </CardHeader>
@@ -774,14 +719,16 @@ export function AffordabilityCalculator({
                       className={`rounded-lg border ${
                         selectedOffer?.productCode === offer.productCode
                           ? "border-blue-500 bg-blue-500/10"
-                          : "border-[#1a2035] bg-[#141b2d] hover:bg-[#1a2035]"
+                          : "border-border bg-card hover:bg-accent"
                       } p-4 transition-all cursor-pointer`}
                       onClick={() => handleOfferSelect(offer)}
                     >
                       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                         <div>
                           <div className="flex items-center gap-2">
-                            <h3 className="font-medium">{offer.productName}</h3>
+                            <h3 className="font-medium text-foreground">
+                              {offer.productName}
+                            </h3>
                             {selectedOffer?.productCode ===
                               offer.productCode && (
                               <Badge className="bg-blue-500 text-white">
@@ -789,7 +736,7 @@ export function AffordabilityCalculator({
                               </Badge>
                             )}
                           </div>
-                          <p className="text-sm text-gray-400">
+                          <p className="text-sm text-muted-foreground">
                             {formatPercentage(offer.interestRate)} interest rate
                             • {offer.termYears} year term
                           </p>
@@ -797,40 +744,40 @@ export function AffordabilityCalculator({
 
                         <div className="flex flex-col md:flex-row md:items-center gap-4">
                           <div className="text-center md:text-right">
-                            <div className="text-sm text-gray-400">
+                            <div className="text-sm text-muted-foreground">
                               Monthly Payment
                             </div>
-                            <div className="text-lg font-medium">
+                            <div className="text-lg font-medium text-foreground">
                               {formatCurrency(offer.monthlyPayment)}
                             </div>
                           </div>
                         </div>
                       </div>
 
-                      <div className="mt-4 pt-4 border-t border-[#1a2035] grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="mt-4 pt-4 border-t border-border grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div>
-                          <div className="text-sm text-gray-400">
+                          <div className="text-sm text-muted-foreground">
                             Loan Amount
                           </div>
-                          <div className="font-medium">
+                          <div className="font-medium text-foreground">
                             {formatCurrency(offer.loanAmount)}
                           </div>
                         </div>
 
                         <div>
-                          <div className="text-sm text-gray-400">
+                          <div className="text-sm text-muted-foreground">
                             Total Repayment
                           </div>
-                          <div className="font-medium">
+                          <div className="font-medium text-foreground">
                             {formatCurrency(offer.totalRepayment)}
                           </div>
                         </div>
 
                         <div>
-                          <div className="text-sm text-gray-400">
+                          <div className="text-sm text-muted-foreground">
                             Total Interest
                           </div>
-                          <div className="font-medium">
+                          <div className="font-medium text-foreground">
                             {formatCurrency(
                               offer.totalRepayment - offer.loanAmount
                             )}
@@ -842,11 +789,11 @@ export function AffordabilityCalculator({
                 </div>
               ) : (
                 <div className="flex flex-col items-center justify-center py-8">
-                  <AlertCircle className="h-12 w-12 text-gray-400 mb-4" />
-                  <h3 className="text-lg font-medium mb-2">
+                  <AlertCircle className="h-12 w-12 text-muted-foreground mb-4" />
+                  <h3 className="text-lg font-medium mb-2 text-foreground">
                     No Offers Available
                   </h3>
-                  <p className="text-gray-400 text-center max-w-md">
+                  <p className="text-muted-foreground text-center max-w-md">
                     Based on the provided information, we cannot offer any loan
                     products at this time. Please review your income and
                     expenditure details.
@@ -855,11 +802,10 @@ export function AffordabilityCalculator({
               )}
             </CardContent>
             {calculationResult && calculationResult.offers.length > 0 && (
-              <CardFooter className="flex justify-between border-t border-[#1a2035] pt-6">
+              <CardFooter className="flex justify-between border-t border-border pt-6">
                 <Button
                   variant="outline"
                   onClick={() => setActiveTab("calculator")}
-                  className="border-[#1a2035] hover:bg-[#1a2035]"
                 >
                   Back to Calculator
                 </Button>

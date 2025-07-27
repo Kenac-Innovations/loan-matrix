@@ -70,12 +70,10 @@ export function LeadDetails({ leadId }: LeadDetailsProps) {
 
   return (
     <div className="space-y-6">
-      <Card className="border-[#1a2035] bg-[#0d121f] text-white">
+      <Card>
         <CardHeader>
           <CardTitle>Client Information</CardTitle>
-          <CardDescription className="text-gray-400">
-            Details about the loan applicant
-          </CardDescription>
+          <CardDescription>Details about the loan applicant</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="flex flex-col md:flex-row gap-6">
@@ -94,7 +92,7 @@ export function LeadDetails({ leadId }: LeadDetailsProps) {
               </Avatar>
               <div className="text-center md:text-left">
                 <h3 className="text-lg font-medium">{leadData.client.name}</h3>
-                <p className="text-sm text-gray-400">
+                <p className="text-sm text-muted-foreground">
                   {leadData.client.company}
                 </p>
               </div>
@@ -106,46 +104,50 @@ export function LeadDetails({ leadId }: LeadDetailsProps) {
             <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-3">
                 <div className="flex items-start gap-2">
-                  <Phone className="h-4 w-4 text-gray-400 mt-0.5" />
+                  <Phone className="h-4 w-4 text-muted-foreground mt-0.5" />
                   <div>
-                    <p className="text-xs text-gray-400">Phone</p>
+                    <p className="text-xs text-muted-foreground">Phone</p>
                     <p className="text-sm">{leadData.client.phone}</p>
                   </div>
                 </div>
                 <div className="flex items-start gap-2">
-                  <Mail className="h-4 w-4 text-gray-400 mt-0.5" />
+                  <Mail className="h-4 w-4 text-muted-foreground mt-0.5" />
                   <div>
-                    <p className="text-xs text-gray-400">Email</p>
+                    <p className="text-xs text-muted-foreground">Email</p>
                     <p className="text-sm">{leadData.client.email}</p>
                   </div>
                 </div>
                 <div className="flex items-start gap-2">
-                  <Building className="h-4 w-4 text-gray-400 mt-0.5" />
+                  <Building className="h-4 w-4 text-muted-foreground mt-0.5" />
                   <div>
-                    <p className="text-xs text-gray-400">Address</p>
+                    <p className="text-xs text-muted-foreground">Address</p>
                     <p className="text-sm">{leadData.client.address}</p>
                   </div>
                 </div>
               </div>
               <div className="space-y-3">
                 <div className="flex items-start gap-2">
-                  <Briefcase className="h-4 w-4 text-gray-400 mt-0.5" />
+                  <Briefcase className="h-4 w-4 text-muted-foreground mt-0.5" />
                   <div>
-                    <p className="text-xs text-gray-400">Company</p>
+                    <p className="text-xs text-muted-foreground">Company</p>
                     <p className="text-sm">{leadData.client.company}</p>
                   </div>
                 </div>
                 <div className="flex items-start gap-2">
-                  <Calendar className="h-4 w-4 text-gray-400 mt-0.5" />
+                  <Calendar className="h-4 w-4 text-muted-foreground mt-0.5" />
                   <div>
-                    <p className="text-xs text-gray-400">Client Since</p>
+                    <p className="text-xs text-muted-foreground">
+                      Client Since
+                    </p>
                     <p className="text-sm">{leadData.client.clientSince}</p>
                   </div>
                 </div>
                 <div className="flex items-start gap-2">
-                  <CreditCard className="h-4 w-4 text-gray-400 mt-0.5" />
+                  <CreditCard className="h-4 w-4 text-muted-foreground mt-0.5" />
                   <div>
-                    <p className="text-xs text-gray-400">Existing Loans</p>
+                    <p className="text-xs text-muted-foreground">
+                      Existing Loans
+                    </p>
                     <p className="text-sm">
                       {leadData.financials.existingLoans}
                     </p>
@@ -158,65 +160,64 @@ export function LeadDetails({ leadId }: LeadDetailsProps) {
       </Card>
 
       <Tabs defaultValue="loan">
-        <TabsList className="bg-[#0d121f] border border-[#1a2035] w-full sm:w-auto overflow-x-auto">
-          <TabsTrigger value="loan" className="data-[state=active]:bg-blue-500">
+        <TabsList className="w-full sm:w-auto overflow-x-auto">
+          <TabsTrigger value="loan">
             <DollarSign className="mr-2 h-4 w-4" />
             <span className="whitespace-nowrap">Loan Details</span>
           </TabsTrigger>
-          <TabsTrigger
-            value="financials"
-            className="data-[state=active]:bg-blue-500"
-          >
+          <TabsTrigger value="financials">
             <CreditCard className="mr-2 h-4 w-4" />
             <span className="whitespace-nowrap">Financial Profile</span>
           </TabsTrigger>
-          <TabsTrigger value="risk" className="data-[state=active]:bg-blue-500">
+          <TabsTrigger value="risk">
             <AlertCircle className="mr-2 h-4 w-4" />
             <span className="whitespace-nowrap">Risk Assessment</span>
           </TabsTrigger>
         </TabsList>
         <TabsContent value="loan" className="mt-4">
-          <Card className="border-[#1a2035] bg-[#0d121f] text-white">
+          <Card>
             <CardHeader>
               <CardTitle>Loan Information</CardTitle>
-              <CardDescription className="text-gray-400">
+              <CardDescription>
                 Details about the requested loan
               </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
                 <div className="space-y-1">
-                  <p className="text-xs text-gray-400">Loan Type</p>
+                  <p className="text-xs text-muted-foreground">Loan Type</p>
                   <p className="text-sm font-medium">{leadData.loan.type}</p>
                 </div>
                 <div className="space-y-1">
-                  <p className="text-xs text-gray-400">Amount</p>
+                  <p className="text-xs text-muted-foreground">Amount</p>
                   <p className="text-sm font-medium">{leadData.loan.amount}</p>
                 </div>
                 <div className="space-y-1">
-                  <p className="text-xs text-gray-400">Term</p>
+                  <p className="text-xs text-muted-foreground">Term</p>
                   <p className="text-sm font-medium">{leadData.loan.term}</p>
                 </div>
                 <div className="space-y-1">
-                  <p className="text-xs text-gray-400">Interest Rate</p>
+                  <p className="text-xs text-muted-foreground">Interest Rate</p>
                   <p className="text-sm font-medium">
                     {leadData.loan.interestRate}
                   </p>
                 </div>
                 <div className="space-y-1">
-                  <p className="text-xs text-gray-400">Application Date</p>
+                  <p className="text-xs text-muted-foreground">
+                    Application Date
+                  </p>
                   <p className="text-sm font-medium">
                     {leadData.loan.applicationDate}
                   </p>
                 </div>
                 <div className="space-y-1">
-                  <p className="text-xs text-gray-400">Collateral</p>
+                  <p className="text-xs text-muted-foreground">Collateral</p>
                   <p className="text-sm font-medium">
                     {leadData.loan.collateral}
                   </p>
                 </div>
                 <div className="col-span-full space-y-1">
-                  <p className="text-xs text-gray-400">Purpose</p>
+                  <p className="text-xs text-muted-foreground">Purpose</p>
                   <p className="text-sm font-medium">{leadData.loan.purpose}</p>
                 </div>
               </div>
@@ -224,10 +225,10 @@ export function LeadDetails({ leadId }: LeadDetailsProps) {
           </Card>
         </TabsContent>
         <TabsContent value="financials" className="mt-4">
-          <Card className="border-[#1a2035] bg-[#0d121f] text-white">
+          <Card>
             <CardHeader>
               <CardTitle>Financial Profile</CardTitle>
-              <CardDescription className="text-gray-400">
+              <CardDescription>
                 Financial information about the client
               </CardDescription>
             </CardHeader>
@@ -236,27 +237,29 @@ export function LeadDetails({ leadId }: LeadDetailsProps) {
                 <div className="space-y-3">
                   <div className="space-y-1">
                     <div className="flex items-center justify-between">
-                      <p className="text-xs text-gray-400">Credit Score</p>
+                      <p className="text-xs text-muted-foreground">
+                        Credit Score
+                      </p>
                       <p className="text-xs font-medium text-green-400">Good</p>
                     </div>
                     <p className="text-lg font-medium">
                       {leadData.financials.creditScore}
                     </p>
-                    <Progress
-                      value={72}
-                      className="h-1.5 bg-[#1a2035]"
-                      indicatorClassName="bg-green-500"
-                    />
+                    <Progress value={72} className="h-1.5" />
                   </div>
                 </div>
                 <div className="space-y-1">
-                  <p className="text-xs text-gray-400">Annual Revenue</p>
+                  <p className="text-xs text-muted-foreground">
+                    Annual Revenue
+                  </p>
                   <p className="text-sm font-medium">
                     {leadData.financials.annualRevenue}
                   </p>
                 </div>
                 <div className="space-y-1">
-                  <p className="text-xs text-gray-400">Monthly Profit</p>
+                  <p className="text-xs text-muted-foreground">
+                    Monthly Profit
+                  </p>
                   <p className="text-sm font-medium">
                     {leadData.financials.monthlyProfit}
                   </p>
@@ -264,7 +267,7 @@ export function LeadDetails({ leadId }: LeadDetailsProps) {
                 <div className="space-y-3">
                   <div className="space-y-1">
                     <div className="flex items-center justify-between">
-                      <p className="text-xs text-gray-400">
+                      <p className="text-xs text-muted-foreground">
                         Debt-to-Income Ratio
                       </p>
                       <p className="text-xs font-medium text-yellow-400">
@@ -274,21 +277,19 @@ export function LeadDetails({ leadId }: LeadDetailsProps) {
                     <p className="text-lg font-medium">
                       {leadData.financials.debtToIncomeRatio}
                     </p>
-                    <Progress
-                      value={32}
-                      className="h-1.5 bg-[#1a2035]"
-                      indicatorClassName="bg-yellow-500"
-                    />
+                    <Progress value={32} className="h-1.5" />
                   </div>
                 </div>
                 <div className="space-y-1">
-                  <p className="text-xs text-gray-400">Existing Loans</p>
+                  <p className="text-xs text-muted-foreground">
+                    Existing Loans
+                  </p>
                   <p className="text-sm font-medium">
                     {leadData.financials.existingLoans}
                   </p>
                 </div>
                 <div className="space-y-1">
-                  <p className="text-xs text-gray-400">Total Debt</p>
+                  <p className="text-xs text-muted-foreground">Total Debt</p>
                   <p className="text-sm font-medium">
                     {leadData.financials.totalDebt}
                   </p>
@@ -298,10 +299,10 @@ export function LeadDetails({ leadId }: LeadDetailsProps) {
           </Card>
         </TabsContent>
         <TabsContent value="risk" className="mt-4">
-          <Card className="border-[#1a2035] bg-[#0d121f] text-white">
+          <Card>
             <CardHeader>
               <CardTitle>Risk Assessment</CardTitle>
-              <CardDescription className="text-gray-400">
+              <CardDescription>
                 Risk evaluation for this loan application
               </CardDescription>
             </CardHeader>
@@ -309,7 +310,7 @@ export function LeadDetails({ leadId }: LeadDetailsProps) {
               <div className="space-y-6">
                 <div className="flex flex-col sm:flex-row sm:items-center gap-6">
                   <div className="relative h-32 w-32 flex-shrink-0 mx-auto sm:mx-0">
-                    <div className="absolute inset-0 rounded-full border-8 border-[#1a2035]"></div>
+                    <div className="absolute inset-0 rounded-full border-8 border-border"></div>
                     <div
                       className="absolute inset-0 rounded-full border-8 border-yellow-500"
                       style={{
@@ -344,7 +345,7 @@ export function LeadDetails({ leadId }: LeadDetailsProps) {
                     <ul className="space-y-2">
                       {leadData.risk.factors.map((factor, index) => (
                         <li key={index} className="flex items-start gap-2">
-                          <div className="rounded-full bg-[#1a2035] p-1 mt-0.5">
+                          <div className="rounded-full bg-muted p-1 mt-0.5">
                             <AlertCircle className="h-3 w-3 text-yellow-400" />
                           </div>
                           <span className="text-sm">{factor}</span>
@@ -353,11 +354,11 @@ export function LeadDetails({ leadId }: LeadDetailsProps) {
                     </ul>
                   </div>
                 </div>
-                <div className="rounded-md border border-[#1a2035] bg-[#0a0e17] p-3">
+                <div className="rounded-md border bg-muted/50 p-3">
                   <h4 className="text-sm font-medium mb-2">
                     Risk Assessment Summary
                   </h4>
-                  <p className="text-sm text-gray-400">
+                  <p className="text-sm text-muted-foreground">
                     This application presents a medium risk profile. The
                     business shows strong cash flow and the client has a good
                     credit history, but the limited operating history (2 years)
