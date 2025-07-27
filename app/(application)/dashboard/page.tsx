@@ -16,15 +16,19 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import {
+  LoanPortfolioChart,
+  RiskAssessmentChart,
+  ProgressChart,
+} from "@/components/charts";
 
 export default function DashboardPage() {
   return (
     <>
       <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
-        <Card className="bg-[#0d121f] text-white border-[#1a2035]">
+        <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Total Loans</CardTitle>
             <DollarSign className="h-4 w-4 text-blue-400" />
@@ -34,7 +38,7 @@ export default function DashboardPage() {
             <p className="text-xs text-green-400">+12% from last month</p>
           </CardContent>
         </Card>
-        <Card className="bg-[#0d121f] text-white border-[#1a2035]">
+        <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">
               Active Clients
@@ -46,7 +50,7 @@ export default function DashboardPage() {
             <p className="text-xs text-green-400">+8% from last month</p>
           </CardContent>
         </Card>
-        <Card className="bg-[#0d121f] text-white border-[#1a2035]">
+        <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">
               Pending Approvals
@@ -58,7 +62,7 @@ export default function DashboardPage() {
             <p className="text-xs text-red-400">+5 since yesterday</p>
           </CardContent>
         </Card>
-        <Card className="bg-[#0d121f] text-white border-[#1a2035]">
+        <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">
               Security Score
@@ -73,95 +77,73 @@ export default function DashboardPage() {
       </div>
 
       <div className="mt-6 grid gap-6 grid-cols-1 lg:grid-cols-6">
-        <Card className="col-span-1 lg:col-span-4 bg-[#0d121f] text-white border-[#1a2035]">
+        <Card className="col-span-1 lg:col-span-4">
           <CardHeader>
             <CardTitle>Loan Portfolio Overview</CardTitle>
-            <CardDescription className="text-gray-400">
+            <CardDescription>
               Monthly loan distribution by category
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="h-[300px] w-full rounded-md border border-[#1a2035] bg-[#0a0e17] p-4">
-              <div className="flex h-full items-center justify-center">
-                <Image
-                  src="/loan-portfolio-chart.png"
-                  alt="Loan Portfolio Chart"
-                  width={600}
-                  height={300}
-                  className="h-full w-full object-contain"
-                />
-              </div>
+            <div className="h-[300px] w-full rounded-md border bg-muted/50 p-4">
+              <LoanPortfolioChart type="bar" className="h-full" />
             </div>
           </CardContent>
         </Card>
-        <Card className="col-span-1 lg:col-span-2 bg-[#0d121f] text-white border-[#1a2035]">
+        <Card className="col-span-1 lg:col-span-2">
           <CardHeader>
             <CardTitle>Risk Assessment</CardTitle>
-            <CardDescription className="text-gray-400">
-              Current portfolio risk levels
-            </CardDescription>
+            <CardDescription>Current portfolio risk levels</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
-              <div className="mb-1 flex items-center justify-between">
+              <div className="mb-2 flex items-center justify-between">
                 <span className="text-xs font-medium">Low Risk</span>
-                <span className="text-xs font-medium text-green-400">68%</span>
+                <ProgressChart
+                  value={68}
+                  color="#22C55E"
+                  size="sm"
+                  showPercentage={false}
+                />
               </div>
-              <Progress
-                value={68}
-                className="h-2 bg-[#1a2035]"
-                indicatorClassName="bg-green-500"
-              />
             </div>
             <div>
-              <div className="mb-1 flex items-center justify-between">
+              <div className="mb-2 flex items-center justify-between">
                 <span className="text-xs font-medium">Medium Risk</span>
-                <span className="text-xs font-medium text-yellow-400">24%</span>
+                <ProgressChart
+                  value={24}
+                  color="#EAB308"
+                  size="sm"
+                  showPercentage={false}
+                />
               </div>
-              <Progress
-                value={24}
-                className="h-2 bg-[#1a2035]"
-                indicatorClassName="bg-yellow-500"
-              />
             </div>
             <div>
-              <div className="mb-1 flex items-center justify-between">
+              <div className="mb-2 flex items-center justify-between">
                 <span className="text-xs font-medium">High Risk</span>
-                <span className="text-xs font-medium text-red-400">8%</span>
+                <ProgressChart
+                  value={8}
+                  color="#EF4444"
+                  size="sm"
+                  showPercentage={false}
+                />
               </div>
-              <Progress
-                value={8}
-                className="h-2 bg-[#1a2035]"
-                indicatorClassName="bg-red-500"
-              />
             </div>
-            <div className="mt-6">
-              <Image
-                src="/placeholder.svg?key=qmcez"
-                alt="Risk Assessment Chart"
-                width={300}
-                height={150}
-                className="h-auto w-full"
-              />
+            <div className="mt-6 h-[150px]">
+              <RiskAssessmentChart type="doughnut" className="h-full" />
             </div>
           </CardContent>
         </Card>
       </div>
 
       <div className="mt-6 grid gap-6 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
-        <Card className="bg-[#0d121f] text-white border-[#1a2035]">
+        <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
               <CardTitle>Recent Applications</CardTitle>
-              <CardDescription className="text-gray-400">
-                Latest loan applications
-              </CardDescription>
+              <CardDescription>Latest loan applications</CardDescription>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              className="border-[#1a2035] text-white hover:bg-[#1a2035]"
-            >
+            <Button variant="outline" size="sm">
               View All
             </Button>
           </CardHeader>
@@ -199,7 +181,7 @@ export default function DashboardPage() {
               ].map((item, index) => (
                 <div
                   key={index}
-                  className="flex items-center justify-between rounded-md border border-[#1a2035] p-3"
+                  className="flex items-center justify-between rounded-md border p-3"
                 >
                   <div className="flex items-center gap-3">
                     <Avatar className="h-9 w-9">
@@ -235,16 +217,14 @@ export default function DashboardPage() {
             </div>
           </CardContent>
         </Card>
-        <Card className="bg-[#0d121f] text-white border-[#1a2035]">
+        <Card>
           <CardHeader>
             <CardTitle>Security Alerts</CardTitle>
-            <CardDescription className="text-gray-400">
-              Recent security notifications
-            </CardDescription>
+            <CardDescription>Recent security notifications</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              <div className="rounded-md border border-[#1a2035] p-3">
+              <div className="rounded-md border p-3">
                 <div className="flex items-start gap-3">
                   <div className="rounded-full bg-green-500/20 p-1.5">
                     <Shield className="h-4 w-4 text-green-500" />
@@ -253,16 +233,16 @@ export default function DashboardPage() {
                     <p className="text-sm font-medium">
                       Security Audit Completed
                     </p>
-                    <p className="text-xs text-gray-400">
+                    <p className="text-xs text-muted-foreground">
                       System-wide security audit completed successfully
                     </p>
-                    <p className="mt-1 text-xs text-gray-500">
+                    <p className="mt-1 text-xs text-muted-foreground">
                       Today, 09:42 AM
                     </p>
                   </div>
                 </div>
               </div>
-              <div className="rounded-md border border-[#1a2035] p-3">
+              <div className="rounded-md border p-3">
                 <div className="flex items-start gap-3">
                   <div className="rounded-full bg-yellow-500/20 p-1.5">
                     <AlertCircle className="h-4 w-4 text-yellow-500" />
@@ -271,17 +251,17 @@ export default function DashboardPage() {
                     <p className="text-sm font-medium">
                       Multiple Login Attempts
                     </p>
-                    <p className="text-xs text-gray-400">
+                    <p className="text-xs text-muted-foreground">
                       Multiple failed login attempts detected from IP
                       192.168.1.45
                     </p>
-                    <p className="mt-1 text-xs text-gray-500">
+                    <p className="mt-1 text-xs text-muted-foreground">
                       Yesterday, 11:23 PM
                     </p>
                   </div>
                 </div>
               </div>
-              <div className="rounded-md border border-[#1a2035] p-3">
+              <div className="rounded-md border p-3">
                 <div className="flex items-start gap-3">
                   <div className="rounded-full bg-blue-500/20 p-1.5">
                     <Activity className="h-4 w-4 text-blue-500" />
@@ -290,14 +270,16 @@ export default function DashboardPage() {
                     <p className="text-sm font-medium">
                       System Update Available
                     </p>
-                    <p className="text-xs text-gray-400">
+                    <p className="text-xs text-muted-foreground">
                       New security patch available for installation
                     </p>
-                    <p className="mt-1 text-xs text-gray-500">May 8, 2025</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      May 8, 2025
+                    </p>
                   </div>
                 </div>
               </div>
-              <div className="rounded-md border border-[#1a2035] p-3">
+              <div className="rounded-md border p-3">
                 <div className="flex items-start gap-3">
                   <div className="rounded-full bg-green-500/20 p-1.5">
                     <Shield className="h-4 w-4 text-green-500" />
@@ -306,35 +288,31 @@ export default function DashboardPage() {
                     <p className="text-sm font-medium">
                       Firewall Rules Updated
                     </p>
-                    <p className="text-xs text-gray-400">
+                    <p className="text-xs text-muted-foreground">
                       Firewall rules have been updated and applied successfully
                     </p>
-                    <p className="mt-1 text-xs text-gray-500">May 7, 2025</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      May 7, 2025
+                    </p>
                   </div>
                 </div>
               </div>
             </div>
           </CardContent>
         </Card>
-        <Card className="bg-[#0d121f] text-white border-[#1a2035]">
+        <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
               <CardTitle>Inbox</CardTitle>
-              <CardDescription className="text-gray-400">
-                Items requiring your attention
-              </CardDescription>
+              <CardDescription>Items requiring your attention</CardDescription>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              className="border-[#1a2035] text-white hover:bg-[#1a2035]"
-            >
+            <Button variant="outline" size="sm">
               View All
             </Button>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              <div className="rounded-md border border-[#1a2035] p-3">
+              <div className="rounded-md border p-3">
                 <div className="flex items-start gap-3">
                   <div className="rounded-full bg-blue-500/20 p-1.5">
                     <Users className="h-4 w-4 text-blue-500" />
@@ -349,7 +327,7 @@ export default function DashboardPage() {
                         New
                       </Badge>
                     </div>
-                    <p className="text-xs text-gray-400">
+                    <p className="text-xs text-muted-foreground">
                       Robert Johnson - KYC verification needed
                     </p>
                     <div className="mt-2 flex items-center gap-2">
@@ -362,7 +340,7 @@ export default function DashboardPage() {
                       <Button
                         size="sm"
                         variant="outline"
-                        className="h-7 px-2 py-1 text-xs border-[#1a2035] hover:bg-[#1a2035]"
+                        className="h-7 px-2 py-1 text-xs"
                       >
                         Later
                       </Button>
@@ -371,7 +349,7 @@ export default function DashboardPage() {
                 </div>
               </div>
 
-              <div className="rounded-md border border-[#1a2035] p-3">
+              <div className="rounded-md border p-3">
                 <div className="flex items-start gap-3">
                   <div className="rounded-full bg-green-500/20 p-1.5">
                     <CreditCard className="h-4 w-4 text-green-500" />
@@ -386,7 +364,7 @@ export default function DashboardPage() {
                         Urgent
                       </Badge>
                     </div>
-                    <p className="text-xs text-gray-400">
+                    <p className="text-xs text-muted-foreground">
                       $245,000 Mortgage - Final approval needed
                     </p>
                     <div className="mt-2 flex items-center gap-2">
@@ -399,7 +377,7 @@ export default function DashboardPage() {
                       <Button
                         size="sm"
                         variant="outline"
-                        className="h-7 px-2 py-1 text-xs border-[#1a2035] hover:bg-[#1a2035]"
+                        className="h-7 px-2 py-1 text-xs"
                       >
                         Review Details
                       </Button>
@@ -408,7 +386,7 @@ export default function DashboardPage() {
                 </div>
               </div>
 
-              <div className="rounded-md border border-[#1a2035] p-3">
+              <div className="rounded-md border p-3">
                 <div className="flex items-start gap-3">
                   <div className="rounded-full bg-purple-500/20 p-1.5">
                     <DollarSign className="h-4 w-4 text-purple-500" />
@@ -423,7 +401,7 @@ export default function DashboardPage() {
                         Ready
                       </Badge>
                     </div>
-                    <p className="text-xs text-gray-400">
+                    <p className="text-xs text-muted-foreground">
                       $50,000 Business loan - Ready for disbursement
                     </p>
                     <div className="mt-2 flex items-center gap-2">
@@ -436,7 +414,7 @@ export default function DashboardPage() {
                       <Button
                         size="sm"
                         variant="outline"
-                        className="h-7 px-2 py-1 text-xs border-[#1a2035] hover:bg-[#1a2035]"
+                        className="h-7 px-2 py-1 text-xs"
                       >
                         Schedule
                       </Button>
@@ -445,7 +423,7 @@ export default function DashboardPage() {
                 </div>
               </div>
 
-              <div className="rounded-md border border-[#1a2035] p-3">
+              <div className="rounded-md border p-3">
                 <div className="flex items-start gap-3">
                   <div className="rounded-full bg-red-500/20 p-1.5">
                     <AlertCircle className="h-4 w-4 text-red-500" />
@@ -460,7 +438,7 @@ export default function DashboardPage() {
                         Action Needed
                       </Badge>
                     </div>
-                    <p className="text-xs text-gray-400">
+                    <p className="text-xs text-muted-foreground">
                       $125,000 Mortgage - Additional verification required
                     </p>
                     <div className="mt-2 flex items-center gap-2">
@@ -473,7 +451,7 @@ export default function DashboardPage() {
                       <Button
                         size="sm"
                         variant="outline"
-                        className="h-7 px-2 py-1 text-xs border-[#1a2035] hover:bg-[#1a2035]"
+                        className="h-7 px-2 py-1 text-xs"
                       >
                         Assign
                       </Button>
@@ -487,18 +465,16 @@ export default function DashboardPage() {
       </div>
 
       <div className="mt-6 overflow-hidden">
-        <Card className="bg-[#0d121f] text-white border-[#1a2035]">
+        <Card>
           <CardHeader>
             <CardTitle>Compliance Dashboard</CardTitle>
-            <CardDescription className="text-gray-400">
-              Regulatory compliance status
-            </CardDescription>
+            <CardDescription>Regulatory compliance status</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto -mx-4 px-4">
               <table className="w-full text-sm min-w-[640px]">
                 <thead>
-                  <tr className="border-b border-[#1a2035]">
+                  <tr className="border-b">
                     <th className="px-4 py-3 text-left font-medium">
                       Regulation
                     </th>
@@ -562,7 +538,7 @@ export default function DashboardPage() {
                       riskColor: "text-green-400",
                     },
                   ].map((item, index) => (
-                    <tr key={index} className="border-b border-[#1a2035]">
+                    <tr key={index} className="border-b">
                       <td className="px-4 py-3">{item.regulation}</td>
                       <td className="px-4 py-3">
                         <Badge
@@ -572,10 +548,10 @@ export default function DashboardPage() {
                           {item.status}
                         </Badge>
                       </td>
-                      <td className="px-4 py-3 text-gray-400">
+                      <td className="px-4 py-3 text-muted-foreground">
                         {item.lastAudit}
                       </td>
-                      <td className="px-4 py-3 text-gray-400">
+                      <td className="px-4 py-3 text-muted-foreground">
                         {item.nextReview}
                       </td>
                       <td className={`px-4 py-3 ${item.riskColor}`}>

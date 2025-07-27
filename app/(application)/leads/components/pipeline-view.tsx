@@ -21,195 +21,115 @@ import {
 } from "@/components/ui/select";
 import { Filter, ChevronRight, AlertCircle, Clock } from "lucide-react";
 import Link from "next/link";
+import {
+  PipelineFunnelChart,
+  ConversionMetricsChart,
+} from "@/components/charts";
+import { LeadsData } from "@/app/actions/leads-actions";
 
-// Define the pipeline stages
-const pipelineStages = [
-  { id: "qualification", name: "Lead Qualification", color: "bg-blue-500" },
-  { id: "documents", name: "Document Collection", color: "bg-purple-500" },
-  { id: "assessment", name: "Credit Assessment", color: "bg-yellow-500" },
-  { id: "approval", name: "Approval", color: "bg-green-500" },
-  { id: "disbursement", name: "Disbursement", color: "bg-teal-500" },
-];
+interface PipelineViewProps {
+  initialData: LeadsData;
+}
 
-// Sample lead data
-const sampleLeads = [
-  {
-    id: "1001",
-    client: "Robert Johnson",
-    amount: "$125,000",
-    type: "Business Loan",
-    stage: "qualification",
-    timeInStage: "1d 4h",
-    sla: "2d",
-    status: "normal", // normal, warning, overdue
-    assignee: "JD",
-    assigneeName: "John Doe",
-    assigneeColor: "bg-blue-500",
-  },
-  {
-    id: "1002",
-    client: "Sarah Williams",
-    amount: "$75,000",
-    type: "Personal Loan",
-    stage: "documents",
-    timeInStage: "2d 6h",
-    sla: "3d",
-    status: "warning",
-    assignee: "AS",
-    assigneeName: "Alice Smith",
-    assigneeColor: "bg-purple-500",
-  },
-  {
-    id: "1003",
-    client: "Michael Chen",
-    amount: "$250,000",
-    type: "Mortgage",
-    stage: "assessment",
-    timeInStage: "4d 2h",
-    sla: "3d",
-    status: "overdue",
-    assignee: "RJ",
-    assigneeName: "Robert Johnson",
-    assigneeColor: "bg-yellow-500",
-  },
-  {
-    id: "1004",
-    client: "Emily Rodriguez",
-    amount: "$180,000",
-    type: "Business Loan",
-    stage: "assessment",
-    timeInStage: "1d 5h",
-    sla: "3d",
-    status: "normal",
-    assignee: "RJ",
-    assigneeName: "Robert Johnson",
-    assigneeColor: "bg-yellow-500",
-  },
-  {
-    id: "1005",
-    client: "David Kim",
-    amount: "$95,000",
-    type: "Personal Loan",
-    stage: "approval",
-    timeInStage: "0d 8h",
-    sla: "2d",
-    status: "normal",
-    assignee: "AD",
-    assigneeName: "Alex Donovan",
-    assigneeColor: "bg-green-500",
-  },
-  {
-    id: "1006",
-    client: "Jennifer Lee",
-    amount: "$320,000",
-    type: "Mortgage",
-    stage: "disbursement",
-    timeInStage: "0d 4h",
-    sla: "1d",
-    status: "normal",
-    assignee: "MS",
-    assigneeName: "Maria Santos",
-    assigneeColor: "bg-teal-500",
-  },
-];
-
-export function PipelineView() {
+export function PipelineView({ initialData }: PipelineViewProps) {
   const [filter, setFilter] = useState("all");
+  const { leads, pipelineStages } = initialData;
 
   // Get counts for each stage
   const stageCounts = pipelineStages.reduce((acc, stage) => {
-    acc[stage.id] = sampleLeads.filter(
-      (lead) => lead.stage === stage.id
-    ).length;
+    acc[stage.id] = leads.filter((lead) => lead.stage === stage.id).length;
     return acc;
   }, {} as Record<string, number>);
 
   // Get total count
-  const totalLeads = sampleLeads.length;
+  const totalLeads = leads.length;
 
   // Calculate percentages for the funnel visualization
   const stagePercentages = pipelineStages.map((stage) => {
     return {
       ...stage,
       count: stageCounts[stage.id],
-      percentage: (stageCounts[stage.id] / totalLeads) * 100,
+      percentage:
+        totalLeads > 0 ? (stageCounts[stage.id] / totalLeads) * 100 : 0,
     };
   });
 
   // Filter leads based on selected filter
   const filteredLeads =
     filter === "all"
-      ? sampleLeads
-      : sampleLeads.filter((lead) => {
+      ? leads
+      : leads.filter((lead) => {
           if (filter === "overdue") return lead.status === "overdue";
           if (filter === "warning") return lead.status === "warning";
           return lead.stage === filter;
         });
 
+  // Convert stage color hex to CSS class for compatibility
+  const getStageColorClass = (color: string) => {
+    const colorMap: Record<string, string> = {
+      "#3b82f6": "bg-blue-500",
+      "#8b5cf6": "bg-purple-500",
+      "#f59e0b": "bg-yellow-500",
+      "#10b981": "bg-green-500",
+      "#14b8a6": "bg-teal-500",
+    };
+    return colorMap[color] || "bg-gray-500";
+  };
+
   return (
     <div className="space-y-6">
-      <Card className="border-[#1a2035] bg-[#0d121f] text-white">
+      <Card>
         <CardHeader>
           <CardTitle>Sales Pipeline</CardTitle>
-          <CardDescription className="text-gray-400">
+          <CardDescription>
             Visualize your loan processing funnel
           </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="space-y-6">
             {/* Funnel visualization */}
-            <div className="space-y-3">
-              {stagePercentages.map((stage, index) => (
-                <div key={stage.id} className="space-y-1">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div
-                        className={`h-3 w-3 rounded-full ${stage.color}`}
-                      ></div>
-                      <span className="text-sm">{stage.name}</span>
-                    </div>
-                    <span className="text-sm">
-                      {stage.count} leads ({Math.round(stage.percentage)}%)
-                    </span>
-                  </div>
-                  <Progress
-                    value={stage.percentage}
-                    className="h-2 bg-[#1a2035]"
-                    indicatorClassName={stage.color}
-                  />
-                </div>
-              ))}
+            <div className="h-[250px]">
+              <PipelineFunnelChart
+                stageData={stagePercentages.map((stage) => {
+                  return {
+                    name: stage.name,
+                    count: stage.count,
+                    color: stage.color, // Use the hex color directly from the database
+                  };
+                })}
+                className="h-full"
+              />
             </div>
 
             {/* Conversion metrics */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-4 border-t border-[#1a2035]">
-              <div>
-                <p className="text-xs text-gray-400">
-                  Qualification → Documents
-                </p>
-                <p className="text-lg font-semibold text-white">85%</p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-400">Documents → Assessment</p>
-                <p className="text-lg font-semibold text-white">78%</p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-400">Assessment → Approval</p>
-                <p className="text-lg font-semibold text-white">65%</p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-400">Approval → Disbursement</p>
-                <p className="text-lg font-semibold text-white">95%</p>
+            <div className="pt-4 border-t">
+              <h4 className="text-sm font-medium mb-3">Conversion Rates</h4>
+              <div className="h-[150px]">
+                <ConversionMetricsChart
+                  data={initialData.metrics.conversionMetrics}
+                  className="h-full"
+                />
               </div>
             </div>
 
             {/* Average TAT metrics */}
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 pt-4 border-t border-[#1a2035]">
-              {pipelineStages.map((stage) => (
-                <div key={stage.id}>
-                  <p className="text-xs text-gray-400">{stage.name} Avg. TAT</p>
-                  <p className="text-lg font-semibold text-white">1.8d</p>
-                  <p className="text-xs text-green-400">-0.2d vs SLA</p>
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 pt-4 border-t">
+              {initialData.metrics.stageTATMetrics.map((stageMetric) => (
+                <div key={stageMetric.stageId}>
+                  <p className="text-xs text-muted-foreground">
+                    {stageMetric.stageName} Avg. TAT
+                  </p>
+                  <p className="text-lg font-semibold">{stageMetric.avgTAT}d</p>
+                  <p
+                    className={`text-xs ${
+                      stageMetric.variance <= 0
+                        ? "text-green-400"
+                        : "text-red-400"
+                    }`}
+                  >
+                    {stageMetric.variance > 0 ? "+" : ""}
+                    {stageMetric.variance}d vs SLA
+                  </p>
                 </div>
               ))}
             </div>
@@ -217,22 +137,22 @@ export function PipelineView() {
         </CardContent>
       </Card>
 
-      <Card className="border-[#1a2035] bg-[#0d121f] text-white">
+      <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <div>
             <CardTitle>Pipeline Leads</CardTitle>
-            <CardDescription className="text-gray-400">
+            <CardDescription>
               View and manage leads in your pipeline
             </CardDescription>
           </div>
           <Select value={filter} onValueChange={setFilter}>
-            <SelectTrigger className="w-[180px] border-[#1a2035] bg-[#0a0e17]">
+            <SelectTrigger className="w-[180px]">
               <div className="flex items-center gap-2">
-                <Filter className="h-4 w-4 text-gray-400" />
+                <Filter className="h-4 w-4" />
                 <SelectValue placeholder="Filter leads" />
               </div>
             </SelectTrigger>
-            <SelectContent className="border-[#1a2035] bg-[#0d121f] text-white">
+            <SelectContent>
               <SelectItem value="all">All Leads</SelectItem>
               <SelectItem value="overdue">Overdue</SelectItem>
               <SelectItem value="warning">At Risk</SelectItem>
@@ -250,7 +170,7 @@ export function PipelineView() {
               filteredLeads.map((lead) => (
                 <div
                   key={lead.id}
-                  className="flex flex-col sm:flex-row sm:items-center justify-between rounded-md border border-[#1a2035] bg-[#0a0e17] p-3 hover:bg-[#141b2d]"
+                  className="flex flex-col sm:flex-row sm:items-center justify-between rounded-md border p-3 hover:bg-accent/50"
                 >
                   <div className="flex items-start gap-3 mb-3 sm:mb-0">
                     <Avatar className="h-10 w-10">
@@ -286,13 +206,10 @@ export function PipelineView() {
                         )}
                       </div>
                       <div className="flex items-center gap-2 mt-1">
-                        <Badge
-                          variant="outline"
-                          className="border-[#1a2035] bg-[#1a2035] text-xs text-gray-300"
-                        >
+                        <Badge variant="outline" className="text-xs">
                           {lead.type}
                         </Badge>
-                        <span className="text-xs text-gray-400">
+                        <span className="text-xs text-muted-foreground">
                           {lead.amount}
                         </span>
                       </div>
@@ -301,14 +218,14 @@ export function PipelineView() {
                   <div className="flex flex-wrap items-center gap-3 justify-between sm:justify-end">
                     <div className="flex items-center gap-2">
                       <div className="flex items-center gap-1">
-                        <Clock className="h-3 w-3 text-gray-400" />
+                        <Clock className="h-3 w-3 text-muted-foreground" />
                         <span
                           className={`text-xs ${
                             lead.status === "overdue"
                               ? "text-red-400"
                               : lead.status === "warning"
                               ? "text-yellow-400"
-                              : "text-gray-400"
+                              : "text-muted-foreground"
                           }`}
                         >
                           {lead.timeInStage} / {lead.sla}
@@ -325,17 +242,12 @@ export function PipelineView() {
                     </div>
                     <div className="flex items-center gap-2">
                       <Badge
-                        className={`${
-                          lead.stage === "qualification"
-                            ? "bg-blue-500"
-                            : lead.stage === "documents"
-                            ? "bg-purple-500"
-                            : lead.stage === "assessment"
-                            ? "bg-yellow-500"
-                            : lead.stage === "approval"
-                            ? "bg-green-500"
-                            : "bg-teal-500"
-                        } text-white border-0 text-xs`}
+                        className="text-white border-0 text-xs"
+                        style={{
+                          backgroundColor:
+                            pipelineStages.find((s) => s.id === lead.stage)
+                              ?.color || "#6B7280",
+                        }}
                       >
                         {pipelineStages.find((s) => s.id === lead.stage)?.name}
                       </Badge>
@@ -355,8 +267,8 @@ export function PipelineView() {
               ))
             ) : (
               <div className="flex flex-col items-center justify-center py-8">
-                <AlertCircle className="h-8 w-8 text-gray-400 mb-2" />
-                <p className="text-gray-400">
+                <AlertCircle className="h-8 w-8 text-muted-foreground mb-2" />
+                <p className="text-muted-foreground">
                   No leads match your filter criteria
                 </p>
               </div>

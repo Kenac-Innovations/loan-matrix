@@ -30,16 +30,7 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { usePathname } from "next/navigation";
-
-type Message = {
-  role: "user" | "assistant";
-  content: string;
-  sources?: {
-    title: string;
-    excerpt: string;
-    documentType: string;
-  }[];
-};
+import { useChatContext, type Message } from "@/contexts/chat-context";
 
 type Suggestion = {
   text: string;
@@ -56,9 +47,15 @@ type ContextualSuggestions = {
 
 export function AIAssistant() {
   const pathname = usePathname();
+  const { currentSession, addMessage, isLoading, setIsLoading } =
+    useChatContext();
+
+  // Hide the FAB when on the dedicated AI assistant page
+  if (pathname === "/ai-assistant") {
+    return null;
+  }
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
   const [showTooltip, setShowTooltip] = useState(false);
   const [tooltipIndex, setTooltipIndex] = useState(0);
   const [isPulsing, setIsPulsing] = useState(false);
@@ -68,13 +65,6 @@ export function AIAssistant() {
     [key: string]: string[];
   }>({});
   const [lastPathChange, setLastPathChange] = useState<string | null>(null);
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      role: "assistant",
-      content:
-        "Hello! I'm your KENAC Loan Matrix AI assistant. How can I help you with loan information today?",
-    },
-  ]);
 
   // Sample documents for demonstration
   const sampleDocuments = [
@@ -289,7 +279,7 @@ export function AIAssistant() {
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
-  }, [messages]);
+  }, [currentSession.messages]);
 
   // Track path changes
   useEffect(() => {
@@ -373,9 +363,16 @@ export function AIAssistant() {
     if (!query.trim()) return;
 
     const userQuery = query.trim();
+    const messageId = Date.now().toString();
+    const userMessage: Message = {
+      id: messageId,
+      role: "user",
+      content: userQuery,
+      timestamp: new Date(),
+    };
 
-    // Add user message
-    setMessages((prev) => [...prev, { role: "user", content: userQuery }]);
+    // Add user message using context
+    addMessage(userMessage);
 
     // Clear input and set loading
     setQuery("");
@@ -407,23 +404,29 @@ export function AIAssistant() {
         })) || [];
 
       const assistantMessage: Message = {
+        id: (Date.now() + 1).toString(),
         role: "assistant",
         content: ragResponse.answer,
+        timestamp: new Date(),
         sources: formattedSources,
       };
 
-      setMessages((prev) => [...prev, assistantMessage]);
+      // Add assistant message using context
+      addMessage(assistantMessage);
     } catch (error) {
       console.error("Error querying RAG system:", error);
 
       // Fallback to sample response
       const fallbackResponse: Message = {
+        id: (Date.now() + 1).toString(),
         role: "assistant",
         content:
           "I'm sorry, I'm having trouble accessing the knowledge base right now. Please try again later or contact support if the issue persists.",
+        timestamp: new Date(),
       };
 
-      setMessages((prev) => [...prev, fallbackResponse]);
+      // Add error message using context
+      addMessage(fallbackResponse);
     } finally {
       setIsLoading(false);
     }
@@ -544,7 +547,7 @@ export function AIAssistant() {
                 <ScrollArea className="h-full">
                   <CardContent className="p-4">
                     <div className="space-y-4">
-                      {messages.map((message, index) => (
+                      {currentSession.messages.map((message, index) => (
                         <div
                           key={index}
                           className={`flex ${

@@ -5,15 +5,34 @@ import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Trash2, GripVertical, Plus, Edit2 } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Badge } from "@/components/ui/badge";
+import {
+  Trash2,
+  GripVertical,
+  Plus,
+  Edit2,
+  ArrowRight,
+  Settings,
+} from "lucide-react";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { ColourPicker } from "./colour-picker";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 type Stage = {
   id: string;
   name: string;
   description: string;
   color: string;
+  isInitialState?: boolean;
+  isFinalState?: boolean;
+  allowedTransitions?: string[];
 };
 
 export function PipelineConfig() {
@@ -107,162 +126,305 @@ export function PipelineConfig() {
     setEditingStage(null);
   };
 
+  const handleToggleTransition = (fromStageId: string, toStageId: string) => {
+    setStages(
+      stages.map((stage) => {
+        if (stage.id === fromStageId) {
+          const currentTransitions = stage.allowedTransitions || [];
+          const hasTransition = currentTransitions.includes(toStageId);
+
+          return {
+            ...stage,
+            allowedTransitions: hasTransition
+              ? currentTransitions.filter((id) => id !== toStageId)
+              : [...currentTransitions, toStageId],
+          };
+        }
+        return stage;
+      })
+    );
+  };
+
   return (
     <div className="space-y-6">
       <div className="space-y-4">
-        <h3 className="text-lg font-medium text-white">Pipeline Stages</h3>
-        <p className="text-sm text-gray-400">
-          Drag and drop to reorder stages. Click on a stage to edit its details.
+        <h3 className="text-lg font-medium">
+          Pipeline State Machine Configuration
+        </h3>
+        <p className="text-sm text-muted-foreground">
+          Configure your pipeline stages and state transitions. This creates a
+          state machine that controls how leads move through your pipeline.
         </p>
       </div>
 
-      <DragDropContext onDragEnd={handleDragEnd}>
-        <Droppable droppableId="stages">
-          {(provided) => (
-            <div
-              {...provided.droppableProps}
-              ref={provided.innerRef}
-              className="space-y-2"
-            >
-              {stages.map((stage, index) => (
-                <Draggable key={stage.id} draggableId={stage.id} index={index}>
-                  {(provided) => (
-                    <div
-                      ref={provided.innerRef}
-                      {...provided.draggableProps}
-                      className="flex items-center space-x-2 bg-[#1a2035] rounded-md border border-[#2a304d] p-3"
+      <Tabs defaultValue="stages" className="space-y-6">
+        <TabsList>
+          <TabsTrigger value="stages">
+            <Settings className="mr-2 h-4 w-4" />
+            Stages
+          </TabsTrigger>
+          <TabsTrigger value="transitions">
+            <ArrowRight className="mr-2 h-4 w-4" />
+            Transitions
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="stages" className="space-y-6">
+          <DragDropContext onDragEnd={handleDragEnd}>
+            <Droppable droppableId="stages">
+              {(provided) => (
+                <div
+                  {...provided.droppableProps}
+                  ref={provided.innerRef}
+                  className="space-y-2"
+                >
+                  {stages.map((stage, index) => (
+                    <Draggable
+                      key={stage.id}
+                      draggableId={stage.id}
+                      index={index}
                     >
-                      <div
-                        {...provided.dragHandleProps}
-                        className="cursor-grab"
-                      >
-                        <GripVertical className="h-5 w-5 text-gray-400" />
-                      </div>
-                      <div
-                        className="w-4 h-4 rounded-full"
-                        style={{ backgroundColor: stage.color }}
-                      />
-                      <div className="flex-1">
-                        <div className="font-medium text-white">
-                          {stage.name}
+                      {(provided) => (
+                        <div
+                          ref={provided.innerRef}
+                          {...provided.draggableProps}
+                          className="flex items-center space-x-2 bg-card rounded-md border p-3"
+                        >
+                          <div
+                            {...provided.dragHandleProps}
+                            className="cursor-grab"
+                          >
+                            <GripVertical className="h-5 w-5 text-muted-foreground" />
+                          </div>
+                          <div
+                            className="w-4 h-4 rounded-full"
+                            style={{ backgroundColor: stage.color }}
+                          />
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                              <div className="font-medium">{stage.name}</div>
+                              {stage.isInitialState && (
+                                <Badge variant="secondary" className="text-xs">
+                                  Initial
+                                </Badge>
+                              )}
+                              {stage.isFinalState && (
+                                <Badge variant="secondary" className="text-xs">
+                                  Final
+                                </Badge>
+                              )}
+                            </div>
+                            <div className="text-sm text-muted-foreground">
+                              {stage.description}
+                            </div>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleEditStage(stage)}
+                            className="text-muted-foreground hover:text-foreground"
+                          >
+                            <Edit2 className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleDeleteStage(stage.id)}
+                            className="text-muted-foreground hover:text-foreground"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
                         </div>
-                        <div className="text-sm text-gray-400">
-                          {stage.description}
-                        </div>
+                      )}
+                    </Draggable>
+                  ))}
+                  {provided.placeholder}
+                </div>
+              )}
+            </Droppable>
+          </DragDropContext>
+
+          <Card>
+            <CardContent className="pt-6">
+              <div className="space-y-4">
+                <h3 className="text-lg font-medium">
+                  {editingStage ? "Edit Stage" : "Add New Stage"}
+                </h3>
+                <div className="grid gap-4">
+                  <div className="grid gap-2">
+                    <Label htmlFor="name">Stage Name</Label>
+                    <Input
+                      id="name"
+                      value={editingStage ? editingStage.name : newStage.name}
+                      onChange={(e) =>
+                        editingStage
+                          ? setEditingStage({
+                              ...editingStage,
+                              name: e.target.value,
+                            })
+                          : setNewStage({ ...newStage, name: e.target.value })
+                      }
+                      placeholder="Enter stage name"
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="description">Description</Label>
+                    <Input
+                      id="description"
+                      value={
+                        editingStage
+                          ? editingStage.description
+                          : newStage.description || ""
+                      }
+                      onChange={(e) =>
+                        editingStage
+                          ? setEditingStage({
+                              ...editingStage,
+                              description: e.target.value,
+                            })
+                          : setNewStage({
+                              ...newStage,
+                              description: e.target.value,
+                            })
+                      }
+                      placeholder="Enter stage description"
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label>Stage Color</Label>
+                    <ColourPicker
+                      colour={
+                        editingStage
+                          ? editingStage.color
+                          : newStage.color || "#3b82f6"
+                      }
+                      onChange={(color) =>
+                        editingStage
+                          ? setEditingStage({ ...editingStage, color })
+                          : setNewStage({ ...newStage, color })
+                      }
+                    />
+                  </div>
+
+                  {editingStage && (
+                    <div className="space-y-3">
+                      <div className="flex items-center space-x-2">
+                        <Checkbox
+                          id="isInitialState"
+                          checked={editingStage.isInitialState || false}
+                          onCheckedChange={(checked) =>
+                            setEditingStage({
+                              ...editingStage,
+                              isInitialState: checked as boolean,
+                            })
+                          }
+                        />
+                        <Label htmlFor="isInitialState" className="text-sm">
+                          Initial State (leads start here)
+                        </Label>
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleEditStage(stage)}
-                        className="text-gray-400 hover:text-white hover:bg-[#2a304d]"
-                      >
-                        <Edit2 className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleDeleteStage(stage.id)}
-                        className="text-gray-400 hover:text-white hover:bg-[#2a304d]"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                      <div className="flex items-center space-x-2">
+                        <Checkbox
+                          id="isFinalState"
+                          checked={editingStage.isFinalState || false}
+                          onCheckedChange={(checked) =>
+                            setEditingStage({
+                              ...editingStage,
+                              isFinalState: checked as boolean,
+                            })
+                          }
+                        />
+                        <Label htmlFor="isFinalState" className="text-sm">
+                          Final State (leads end here)
+                        </Label>
+                      </div>
                     </div>
                   )}
-                </Draggable>
-              ))}
-              {provided.placeholder}
-            </div>
-          )}
-        </Droppable>
-      </DragDropContext>
 
-      <Card className="bg-[#1a2035] border-[#2a304d]">
-        <CardContent className="pt-6">
-          <div className="space-y-4">
-            <h3 className="text-lg font-medium text-white">
-              {editingStage ? "Edit Stage" : "Add New Stage"}
-            </h3>
-            <div className="grid gap-4">
-              <div className="grid gap-2">
-                <Label htmlFor="name" className="text-gray-300">
-                  Stage Name
-                </Label>
-                <Input
-                  id="name"
-                  value={editingStage ? editingStage.name : newStage.name}
-                  onChange={(e) =>
-                    editingStage
-                      ? setEditingStage({
-                          ...editingStage,
-                          name: e.target.value,
-                        })
-                      : setNewStage({ ...newStage, name: e.target.value })
-                  }
-                  placeholder="Enter stage name"
-                  className="bg-[#0d121f] border-[#2a304d] text-white"
-                />
+                  <Button
+                    onClick={editingStage ? handleUpdateStage : handleAddStage}
+                    className="w-full mt-2 bg-blue-500 hover:bg-blue-600 text-white"
+                  >
+                    {editingStage ? "Update Stage" : "Add Stage"}
+                    {!editingStage && <Plus className="ml-2 h-4 w-4" />}
+                  </Button>
+                  {editingStage && (
+                    <Button
+                      variant="outline"
+                      onClick={() => setEditingStage(null)}
+                    >
+                      Cancel
+                    </Button>
+                  )}
+                </div>
               </div>
-              <div className="grid gap-2">
-                <Label htmlFor="description" className="text-gray-300">
-                  Description
-                </Label>
-                <Input
-                  id="description"
-                  value={
-                    editingStage
-                      ? editingStage.description
-                      : newStage.description || ""
-                  }
-                  onChange={(e) =>
-                    editingStage
-                      ? setEditingStage({
-                          ...editingStage,
-                          description: e.target.value,
-                        })
-                      : setNewStage({
-                          ...newStage,
-                          description: e.target.value,
-                        })
-                  }
-                  placeholder="Enter stage description"
-                  className="bg-[#0d121f] border-[#2a304d] text-white"
-                />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="transitions" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>State Transitions</CardTitle>
+              <CardDescription>
+                Configure which stages can transition to other stages. This
+                creates the state machine logic.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {stages.map((fromStage) => (
+                  <div key={fromStage.id} className="border rounded-lg p-4">
+                    <div className="flex items-center gap-2 mb-3">
+                      <div
+                        className="w-4 h-4 rounded-full"
+                        style={{ backgroundColor: fromStage.color }}
+                      />
+                      <h4 className="font-medium">{fromStage.name}</h4>
+                      <ArrowRight className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm text-muted-foreground">
+                        can transition to:
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                      {stages
+                        .filter((stage) => stage.id !== fromStage.id)
+                        .map((toStage) => (
+                          <div
+                            key={toStage.id}
+                            className="flex items-center space-x-2"
+                          >
+                            <Checkbox
+                              id={`${fromStage.id}-${toStage.id}`}
+                              checked={
+                                fromStage.allowedTransitions?.includes(
+                                  toStage.id
+                                ) || false
+                              }
+                              onCheckedChange={() =>
+                                handleToggleTransition(fromStage.id, toStage.id)
+                              }
+                            />
+                            <Label
+                              htmlFor={`${fromStage.id}-${toStage.id}`}
+                              className="text-sm flex items-center gap-2"
+                            >
+                              <div
+                                className="w-3 h-3 rounded-full"
+                                style={{ backgroundColor: toStage.color }}
+                              />
+                              {toStage.name}
+                            </Label>
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                ))}
               </div>
-              <div className="grid gap-2">
-                <Label className="text-gray-300">Stage Color</Label>
-                <ColourPicker
-                  colour={
-                    editingStage
-                      ? editingStage.color
-                      : newStage.color || "#3b82f6"
-                  }
-                  onChange={(color) =>
-                    editingStage
-                      ? setEditingStage({ ...editingStage, color })
-                      : setNewStage({ ...newStage, color })
-                  }
-                />
-              </div>
-              <Button
-                onClick={editingStage ? handleUpdateStage : handleAddStage}
-                className="w-full mt-2 bg-blue-500 hover:bg-blue-600 text-white"
-              >
-                {editingStage ? "Update Stage" : "Add Stage"}
-                {!editingStage && <Plus className="ml-2 h-4 w-4" />}
-              </Button>
-              {editingStage && (
-                <Button
-                  variant="outline"
-                  onClick={() => setEditingStage(null)}
-                  className="border-[#2a304d] text-gray-300 hover:bg-[#2a304d] hover:text-white"
-                >
-                  Cancel
-                </Button>
-              )}
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

@@ -72,7 +72,7 @@ const initialTemplates = [
     name: "Lead Assignment Notification",
     type: "email",
     subject: "New Lead Assignment: [Lead ID]",
-    body: "Dear [Recipient Name],\n\nYou have been assigned to lead [Lead ID] for [Client Name] in the [Stage Name] stage.\n\nLead Details:\nClient: [Client Name]\nLoan Amount: [Loan Amount]\nLoan Type: [Loan Type]\nStage: [Stage Name]\n\nPlease review and take appropriate action.\n\nRegards,\nENAC Loan Matrix",
+    body: "Dear [Recipient Name],\n\nYou have been assigned to lead [Lead ID] for [Client Name] in the [Stage Name] stage.\n\nLead Details:\nClient: [Client Name]\nLoan Amount: [Loan Amount]\nLoan Type: [Loan Type]\nStage: [Stage Name]\n\nPlease review and take appropriate action.\n\nRegards,\nKENAC Loan Matrix",
     triggers: ["assignment"],
     recipients: ["assignee"],
     isActive: true,
@@ -184,13 +184,13 @@ export function NotificationConfig() {
       <div className="flex justify-between items-center">
         <div>
           <h3 className="text-lg font-medium">Notification Templates</h3>
-          <p className="text-sm text-gray-400">
+          <p className="text-sm text-muted-foreground">
             Configure notification templates for different events
           </p>
         </div>
         <Button
           onClick={handleAddTemplate}
-          className="bg-blue-500 hover:bg-blue-600"
+          className="bg-blue-600 hover:bg-blue-700 text-white"
         >
           <Plus className="mr-2 h-4 w-4" />
           Add Template
@@ -202,15 +202,18 @@ export function NotificationConfig() {
         onValueChange={setActiveTab}
         className="space-y-4"
       >
-        <TabsList className="bg-[#0d121f] border border-[#1a2035] w-full sm:w-auto">
+        <TabsList className="bg-muted border border-border w-full sm:w-auto">
           <TabsTrigger
             value="email"
-            className="data-[state=active]:bg-blue-500"
+            className="data-[state=active]:bg-blue-600 data-[state=active]:text-white"
           >
             <Mail className="mr-2 h-4 w-4" />
             <span className="whitespace-nowrap">Email Templates</span>
           </TabsTrigger>
-          <TabsTrigger value="sms" className="data-[state=active]:bg-blue-500">
+          <TabsTrigger
+            value="sms"
+            className="data-[state=active]:bg-blue-600 data-[state=active]:text-white"
+          >
             <MessageSquare className="mr-2 h-4 w-4" />
             <span className="whitespace-nowrap">SMS Templates</span>
           </TabsTrigger>
@@ -219,7 +222,7 @@ export function NotificationConfig() {
         <TabsContent value="email">
           <div className="space-y-4">
             {filteredTemplates.length === 0 ? (
-              <div className="p-8 text-center text-gray-400 border border-[#1a2035] rounded-md">
+              <div className="p-8 text-center text-muted-foreground border border-border rounded-md">
                 <AlertCircle className="mx-auto h-8 w-8 mb-2" />
                 <p>
                   No email templates configured. Click "Add Template" to create
@@ -230,16 +233,16 @@ export function NotificationConfig() {
               filteredTemplates.map((template) => (
                 <div
                   key={template.id}
-                  className="border border-[#1a2035] rounded-md bg-[#0a0e17] overflow-hidden"
+                  className="border border-border rounded-md bg-card overflow-hidden"
                 >
-                  <div className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#1a2035]">
+                  <div className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border">
                     <div className="flex items-center gap-3">
                       <div className="h-10 w-10 rounded-md bg-blue-500/20 flex items-center justify-center">
                         <Mail className="h-5 w-5 text-blue-400" />
                       </div>
                       <div>
                         <h4 className="text-md font-medium">{template.name}</h4>
-                        <p className="text-sm text-gray-400">
+                        <p className="text-sm text-muted-foreground">
                           Subject: {template.subject}
                         </p>
                       </div>
@@ -259,7 +262,7 @@ export function NotificationConfig() {
                         variant="outline"
                         size="sm"
                         onClick={() => handleEditTemplate(template)}
-                        className="border-[#1a2035] hover:bg-[#1a2035]"
+                        className="border-border hover:bg-muted"
                       >
                         <Edit className="mr-2 h-4 w-4" />
                         Edit
@@ -268,7 +271,7 @@ export function NotificationConfig() {
                         variant="outline"
                         size="sm"
                         onClick={() => handleDeleteTemplate(template.id)}
-                        className="border-[#1a2035] hover:bg-[#1a2035] text-red-400 hover:text-red-300"
+                        className="border-border hover:bg-muted text-red-400 hover:text-red-300"
                       >
                         <Trash2 className="mr-2 h-4 w-4" />
                         Delete
@@ -279,8 +282,8 @@ export function NotificationConfig() {
                   <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
                       <h5 className="text-sm font-medium mb-2">Email Body</h5>
-                      <div className="rounded-md border border-[#1a2035] bg-[#0d121f] p-3 max-h-[200px] overflow-y-auto">
-                        <pre className="text-xs text-gray-400 whitespace-pre-wrap">
+                      <div className="rounded-md border border-border bg-muted p-3 max-h-[200px] overflow-y-auto">
+                        <pre className="text-xs text-muted-foreground whitespace-pre-wrap">
                           {template.body}
                         </pre>
                       </div>
@@ -293,7 +296,7 @@ export function NotificationConfig() {
                           {template.triggers.map((trigger: string) => (
                             <Badge
                               key={trigger}
-                              className="bg-[#1a2035] hover:bg-[#1a2035] text-white"
+                              className="bg-muted hover:bg-muted text-foreground"
                             >
                               {trigger === "stage-change"
                                 ? "Stage Change"
@@ -315,7 +318,7 @@ export function NotificationConfig() {
                           {template.recipients.map((recipient: string) => (
                             <Badge
                               key={recipient}
-                              className="bg-[#1a2035] hover:bg-[#1a2035] text-white"
+                              className="bg-muted hover:bg-muted text-foreground"
                             >
                               {recipient === "team-lead"
                                 ? "Team Lead"
@@ -343,7 +346,7 @@ export function NotificationConfig() {
         <TabsContent value="sms">
           <div className="space-y-4">
             {filteredTemplates.length === 0 ? (
-              <div className="p-8 text-center text-gray-400 border border-[#1a2035] rounded-md">
+              <div className="p-8 text-center text-muted-foreground border border-border rounded-md">
                 <AlertCircle className="mx-auto h-8 w-8 mb-2" />
                 <p>
                   No SMS templates configured. Click "Add Template" to create
@@ -354,9 +357,9 @@ export function NotificationConfig() {
               filteredTemplates.map((template) => (
                 <div
                   key={template.id}
-                  className="border border-[#1a2035] rounded-md bg-[#0a0e17] overflow-hidden"
+                  className="border border-border rounded-md bg-card overflow-hidden"
                 >
-                  <div className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#1a2035]">
+                  <div className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border">
                     <div className="flex items-center gap-3">
                       <div className="h-10 w-10 rounded-md bg-purple-500/20 flex items-center justify-center">
                         <MessageSquare className="h-5 w-5 text-purple-400" />
@@ -380,7 +383,7 @@ export function NotificationConfig() {
                         variant="outline"
                         size="sm"
                         onClick={() => handleEditTemplate(template)}
-                        className="border-[#1a2035] hover:bg-[#1a2035]"
+                        className="border-border hover:bg-muted"
                       >
                         <Edit className="mr-2 h-4 w-4" />
                         Edit
@@ -389,7 +392,7 @@ export function NotificationConfig() {
                         variant="outline"
                         size="sm"
                         onClick={() => handleDeleteTemplate(template.id)}
-                        className="border-[#1a2035] hover:bg-[#1a2035] text-red-400 hover:text-red-300"
+                        className="border-border hover:bg-muted text-red-400 hover:text-red-300"
                       >
                         <Trash2 className="mr-2 h-4 w-4" />
                         Delete
@@ -400,9 +403,11 @@ export function NotificationConfig() {
                   <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
                       <h5 className="text-sm font-medium mb-2">SMS Message</h5>
-                      <div className="rounded-md border border-[#1a2035] bg-[#0d121f] p-3">
-                        <p className="text-xs text-gray-400">{template.body}</p>
-                        <p className="text-xs text-gray-500 mt-2">
+                      <div className="rounded-md border border-border bg-muted p-3">
+                        <p className="text-xs text-muted-foreground">
+                          {template.body}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-2">
                           Character count: {template.body.length} / 160
                         </p>
                       </div>
@@ -415,7 +420,7 @@ export function NotificationConfig() {
                           {template.triggers.map((trigger: string) => (
                             <Badge
                               key={trigger}
-                              className="bg-[#1a2035] hover:bg-[#1a2035] text-white"
+                              className="bg-muted hover:bg-muted text-foreground"
                             >
                               {trigger === "stage-change"
                                 ? "Stage Change"
@@ -437,7 +442,7 @@ export function NotificationConfig() {
                           {template.recipients.map((recipient: string) => (
                             <Badge
                               key={recipient}
-                              className="bg-[#1a2035] hover:bg-[#1a2035] text-white"
+                              className="bg-muted hover:bg-muted text-foreground"
                             >
                               {recipient === "team-lead"
                                 ? "Team Lead"
@@ -464,7 +469,7 @@ export function NotificationConfig() {
       </Tabs>
 
       <div className="flex justify-end">
-        <Button className="bg-blue-500 hover:bg-blue-600">
+        <Button className="bg-blue-600 hover:bg-blue-700 text-white">
           <Save className="mr-2 h-4 w-4" />
           Save Configuration
         </Button>
@@ -472,12 +477,12 @@ export function NotificationConfig() {
 
       {/* Edit/Add Template Dialog */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="border-[#1a2035] bg-[#0d121f] text-white max-w-2xl">
+        <DialogContent className="border-border bg-card text-foreground max-w-2xl">
           <DialogHeader>
             <DialogTitle>
               {editingTemplate?.id ? "Edit Template" : "Add New Template"}
             </DialogTitle>
-            <DialogDescription className="text-gray-400">
+            <DialogDescription className="text-muted-foreground">
               {editingTemplate?.id
                 ? "Edit the details of this notification template"
                 : "Configure a new notification template"}
@@ -498,7 +503,7 @@ export function NotificationConfig() {
                         name: e.target.value,
                       })
                     }
-                    className="border-[#1a2035] bg-[#0a0e17]"
+                    className="border-border bg-background"
                   />
                 </div>
 
@@ -514,7 +519,7 @@ export function NotificationConfig() {
                           subject: e.target.value,
                         })
                       }
-                      className="border-[#1a2035] bg-[#0a0e17]"
+                      className="border-border bg-background"
                     />
                   </div>
                 )}
@@ -534,10 +539,10 @@ export function NotificationConfig() {
                         body: e.target.value,
                       })
                     }
-                    className="border-[#1a2035] bg-[#0a0e17] min-h-[150px]"
+                    className="border-border bg-background min-h-[150px]"
                   />
                   {editingTemplate?.type === "sms" && (
-                    <p className="text-xs text-gray-400">
+                    <p className="text-xs text-muted-foreground">
                       Character count: {editingTemplate?.body?.length || 0} /
                       160
                     </p>
@@ -562,7 +567,7 @@ export function NotificationConfig() {
               <div className="space-y-4">
                 <div>
                   <Label className="block mb-2">Triggers</Label>
-                  <div className="space-y-2 border border-[#1a2035] rounded-md p-2 bg-[#0a0e17]">
+                  <div className="space-y-2 border border-border rounded-md p-2 bg-muted">
                     <div className="flex items-center space-x-2">
                       <input
                         type="checkbox"
@@ -571,7 +576,7 @@ export function NotificationConfig() {
                           "stage-change"
                         )}
                         onChange={() => handleTriggerChange("stage-change")}
-                        className="rounded border-[#1a2035] bg-[#0a0e17]"
+                        className="rounded border-border bg-background"
                       />
                       <Label htmlFor="trigger-stage-change" className="text-sm">
                         Stage Change
@@ -585,7 +590,7 @@ export function NotificationConfig() {
                           "sla-warning"
                         )}
                         onChange={() => handleTriggerChange("sla-warning")}
-                        className="rounded border-[#1a2035] bg-[#0a0e17]"
+                        className="rounded border-border bg-background"
                       />
                       <Label htmlFor="trigger-sla-warning" className="text-sm">
                         SLA Warning
@@ -599,7 +604,7 @@ export function NotificationConfig() {
                           "sla-breach"
                         )}
                         onChange={() => handleTriggerChange("sla-breach")}
-                        className="rounded border-[#1a2035] bg-[#0a0e17]"
+                        className="rounded border-border bg-background"
                       />
                       <Label htmlFor="trigger-sla-breach" className="text-sm">
                         SLA Breach
@@ -613,7 +618,7 @@ export function NotificationConfig() {
                           "assignment"
                         )}
                         onChange={() => handleTriggerChange("assignment")}
-                        className="rounded border-[#1a2035] bg-[#0a0e17]"
+                        className="rounded border-border bg-background"
                       />
                       <Label htmlFor="trigger-assignment" className="text-sm">
                         Assignment
@@ -624,7 +629,7 @@ export function NotificationConfig() {
 
                 <div>
                   <Label className="block mb-2">Recipients</Label>
-                  <div className="space-y-2 border border-[#1a2035] rounded-md p-2 bg-[#0a0e17]">
+                  <div className="space-y-2 border border-border rounded-md p-2 bg-muted">
                     <div className="flex items-center space-x-2">
                       <input
                         type="checkbox"
@@ -633,7 +638,7 @@ export function NotificationConfig() {
                           "team-lead"
                         )}
                         onChange={() => handleRecipientChange("team-lead")}
-                        className="rounded border-[#1a2035] bg-[#0a0e17]"
+                        className="rounded border-border bg-background"
                       />
                       <Label htmlFor="recipient-team-lead" className="text-sm">
                         Team Lead
@@ -647,7 +652,7 @@ export function NotificationConfig() {
                           "team-members"
                         )}
                         onChange={() => handleRecipientChange("team-members")}
-                        className="rounded border-[#1a2035] bg-[#0a0e17]"
+                        className="rounded border-border bg-background"
                       />
                       <Label
                         htmlFor="recipient-team-members"
@@ -664,7 +669,7 @@ export function NotificationConfig() {
                           "manager"
                         )}
                         onChange={() => handleRecipientChange("manager")}
-                        className="rounded border-[#1a2035] bg-[#0a0e17]"
+                        className="rounded border-border bg-background"
                       />
                       <Label htmlFor="recipient-manager" className="text-sm">
                         Manager
@@ -678,7 +683,7 @@ export function NotificationConfig() {
                           "assignee"
                         )}
                         onChange={() => handleRecipientChange("assignee")}
-                        className="rounded border-[#1a2035] bg-[#0a0e17]"
+                        className="rounded border-border bg-background"
                       />
                       <Label htmlFor="recipient-assignee" className="text-sm">
                         Assignee
@@ -692,7 +697,7 @@ export function NotificationConfig() {
                           "client"
                         )}
                         onChange={() => handleRecipientChange("client")}
-                        className="rounded border-[#1a2035] bg-[#0a0e17]"
+                        className="rounded border-border bg-background"
                       />
                       <Label htmlFor="recipient-client" className="text-sm">
                         Client
@@ -701,56 +706,56 @@ export function NotificationConfig() {
                   </div>
                 </div>
 
-                <div className="border border-[#1a2035] rounded-md p-3 bg-[#0a0e17]">
+                <div className="border border-border rounded-md p-3 bg-muted">
                   <h5 className="text-sm font-medium mb-2">
                     Available Variables
                   </h5>
                   <div className="grid grid-cols-2 gap-2">
                     <Badge
                       variant="outline"
-                      className="justify-start border-[#1a2035] text-xs"
+                      className="justify-start border-border text-xs"
                     >
                       [Lead ID]
                     </Badge>
                     <Badge
                       variant="outline"
-                      className="justify-start border-[#1a2035] text-xs"
+                      className="justify-start border-border text-xs"
                     >
                       [Client Name]
                     </Badge>
                     <Badge
                       variant="outline"
-                      className="justify-start border-[#1a2035] text-xs"
+                      className="justify-start border-border text-xs"
                     >
                       [Stage Name]
                     </Badge>
                     <Badge
                       variant="outline"
-                      className="justify-start border-[#1a2035] text-xs"
+                      className="justify-start border-border text-xs"
                     >
                       [Assignee Name]
                     </Badge>
                     <Badge
                       variant="outline"
-                      className="justify-start border-[#1a2035] text-xs"
+                      className="justify-start border-border text-xs"
                     >
                       [Time in Stage]
                     </Badge>
                     <Badge
                       variant="outline"
-                      className="justify-start border-[#1a2035] text-xs"
+                      className="justify-start border-border text-xs"
                     >
                       [SLA Deadline]
                     </Badge>
                     <Badge
                       variant="outline"
-                      className="justify-start border-[#1a2035] text-xs"
+                      className="justify-start border-border text-xs"
                     >
                       [Recipient Name]
                     </Badge>
                     <Badge
                       variant="outline"
-                      className="justify-start border-[#1a2035] text-xs"
+                      className="justify-start border-border text-xs"
                     >
                       [Loan Amount]
                     </Badge>
@@ -764,13 +769,13 @@ export function NotificationConfig() {
             <Button
               variant="outline"
               onClick={() => setIsDialogOpen(false)}
-              className="border-[#1a2035] hover:bg-[#1a2035]"
+              className="border-border hover:bg-muted"
             >
               Cancel
             </Button>
             <Button
               onClick={handleSaveTemplate}
-              className="bg-blue-500 hover:bg-blue-600"
+              className="bg-blue-600 hover:bg-blue-700 text-white"
             >
               {editingTemplate?.id ? "Update Template" : "Create Template"}
             </Button>

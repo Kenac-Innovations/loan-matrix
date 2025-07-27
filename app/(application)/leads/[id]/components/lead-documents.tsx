@@ -93,11 +93,11 @@ export function LeadDocuments({ leadId }: LeadDocumentsProps) {
   }, {} as Record<string, typeof documents>);
 
   return (
-    <Card className="border-[#1a2035] bg-[#0d121f] text-white">
+    <Card>
       <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <CardTitle>Lead Documents</CardTitle>
-          <CardDescription className="text-gray-400">
+          <CardDescription>
             Documents submitted for this loan application
           </CardDescription>
         </div>
@@ -110,30 +110,31 @@ export function LeadDocuments({ leadId }: LeadDocumentsProps) {
         <div className="space-y-6">
           {Object.entries(documentsByCategory).map(([category, docs]) => (
             <div key={category}>
-              <h3 className="text-sm font-medium mb-3">{category}</h3>
+              <h3 className="text-sm font-medium mb-3 text-foreground">
+                {category}
+              </h3>
               <div className="space-y-3">
                 {docs.map((doc) => (
                   <div
                     key={doc.id}
-                    className="flex flex-col sm:flex-row sm:items-center justify-between rounded-md border border-[#1a2035] bg-[#0a0e17] p-3 hover:bg-[#141b2d]"
+                    className="flex flex-col sm:flex-row sm:items-center justify-between rounded-md border border-border bg-card p-3 hover:bg-muted/50"
                   >
                     <div className="flex items-start gap-3 mb-3 sm:mb-0">
                       <div className="rounded-md bg-blue-500/20 p-2">
-                        <FileText className="h-5 w-5 text-blue-400" />
+                        <FileText className="h-5 w-5 text-blue-500" />
                       </div>
                       <div>
-                        <p className="text-sm font-medium">{doc.name}</p>
+                        <p className="text-sm font-medium text-foreground">
+                          {doc.name}
+                        </p>
                         <div className="flex items-center gap-2 mt-1">
-                          <Badge
-                            variant="outline"
-                            className="border-[#1a2035] bg-[#1a2035] text-xs text-gray-300"
-                          >
+                          <Badge variant="outline" className="text-xs">
                             {doc.type}
                           </Badge>
-                          <span className="text-xs text-gray-400">
+                          <span className="text-xs text-muted-foreground">
                             {doc.size}
                           </span>
-                          <span className="text-xs text-gray-400">
+                          <span className="text-xs text-muted-foreground">
                             • {doc.uploadDate}
                           </span>
                         </div>
@@ -143,7 +144,7 @@ export function LeadDocuments({ leadId }: LeadDocumentsProps) {
                       {doc.status === "verified" ? (
                         <Badge
                           variant="outline"
-                          className="border-green-500 bg-green-500/10 text-green-400 text-xs"
+                          className="border-green-500 bg-green-500/10 text-green-500 text-xs"
                         >
                           <CheckCircle2 className="mr-1 h-3 w-3" />
                           Verified
@@ -151,7 +152,7 @@ export function LeadDocuments({ leadId }: LeadDocumentsProps) {
                       ) : (
                         <Badge
                           variant="outline"
-                          className="border-yellow-500 bg-yellow-500/10 text-yellow-400 text-xs"
+                          className="border-yellow-500 bg-yellow-500/10 text-yellow-500 text-xs"
                         >
                           <AlertCircle className="mr-1 h-3 w-3" />
                           Pending Verification
@@ -161,21 +162,21 @@ export function LeadDocuments({ leadId }: LeadDocumentsProps) {
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-8 w-8 text-gray-400 hover:text-white"
+                          className="h-8 w-8 text-muted-foreground hover:text-foreground"
                         >
                           <Eye className="h-4 w-4" />
                         </Button>
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-8 w-8 text-gray-400 hover:text-white"
+                          className="h-8 w-8 text-muted-foreground hover:text-foreground"
                         >
                           <Download className="h-4 w-4" />
                         </Button>
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-8 w-8 text-gray-400 hover:text-red-400"
+                          className="h-8 w-8 text-muted-foreground hover:text-red-500"
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>

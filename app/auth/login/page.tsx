@@ -14,7 +14,8 @@ import { BorderBeam } from "@/components/magicui/border-beam";
 import { Meteors } from "@/components/magicui/meteors";
 import { useAuth } from "@/contexts/auth-context";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
+import { ThemeToggle } from "@/components/theme-toggle";
+import { ThemeAwareLogo } from "@/components/ui/theme-aware-logo";
 
 export default function LoginPage() {
   const [username, setUsername] = useState("");
@@ -58,12 +59,14 @@ export default function LoginPage() {
     }
   };
   return (
-    <div className="min-h-screen flex flex-col md:flex-row bg-[#020b14] overflow-hidden relative">
-      {/* Star Field Animation */}
-      {/* <Particles /> */}
+    <div className="min-h-screen flex flex-col md:flex-row bg-background overflow-hidden relative">
+      {/* Theme Toggle - positioned in top right */}
+      <div className="absolute top-4 right-4 z-50">
+        <ThemeToggle />
+      </div>
 
-      {/* Globe Background */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none z-0 opacity-30">
+      {/* Star Field Animation */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none z-0 opacity-90">
         <Meteors number={10} />
         <Particles />
         <div className="absolute inset-0 translate-x-[200px]">
@@ -75,25 +78,20 @@ export default function LoginPage() {
       <div className="hidden md:block md:w-1/2 relative z-10">
         <div className="absolute inset-0 z-20 flex flex-col justify-between p-12 mx-auto max-w-4xl">
           <div>
-            <Image
-              src="/kenac_logo.png"
-              alt="Kenac Logo"
-              width={150}
-              height={150}
-            />
+            <ThemeAwareLogo width={150} height={150} />
           </div>
 
           <div className="space-y-8 max-w-md">
             <div className="space-y-2">
-              <p className="text-[#2a9fff] text-lg font-medium">
+              <p className="text-blue-500 text-lg font-medium">
                 Let's put Security everywhere
               </p>
-              <p className="text-white text-lg">
+              <p className="text-foreground text-lg">
                 Empowering Secure Lending, Everywhere.
               </p>
             </div>
 
-            <h2 className="text-6xl font-bold text-white leading-tight">
+            <h2 className="text-6xl font-bold text-foreground leading-tight">
               LOAN
               <br />
               MATRIX
@@ -101,33 +99,33 @@ export default function LoginPage() {
 
             <div className="relative translate-x-[200px]">
               <div className="absolute -right-40 -top-20 w-80 h-80">
-                <div className="absolute inset-0 border-2 border-[#2a9fff]/30 rounded-full animate-[spin_30s_linear_infinite]"></div>
-                <div className="absolute inset-4 border border-[#2a9fff]/20 rounded-full animate-[spin_20s_linear_infinite_reverse]"></div>
-                <div className="absolute inset-10 border border-[#2a9fff]/10 rounded-full animate-[spin_25s_linear_infinite]"></div>
+                <div className="absolute inset-0 border-2 border-blue-500/30 rounded-full animate-[spin_30s_linear_infinite]"></div>
+                <div className="absolute inset-4 border border-blue-500/20 rounded-full animate-[spin_20s_linear_infinite_reverse]"></div>
+                <div className="absolute inset-10 border border-blue-500/10 rounded-full animate-[spin_25s_linear_infinite]"></div>
                 <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="w-32 h-32 bg-[#041e42]/50 backdrop-blur-sm rounded-lg flex items-center justify-center">
-                    <LockIcon className="h-16 w-16 text-[#2a9fff]" />
+                  <div className="w-32 h-32 bg-card/50 backdrop-blur-sm rounded-lg flex items-center justify-center border border-border">
+                    <LockIcon className="h-16 w-16 text-blue-500" />
                   </div>
                 </div>
               </div>
             </div>
 
             <div className="grid grid-cols-3 gap-6 pt-8">
-              <div className="flex flex-col items-center bg-[#041e42]/50 backdrop-blur-sm rounded-lg p-4 transition-all duration-300 hover:bg-[#041e42]/70 border border-[#2a9fff]/20">
-                <ShieldIcon className="h-8 w-8 text-[#2a9fff] mb-2" />
-                <span className="text-white text-sm font-medium text-center">
+              <div className="flex flex-col items-center bg-card/50 backdrop-blur-sm rounded-lg p-4 transition-all duration-300 hover:bg-card/70 border border-border">
+                <ShieldIcon className="h-8 w-8 text-blue-500 mb-2" />
+                <span className="text-foreground text-sm font-medium text-center">
                   Enterprise Security
                 </span>
               </div>
-              <div className="flex flex-col items-center bg-[#041e42]/50 backdrop-blur-sm rounded-lg p-4 transition-all duration-300 hover:bg-[#041e42]/70 border border-[#2a9fff]/20">
-                <ServerIcon className="h-8 w-8 text-[#2a9fff] mb-2" />
-                <span className="text-white text-sm font-medium text-center">
+              <div className="flex flex-col items-center bg-card/50 backdrop-blur-sm rounded-lg p-4 transition-all duration-300 hover:bg-card/70 border border-border">
+                <ServerIcon className="h-8 w-8 text-blue-500 mb-2" />
+                <span className="text-foreground text-sm font-medium text-center">
                   Advanced Analytics
                 </span>
               </div>
-              <div className="flex flex-col items-center bg-[#041e42]/50 backdrop-blur-sm rounded-lg p-4 transition-all duration-300 hover:bg-[#041e42]/70 border border-[#2a9fff]/20">
+              <div className="flex flex-col items-center bg-card/50 backdrop-blur-sm rounded-lg p-4 transition-all duration-300 hover:bg-card/70 border border-border">
                 <svg
-                  className="h-8 w-8 text-[#2a9fff] mb-2"
+                  className="h-8 w-8 text-blue-500 mb-2"
                   viewBox="0 0 24 24"
                   fill="none"
                   xmlns="http://www.w3.org/2000/svg"
@@ -140,7 +138,7 @@ export default function LoginPage() {
                     strokeLinejoin="round"
                   />
                 </svg>
-                <span className="text-white text-sm font-medium text-center">
+                <span className="text-foreground text-sm font-medium text-center">
                   Compliance Ready
                 </span>
               </div>
@@ -148,7 +146,10 @@ export default function LoginPage() {
           </div>
 
           <div className="flex items-center space-x-4">
-            <Button className="bg-transparent border border-[#2a9fff] text-white hover:bg-[#2a9fff]/20 transition-all duration-300">
+            <Button
+              variant="outline"
+              className="border-blue-500 text-foreground hover:bg-blue-500/20 transition-all duration-300"
+            >
               LOAN MANAGEMENT
             </Button>
           </div>
@@ -159,18 +160,17 @@ export default function LoginPage() {
       <div className="flex flex-col justify-center items-center p-6 md:p-12 lg:p-16 w-full md:w-1/2 relative z-10">
         <div className="w-full max-w-md space-y-8 mx-auto">
           <div className="md:hidden flex justify-center mb-8">
-            <LoanSystemLogo className="h-12 w-auto" />
+            <ThemeAwareLogo width={120} height={40} className="h-12 w-auto" />
           </div>
 
-          <div className="text-center space-y-2 mb-8">
-            <h1 className="text-3xl font-bold tracking-tight text-white">
-              Secure Login
-            </h1>
-            <p className="text-[#2a9fff]">Access your account to continue</p>
-          </div>
-
-          <Card className="w-full shadow-xl border-[#2a9fff]/20 overflow-hidden transition-all duration-300 hover:border-[#2a9fff]/40 bg-[#041e42]/70 backdrop-blur-sm">
+          <Card className="w-full shadow-xl border-border overflow-hidden transition-all duration-300 hover:border-blue-500/40 bg-card/70 backdrop-blur-sm">
             <CardContent className="p-8 space-y-6">
+              <div className="text-center space-y-2 mb-8">
+                <h1 className="text-3xl font-bold tracking-tight text-foreground">
+                  Secure Login
+                </h1>
+                <p className="text-blue-500">Access your account to continue</p>
+              </div>
               <form onSubmit={handleSubmit} className="space-y-4">
                 {error && (
                   <div className="bg-red-500/10 border border-red-500/30 rounded-md p-3 flex items-start gap-2">
@@ -182,7 +182,7 @@ export default function LoginPage() {
                 <div className="space-y-2">
                   <Label
                     htmlFor="username"
-                    className="text-sm font-medium text-white"
+                    className="text-sm font-medium text-foreground"
                   >
                     Username
                   </Label>
@@ -191,13 +191,13 @@ export default function LoginPage() {
                       id="username"
                       type="text"
                       placeholder="Enter your username"
-                      className="pl-10 py-6 bg-[#020b14] border-[#2a9fff]/30 focus:border-[#2a9fff] focus:ring-[#2a9fff] transition-all duration-200 text-white"
+                      className="pl-10 py-6 bg-background border-border focus:border-blue-500 focus:ring-blue-500 transition-all duration-200 text-foreground"
                       value={username}
                       onChange={(e) => setUsername(e.target.value)}
                       required
                     />
                     <svg
-                      className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-[#2a9fff]"
+                      className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-blue-500"
                       xmlns="http://www.w3.org/2000/svg"
                       viewBox="0 0 24 24"
                       fill="none"
@@ -216,13 +216,13 @@ export default function LoginPage() {
                   <div className="flex items-center justify-between">
                     <Label
                       htmlFor="password"
-                      className="text-sm font-medium text-white"
+                      className="text-sm font-medium text-foreground"
                     >
                       Password
                     </Label>
                     <Link
                       href="/reset-password"
-                      className="text-xs text-[#2a9fff] hover:text-[#5eb8ff] font-medium transition-colors"
+                      className="text-xs text-blue-500 hover:text-blue-600 font-medium transition-colors"
                     >
                       Forgot password?
                     </Link>
@@ -231,12 +231,12 @@ export default function LoginPage() {
                     <Input
                       id="password"
                       type="password"
-                      className="pl-10 py-6 bg-[#020b14] border-[#2a9fff]/30 focus:border-[#2a9fff] focus:ring-[#2a9fff] transition-all duration-200 text-white"
+                      className="pl-10 py-6 bg-background border-border focus:border-blue-500 focus:ring-blue-500 transition-all duration-200 text-foreground"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       required
                     />
-                    <LockIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-[#2a9fff]" />
+                    <LockIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-blue-500" />
                   </div>
                 </div>
 
@@ -244,16 +244,16 @@ export default function LoginPage() {
                   <input
                     type="checkbox"
                     id="remember"
-                    className="rounded border-[#2a9fff]/30 text-[#2a9fff] focus:ring-[#2a9fff] h-4 w-4 bg-[#020b14]"
+                    className="rounded border-border text-blue-500 focus:ring-blue-500 h-4 w-4 bg-background"
                   />
-                  <label htmlFor="remember" className="text-sm text-white">
+                  <label htmlFor="remember" className="text-sm text-foreground">
                     Remember me for 30 days
                   </label>
                 </div>
 
                 <Button
                   type="submit"
-                  className="w-full py-6 bg-[#2a9fff] hover:bg-[#1d8ae6] text-white font-medium rounded-md transition-all duration-200 shadow-md hover:shadow-lg hover:shadow-[#2a9fff]/20 flex items-center justify-center gap-2"
+                  className="w-full py-6 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-md transition-all duration-200 shadow-md hover:shadow-lg hover:shadow-blue-500/20 flex items-center justify-center gap-2"
                   disabled={isLoading}
                 >
                   {isLoading ? (
@@ -281,14 +281,14 @@ export default function LoginPage() {
             <BorderBeam
               duration={8}
               size={100}
-              className="from-transparent via-red-500 to-transparent"
+              className="from-transparent via-blue-500 to-transparent"
             />
           </Card>
 
           <div className="flex items-center justify-center space-x-2 pt-4">
-            <div className="p-2 rounded-full bg-[#041e42]">
+            <div className="p-2 rounded-full bg-card border border-border">
               <svg
-                className="h-4 w-4 text-[#2a9fff]"
+                className="h-4 w-4 text-blue-500"
                 xmlns="http://www.w3.org/2000/svg"
                 viewBox="0 0 24 24"
                 fill="none"
@@ -301,29 +301,29 @@ export default function LoginPage() {
                 <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
               </svg>
             </div>
-            <span className="text-sm text-[#2a9fff]">
+            <span className="text-sm text-blue-500">
               Secure, encrypted connection
             </span>
           </div>
 
-          <div className="text-center text-sm text-[#2a9fff]/70 pt-4">
+          <div className="text-center text-sm text-muted-foreground pt-4">
             © 2025 Enterprise Loan Management System. All rights reserved.
             <div className="flex justify-center space-x-4 mt-2">
               <Link
                 href="/terms"
-                className="text-[#2a9fff] hover:text-[#5eb8ff] text-xs"
+                className="text-blue-500 hover:text-blue-600 text-xs"
               >
                 Terms
               </Link>
               <Link
                 href="/privacy"
-                className="text-[#2a9fff] hover:text-[#5eb8ff] text-xs"
+                className="text-blue-500 hover:text-blue-600 text-xs"
               >
                 Privacy
               </Link>
               <Link
                 href="/support"
-                className="text-[#2a9fff] hover:text-[#5eb8ff] text-xs"
+                className="text-blue-500 hover:text-blue-600 text-xs"
               >
                 Support
               </Link>

@@ -34,28 +34,11 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "@/components/ui/use-toast";
-
-type Message = {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  timestamp: Date;
-  sources?: {
-    title: string;
-    excerpt: string;
-    documentType: string;
-    similarity?: number;
-  }[];
-  responseTime?: number;
-};
-
-type ChatSession = {
-  id: string;
-  title: string;
-  messages: Message[];
-  createdAt: Date;
-  updatedAt: Date;
-};
+import {
+  useChatContext,
+  type Message,
+  type ChatSession,
+} from "@/contexts/chat-context";
 
 const SAMPLE_SUGGESTIONS = [
   {
@@ -101,25 +84,19 @@ const SAMPLE_SUGGESTIONS = [
 ];
 
 export default function AIAssistantPage() {
-  const [currentSession, setCurrentSession] = useState<ChatSession>({
-    id: "default",
-    title: "New Chat",
-    messages: [
-      {
-        id: "welcome",
-        role: "assistant",
-        content:
-          "Welcome to the KENAC AI Assistant! I'm here to help you with loan management, client information, analytics, and compliance questions. How can I assist you today?",
-        timestamp: new Date(),
-      },
-    ],
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  });
+  const {
+    currentSession,
+    sessions,
+    addMessage,
+    createNewSession,
+    switchToSession,
+    clearCurrentSession,
+    exportSession,
+    isLoading,
+    setIsLoading,
+  } = useChatContext();
 
-  const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [query, setQuery] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
   const [selectedSuggestion, setSelectedSuggestion] = useState<string | null>(
     null
   );
@@ -144,12 +121,8 @@ export default function AIAssistantPage() {
       timestamp: new Date(),
     };
 
-    // Add user message to current session
-    setCurrentSession((prev) => ({
-      ...prev,
-      messages: [...prev.messages, userMessage],
-      updatedAt: new Date(),
-    }));
+    // Add user message using context
+    addMessage(userMessage);
 
     // Clear input and set loading
     setQuery("");
@@ -192,11 +165,8 @@ export default function AIAssistantPage() {
         responseTime,
       };
 
-      setCurrentSession((prev) => ({
-        ...prev,
-        messages: [...prev.messages, assistantMessage],
-        updatedAt: new Date(),
-      }));
+      // Add assistant message using context
+      addMessage(assistantMessage);
 
       toast({
         title: "Response generated",
@@ -213,11 +183,8 @@ export default function AIAssistantPage() {
         timestamp: new Date(),
       };
 
-      setCurrentSession((prev) => ({
-        ...prev,
-        messages: [...prev.messages, errorMessage],
-        updatedAt: new Date(),
-      }));
+      // Add error message using context
+      addMessage(errorMessage);
 
       toast({
         title: "Error",
@@ -243,24 +210,7 @@ export default function AIAssistantPage() {
   };
 
   const exportChat = () => {
-    const chatData = {
-      session: currentSession,
-      exportedAt: new Date().toISOString(),
-    };
-
-    const blob = new Blob([JSON.stringify(chatData, null, 2)], {
-      type: "application/json",
-    });
-
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `chat-session-${currentSession.id}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-
+    exportSession(currentSession.id);
     toast({
       title: "Chat exported",
       description: "Chat session has been downloaded",
@@ -268,22 +218,7 @@ export default function AIAssistantPage() {
   };
 
   const clearChat = () => {
-    setCurrentSession({
-      id: Date.now().toString(),
-      title: "New Chat",
-      messages: [
-        {
-          id: "welcome",
-          role: "assistant",
-          content:
-            "Welcome to the KENAC AI Assistant! I'm here to help you with loan management, client information, analytics, and compliance questions. How can I assist you today?",
-          timestamp: new Date(),
-        },
-      ],
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    });
-
+    clearCurrentSession();
     toast({
       title: "Chat cleared",
       description: "Started a new chat session",
@@ -291,16 +226,11 @@ export default function AIAssistantPage() {
   };
 
   const newChat = () => {
-    // Save current session if it has messages beyond welcome
-    if (currentSession.messages.length > 1) {
-      setSessions((prev) => [currentSession, ...prev]);
-    }
-
-    clearChat();
+    createNewSession();
   };
 
   return (
-    <div className="flex h-screen bg-gray-50 dark:bg-gray-900">
+    <div className="flex h-full bg-gray-50 dark:bg-gray-900">
       {/* Sidebar */}
       <div className="w-80 border-r border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 flex flex-col">
         {/* Header */}
@@ -382,7 +312,7 @@ export default function AIAssistantPage() {
                   key={session.id}
                   variant="ghost"
                   size="sm"
-                  onClick={() => setCurrentSession(session)}
+                  onClick={() => switchToSession(session.id)}
                   className="w-full justify-start text-left h-auto p-2"
                 >
                   <div>
