@@ -119,7 +119,7 @@ export interface FineractLoan {
     id: number;
     code: string;
     value: string;
-  };
+};
   interestCalculationPeriodType: {
     id: number;
     code: string;
@@ -455,7 +455,7 @@ export class FineractAPIService {
 
   async getClientLoans(clientId: number): Promise<FineractLoan[]> {
     const response: AxiosResponse<FineractLoan[]> = await this.client.get(
-      `/clients/${clientId}/loans`
+      `/clients/${clientId}/accounts`
     );
     return response.data;
   }

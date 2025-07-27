@@ -73,7 +73,17 @@ export function ClientLoans({ clientId }: ClientLoansProps) {
           throw new Error("Failed to fetch client loans");
         }
         const data = await response.json();
-        setLoans(data);
+        console.log("==========> loans data ::", data);
+        // Ensure data is an array
+        if (Array.isArray(data)) {
+          setLoans(data);
+        } else if (data && Array.isArray(data.pageItems)) {
+          // Handle paginated response
+          setLoans(data.pageItems);
+        } else {
+          console.warn("Unexpected loans data format:", data);
+          setLoans([]);
+        }
       } catch (err) {
         console.error("Error fetching client loans:", err);
         setError("Failed to load client loans");

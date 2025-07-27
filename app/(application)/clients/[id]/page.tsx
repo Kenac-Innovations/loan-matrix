@@ -32,13 +32,14 @@ import { ClientTransactions } from "./components/client-transactions";
 import { ClientDocuments } from "./components/client-documents";
 
 interface PageProps {
-  params: {
+  params: Promise<{
     id: string;
-  };
+  }>;
 }
 
 export default async function ClientDetailPage({ params }: PageProps) {
-  const clientId = parseInt(params.id);
+  const { id } = await params;
+  const clientId = parseInt(id);
 
   if (isNaN(clientId)) {
     notFound();
