@@ -459,7 +459,7 @@ export class FineractAPIService {
 
   async getLoan(loanId: number): Promise<FineractLoan> {
     const response: AxiosResponse<FineractLoan> = await this.client.get(
-      `/loans/${loanId}`
+      `/loans/${loanId}?associations=all&exclude=guarantors,futureSchedule`
     );
     return response.data;
   }

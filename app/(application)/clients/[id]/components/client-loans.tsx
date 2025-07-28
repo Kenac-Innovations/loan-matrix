@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import {
   CreditCard,
   DollarSign,
@@ -9,6 +10,7 @@ import {
   TrendingUp,
   TrendingDown,
   Clock,
+  ExternalLink,
 } from "lucide-react";
 import {
   Card,
@@ -383,6 +385,7 @@ export function ClientLoans({ clientId }: ClientLoansProps) {
                     <TableHead>Outstanding</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Maturity Date</TableHead>
+                    <TableHead>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -430,6 +433,15 @@ export function ClientLoans({ clientId }: ClientLoansProps) {
                             ? formatDate(loan.timeline.expectedMaturityDate)
                             : "Not set"}
                         </div>
+                      </TableCell>
+                      <TableCell>
+                        <Link
+                          href={`/clients/${clientId}/loans/${loan.id}`}
+                          className="inline-flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800"
+                        >
+                          <ExternalLink className="h-3 w-3" />
+                          View Details
+                        </Link>
                       </TableCell>
                     </TableRow>
                   ))}
