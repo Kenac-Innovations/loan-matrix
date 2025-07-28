@@ -248,7 +248,7 @@ export function ClientRegistrationForm({
   const [lastSavedField, setLastSavedField] = useState<string | null>(null);
   const [stageHistory, setStageHistory] = useState<any[]>([]);
 
-  const [clientIdLookup, setClientIdLookup] = useState("");
+  const [nationalIdLookup, setNationalIdLookup] = useState("");
   const [isSearchingClient, setIsSearchingClient] = useState(false);
   const [clientLookupStatus, setClientLookupStatus] = useState<
     "idle" | "not_found" | "found" | "error"
@@ -282,6 +282,7 @@ export function ClientRegistrationForm({
     leadId: string;
     firstname?: string;
     lastname?: string;
+    externalId?: string;
     emailAddress?: string;
     mobileNo?: string;
     timestamp: number;
@@ -433,6 +434,7 @@ export function ClientRegistrationForm({
                 leadId: existingData.leadId,
                 firstname: result.lead.firstname || undefined,
                 lastname: result.lead.lastname || undefined,
+                externalId: result.lead.externalId || undefined,
                 emailAddress: result.lead.emailAddress || undefined,
                 mobileNo: result.lead.mobileNo || undefined,
                 timestamp: existingData.timestamp,
@@ -605,6 +607,21 @@ export function ClientRegistrationForm({
       const newUrl = `/leads/new?id=${existingProspectData.leadId}`;
       router.replace(newUrl);
 
+      // Load the lead data to get the external ID
+      try {
+        const lead = await getLead(existingProspectData.leadId);
+        if (lead && lead.externalId) {
+          // Pre-populate the search field with the external ID
+          setNationalIdLookup(lead.externalId);
+        }
+      } catch (error) {
+        console.error("Error loading lead data for search field:", error);
+      }
+
+      // Skip the search step since we're resuming an existing prospect
+      setClientLookupStatus("found");
+      setIsFormDisabled(false);
+
       setShowProspectDialog(false);
 
       toast({
@@ -729,12 +746,12 @@ export function ClientRegistrationForm({
     }
   };
 
-  // Handle client lookup by ID
+  // Handle client lookup by National ID
   const handleClientLookup = async () => {
-    if (!clientIdLookup.trim()) {
+    if (!nationalIdLookup.trim()) {
       toast({
         title: "Error",
-        description: "Please enter a client ID number",
+        description: "Please enter a national ID number",
         variant: "destructive",
       });
       return;
@@ -748,8 +765,8 @@ export function ClientRegistrationForm({
       // Simulate API delay
       await new Promise((resolve) => setTimeout(resolve, 800));
 
-      // For demo purposes, we'll pretend ID "12345" exists and "99999" doesn't
-      if (clientIdLookup === "12345") {
+      // For demo purposes, we'll pretend National ID "48-147220J12" exists and "99999" doesn't
+      if (nationalIdLookup === "48-147220J12") {
         // Mock client data - replace with actual API response
         const clientData = {
           id: "12345",
@@ -821,6 +838,9 @@ export function ClientRegistrationForm({
         setClientLookupStatus("not_found");
         setIsFormDisabled(false);
 
+        // Set the searched national ID in the form's externalId field for new client
+        form.setValue("externalId", nationalIdLookup);
+
         toast({
           title: "Client Not Found",
           description:
@@ -844,7 +864,7 @@ export function ClientRegistrationForm({
 
   // Handle clearing client lookup
   const handleClearClientLookup = () => {
-    setClientIdLookup("");
+    setNationalIdLookup("");
     setClientLookupStatus("idle");
     setIsFormDisabled(true);
 
@@ -1338,24 +1358,24 @@ export function ClientRegistrationForm({
                 <div className="space-y-4">
                   <div className="space-y-2">
                     <Label
-                      htmlFor="clientIdLookup"
+                      htmlFor="nationalIdLookup"
                       className={colors.textColor}
                     >
-                      Client ID Number <span className="text-red-500">*</span>
+                      National ID Number <span className="text-red-500">*</span>
                     </Label>
                     <div className="flex space-x-2">
                       <Input
-                        id="clientIdLookup"
-                        placeholder="Enter client ID number"
-                        value={clientIdLookup}
-                        onChange={(e) => setClientIdLookup(e.target.value)}
+                        id="nationalIdLookup"
+                        placeholder="Enter national ID number (e.g. 48-147220J12)"
+                        value={nationalIdLookup}
+                        onChange={(e) => setNationalIdLookup(e.target.value)}
                         className={`h-10 flex-1 border-${colors.borderColor} ${colors.inputBg}`}
                         disabled={isSearchingClient}
                       />
                       <Button
                         type="button"
                         onClick={handleClientLookup}
-                        disabled={isSearchingClient || !clientIdLookup.trim()}
+                        disabled={isSearchingClient || !nationalIdLookup.trim()}
                         className="bg-blue-500 hover:bg-blue-600 min-w-[100px]"
                       >
                         {isSearchingClient ? (
@@ -1382,8 +1402,8 @@ export function ClientRegistrationForm({
                       )}
                     </div>
                     <p className={`text-xs ${colors.textColorMuted}`}>
-                      Enter the client's unique ID number to search for existing
-                      records
+                      Enter the client's national ID number to search for
+                      existing records
                     </p>
                   </div>
 
@@ -1463,6 +1483,10 @@ export function ClientRegistrationForm({
                                 onValueChange={(value) =>
                                   field.onChange(Number.parseInt(value))
                                 }
+                                {...form.register("officeId", {
+                                  onBlur: (e) =>
+                                    handleFieldBlur("officeId", e.target.value),
+                                })}
                                 placeholder="Select office"
                                 className={`border-${colors.borderColor} ${colors.inputBg}`}
                                 onAddNew={() => setShowAddOfficeDialog(true)}
@@ -1471,6 +1495,11 @@ export function ClientRegistrationForm({
                               />
                             )}
                           />
+                          {lastSavedField === "officeId" && isAutoSaving && (
+                            <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                              <div className="w-3 h-3 border border-gray-300 border-t-gray-600 rounded-full animate-spin"></div>
+                            </div>
+                          )}
                         </div>
                         <p className={`text-xs ${colors.textColorMuted}`}>
                           Select the branch office managing this client
@@ -1746,7 +1775,7 @@ export function ClientRegistrationForm({
                                   "National ID must be in format 48-147220J12",
                               },
                             })}
-                            disabled={isFormDisabled}
+                            disabled
                           />
                           {lastSavedField === "externalId" && isAutoSaving && (
                             <div className="absolute right-2 top-1/2 -translate-y-1/2">
@@ -1794,7 +1823,7 @@ export function ClientRegistrationForm({
                                 disabled={isFormDisabled}
                               >
                                 <SelectTrigger
-                                  className={`h-10 w-24 border-${colors.borderColor} ${colors.inputBg}`}
+                                  className={`h-10 w-34 border-${colors.borderColor} ${colors.inputBg}`}
                                 >
                                   <SelectValue placeholder="+263" />
                                 </SelectTrigger>
