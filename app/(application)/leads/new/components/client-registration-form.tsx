@@ -112,6 +112,17 @@ const clientFormSchema = z
     }),
     submittedOnDate: z.date().default(() => new Date()),
 
+    // Financial Information
+    monthlyIncomeRange: z.string().optional(),
+    employmentStatus: z.string().optional(),
+    employerName: z.string().optional(),
+    yearsAtCurrentJob: z.string().optional(),
+    hasExistingLoans: z.boolean().default(false),
+    monthlyDebtPayments: z.number().optional(),
+    propertyOwnership: z.string().optional(),
+    businessOwnership: z.boolean().default(false),
+    businessType: z.string().optional(),
+
     // Step 2: Account Settings
     active: z.boolean().default(true),
     activationDate: z.date().optional(),
@@ -224,6 +235,7 @@ export function ClientRegistrationForm({
   const colors = useThemeColors();
 
   // State for multi-step form
+  const [currentStep, setCurrentStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
@@ -1003,7 +1015,9 @@ export function ClientRegistrationForm({
   };
   // Handle adding family member
   const handleAddFamilyMember = async (data: FamilyMemberValues) => {
-    if (!leadId) {
+    let effectiveLeadId = currentLeadId;
+
+    if (!effectiveLeadId) {
       // Save the form first to get a leadId
       const formData = form.getValues();
       const saveResult = await handleSaveDraft(formData);
@@ -1017,11 +1031,12 @@ export function ClientRegistrationForm({
         return;
       }
 
-      leadId = saveResult.leadId;
+      effectiveLeadId = saveResult.leadId;
+      setCurrentLeadId(effectiveLeadId);
     }
 
     try {
-      const result = await addFamilyMember(leadId!, data);
+      const result = await addFamilyMember(effectiveLeadId!, data);
 
       if (result.success) {
         toast({
@@ -1035,7 +1050,7 @@ export function ClientRegistrationForm({
         setShowFamilyMemberDialog(false);
 
         // Refresh family members
-        const lead = await getLead(leadId!);
+        const lead = await getLead(effectiveLeadId!);
         if (lead) {
           setFamilyMembers(lead.familyMembers || []);
         }
@@ -1873,6 +1888,387 @@ export function ClientRegistrationForm({
                         )}
                       </div>
                     </div>
+                  </div>
+
+                  {/* Financial Information Section */}
+                  <div className="space-y-6 mb-8">
+                    <div className="border-b border-gray-200 dark:border-gray-700 pb-3 mb-6">
+                      <h3 className={`text-lg font-medium ${colors.textColor}`}>
+                        Financial Information
+                      </h3>
+                      <p className={`text-sm ${colors.textColorMuted}`}>
+                        Client's financial profile for loan assessment
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {/* Monthly Income Range */}
+                      <div className="space-y-3">
+                        <Label
+                          htmlFor="monthlyIncomeRange"
+                          className={colors.textColor}
+                        >
+                          Monthly Income Range
+                        </Label>
+                        <Controller
+                          control={form.control}
+                          name="monthlyIncomeRange"
+                          render={({ field }) => (
+                            <Select
+                              onValueChange={(value) => {
+                                field.onChange(value);
+                                handleFieldBlur("monthlyIncomeRange", value);
+                              }}
+                              defaultValue={field.value}
+                              disabled={isFormDisabled}
+                            >
+                              <SelectTrigger
+                                className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
+                              >
+                                <SelectValue placeholder="Select income range" />
+                              </SelectTrigger>
+                              <SelectContent
+                                className={`border-${colors.borderColor} ${colors.dropdownBg} ${colors.textColor}`}
+                              >
+                                <SelectItem value="under_500">
+                                  Under $500
+                                </SelectItem>
+                                <SelectItem value="500_1000">
+                                  $500 - $1,000
+                                </SelectItem>
+                                <SelectItem value="1000_2500">
+                                  $1,000 - $2,500
+                                </SelectItem>
+                                <SelectItem value="2500_5000">
+                                  $2,500 - $5,000
+                                </SelectItem>
+                                <SelectItem value="5000_10000">
+                                  $5,000 - $10,000
+                                </SelectItem>
+                                <SelectItem value="over_10000">
+                                  Over $10,000
+                                </SelectItem>
+                              </SelectContent>
+                            </Select>
+                          )}
+                        />
+                        <p className={`text-xs ${colors.textColorMuted}`}>
+                          Approximate monthly income range
+                        </p>
+                      </div>
+
+                      {/* Employment Status */}
+                      <div className="space-y-3">
+                        <Label
+                          htmlFor="employmentStatus"
+                          className={colors.textColor}
+                        >
+                          Employment Status
+                        </Label>
+                        <Controller
+                          control={form.control}
+                          name="employmentStatus"
+                          render={({ field }) => (
+                            <Select
+                              onValueChange={(value) => {
+                                field.onChange(value);
+                                handleFieldBlur("employmentStatus", value);
+                              }}
+                              defaultValue={field.value}
+                              disabled={isFormDisabled}
+                            >
+                              <SelectTrigger
+                                className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
+                              >
+                                <SelectValue placeholder="Select employment status" />
+                              </SelectTrigger>
+                              <SelectContent
+                                className={`border-${colors.borderColor} ${colors.dropdownBg} ${colors.textColor}`}
+                              >
+                                <SelectItem value="EMPLOYED">
+                                  Employed
+                                </SelectItem>
+                                <SelectItem value="SELF_EMPLOYED">
+                                  Self-Employed
+                                </SelectItem>
+                                <SelectItem value="UNEMPLOYED">
+                                  Unemployed
+                                </SelectItem>
+                                <SelectItem value="RETIRED">Retired</SelectItem>
+                                <SelectItem value="STUDENT">Student</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          )}
+                        />
+                        <p className={`text-xs ${colors.textColorMuted}`}>
+                          Current employment situation
+                        </p>
+                      </div>
+
+                      {/* Employer Name */}
+                      <div className="space-y-3">
+                        <Label
+                          htmlFor="employerName"
+                          className={colors.textColor}
+                        >
+                          Employer Name
+                        </Label>
+                        <div className="relative">
+                          <Input
+                            id="employerName"
+                            placeholder="Enter employer name"
+                            className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
+                            {...form.register("employerName", {
+                              onBlur: (e) =>
+                                handleFieldBlur("employerName", e.target.value),
+                            })}
+                            disabled={isFormDisabled}
+                          />
+                          {lastSavedField === "employerName" &&
+                            isAutoSaving && (
+                              <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                                <div className="w-3 h-3 border border-gray-300 border-t-gray-600 rounded-full animate-spin"></div>
+                              </div>
+                            )}
+                        </div>
+                        <p className={`text-xs ${colors.textColorMuted}`}>
+                          Name of current employer (if employed)
+                        </p>
+                      </div>
+
+                      {/* Years at Current Job */}
+                      <div className="space-y-3">
+                        <Label
+                          htmlFor="yearsAtCurrentJob"
+                          className={colors.textColor}
+                        >
+                          Years at Current Job
+                        </Label>
+                        <Controller
+                          control={form.control}
+                          name="yearsAtCurrentJob"
+                          render={({ field }) => (
+                            <Select
+                              onValueChange={(value) => {
+                                field.onChange(value);
+                                handleFieldBlur("yearsAtCurrentJob", value);
+                              }}
+                              defaultValue={field.value}
+                              disabled={isFormDisabled}
+                            >
+                              <SelectTrigger
+                                className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
+                              >
+                                <SelectValue placeholder="Select years at job" />
+                              </SelectTrigger>
+                              <SelectContent
+                                className={`border-${colors.borderColor} ${colors.dropdownBg} ${colors.textColor}`}
+                              >
+                                <SelectItem value="less_than_1">
+                                  Less than 1 year
+                                </SelectItem>
+                                <SelectItem value="1_2">1-2 years</SelectItem>
+                                <SelectItem value="2_5">2-5 years</SelectItem>
+                                <SelectItem value="5_10">5-10 years</SelectItem>
+                                <SelectItem value="over_10">
+                                  Over 10 years
+                                </SelectItem>
+                              </SelectContent>
+                            </Select>
+                          )}
+                        />
+                        <p className={`text-xs ${colors.textColorMuted}`}>
+                          Employment stability indicator
+                        </p>
+                      </div>
+
+                      {/* Existing Loans */}
+                      <div className="space-y-3">
+                        <Label
+                          htmlFor="hasExistingLoans"
+                          className={colors.textColor}
+                        >
+                          Existing Loans
+                        </Label>
+                        <Card
+                          className={`border-${colors.borderColor} ${colors.cardBg} flex flex-row items-center justify-between p-4`}
+                        >
+                          <div className="flex items-center space-x-2">
+                            <Controller
+                              control={form.control}
+                              name="hasExistingLoans"
+                              render={({ field }) => (
+                                <Checkbox
+                                  id="hasExistingLoans"
+                                  checked={field.value}
+                                  onCheckedChange={field.onChange}
+                                  disabled={isFormDisabled}
+                                />
+                              )}
+                            />
+                            <Label
+                              htmlFor="hasExistingLoans"
+                              className={colors.textColor}
+                            >
+                              Has existing loans
+                            </Label>
+                          </div>
+                          <p className={`text-xs ${colors.textColorMuted}`}>
+                            Check if client has other loans
+                          </p>
+                        </Card>
+                      </div>
+
+                      {/* Monthly Debt Payments */}
+                      <div className="space-y-3">
+                        <Label
+                          htmlFor="monthlyDebtPayments"
+                          className={colors.textColor}
+                        >
+                          Monthly Debt Payments
+                        </Label>
+                        <div className="relative">
+                          <Input
+                            id="monthlyDebtPayments"
+                            type="number"
+                            placeholder="Enter monthly debt payments"
+                            className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
+                            {...form.register("monthlyDebtPayments", {
+                              onBlur: (e) =>
+                                handleFieldBlur(
+                                  "monthlyDebtPayments",
+                                  parseFloat(e.target.value) || 0
+                                ),
+                            })}
+                            disabled={isFormDisabled}
+                          />
+                          {lastSavedField === "monthlyDebtPayments" &&
+                            isAutoSaving && (
+                              <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                                <div className="w-3 h-3 border border-gray-300 border-t-gray-600 rounded-full animate-spin"></div>
+                              </div>
+                            )}
+                        </div>
+                        <p className={`text-xs ${colors.textColorMuted}`}>
+                          Approximate monthly debt obligations
+                        </p>
+                      </div>
+
+                      {/* Property Ownership */}
+                      <div className="space-y-3">
+                        <Label
+                          htmlFor="propertyOwnership"
+                          className={colors.textColor}
+                        >
+                          Property Ownership
+                        </Label>
+                        <Controller
+                          control={form.control}
+                          name="propertyOwnership"
+                          render={({ field }) => (
+                            <Select
+                              onValueChange={(value) => {
+                                field.onChange(value);
+                                handleFieldBlur("propertyOwnership", value);
+                              }}
+                              defaultValue={field.value}
+                              disabled={isFormDisabled}
+                            >
+                              <SelectTrigger
+                                className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
+                              >
+                                <SelectValue placeholder="Select property status" />
+                              </SelectTrigger>
+                              <SelectContent
+                                className={`border-${colors.borderColor} ${colors.dropdownBg} ${colors.textColor}`}
+                              >
+                                <SelectItem value="OWN">
+                                  Own Property
+                                </SelectItem>
+                                <SelectItem value="RENT">Rent</SelectItem>
+                                <SelectItem value="FAMILY">
+                                  Live with Family
+                                </SelectItem>
+                                <SelectItem value="OTHER">Other</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          )}
+                        />
+                        <p className={`text-xs ${colors.textColorMuted}`}>
+                          Housing situation
+                        </p>
+                      </div>
+
+                      {/* Business Ownership */}
+                      <div className="space-y-3">
+                        <Label
+                          htmlFor="businessOwnership"
+                          className={colors.textColor}
+                        >
+                          Business Ownership
+                        </Label>
+                        <Card
+                          className={`border-${colors.borderColor} ${colors.cardBg} flex flex-row items-center justify-between p-4`}
+                        >
+                          <div className="flex items-center space-x-2">
+                            <Controller
+                              control={form.control}
+                              name="businessOwnership"
+                              render={({ field }) => (
+                                <Checkbox
+                                  id="businessOwnership"
+                                  checked={field.value}
+                                  onCheckedChange={field.onChange}
+                                  disabled={isFormDisabled}
+                                />
+                              )}
+                            />
+                            <Label
+                              htmlFor="businessOwnership"
+                              className={colors.textColor}
+                            >
+                              Owns a business
+                            </Label>
+                          </div>
+                          <p className={`text-xs ${colors.textColorMuted}`}>
+                            Check if client owns a business
+                          </p>
+                        </Card>
+                      </div>
+                    </div>
+
+                    {/* Business Type - Only shown when businessOwnership is true */}
+                    {form.watch("businessOwnership") && (
+                      <div className="space-y-3">
+                        <Label
+                          htmlFor="businessType"
+                          className={colors.textColor}
+                        >
+                          Business Type
+                        </Label>
+                        <div className="relative">
+                          <Input
+                            id="businessType"
+                            placeholder="Enter type of business"
+                            className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
+                            {...form.register("businessType", {
+                              onBlur: (e) =>
+                                handleFieldBlur("businessType", e.target.value),
+                            })}
+                            disabled={isFormDisabled}
+                          />
+                          {lastSavedField === "businessType" &&
+                            isAutoSaving && (
+                              <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                                <div className="w-3 h-3 border border-gray-300 border-t-gray-600 rounded-full animate-spin"></div>
+                              </div>
+                            )}
+                        </div>
+                        <p className={`text-xs ${colors.textColorMuted}`}>
+                          Type or nature of business owned
+                        </p>
+                      </div>
+                    )}
                   </div>
 
                   {/* Classification Information Section */}
@@ -2901,11 +3297,7 @@ export function ClientRegistrationForm({
                   Enter the details of the client's next of kin.
                 </CardDescription>
               </CardHeader>
-              <form
-                onSubmit={familyMemberForm.handleSubmit(
-                  handleAddFamilyMember as any
-                )}
-              >
+              <div>
                 <CardContent>
                   <div className="space-y-6">
                     <div className="grid grid-cols-2 gap-6">
@@ -3187,13 +3579,20 @@ export function ClientRegistrationForm({
                     Cancel
                   </Button>
                   <Button
-                    type="submit"
+                    type="button"
+                    onClick={async () => {
+                      const data = familyMemberForm.getValues();
+                      const isValid = await familyMemberForm.trigger();
+                      if (isValid) {
+                        handleAddFamilyMember(data);
+                      }
+                    }}
                     className="bg-blue-500 hover:bg-blue-600"
                   >
                     Add
                   </Button>
                 </CardFooter>
-              </form>
+              </div>
             </Card>
           </div>
         )}
