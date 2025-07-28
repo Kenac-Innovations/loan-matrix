@@ -1,3 +1,4 @@
+
 import type React from "react";
 import { getUserProfileData } from "./components/user-profile-data";
 
@@ -73,135 +74,138 @@ export default async function DashboardLayout({
           </div>
           <div className="py-4 h-[calc(100vh-4rem)] overflow-y-auto">
             <nav className="space-y-1 px-2">
-  <Link
-    href="/leads/new"
-    className="flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-  >
-    <PlusCircle className="h-4 w-4" />
-    New Lead
-  </Link>
-  <Link
-    href="/dashboard"
-    className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-  >
-    <Home className="h-4 w-4" />
-    Dashboard
-  </Link>
+              <Link
+                href="/leads/new"
+                className="flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+              >
+                <PlusCircle className="h-4 w-4" />
+                New Lead
+              </Link>
+              <Link
+                href="/dashboard"
+                className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+              >
+                <Home className="h-4 w-4" />
+                Dashboard
+              </Link>
 
-  <div className="space-y-1">
-    <MenuItemWithSubmenu
-      icon={<TrendingUp />}
-      label="Leads"
-      href="/leads"
-      subMenuItems={[
-        { label: "Pipeline", href: "/leads" },
-        { label: "Configuration", href: "/leads/config" },
-      ]}
-    />
-  </div>
+              <div className="space-y-1">
+                <MenuItemWithSubmenu
+                  icon={<TrendingUp />}
+                  label="Leads"
+                  href="/leads"
+                  subMenuItems={[
+                    { label: "Pipeline", href: "/leads" },
+                    { label: "Configuration", href: "/leads/config" },
+                  ]}
+                />
+              </div>
+              
 
-  <Link
-    href="#"
-    className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-  >
-    <CreditCard className="h-4 w-4" />
-    Loans
-  </Link>
+              <Link
+                href="#"
+                className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+              >
+                <CreditCard className="h-4 w-4" />
+                Loans
+              </Link>
 
-  <div className="space-y-1">
-    <MenuItemWithSubmenu
-      icon={<Users />}
-      label="Clients"
-      href="/clients"
-      subMenuItems={[
-        { label: "All Clients", href: "/clients" },
-        { label: "Add Client", href: "/clients/new" },
-      ]}
-    />
-  </div>
-
-
-  <Link
-    href="/accounting"
-    className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-  >
-    <BarChart3 className="h-4 w-4" />
-    Accountings
-  </Link>
-
-  <Link
-    href="#"
-    className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-  >
-    <FileText className="h-4 w-4" />
-    Documents
-  </Link>
-
-  <Link
-    href="#"
-    className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-  >
-    <BarChart3 className="h-4 w-4" />
-    Analytics
-  </Link>
-
-  <Link
-    href="#"
-    className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-  >
-    <Shield className="h-4 w-4" />
-    Compliance
-  </Link>
-
-  <Link
-    href="#"
-    className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-  >
-    <Lock className="h-4 w-4" />
-    Security
-  </Link>
-
-  <div className="space-y-1">
-    <MenuItemWithSubmenu
-      icon={<Bot />}
-      label="AI Assistant"
-      href="/ai-assistant"
-      subMenuItems={[
-        { label: "Chat", href: "/ai-assistant" },
-        { label: "Admin", href: "/rag-admin" },
-      ]}
-    />
-  </div>
-
-  <Link
-    href="#"
-    className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-  >
-    <Settings className="h-4 w-4" />
-    Settings
-  </Link>
-</nav>
+              <div className="space-y-1">
+                <MenuItemWithSubmenu
+                  icon={<Users />}
+                  label="Clients"
+                  href="/clients"
+                  subMenuItems={[
+                    { label: "All Clients", href: "/clients" },
+                    { label: "Add Client", href: "/clients/new" },
+                  ]}
+                />
+              </div>
 
 
-        </div>
+              <Link
+                href="/accounting"
+                className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+              >
+                <BarChart3 className="h-4 w-4" />
+                Accounting
+              </Link>
 
-        {/* Mobile Sidebar */}
-        <MobileSidebar userProfileData={userProfileData} />
+              <Link
+                href="#"
+                className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+              >
+                <FileText className="h-4 w-4" />
+                Documents
+              </Link>
 
-        {/* Main Content */}
-        <div className="flex flex-1 flex-col h-screen overflow-hidden">
-          {/* Pass user profile data to the client component */}
-          <UserProfileClient userProfileData={userProfileData} />
+              <Link
+                href="#"
+                className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+              >
+                <BarChart3 className="h-4 w-4" />
+                Analytics
+              </Link>
+
+              <Link
+                href="#"
+                className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+              >
+                <Shield className="h-4 w-4" />
+                Compliance
+              </Link>
+
+              <Link
+                href="#"
+                className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+              >
+                <Lock className="h-4 w-4" />
+                Security
+              </Link>
+
+              <div className="space-y-1">
+                <MenuItemWithSubmenu
+                  icon={<Bot />}
+                  label="AI Assistant"
+                  href="/ai-assistant"
+                  subMenuItems={[
+                    { label: "Chat", href: "/ai-assistant" },
+                    { label: "Admin", href: "/rag-admin" },
+                  ]}
+                />
+              </div>
+
+              <Link
+                href="#"
+                className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+              >
+                <Settings className="h-4 w-4" />
+                Settings
+              </Link>
+            </nav>
+
+
+          </div>
+          </div>
+
+          {/* Mobile Sidebar */}
+          <MobileSidebar userProfileData={userProfileData} />
 
           {/* Main Content */}
-          <main className="flex-1 overflow-y-auto bg-background p-4 lg:p-6">
-            <Suspense fallback={<div>Loading...</div>}>{children}</Suspense>
-          </main>
-        </div>
+          <div className="flex flex-1 flex-col h-screen overflow-hidden">
+            {/* Pass user profile data to the client component */}
+            <UserProfileClient userProfileData={userProfileData} />
 
-        {/* AI Assistant */}
-        <AIAssistant />
-      </div>
+            {/* Main Content */}
+            <main className="flex-1 overflow-y-auto bg-background p-4 lg:p-6">
+              <Suspense fallback={<div>Loading...</div>}>{children}</Suspense>
+            </main>
+          </div>
+
+          {/* AI Assistant */}
+          <AIAssistant />
+        </div>
     </ChatProvider>
   );
 }
+
