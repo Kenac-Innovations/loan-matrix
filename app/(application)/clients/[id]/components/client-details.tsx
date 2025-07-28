@@ -37,13 +37,13 @@ interface FineractClient {
     value: string;
   };
   active: boolean;
-  activationDate?: string;
+  activationDate?: string | number[];
   officeName: string;
   timeline: {
-    submittedOnDate: string;
-    activatedOnDate?: string;
+    submittedOnDate: string | number[];
+    activatedOnDate?: string | number[];
   };
-  dateOfBirth?: string;
+  dateOfBirth?: string | number[];
   gender?: {
     id: number;
     name: string;
@@ -138,8 +138,20 @@ export function ClientDetails({ clientId }: ClientDetailsProps) {
     );
   };
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString("en-US", {
+  const formatDate = (dateInput: string | number[] | undefined) => {
+    if (!dateInput) return "Not specified";
+    
+    let date: Date;
+    if (Array.isArray(dateInput) && dateInput.length === 3) {
+      const [year, month, day] = dateInput;
+      date = new Date(year, month - 1, day); // month is 0-indexed in Date constructor
+    } else if (typeof dateInput === "string") {
+      date = new Date(dateInput);
+    } else {
+      return "Invalid date";
+    }
+    
+    return date.toLocaleDateString("en-US", {
       year: "numeric",
       month: "long",
       day: "numeric",

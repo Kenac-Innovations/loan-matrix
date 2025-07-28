@@ -18,14 +18,14 @@ export interface FineractClient {
     value: string;
   };
   active: boolean;
-  activationDate?: string;
+  activationDate?: string | number[];
   firstname: string;
   middlename?: string;
   lastname: string;
   displayName: string;
   mobileNo?: string;
   emailAddress?: string;
-  dateOfBirth?: string;
+  dateOfBirth?: string | number[];
   gender?: {
     id: number;
     name: string;
@@ -43,10 +43,12 @@ export interface FineractClient {
   staffId?: number;
   staffName?: string;
   timeline: {
-    submittedOnDate: string;
+    submittedOnDate: string | number[];
     submittedByUsername: string;
-    activatedOnDate?: string;
+    activatedOnDate?: string | number[];
     activatedByUsername?: string;
+    activatedByFirstname?: string;
+    activatedByLastname?: string;
   };
   savingsAccountId?: number;
   clientNonPersonDetails?: any;
@@ -119,7 +121,7 @@ export interface FineractLoan {
     id: number;
     code: string;
     value: string;
-  };
+};
   interestCalculationPeriodType: {
     id: number;
     code: string;
@@ -413,6 +415,15 @@ export class FineractAPIService {
     const response: AxiosResponse<FineractClient> = await this.client.get(
       `/clients/${clientId}`
     );
+    console.log("==========> log on server side getClient response ::", response.data);
+    return response.data;
+  }
+
+  async updateClient(clientId: number, clientData: Partial<FineractClient>): Promise<FineractClient> {
+    const response: AxiosResponse<FineractClient> = await this.client.put(
+      `/clients/${clientId}`,
+      clientData
+    );
     return response.data;
   }
 
@@ -455,7 +466,7 @@ export class FineractAPIService {
 
   async getClientLoans(clientId: number): Promise<FineractLoan[]> {
     const response: AxiosResponse<FineractLoan[]> = await this.client.get(
-      `/clients/${clientId}/loans`
+      `/clients/${clientId}/accounts`
     );
     return response.data;
   }
