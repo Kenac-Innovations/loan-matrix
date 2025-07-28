@@ -16,10 +16,22 @@ export async function GET(
     const fineractService = await getFineractServiceWithSession();
     const loansResponse = await fineractService.getClientLoans(clientId);
 
-    // Handle paginated response from Fineract API
-    const loans = Array.isArray(loansResponse) 
-      ? loansResponse 
-      : (loansResponse as any)?.pageItems || (loansResponse as any)?.content || [];
+    console.log("==========> log on server side getClientLoans response ::", loansResponse);
+
+    // Handle different response formats from Fineract API
+    let loans = [];
+    if (Array.isArray(loansResponse)) {
+      loans = loansResponse;
+    } else if (loansResponse && Array.isArray((loansResponse as any).pageItems)) {
+      loans = (loansResponse as any).pageItems;
+    } else if (loansResponse && Array.isArray((loansResponse as any).content)) {
+      loans = (loansResponse as any).content;
+    } else if (loansResponse && Array.isArray((loansResponse as any).loanAccounts)) {
+      loans = (loansResponse as any).loanAccounts;
+    } else {
+      console.warn("Unexpected loans response format:", loansResponse);
+      loans = [];
+    }
 
     return NextResponse.json(loans);
   } catch (error) {

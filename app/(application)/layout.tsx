@@ -88,6 +88,20 @@ export default async function DashboardLayout({
                 <Home className="h-4 w-4" />
                 Dashboard
               </Link>
+              <Link
+                href="/leads/new"
+                className="flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+              >
+                <PlusCircle className="h-4 w-4" />
+                New Lead
+              </Link>
+              <Link
+                href="/dashboard"
+                className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+              >
+                <Home className="h-4 w-4" />
+                Dashboard
+              </Link>
 
               <div className="space-y-1">
                 <MenuItemWithSubmenu
@@ -102,6 +116,13 @@ export default async function DashboardLayout({
               </div>
 
 
+              <Link
+                href="#"
+                className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+              >
+                <CreditCard className="h-4 w-4" />
+                Loans
+              </Link>
               <Link
                 href="#"
                 className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
