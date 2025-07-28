@@ -1,3 +1,4 @@
+
 import type React from "react";
 import { getUserProfileData } from "./components/user-profile-data";
 
@@ -87,13 +88,7 @@ export default async function DashboardLayout({
                 <Home className="h-4 w-4" />
                 Dashboard
               </Link>
-              {/* <Link
-              href="/auth-demo"
-              className="flex items-center gap-3 rounded-lg px-3 py-2 text-gray-500 transition-all hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-50"
-            >
-              <ShieldCheck className="h-4 w-4" />
-              Auth Demo
-            </Link> */}
+
               <div className="space-y-1">
                 <MenuItemWithSubmenu
                   icon={<TrendingUp />}
@@ -105,6 +100,8 @@ export default async function DashboardLayout({
                   ]}
                 />
               </div>
+              
+
               <Link
                 href="#"
                 className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
@@ -112,6 +109,7 @@ export default async function DashboardLayout({
                 <CreditCard className="h-4 w-4" />
                 Loans
               </Link>
+
               <div className="space-y-1">
                 <MenuItemWithSubmenu
                   icon={<Users />}
@@ -123,6 +121,16 @@ export default async function DashboardLayout({
                   ]}
                 />
               </div>
+
+
+              <Link
+                href="/accounting"
+                className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+              >
+                <BarChart3 className="h-4 w-4" />
+                Accounting
+              </Link>
+
               <Link
                 href="#"
                 className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
@@ -130,6 +138,7 @@ export default async function DashboardLayout({
                 <FileText className="h-4 w-4" />
                 Documents
               </Link>
+
               <Link
                 href="#"
                 className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
@@ -137,6 +146,7 @@ export default async function DashboardLayout({
                 <BarChart3 className="h-4 w-4" />
                 Analytics
               </Link>
+
               <Link
                 href="#"
                 className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
@@ -144,6 +154,7 @@ export default async function DashboardLayout({
                 <Shield className="h-4 w-4" />
                 Compliance
               </Link>
+
               <Link
                 href="#"
                 className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
@@ -151,6 +162,7 @@ export default async function DashboardLayout({
                 <Lock className="h-4 w-4" />
                 Security
               </Link>
+
               <div className="space-y-1">
                 <MenuItemWithSubmenu
                   icon={<Bot />}
@@ -162,6 +174,7 @@ export default async function DashboardLayout({
                   ]}
                 />
               </div>
+
               <Link
                 href="#"
                 className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
@@ -170,26 +183,29 @@ export default async function DashboardLayout({
                 Settings
               </Link>
             </nav>
+
+
           </div>
-        </div>
+          </div>
 
-        {/* Mobile Sidebar */}
-        <MobileSidebar userProfileData={userProfileData} />
-
-        {/* Main Content */}
-        <div className="flex flex-1 flex-col h-screen overflow-hidden">
-          {/* Pass user profile data to the client component */}
-          <UserProfileClient userProfileData={userProfileData} />
+          {/* Mobile Sidebar */}
+          <MobileSidebar userProfileData={userProfileData} />
 
           {/* Main Content */}
-          <main className="flex-1 overflow-y-auto bg-background p-4 lg:p-6">
-            <Suspense fallback={<div>Loading...</div>}>{children}</Suspense>
-          </main>
-        </div>
+          <div className="flex flex-1 flex-col h-screen overflow-hidden">
+            {/* Pass user profile data to the client component */}
+            <UserProfileClient userProfileData={userProfileData} />
 
-        {/* AI Assistant */}
-        <AIAssistant />
-      </div>
+            {/* Main Content */}
+            <main className="flex-1 overflow-y-auto bg-background p-4 lg:p-6">
+              <Suspense fallback={<div>Loading...</div>}>{children}</Suspense>
+            </main>
+          </div>
+
+          {/* AI Assistant */}
+          <AIAssistant />
+        </div>
     </ChatProvider>
   );
 }
+

@@ -14,7 +14,12 @@ export async function GET(
     }
 
     const fineractService = await getFineractServiceWithSession();
-    const loans = await fineractService.getClientLoans(clientId);
+    const loansResponse = await fineractService.getClientLoans(clientId);
+
+    // Handle paginated response from Fineract API
+    const loans = Array.isArray(loansResponse) 
+      ? loansResponse 
+      : (loansResponse as any)?.pageItems || (loansResponse as any)?.content || [];
 
     return NextResponse.json(loans);
   } catch (error) {
