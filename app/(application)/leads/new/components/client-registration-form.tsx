@@ -79,6 +79,7 @@ import { useThemeColors } from "@/lib/theme-utils";
 import { Calendar } from "@/components/ui/calender";
 import { SkeletonForm } from "./client-registration-form-skeleton";
 import { AddOfficeDialog } from "./add-office-dialogue";
+import { submitClientForm } from "@/app/actions/submit-client-form";
 
 // Form validation schema
 const clientFormSchema = z
@@ -253,7 +254,7 @@ export function ClientRegistrationForm({
   const [clientLookupStatus, setClientLookupStatus] = useState<
     "idle" | "not_found" | "found" | "error"
   >("idle");
-  const [isFormDisabled, setIsFormDisabled] = useState(true);
+  const [isFormDisabled, setIsFormDisabled] = useState(false);
 
   // State for dropdown options
   const [offices, setOffices] = useState<any[]>([]);
@@ -890,60 +891,6 @@ export function ClientRegistrationForm({
     setFamilyMembers([]);
   };
 
-  // Handle form submission
-  const onSubmit = async (data: ClientFormValues) => {
-    setIsSubmitting(true);
-
-    try {
-      // Save draft first
-      const saveResult = await handleSaveDraft(data);
-
-      if (!saveResult.success) {
-        toast({
-          title: "Error",
-          description: saveResult.error || "Failed to save draft",
-          variant: "destructive",
-        });
-        setIsSubmitting(false);
-        return;
-      }
-
-      // Submit to API
-      const submitResult = await submitLead(saveResult.leadId!);
-
-      if (!submitResult.success) {
-        toast({
-          title: "Error",
-          description: submitResult.error || "Failed to submit lead",
-          variant: "destructive",
-        });
-        setIsSubmitting(false);
-        return;
-      }
-
-      // Clear local storage on successful submission
-      LeadLocalStorage.clear();
-
-      toast({
-        title: "Success",
-        description: "Client registered successfully",
-        variant: "default",
-      });
-
-      // Redirect to leads page
-      router.push("/leads");
-    } catch (error) {
-      console.error("Error submitting form:", error);
-      toast({
-        title: "Error",
-        description: "An unexpected error occurred",
-        variant: "destructive",
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
   // Handle saving draft
   const handleSaveDraft = async (data: ClientFormValues) => {
     setIsSaving(true);
@@ -1442,7 +1389,14 @@ export function ClientRegistrationForm({
               </CardContent>
             </Card>
 
-            <form onSubmit={form.handleSubmit(onSubmit as any)}>
+            <form onSubmit={() => submitClientForm}>
+              {/* Hidden field for current lead ID */}
+              <input
+                type="hidden"
+                name="currentLeadId"
+                value={currentLeadId || ""}
+              />
+
               <Card className={`border-${colors.borderColor} ${colors.cardBg}`}>
                 <CardHeader>
                   <CardTitle className={colors.textColor}>
@@ -1571,12 +1525,10 @@ export function ClientRegistrationForm({
                         <div className="relative">
                           <Input
                             id="firstname"
+                            name="firstname"
                             placeholder="Enter first name"
                             className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
-                            {...form.register("firstname", {
-                              onBlur: (e) =>
-                                handleFieldBlur("firstname", e.target.value),
-                            })}
+                            defaultValue={form.getValues("firstname")}
                             disabled={isFormDisabled}
                           />
                           {lastSavedField === "firstname" && isAutoSaving && (
@@ -1606,12 +1558,10 @@ export function ClientRegistrationForm({
                         <div className="relative">
                           <Input
                             id="middlename"
+                            name="middlename"
                             placeholder="Enter middle name"
                             className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
-                            {...form.register("middlename", {
-                              onBlur: (e) =>
-                                handleFieldBlur("middlename", e.target.value),
-                            })}
+                            defaultValue={form.getValues("middlename")}
                             disabled={isFormDisabled}
                           />
                           {lastSavedField === "middlename" && isAutoSaving && (
@@ -1633,12 +1583,10 @@ export function ClientRegistrationForm({
                         <div className="relative">
                           <Input
                             id="lastname"
+                            name="lastname"
                             placeholder="Enter last name"
                             className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
-                            {...form.register("lastname", {
-                              onBlur: (e) =>
-                                handleFieldBlur("lastname", e.target.value),
-                            })}
+                            defaultValue={form.getValues("lastname")}
                             disabled={isFormDisabled}
                           />
                           {lastSavedField === "lastname" && isAutoSaving && (
@@ -1775,7 +1723,7 @@ export function ClientRegistrationForm({
                                   "National ID must be in format 48-147220J12",
                               },
                             })}
-                            disabled
+                            disabled={isFormDisabled}
                           />
                           {lastSavedField === "externalId" && isAutoSaving && (
                             <div className="absolute right-2 top-1/2 -translate-y-1/2">
