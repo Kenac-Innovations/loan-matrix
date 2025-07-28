@@ -643,26 +643,6 @@ export function NewLeadForm({ clientFormData }: NewLeadFormProps) {
           </TabsContent>
         </Tabs>
       </form>
-
-      {/* Debug section - remove in production */}
-      {process.env.NODE_ENV === "development" && (
-        <div className="text-xs text-gray-500 mt-4 p-4 border border-gray-700 rounded">
-          <details>
-            <summary>Debug Info</summary>
-            <div className="mt-2">
-              <p>
-                Selected Offer:{" "}
-                {selectedOffer ? JSON.stringify(selectedOffer) : "None"}
-              </p>
-              <p>
-                Affordability Result:{" "}
-                {affordabilityResult ? "Available" : "None"}
-              </p>
-              <p>Active Tab: {activeTab}</p>
-            </div>
-          </details>
-        </div>
-      )}
     </div>
   );
 }

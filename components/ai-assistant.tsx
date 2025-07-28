@@ -446,7 +446,7 @@ export function AIAssistant() {
         {/* Tooltip/suggestion bubble */}
         {showTooltip && (
           <div
-            className="mb-3 max-w-xs animate-fade-in rounded-lg bg-[#1a2035] p-3 text-white shadow-lg border border-[#2a3045] transform transition-all duration-300 ease-in-out"
+            className="mb-3 max-w-xs animate-fade-in rounded-lg bg-[#1e2938] p-3 text-white shadow-lg border border-[#374151] transform transition-all duration-300 ease-in-out"
             style={{
               animation: "fadeIn 0.3s ease-in-out",
               transform: "scale(1)",
@@ -474,7 +474,7 @@ export function AIAssistant() {
                 Ask
               </Button>
             </div>
-            <div className="absolute -bottom-2 right-4 h-3 w-3 rotate-45 bg-[#1a2035] border-r border-b border-[#2a3045]"></div>
+            <div className="absolute -bottom-2 right-4 h-3 w-3 rotate-45 bg-[#1e2938] border-r border-b border-[#374151]"></div>
           </div>
         )}
 

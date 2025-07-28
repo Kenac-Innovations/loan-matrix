@@ -25,6 +25,9 @@ model Tenant {
   slaConfigs        SLAConfig[]
   teams             Team[]
   leads             Lead[]
+  leadDocuments     LeadDocument[]
+  leadCommunications LeadCommunication[]
+  communicationTemplates CommunicationTemplate[]
   
   @@index([slug])
   @@index([isActive])
@@ -103,12 +106,45 @@ model Lead {
   savingsProductId  Int?
   savingsProductName String?
   
+  // Financial Information
+  creditScore       Int?      // Credit score (300-850)
+  annualIncome      Float?    // Annual income
+  monthlyIncome     Float?    // Monthly income
+  monthlyExpenses   Float?    // Monthly expenses
+  employmentStatus  String?   // EMPLOYED, SELF_EMPLOYED, UNEMPLOYED, RETIRED
+  employerName      String?   // Name of employer
+  yearsEmployed     Float?    // Years in current employment
+  bankName          String?   // Primary bank
+  accountNumber     String?   // Bank account number
+  existingLoans     Int?      @default(0) // Number of existing loans
+  totalDebt         Float?    @default(0) // Total existing debt
+  
+  // Loan Request Information
+  requestedAmount   Float?    // Requested loan amount
+  loanPurpose       String?   // Purpose of the loan
+  loanTerm          Int?      // Requested loan term in months
+  collateralType    String?   // Type of collateral offered
+  collateralValue   Float?    // Value of collateral
+  
+  // Risk Assessment
+  riskScore         Int?      // Risk score (0-100, higher = more risky)
+  riskCategory      String?   // LOW, MEDIUM, HIGH
+  riskFactors       String[]  @default([]) // Array of risk factors
+  riskAssessmentDate DateTime? // When risk was last assessed
+  riskAssessedBy    String?   // Who assessed the risk
+  
   // Response data
   clientId          Int?
   resourceId        Int?
   
   // Family Members / Next of Kin
   familyMembers     FamilyMember[]
+  
+  // Documents
+  documents         LeadDocument[]
+  
+  // Communications
+  communications    LeadCommunication[]
   
   // User relationship
   userId            String
@@ -252,6 +288,112 @@ model FamilyMember {
   lead              Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
   
   @@index([leadId])
+}
+
+// Lead Documents
+model LeadDocument {
+  id                String   @id @default(cuid())
+  leadId            String
+  tenantId          String
+  name              String
+  originalName      String
+  type              String   // File extension (PDF, DOCX, etc.)
+  size              Int      // File size in bytes
+  category          String   // Business Documents, Financial Documents, etc.
+  status            String   @default("pending") // pending, verified, rejected
+  filePath          String?  // Path to stored file
+  mimeType          String?  // MIME type
+  uploadedBy        String   // User ID who uploaded
+  verifiedBy        String?  // User ID who verified
+  verifiedAt        DateTime?
+  notes             String?  // Verification notes
+  metadata          Json?    // Additional metadata
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  // Relations
+  lead              Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  tenant            Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  
+  @@index([leadId])
+  @@index([tenantId])
+  @@index([category])
+  @@index([status])
+}
+
+// Lead Communications
+model LeadCommunication {
+  id                String   @id @default(cuid())
+  leadId            String
+  tenantId          String
+  type              String   // EMAIL, SMS, CALL, MEETING, NOTE
+  direction         String   // INBOUND, OUTBOUND
+  subject           String?  // For emails and meetings
+  content           String   // Message content or call notes
+  status            String   @default("sent") // sent, delivered, read, failed, scheduled
+  scheduledAt       DateTime? // For scheduled communications
+  sentAt            DateTime? // When actually sent
+  deliveredAt       DateTime? // When delivered (for SMS/email)
+  readAt            DateTime? // When read (if tracking available)
+  
+  // Contact information
+  fromEmail         String?
+  toEmail           String?
+  fromPhone         String?
+  toPhone           String?
+  
+  // Metadata
+  provider          String?  // Email/SMS provider used
+  providerId        String?  // Provider's message ID
+  metadata          Json?    // Additional provider-specific data
+  attachments       Json?    // File attachments info
+  
+  // User tracking
+  createdBy         String   // User ID who created this communication
+  assignedTo        String?  // User ID assigned to handle this
+  
+  // Timestamps
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  // Relations
+  lead              Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  tenant            Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  
+  @@index([leadId])
+  @@index([tenantId])
+  @@index([type])
+  @@index([direction])
+  @@index([status])
+  @@index([createdAt])
+  @@index([scheduledAt])
+}
+
+// Communication Templates
+model CommunicationTemplate {
+  id                String   @id @default(cuid())
+  tenantId          String
+  name              String
+  description       String?
+  type              String   // EMAIL, SMS
+  category          String   // WELCOME, FOLLOW_UP, REMINDER, REJECTION, APPROVAL
+  subject           String?  // For email templates
+  content           String   // Template content with placeholders
+  variables         Json?    // Available variables for this template
+  isActive          Boolean  @default(true)
+  
+  // Metadata
+  createdBy         String
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  // Relations
+  tenant            Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  
+  @@index([tenantId])
+  @@index([type])
+  @@index([category])
+  @@index([isActive])
 }
 
 // Lookup tables

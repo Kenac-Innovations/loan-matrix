@@ -27,7 +27,7 @@ export default async function LeadsPage() {
   const headersList = await headers();
   const tenantSlug = headersList.get("x-tenant-slug") || "default";
 
-  // Fetch leads data server-side
+  // Fetch leads data server-side (full dataset for metrics)
   const leadsData = await getLeadsData(tenantSlug);
 
   return (

@@ -24,9 +24,21 @@ async function main() {
     console.log("Setting up SLA configurations...");
     await setupSLAConfigs(tenant.id, stages);
 
+    // Setup validation rules
+    console.log("Setting up validation rules...");
+    await setupValidationRules(tenant.id, stages);
+
     // Seed sample leads
     console.log("Seeding sample leads...");
-    await seedSampleLeads(tenant.id, stages, teams);
+    const leads = await seedSampleLeads(tenant.id, stages, teams);
+
+    // Seed sample documents
+    console.log("Seeding sample documents...");
+    await seedSampleDocuments(tenant.id, leads);
+
+    // Seed sample communications
+    console.log("Seeding sample communications...");
+    await seedSampleCommunications(tenant.id, leads);
 
     console.log("Database seeded successfully!");
   } catch (error) {
@@ -405,6 +417,287 @@ async function setupSLAConfigs(tenantId: string, stages: any[]) {
   );
 }
 
+async function setupValidationRules(tenantId: string, stages: any[]) {
+  // Check if validation rules already exist
+  const existingRules = await prisma.validationRule.findMany({
+    where: { tenantId },
+  });
+
+  if (existingRules.length > 0) {
+    return existingRules;
+  }
+
+  const validationRulesData = [
+    // Global validation rules (apply to all stages)
+    {
+      name: "Required Personal Information",
+      description: "Ensures basic personal information is complete",
+      conditions: {
+        type: "AND",
+        rules: [
+          { field: "firstname", operator: "isNotEmpty" },
+          { field: "lastname", operator: "isNotEmpty" },
+          { field: "emailAddress", operator: "isNotEmpty" },
+        ],
+      },
+      actions: {
+        onPass: { message: "Personal information is complete" },
+        onFail: {
+          message: "Missing required personal information",
+          suggestedAction: "Update Personal Information",
+          actionUrl: "/edit?section=personal",
+        },
+      },
+      severity: "error",
+      enabled: true,
+      order: 1,
+      pipelineStageId: null, // Global rule
+    },
+    {
+      name: "Contact Information Validation",
+      description: "Validates contact information format and completeness",
+      conditions: {
+        type: "AND",
+        rules: [
+          { field: "mobileNo", operator: "isNotEmpty" },
+          { field: "emailAddress", operator: "isValidEmail" },
+        ],
+      },
+      actions: {
+        onPass: { message: "Contact information is valid" },
+        onFail: {
+          message: "Invalid or missing contact information",
+          suggestedAction: "Update Contact Information",
+          actionUrl: "/edit?section=contact",
+        },
+      },
+      severity: "error",
+      enabled: true,
+      order: 2,
+      pipelineStageId: null, // Global rule
+    },
+
+    // New Lead stage specific rules
+    {
+      name: "Initial Lead Completeness",
+      description:
+        "Checks if lead has minimum required information for processing",
+      conditions: {
+        type: "AND",
+        rules: [
+          { field: "firstname", operator: "isNotEmpty" },
+          { field: "lastname", operator: "isNotEmpty" },
+          { field: "emailAddress", operator: "isNotEmpty" },
+          { field: "mobileNo", operator: "isNotEmpty" },
+        ],
+      },
+      actions: {
+        onPass: { message: "Lead has minimum required information" },
+        onFail: {
+          message: "Lead is missing basic information required for processing",
+          suggestedAction: "Complete Basic Information",
+          actionUrl: "/edit?section=basic",
+        },
+      },
+      severity: "error",
+      enabled: true,
+      order: 1,
+      pipelineStageId: stages.find((s) => s.name === "New Lead")?.id,
+    },
+
+    // Qualification stage specific rules
+    {
+      name: "Financial Information Assessment",
+      description: "Validates financial information for qualification",
+      conditions: {
+        type: "OR",
+        rules: [
+          { field: "monthlyIncome", operator: "isNotEmpty" },
+          { field: "annualIncome", operator: "isNotEmpty" },
+        ],
+      },
+      actions: {
+        onPass: {
+          message: "Financial information is available for assessment",
+        },
+        onFail: {
+          message: "Financial information is required for qualification",
+          suggestedAction: "Add Financial Information",
+          actionUrl: "/edit?section=financial",
+        },
+      },
+      severity: "warning",
+      enabled: true,
+      order: 1,
+      pipelineStageId: stages.find((s) => s.name === "Qualification")?.id,
+    },
+    {
+      name: "Employment Verification",
+      description: "Validates employment information",
+      conditions: {
+        type: "AND",
+        rules: [
+          { field: "employmentStatus", operator: "isNotEmpty" },
+          { field: "employerName", operator: "isNotEmpty" },
+        ],
+      },
+      actions: {
+        onPass: { message: "Employment information is complete" },
+        onFail: {
+          message: "Employment information is incomplete",
+          suggestedAction: "Update Employment Details",
+          actionUrl: "/edit?section=employment",
+        },
+      },
+      severity: "warning",
+      enabled: true,
+      order: 2,
+      pipelineStageId: stages.find((s) => s.name === "Qualification")?.id,
+    },
+
+    // Proposal stage specific rules
+    {
+      name: "Loan Request Completeness",
+      description: "Validates loan request information",
+      conditions: {
+        type: "AND",
+        rules: [
+          { field: "requestedAmount", operator: "isNotEmpty" },
+          { field: "loanPurpose", operator: "isNotEmpty" },
+          { field: "loanTerm", operator: "isNotEmpty" },
+        ],
+      },
+      actions: {
+        onPass: { message: "Loan request information is complete" },
+        onFail: {
+          message: "Loan request information is incomplete",
+          suggestedAction: "Complete Loan Request",
+          actionUrl: "/edit?section=loan",
+        },
+      },
+      severity: "error",
+      enabled: true,
+      order: 1,
+      pipelineStageId: stages.find((s) => s.name === "Proposal")?.id,
+    },
+    {
+      name: "Document Verification",
+      description: "Ensures required documents are uploaded and verified",
+      conditions: {
+        type: "AND",
+        rules: [{ field: "documents", operator: "hasMinimumCount", value: 1 }],
+      },
+      actions: {
+        onPass: { message: "Required documents are available" },
+        onFail: {
+          message: "Required documents are missing",
+          suggestedAction: "Upload Required Documents",
+          actionUrl: "/documents",
+        },
+      },
+      severity: "error",
+      enabled: true,
+      order: 2,
+      pipelineStageId: stages.find((s) => s.name === "Proposal")?.id,
+    },
+
+    // Negotiation stage specific rules
+    {
+      name: "Credit Score Assessment",
+      description: "Validates credit score meets minimum requirements",
+      conditions: {
+        type: "AND",
+        rules: [
+          { field: "creditScore", operator: "isNotEmpty" },
+          { field: "creditScore", operator: "greaterThanOrEqual", value: 550 },
+        ],
+      },
+      actions: {
+        onPass: { message: "Credit score meets minimum requirements" },
+        onFail: {
+          message: "Credit score is below minimum requirement (550)",
+          suggestedAction: "Review Credit Assessment",
+          actionUrl: "?tab=risk",
+        },
+      },
+      severity: "error",
+      enabled: true,
+      order: 1,
+      pipelineStageId: stages.find((s) => s.name === "Negotiation")?.id,
+    },
+    {
+      name: "Debt-to-Income Ratio Check",
+      description: "Validates debt-to-income ratio is within acceptable limits",
+      conditions: {
+        type: "AND",
+        rules: [
+          { field: "monthlyIncome", operator: "isNotEmpty" },
+          { field: "totalDebt", operator: "isNotEmpty" },
+          {
+            field: "debtToIncomeRatio",
+            operator: "lessThanOrEqual",
+            value: 0.4,
+          },
+        ],
+      },
+      actions: {
+        onPass: { message: "Debt-to-income ratio is within acceptable limits" },
+        onFail: {
+          message: "Debt-to-income ratio exceeds recommended maximum (40%)",
+          suggestedAction: "Review Financial Terms",
+          actionUrl: "?tab=financials",
+        },
+      },
+      severity: "warning",
+      enabled: true,
+      order: 2,
+      pipelineStageId: stages.find((s) => s.name === "Negotiation")?.id,
+    },
+    {
+      name: "Collateral Adequacy",
+      description: "Validates collateral value is adequate for loan amount",
+      conditions: {
+        type: "AND",
+        rules: [
+          { field: "collateralValue", operator: "isNotEmpty" },
+          { field: "requestedAmount", operator: "isNotEmpty" },
+          {
+            field: "collateralRatio",
+            operator: "greaterThanOrEqual",
+            value: 1.2,
+          },
+        ],
+      },
+      actions: {
+        onPass: { message: "Collateral value is adequate" },
+        onFail: {
+          message:
+            "Collateral value may be insufficient for requested loan amount",
+          suggestedAction: "Review Collateral Assessment",
+          actionUrl: "?tab=collateral",
+        },
+      },
+      severity: "warning",
+      enabled: true,
+      order: 3,
+      pipelineStageId: stages.find((s) => s.name === "Negotiation")?.id,
+    },
+  ].filter((rule) => rule.pipelineStageId !== undefined); // Filter out rules with undefined stage IDs
+
+  const rules = await Promise.all(
+    validationRulesData.map((rule) =>
+      prisma.validationRule.create({
+        data: {
+          ...rule,
+          tenantId,
+        },
+      })
+    )
+  );
+
+  return rules;
+}
+
 async function seedSampleLeads(tenantId: string, stages: any[], teams: any[]) {
   // Check if leads already exist
   const existingLeads = await prisma.lead.findMany({
@@ -427,6 +720,33 @@ async function seedSampleLeads(tenantId: string, stages: any[], teams: any[]) {
       currentStageId: stages.find((s) => s.name === "New Lead")?.id,
       status: "SUBMITTED",
       userId: "user1",
+      // Financial Information
+      creditScore: 720,
+      annualIncome: 45000,
+      monthlyIncome: 3750,
+      monthlyExpenses: 2800,
+      employmentStatus: "EMPLOYED",
+      employerName: "ABC Corporation",
+      yearsEmployed: 3.5,
+      bankName: "Standard Bank",
+      existingLoans: 1,
+      totalDebt: 15000,
+      // Loan Request
+      requestedAmount: 25000,
+      loanPurpose: "Business expansion",
+      loanTerm: 36,
+      collateralType: "Property",
+      collateralValue: 50000,
+      // Risk Assessment
+      riskScore: 35,
+      riskCategory: "LOW",
+      riskFactors: [
+        "Stable employment",
+        "Good credit history",
+        "Adequate collateral",
+      ],
+      riskAssessmentDate: new Date(),
+      riskAssessedBy: "system",
     },
     {
       firstname: "Chipo",
@@ -960,6 +1280,376 @@ async function seedSampleLeads(tenantId: string, stages: any[], teams: any[]) {
   await Promise.all(transitionPromises);
 
   return leads;
+}
+
+async function seedSampleDocuments(tenantId: string, leads: any[]) {
+  // Check if documents already exist
+  const existingDocuments = await prisma.leadDocument.findMany({
+    where: { tenantId },
+  });
+
+  if (existingDocuments.length > 0) {
+    return existingDocuments;
+  }
+
+  // Sample document categories and types
+  const documentCategories = [
+    "Business Documents",
+    "Financial Documents",
+    "Collateral Documents",
+    "Identity Documents",
+    "Legal Documents",
+  ];
+
+  const documentTypes = {
+    "Business Documents": [
+      { name: "Business Registration Certificate", type: "PDF", size: 245760 },
+      { name: "Tax Clearance Certificate", type: "PDF", size: 189440 },
+      { name: "Business Plan", type: "DOCX", size: 512000 },
+      { name: "Company Profile", type: "PDF", size: 367616 },
+    ],
+    "Financial Documents": [
+      { name: "Bank Statements (6 months)", type: "PDF", size: 1048576 },
+      { name: "Financial Statements", type: "PDF", size: 786432 },
+      { name: "Audited Accounts", type: "PDF", size: 921600 },
+      { name: "Cash Flow Projections", type: "XLSX", size: 204800 },
+    ],
+    "Collateral Documents": [
+      { name: "Property Title Deed", type: "PDF", size: 512000 },
+      { name: "Property Valuation Report", type: "PDF", size: 1572864 },
+      { name: "Insurance Policy", type: "PDF", size: 327680 },
+      { name: "Property Survey Report", type: "PDF", size: 2097152 },
+    ],
+    "Identity Documents": [
+      { name: "National ID Copy", type: "PDF", size: 102400 },
+      { name: "Passport Copy", type: "PDF", size: 153600 },
+      { name: "Proof of Residence", type: "PDF", size: 204800 },
+    ],
+    "Legal Documents": [
+      { name: "Power of Attorney", type: "PDF", size: 256000 },
+      { name: "Memorandum of Understanding", type: "PDF", size: 409600 },
+      { name: "Legal Opinion", type: "PDF", size: 327680 },
+    ],
+  };
+
+  const statuses = ["pending", "verified", "rejected"];
+  const users = [
+    "user1",
+    "user2",
+    "user3",
+    "user4",
+    "user5",
+    "user6",
+    "user7",
+    "user8",
+  ];
+
+  const sampleDocuments = [];
+
+  // Create documents for first 10 leads (to have some variety)
+  for (let i = 0; i < Math.min(10, leads.length); i++) {
+    const lead = leads[i];
+    const numDocuments = Math.floor(Math.random() * 5) + 2; // 2-6 documents per lead
+
+    for (let j = 0; j < numDocuments; j++) {
+      const category =
+        documentCategories[
+          Math.floor(Math.random() * documentCategories.length)
+        ];
+      const docTypes = documentTypes[category as keyof typeof documentTypes];
+      const docType = docTypes[Math.floor(Math.random() * docTypes.length)];
+      const status = statuses[Math.floor(Math.random() * statuses.length)];
+      const uploadedBy = users[Math.floor(Math.random() * users.length)];
+
+      const document = {
+        leadId: lead.id,
+        tenantId,
+        name: docType.name,
+        originalName: `${docType.name
+          .toLowerCase()
+          .replace(/\s+/g, "_")}.${docType.type.toLowerCase()}`,
+        type: docType.type,
+        size: docType.size,
+        category,
+        status,
+        filePath: `/uploads/leads/${lead.id}/${docType.name
+          .toLowerCase()
+          .replace(/\s+/g, "_")}.${docType.type.toLowerCase()}`,
+        mimeType:
+          docType.type === "PDF"
+            ? "application/pdf"
+            : docType.type === "DOCX"
+            ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            : docType.type === "XLSX"
+            ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            : "application/octet-stream",
+        uploadedBy,
+        verifiedBy:
+          status === "verified"
+            ? users[Math.floor(Math.random() * users.length)]
+            : null,
+        verifiedAt:
+          status === "verified"
+            ? new Date(Date.now() - Math.random() * 3 * 24 * 60 * 60 * 1000)
+            : null,
+        notes:
+          status === "rejected"
+            ? "Document quality is poor, please resubmit"
+            : status === "verified"
+            ? "Document verified and approved"
+            : null,
+        metadata: {
+          uploadSource: "web_portal",
+          fileHash: `hash_${Math.random().toString(36).substring(7)}`,
+          scanResult: "clean",
+        },
+      };
+
+      sampleDocuments.push(document);
+    }
+  }
+
+  // Create the documents in the database
+  const documents = await Promise.all(
+    sampleDocuments.map((doc) =>
+      prisma.leadDocument.create({
+        data: doc,
+      })
+    )
+  );
+
+  return documents;
+}
+
+async function seedSampleCommunications(tenantId: string, leads: any[]) {
+  // Check if communications already exist
+  const existingCommunications = await prisma.leadCommunication.findMany({
+    where: { tenantId },
+  });
+
+  if (existingCommunications.length > 0) {
+    return existingCommunications;
+  }
+
+  const communicationTypes = ["EMAIL", "SMS", "CALL", "MEETING", "NOTE"];
+  const directions = ["INBOUND", "OUTBOUND"];
+  const statuses = ["sent", "delivered", "read", "failed"];
+  const users = [
+    "user1",
+    "user2",
+    "user3",
+    "user4",
+    "user5",
+    "user6",
+    "user7",
+    "user8",
+  ];
+
+  const emailSubjects = [
+    "Welcome to our loan application process",
+    "Document verification required",
+    "Loan application status update",
+    "Additional information needed",
+    "Congratulations! Your loan has been approved",
+    "Meeting scheduled for loan discussion",
+    "Follow-up on your loan application",
+    "Important: Action required on your application",
+    "Loan terms and conditions",
+    "Thank you for choosing our services",
+  ];
+
+  const emailContents = [
+    "Thank you for submitting your loan application. We have received all your documents and will begin processing shortly.",
+    "We need additional documentation to proceed with your application. Please upload the requested documents at your earliest convenience.",
+    "Your loan application is currently under review. We will contact you within 2-3 business days with an update.",
+    "We would like to schedule a meeting to discuss your loan requirements in detail. Please let us know your availability.",
+    "Congratulations! Your loan application has been approved. Please review the attached terms and conditions.",
+    "This is a follow-up to our previous conversation. Please don't hesitate to contact us if you have any questions.",
+    "We have reviewed your application and would like to discuss some modifications to better suit your needs.",
+    "Your application requires immediate attention. Please contact us as soon as possible to avoid delays.",
+    "Please find attached the loan agreement for your review. Kindly sign and return at your earliest convenience.",
+    "Thank you for choosing our financial services. We look forward to a successful partnership.",
+  ];
+
+  const callNotes = [
+    "Discussed loan requirements and eligibility criteria. Client seems interested and qualified.",
+    "Explained the application process and required documentation. Client will submit documents by end of week.",
+    "Follow-up call to check on document submission status. Client requested extension for bank statements.",
+    "Clarified loan terms and interest rates. Client satisfied with the proposed terms.",
+    "Discussed collateral requirements and property valuation process.",
+    "Client had questions about repayment schedule. Provided detailed explanation.",
+    "Scheduled in-person meeting for loan agreement signing.",
+    "Client requested information about early repayment options.",
+    "Discussed loan disbursement process and timeline.",
+    "Final verification call before loan approval.",
+  ];
+
+  const meetingNotes = [
+    "Productive meeting to discuss loan application. Client provided additional financial information.",
+    "Reviewed all submitted documents with client. Everything appears to be in order.",
+    "Discussed loan terms in detail. Client agreed to proposed interest rate and repayment schedule.",
+    "Property inspection meeting completed. Collateral value confirmed.",
+    "Final meeting before loan approval. All conditions have been met.",
+    "Loan agreement signing ceremony. Client very satisfied with the service.",
+    "Initial consultation meeting. Assessed client's financial needs and capacity.",
+    "Follow-up meeting to address client's concerns about loan terms.",
+    "Meeting with client and guarantor to finalize loan documentation.",
+    "Post-approval meeting to explain disbursement process.",
+  ];
+
+  const smsMessages = [
+    "Your loan application has been received. Reference: LA2024001",
+    "Document verification in progress. We'll update you soon.",
+    "Please call us at your earliest convenience regarding your application.",
+    "Congratulations! Your loan has been approved. Check your email for details.",
+    "Reminder: Meeting scheduled for tomorrow at 2 PM.",
+    "Your application is pending additional documentation.",
+    "Loan disbursement completed. Check your account.",
+    "Thank you for choosing our services. Rate us on our app!",
+    "Important: Please respond to our email sent today.",
+    "Your monthly payment is due in 3 days.",
+  ];
+
+  const noteContents = [
+    "Client called to inquire about application status. Provided update and reassurance.",
+    "Received additional documents via email. All requirements now satisfied.",
+    "Internal note: Credit score verification completed. Score: 720 - Excellent.",
+    "Property valuation report received. Value confirmed at $50,000.",
+    "Client expressed satisfaction with our service during phone conversation.",
+    "Loan committee approved application. Preparing final documentation.",
+    "Client requested expedited processing due to urgent business needs.",
+    "All KYC requirements completed. Client profile updated in system.",
+    "Risk assessment completed. Client categorized as low-risk borrower.",
+    "Final approval granted by senior management. Proceeding with disbursement.",
+  ];
+
+  const sampleCommunications = [];
+
+  // Create communications for first 15 leads (to have variety)
+  for (let i = 0; i < Math.min(15, leads.length); i++) {
+    const lead = leads[i];
+    const numCommunications = Math.floor(Math.random() * 8) + 3; // 3-10 communications per lead
+
+    for (let j = 0; j < numCommunications; j++) {
+      const type =
+        communicationTypes[
+          Math.floor(Math.random() * communicationTypes.length)
+        ];
+      const direction =
+        directions[Math.floor(Math.random() * directions.length)];
+      const status = statuses[Math.floor(Math.random() * statuses.length)];
+      const createdBy = users[Math.floor(Math.random() * users.length)];
+
+      let subject = null;
+      let content = "";
+
+      // Generate content based on communication type
+      switch (type) {
+        case "EMAIL":
+          subject =
+            emailSubjects[Math.floor(Math.random() * emailSubjects.length)];
+          content =
+            emailContents[Math.floor(Math.random() * emailContents.length)];
+          break;
+        case "SMS":
+          content = smsMessages[Math.floor(Math.random() * smsMessages.length)];
+          break;
+        case "CALL":
+          content = callNotes[Math.floor(Math.random() * callNotes.length)];
+          break;
+        case "MEETING":
+          subject = "Client Meeting - " + lead.firstname + " " + lead.lastname;
+          content =
+            meetingNotes[Math.floor(Math.random() * meetingNotes.length)];
+          break;
+        case "NOTE":
+          content =
+            noteContents[Math.floor(Math.random() * noteContents.length)];
+          break;
+      }
+
+      // Create timestamp (spread over last 30 days)
+      const createdAt = new Date(
+        Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000
+      );
+
+      const communication = {
+        leadId: lead.id,
+        tenantId,
+        type,
+        direction,
+        subject,
+        content,
+        status,
+        scheduledAt:
+          type === "MEETING"
+            ? new Date(createdAt.getTime() + 24 * 60 * 60 * 1000)
+            : null,
+        sentAt: createdAt,
+        deliveredAt:
+          status !== "failed"
+            ? new Date(createdAt.getTime() + 5 * 60 * 1000)
+            : null,
+        readAt:
+          status === "read"
+            ? new Date(createdAt.getTime() + 30 * 60 * 1000)
+            : null,
+        fromEmail:
+          direction === "OUTBOUND" && type === "EMAIL"
+            ? "loans@company.com"
+            : null,
+        toEmail:
+          direction === "INBOUND" || type === "EMAIL"
+            ? lead.emailAddress
+            : null,
+        fromPhone:
+          direction === "OUTBOUND" && (type === "SMS" || type === "CALL")
+            ? "+263123456789"
+            : null,
+        toPhone:
+          direction === "INBOUND" || type === "SMS" || type === "CALL"
+            ? lead.mobileNo
+            : null,
+        provider:
+          type === "EMAIL" ? "SendGrid" : type === "SMS" ? "Twilio" : null,
+        providerId:
+          type === "EMAIL" || type === "SMS"
+            ? `msg_${Math.random().toString(36).substring(7)}`
+            : null,
+        metadata: {
+          source: "seed_data",
+          priority: Math.random() > 0.8 ? "high" : "normal",
+          tags: [type.toLowerCase(), direction.toLowerCase()],
+        },
+        createdBy,
+        assignedTo:
+          Math.random() > 0.5
+            ? users[Math.floor(Math.random() * users.length)]
+            : null,
+        createdAt,
+        updatedAt: createdAt,
+      };
+
+      sampleCommunications.push(communication);
+    }
+  }
+
+  // Sort communications by creation date
+  sampleCommunications.sort(
+    (a, b) => a.createdAt.getTime() - b.createdAt.getTime()
+  );
+
+  // Create the communications in the database
+  const communications = await Promise.all(
+    sampleCommunications.map((comm) =>
+      prisma.leadCommunication.create({
+        data: comm,
+      })
+    )
+  );
+
+  console.log(`✅ Created ${communications.length} sample communications`);
+  return communications;
 }
 
 main()
