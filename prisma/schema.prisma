@@ -110,14 +110,21 @@ model Lead {
   creditScore       Int?      // Credit score (300-850)
   annualIncome      Float?    // Annual income
   monthlyIncome     Float?    // Monthly income
+  monthlyIncomeRange String?  // Sales-friendly income range
   monthlyExpenses   Float?    // Monthly expenses
   employmentStatus  String?   // EMPLOYED, SELF_EMPLOYED, UNEMPLOYED, RETIRED
   employerName      String?   // Name of employer
   yearsEmployed     Float?    // Years in current employment
+  yearsAtCurrentJob String?   // Sales-friendly years range
   bankName          String?   // Primary bank
   accountNumber     String?   // Bank account number
   existingLoans     Int?      @default(0) // Number of existing loans
+  hasExistingLoans  Boolean?  @default(false) // Sales-friendly existing loans flag
   totalDebt         Float?    @default(0) // Total existing debt
+  monthlyDebtPayments Float?  // Approximate monthly debt payments
+  propertyOwnership String?   // OWN, RENT, FAMILY, OTHER
+  businessOwnership Boolean?  @default(false) // Owns a business
+  businessType      String?   // Type of business if applicable
   
   // Loan Request Information
   requestedAmount   Float?    // Requested loan amount
