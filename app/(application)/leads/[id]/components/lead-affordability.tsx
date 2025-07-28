@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import {
   Card,
   CardContent,
@@ -10,15 +11,140 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
-import { Calculator, DollarSign, Briefcase, Building } from "lucide-react";
+import {
+  Calculator,
+  DollarSign,
+  Briefcase,
+  Building,
+  Loader2,
+} from "lucide-react";
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  Title,
+  Tooltip,
+  Legend,
+  ArcElement,
+  PointElement,
+  LineElement,
+} from "chart.js";
+import { Bar, Doughnut, Line } from "react-chartjs-2";
+import { useChartTheme } from "@/lib/chart-theme-utils";
+import { useTheme } from "next-themes";
+
+// Register Chart.js components
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  Title,
+  Tooltip,
+  Legend,
+  ArcElement,
+  PointElement,
+  LineElement
+);
 
 interface LeadAffordabilityProps {
   leadId: string;
 }
 
+interface Factor {
+  name: string;
+  value: string;
+  status: "good" | "warning" | "bad" | "neutral";
+}
+
+interface ModelResult {
+  maxLoanAmount: number;
+  approved: boolean;
+  factors: Factor[];
+  [key: string]: any;
+}
+
+interface AffordabilityModel {
+  modelName: string;
+  modelType: string;
+  isDefault: boolean;
+  result: ModelResult;
+}
+
+interface OverallAssessment {
+  maxLoanAmount: number;
+  recommendedModel: string;
+  requestedAmount: number;
+  approved: boolean;
+  warnings: string[];
+  approvalFactors: string[];
+}
+
+interface AffordabilityData {
+  dtiModel: AffordabilityModel;
+  disposableIncomeModel: AffordabilityModel;
+  employerBasedModel: AffordabilityModel;
+  expenditureEstimationModel: AffordabilityModel;
+  overallAssessment: OverallAssessment;
+}
+
 export function LeadAffordability({ leadId }: LeadAffordabilityProps) {
-  // In a real application, this data would be fetched from an API
-  const affordabilityData = {
+  const [affordabilityData, setAffordabilityData] =
+    useState<AffordabilityData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const { theme } = useTheme();
+
+  useEffect(() => {
+    const fetchAffordabilityData = async () => {
+      try {
+        setLoading(true);
+        const response = await fetch(`/api/leads/${leadId}/affordability`);
+        if (!response.ok) {
+          throw new Error("Failed to fetch affordability data");
+        }
+        const data = await response.json();
+        setAffordabilityData(data);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "An error occurred");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchAffordabilityData();
+  }, [leadId]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="h-8 w-8 animate-spin" />
+        <span className="ml-2">Loading affordability data...</span>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <p className="text-red-500 mb-2">Error loading affordability data</p>
+          <p className="text-sm text-muted-foreground">{error}</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!affordabilityData) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <p className="text-muted-foreground">No affordability data available</p>
+      </div>
+    );
+  }
+
+  // Dummy data fallback for demonstration
+  const fallbackData = {
     // DTI Model Results
     dtiModel: {
       modelName: "Standard DTI Model",
@@ -136,6 +262,91 @@ export function LeadAffordability({ leadId }: LeadAffordabilityProps) {
     }).format(amount);
   };
 
+  const { colors, getOptions } = useChartTheme();
+
+  // Chart data generators
+  const getDTIChartData = () => {
+    const dtiData = affordabilityData.dtiModel.result;
+    return {
+      labels: ["Current Debt", "Proposed Payment", "Available Capacity"],
+      datasets: [
+        {
+          label: "Monthly Debt Breakdown",
+          data: [
+            dtiData.currentDebt || 0,
+            dtiData.proposedPayment || 0,
+            Math.max(
+              0,
+              dtiData.monthlyIncome * 0.36 -
+                (dtiData.currentDebt || 0) -
+                (dtiData.proposedPayment || 0)
+            ),
+          ],
+          backgroundColor: [colors.warning, colors.info, colors.success],
+          borderColor: [colors.warning, colors.info, colors.success],
+          borderWidth: 1,
+        },
+      ],
+    };
+  };
+
+  const getDisposableIncomeChartData = () => {
+    const disposableData = affordabilityData.disposableIncomeModel.result;
+    return {
+      labels: ["Monthly Income", "Monthly Expenses", "Disposable Income"],
+      datasets: [
+        {
+          label: "Income vs Expenses",
+          data: [
+            disposableData.monthlyIncome || 0,
+            disposableData.monthlyExpenditure || 0,
+            disposableData.disposableIncome || 0,
+          ],
+          backgroundColor: [colors.success, colors.error, colors.info],
+          borderColor: [colors.success, colors.error, colors.info],
+          borderWidth: 1,
+        },
+      ],
+    };
+  };
+
+  const getModelComparisonChartData = () => {
+    return {
+      labels: [
+        "DTI Model",
+        "Disposable Income",
+        "Employer-Based",
+        "Expenditure Est.",
+      ],
+      datasets: [
+        {
+          label: "Maximum Loan Amount",
+          data: [
+            affordabilityData.dtiModel.result.maxLoanAmount,
+            affordabilityData.disposableIncomeModel.result.maxLoanAmount,
+            affordabilityData.employerBasedModel.result.maxLoanAmount,
+            affordabilityData.expenditureEstimationModel.result.maxLoanAmount,
+          ],
+          backgroundColor: colors.info,
+          borderColor: colors.info,
+          borderWidth: 1,
+        },
+        {
+          label: "Requested Amount",
+          data: [
+            affordabilityData.overallAssessment.requestedAmount,
+            affordabilityData.overallAssessment.requestedAmount,
+            affordabilityData.overallAssessment.requestedAmount,
+            affordabilityData.overallAssessment.requestedAmount,
+          ],
+          backgroundColor: colors.warning,
+          borderColor: colors.warning,
+          borderWidth: 1,
+        },
+      ],
+    };
+  };
+
   return (
     <div className="space-y-6">
       {/* Overall Assessment Card */}
@@ -183,6 +394,44 @@ export function LeadAffordability({ leadId }: LeadAffordabilityProps) {
                 <p className="text-xl font-medium text-foreground">
                   {affordabilityData.overallAssessment.recommendedModel}
                 </p>
+              </div>
+            </div>
+
+            {/* Model Comparison Chart */}
+            <div className="pt-4 border-t border-border">
+              <p className="text-sm font-medium mb-3 text-foreground">
+                Model Comparison Analysis
+              </p>
+              <div className="h-64 mb-6">
+                <Bar
+                  data={getModelComparisonChartData()}
+                  options={getOptions({
+                    plugins: {
+                      legend: {
+                        position: "top" as const,
+                      },
+                      tooltip: {
+                        callbacks: {
+                          label: function (context: any) {
+                            return `${context.dataset.label}: ${formatCurrency(
+                              context.parsed.y
+                            )}`;
+                          },
+                        },
+                      },
+                    },
+                    scales: {
+                      y: {
+                        beginAtZero: true,
+                        ticks: {
+                          callback: function (value: any) {
+                            return formatCurrency(value);
+                          },
+                        },
+                      },
+                    },
+                  })}
+                />
               </div>
             </div>
 
@@ -343,6 +592,35 @@ export function LeadAffordability({ leadId }: LeadAffordabilityProps) {
                   </div>
                 </div>
 
+                {/* DTI Chart */}
+                <div className="pt-4 border-t border-border">
+                  <p className="text-sm font-medium mb-3 text-foreground">
+                    Debt Breakdown Analysis
+                  </p>
+                  <div className="h-64 mb-6">
+                    <Doughnut
+                      data={getDTIChartData()}
+                      options={getOptions({
+                        plugins: {
+                          legend: {
+                            position: "bottom" as const,
+                          },
+                          tooltip: {
+                            callbacks: {
+                              label: function (context: any) {
+                                return `${context.label}: ${formatCurrency(
+                                  context.parsed
+                                )}`;
+                              },
+                            },
+                          },
+                        },
+                        scales: false,
+                      })}
+                    />
+                  </div>
+                </div>
+
                 <div className="pt-4 border-t border-border">
                   <p className="text-sm font-medium mb-3 text-foreground">
                     Detailed Assessment
@@ -470,6 +748,44 @@ export function LeadAffordability({ leadId }: LeadAffordabilityProps) {
                     <span>15%</span>
                     <span>30%</span>
                     <span>50%</span>
+                  </div>
+                </div>
+
+                {/* Disposable Income Chart */}
+                <div className="pt-4 border-t border-border">
+                  <p className="text-sm font-medium mb-3 text-foreground">
+                    Income vs Expenses Analysis
+                  </p>
+                  <div className="h-64 mb-6">
+                    <Bar
+                      data={getDisposableIncomeChartData()}
+                      options={getOptions({
+                        plugins: {
+                          legend: {
+                            position: "top" as const,
+                          },
+                          tooltip: {
+                            callbacks: {
+                              label: function (context: any) {
+                                return `${
+                                  context.dataset.label
+                                }: ${formatCurrency(context.parsed.y)}`;
+                              },
+                            },
+                          },
+                        },
+                        scales: {
+                          y: {
+                            beginAtZero: true,
+                            ticks: {
+                              callback: function (value: any) {
+                                return formatCurrency(value);
+                              },
+                            },
+                          },
+                        },
+                      })}
+                    />
                   </div>
                 </div>
 

@@ -14,7 +14,6 @@ import {
   PlusCircle,
   Settings,
   Shield,
-  ShieldCheck,
   Users,
   TrendingUp,
 } from "lucide-react";

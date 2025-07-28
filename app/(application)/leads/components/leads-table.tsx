@@ -23,6 +23,13 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
+  Pagination,
+  PaginationContent,
+  PaginationEllipsis,
+  PaginationItem,
+  PaginationLink,
+} from "@/components/ui/pagination";
+import {
   ChevronDown,
   ChevronUp,
   Search,
@@ -271,7 +278,6 @@ export function LeadsTable({ initialData }: LeadsTableProps) {
           />
         </div>
       </div>
-
       <div className="rounded-md border">
         <Table>
           <TableHeader>
@@ -326,13 +332,14 @@ export function LeadsTable({ initialData }: LeadsTableProps) {
           </TableBody>
         </Table>
       </div>
-
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col items-center space-y-4">
         <div className="text-sm text-muted-foreground">
           Showing{" "}
-          {table.getState().pagination.pageIndex *
-            table.getState().pagination.pageSize +
-            1}{" "}
+          {filteredData.length === 0
+            ? 0
+            : table.getState().pagination.pageIndex *
+                table.getState().pagination.pageSize +
+              1}{" "}
           to{" "}
           {Math.min(
             (table.getState().pagination.pageIndex + 1) *
@@ -341,23 +348,32 @@ export function LeadsTable({ initialData }: LeadsTableProps) {
           )}{" "}
           of {filteredData.length} leads
         </div>
+
         <div className="flex items-center space-x-2">
           <Button
             variant="outline"
             size="sm"
             onClick={() => table.previousPage()}
             disabled={!table.getCanPreviousPage()}
-            className=""
           >
             <ChevronLeft className="h-4 w-4" />
+            Previous
           </Button>
+
+          <div className="flex items-center space-x-1">
+            <span className="text-sm text-muted-foreground">
+              Page {table.getState().pagination.pageIndex + 1} of{" "}
+              {table.getPageCount() || 1}
+            </span>
+          </div>
+
           <Button
             variant="outline"
             size="sm"
             onClick={() => table.nextPage()}
             disabled={!table.getCanNextPage()}
-            className=""
           >
+            Next
             <ChevronRight className="h-4 w-4" />
           </Button>
         </div>
