@@ -100,7 +100,7 @@ export default async function DashboardLayout({
                   ]}
                 />
               </div>
-              
+
 
               <Link
                 href="#"
@@ -122,89 +122,92 @@ export default async function DashboardLayout({
                 />
               </div>
 
-
-              <Link
-                href="/accounting"
-                className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-              >
-                <BarChart3 className="h-4 w-4" />
-                Accounting
-              </Link>
-
-              <Link
-                href="#"
-                className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-              >
-                <FileText className="h-4 w-4" />
-                Documents
-              </Link>
-
-              <Link
-                href="#"
-                className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-              >
-                <BarChart3 className="h-4 w-4" />
-                Analytics
-              </Link>
-
-              <Link
-                href="#"
-                className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-              >
-                <Shield className="h-4 w-4" />
-                Compliance
-              </Link>
-
-              <Link
-                href="#"
-                className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-              >
-                <Lock className="h-4 w-4" />
-                Security
-              </Link>
-
-              <div className="space-y-1">
                 <MenuItemWithSubmenu
-                  icon={<Bot />}
-                  label="AI Assistant"
-                  href="/ai-assistant"
+                  icon={<BarChart3 />}
+                  label="Accounting"
+                  href="/accounting"
                   subMenuItems={[
-                    { label: "Chat", href: "/ai-assistant" },
-                    { label: "Admin", href: "/rag-admin" },
+                    { label: "Home", href: "/accounting" },
+                    { label: "Chart of Accounts", href: "/accounting/chart-of-accounts" },
+                    { label: "Journal Entries", href: "/accounting/journal-entries" },
+                    { label: "Search Journal", href: "/accounting/search-journal" },
+                    { label: "Frequent Postings", href: "/accounting/frequent-postings" },
                   ]}
                 />
-              </div>
-
-              <Link
-                href="#"
-                className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-              >
-                <Settings className="h-4 w-4" />
-                Settings
-              </Link>
-            </nav>
 
 
+                <Link
+                  href="#"
+                  className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                >
+                  <FileText className="h-4 w-4" />
+                  Documents
+                </Link>
+
+                <Link
+                  href="#"
+                  className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                >
+                  <BarChart3 className="h-4 w-4" />
+                  Analytics
+                </Link>
+
+                <Link
+                  href="#"
+                  className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                >
+                  <Shield className="h-4 w-4" />
+                  Compliance
+                </Link>
+
+                <Link
+                  href="#"
+                  className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                >
+                  <Lock className="h-4 w-4" />
+                  Security
+                </Link>
+
+                <div className="space-y-1">
+                  <MenuItemWithSubmenu
+                    icon={<Bot />}
+                    label="AI Assistant"
+                    href="/ai-assistant"
+                    subMenuItems={[
+                      { label: "Chat", href: "/ai-assistant" },
+                      { label: "Admin", href: "/rag-admin" },
+                    ]}
+                  />
+                </div>
+
+                <Link
+                  href="#"
+                  className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                >
+                  <Settings className="h-4 w-4" />
+                  Settings
+                </Link>
+              </nav>
           </div>
-          </div>
+        </div>
 
-          {/* Mobile Sidebar */}
-          <MobileSidebar userProfileData={userProfileData} />
+        {/* Mobile Sidebar */}
+        <MobileSidebar userProfileData={userProfileData} />
+
+        {/* Main Content */}
+        <div className="flex flex-1 flex-col h-screen overflow-hidden">
+          {/* Pass user profile data to the client component */}
+          <UserProfileClient userProfileData={userProfileData} />
 
           {/* Main Content */}
-          <div className="flex flex-1 flex-col h-screen overflow-hidden">
-            {/* Pass user profile data to the client component */}
-            <UserProfileClient userProfileData={userProfileData} />
-
-            {/* Main Content */}
-            <main className="flex-1 overflow-y-auto bg-background p-4 lg:p-6">
-              <Suspense fallback={<div>Loading...</div>}>{children}</Suspense>
-            </main>
-          </div>
-
-          {/* AI Assistant */}
-          <AIAssistant />
+          <main className="flex-1 overflow-y-auto bg-background p-4 lg:p-6">
+            <Suspense fallback={<div>Loading...</div>}>{children}</Suspense>
+          </main>
         </div>
+
+        {/* AI Assistant */}
+        <AIAssistant />
+      </div>
     </ChatProvider>
   );
 }
