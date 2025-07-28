@@ -25,3 +25,31 @@ export async function GET(
     );
   }
 }
+
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params;
+    const clientId = parseInt(id);
+
+    if (isNaN(clientId)) {
+      return NextResponse.json({ error: "Invalid client ID" }, { status: 400 });
+    }
+
+    const body = await request.json();
+    const fineractService = await getFineractServiceWithSession();
+    
+    // Update client using Fineract API
+    const updatedClient = await fineractService.updateClient(clientId, body);
+
+    return NextResponse.json(updatedClient);
+  } catch (error) {
+    console.error("Failed to update client:", error);
+    return NextResponse.json(
+      { error: "Failed to update client" },
+      { status: 500 }
+    );
+  }
+}

@@ -18,14 +18,14 @@ export interface FineractClient {
     value: string;
   };
   active: boolean;
-  activationDate?: string;
+  activationDate?: string | number[];
   firstname: string;
   middlename?: string;
   lastname: string;
   displayName: string;
   mobileNo?: string;
   emailAddress?: string;
-  dateOfBirth?: string;
+  dateOfBirth?: string | number[];
   gender?: {
     id: number;
     name: string;
@@ -43,10 +43,12 @@ export interface FineractClient {
   staffId?: number;
   staffName?: string;
   timeline: {
-    submittedOnDate: string;
+    submittedOnDate: string | number[];
     submittedByUsername: string;
-    activatedOnDate?: string;
+    activatedOnDate?: string | number[];
     activatedByUsername?: string;
+    activatedByFirstname?: string;
+    activatedByLastname?: string;
   };
   savingsAccountId?: number;
   clientNonPersonDetails?: any;
@@ -412,6 +414,15 @@ export class FineractAPIService {
   async getClient(clientId: number): Promise<FineractClient> {
     const response: AxiosResponse<FineractClient> = await this.client.get(
       `/clients/${clientId}`
+    );
+    console.log("==========> log on server side getClient response ::", response.data);
+    return response.data;
+  }
+
+  async updateClient(clientId: number, clientData: Partial<FineractClient>): Promise<FineractClient> {
+    const response: AxiosResponse<FineractClient> = await this.client.put(
+      `/clients/${clientId}`,
+      clientData
     );
     return response.data;
   }
