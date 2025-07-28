@@ -53,25 +53,12 @@ export function UserProfileClient({ userProfileData }: UserProfileClientProps) {
       ? `${nameParts[0].charAt(0)}${nameParts[1].charAt(0)}`
       : user.name.substring(0, 2).toUpperCase();
 
-  // Define colors based on theme
-  const bgColor = theme === "light" ? "bg-white" : "bg-[#0d121f]";
-  const borderColor =
-    theme === "light" ? "border-gray-200" : "border-[#1a2035]";
-  const textColor = theme === "light" ? "text-gray-900" : "text-white";
-  const textColorMuted = theme === "light" ? "text-gray-500" : "text-gray-300";
-  const iconColor = theme === "light" ? "text-gray-500" : "text-gray-400";
-  const hoverBgColor =
-    theme === "light" ? "hover:bg-gray-100" : "hover:bg-[#1a2035]";
-
   return (
-    <header
-      className={`flex h-16 items-center justify-between ${borderColor} border-b ${bgColor} px-4 lg:px-6 sticky top-0 z-20`}
-    >
+    <header className="flex h-16 items-center justify-between border-border border-b bg-background px-4 lg:px-6 sticky top-0 z-20">
       <div className="lg:hidden">
         <Button
           variant="ghost"
           size="icon"
-          className={textColor}
           onClick={() => setMobileMenuOpen(true)}
           data-mobile-toggle="true"
         >
@@ -80,11 +67,11 @@ export function UserProfileClient({ userProfileData }: UserProfileClientProps) {
         </Button>
       </div>
       <div className="relative w-full max-w-md lg:max-w-sm mx-4 lg:mx-0">
-        <Search className={`absolute left-2.5 top-2.5 h-4 w-4 ${iconColor}`} />
+        <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
         <input
           type="search"
           placeholder="Search..."
-          className={`w-full rounded-md border ${borderColor} ${bgColor} py-2 pl-8 pr-4 text-sm ${textColor} placeholder-gray-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500`}
+          className="w-full rounded-md border border-border bg-background py-2 pl-8 pr-4 text-sm placeholder-muted-foreground focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
         />
       </div>
       <div className="flex items-center gap-4">
@@ -93,7 +80,7 @@ export function UserProfileClient({ userProfileData }: UserProfileClientProps) {
           <Button
             variant="ghost"
             size="icon"
-            className={`${textColor} relative`}
+            className="relative"
             onClick={() => {
               setNotificationsOpen(!notificationsOpen);
               setProfileOpen(false);
@@ -107,14 +94,10 @@ export function UserProfileClient({ userProfileData }: UserProfileClientProps) {
           </Button>
 
           {notificationsOpen && (
-            <div
-              className={`absolute right-0 mt-2 w-80 rounded-md border ${borderColor} ${bgColor} shadow-lg z-50 max-w-[calc(100vw-2rem)] sm:max-w-sm`}
-            >
-              <div className={`p-3 border-b ${borderColor}`}>
+            <div className="absolute right-0 mt-2 w-80 rounded-md border border-border bg-background shadow-lg z-50 max-w-[calc(100vw-2rem)] sm:max-w-sm">
+              <div className="p-3 border-b border-border">
                 <div className="flex items-center justify-between">
-                  <h3 className={`text-sm font-medium ${textColor}`}>
-                    Notifications
-                  </h3>
+                  <h3 className="text-sm font-medium">Notifications</h3>
                   <Badge
                     variant="outline"
                     className="bg-blue-500 text-white border-0 text-xs"
@@ -126,24 +109,20 @@ export function UserProfileClient({ userProfileData }: UserProfileClientProps) {
 
               <div className="max-h-[400px] overflow-y-auto">
                 <div className="p-2">
-                  <h4
-                    className={`text-xs font-semibold ${iconColor} px-2 py-1`}
-                  >
+                  <h4 className="text-xs font-semibold text-muted-foreground px-2 py-1">
                     CLIENT APPROVALS
                   </h4>
                   <div className="mt-1 space-y-1">
-                    <button
-                      className={`w-full text-left rounded-md p-2 ${hoverBgColor} transition-colors`}
-                    >
+                    <button className="w-full text-left rounded-md p-2 hover:bg-accent transition-colors">
                       <div className="flex items-start gap-2">
                         <div className="rounded-full bg-blue-500/20 p-1 mt-0.5">
                           <Users className="h-3 w-3 text-blue-500" />
                         </div>
                         <div>
-                          <p className={`text-xs font-medium ${textColor}`}>
+                          <p className="text-xs font-medium">
                             New client verification needed
                           </p>
-                          <p className={`text-xs ${iconColor}`}>
+                          <p className="text-xs text-muted-foreground">
                             Robert Johnson submitted KYC documents
                           </p>
                           <p className="text-xs text-gray-500">
@@ -152,18 +131,16 @@ export function UserProfileClient({ userProfileData }: UserProfileClientProps) {
                         </div>
                       </div>
                     </button>
-                    <button
-                      className={`w-full text-left rounded-md p-2 ${hoverBgColor} transition-colors`}
-                    >
+                    <button className="w-full text-left rounded-md p-2 hover:bg-accent transition-colors">
                       <div className="flex items-start gap-2">
                         <div className="rounded-full bg-blue-500/20 p-1 mt-0.5">
                           <Users className="h-3 w-3 text-blue-500" />
                         </div>
                         <div>
-                          <p className={`text-xs font-medium ${textColor}`}>
+                          <p className="text-xs font-medium">
                             Client information updated
                           </p>
-                          <p className={`text-xs ${iconColor}`}>
+                          <p className="text-xs text-muted-foreground">
                             Sarah Williams updated contact details
                           </p>
                           <p className="text-xs text-gray-500">1 hour ago</p>
@@ -173,25 +150,21 @@ export function UserProfileClient({ userProfileData }: UserProfileClientProps) {
                   </div>
                 </div>
 
-                <div className={`p-2 border-t ${borderColor}`}>
-                  <h4
-                    className={`text-xs font-semibold ${iconColor} px-2 py-1`}
-                  >
+                <div className="p-2 border-t border-border">
+                  <h4 className="text-xs font-semibold text-muted-foreground px-2 py-1">
                     LOAN APPROVALS
                   </h4>
                   <div className="mt-1 space-y-1">
-                    <button
-                      className={`w-full text-left rounded-md p-2 ${hoverBgColor} transition-colors`}
-                    >
+                    <button className="w-full text-left rounded-md p-2 hover:bg-accent transition-colors">
                       <div className="flex items-start gap-2">
                         <div className="rounded-full bg-green-500/20 p-1 mt-0.5">
                           <CreditCard className="h-3 w-3 text-green-500" />
                         </div>
                         <div>
-                          <p className={`text-xs font-medium ${textColor}`}>
+                          <p className="text-xs font-medium">
                             Loan ready for final approval
                           </p>
-                          <p className={`text-xs ${iconColor}`}>
+                          <p className="text-xs text-muted-foreground">
                             $245,000 Mortgage for Robert Johnson
                           </p>
                           <p className="text-xs text-gray-500">
@@ -200,18 +173,16 @@ export function UserProfileClient({ userProfileData }: UserProfileClientProps) {
                         </div>
                       </div>
                     </button>
-                    <button
-                      className={`w-full text-left rounded-md p-2 ${hoverBgColor} transition-colors`}
-                    >
+                    <button className="w-full text-left rounded-md p-2 hover:bg-accent transition-colors">
                       <div className="flex items-start gap-2">
                         <div className="rounded-full bg-yellow-500/20 p-1 mt-0.5">
                           <AlertCircle className="h-3 w-3 text-yellow-500" />
                         </div>
                         <div>
-                          <p className={`text-xs font-medium ${textColor}`}>
+                          <p className="text-xs font-medium">
                             Risk assessment needed
                           </p>
-                          <p className={`text-xs ${iconColor}`}>
+                          <p className="text-xs text-muted-foreground">
                             $125,000 Mortgage for Michael Chen
                           </p>
                           <p className="text-xs text-gray-500">2 hours ago</p>
@@ -221,43 +192,37 @@ export function UserProfileClient({ userProfileData }: UserProfileClientProps) {
                   </div>
                 </div>
 
-                <div className={`p-2 border-t ${borderColor}`}>
-                  <h4
-                    className={`text-xs font-semibold ${iconColor} px-2 py-1`}
-                  >
+                <div className="p-2 border-t border-border">
+                  <h4 className="text-xs font-semibold text-muted-foreground px-2 py-1">
                     DISBURSEMENTS
                   </h4>
                   <div className="mt-1 space-y-1">
-                    <button
-                      className={`w-full text-left rounded-md p-2 ${hoverBgColor} transition-colors`}
-                    >
+                    <button className="w-full text-left rounded-md p-2 hover:bg-accent transition-colors">
                       <div className="flex items-start gap-2">
                         <div className="rounded-full bg-purple-500/20 p-1 mt-0.5">
                           <DollarSign className="h-3 w-3 text-purple-500" />
                         </div>
                         <div>
-                          <p className={`text-xs font-medium ${textColor}`}>
+                          <p className="text-xs font-medium">
                             Disbursement ready
                           </p>
-                          <p className={`text-xs ${iconColor}`}>
+                          <p className="text-xs text-muted-foreground">
                             $50,000 Business loan for Sarah Williams
                           </p>
                           <p className="text-xs text-gray-500">Just now</p>
                         </div>
                       </div>
                     </button>
-                    <button
-                      className={`w-full text-left rounded-md p-2 ${hoverBgColor} transition-colors`}
-                    >
+                    <button className="w-full text-left rounded-md p-2 hover:bg-accent transition-colors">
                       <div className="flex items-start gap-2">
                         <div className="rounded-full bg-purple-500/20 p-1 mt-0.5">
                           <DollarSign className="h-3 w-3 text-purple-500" />
                         </div>
                         <div>
-                          <p className={`text-xs font-medium ${textColor}`}>
+                          <p className="text-xs font-medium">
                             Disbursement scheduled
                           </p>
-                          <p className={`text-xs ${iconColor}`}>
+                          <p className="text-xs text-muted-foreground">
                             $75,000 Personal loan for Emily Rodriguez
                           </p>
                           <p className="text-xs text-gray-500">5 hours ago</p>
@@ -267,25 +232,19 @@ export function UserProfileClient({ userProfileData }: UserProfileClientProps) {
                   </div>
                 </div>
 
-                <div className={`p-2 border-t ${borderColor}`}>
-                  <h4
-                    className={`text-xs font-semibold ${iconColor} px-2 py-1`}
-                  >
+                <div className="p-2 border-t border-border">
+                  <h4 className="text-xs font-semibold text-muted-foreground px-2 py-1">
                     SECURITY
                   </h4>
                   <div className="mt-1 space-y-1">
-                    <button
-                      className={`w-full text-left rounded-md p-2 ${hoverBgColor} transition-colors`}
-                    >
+                    <button className="w-full text-left rounded-md p-2 hover:bg-accent transition-colors">
                       <div className="flex items-start gap-2">
                         <div className="rounded-full bg-red-500/20 p-1 mt-0.5">
                           <Shield className="h-3 w-3 text-red-500" />
                         </div>
                         <div>
-                          <p className={`text-xs font-medium ${textColor}`}>
-                            Security alert
-                          </p>
-                          <p className={`text-xs ${iconColor}`}>
+                          <p className="text-xs font-medium">Security alert</p>
+                          <p className="text-xs text-muted-foreground">
                             Multiple failed login attempts detected
                           </p>
                           <p className="text-xs text-gray-500">
@@ -298,12 +257,8 @@ export function UserProfileClient({ userProfileData }: UserProfileClientProps) {
                 </div>
               </div>
 
-              <div className={`p-2 border-t ${borderColor}`}>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className={`w-full ${borderColor} ${textColor} ${hoverBgColor}`}
-                >
+              <div className="p-2 border-t border-border">
+                <Button variant="outline" size="sm" className="w-full">
                   View All Notifications
                 </Button>
               </div>
@@ -339,10 +294,8 @@ export function UserProfileClient({ userProfileData }: UserProfileClientProps) {
           </Button>
 
           {profileOpen && (
-            <div
-              className={`absolute right-0 mt-2 w-64 rounded-md border ${borderColor} ${bgColor} shadow-lg z-50 max-w-[calc(100vw-2rem)] sm:max-w-sm`}
-            >
-              <div className={`p-4 border-b ${borderColor}`}>
+            <div className="absolute right-0 mt-2 w-64 rounded-md border border-border bg-background shadow-lg z-50 max-w-[calc(100vw-2rem)] sm:max-w-sm">
+              <div className="p-4 border-b border-border">
                 <div className="flex items-center gap-3">
                   {isLoggedIn && (
                     <Avatar className="h-10 w-10 border-2 border-blue-500">
@@ -354,10 +307,8 @@ export function UserProfileClient({ userProfileData }: UserProfileClientProps) {
                     </Avatar>
                   )}
                   <div>
-                    <p className={`text-sm font-medium ${textColor}`}>
-                      {userFullName}
-                    </p>
-                    <p className={`text-xs ${iconColor}`}>{userEmail}</p>
+                    <p className="text-sm font-medium">{userFullName}</p>
+                    <p className="text-xs text-muted-foreground">{userEmail}</p>
                   </div>
                 </div>
                 <div className="mt-3 flex flex-wrap gap-1">
@@ -394,35 +345,27 @@ export function UserProfileClient({ userProfileData }: UserProfileClientProps) {
               </div>
 
               <div className="py-2">
-                <button
-                  className={`flex w-full items-center gap-3 px-4 py-2 text-sm ${textColor} ${hoverBgColor} transition-colors`}
-                >
-                  <User className={`h-4 w-4 ${iconColor}`} />
+                <button className="flex w-full items-center gap-3 px-4 py-2 text-sm hover:bg-accent transition-colors">
+                  <User className="h-4 w-4 text-muted-foreground" />
                   <span>My Profile</span>
                 </button>
-                <button
-                  className={`flex w-full items-center gap-3 px-4 py-2 text-sm ${textColor} ${hoverBgColor} transition-colors`}
-                >
-                  <Settings className={`h-4 w-4 ${iconColor}`} />
+                <button className="flex w-full items-center gap-3 px-4 py-2 text-sm hover:bg-accent transition-colors">
+                  <Settings className="h-4 w-4 text-muted-foreground" />
                   <span>Account Settings</span>
                 </button>
-                <button
-                  className={`flex w-full items-center gap-3 px-4 py-2 text-sm ${textColor} ${hoverBgColor} transition-colors`}
-                >
-                  <Bell className={`h-4 w-4 ${iconColor}`} />
+                <button className="flex w-full items-center gap-3 px-4 py-2 text-sm hover:bg-accent transition-colors">
+                  <Bell className="h-4 w-4 text-muted-foreground" />
                   <span>Notification Preferences</span>
                 </button>
               </div>
 
-              <div className={`border-t ${borderColor} py-2`}>
-                <button
-                  className={`flex w-full items-center gap-3 px-4 py-2 text-sm ${textColor} ${hoverBgColor} transition-colors`}
-                >
-                  <HelpCircle className={`h-4 w-4 ${iconColor}`} />
+              <div className="border-t border-border py-2">
+                <button className="flex w-full items-center gap-3 px-4 py-2 text-sm hover:bg-accent transition-colors">
+                  <HelpCircle className="h-4 w-4 text-muted-foreground" />
                   <span>Help & Support</span>
                 </button>
                 <button
-                  className={`flex w-full items-center gap-3 px-4 py-2 text-sm text-red-400 ${hoverBgColor} transition-colors`}
+                  className="flex w-full items-center gap-3 px-4 py-2 text-sm text-red-400 hover:bg-accent transition-colors"
                   onClick={logout}
                 >
                   <LogOut className="h-4 w-4 text-red-400" />

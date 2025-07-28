@@ -188,14 +188,12 @@ export function AffordabilityConfig() {
       case "dti":
         return (
           <div className="space-y-4">
-            <h3 className="text-lg font-medium text-white">
+            <h3 className="text-lg font-medium">
               Debt-to-Income Configuration
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="maxDtiRatio" className="text-gray-300">
-                  Maximum DTI Ratio
-                </Label>
+                <Label htmlFor="maxDtiRatio">Maximum DTI Ratio</Label>
                 <div className="flex items-center space-x-2">
                   <Input
                     id="maxDtiRatio"
@@ -213,18 +211,16 @@ export function AffordabilityConfig() {
                         },
                       })
                     }
-                    className="bg-[#1a2035] border-[#2a304d] text-white"
+                    className="border-border bg-background"
                   />
-                  <span className="text-gray-400">
+                  <span className="text-muted-foreground">
                     ({(editingModel.config.maxDtiRatio * 100).toFixed(0)}%)
                   </span>
                 </div>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="warningDtiRatio" className="text-gray-300">
-                  Warning DTI Ratio
-                </Label>
+                <Label htmlFor="warningDtiRatio">Warning DTI Ratio</Label>
                 <div className="flex items-center space-x-2">
                   <Input
                     id="warningDtiRatio"
@@ -242,18 +238,16 @@ export function AffordabilityConfig() {
                         },
                       })
                     }
-                    className="bg-[#1a2035] border-[#2a304d] text-white"
+                    className="border-border bg-background"
                   />
-                  <span className="text-gray-400">
+                  <span className="text-muted-foreground">
                     ({(editingModel.config.warningDtiRatio * 100).toFixed(0)}%)
                   </span>
                 </div>
               </div>
             </div>
 
-            <h4 className="text-md font-medium text-gray-300 mt-4">
-              Included Debt Types
-            </h4>
+            <h4 className="text-md font-medium mt-4">Included Debt Types</h4>
             <div className="space-y-3">
               <div className="flex items-center space-x-2">
                 <Checkbox
@@ -268,11 +262,8 @@ export function AffordabilityConfig() {
                       },
                     })
                   }
-                  className="data-[state=checked]:bg-blue-600"
                 />
-                <Label htmlFor="includeMortgage" className="text-gray-300">
-                  Include Mortgage/Rent
-                </Label>
+                <Label htmlFor="includeMortgage">Include Mortgage/Rent</Label>
               </div>
 
               <div className="flex items-center space-x-2">
@@ -288,9 +279,8 @@ export function AffordabilityConfig() {
                       },
                     })
                   }
-                  className="data-[state=checked]:bg-blue-600"
                 />
-                <Label htmlFor="includeExistingLoans" className="text-gray-300">
+                <Label htmlFor="includeExistingLoans">
                   Include Existing Loans
                 </Label>
               </div>
@@ -308,9 +298,8 @@ export function AffordabilityConfig() {
                       },
                     })
                   }
-                  className="data-[state=checked]:bg-blue-600"
                 />
-                <Label htmlFor="includeProposedLoan" className="text-gray-300">
+                <Label htmlFor="includeProposedLoan">
                   Include Proposed Loan
                 </Label>
               </div>
@@ -328,12 +317,8 @@ export function AffordabilityConfig() {
                       },
                     })
                   }
-                  className="data-[state=checked]:bg-blue-600"
                 />
-                <Label
-                  htmlFor="includeMinimumCreditCardPayments"
-                  className="text-gray-300"
-                >
+                <Label htmlFor="includeMinimumCreditCardPayments">
                   Include Minimum Credit Card Payments
                 </Label>
               </div>
@@ -344,16 +329,16 @@ export function AffordabilityConfig() {
       case "disposableIncome":
         return (
           <div className="space-y-4">
-            <h3 className="text-lg font-medium text-white">
+            <h3 className="text-lg font-medium">
               Net Disposable Income Configuration
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="minDisposableIncome" className="text-gray-300">
+                <Label htmlFor="minDisposableIncome">
                   Minimum Disposable Income
                 </Label>
                 <div className="flex items-center">
-                  <span className="mr-2 text-gray-400">$</span>
+                  <span className="mr-2 text-muted-foreground">$</span>
                   <Input
                     id="minDisposableIncome"
                     type="number"
@@ -368,16 +353,13 @@ export function AffordabilityConfig() {
                         },
                       })
                     }
-                    className="bg-[#1a2035] border-[#2a304d] text-white"
+                    className="border-border bg-background"
                   />
                 </div>
               </div>
 
               <div className="space-y-2">
-                <Label
-                  htmlFor="disposableIncomePercentage"
-                  className="text-gray-300"
-                >
+                <Label htmlFor="disposableIncomePercentage">
                   Required Disposable Income (% of Income)
                 </Label>
                 <div className="flex items-center space-x-2">
@@ -399,9 +381,9 @@ export function AffordabilityConfig() {
                         },
                       })
                     }
-                    className="bg-[#1a2035] border-[#2a304d] text-white"
+                    className="border-border bg-background"
                   />
-                  <span className="text-gray-400">
+                  <span className="text-muted-foreground">
                     (
                     {(
                       editingModel.config.disposableIncomePercentage * 100
@@ -412,7 +394,7 @@ export function AffordabilityConfig() {
               </div>
             </div>
 
-            <h4 className="text-md font-medium text-gray-300 mt-4">
+            <h4 className="text-md font-medium mt-4">
               Included Expense Categories
             </h4>
             <div className="space-y-3">
@@ -429,9 +411,8 @@ export function AffordabilityConfig() {
                       },
                     })
                   }
-                  className="data-[state=checked]:bg-blue-600"
                 />
-                <Label htmlFor="includeBasicNeeds" className="text-gray-300">
+                <Label htmlFor="includeBasicNeeds">
                   Include Basic Needs (Food, Clothing)
                 </Label>
               </div>
@@ -449,12 +430,8 @@ export function AffordabilityConfig() {
                       },
                     })
                   }
-                  className="data-[state=checked]:bg-blue-600"
                 />
-                <Label
-                  htmlFor="includeTransportation"
-                  className="text-gray-300"
-                >
+                <Label htmlFor="includeTransportation">
                   Include Transportation
                 </Label>
               </div>
@@ -472,9 +449,8 @@ export function AffordabilityConfig() {
                       },
                     })
                   }
-                  className="data-[state=checked]:bg-blue-600"
                 />
-                <Label htmlFor="includeUtilities" className="text-gray-300">
+                <Label htmlFor="includeUtilities">
                   Include Utilities (Water, Electricity, Internet)
                 </Label>
               </div>
@@ -492,9 +468,8 @@ export function AffordabilityConfig() {
                       },
                     })
                   }
-                  className="data-[state=checked]:bg-blue-600"
                 />
-                <Label htmlFor="includeEducation" className="text-gray-300">
+                <Label htmlFor="includeEducation">
                   Include Education Expenses
                 </Label>
               </div>
@@ -505,10 +480,10 @@ export function AffordabilityConfig() {
       case "employerBased":
         return (
           <div className="space-y-4">
-            <h3 className="text-lg font-medium text-white">
+            <h3 className="text-lg font-medium">
               Employer-Based Assessment Configuration
             </h3>
-            <p className="text-gray-400 text-sm">
+            <p className="text-muted-foreground text-sm">
               Configure salary multipliers based on employer types to determine
               maximum loan amount
             </p>
@@ -516,10 +491,7 @@ export function AffordabilityConfig() {
             <div className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label
-                    htmlFor="governmentMultiplier"
-                    className="text-gray-300"
-                  >
+                  <Label htmlFor="governmentMultiplier">
                     Government Employee Multiplier
                   </Label>
                   <Input
@@ -539,15 +511,12 @@ export function AffordabilityConfig() {
                         },
                       })
                     }
-                    className="bg-[#1a2035] border-[#2a304d] text-white"
+                    className="border-border bg-background"
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <Label
-                    htmlFor="corporateMultiplier"
-                    className="text-gray-300"
-                  >
+                  <Label htmlFor="corporateMultiplier">
                     Corporate Employee Multiplier
                   </Label>
                   <Input
@@ -567,14 +536,12 @@ export function AffordabilityConfig() {
                         },
                       })
                     }
-                    className="bg-[#1a2035] border-[#2a304d] text-white"
+                    className="border-border bg-background"
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="smeMultiplier" className="text-gray-300">
-                    SME Employee Multiplier
-                  </Label>
+                  <Label htmlFor="smeMultiplier">SME Employee Multiplier</Label>
                   <Input
                     id="smeMultiplier"
                     type="number"
@@ -590,15 +557,12 @@ export function AffordabilityConfig() {
                         },
                       })
                     }
-                    className="bg-[#1a2035] border-[#2a304d] text-white"
+                    className="border-border bg-background"
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <Label
-                    htmlFor="selfEmployedMultiplier"
-                    className="text-gray-300"
-                  >
+                  <Label htmlFor="selfEmployedMultiplier">
                     Self-Employed Multiplier
                   </Label>
                   <Input
@@ -618,14 +582,14 @@ export function AffordabilityConfig() {
                         },
                       })
                     }
-                    className="bg-[#1a2035] border-[#2a304d] text-white"
+                    className="border-border bg-background"
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-[#2a304d]">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-border">
                 <div className="space-y-2">
-                  <Label htmlFor="maxTermYears" className="text-gray-300">
+                  <Label htmlFor="maxTermYears">
                     Maximum Loan Term (Years)
                   </Label>
                   <Input
@@ -643,12 +607,12 @@ export function AffordabilityConfig() {
                         },
                       })
                     }
-                    className="bg-[#1a2035] border-[#2a304d] text-white"
+                    className="border-border bg-background"
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="minEmploymentYears" className="text-gray-300">
+                  <Label htmlFor="minEmploymentYears">
                     Minimum Years of Employment
                   </Label>
                   <Input
@@ -665,7 +629,7 @@ export function AffordabilityConfig() {
                         },
                       })
                     }
-                    className="bg-[#1a2035] border-[#2a304d] text-white"
+                    className="border-border bg-background"
                   />
                 </div>
               </div>
@@ -676,19 +640,17 @@ export function AffordabilityConfig() {
       case "expenditureEstimation":
         return (
           <div className="space-y-4">
-            <h3 className="text-lg font-medium text-white">
+            <h3 className="text-lg font-medium">
               Expenditure Estimation Configuration
             </h3>
-            <p className="text-gray-400 text-sm">
+            <p className="text-muted-foreground text-sm">
               Configure expenditure estimation based on income brackets and
               location
             </p>
 
             <div className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="estimationMethod" className="text-gray-300">
-                  Estimation Method
-                </Label>
+                <Label htmlFor="estimationMethod">Estimation Method</Label>
                 <Select
                   value={editingModel.config.estimationMethod}
                   onValueChange={(value) =>
@@ -703,27 +665,18 @@ export function AffordabilityConfig() {
                 >
                   <SelectTrigger
                     id="estimationMethod"
-                    className="bg-[#1a2035] border-[#2a304d] text-white"
+                    className="border-border bg-background"
                   >
                     <SelectValue placeholder="Select method" />
                   </SelectTrigger>
-                  <SelectContent className="bg-[#1a2035] border-[#2a304d] text-white">
-                    <SelectItem
-                      value="percentage"
-                      className="focus:bg-[#2a304d] focus:text-white"
-                    >
+                  <SelectContent className="border-border bg-background">
+                    <SelectItem value="percentage">
                       Percentage of Income
                     </SelectItem>
-                    <SelectItem
-                      value="fixed"
-                      className="focus:bg-[#2a304d] focus:text-white"
-                    >
+                    <SelectItem value="fixed">
                       Fixed Amount by Bracket
                     </SelectItem>
-                    <SelectItem
-                      value="hybrid"
-                      className="focus:bg-[#2a304d] focus:text-white"
-                    >
+                    <SelectItem value="hybrid">
                       Hybrid (Fixed + Percentage)
                     </SelectItem>
                   </SelectContent>
@@ -732,10 +685,7 @@ export function AffordabilityConfig() {
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-2">
-                  <Label
-                    htmlFor="lowerIncomePercentage"
-                    className="text-gray-300"
-                  >
+                  <Label htmlFor="lowerIncomePercentage">
                     Lower Income Bracket %
                   </Label>
                   <div className="flex items-center space-x-2">
@@ -757,9 +707,9 @@ export function AffordabilityConfig() {
                           },
                         })
                       }
-                      className="bg-[#1a2035] border-[#2a304d] text-white"
+                      className="border-border bg-background"
                     />
-                    <span className="text-gray-400">
+                    <span className="text-muted-foreground">
                       (
                       {(
                         editingModel.config.lowerIncomePercentage * 100
@@ -770,10 +720,7 @@ export function AffordabilityConfig() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label
-                    htmlFor="middleIncomePercentage"
-                    className="text-gray-300"
-                  >
+                  <Label htmlFor="middleIncomePercentage">
                     Middle Income Bracket %
                   </Label>
                   <div className="flex items-center space-x-2">
@@ -795,9 +742,9 @@ export function AffordabilityConfig() {
                           },
                         })
                       }
-                      className="bg-[#1a2035] border-[#2a304d] text-white"
+                      className="border-border bg-background"
                     />
-                    <span className="text-gray-400">
+                    <span className="text-muted-foreground">
                       (
                       {(
                         editingModel.config.middleIncomePercentage * 100
@@ -808,10 +755,7 @@ export function AffordabilityConfig() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label
-                    htmlFor="upperIncomePercentage"
-                    className="text-gray-300"
-                  >
+                  <Label htmlFor="upperIncomePercentage">
                     Upper Income Bracket %
                   </Label>
                   <div className="flex items-center space-x-2">
@@ -833,9 +777,9 @@ export function AffordabilityConfig() {
                           },
                         })
                       }
-                      className="bg-[#1a2035] border-[#2a304d] text-white"
+                      className="border-border bg-background"
                     />
-                    <span className="text-gray-400">
+                    <span className="text-muted-foreground">
                       (
                       {(
                         editingModel.config.upperIncomePercentage * 100
@@ -846,12 +790,9 @@ export function AffordabilityConfig() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-[#2a304d]">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-border">
                 <div className="space-y-2">
-                  <Label
-                    htmlFor="lowerIncomeThreshold"
-                    className="text-gray-300"
-                  >
+                  <Label htmlFor="lowerIncomeThreshold">
                     Lower Income Threshold ($)
                   </Label>
                   <Input
@@ -868,15 +809,12 @@ export function AffordabilityConfig() {
                         },
                       })
                     }
-                    className="bg-[#1a2035] border-[#2a304d] text-white"
+                    className="border-border bg-background"
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <Label
-                    htmlFor="upperIncomeThreshold"
-                    className="text-gray-300"
-                  >
+                  <Label htmlFor="upperIncomeThreshold">
                     Upper Income Threshold ($)
                   </Label>
                   <Input
@@ -893,17 +831,14 @@ export function AffordabilityConfig() {
                         },
                       })
                     }
-                    className="bg-[#1a2035] border-[#2a304d] text-white"
+                    className="border-border bg-background"
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-[#2a304d]">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-border">
                 <div className="space-y-2">
-                  <Label
-                    htmlFor="urbanAdjustmentFactor"
-                    className="text-gray-300"
-                  >
+                  <Label htmlFor="urbanAdjustmentFactor">
                     Urban Location Adjustment Factor
                   </Label>
                   <Input
@@ -923,15 +858,12 @@ export function AffordabilityConfig() {
                         },
                       })
                     }
-                    className="bg-[#1a2035] border-[#2a304d] text-white"
+                    className="border-border bg-background"
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <Label
-                    htmlFor="ruralAdjustmentFactor"
-                    className="text-gray-300"
-                  >
+                  <Label htmlFor="ruralAdjustmentFactor">
                     Rural Location Adjustment Factor
                   </Label>
                   <Input
@@ -951,7 +883,7 @@ export function AffordabilityConfig() {
                         },
                       })
                     }
-                    className="bg-[#1a2035] border-[#2a304d] text-white"
+                    className="border-border bg-background"
                   />
                 </div>
               </div>
@@ -961,7 +893,7 @@ export function AffordabilityConfig() {
 
       default:
         return (
-          <div className="flex flex-col items-center justify-center p-8 text-gray-400">
+          <div className="flex flex-col items-center justify-center p-8 text-muted-foreground">
             <Info className="h-12 w-12 mb-4" />
             <p>Please select an affordability model type to configure.</p>
           </div>
@@ -972,8 +904,8 @@ export function AffordabilityConfig() {
   return (
     <div className="space-y-6">
       <div className="space-y-4">
-        <h3 className="text-lg font-medium text-white">Affordability Models</h3>
-        <p className="text-sm text-gray-400">
+        <h3 className="text-lg font-medium">Affordability Models</h3>
+        <p className="text-sm text-muted-foreground">
           Configure the affordability calculation models for loan applications
         </p>
       </div>
@@ -983,16 +915,16 @@ export function AffordabilityConfig() {
         onValueChange={setActiveTab}
         className="space-y-4"
       >
-        <TabsList className="bg-[#0d121f] border border-[#1a2035]">
+        <TabsList className="bg-muted border border-border">
           <TabsTrigger
             value="models"
-            className="data-[state=active]:bg-blue-500"
+            className="data-[state=active]:bg-blue-600 data-[state=active]:text-white"
           >
             Affordability Models
           </TabsTrigger>
           <TabsTrigger
             value="edit"
-            className="data-[state=active]:bg-blue-500"
+            className="data-[state=active]:bg-blue-600 data-[state=active]:text-white"
             disabled={!editingModel}
           >
             {editingModel ? "Edit Model" : "Configuration"}
@@ -1002,7 +934,7 @@ export function AffordabilityConfig() {
         <TabsContent value="models" className="space-y-4">
           <Button
             onClick={addNewModel}
-            className="bg-blue-500 hover:bg-blue-600 text-white"
+            className="bg-blue-600 hover:bg-blue-700 text-white"
           >
             <Plus className="mr-2 h-4 w-4" />
             Add New Model
@@ -1010,19 +942,19 @@ export function AffordabilityConfig() {
 
           <div className="space-y-2">
             {models.map((model) => (
-              <Card key={model.id} className="bg-[#0d121f] border-[#1a2035]">
+              <Card key={model.id} className="bg-card border-border">
                 <CardContent className="pt-6">
                   <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div className="flex-1">
                       <div className="flex flex-wrap items-center gap-2 mb-1">
-                        <h3 className="font-medium text-white">{model.name}</h3>
+                        <h3 className="font-medium">{model.name}</h3>
                         {model.isDefault && (
-                          <Badge className="bg-blue-500 text-white">
+                          <Badge className="bg-blue-600 text-white">
                             Default
                           </Badge>
                         )}
                         {model.isActive ? (
-                          <Badge className="bg-green-500 text-white">
+                          <Badge className="bg-green-600 text-white">
                             Active
                           </Badge>
                         ) : (
@@ -1030,10 +962,7 @@ export function AffordabilityConfig() {
                             Inactive
                           </Badge>
                         )}
-                        <Badge
-                          variant="outline"
-                          className="border-[#2a304d] text-gray-300"
-                        >
+                        <Badge variant="outline" className="border-border">
                           {model.type === "dti" && "Debt-to-Income"}
                           {model.type === "disposableIncome" &&
                             "Net Disposable Income"}
@@ -1042,7 +971,7 @@ export function AffordabilityConfig() {
                             "Expenditure Estimation"}
                         </Badge>
                       </div>
-                      <p className="text-sm text-gray-400">
+                      <p className="text-sm text-muted-foreground">
                         {model.description}
                       </p>
                     </div>
@@ -1053,7 +982,7 @@ export function AffordabilityConfig() {
                           variant="outline"
                           size="sm"
                           onClick={() => setDefaultModel(model.id)}
-                          className="border-[#2a304d] text-gray-300 hover:bg-[#2a304d] hover:text-white"
+                          className="border-border hover:bg-muted"
                         >
                           Set as Default
                         </Button>
@@ -1061,13 +990,12 @@ export function AffordabilityConfig() {
                       <Switch
                         checked={model.isActive}
                         onCheckedChange={() => toggleModelActive(model.id)}
-                        className="data-[state=checked]:bg-green-500"
                       />
                       <Button
                         variant="ghost"
                         size="icon"
                         onClick={() => editModel(model)}
-                        className="text-gray-400 hover:text-white hover:bg-[#2a304d]"
+                        className="text-muted-foreground hover:text-foreground hover:bg-muted"
                       >
                         <PenSquare className="h-4 w-4" />
                       </Button>
@@ -1076,7 +1004,7 @@ export function AffordabilityConfig() {
                           variant="ghost"
                           size="icon"
                           onClick={() => deleteModel(model.id)}
-                          className="text-gray-400 hover:text-white hover:bg-[#2a304d]"
+                          className="text-muted-foreground hover:text-foreground hover:bg-muted"
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
@@ -1091,13 +1019,11 @@ export function AffordabilityConfig() {
 
         <TabsContent value="edit">
           {editingModel ? (
-            <Card className="bg-[#0d121f] border-[#1a2035]">
+            <Card className="bg-card border-border">
               <CardContent className="pt-6 space-y-6">
                 <div className="space-y-4">
                   <div className="space-y-2">
-                    <Label htmlFor="modelName" className="text-gray-300">
-                      Model Name
-                    </Label>
+                    <Label htmlFor="modelName">Model Name</Label>
                     <Input
                       id="modelName"
                       value={editingModel.name}
@@ -1107,14 +1033,12 @@ export function AffordabilityConfig() {
                           name: e.target.value,
                         })
                       }
-                      className="bg-[#1a2035] border-[#2a304d] text-white"
+                      className="border-border bg-background"
                     />
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="modelDescription" className="text-gray-300">
-                      Description
-                    </Label>
+                    <Label htmlFor="modelDescription">Description</Label>
                     <Textarea
                       id="modelDescription"
                       value={editingModel.description}
@@ -1124,14 +1048,12 @@ export function AffordabilityConfig() {
                           description: e.target.value,
                         })
                       }
-                      className="bg-[#1a2035] border-[#2a304d] text-white"
+                      className="border-border bg-background"
                     />
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="modelType" className="text-gray-300">
-                      Model Type
-                    </Label>
+                    <Label htmlFor="modelType">Model Type</Label>
                     <Select
                       value={editingModel.type}
                       onValueChange={(
@@ -1196,33 +1118,21 @@ export function AffordabilityConfig() {
                     >
                       <SelectTrigger
                         id="modelType"
-                        className="bg-[#1a2035] border-[#2a304d] text-white"
+                        className="border-border bg-background"
                       >
                         <SelectValue placeholder="Select model type" />
                       </SelectTrigger>
-                      <SelectContent className="bg-[#1a2035] border-[#2a304d] text-white">
-                        <SelectItem
-                          value="dti"
-                          className="focus:bg-[#2a304d] focus:text-white"
-                        >
+                      <SelectContent className="border-border bg-background">
+                        <SelectItem value="dti">
                           Debt-to-Income (DTI)
                         </SelectItem>
-                        <SelectItem
-                          value="disposableIncome"
-                          className="focus:bg-[#2a304d] focus:text-white"
-                        >
+                        <SelectItem value="disposableIncome">
                           Net Disposable Income
                         </SelectItem>
-                        <SelectItem
-                          value="employerBased"
-                          className="focus:bg-[#2a304d] focus:text-white"
-                        >
+                        <SelectItem value="employerBased">
                           Employer-Based
                         </SelectItem>
-                        <SelectItem
-                          value="expenditureEstimation"
-                          className="focus:bg-[#2a304d] focus:text-white"
-                        >
+                        <SelectItem value="expenditureEstimation">
                           Expenditure Estimation
                         </SelectItem>
                       </SelectContent>
@@ -1240,11 +1150,8 @@ export function AffordabilityConfig() {
                             isActive: checked,
                           })
                         }
-                        className="data-[state=checked]:bg-green-500"
                       />
-                      <Label htmlFor="isActive" className="text-gray-300">
-                        Active
-                      </Label>
+                      <Label htmlFor="isActive">Active</Label>
                     </div>
 
                     <div className="flex items-center space-x-2">
@@ -1266,16 +1173,13 @@ export function AffordabilityConfig() {
                             isDefault: checked,
                           });
                         }}
-                        className="data-[state=checked]:bg-blue-500"
                       />
-                      <Label htmlFor="isDefault" className="text-gray-300">
-                        Default Model
-                      </Label>
+                      <Label htmlFor="isDefault">Default Model</Label>
                     </div>
                   </div>
                 </div>
 
-                <div className="pt-6 border-t border-[#2a304d]">
+                <div className="pt-6 border-t border-border">
                   {renderModelConfig()}
                 </div>
 
@@ -1286,13 +1190,13 @@ export function AffordabilityConfig() {
                       setEditingModel(null);
                       setActiveTab("models");
                     }}
-                    className="border-[#2a304d] text-gray-300 hover:bg-[#2a304d] hover:text-white"
+                    className="border-border hover:bg-muted"
                   >
                     Cancel
                   </Button>
                   <Button
                     onClick={updateModel}
-                    className="bg-blue-500 hover:bg-blue-600 text-white"
+                    className="bg-blue-600 hover:bg-blue-700 text-white"
                   >
                     <Save className="mr-2 h-4 w-4" />
                     Save Model
@@ -1302,14 +1206,14 @@ export function AffordabilityConfig() {
             </Card>
           ) : (
             <div className="flex flex-col items-center justify-center p-16">
-              <Info className="h-16 w-16 text-gray-400 mb-4" />
-              <p className="text-gray-400">
+              <Info className="h-16 w-16 text-muted-foreground mb-4" />
+              <p className="text-muted-foreground">
                 Select a model to edit or create a new one
               </p>
               <Button
                 onClick={addNewModel}
                 variant="outline"
-                className="mt-4 border-[#2a304d] text-gray-300 hover:bg-[#2a304d] hover:text-white"
+                className="mt-4 border-border hover:bg-muted"
               >
                 <Plus className="mr-2 h-4 w-4" />
                 Add New Model

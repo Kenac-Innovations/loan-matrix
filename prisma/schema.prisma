@@ -8,12 +8,76 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// Tenant model for multi-tenancy
+model Tenant {
+  id                String   @id @default(cuid())
+  name              String
+  slug              String   @unique  // Used for subdomain identification
+  domain            String?  // Custom domain if needed
+  settings          Json?    // Tenant-specific settings
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  // Tenant-specific configurations
+  pipelineStages    PipelineStage[]
+  validationRules   ValidationRule[]
+  slaConfigs        SLAConfig[]
+  teams             Team[]
+  leads             Lead[]
+  leadDocuments     LeadDocument[]
+  leadCommunications LeadCommunication[]
+  communicationTemplates CommunicationTemplate[]
+  
+  @@index([slug])
+  @@index([isActive])
+}
+
+// Configurable pipeline stages per tenant
+model PipelineStage {
+  id                String   @id @default(cuid())
+  tenantId          String
+  name              String
+  description       String?
+  order             Int
+  color             String   @default("#3b82f6")
+  isActive          Boolean  @default(true)
+  
+  // State machine properties
+  isInitialState    Boolean  @default(false)
+  isFinalState      Boolean  @default(false)
+  allowedTransitions String[] // JSON array of stage IDs that this stage can transition to
+  
+  // Metadata
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  // Relations
+  tenant            Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  validationRules   ValidationRule[]
+  slaConfigs        SLAConfig[]
+  leadsInThisStage  Lead[] @relation("LeadCurrentStage")
+  transitionsFrom   StateTransition[] @relation("TransitionFromStage")
+  transitionsTo     StateTransition[] @relation("TransitionToStage")
+  
+  @@unique([tenantId, name])
+  @@unique([tenantId, order])
+  @@index([tenantId, isActive])
+  @@index([tenantId, order])
+}
+
 model Lead {
   id                String    @id @default(cuid())
+  tenantId          String    // Multi-tenant support
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
   status            String    @default("DRAFT") // DRAFT, SUBMITTED, CLOSED
   closedReason      String?
+  
+  // State machine fields
+  currentStageId    String?   // References PipelineStage.id
+  stateContext      Json?     // State machine context data
+  stateMetadata     Json?     // Additional state-related metadata
   
   // Client Information
   officeId          Int?
@@ -42,6 +106,33 @@ model Lead {
   savingsProductId  Int?
   savingsProductName String?
   
+  // Financial Information
+  creditScore       Int?      // Credit score (300-850)
+  annualIncome      Float?    // Annual income
+  monthlyIncome     Float?    // Monthly income
+  monthlyExpenses   Float?    // Monthly expenses
+  employmentStatus  String?   // EMPLOYED, SELF_EMPLOYED, UNEMPLOYED, RETIRED
+  employerName      String?   // Name of employer
+  yearsEmployed     Float?    // Years in current employment
+  bankName          String?   // Primary bank
+  accountNumber     String?   // Bank account number
+  existingLoans     Int?      @default(0) // Number of existing loans
+  totalDebt         Float?    @default(0) // Total existing debt
+  
+  // Loan Request Information
+  requestedAmount   Float?    // Requested loan amount
+  loanPurpose       String?   // Purpose of the loan
+  loanTerm          Int?      // Requested loan term in months
+  collateralType    String?   // Type of collateral offered
+  collateralValue   Float?    // Value of collateral
+  
+  // Risk Assessment
+  riskScore         Int?      // Risk score (0-100, higher = more risky)
+  riskCategory      String?   // LOW, MEDIUM, HIGH
+  riskFactors       String[]  @default([]) // Array of risk factors
+  riskAssessmentDate DateTime? // When risk was last assessed
+  riskAssessedBy    String?   // Who assessed the risk
+  
   // Response data
   clientId          Int?
   resourceId        Int?
@@ -49,14 +140,137 @@ model Lead {
   // Family Members / Next of Kin
   familyMembers     FamilyMember[]
   
+  // Documents
+  documents         LeadDocument[]
+  
+  // Communications
+  communications    LeadCommunication[]
+  
   // User relationship
   userId            String
   // Tracking
   currentStep       Int      @default(1)
   lastModified      DateTime @default(now())
   
+  // Relations
+  tenant            Tenant @relation(fields: [tenantId], references: [id])
+  currentStage      PipelineStage? @relation("LeadCurrentStage", fields: [currentStageId], references: [id])
+  stateTransitions  StateTransition[]
+  
+  @@index([tenantId, userId])
+  @@index([tenantId, status])
+  @@index([tenantId, currentStageId])
   @@index([userId])
   @@index([status])
+}
+
+// State transition audit trail
+model StateTransition {
+  id                String   @id @default(cuid())
+  leadId            String
+  tenantId          String
+  fromStageId       String?  // null for initial state
+  toStageId         String
+  event             String   // The event that triggered this transition
+  context           Json?    // Additional context data
+  triggeredBy       String   // user ID or 'system'
+  triggeredAt       DateTime @default(now())
+  metadata          Json?    // Additional metadata
+  
+  // Relations
+  lead              Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  fromStage         PipelineStage? @relation("TransitionFromStage", fields: [fromStageId], references: [id])
+  toStage           PipelineStage @relation("TransitionToStage", fields: [toStageId], references: [id])
+  
+  @@index([leadId])
+  @@index([tenantId, triggeredAt])
+  @@index([tenantId, event])
+}
+
+// Tenant-specific validation rules
+model ValidationRule {
+  id                String   @id @default(cuid())
+  tenantId          String
+  pipelineStageId   String?  // null means applies to all stages
+  name              String
+  description       String?
+  conditions        Json     // Validation conditions
+  actions           Json     // Actions to take when validation fails/passes
+  severity          String   @default("warning") // info, warning, error
+  enabled           Boolean  @default(true)
+  order             Int      @default(0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  // Relations
+  tenant            Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  pipelineStage     PipelineStage? @relation(fields: [pipelineStageId], references: [id], onDelete: Cascade)
+  
+  @@index([tenantId, enabled])
+  @@index([tenantId, pipelineStageId])
+}
+
+// Tenant-specific SLA configurations
+model SLAConfig {
+  id                String   @id @default(cuid())
+  tenantId          String
+  pipelineStageId   String
+  name              String
+  description       String?
+  timeframe         Int      // Time value
+  timeUnit          String   // 'minutes', 'hours', 'days'
+  escalationRules   Json     // Escalation configuration
+  notificationRules Json     // Notification configuration
+  enabled           Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  // Relations
+  tenant            Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  pipelineStage     PipelineStage @relation(fields: [pipelineStageId], references: [id], onDelete: Cascade)
+  
+  @@index([tenantId, pipelineStageId])
+  @@index([tenantId, enabled])
+}
+
+// Team management for pipeline stages
+model Team {
+  id                String   @id @default(cuid())
+  tenantId          String
+  name              String
+  description       String?
+  pipelineStageIds  String[] // Array of stage IDs this team is responsible for
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  // Relations
+  tenant            Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  members           TeamMember[]
+  
+  @@unique([tenantId, name])
+  @@index([tenantId, isActive])
+}
+
+// Team members
+model TeamMember {
+  id                String   @id @default(cuid())
+  teamId            String
+  userId            String   // Reference to user system
+  name              String
+  email             String
+  role              String
+  permissions       Json?    // Team-specific permissions
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  // Relations
+  team              Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  
+  @@unique([teamId, userId])
+  @@index([teamId, isActive])
+  @@index([userId])
 }
 
 model FamilyMember {
@@ -74,6 +288,112 @@ model FamilyMember {
   lead              Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
   
   @@index([leadId])
+}
+
+// Lead Documents
+model LeadDocument {
+  id                String   @id @default(cuid())
+  leadId            String
+  tenantId          String
+  name              String
+  originalName      String
+  type              String   // File extension (PDF, DOCX, etc.)
+  size              Int      // File size in bytes
+  category          String   // Business Documents, Financial Documents, etc.
+  status            String   @default("pending") // pending, verified, rejected
+  filePath          String?  // Path to stored file
+  mimeType          String?  // MIME type
+  uploadedBy        String   // User ID who uploaded
+  verifiedBy        String?  // User ID who verified
+  verifiedAt        DateTime?
+  notes             String?  // Verification notes
+  metadata          Json?    // Additional metadata
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  // Relations
+  lead              Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  tenant            Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  
+  @@index([leadId])
+  @@index([tenantId])
+  @@index([category])
+  @@index([status])
+}
+
+// Lead Communications
+model LeadCommunication {
+  id                String   @id @default(cuid())
+  leadId            String
+  tenantId          String
+  type              String   // EMAIL, SMS, CALL, MEETING, NOTE
+  direction         String   // INBOUND, OUTBOUND
+  subject           String?  // For emails and meetings
+  content           String   // Message content or call notes
+  status            String   @default("sent") // sent, delivered, read, failed, scheduled
+  scheduledAt       DateTime? // For scheduled communications
+  sentAt            DateTime? // When actually sent
+  deliveredAt       DateTime? // When delivered (for SMS/email)
+  readAt            DateTime? // When read (if tracking available)
+  
+  // Contact information
+  fromEmail         String?
+  toEmail           String?
+  fromPhone         String?
+  toPhone           String?
+  
+  // Metadata
+  provider          String?  // Email/SMS provider used
+  providerId        String?  // Provider's message ID
+  metadata          Json?    // Additional provider-specific data
+  attachments       Json?    // File attachments info
+  
+  // User tracking
+  createdBy         String   // User ID who created this communication
+  assignedTo        String?  // User ID assigned to handle this
+  
+  // Timestamps
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  // Relations
+  lead              Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  tenant            Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  
+  @@index([leadId])
+  @@index([tenantId])
+  @@index([type])
+  @@index([direction])
+  @@index([status])
+  @@index([createdAt])
+  @@index([scheduledAt])
+}
+
+// Communication Templates
+model CommunicationTemplate {
+  id                String   @id @default(cuid())
+  tenantId          String
+  name              String
+  description       String?
+  type              String   // EMAIL, SMS
+  category          String   // WELCOME, FOLLOW_UP, REMINDER, REJECTION, APPROVAL
+  subject           String?  // For email templates
+  content           String   // Template content with placeholders
+  variables         Json?    // Available variables for this template
+  isActive          Boolean  @default(true)
+  
+  // Metadata
+  createdBy         String
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  // Relations
+  tenant            Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  
+  @@index([tenantId])
+  @@index([type])
+  @@index([category])
+  @@index([isActive])
 }
 
 // Lookup tables
@@ -125,4 +445,74 @@ model SavingsProduct {
   minBalance        Float    @default(0)
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
+}
+
+// RAG and Fineract Integration Tables
+model FineractDocument {
+  id                String   @id @default(cuid())
+  title             String
+  content           String
+  documentType      String   // "client", "loan", "product", "report", "policy"
+  fineractId        String?  // Reference to Fineract entity ID
+  metadata          Json?    // Additional metadata
+  embedding         String?  // Vector embedding as string (will be converted to vector)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  @@index([documentType])
+  @@index([fineractId])
+  @@unique([fineractId, documentType])
+}
+
+model FineractDataCache {
+  id                String   @id @default(cuid())
+  endpoint          String   // Fineract API endpoint
+  entityId          String?  // Specific entity ID if applicable
+  data              Json     // Cached Fineract data
+  embedding         String?  // Vector embedding as string
+  lastUpdated       DateTime @default(now())
+  expiresAt         DateTime // TTL for cache
+  
+  @@index([endpoint])
+  @@index([entityId])
+  @@index([expiresAt])
+}
+
+model ChatSession {
+  id                String   @id @default(cuid())
+  userId            String
+  sessionData       Json?    // Conversation context
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  messages          ChatMessage[]
+  
+  @@index([userId])
+}
+
+model ChatMessage {
+  id                String      @id @default(cuid())
+  sessionId         String
+  role              String      // "user" or "assistant"
+  content           String
+  fineractData      Json?       // Referenced Fineract data
+  sources           Json?       // Source documents/data used
+  createdAt         DateTime    @default(now())
+  
+  session           ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  
+  @@index([sessionId])
+}
+
+model QueryLog {
+  id                String   @id @default(cuid())
+  userId            String
+  userQuery         String
+  fineractDataUsed  Json?    // What Fineract data was accessed
+  response          String
+  responseTime      Int      // Response time in milliseconds
+  timestamp         DateTime @default(now())
+  
+  @@index([userId])
+  @@index([timestamp])
 }

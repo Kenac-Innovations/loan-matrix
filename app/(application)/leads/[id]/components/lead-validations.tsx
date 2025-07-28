@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Card,
   CardContent,
@@ -17,7 +17,30 @@ import {
   ChevronDown,
   ChevronUp,
   ArrowRight,
+  Loader2,
 } from "lucide-react";
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  Title,
+  Tooltip,
+  Legend,
+  ArcElement,
+} from "chart.js";
+import { Doughnut, Bar } from "react-chartjs-2";
+import { useChartTheme } from "@/lib/chart-theme-utils";
+
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  Title,
+  Tooltip,
+  Legend,
+  ArcElement
+);
 
 interface ValidationResult {
   id: string;
@@ -30,6 +53,26 @@ interface ValidationResult {
   severity: "info" | "warning" | "error";
 }
 
+interface ValidationSummary {
+  total: number;
+  passed: number;
+  warnings: number;
+  failed: number;
+  passedPercentage: number;
+  canProceed: boolean;
+}
+
+interface ValidationData {
+  validations: ValidationResult[];
+  summary: ValidationSummary;
+  leadInfo: {
+    id: string;
+    name: string;
+    currentStage: string;
+    status: string;
+  };
+}
+
 interface LeadValidationsProps {
   leadId: string;
   stage: string;
@@ -37,70 +80,64 @@ interface LeadValidationsProps {
 
 export function LeadValidations({ leadId, stage }: LeadValidationsProps) {
   const [expanded, setExpanded] = useState(true);
+  const [validationData, setValidationData] = useState<ValidationData | null>(
+    null
+  );
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const { colors, getOptions } = useChartTheme();
 
-  // This would normally be fetched from an API based on the lead ID and stage
-  const validationResults: ValidationResult[] = [
-    {
-      id: "1",
-      name: "Required Company Information",
-      description: "Ensures company information is complete",
-      status: "passed",
-      severity: "error",
-    },
-    {
-      id: "2",
-      name: "Budget Validation",
-      description: "Checks if budget information is available",
-      status: "warning",
-      message:
-        "Budget information is missing. Consider collecting this before proceeding.",
-      suggestedAction: "Update Financial Information",
-      actionUrl: `/leads/${leadId}/edit?section=financial`,
-      severity: "warning",
-    },
-    {
-      id: "3",
-      name: "Document Verification",
-      description: "Verifies required documents are uploaded",
-      status: "failed",
-      message:
-        "Missing required documents: Business Registration, Financial Statements",
-      suggestedAction: "Upload Missing Documents",
-      actionUrl: `/leads/${leadId}/documents`,
-      severity: "error",
-    },
-    {
-      id: "4",
-      name: "Contact Information Check",
-      description: "Ensures primary contact information is complete",
-      status: "passed",
-      severity: "error",
-    },
-    {
-      id: "5",
-      name: "Credit Score Validation",
-      description: "Checks if credit score meets minimum requirements",
-      status: "warning",
-      message:
-        "Credit score is below recommended threshold but above minimum requirement.",
-      suggestedAction: "Review Risk Assessment",
-      actionUrl: `/leads/${leadId}?tab=risk`,
-      severity: "warning",
-    },
-  ];
+  useEffect(() => {
+    const fetchValidations = async () => {
+      try {
+        setLoading(true);
+        const response = await fetch(`/api/leads/${leadId}/validations`);
+        if (!response.ok) {
+          throw new Error("Failed to fetch validation data");
+        }
+        const data = await response.json();
+        setValidationData(data);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "An error occurred");
+      } finally {
+        setLoading(false);
+      }
+    };
 
-  const passedCount = validationResults.filter(
-    (result) => result.status === "passed"
-  ).length;
-  const warningCount = validationResults.filter(
-    (result) => result.status === "warning"
-  ).length;
-  const failedCount = validationResults.filter(
-    (result) => result.status === "failed"
-  ).length;
-  const totalCount = validationResults.length;
+    fetchValidations();
+  }, [leadId]);
 
-  const passedPercentage = Math.round((passedCount / totalCount) * 100);
+  if (loading) {
+    return (
+      <Card>
+        <CardContent className="flex items-center justify-center h-64">
+          <Loader2 className="h-8 w-8 animate-spin" />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (error || !validationData) {
+    return (
+      <Card>
+        <CardContent className="flex items-center justify-center h-64">
+          <p className="text-muted-foreground">
+            {error || "Failed to load validation data"}
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const { validations: validationResults, summary } = validationData;
+  const {
+    passed: passedCount,
+    warnings: warningCount,
+    failed: failedCount,
+    total: totalCount,
+    passedPercentage,
+    canProceed,
+  } = summary;
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -162,10 +199,8 @@ export function LeadValidations({ leadId, stage }: LeadValidationsProps) {
     }
   };
 
-  const canProceed = failedCount === 0;
-
   return (
-    <Card className="border-[#1a2035] bg-[#0d121f] text-white">
+    <Card>
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
           <div>
@@ -177,7 +212,7 @@ export function LeadValidations({ leadId, stage }: LeadValidationsProps) {
                 <AlertCircle className="h-5 w-5 text-red-500" />
               )}
             </CardTitle>
-            <CardDescription className="text-gray-400">
+            <CardDescription>
               {canProceed
                 ? "All required validations have passed"
                 : `${failedCount} validation${
@@ -191,7 +226,7 @@ export function LeadValidations({ leadId, stage }: LeadValidationsProps) {
             variant="ghost"
             size="sm"
             onClick={() => setExpanded(!expanded)}
-            className="text-gray-400 hover:text-white"
+            className="text-muted-foreground hover:text-foreground"
           >
             {expanded ? (
               <ChevronUp className="h-4 w-4" />
@@ -203,34 +238,134 @@ export function LeadValidations({ leadId, stage }: LeadValidationsProps) {
       </CardHeader>
       <CardContent>
         <div className="space-y-4">
-          <div className="space-y-2">
-            <div className="flex items-center justify-between text-sm">
-              <span>Validation Progress</span>
-              <span>
-                {passedCount} of {totalCount} passed
-              </span>
-            </div>
-            <div className="relative h-2 w-full overflow-hidden rounded-full bg-[#1a2035]">
-              <div
-                className="h-full bg-green-500"
-                style={{
-                  width: `${passedPercentage}%`,
-                  transition: "width 0.3s ease",
-                }}
-              />
-            </div>
-            <div className="flex justify-between text-xs text-gray-400">
-              <div className="flex items-center gap-1">
-                <div className="h-2 w-2 rounded-full bg-green-500" />
-                <span>Passed: {passedCount}</span>
+          {/* Validation Charts */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Doughnut Chart for Overall Progress */}
+            <div className="space-y-2">
+              <h4 className="text-sm font-medium text-foreground">
+                Overall Progress
+              </h4>
+              <div className="h-48 flex items-center justify-center">
+                <div className="relative w-32 h-32">
+                  <Doughnut
+                    data={{
+                      labels: ["Passed", "Warnings", "Failed"],
+                      datasets: [
+                        {
+                          data: [passedCount, warningCount, failedCount],
+                          backgroundColor: [
+                            colors.success,
+                            colors.warning,
+                            colors.error,
+                          ],
+                          borderWidth: 0,
+                        },
+                      ],
+                    }}
+                    options={getOptions({
+                      cutout: "70%",
+                      scales: false,
+                      plugins: {
+                        legend: {
+                          display: false,
+                        },
+                        tooltip: {
+                          callbacks: {
+                            label: function (context: any) {
+                              const label = context.label || "";
+                              const value = context.parsed;
+                              const percentage = Math.round(
+                                (value / totalCount) * 100
+                              );
+                              return `${label}: ${value} (${percentage}%)`;
+                            },
+                          },
+                        },
+                      },
+                    })}
+                  />
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="text-center">
+                      <div className="text-2xl font-bold">
+                        {passedPercentage}%
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        Complete
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
-              <div className="flex items-center gap-1">
-                <div className="h-2 w-2 rounded-full bg-yellow-500" />
-                <span>Warnings: {warningCount}</span>
+              <div className="flex justify-center gap-4 text-xs">
+                <div className="flex items-center gap-1">
+                  <div className="h-2 w-2 rounded-full bg-green-500" />
+                  <span>Passed: {passedCount}</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="h-2 w-2 rounded-full bg-yellow-500" />
+                  <span>Warnings: {warningCount}</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="h-2 w-2 rounded-full bg-red-500" />
+                  <span>Failed: {failedCount}</span>
+                </div>
               </div>
-              <div className="flex items-center gap-1">
-                <div className="h-2 w-2 rounded-full bg-red-500" />
-                <span>Failed: {failedCount}</span>
+            </div>
+
+            {/* Bar Chart for Validation Categories */}
+            <div className="space-y-2">
+              <h4 className="text-sm font-medium text-foreground">
+                Validation Breakdown
+              </h4>
+              <div className="h-48">
+                <Bar
+                  data={{
+                    labels: ["Passed", "Warnings", "Failed"],
+                    datasets: [
+                      {
+                        label: "Count",
+                        data: [passedCount, warningCount, failedCount],
+                        backgroundColor: [
+                          colors.success,
+                          colors.warning,
+                          colors.error,
+                        ],
+                        borderColor: [
+                          colors.success.replace("0.8", "1"),
+                          colors.warning.replace("0.8", "1"),
+                          colors.error.replace("0.8", "1"),
+                        ],
+                        borderWidth: 1,
+                      },
+                    ],
+                  }}
+                  options={getOptions({
+                    plugins: {
+                      legend: {
+                        display: false,
+                      },
+                      tooltip: {
+                        callbacks: {
+                          label: function (context: any) {
+                            const value = context.parsed.y;
+                            const percentage = Math.round(
+                              (value / totalCount) * 100
+                            );
+                            return `${context.label}: ${value} (${percentage}%)`;
+                          },
+                        },
+                      },
+                    },
+                    scales: {
+                      y: {
+                        beginAtZero: true,
+                        ticks: {
+                          stepSize: 1,
+                        },
+                      },
+                    },
+                  })}
+                />
               </div>
             </div>
           </div>
@@ -245,24 +380,24 @@ export function LeadValidations({ leadId, stage }: LeadValidationsProps) {
                       ? "border-red-500/20 bg-red-500/5"
                       : result.status === "warning"
                       ? "border-yellow-500/20 bg-yellow-500/5"
-                      : "border-[#1a2035] bg-[#0a0e17]"
+                      : "border-border bg-card"
                   }`}
                 >
                   <div className="flex items-start gap-3">
                     <div className="mt-0.5">{getStatusIcon(result.status)}</div>
                     <div className="flex-1">
                       <div className="flex flex-wrap items-center gap-2">
-                        <h4 className="text-sm font-medium text-white">
+                        <h4 className="text-sm font-medium text-foreground">
                           {result.name}
                         </h4>
                         {getStatusBadge(result.status)}
                         {getSeverityBadge(result.severity)}
                       </div>
-                      <p className="mt-1 text-xs text-gray-400">
+                      <p className="mt-1 text-xs text-muted-foreground">
                         {result.description}
                       </p>
                       {result.message && (
-                        <p className="mt-2 text-sm text-white">
+                        <p className="mt-2 text-sm text-foreground">
                           {result.message}
                         </p>
                       )}
@@ -271,7 +406,7 @@ export function LeadValidations({ leadId, stage }: LeadValidationsProps) {
                           <Button
                             size="sm"
                             variant="outline"
-                            className="h-8 border-[#2a304d] text-blue-400 hover:bg-[#1a2035] hover:text-blue-300"
+                            className="h-8 text-blue-500 hover:text-blue-600"
                             asChild
                           >
                             <a href={result.actionUrl}>
@@ -292,7 +427,7 @@ export function LeadValidations({ leadId, stage }: LeadValidationsProps) {
             <div className="rounded-md border border-red-500/20 bg-red-500/5 p-3 mt-2">
               <div className="flex items-center gap-2">
                 <AlertCircle className="h-5 w-5 text-red-500" />
-                <p className="text-sm text-white">
+                <p className="text-sm text-foreground">
                   Cannot proceed to next stage until all blocking validations
                   are resolved.
                 </p>

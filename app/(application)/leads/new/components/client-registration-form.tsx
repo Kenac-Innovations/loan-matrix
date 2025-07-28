@@ -102,7 +102,7 @@ const clientFormSchema = z
     }),
     isStaff: z.boolean().default(false),
     mobileNo: z.string().min(1, "Mobile number is required"),
-    countryCode: z.string().default("+1"),
+    countryCode: z.string().default("+263"),
     emailAddress: z.string().email("Invalid email address"),
     clientTypeId: z.number({
       required_error: "Client type is required",
@@ -292,7 +292,7 @@ export function ClientRegistrationForm({
       lastname: "",
       isStaff: false,
       mobileNo: "",
-      countryCode: "+1",
+      countryCode: "+263",
       emailAddress: "",
       submittedOnDate: new Date(),
       active: true,
@@ -518,7 +518,7 @@ export function ClientRegistrationForm({
               genderId: lead.genderId || undefined,
               isStaff: lead.isStaff || false,
               mobileNo: lead.mobileNo || "",
-              countryCode: lead.countryCode || "+1",
+              countryCode: lead.countryCode || "+263",
               emailAddress: lead.emailAddress || "",
               clientTypeId: lead.clientTypeId || undefined,
               clientClassificationId: lead.clientClassificationId || undefined,
@@ -635,7 +635,7 @@ export function ClientRegistrationForm({
             lastname: "",
             isStaff: false,
             mobileNo: "",
-            countryCode: "+1",
+            countryCode: "+263",
             emailAddress: "",
             submittedOnDate: new Date(),
             active: true,
@@ -846,7 +846,7 @@ export function ClientRegistrationForm({
       lastname: "",
       isStaff: false,
       mobileNo: "",
-      countryCode: "+1",
+      countryCode: "+263",
       emailAddress: "",
       submittedOnDate: new Date(),
       active: true,
@@ -1720,11 +1720,16 @@ export function ClientRegistrationForm({
                         <div className="relative">
                           <Input
                             id="externalId"
-                            placeholder="Enter national ID"
+                            placeholder="Enter national ID (e.g. 48-147220J12)"
                             className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
                             {...form.register("externalId", {
                               onBlur: (e) =>
                                 handleFieldBlur("externalId", e.target.value),
+                              pattern: {
+                                value: /^[0-9]{2}-[0-9]{6}[A-Za-z][0-9]{2}$/,
+                                message:
+                                  "National ID must be in format 48-147220J12",
+                              },
                             })}
                             disabled={isFormDisabled}
                           />
@@ -1776,21 +1781,29 @@ export function ClientRegistrationForm({
                                 <SelectTrigger
                                   className={`h-10 w-24 border-${colors.borderColor} ${colors.inputBg}`}
                                 >
-                                  <SelectValue placeholder="+1" />
+                                  <SelectValue placeholder="+263" />
                                 </SelectTrigger>
                                 <SelectContent
                                   className={`border-${colors.borderColor} ${colors.dropdownBg} ${colors.textColor}`}
                                 >
-                                  <SelectItem value="+1">🇺🇸 +1</SelectItem>
-                                  <SelectItem value="+44">🇬🇧 +44</SelectItem>
-                                  <SelectItem value="+33">🇫🇷 +33</SelectItem>
-                                  <SelectItem value="+49">🇩🇪 +49</SelectItem>
-                                  <SelectItem value="+81">🇯🇵 +81</SelectItem>
-                                  <SelectItem value="+86">🇨🇳 +86</SelectItem>
-                                  <SelectItem value="+91">🇮🇳 +91</SelectItem>
-                                  <SelectItem value="+61">🇦🇺 +61</SelectItem>
-                                  <SelectItem value="+55">🇧🇷 +55</SelectItem>
-                                  <SelectItem value="+52">🇲🇽 +52</SelectItem>
+                                  <SelectItem value="+263">🇿🇼 +263</SelectItem>
+                                  <SelectItem value="+27">🇿🇦 +27</SelectItem>
+                                  <SelectItem value="+260">🇿🇲 +260</SelectItem>
+                                  <SelectItem value="+258">🇲🇿 +258</SelectItem>
+                                  <SelectItem value="+265">🇲🇼 +265</SelectItem>
+                                  <SelectItem value="+266">🇱🇸 +266</SelectItem>
+                                  <SelectItem value="+267">🇧🇼 +267</SelectItem>
+                                  <SelectItem value="+268">🇸🇿 +268</SelectItem>
+                                  <SelectItem value="+236">🇨🇫 +236</SelectItem>
+                                  <SelectItem value="+257">🇧🇮 +257</SelectItem>
+                                  <SelectItem value="+253">🇩🇯 +253</SelectItem>
+                                  <SelectItem value="+291">🇪🇷 +291</SelectItem>
+                                  <SelectItem value="+251">🇪🇹 +251</SelectItem>
+                                  <SelectItem value="+254">🇰🇪 +254</SelectItem>
+                                  <SelectItem value="+250">🇷🇼 +250</SelectItem>
+                                  <SelectItem value="+248">🇸🇨 +248</SelectItem>
+                                  <SelectItem value="+255">🇹🇿 +255</SelectItem>
+                                  <SelectItem value="+256">🇺🇬 +256</SelectItem>
                                 </SelectContent>
                               </Select>
                             )}
@@ -2399,7 +2412,7 @@ export function ClientRegistrationForm({
         {showAddLegalFormDialog && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
             <Card
-              className={`w-full max-w-md border-${colors.borderColor} ${colors.cardBg}`}
+              className={`w-full max-w-4xl border-${colors.borderColor} ${colors.cardBg}`}
             >
               <CardHeader>
                 <CardTitle className={colors.textColor}>
@@ -3063,25 +3076,33 @@ export function ClientRegistrationForm({
                         Contact number for next of kin
                       </p>
                       <div className="flex space-x-2">
-                        <Select defaultValue="+1">
+                        <Select defaultValue="+263">
                           <SelectTrigger
                             className={`h-10 w-24 border-${colors.borderColor} ${colors.inputBg}`}
                           >
-                            <SelectValue placeholder="+1" />
+                            <SelectValue placeholder="+263" />
                           </SelectTrigger>
                           <SelectContent
                             className={`border-${colors.borderColor} ${colors.dropdownBg} ${colors.textColor}`}
                           >
-                            <SelectItem value="+1">🇺🇸 +1</SelectItem>
-                            <SelectItem value="+44">🇬🇧 +44</SelectItem>
-                            <SelectItem value="+33">🇫🇷 +33</SelectItem>
-                            <SelectItem value="+49">🇩🇪 +49</SelectItem>
-                            <SelectItem value="+81">🇯🇵 +81</SelectItem>
-                            <SelectItem value="+86">🇨🇳 +86</SelectItem>
-                            <SelectItem value="+91">🇮🇳 +91</SelectItem>
-                            <SelectItem value="+61">🇦🇺 +61</SelectItem>
-                            <SelectItem value="+55">🇧🇷 +55</SelectItem>
-                            <SelectItem value="+52">🇲🇽 +52</SelectItem>
+                            <SelectItem value="+263">🇿🇼 +263</SelectItem>
+                            <SelectItem value="+27">🇿🇦 +27</SelectItem>
+                            <SelectItem value="+260">🇿🇲 +260</SelectItem>
+                            <SelectItem value="+258">🇲🇿 +258</SelectItem>
+                            <SelectItem value="+265">🇲🇼 +265</SelectItem>
+                            <SelectItem value="+266">🇱🇸 +266</SelectItem>
+                            <SelectItem value="+267">🇧🇼 +267</SelectItem>
+                            <SelectItem value="+268">🇸🇿 +268</SelectItem>
+                            <SelectItem value="+236">🇨🇫 +236</SelectItem>
+                            <SelectItem value="+257">🇧🇮 +257</SelectItem>
+                            <SelectItem value="+253">🇩🇯 +253</SelectItem>
+                            <SelectItem value="+291">🇪🇷 +291</SelectItem>
+                            <SelectItem value="+251">🇪🇹 +251</SelectItem>
+                            <SelectItem value="+254">🇰🇪 +254</SelectItem>
+                            <SelectItem value="+250">🇷🇼 +250</SelectItem>
+                            <SelectItem value="+248">🇸🇨 +248</SelectItem>
+                            <SelectItem value="+255">🇹🇿 +255</SelectItem>
+                            <SelectItem value="+256">🇺🇬 +256</SelectItem>
                           </SelectContent>
                         </Select>
                         <Input

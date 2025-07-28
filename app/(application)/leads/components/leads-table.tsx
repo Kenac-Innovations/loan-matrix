@@ -23,6 +23,13 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
+  Pagination,
+  PaginationContent,
+  PaginationEllipsis,
+  PaginationItem,
+  PaginationLink,
+} from "@/components/ui/pagination";
+import {
   ChevronDown,
   ChevronUp,
   Search,
@@ -30,160 +37,16 @@ import {
   ChevronRight,
 } from "lucide-react";
 import Link from "next/link";
+import { LeadsData, Lead } from "@/app/actions/leads-actions";
 
-// Define the lead data type
-type Lead = {
-  id: string;
-  client: string;
-  amount: string;
-  type: string;
-  stage: string;
-  stageName: string;
-  stageColor: string;
-  timeInStage: string;
-  sla: string;
-  status: "normal" | "warning" | "overdue";
-  assignee: string;
-  assigneeName: string;
-  assigneeColor: string;
-  createdAt: string;
-};
+interface LeadsTableProps {
+  initialData: LeadsData;
+}
 
-// Sample lead data
-const sampleLeads: Lead[] = [
-  {
-    id: "1001",
-    client: "Robert Johnson",
-    amount: "$125,000",
-    type: "Business Loan",
-    stage: "qualification",
-    stageName: "Lead Qualification",
-    stageColor: "bg-blue-500",
-    timeInStage: "1d 4h",
-    sla: "2d",
-    status: "normal",
-    assignee: "JD",
-    assigneeName: "John Doe",
-    assigneeColor: "bg-blue-500",
-    createdAt: "2025-05-08",
-  },
-  {
-    id: "1002",
-    client: "Sarah Williams",
-    amount: "$75,000",
-    type: "Personal Loan",
-    stage: "documents",
-    stageName: "Document Collection",
-    stageColor: "bg-purple-500",
-    timeInStage: "2d 6h",
-    sla: "3d",
-    status: "warning",
-    assignee: "AS",
-    assigneeName: "Alice Smith",
-    assigneeColor: "bg-purple-500",
-    createdAt: "2025-05-07",
-  },
-  {
-    id: "1003",
-    client: "Michael Chen",
-    amount: "$250,000",
-    type: "Mortgage",
-    stage: "assessment",
-    stageName: "Credit Assessment",
-    stageColor: "bg-yellow-500",
-    timeInStage: "4d 2h",
-    sla: "3d",
-    status: "overdue",
-    assignee: "RJ",
-    assigneeName: "Robert Johnson",
-    assigneeColor: "bg-yellow-500",
-    createdAt: "2025-05-06",
-  },
-  {
-    id: "1004",
-    client: "Emily Rodriguez",
-    amount: "$180,000",
-    type: "Business Loan",
-    stage: "assessment",
-    stageName: "Credit Assessment",
-    stageColor: "bg-yellow-500",
-    timeInStage: "1d 5h",
-    sla: "3d",
-    status: "normal",
-    assignee: "RJ",
-    assigneeName: "Robert Johnson",
-    assigneeColor: "bg-yellow-500",
-    createdAt: "2025-05-05",
-  },
-  {
-    id: "1005",
-    client: "David Kim",
-    amount: "$95,000",
-    type: "Personal Loan",
-    stage: "approval",
-    stageName: "Approval",
-    stageColor: "bg-green-500",
-    timeInStage: "0d 8h",
-    sla: "2d",
-    status: "normal",
-    assignee: "AD",
-    assigneeName: "Alex Donovan",
-    assigneeColor: "bg-green-500",
-    createdAt: "2025-05-04",
-  },
-  {
-    id: "1006",
-    client: "Jennifer Lee",
-    amount: "$320,000",
-    type: "Mortgage",
-    stage: "disbursement",
-    stageName: "Disbursement",
-    stageColor: "bg-teal-500",
-    timeInStage: "0d 4h",
-    sla: "1d",
-    status: "normal",
-    assignee: "MS",
-    assigneeName: "Maria Santos",
-    assigneeColor: "bg-teal-500",
-    createdAt: "2025-05-03",
-  },
-  {
-    id: "1007",
-    client: "Thomas Wilson",
-    amount: "$150,000",
-    type: "Business Loan",
-    stage: "documents",
-    stageName: "Document Collection",
-    stageColor: "bg-purple-500",
-    timeInStage: "1d 2h",
-    sla: "3d",
-    status: "normal",
-    assignee: "AS",
-    assigneeName: "Alice Smith",
-    assigneeColor: "bg-purple-500",
-    createdAt: "2025-05-02",
-  },
-  {
-    id: "1008",
-    client: "Lisa Brown",
-    amount: "$85,000",
-    type: "Personal Loan",
-    stage: "qualification",
-    stageName: "Lead Qualification",
-    stageColor: "bg-blue-500",
-    timeInStage: "0d 6h",
-    sla: "2d",
-    status: "normal",
-    assignee: "JD",
-    assigneeName: "John Doe",
-    assigneeColor: "bg-blue-500",
-    createdAt: "2025-05-01",
-  },
-];
-
-export function LeadsTable() {
+export function LeadsTable({ initialData }: LeadsTableProps) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [searchQuery, setSearchQuery] = useState("");
+  const { leads, pipelineStages } = initialData;
 
   // Define table columns
   const columns: ColumnDef<Lead>[] = [
@@ -253,16 +116,13 @@ export function LeadsTable() {
       accessorKey: "type",
       header: "Type",
       cell: ({ row }) => (
-        <Badge
-          variant="outline"
-          className="border-[#1a2035] bg-[#1a2035] text-xs text-gray-300"
-        >
+        <Badge variant="outline" className="text-xs">
           {row.getValue("type")}
         </Badge>
       ),
     },
     {
-      accessorKey: "stageName",
+      accessorKey: "stage",
       header: ({ column }) => {
         return (
           <Button
@@ -281,9 +141,13 @@ export function LeadsTable() {
       },
       cell: ({ row }) => {
         const lead = row.original;
+        const stage = pipelineStages.find((s) => s.id === lead.stage);
         return (
-          <Badge className={`${lead.stageColor} text-white border-0 text-xs`}>
-            {lead.stageName}
+          <Badge
+            className="text-white border-0 text-xs"
+            style={{ backgroundColor: stage?.color || "#6B7280" }}
+          >
+            {stage?.name || "Unknown"}
           </Badge>
         );
       },
@@ -300,7 +164,7 @@ export function LeadsTable() {
                 ? "text-red-400"
                 : lead.status === "warning"
                 ? "text-yellow-400"
-                : "text-gray-400"
+                : "text-muted-foreground"
             }`}
           >
             {lead.timeInStage} / {lead.sla}
@@ -370,14 +234,15 @@ export function LeadsTable() {
   ];
 
   // Filter data based on search query
-  const filteredData = sampleLeads.filter((lead) => {
+  const filteredData = leads.filter((lead) => {
     if (!searchQuery) return true;
     const searchLower = searchQuery.toLowerCase();
+    const stage = pipelineStages.find((s) => s.id === lead.stage);
     return (
       lead.client.toLowerCase().includes(searchLower) ||
       lead.id.includes(searchQuery) ||
       lead.type.toLowerCase().includes(searchLower) ||
-      lead.stageName.toLowerCase().includes(searchLower) ||
+      (stage?.name || "").toLowerCase().includes(searchLower) ||
       lead.amount.toLowerCase().includes(searchLower)
     );
   });
@@ -404,27 +269,26 @@ export function LeadsTable() {
     <div className="space-y-4">
       <div className="flex items-center">
         <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-400" />
+          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder="Search leads..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-8 border-[#1a2035] bg-[#0a0e17] text-white"
+            className="pl-8"
           />
         </div>
       </div>
-
-      <div className="rounded-md border border-[#1a2035]">
+      <div className="rounded-md border">
         <Table>
-          <TableHeader className="bg-[#0a0e17]">
+          <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
-              <TableRow
-                key={headerGroup.id}
-                className="border-[#1a2035] hover:bg-transparent"
-              >
+              <TableRow key={headerGroup.id} className="hover:bg-transparent">
                 {headerGroup.headers.map((header) => {
                   return (
-                    <TableHead key={header.id} className="text-gray-400">
+                    <TableHead
+                      key={header.id}
+                      className="text-muted-foreground"
+                    >
                       {header.isPlaceholder
                         ? null
                         : flexRender(
@@ -443,7 +307,7 @@ export function LeadsTable() {
                 <TableRow
                   key={row.id}
                   data-state={row.getIsSelected() && "selected"}
-                  className="border-[#1a2035] hover:bg-[#141b2d]"
+                  className="hover:bg-accent/50"
                 >
                   {row.getVisibleCells().map((cell) => (
                     <TableCell key={cell.id}>
@@ -456,7 +320,7 @@ export function LeadsTable() {
                 </TableRow>
               ))
             ) : (
-              <TableRow className="border-[#1a2035]">
+              <TableRow>
                 <TableCell
                   colSpan={columns.length}
                   className="h-24 text-center"
@@ -468,13 +332,14 @@ export function LeadsTable() {
           </TableBody>
         </Table>
       </div>
-
-      <div className="flex items-center justify-between">
-        <div className="text-sm text-gray-400">
+      <div className="flex flex-col items-center space-y-4">
+        <div className="text-sm text-muted-foreground">
           Showing{" "}
-          {table.getState().pagination.pageIndex *
-            table.getState().pagination.pageSize +
-            1}{" "}
+          {filteredData.length === 0
+            ? 0
+            : table.getState().pagination.pageIndex *
+                table.getState().pagination.pageSize +
+              1}{" "}
           to{" "}
           {Math.min(
             (table.getState().pagination.pageIndex + 1) *
@@ -483,23 +348,32 @@ export function LeadsTable() {
           )}{" "}
           of {filteredData.length} leads
         </div>
+
         <div className="flex items-center space-x-2">
           <Button
             variant="outline"
             size="sm"
             onClick={() => table.previousPage()}
             disabled={!table.getCanPreviousPage()}
-            className="border-[#1a2035] hover:bg-[#1a2035]"
           >
             <ChevronLeft className="h-4 w-4" />
+            Previous
           </Button>
+
+          <div className="flex items-center space-x-1">
+            <span className="text-sm text-muted-foreground">
+              Page {table.getState().pagination.pageIndex + 1} of{" "}
+              {table.getPageCount() || 1}
+            </span>
+          </div>
+
           <Button
             variant="outline"
             size="sm"
             onClick={() => table.nextPage()}
             disabled={!table.getCanNextPage()}
-            className="border-[#1a2035] hover:bg-[#1a2035]"
           >
+            Next
             <ChevronRight className="h-4 w-4" />
           </Button>
         </div>

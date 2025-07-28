@@ -20,12 +20,12 @@ export function useThemeColors() {
       setColors({
         textColor: "text-gray-100",
         textColorMuted: "text-gray-400",
-        borderColor: "gray-800",
-        cardBg: "bg-[#0a0e17]",
-        inputBg: "bg-[#0a0e17]",
-        dropdownBg: "bg-[#0a0e17]",
-        hoverBgColor: "gray-800",
-        tabsBg: "bg-gray-800",
+        borderColor: "blue-800",
+        cardBg: "bg-[#1e2938]",
+        inputBg: "bg-[#1e2938]",
+        dropdownBg: "bg-[#1e2938]",
+        hoverBgColor: "blue-800",
+        tabsBg: "bg-[#374151]",
         tabsText: "text-gray-300",
       });
     } else {
