@@ -468,6 +468,7 @@ export class FineractAPIService {
     const response: AxiosResponse<FineractLoan[]> = await this.client.get(
       `/clients/${clientId}/accounts`
     );
+    console.log("==========> log on server side getClientLoans response ::", response.data);
     return response.data;
   }
 
