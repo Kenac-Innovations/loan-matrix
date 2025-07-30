@@ -1,4 +1,3 @@
-
 import type React from "react";
 import { getUserProfileData } from "./components/user-profile-data";
 
@@ -88,7 +87,6 @@ export default async function DashboardLayout({
                 <Home className="h-4 w-4" />
                 Dashboard
               </Link>
-            
 
               <div className="space-y-1">
                 <MenuItemWithSubmenu
@@ -102,8 +100,6 @@ export default async function DashboardLayout({
                 />
               </div>
 
-
-          
               <Link
                 href="#"
                 className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
@@ -124,72 +120,91 @@ export default async function DashboardLayout({
                 />
               </div>
 
+              <MenuItemWithSubmenu
+                icon={<BarChart3 />}
+                label="Accounting"
+                href="/accounting"
+                subMenuItems={[
+                  { label: "Home", href: "/accounting" },
+                  {
+                    label: "Chart of Accounts",
+                    href: "/accounting/chart-of-accounts",
+                  },
+                  {
+                    label: "Journal Entries",
+                    href: "/accounting/journal-entries",
+                  },
+                  {
+                    label: "Search Journal",
+                    href: "/accounting/search-journal",
+                  },
+                  {
+                    label: "Frequent Postings",
+                    href: "/accounting/frequent-postings",
+                  },
+                ]}
+              />
+
+              <Link
+                href="/reports"
+                className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+              >
+                <FileText className="h-4 w-4" />
+                Reports
+              </Link>
+
+              {/* <Link
+                href="#"
+                className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+              >
+                <FileText className="h-4 w-4" />
+                Documents
+              </Link>
+
+              <Link
+                href="#"
+                className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+              >
+                <BarChart3 className="h-4 w-4" />
+                Analytics
+              </Link>
+
+              <Link
+                href="#"
+                className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+              >
+                <Shield className="h-4 w-4" />
+                Compliance
+              </Link>
+
+              <Link
+                href="#"
+                className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+              >
+                <Lock className="h-4 w-4" />
+                Security
+              </Link> */}
+
+              <div className="space-y-1">
                 <MenuItemWithSubmenu
-                  icon={<BarChart3 />}
-                  label="Accounting"
-                  href="/accounting"
+                  icon={<Bot />}
+                  label="AI Assistant"
+                  href="/ai-assistant"
                   subMenuItems={[
-                    { label: "Home", href: "/accounting" },
-                    { label: "Chart of Accounts", href: "/accounting/chart-of-accounts" },
-                    { label: "Journal Entries", href: "/accounting/journal-entries" },
-                    { label: "Search Journal", href: "/accounting/search-journal" },
-                    { label: "Frequent Postings", href: "/accounting/frequent-postings" },
+                    { label: "Chat", href: "/ai-assistant" },
+                    { label: "Admin", href: "/rag-admin" },
                   ]}
                 />
+              </div>
 
-
-                <Link
-                  href="#"
-                  className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                >
-                  <FileText className="h-4 w-4" />
-                  Documents
-                </Link>
-
-                <Link
-                  href="#"
-                  className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                >
-                  <BarChart3 className="h-4 w-4" />
-                  Analytics
-                </Link>
-
-                <Link
-                  href="#"
-                  className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                >
-                  <Shield className="h-4 w-4" />
-                  Compliance
-                </Link>
-
-                <Link
-                  href="#"
-                  className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                >
-                  <Lock className="h-4 w-4" />
-                  Security
-                </Link>
-
-                <div className="space-y-1">
-                  <MenuItemWithSubmenu
-                    icon={<Bot />}
-                    label="AI Assistant"
-                    href="/ai-assistant"
-                    subMenuItems={[
-                      { label: "Chat", href: "/ai-assistant" },
-                      { label: "Admin", href: "/rag-admin" },
-                    ]}
-                  />
-                </div>
-
-                <Link
-                  href="#"
-                  className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                >
-                  <Settings className="h-4 w-4" />
-                  Settings
-                </Link>
-              </nav>
+              {/* <Link
+                href="#"
+                className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+              >
+                <Settings className="h-4 w-4" />
+                Settings
+              </Link> */}
+            </nav>
           </div>
         </div>
 
@@ -213,4 +228,3 @@ export default async function DashboardLayout({
     </ChatProvider>
   );
 }
-

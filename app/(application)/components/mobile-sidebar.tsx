@@ -228,6 +228,21 @@ export function MobileSidebar({ userProfileData }: MobileSidebarProps) {
               Clients
             </Link>
             <Link
+              href="/reports"
+              className={`flex items-center gap-3 rounded-md px-3 py-3 text-sm font-medium ${
+                pathname === "/reports"
+                  ? `${activeBgColor} ${textColor}`
+                  : `${textColorMuted} ${hoverBgColor} hover:${textColor}`
+              }`}
+            >
+              <FileText
+                className={`h-5 w-5 ${
+                  pathname === "/reports" ? iconColorActive : iconColor
+                }`}
+              />
+              Reports
+            </Link>
+            <Link
               href="#"
               className={`flex items-center gap-3 rounded-md px-3 py-3 text-sm font-medium ${textColorMuted} ${hoverBgColor} hover:${textColor}`}
             >

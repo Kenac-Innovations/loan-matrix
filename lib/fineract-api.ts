@@ -121,7 +121,7 @@ export interface FineractLoan {
     id: number;
     code: string;
     value: string;
-};
+  };
   interestCalculationPeriodType: {
     id: number;
     code: string;
@@ -415,11 +415,17 @@ export class FineractAPIService {
     const response: AxiosResponse<FineractClient> = await this.client.get(
       `/clients/${clientId}`
     );
-    console.log("==========> log on server side getClient response ::", response.data);
+    console.log(
+      "==========> log on server side getClient response ::",
+      response.data
+    );
     return response.data;
   }
 
-  async updateClient(clientId: number, clientData: Partial<FineractClient>): Promise<FineractClient> {
+  async updateClient(
+    clientId: number,
+    clientData: Partial<FineractClient>
+  ): Promise<FineractClient> {
     const response: AxiosResponse<FineractClient> = await this.client.put(
       `/clients/${clientId}`,
       clientData
@@ -468,7 +474,10 @@ export class FineractAPIService {
     const response: AxiosResponse<FineractLoan[]> = await this.client.get(
       `/clients/${clientId}/accounts`
     );
-    console.log("==========> log on server side getClientLoans response ::", response.data);
+    console.log(
+      "==========> log on server side getClientLoans response ::",
+      response.data
+    );
     return response.data;
   }
 
@@ -519,6 +528,54 @@ export class FineractAPIService {
   // Reports and analytics
   async getPortfolioSummary(): Promise<any> {
     const response = await this.client.get("/runreports/PortfolioAtRisk");
+    return response.data;
+  }
+
+  // Run Fineract reports
+  async runReport(
+    reportName: string,
+    parameters: Record<string, any> = {}
+  ): Promise<any> {
+    const encodedReportName = encodeURIComponent(reportName);
+    const params = new URLSearchParams();
+
+    // Add parameters with R_ prefix as required by Fineract
+    Object.entries(parameters).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== "") {
+        const paramKey = key.startsWith("R_") ? key : `R_${key}`;
+        params.append(paramKey, value.toString());
+      }
+    });
+
+    const queryString = params.toString();
+    const url = `/runreports/${encodedReportName}${
+      queryString ? `?${queryString}` : ""
+    }`;
+
+    const response = await this.client.get(url);
+    return response.data;
+  }
+
+  // Get available reports
+  async getReports(): Promise<any[]> {
+    const response = await this.client.get("/reports");
+    return response.data;
+  }
+
+  // Get report parameters using FullParameterList
+  async getReportParameters(reportName: string): Promise<any> {
+    const encodedReportName = encodeURIComponent(`'${reportName}'`);
+    const response = await this.client.get(
+      `/runreports/FullParameterList?R_reportListing=${encodedReportName}&parameterType=true`
+    );
+    return response.data;
+  }
+
+  // Get parameter options (for select dropdowns)
+  async getParameterOptions(parameterName: string): Promise<any> {
+    const response = await this.client.get(
+      `/runreports/${parameterName}?parameterType=true`
+    );
     return response.data;
   }
 
