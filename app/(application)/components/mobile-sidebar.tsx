@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useTheme } from "next-themes";
 import { UserProfileData } from "./user-profile-data";
@@ -115,34 +116,23 @@ export function MobileSidebar({ userProfileData }: MobileSidebarProps) {
         <div
           className={`flex h-16 items-center justify-between ${borderColor} border-b px-4`}
         >
-          <div className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-blue-500 text-white">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="24"
-                height="24"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className="h-5 w-5"
-              >
-                <rect width="18" height="18" x="3" y="3" rx="2" />
-                <path d="M7 7h10" />
-                <path d="M7 12h10" />
-                <path d="M7 17h10" />
-              </svg>
-            </div>
-            <span className={`text-lg font-bold ${textColor}`}>
-              {tenantId.toUpperCase()}
-            </span>
-            {!isLoggedIn && (
-              <span className="ml-2 text-xs bg-yellow-500 text-white px-2 py-0.5 rounded">
-                Guest
-              </span>
-            )}
+          <div className="flex items-center">
+            <Image
+              src="/kenac_logo_light.png"
+              alt="Kenac Logo"
+              width={100}
+              height={32}
+              className="dark:hidden"
+              priority
+            />
+            <Image
+              src="/kenac_logo.png"
+              alt="Kenac Logo"
+              width={100}
+              height={32}
+              className="hidden dark:block"
+              priority
+            />
           </div>
           <Button
             variant="ghost"
