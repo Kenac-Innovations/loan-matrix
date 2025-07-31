@@ -20,6 +20,7 @@ import { FieldConfig } from "./components/field-config";
 import { ValidationConfig } from "./components/validation-config";
 import { AffordabilityConfig } from "./components/affordability-config";
 import { NotificationConfig } from "./components/notification-config";
+import { CreditScoringConfig } from "./components/credit-scoring-config";
 
 export default function ConfigPage() {
   const [saved, setSaved] = useState(false);
@@ -76,7 +77,7 @@ export default function ConfigPage() {
       )}
 
       <Tabs defaultValue="pipeline" className="w-full">
-        <TabsList className="grid grid-cols-7 w-full max-w-5xl">
+        <TabsList className="grid grid-cols-8 w-full max-w-5xl">
           <TabsTrigger
             value="pipeline"
             className="data-[state=active]:bg-blue-500"
@@ -115,6 +116,12 @@ export default function ConfigPage() {
             className="data-[state=active]:bg-blue-500"
           >
             Notifications
+          </TabsTrigger>
+          <TabsTrigger
+            value="credit-scoring"
+            className="data-[state=active]:bg-blue-500"
+          >
+            Credit Scoring
           </TabsTrigger>
         </TabsList>
         <TabsContent value="pipeline">
@@ -206,6 +213,19 @@ export default function ConfigPage() {
             </CardHeader>
             <CardContent>
               <NotificationConfig />
+            </CardContent>
+          </Card>
+        </TabsContent>
+        <TabsContent value="credit-scoring">
+          <Card>
+            <CardHeader>
+              <CardTitle>Credit Scoring Configuration</CardTitle>
+              <CardDescription>
+                Configure scoring factors and weights for credit assessment
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <CreditScoringConfig />
             </CardContent>
           </Card>
         </TabsContent>

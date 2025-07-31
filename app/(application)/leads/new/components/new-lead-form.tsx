@@ -40,6 +40,7 @@ import {
   Calculator,
   CreditCard,
   Check,
+  Shield,
 } from "lucide-react";
 import Link from "next/link";
 import type {
@@ -49,6 +50,7 @@ import type {
 import { Badge } from "@/components/ui/badge";
 import { AffordabilityCalculator } from "./affordability-calculator";
 import { ClientRegistrationForm } from "./client-registration-form";
+import { CreditScoringCalculator } from "./credit-scoring-calculator";
 
 // Define the type for the client form data
 type ClientFormData = {
@@ -102,6 +104,7 @@ export function NewLeadForm({ clientFormData }: NewLeadFormProps) {
     useState<AffordabilityResult | null>(null);
   const [selectedOffer, setSelectedOffer] = useState<LoanOffer | null>(null);
   const [activeTab, setActiveTab] = useState("client");
+  const [creditScoreResult, setCreditScoreResult] = useState<any>(null);
 
   // Initialize form with default values
   const form = useForm({
@@ -183,6 +186,10 @@ export function NewLeadForm({ clientFormData }: NewLeadFormProps) {
     form.setValue("interestRate", (offer.interestRate * 100).toString());
   };
 
+  const handleCreditScoreCalculated = (result: any) => {
+    setCreditScoreResult(result);
+  };
+
   // Format currency
   const formatCurrency = (amount: number | string) => {
     const numAmount =
@@ -229,6 +236,18 @@ export function NewLeadForm({ clientFormData }: NewLeadFormProps) {
             >
               <Calculator className="mr-2 h-4 w-4" />
               <span className="whitespace-nowrap">Affordability</span>
+            </TabsTrigger>
+            <TabsTrigger
+              value="credit-scoring"
+              className="data-[state=active]:bg-blue-500"
+            >
+              <Shield className="mr-2 h-4 w-4" />
+              <span className="whitespace-nowrap">Credit Scoring</span>
+              {creditScoreResult && (
+                <Badge className="ml-2 bg-green-500 text-white">
+                  Score Calculated
+                </Badge>
+              )}
             </TabsTrigger>
             <TabsTrigger
               value="loan"
@@ -305,8 +324,43 @@ export function NewLeadForm({ clientFormData }: NewLeadFormProps) {
                     className="bg-blue-500 hover:bg-blue-600"
                     onClick={(e) => {
                       e.stopPropagation();
-                      setActiveTab("loan");
+                      setActiveTab("credit-scoring");
                     }}
+                  >
+                    Next: Credit Scoring
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Credit Scoring Tab */}
+          <TabsContent value="credit-scoring">
+            <Card>
+              <CardHeader>
+                <CardTitle>Credit Scoring Calculator</CardTitle>
+                <CardDescription>
+                  Evaluate client creditworthiness using comprehensive scoring factors
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <CreditScoringCalculator
+                  onScoreCalculated={handleCreditScoreCalculated}
+                />
+
+                <div className="flex justify-between mt-6 pt-6 border-t">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setActiveTab("affordability")}
+                  >
+                    Back: Affordability
+                  </Button>
+
+                  <Button
+                    type="button"
+                    className="bg-blue-500 hover:bg-blue-600"
+                    onClick={() => setActiveTab("loan")}
                   >
                     Next: Loan Details
                   </Button>
