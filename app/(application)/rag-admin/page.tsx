@@ -23,7 +23,20 @@ import {
   AlertCircle,
   CheckCircle,
   Clock,
+  Plus,
+  Edit,
+  Trash2,
+  BookOpen,
+  UserCheck,
+  Building,
+  GitBranch,
+  MessageSquare,
+  FolderOpen,
+  Settings,
+  UserPlus,
+  Banknote,
 } from "lucide-react";
+import PolicyDocumentsManager from "./components/policy-documents-manager";
 
 interface IndexingStats {
   totalDocuments: number;
@@ -99,6 +112,26 @@ export default function RAGAdminPage() {
         return <CreditCard className="h-4 w-4" />;
       case "loan_product":
         return <FileText className="h-4 w-4" />;
+      case "lead":
+        return <UserCheck className="h-4 w-4" />;
+      case "policy":
+        return <BookOpen className="h-4 w-4" />;
+      case "tenant":
+        return <Building className="h-4 w-4" />;
+      case "pipeline_stage":
+        return <GitBranch className="h-4 w-4" />;
+      case "team":
+        return <UserPlus className="h-4 w-4" />;
+      case "communication":
+        return <MessageSquare className="h-4 w-4" />;
+      case "document":
+        return <FolderOpen className="h-4 w-4" />;
+      case "office":
+        return <Building className="h-4 w-4" />;
+      case "client_type":
+        return <Settings className="h-4 w-4" />;
+      case "savings_product":
+        return <Banknote className="h-4 w-4" />;
       default:
         return <FileText className="h-4 w-4" />;
     }
@@ -112,8 +145,28 @@ export default function RAGAdminPage() {
         return "Loans";
       case "loan_product":
         return "Loan Products";
+      case "lead":
+        return "Leads";
+      case "policy":
+        return "Policy Documents";
+      case "tenant":
+        return "Tenants";
+      case "pipeline_stage":
+        return "Pipeline Stages";
+      case "team":
+        return "Teams";
+      case "communication":
+        return "Communications";
+      case "document":
+        return "Documents";
+      case "office":
+        return "Offices";
+      case "client_type":
+        return "Client Types";
+      case "savings_product":
+        return "Savings Products";
       default:
-        return type;
+        return type.charAt(0).toUpperCase() + type.slice(1).replace(/_/g, " ");
     }
   };
 
@@ -123,7 +176,7 @@ export default function RAGAdminPage() {
         <div>
           <h1 className="text-3xl font-bold">RAG System Administration</h1>
           <p className="text-muted-foreground">
-            Manage Fineract data indexing and RAG system configuration
+            Manage Fineract and internal database indexing for RAG system
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -332,7 +385,13 @@ export default function RAGAdminPage() {
                             {getDocumentTypeLabel(type)}
                           </div>
                           <div className="text-sm text-muted-foreground">
-                            {type} documents from Fineract
+                            {type === "policy"
+                              ? "Policy documents for RAG responses"
+                              : ["client", "loan", "loan_product"].includes(
+                                  type
+                                )
+                              ? `${type} documents from Fineract`
+                              : `${type} documents from internal database`}
                           </div>
                         </div>
                       </div>
@@ -349,6 +408,9 @@ export default function RAGAdminPage() {
               </div>
             </CardContent>
           </Card>
+
+          {/* Policy Documents Manager */}
+          <PolicyDocumentsManager />
         </TabsContent>
 
         <TabsContent value="settings" className="space-y-4">

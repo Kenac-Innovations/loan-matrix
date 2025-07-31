@@ -266,22 +266,26 @@ export function UserProfileClient({ userProfileData }: UserProfileClientProps) {
           )}
         </div>
 
-        {/* User Profile Dropdown */}
+        {/* User Profile Dropdown with Tenant */}
         <div className="relative" ref={profileRef}>
           <Button
             variant="ghost"
-            size="icon"
-            className="rounded-full p-0"
+            className="rounded-full p-1 h-auto"
             onClick={() => {
               setProfileOpen(!profileOpen);
               setNotificationsOpen(false);
             }}
           >
             {isLoggedIn ? (
-              <Avatar className="h-8 w-8 border-2 border-blue-500">
-                <AvatarImage src="/professional-avatar.png" alt="Avatar" />
-                <AvatarFallback>{initials}</AvatarFallback>
-              </Avatar>
+              <div className="flex items-center gap-2 bg-blue-500/10 border border-blue-500/20 rounded-full px-3 py-1">
+                <span className="text-sm font-medium text-blue-600 dark:text-blue-400">
+                  {userProfileData.tenantId.toUpperCase()}
+                </span>
+                <Avatar className="h-8 w-8 border-2 border-blue-500">
+                  <AvatarImage src="/professional-avatar.png" alt="Avatar" />
+                  <AvatarFallback>{initials}</AvatarFallback>
+                </Avatar>
+              </div>
             ) : (
               <Button
                 variant="outline"
