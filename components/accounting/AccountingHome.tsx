@@ -63,12 +63,12 @@ export default function AccountingHome() {
       <div>
         <div className="flex items-center justify-between mb-8">
           <div>
-            <h2 className="text-xl font-semibold text-foreground">Accounting Modules</h2>
-            <p className="text-sm text-muted-foreground mt-1">
+            <h2 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Accounting Modules</h2>
+            <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
               Access all your accounting tools and features
             </p>
           </div>
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
             <Shield className="h-4 w-4" />
             <span>Secure & Compliant</span>
           </div>
@@ -77,29 +77,29 @@ export default function AccountingHome() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {features.map(({ title, href, icon: Icon, description, badge, color }) => (
             <Link key={title} href={href}>
-              <Card className="cursor-pointer hover:shadow-lg transition-all duration-200 border-0 shadow-sm group h-full">
+              <Card className="cursor-pointer hover:shadow-lg transition-all duration-200 border border-slate-200 dark:border-slate-700 shadow-sm hover:shadow-md bg-white dark:bg-slate-800 group h-full">
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between">
                     <div className={`h-10 w-10 rounded-lg ${color} flex items-center justify-center`}>
                       <Icon className="h-5 w-5 text-white" />
                     </div>
-                    <Badge variant="secondary" className="text-xs">
+                    <Badge variant="secondary" className="text-xs bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
                       {badge}
                     </Badge>
                   </div>
-                  <CardTitle className="text-lg font-semibold text-foreground group-hover:text-primary transition-colors">
+                  <CardTitle className="text-lg font-semibold text-slate-900 dark:text-slate-100 group-hover:text-primary transition-colors">
                     {title}
                   </CardTitle>
-                  <CardDescription className="text-sm text-muted-foreground">
+                  <CardDescription className="text-sm text-slate-600 dark:text-slate-400">
                     {description}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="pt-0">
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
                       <span>Access module</span>
                     </div>
-                    <ArrowRight className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
+                    <ArrowRight className="h-4 w-4 text-slate-600 dark:text-slate-400 group-hover:text-primary transition-colors" />
                   </div>
                 </CardContent>
               </Card>

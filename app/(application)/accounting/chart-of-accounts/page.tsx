@@ -81,11 +81,11 @@ export default function ChartOfAccountsPage() {
 
   if (error) {
     return (
-      <Card className="border-red-200 bg-red-50">
+      <Card className="border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950">
         <CardContent className="pt-6">
           <div className="text-center">
-            <div className="text-red-600 font-medium">Error loading accounts</div>
-            <div className="text-sm text-red-500 mt-1">{error.message}</div>
+            <div className="text-red-600 dark:text-red-400 font-medium">Error loading accounts</div>
+            <div className="text-sm text-red-500 dark:text-red-300 mt-1">{error.message}</div>
           </div>
         </CardContent>
       </Card>
@@ -97,21 +97,21 @@ export default function ChartOfAccountsPage() {
       <div className="space-y-4">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           {[...Array(4)].map((_, i) => (
-            <Card key={i} className="animate-pulse">
+            <Card key={i} className="animate-pulse border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800">
               <CardContent className="pt-6">
-                <div className="h-4 bg-gray-200 rounded w-3/4 mb-2"></div>
-                <div className="h-8 bg-gray-200 rounded w-1/2"></div>
+                <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-3/4 mb-2"></div>
+                <div className="h-8 bg-slate-200 dark:bg-slate-700 rounded w-1/2"></div>
               </CardContent>
             </Card>
           ))}
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {[...Array(6)].map((_, i) => (
-            <Card key={i} className="animate-pulse">
+            <Card key={i} className="animate-pulse border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800">
               <CardContent className="pt-6">
-                <div className="h-4 bg-gray-200 rounded w-1/2 mb-2"></div>
-                <div className="h-6 bg-gray-200 rounded w-3/4 mb-2"></div>
-                <div className="h-3 bg-gray-200 rounded w-full"></div>
+                <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-1/2 mb-2"></div>
+                <div className="h-6 bg-slate-200 dark:bg-slate-700 rounded w-3/4 mb-2"></div>
+                <div className="h-3 bg-slate-200 dark:bg-slate-700 rounded w-full"></div>
               </CardContent>
             </Card>
           ))}
@@ -120,14 +120,38 @@ export default function ChartOfAccountsPage() {
     );
   }
 
-  // Type configuration
+  // Type configuration with dark mode support
   const typeConfig: Record<string, { color: string; bgColor: string; icon: any }> = {
-    ASSET: { color: 'text-emerald-600', bgColor: 'bg-emerald-50', icon: TrendingUp },
-    LIABILITY: { color: 'text-amber-600', bgColor: 'bg-amber-50', icon: TrendingDown },
-    INCOME: { color: 'text-blue-600', bgColor: 'bg-blue-50', icon: TrendingUp },
-    REVENUE: { color: 'text-blue-600', bgColor: 'bg-blue-50', icon: TrendingUp },
-    EQUITY: { color: 'text-purple-600', bgColor: 'bg-purple-50', icon: Circle },
-    EXPENSE: { color: 'text-red-600', bgColor: 'bg-red-50', icon: TrendingDown },
+    ASSET: { 
+      color: 'text-emerald-600 dark:text-emerald-400', 
+      bgColor: 'bg-emerald-50 dark:bg-emerald-950', 
+      icon: TrendingUp 
+    },
+    LIABILITY: { 
+      color: 'text-amber-600 dark:text-amber-400', 
+      bgColor: 'bg-amber-50 dark:bg-amber-950', 
+      icon: TrendingDown 
+    },
+    INCOME: { 
+      color: 'text-blue-600 dark:text-blue-400', 
+      bgColor: 'bg-blue-50 dark:bg-blue-950', 
+      icon: TrendingUp 
+    },
+    REVENUE: { 
+      color: 'text-blue-600 dark:text-blue-400', 
+      bgColor: 'bg-blue-50 dark:bg-blue-950', 
+      icon: TrendingUp 
+    },
+    EQUITY: { 
+      color: 'text-purple-600 dark:text-purple-400', 
+      bgColor: 'bg-purple-50 dark:bg-purple-950', 
+      icon: Circle 
+    },
+    EXPENSE: { 
+      color: 'text-red-600 dark:text-red-400', 
+      bgColor: 'bg-red-50 dark:bg-red-950', 
+      icon: TrendingDown 
+    },
   };
 
   return (
@@ -135,8 +159,8 @@ export default function ChartOfAccountsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Chart of Accounts</h1>
-          <p className="text-muted-foreground mt-1">
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Chart of Accounts</h1>
+          <p className="text-slate-600 dark:text-slate-400 mt-1">
             Manage your general ledger accounts and financial structure
           </p>
         </div>
@@ -150,57 +174,57 @@ export default function ChartOfAccountsPage() {
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card className="border-0 shadow-sm bg-gradient-to-br from-blue-50 to-indigo-50">
+        <Card className="border border-slate-200 dark:border-slate-700 shadow-sm bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950 dark:to-indigo-950">
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-blue-600">Total Accounts</p>
-                <p className="text-2xl font-bold text-blue-900">{stats.total}</p>
+                <p className="text-sm font-medium text-blue-600 dark:text-blue-400">Total Accounts</p>
+                <p className="text-2xl font-bold text-blue-900 dark:text-blue-100">{stats.total}</p>
               </div>
-              <div className="h-12 w-12 rounded-lg bg-blue-100 flex items-center justify-center">
-                <BookOpen className="h-6 w-6 text-blue-600" />
+              <div className="h-12 w-12 rounded-lg bg-blue-100 dark:bg-blue-900 flex items-center justify-center">
+                <BookOpen className="h-6 w-6 text-blue-600 dark:text-blue-400" />
               </div>
             </div>
           </CardContent>
         </Card>
 
-        <Card className="border-0 shadow-sm bg-gradient-to-br from-emerald-50 to-green-50">
+        <Card className="border border-slate-200 dark:border-slate-700 shadow-sm bg-gradient-to-br from-emerald-50 to-green-50 dark:from-emerald-950 dark:to-green-950">
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-emerald-600">Active</p>
-                <p className="text-2xl font-bold text-emerald-900">{stats.active}</p>
+                <p className="text-sm font-medium text-emerald-600 dark:text-emerald-400">Active</p>
+                <p className="text-2xl font-bold text-emerald-900 dark:text-emerald-100">{stats.active}</p>
               </div>
-              <div className="h-12 w-12 rounded-lg bg-emerald-100 flex items-center justify-center">
-                <Circle className="h-6 w-6 text-emerald-600" />
+              <div className="h-12 w-12 rounded-lg bg-emerald-100 dark:bg-emerald-900 flex items-center justify-center">
+                <Circle className="h-6 w-6 text-emerald-600 dark:text-emerald-400" />
               </div>
             </div>
           </CardContent>
         </Card>
 
-        <Card className="border-0 shadow-sm bg-gradient-to-br from-red-50 to-pink-50">
+        <Card className="border border-slate-200 dark:border-slate-700 shadow-sm bg-gradient-to-br from-red-50 to-pink-50 dark:from-red-950 dark:to-pink-950">
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-red-600">Disabled</p>
-                <p className="text-2xl font-bold text-red-900">{stats.disabled}</p>
+                <p className="text-sm font-medium text-red-600 dark:text-red-400">Disabled</p>
+                <p className="text-2xl font-bold text-red-900 dark:text-red-100">{stats.disabled}</p>
               </div>
-              <div className="h-12 w-12 rounded-lg bg-red-100 flex items-center justify-center">
-                <Circle className="h-6 w-6 text-red-600" />
+              <div className="h-12 w-12 rounded-lg bg-red-100 dark:bg-red-900 flex items-center justify-center">
+                <Circle className="h-6 w-6 text-red-600 dark:text-red-400" />
               </div>
             </div>
           </CardContent>
         </Card>
 
-        <Card className="border-0 shadow-sm bg-gradient-to-br from-purple-50 to-violet-50">
+        <Card className="border border-slate-200 dark:border-slate-700 shadow-sm bg-gradient-to-br from-purple-50 to-violet-50 dark:from-purple-950 dark:to-violet-950">
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-purple-600">Types</p>
-                <p className="text-2xl font-bold text-purple-900">{Object.keys(stats.types).length}</p>
+                <p className="text-sm font-medium text-purple-600 dark:text-purple-400">Types</p>
+                <p className="text-2xl font-bold text-purple-900 dark:text-purple-100">{Object.keys(stats.types).length}</p>
               </div>
-              <div className="h-12 w-12 rounded-lg bg-purple-100 flex items-center justify-center">
-                <Tag className="h-6 w-6 text-purple-600" />
+              <div className="h-12 w-12 rounded-lg bg-purple-100 dark:bg-purple-900 flex items-center justify-center">
+                <Tag className="h-6 w-6 text-purple-600 dark:text-purple-400" />
               </div>
             </div>
           </CardContent>
@@ -208,33 +232,33 @@ export default function ChartOfAccountsPage() {
       </div>
 
       {/* Filters */}
-      <Card className="border-0 shadow-sm">
+      <Card className="border border-slate-200 dark:border-slate-700 shadow-sm bg-white dark:bg-slate-800">
         <CardContent className="pt-6">
           <div className="flex flex-col sm:flex-row gap-4">
             <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 dark:text-slate-500 h-4 w-4" />
               <Input
                 placeholder="Search accounts by name or code..."
                 value={search}
                 onChange={e => { setSearch(e.target.value); setPage(1); }}
-                className="pl-10"
+                className="pl-10 bg-white dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-slate-900 dark:text-slate-100"
               />
             </div>
             <Select
               value={filterType}
               onValueChange={v => { setFilterType(v); setPage(1); }}
             >
-              <SelectTrigger className="w-48">
-                <Filter className="h-4 w-4 mr-2" />
+              <SelectTrigger className="w-48 bg-white dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-slate-900 dark:text-slate-100">
+                <Filter className="h-4 w-4 mr-2 text-slate-400 dark:text-slate-500" />
                 <SelectValue placeholder="Filter by type" />
               </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Types</SelectItem>
-                <SelectItem value="asset">Assets</SelectItem>
-                <SelectItem value="liability">Liabilities</SelectItem>
-                <SelectItem value="equity">Equity</SelectItem>
-                <SelectItem value="income">Income</SelectItem>
-                <SelectItem value="expense">Expenses</SelectItem>
+              <SelectContent className="bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600">
+                <SelectItem value="all" className="text-slate-900 dark:text-slate-100">All Types</SelectItem>
+                <SelectItem value="asset" className="text-slate-900 dark:text-slate-100">Assets</SelectItem>
+                <SelectItem value="liability" className="text-slate-900 dark:text-slate-100">Liabilities</SelectItem>
+                <SelectItem value="equity" className="text-slate-900 dark:text-slate-100">Equity</SelectItem>
+                <SelectItem value="income" className="text-slate-900 dark:text-slate-100">Income</SelectItem>
+                <SelectItem value="expense" className="text-slate-900 dark:text-slate-100">Expenses</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -245,11 +269,15 @@ export default function ChartOfAccountsPage() {
       <div className="space-y-2">
         {paginated.map((acc: any) => {
           const typeKey = (acc.type?.value || '').toUpperCase();
-          const config = typeConfig[typeKey] || { color: 'text-gray-600', bgColor: 'bg-gray-50', icon: FileText };
+          const config = typeConfig[typeKey] || { 
+            color: 'text-slate-600 dark:text-slate-400', 
+            bgColor: 'bg-slate-50 dark:bg-slate-800', 
+            icon: FileText 
+          };
           const IconComponent = config.icon;
           
           return (
-            <Card key={acc.id} className="group hover:shadow-lg hover:scale-[1.02] transition-all duration-300 border-0 bg-white/50 backdrop-blur-sm hover:bg-white">
+            <Card key={acc.id} className="group hover:shadow-lg hover:scale-[1.02] transition-all duration-300 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700">
               <CardContent className="p-4">
                 <div className="flex items-center gap-4">
                   {/* Icon with gradient background */}
@@ -263,18 +291,18 @@ export default function ChartOfAccountsPage() {
                       <div className="flex items-center gap-4">
                         {/* Title and Description */}
                         <div className="min-w-0">
-                          <h3 className="font-semibold text-gray-900 text-sm truncate group-hover:text-primary transition-colors duration-300">
+                          <h3 className="font-semibold text-slate-900 dark:text-slate-100 text-sm truncate group-hover:text-primary transition-colors duration-300">
                             {acc.name}
                           </h3>
-                          <p className="text-xs text-gray-500 truncate mt-0.5">
+                          <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">
                             {acc.description || 'General ledger account'}
                           </p>
                         </div>
                         
                         {/* GL Code with modern styling */}
                         <div className="flex items-center gap-1.5">
-                          <Hash className="h-3 w-3 text-gray-400" />
-                          <span className="text-xs font-mono text-gray-600 bg-gray-100/80 px-2.5 py-1 rounded-md border border-gray-200/50 flex-shrink-0">
+                          <Hash className="h-3 w-3 text-slate-400 dark:text-slate-500" />
+                          <span className="text-xs font-mono text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 px-2.5 py-1 rounded-md border border-slate-200 dark:border-slate-600 flex-shrink-0">
                             {acc.glCode || acc.glcode}
                           </span>
                         </div>
@@ -294,7 +322,7 @@ export default function ChartOfAccountsPage() {
                         {acc.usage?.value && (
                           <Badge 
                             variant="secondary" 
-                            className="text-xs h-6 px-3 bg-gray-100/80 hover:bg-gray-200/80 transition-colors duration-200"
+                            className="text-xs h-6 px-3 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors duration-200"
                           >
                             {acc.usage.value.toUpperCase()}
                           </Badge>
@@ -307,7 +335,7 @@ export default function ChartOfAccountsPage() {
                           )}
                           <Badge 
                             variant={acc.disabled ? "destructive" : "default"}
-                            className={`text-xs h-6 px-3 ${acc.disabled ? 'bg-red-100 text-red-700 border-red-200' : 'bg-green-100 text-green-700 border-green-200'} border transition-all duration-200`}
+                            className={`text-xs h-6 px-3 ${acc.disabled ? 'bg-red-100 dark:bg-red-950 text-red-700 dark:text-red-400 border-red-200 dark:border-red-800' : 'bg-green-100 dark:bg-green-950 text-green-700 dark:text-green-400 border-green-200 dark:border-green-800'} border transition-all duration-200`}
                           >
                             {acc.disabled ? 'Disabled' : 'Active'}
                           </Badge>
@@ -318,7 +346,7 @@ export default function ChartOfAccountsPage() {
                           <Button 
                             variant="ghost" 
                             size="sm" 
-                            className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-all duration-300 hover:bg-primary/10 hover:text-primary rounded-lg"
+                            className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-all duration-300 hover:bg-primary/10 hover:text-primary rounded-lg text-slate-600 dark:text-slate-400"
                           >
                             <Eye className="w-4 h-4" />
                           </Button>
@@ -335,10 +363,10 @@ export default function ChartOfAccountsPage() {
 
       {/* Pagination */}
       {pageCount > 1 && (
-        <Card className="border-0 shadow-sm">
+        <Card className="border border-slate-200 dark:border-slate-700 shadow-sm bg-white dark:bg-slate-800">
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
-              <div className="text-sm text-muted-foreground">
+              <div className="text-sm text-slate-600 dark:text-slate-400">
                 Showing {((page - 1) * pageSize) + 1} to {Math.min(page * pageSize, filtered.length)} of {filtered.length} accounts
               </div>
               <div className="flex items-center gap-2">
@@ -347,6 +375,7 @@ export default function ChartOfAccountsPage() {
                   variant="outline"
                   disabled={page <= 1} 
                   onClick={() => setPage(p => p - 1)}
+                  className="border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700"
                 >
                   Previous
                 </Button>
@@ -359,7 +388,7 @@ export default function ChartOfAccountsPage() {
                         size="sm"
                         variant={page === pageNum ? "default" : "outline"}
                         onClick={() => setPage(pageNum)}
-                        className="w-8 h-8 p-0"
+                        className={`w-8 h-8 p-0 ${page === pageNum ? '' : 'border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'}`}
                       >
                         {pageNum}
                       </Button>
@@ -371,6 +400,7 @@ export default function ChartOfAccountsPage() {
                   variant="outline"
                   disabled={page >= pageCount} 
                   onClick={() => setPage(p => p + 1)}
+                  className="border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700"
                 >
                   Next
                 </Button>
@@ -378,12 +408,12 @@ export default function ChartOfAccountsPage() {
                   value={String(pageSize)}
                   onValueChange={v => { setPageSize(Number(v)); setPage(1); }}
                 >
-                  <SelectTrigger className="w-24">
+                  <SelectTrigger className="w-24 bg-white dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-slate-900 dark:text-slate-100">
                     <SelectValue placeholder="Items" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600">
                     {[6, 12, 24, 48].map(n => (
-                      <SelectItem key={n} value={String(n)}>
+                      <SelectItem key={n} value={String(n)} className="text-slate-900 dark:text-slate-100">
                         {n} / page
                       </SelectItem>
                     ))}
