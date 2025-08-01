@@ -15,7 +15,7 @@ import {
   SelectItem,
 } from '@/components/ui/select';
 import { toast } from '@/components/ui/use-toast';
-import { Loader2 } from 'lucide-react';
+import { Loader2, BookOpen, CheckCircle } from 'lucide-react';
 
 // 1) JSON shapes
 interface AccountTypeOption { id: number; code: string; value: string }
@@ -125,13 +125,58 @@ export default function EditAccountPage() {
         headers: { 'Content-Type':'application/json' },
         body:    JSON.stringify(payload),
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || `HTTP ${res.status}: Failed to update GL account`);
+      }
+      
       const { resourceId } = await res.json();
-      toast({ title: 'Account Updated', description: `ID ${resourceId}` });
-      router.push('/accounting/chart-of-accounts');
+      
+      // Enhanced success notification
+      toast({
+        title: 'GL Account Updated Successfully! ✨',
+        description: (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <BookOpen className="h-4 w-4 text-blue-500" />
+              <span className="font-medium">{name}</span>
+            </div>
+            <div className="text-sm text-muted-foreground">
+              <div>Account ID: <span className="font-mono bg-muted px-1 rounded">{resourceId}</span></div>
+              <div>GL Code: <span className="font-mono bg-muted px-1 rounded">{glCode}</span></div>
+              {description && <div className="mt-1">Description: {description}</div>}
+            </div>
+          </div>
+        ),
+        variant: 'success',
+        action: {
+          label: 'View Account',
+          onClick: () => router.push(`/accounting/chart-of-accounts/${resourceId}`),
+        },
+      });
+
+      // Navigate after a short delay to allow user to see the notification
+      setTimeout(() => {
+        router.push('/accounting/chart-of-accounts');
+      }, 2000);
+      
     } catch (err: any) {
-      console.error(err);
-      toast({ variant:'destructive', title:'Update failed', description: err.message });
+      console.error('Error updating GL account:', err);
+      
+      // Enhanced error notification
+      toast({
+        title: 'Failed to Update GL Account',
+        description: (
+          <div className="space-y-1">
+            <div className="text-sm">{err.message}</div>
+            <div className="text-xs text-muted-foreground">
+              Please check your changes and try again. If the problem persists, contact support.
+            </div>
+          </div>
+        ),
+        variant: 'destructive',
+      });
       setSubmitting(false);
     }
   };

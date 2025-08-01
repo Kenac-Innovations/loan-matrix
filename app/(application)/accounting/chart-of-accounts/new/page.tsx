@@ -17,7 +17,7 @@ import {
   SelectItem,
 } from '@/components/ui/select';
 import { toast } from '@/components/ui/use-toast';
-import { Loader2 } from 'lucide-react';
+import { Loader2, BookOpen, CheckCircle } from 'lucide-react';
 
 // Simple fetcher for SWR
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
@@ -82,20 +82,58 @@ export default function NewAccountPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || `HTTP ${res.status}: Failed to create GL account`);
+      }
 
       const { resourceId } = await res.json();
+      
+      // Enhanced success notification
       toast({
-        title: 'Account Created',
-        description: `New GL Account ID: ${resourceId}`,
+        title: 'GL Account Created Successfully! 🎉',
+        description: (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <BookOpen className="h-4 w-4 text-green-500" />
+              <span className="font-medium">{name}</span>
+            </div>
+            <div className="text-sm text-muted-foreground">
+              <div>Account ID: <span className="font-mono bg-muted px-1 rounded">{resourceId}</span></div>
+              <div>GL Code: <span className="font-mono bg-muted px-1 rounded">{glCode}</span></div>
+              {description && <div className="mt-1">Description: {description}</div>}
+            </div>
+          </div>
+        ),
+        variant: 'success',
+        icon: <CheckCircle className="h-5 w-5 text-green-500" />,
+        action: {
+          label: 'View Account',
+          onClick: () => router.push(`/accounting/chart-of-accounts/${resourceId}`),
+        },
       });
 
-      router.push('/accounting/chart-of-accounts');
+      // Navigate after a short delay to allow user to see the notification
+      setTimeout(() => {
+        router.push('/accounting/chart-of-accounts');
+      }, 2000);
+      
     } catch (err: any) {
+      console.error('Error creating GL account:', err);
+      
+      // Enhanced error notification
       toast({
+        title: 'Failed to Create GL Account',
+        description: (
+          <div className="space-y-1">
+            <div className="text-sm">{err.message}</div>
+            <div className="text-xs text-muted-foreground">
+              Please check your input and try again. If the problem persists, contact support.
+            </div>
+          </div>
+        ),
         variant: 'destructive',
-        title: 'Error',
-        description: err.message,
       });
       setSubmitting(false);
     }

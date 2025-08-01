@@ -4,6 +4,7 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Providers } from "./providers";
+import { Toaster } from "sonner";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -25,6 +26,12 @@ export default function RootLayout({
       <body className={`${inter.className} theme-transition`}>
         <ThemeProvider>
           <Providers>{children}</Providers>
+          <Toaster 
+            position="top-right"
+            richColors
+            closeButton
+            duration={5000}
+          />
         </ThemeProvider>
       </body>
     </html>

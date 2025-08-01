@@ -1,7 +1,7 @@
 // File: app/(application)/accounting/chart-of-accounts/page.tsx
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import useSWR from 'swr';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
@@ -21,7 +21,7 @@ import {
   TableBody,
   TableCell,
 } from '@/components/ui/table';
-import { Plus, Eye } from 'lucide-react';
+import { Plus, Eye, BookOpen } from 'lucide-react';
 import { toast } from '@/components/ui/use-toast';
 
 const fetcher = (url: string) => fetch(url).then(res => res.json());
@@ -34,6 +34,39 @@ export default function ChartOfAccountsPage() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+  const [hasShownWelcome, setHasShownWelcome] = useState(false);
+
+  // Show welcome notification on first load
+  useEffect(() => {
+    if (data && !hasShownWelcome && accounts.length > 0) {
+      const activeAccounts = accounts.filter((acc: any) => !acc.disabled).length;
+      const disabledAccounts = accounts.filter((acc: any) => acc.disabled).length;
+      
+      toast({
+        title: 'Chart of Accounts Loaded! 📊',
+        description: (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <BookOpen className="h-4 w-4 text-blue-500" />
+              <span className="font-medium">Account Overview</span>
+            </div>
+            <div className="text-sm text-muted-foreground">
+              <div>Total Accounts: <span className="font-mono bg-muted px-1 rounded">{accounts.length}</span></div>
+              <div>Active: <span className="text-green-600 font-medium">{activeAccounts}</span></div>
+              <div>Disabled: <span className="text-orange-600 font-medium">{disabledAccounts}</span></div>
+            </div>
+          </div>
+        ),
+        variant: 'info',
+        action: {
+          label: 'Create New Account',
+          onClick: () => window.location.href = '/accounting/chart-of-accounts/new',
+        },
+      });
+      
+      setHasShownWelcome(true);
+    }
+  }, [data, accounts, hasShownWelcome]);
 
   // Filter & paginate
   const filtered = useMemo(
@@ -51,7 +84,15 @@ export default function ChartOfAccountsPage() {
     [filtered, page, pageSize]
   );
 
-  if (error) return <div className="text-red-600">Error: {error.message}</div>;
+  if (error) {
+    toast({
+      title: 'Failed to Load Chart of Accounts',
+      description: 'Please refresh the page or contact support if the problem persists.',
+      variant: 'destructive',
+    });
+    return <div className="text-red-600">Error: {error.message}</div>;
+  }
+  
   if (!data) return <div>Loading...</div>;
 
   // --- UPDATED TYPE COLORS MAP ---
@@ -68,12 +109,44 @@ export default function ChartOfAccountsPage() {
     <div className="space-y-4">
       {/* Controls */}
       <div className="flex items-center justify-between gap-2">
-        <Input
-          placeholder="Search by name or code"
-          value={search}
-          onChange={e => { setSearch(e.target.value); setPage(1); }}
-          className="w-64"
-        />
+        <div className="flex items-center gap-2">
+          <Input
+            placeholder="Search by name or code"
+            value={search}
+            onChange={e => { setSearch(e.target.value); setPage(1); }}
+            className="w-64"
+          />
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={() => {
+              toast({
+                title: 'Notification System Demo! 🎉',
+                description: (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <BookOpen className="h-4 w-4 text-purple-500" />
+                      <span className="font-medium">Modern Notifications</span>
+                    </div>
+                    <div className="text-sm text-muted-foreground">
+                      <div>✅ Success notifications with icons</div>
+                      <div>⚠️ Warning notifications with actions</div>
+                      <div>❌ Error notifications with details</div>
+                      <div>ℹ️ Info notifications with rich content</div>
+                    </div>
+                  </div>
+                ),
+                variant: 'info',
+                action: {
+                  label: 'Learn More',
+                  onClick: () => window.open('https://sonner.emilkowal.ski/', '_blank'),
+                },
+              });
+            }}
+          >
+            Test Notifications
+          </Button>
+        </div>
         <Link href="/accounting/chart-of-accounts/new">
           <Button className="bg-indigo-600 hover:bg-indigo-700 text-white flex items-center gap-1">
             <Plus className="w-4 h-4" /> New Account

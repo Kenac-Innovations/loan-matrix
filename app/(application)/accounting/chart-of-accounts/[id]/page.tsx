@@ -8,7 +8,7 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { toast } from '@/components/ui/use-toast';
-import { Loader2 } from 'lucide-react';
+import { Loader2, BookOpen, CheckCircle, XCircle } from 'lucide-react';
 import {
   Dialog,
   DialogTrigger,
@@ -49,12 +49,43 @@ export default function ViewAccountPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ disabled: !acc.disabled }),
       });
+      
+      // Enhanced notification for enable/disable
       toast({
-        title: acc.disabled ? 'Account enabled' : 'Account disabled',
+        title: acc.disabled ? 'GL Account Enabled Successfully! ✅' : 'GL Account Disabled Successfully! ⚠️',
+        description: (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <BookOpen className="h-4 w-4 text-blue-500" />
+              <span className="font-medium">{acc.name}</span>
+            </div>
+            <div className="text-sm text-muted-foreground">
+              <div>GL Code: <span className="font-mono bg-muted px-1 rounded">{acc.glCode}</span></div>
+              <div>Status: <span className={`font-medium ${acc.disabled ? 'text-green-600' : 'text-orange-600'}`}>
+                {acc.disabled ? 'Now Active' : 'Now Inactive'}
+              </span></div>
+            </div>
+          </div>
+        ),
+        variant: 'success',
       });
+      
       mutate();
     } catch (e: any) {
-      toast({ variant: 'destructive', title: 'Error', description: e.message });
+      console.error('Error toggling account status:', e);
+      
+      toast({
+        title: 'Failed to Update Account Status',
+        description: (
+          <div className="space-y-1">
+            <div className="text-sm">{e.message}</div>
+            <div className="text-xs text-muted-foreground">
+              Please try again. If the problem persists, contact support.
+            </div>
+          </div>
+        ),
+        variant: 'destructive',
+      });
     }
   };
 
@@ -62,10 +93,51 @@ export default function ViewAccountPage() {
   const handleDeleteConfirmed = async () => {
     try {
       await fetch(`/api/fineract/glaccounts/${id}`, { method: 'DELETE' });
-      toast({ title: 'Account deleted' });
-      router.push('/accounting/chart-of-accounts');
+      
+      // Enhanced delete notification
+      toast({
+        title: 'GL Account Deleted Successfully! 🗑️',
+        description: (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <BookOpen className="h-4 w-4 text-red-500" />
+              <span className="font-medium">{acc.name}</span>
+            </div>
+            <div className="text-sm text-muted-foreground">
+              <div>GL Code: <span className="font-mono bg-muted px-1 rounded">{acc.glCode}</span></div>
+              <div className="text-xs text-orange-600 font-medium">
+                This action cannot be undone.
+              </div>
+            </div>
+          </div>
+        ),
+        variant: 'success',
+        action: {
+          label: 'View All Accounts',
+          onClick: () => router.push('/accounting/chart-of-accounts'),
+        },
+      });
+
+      // Navigate after a short delay to allow user to see the notification
+      setTimeout(() => {
+        router.push('/accounting/chart-of-accounts');
+      }, 2000);
+      
     } catch (e: any) {
-      toast({ variant: 'destructive', title: 'Delete failed', description: e.message });
+      console.error('Error deleting GL account:', e);
+      
+      toast({
+        title: 'Failed to Delete GL Account',
+        description: (
+          <div className="space-y-1">
+            <div className="text-sm">{e.message}</div>
+            <div className="text-xs text-muted-foreground">
+              The account may be in use or you may not have permission to delete it.
+            </div>
+          </div>
+        ),
+        variant: 'destructive',
+      });
       setDialogOpen(false);
     }
   };
