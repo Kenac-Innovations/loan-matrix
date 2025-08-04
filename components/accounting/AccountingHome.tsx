@@ -10,7 +10,8 @@ import {
   RefreshCcw, 
   ListChecks, 
   ArrowRight,
-  Shield
+  Shield,
+  Settings
 } from 'lucide-react';
 
 const features = [
@@ -53,6 +54,14 @@ const features = [
     description: 'Month-end and year-end closing procedures',
     badge: 'Period End',
     color: 'bg-red-500'
+  },
+  { 
+    title: 'Accounting Rules', 
+    href: '/accounting/accounting-rules', 
+    icon: Settings,
+    description: 'Configure automatic journal entry rules and mappings',
+    badge: 'Rules',
+    color: 'bg-indigo-500'
   },
 ];
 
