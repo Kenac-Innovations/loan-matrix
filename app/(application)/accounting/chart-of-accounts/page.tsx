@@ -1,11 +1,14 @@
 // File: app/(application)/accounting/chart-of-accounts/page.tsx
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import useSWR from 'swr';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Separator } from '@/components/ui/separator';
 import {
   Select,
   SelectTrigger,
@@ -14,14 +17,21 @@ import {
   SelectItem,
 } from '@/components/ui/select';
 import {
-  Table,
-  TableHeader,
-  TableRow,
-  TableHead,
-  TableBody,
-  TableCell,
-} from '@/components/ui/table';
-import { Plus, Eye } from 'lucide-react';
+  Plus, 
+  Eye, 
+  BookOpen, 
+  Search, 
+  Filter,
+  Hash,
+  FileText,
+  TrendingUp,
+  TrendingDown,
+  Circle,
+  MoreHorizontal,
+  ArrowRight,
+  Calendar,
+  Tag
+} from 'lucide-react';
 import { toast } from '@/components/ui/use-toast';
 
 const fetcher = (url: string) => fetch(url).then(res => res.json());
@@ -33,16 +43,20 @@ export default function ChartOfAccountsPage() {
   // State
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize, setPageSize] = useState(12);
+  const [filterType, setFilterType] = useState('all');
 
   // Filter & paginate
   const filtered = useMemo(
     () =>
-      accounts.filter((acc: any) =>
-        acc.name.toLowerCase().includes(search.toLowerCase()) ||
-        String(acc.glCode || acc.glcode).includes(search)
-      ),
-    [accounts, search]
+      accounts.filter((acc: any) => {
+        const matchesSearch = acc.name.toLowerCase().includes(search.toLowerCase()) ||
+          String(acc.glCode || acc.glcode).includes(search);
+        const matchesType = filterType === 'all' || 
+          (acc.type?.value?.toUpperCase() === filterType.toUpperCase());
+        return matchesSearch && matchesType;
+      }),
+    [accounts, search, filterType]
   );
   const pageCount = Math.ceil(filtered.length / pageSize);
   const paginated = useMemo(
@@ -51,127 +65,365 @@ export default function ChartOfAccountsPage() {
     [filtered, page, pageSize]
   );
 
-  if (error) return <div className="text-red-600">Error: {error.message}</div>;
-  if (!data) return <div>Loading...</div>;
+  // Stats
+  const stats = useMemo(() => {
+    const total = accounts.length;
+    const active = accounts.filter((acc: any) => !acc.disabled).length;
+    const disabled = total - active;
+    const types = accounts.reduce((acc: any, curr: any) => {
+      const type = curr.type?.value?.toUpperCase() || 'UNKNOWN';
+      acc[type] = (acc[type] || 0) + 1;
+      return acc;
+    }, {});
 
-  // --- UPDATED TYPE COLORS MAP ---
-  const typeColors: Record<string, string> = {
-    ASSET:     'text-green-600',
-    LIABILITY: 'text-yellow-600',
-    INCOME:    'text-indigo-600',
-    REVENUE:   'text-indigo-600', // if you still receive REVENUE keys
-    EQUITY:    'text-blue-600',
-    EXPENSE:   'text-red-600',
+    return { total, active, disabled, types };
+  }, [accounts]);
+
+  if (error) {
+    return (
+      <Card className="border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950">
+        <CardContent className="pt-6">
+          <div className="text-center">
+            <div className="text-red-600 dark:text-red-400 font-medium">Error loading accounts</div>
+            <div className="text-sm text-red-500 dark:text-red-300 mt-1">{error.message}</div>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+  
+  if (!data) {
+    return (
+      <div className="space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          {[...Array(4)].map((_, i) => (
+            <Card key={i} className="animate-pulse border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800">
+              <CardContent className="pt-6">
+                <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-3/4 mb-2"></div>
+                <div className="h-8 bg-slate-200 dark:bg-slate-700 rounded w-1/2"></div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {[...Array(6)].map((_, i) => (
+            <Card key={i} className="animate-pulse border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800">
+              <CardContent className="pt-6">
+                <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-1/2 mb-2"></div>
+                <div className="h-6 bg-slate-200 dark:bg-slate-700 rounded w-3/4 mb-2"></div>
+                <div className="h-3 bg-slate-200 dark:bg-slate-700 rounded w-full"></div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // Type configuration with dark mode support
+  const typeConfig: Record<string, { color: string; bgColor: string; icon: any }> = {
+    ASSET: { 
+      color: 'text-emerald-600 dark:text-emerald-400', 
+      bgColor: 'bg-emerald-50 dark:bg-emerald-950', 
+      icon: TrendingUp 
+    },
+    LIABILITY: { 
+      color: 'text-amber-600 dark:text-amber-400', 
+      bgColor: 'bg-amber-50 dark:bg-amber-950', 
+      icon: TrendingDown 
+    },
+    INCOME: { 
+      color: 'text-blue-600 dark:text-blue-400', 
+      bgColor: 'bg-blue-50 dark:bg-blue-950', 
+      icon: TrendingUp 
+    },
+    REVENUE: { 
+      color: 'text-blue-600 dark:text-blue-400', 
+      bgColor: 'bg-blue-50 dark:bg-blue-950', 
+      icon: TrendingUp 
+    },
+    EQUITY: { 
+      color: 'text-purple-600 dark:text-purple-400', 
+      bgColor: 'bg-purple-50 dark:bg-purple-950', 
+      icon: Circle 
+    },
+    EXPENSE: { 
+      color: 'text-red-600 dark:text-red-400', 
+      bgColor: 'bg-red-50 dark:bg-red-950', 
+      icon: TrendingDown 
+    },
   };
 
   return (
-    <div className="space-y-4">
-      {/* Controls */}
-      <div className="flex items-center justify-between gap-2">
-        <Input
-          placeholder="Search by name or code"
-          value={search}
-          onChange={e => { setSearch(e.target.value); setPage(1); }}
-          className="w-64"
-        />
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Chart of Accounts</h1>
+          <p className="text-slate-600 dark:text-slate-400 mt-1">
+            Manage your general ledger accounts and financial structure
+          </p>
+        </div>
         <Link href="/accounting/chart-of-accounts/new">
-          <Button className="bg-indigo-600 hover:bg-indigo-700 text-white flex items-center gap-1">
-            <Plus className="w-4 h-4" /> New Account
+          <Button className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white shadow-lg">
+            <Plus className="w-4 h-4 mr-2" /> 
+            New Account
           </Button>
         </Link>
       </div>
 
-      {/* Table */}
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>GL Code</TableHead>
-            <TableHead>Name</TableHead>
-            <TableHead>Description</TableHead>
-            <TableHead>Type</TableHead>
-            <TableHead>Usage</TableHead>
-            <TableHead>Status</TableHead>
-            <TableHead>Actions</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {paginated.map((acc: any) => {
-            const typeKey = (acc.type?.value || '').toUpperCase();
-            const typeClass = typeColors[typeKey] || 'text-gray-600';
-            return (
-              <TableRow key={acc.id}>
-                <TableCell>{acc.glCode || acc.glcode}</TableCell>
-                <TableCell>{acc.name}</TableCell>
-                <TableCell>{acc.description || '-'}</TableCell>
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <Card className="border border-slate-200 dark:border-slate-700 shadow-sm bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950 dark:to-indigo-950">
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-blue-600 dark:text-blue-400">Total Accounts</p>
+                <p className="text-2xl font-bold text-blue-900 dark:text-blue-100">{stats.total}</p>
+              </div>
+              <div className="h-12 w-12 rounded-lg bg-blue-100 dark:bg-blue-900 flex items-center justify-center">
+                <BookOpen className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
-                {/* Color‐coded Type */}
-                <TableCell>
-                  <span className={`${typeClass} font-medium`}>
-                    {typeKey || '-'}
-                  </span>
-                </TableCell>
+        <Card className="border border-slate-200 dark:border-slate-700 shadow-sm bg-gradient-to-br from-emerald-50 to-green-50 dark:from-emerald-950 dark:to-green-950">
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-emerald-600 dark:text-emerald-400">Active</p>
+                <p className="text-2xl font-bold text-emerald-900 dark:text-emerald-100">{stats.active}</p>
+              </div>
+              <div className="h-12 w-12 rounded-lg bg-emerald-100 dark:bg-emerald-900 flex items-center justify-center">
+                <Circle className="h-6 w-6 text-emerald-600 dark:text-emerald-400" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
-                <TableCell>{acc.usage?.value.toUpperCase() || '-'}</TableCell>
+        <Card className="border border-slate-200 dark:border-slate-700 shadow-sm bg-gradient-to-br from-red-50 to-pink-50 dark:from-red-950 dark:to-pink-950">
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-red-600 dark:text-red-400">Disabled</p>
+                <p className="text-2xl font-bold text-red-900 dark:text-red-100">{stats.disabled}</p>
+              </div>
+              <div className="h-12 w-12 rounded-lg bg-red-100 dark:bg-red-900 flex items-center justify-center">
+                <Circle className="h-6 w-6 text-red-600 dark:text-red-400" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
-                {/* Rippling Status Dot */}
-                <TableCell>
-                  <div className="relative inline-flex items-center">
-                    {!acc.disabled && (
-                      <span className="absolute inline-flex h-3 w-3 rounded-full bg-green-500 opacity-75 animate-ping" />
-                    )}
-                    <span
-                      className={`relative inline-block h-3 w-3 rounded-full ${
-                        acc.disabled ? 'bg-red-500' : 'bg-green-500'
-                      }`}
-                    />
-                    <span className="ml-2 text-sm">
-                      {acc.disabled ? 'Disabled' : 'Active'}
-                    </span>
+        <Card className="border border-slate-200 dark:border-slate-700 shadow-sm bg-gradient-to-br from-purple-50 to-violet-50 dark:from-purple-950 dark:to-violet-950">
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-purple-600 dark:text-purple-400">Types</p>
+                <p className="text-2xl font-bold text-purple-900 dark:text-purple-100">{Object.keys(stats.types).length}</p>
+              </div>
+              <div className="h-12 w-12 rounded-lg bg-purple-100 dark:bg-purple-900 flex items-center justify-center">
+                <Tag className="h-6 w-6 text-purple-600 dark:text-purple-400" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Filters */}
+      <Card className="border border-slate-200 dark:border-slate-700 shadow-sm bg-white dark:bg-slate-800">
+        <CardContent className="pt-6">
+          <div className="flex flex-col sm:flex-row gap-4">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 dark:text-slate-500 h-4 w-4" />
+              <Input
+                placeholder="Search accounts by name or code..."
+                value={search}
+                onChange={e => { setSearch(e.target.value); setPage(1); }}
+                className="pl-10 bg-white dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-slate-900 dark:text-slate-100"
+              />
+            </div>
+            <Select
+              value={filterType}
+              onValueChange={v => { setFilterType(v); setPage(1); }}
+            >
+              <SelectTrigger className="w-48 bg-white dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-slate-900 dark:text-slate-100">
+                <Filter className="h-4 w-4 mr-2 text-slate-400 dark:text-slate-500" />
+                <SelectValue placeholder="Filter by type" />
+              </SelectTrigger>
+              <SelectContent className="bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600">
+                <SelectItem value="all" className="text-slate-900 dark:text-slate-100">All Types</SelectItem>
+                <SelectItem value="asset" className="text-slate-900 dark:text-slate-100">Assets</SelectItem>
+                <SelectItem value="liability" className="text-slate-900 dark:text-slate-100">Liabilities</SelectItem>
+                <SelectItem value="equity" className="text-slate-900 dark:text-slate-100">Equity</SelectItem>
+                <SelectItem value="income" className="text-slate-900 dark:text-slate-100">Income</SelectItem>
+                <SelectItem value="expense" className="text-slate-900 dark:text-slate-100">Expenses</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Accounts Grid */}
+      <div className="space-y-2">
+        {paginated.map((acc: any) => {
+          const typeKey = (acc.type?.value || '').toUpperCase();
+          const config = typeConfig[typeKey] || { 
+            color: 'text-slate-600 dark:text-slate-400', 
+            bgColor: 'bg-slate-50 dark:bg-slate-800', 
+            icon: FileText 
+          };
+          const IconComponent = config.icon;
+          
+          return (
+            <Card key={acc.id} className="group hover:shadow-lg hover:scale-[1.02] transition-all duration-300 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700">
+              <CardContent className="p-4">
+                <div className="flex items-center gap-4">
+                  {/* Icon with gradient background */}
+                  <div className={`h-10 w-10 rounded-xl ${config.bgColor} flex items-center justify-center flex-shrink-0 shadow-sm group-hover:shadow-md transition-shadow duration-300`}>
+                    <IconComponent className={`h-5 w-5 ${config.color}`} />
                   </div>
-                </TableCell>
-
-                <TableCell className="flex items-center gap-2">
-                  <Link href={`/accounting/chart-of-accounts/${acc.id}`}>
-                    <Button variant="outline" size="sm" className="p-1">
-                      <Eye className="w-4 h-4" />
-                    </Button>
-                  </Link>
-                </TableCell>
-              </TableRow>
-            );
-          })}
-        </TableBody>
-      </Table>
+                  
+                  {/* Content */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-4">
+                        {/* Title and Description */}
+                        <div className="min-w-0">
+                          <h3 className="font-semibold text-slate-900 dark:text-slate-100 text-sm truncate group-hover:text-primary transition-colors duration-300">
+                            {acc.name}
+                          </h3>
+                          <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">
+                            {acc.description || 'General ledger account'}
+                          </p>
+                        </div>
+                        
+                        {/* GL Code with modern styling */}
+                        <div className="flex items-center gap-1.5">
+                          <Hash className="h-3 w-3 text-slate-400 dark:text-slate-500" />
+                          <span className="text-xs font-mono text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 px-2.5 py-1 rounded-md border border-slate-200 dark:border-slate-600 flex-shrink-0">
+                            {acc.glCode || acc.glcode}
+                          </span>
+                        </div>
+                      </div>
+                      
+                      {/* Right side info with enhanced badges */}
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        {/* Type Badge with gradient */}
+                        <Badge 
+                          variant="outline" 
+                          className={`text-xs h-6 px-3 ${config.color} border-current bg-gradient-to-r ${config.bgColor} hover:shadow-sm transition-all duration-200`}
+                        >
+                          {typeKey}
+                        </Badge>
+                        
+                        {/* Usage Badge */}
+                        {acc.usage?.value && (
+                          <Badge 
+                            variant="secondary" 
+                            className="text-xs h-6 px-3 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors duration-200"
+                          >
+                            {acc.usage.value.toUpperCase()}
+                          </Badge>
+                        )}
+                        
+                        {/* Status Badge with animation */}
+                        <div className="relative">
+                          {!acc.disabled && (
+                            <span className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+                          )}
+                          <Badge 
+                            variant={acc.disabled ? "destructive" : "default"}
+                            className={`text-xs h-6 px-3 ${acc.disabled ? 'bg-red-100 dark:bg-red-950 text-red-700 dark:text-red-400 border-red-200 dark:border-red-800' : 'bg-green-100 dark:bg-green-950 text-green-700 dark:text-green-400 border-green-200 dark:border-green-800'} border transition-all duration-200`}
+                          >
+                            {acc.disabled ? 'Disabled' : 'Active'}
+                          </Badge>
+                        </div>
+                        
+                        {/* Action button with enhanced styling */}
+                        <Link href={`/accounting/chart-of-accounts/${acc.id}`}>
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-all duration-300 hover:bg-primary/10 hover:text-primary rounded-lg text-slate-600 dark:text-slate-400"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </Button>
+                        </Link>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
 
       {/* Pagination */}
-      <div className="flex items-center justify-between">
-        <div className="text-sm text-gray-600">
-          Page {page} of {pageCount} ({filtered.length} items)
-        </div>
-        <div className="flex items-center gap-2">
-          <Button size="sm" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>
-            Prev
-          </Button>
-          <Button size="sm" disabled={page >= pageCount} onClick={() => setPage(p => p + 1)}>
-            Next
-          </Button>
-          <Select
-            value={String(pageSize)}
-            onValueChange={v => { setPageSize(Number(v)); setPage(1); }}
-          >
-            <SelectTrigger className="w-24">
-              <SelectValue placeholder="Items" />
-            </SelectTrigger>
-            <SelectContent>
-              {[5, 10, 20, 50].map(n => (
-                <SelectItem key={n} value={String(n)}>
-                  {n} / page
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
+      {pageCount > 1 && (
+        <Card className="border border-slate-200 dark:border-slate-700 shadow-sm bg-white dark:bg-slate-800">
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div className="text-sm text-slate-600 dark:text-slate-400">
+                Showing {((page - 1) * pageSize) + 1} to {Math.min(page * pageSize, filtered.length)} of {filtered.length} accounts
+              </div>
+              <div className="flex items-center gap-2">
+                <Button 
+                  size="sm" 
+                  variant="outline"
+                  disabled={page <= 1} 
+                  onClick={() => setPage(p => p - 1)}
+                  className="border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700"
+                >
+                  Previous
+                </Button>
+                <div className="flex items-center gap-1">
+                  {Array.from({ length: Math.min(5, pageCount) }, (_, i) => {
+                    const pageNum = i + 1;
+                    return (
+                      <Button
+                        key={pageNum}
+                        size="sm"
+                        variant={page === pageNum ? "default" : "outline"}
+                        onClick={() => setPage(pageNum)}
+                        className={`w-8 h-8 p-0 ${page === pageNum ? '' : 'border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'}`}
+                      >
+                        {pageNum}
+                      </Button>
+                    );
+                  })}
+                </div>
+                <Button 
+                  size="sm" 
+                  variant="outline"
+                  disabled={page >= pageCount} 
+                  onClick={() => setPage(p => p + 1)}
+                  className="border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700"
+                >
+                  Next
+                </Button>
+                <Select
+                  value={String(pageSize)}
+                  onValueChange={v => { setPageSize(Number(v)); setPage(1); }}
+                >
+                  <SelectTrigger className="w-24 bg-white dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-slate-900 dark:text-slate-100">
+                    <SelectValue placeholder="Items" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600">
+                    {[6, 12, 24, 48].map(n => (
+                      <SelectItem key={n} value={String(n)} className="text-slate-900 dark:text-slate-100">
+                        {n} / page
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

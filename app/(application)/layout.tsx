@@ -115,23 +115,10 @@ export default async function DashboardLayout({
                 label="Accounting"
                 href="/accounting"
                 subMenuItems={[
-                  { label: "Home", href: "/accounting" },
-                  {
-                    label: "Chart of Accounts",
-                    href: "/accounting/chart-of-accounts",
-                  },
-                  {
-                    label: "Journal Entries",
-                    href: "/accounting/journal-entries",
-                  },
-                  {
-                    label: "Search Journal",
-                    href: "/accounting/search-journal",
-                  },
-                  {
-                    label: "Frequent Postings",
-                    href: "/accounting/frequent-postings",
-                  },
+                    { label: "Home", href: "/accounting" },
+                    { label: "Chart of Accounts", href: "/accounting/chart-of-accounts" },
+                    { label: "Journal Entries", href: "/accounting/search-journal" },
+                    { label: "Frequent Postings", href: "/accounting/frequent-postings" },
                 ]}
               />
 
