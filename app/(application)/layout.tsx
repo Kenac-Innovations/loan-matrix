@@ -1,10 +1,10 @@
-
 import type React from "react";
 import { getUserProfileData } from "./components/user-profile-data";
 
 // Client components
 
 import Link from "next/link";
+import Image from "next/image";
 import {
   BarChart3,
   Bot,
@@ -41,35 +41,24 @@ export default async function DashboardLayout({
       <div className="flex h-screen overflow-hidden bg-background">
         {/* Desktop Sidebar */}
         <div className="hidden lg:block lg:w-64 bg-background border-border border-r h-screen sticky top-0 z-30 overflow-y-auto">
-          <div className="flex h-16 items-center border-border border-b px-4 sticky top-0 bg-background z-10">
-            <div className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-md bg-blue-500 text-white">
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="24"
-                  height="24"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  className="h-5 w-5"
-                >
-                  <rect width="18" height="18" x="3" y="3" rx="2" />
-                  <path d="M7 7h10" />
-                  <path d="M7 12h10" />
-                  <path d="M7 17h10" />
-                </svg>
-              </div>
-              <span className="text-lg font-bold">
-                {userProfileData.tenantId.toUpperCase()}
-              </span>
-              {!userProfileData.isLoggedIn && (
-                <span className="ml-2 text-xs bg-yellow-500 text-white px-2 py-0.5 rounded">
-                  Guest
-                </span>
-              )}
+          <div className="flex h-16 items-center justify-center border-border border-b px-4 sticky top-0 bg-background z-10">
+            <div className="flex items-center">
+              <Image
+                src="/kenac_logo_light.png"
+                alt="Kenac Logo"
+                width={120}
+                height={40}
+                className="dark:hidden"
+                priority
+              />
+              <Image
+                src="/kenac_logo.png"
+                alt="Kenac Logo"
+                width={120}
+                height={40}
+                className="hidden dark:block"
+                priority
+              />
             </div>
           </div>
           <div className="py-4 h-[calc(100vh-4rem)] overflow-y-auto">
@@ -101,7 +90,6 @@ export default async function DashboardLayout({
                 />
               </div>
 
-
               <Link
                 href="#"
                 className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
@@ -122,71 +110,78 @@ export default async function DashboardLayout({
                 />
               </div>
 
-                <MenuItemWithSubmenu
-                  icon={<BarChart3 />}
-                  label="Accounting"
-                  href="/accounting"
-                  subMenuItems={[
+              <MenuItemWithSubmenu
+                icon={<BarChart3 />}
+                label="Accounting"
+                href="/accounting"
+                subMenuItems={[
                     { label: "Home", href: "/accounting" },
                     { label: "Chart of Accounts", href: "/accounting/chart-of-accounts" },
                     { label: "Journal Entries", href: "/accounting/search-journal" },
                     { label: "Frequent Postings", href: "/accounting/frequent-postings" },
+                ]}
+              />
+
+              <Link
+                href="/reports"
+                className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+              >
+                <FileText className="h-4 w-4" />
+                Reports
+              </Link>
+
+              {/* <Link
+                href="#"
+                className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+              >
+                <FileText className="h-4 w-4" />
+                Documents
+              </Link>
+
+              <Link
+                href="#"
+                className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+              >
+                <BarChart3 className="h-4 w-4" />
+                Analytics
+              </Link>
+
+              <Link
+                href="#"
+                className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+              >
+                <Shield className="h-4 w-4" />
+                Compliance
+              </Link>
+
+              <Link
+                href="#"
+                className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+              >
+                <Lock className="h-4 w-4" />
+                Security
+              </Link> */}
+
+              <div className="space-y-1">
+                <MenuItemWithSubmenu
+                  icon={<Bot />}
+                  label="AI Assistant"
+                  href="/ai-assistant"
+                  subMenuItems={[
+                    { label: "Chat", href: "/ai-assistant" },
+                    { label: "Admin", href: "/rag-admin" },
                   ]}
                 />
+              </div>
 
-
-                <Link
-                  href="#"
-                  className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                >
-                  <FileText className="h-4 w-4" />
-                  Documents
-                </Link>
-
-                <Link
-                  href="#"
-                  className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                >
-                  <BarChart3 className="h-4 w-4" />
-                  Analytics
-                </Link>
-
-                <Link
-                  href="#"
-                  className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                >
-                  <Shield className="h-4 w-4" />
-                  Compliance
-                </Link>
-
-                <Link
-                  href="#"
-                  className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                >
-                  <Lock className="h-4 w-4" />
-                  Security
-                </Link>
-
-                <div className="space-y-1">
-                  <MenuItemWithSubmenu
-                    icon={<Bot />}
-                    label="AI Assistant"
-                    href="/ai-assistant"
-                    subMenuItems={[
-                      { label: "Chat", href: "/ai-assistant" },
-                      { label: "Admin", href: "/rag-admin" },
-                    ]}
-                  />
-                </div>
-
-                <Link
-                  href="#"
-                  className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                >
-                  <Settings className="h-4 w-4" />
-                  Settings
-                </Link>
-              </nav>
+              {/* <Link
+                href="#"
+                className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+              >
+                <Settings className="h-4 w-4" />
+                Settings
+              </Link> */}
+            </nav>
           </div>
         </div>
 
@@ -210,4 +205,3 @@ export default async function DashboardLayout({
     </ChatProvider>
   );
 }
-

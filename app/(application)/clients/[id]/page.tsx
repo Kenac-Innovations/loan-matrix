@@ -32,13 +32,14 @@ import { ClientTransactions } from "./components/client-transactions";
 import { ClientDocuments } from "./components/client-documents";
 
 interface PageProps {
-  params: {
+  params: Promise<{
     id: string;
-  };
+  }>;
 }
 
 export default async function ClientDetailPage({ params }: PageProps) {
-  const clientId = parseInt(params.id);
+  const { id } = await params;
+  const clientId = parseInt(id);
 
   if (isNaN(clientId)) {
     notFound();
@@ -60,10 +61,12 @@ export default async function ClientDetailPage({ params }: PageProps) {
             View and manage client information
           </p>
         </div>
-        <Button size="sm">
-          <Edit className="h-4 w-4 mr-2" />
-          Edit Client
-        </Button>
+        <Link href={`/clients/${clientId}/edit`}>
+          <Button size="sm">
+            <Edit className="h-4 w-4 mr-2" />
+            Edit Client
+          </Button>
+        </Link>
       </div>
 
       {/* Client Overview */}

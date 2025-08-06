@@ -25,6 +25,7 @@ interface ProspectContinuationDialogProps {
     leadId: string;
     firstname?: string;
     lastname?: string;
+    externalId?: string;
     emailAddress?: string;
     mobileNo?: string;
     timestamp: number;
@@ -95,11 +96,17 @@ export function ProspectContinuationDialog({
                   <div className="break-words overflow-wrap-anywhere">
                     <strong className="font-medium">Prospect:</strong>{" "}
                     <span className="break-all">
-                      {prospectData.firstname || prospectData.lastname
-                        ? `${prospectData.firstname ?? ""} ${
+                      {prospectData.firstname || prospectData.lastname ? (
+                        <>
+                          {`${prospectData.firstname ?? ""} ${
                             prospectData.lastname ?? ""
-                          }`.trim()
-                        : "Unnamed prospect"}
+                          }`.trim()}
+                          {prospectData.externalId &&
+                            ` (${prospectData.externalId})`}
+                        </>
+                      ) : (
+                        "Unnamed prospect"
+                      )}
                     </span>
                   </div>
                   {prospectData.emailAddress && (

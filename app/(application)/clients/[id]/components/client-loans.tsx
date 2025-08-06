@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import {
   CreditCard,
   DollarSign,
@@ -9,6 +10,7 @@ import {
   TrendingUp,
   TrendingDown,
   Clock,
+  ExternalLink,
 } from "lucide-react";
 import {
   Card,
@@ -73,7 +75,45 @@ export function ClientLoans({ clientId }: ClientLoansProps) {
           throw new Error("Failed to fetch client loans");
         }
         const data = await response.json();
-        setLoans(data);
+        console.log("==========> loans data ::", data);
+        // Ensure data is an array
+        if (Array.isArray(data)) {
+          // Transform the loan data to match the expected interface
+          const transformedLoans = data.map((loan: any) => ({
+            id: loan.id,
+            accountNo: loan.accountNo,
+            loanProductName: loan.productName || loan.loanProductName,
+            principal: loan.originalLoan || loan.principal,
+            approvedPrincipal: loan.originalLoan || loan.approvedPrincipal,
+            interestRatePerPeriod: loan.interestRatePerPeriod || 0,
+            numberOfRepayments: loan.numberOfRepayments || 0,
+            status: {
+              id: loan.status?.id || 0,
+              code: loan.status?.code || "",
+              value: loan.status?.value || "",
+              active: loan.status?.active || false,
+              closed: loan.status?.closed || false,
+            },
+            timeline: {
+              submittedOnDate: loan.timeline?.submittedOnDate || "",
+              approvedOnDate: loan.timeline?.approvedOnDate || "",
+              actualDisbursementDate: loan.timeline?.actualDisbursementDate || "",
+              expectedMaturityDate: loan.timeline?.expectedMaturityDate || "",
+            },
+            summary: {
+              principalOutstanding: loan.loanBalance || 0,
+              totalOutstanding: loan.loanBalance || 0,
+              totalOverdue: loan.inArrears ? (loan.loanBalance || 0) : 0,
+            },
+          }));
+          setLoans(transformedLoans);
+        } else if (data && Array.isArray(data.pageItems)) {
+          // Handle paginated response
+          setLoans(data.pageItems);
+        } else {
+          console.warn("Unexpected loans data format:", data);
+          setLoans([]);
+        }
       } catch (err) {
         console.error("Error fetching client loans:", err);
         setError("Failed to load client loans");
@@ -345,6 +385,7 @@ export function ClientLoans({ clientId }: ClientLoansProps) {
                     <TableHead>Outstanding</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Maturity Date</TableHead>
+                    <TableHead>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -392,6 +433,15 @@ export function ClientLoans({ clientId }: ClientLoansProps) {
                             ? formatDate(loan.timeline.expectedMaturityDate)
                             : "Not set"}
                         </div>
+                      </TableCell>
+                      <TableCell>
+                        <Link
+                          href={`/clients/${clientId}/loans/${loan.id}`}
+                          className="inline-flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800"
+                        >
+                          <ExternalLink className="h-3 w-3" />
+                          View Details
+                        </Link>
                       </TableCell>
                     </TableRow>
                   ))}

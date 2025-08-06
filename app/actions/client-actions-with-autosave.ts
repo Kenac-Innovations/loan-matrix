@@ -56,6 +56,9 @@ export async function autoSaveField(
     // Get current user ID (in a real app, this would come from auth)
     const userId = "user_1"; // Placeholder - replace with actual user ID from auth
 
+    // Use a default tenant ID for now
+    const tenantId = "default-tenant-id";
+
     // Current timestamp for tracking
     const now = new Date();
 

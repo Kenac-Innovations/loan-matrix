@@ -1,10 +1,12 @@
 // File: app/api/fineract/glaccounts/[id]/route.ts
 
-import { NextResponse } from 'next/server';
-import { fetchFineractAPI } from '@/lib/api';
+import { NextResponse } from "next/server";
+import { fetchFineractAPI } from "@/lib/api";
+
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = await params;
+
   // Preserve the ?template=true (or any other) querystring
   const { search } = new URL(request.url);
   const path = `/glaccounts/${resolvedParams.id}${search}`;

@@ -80,13 +80,20 @@ interface LeadData {
   creditScore?: number;
   annualIncome?: number;
   monthlyIncome?: number;
+  monthlyIncomeRange?: string;
   monthlyExpenses?: number;
   employmentStatus?: string;
   employerName?: string;
   yearsEmployed?: number;
+  yearsAtCurrentJob?: string;
   bankName?: string;
   existingLoans?: number;
+  hasExistingLoans?: boolean;
   totalDebt?: number;
+  monthlyDebtPayments?: number;
+  propertyOwnership?: string;
+  businessOwnership?: boolean;
+  businessType?: string;
   // Loan Request Information
   requestedAmount?: number;
   loanPurpose?: string;
@@ -603,20 +610,136 @@ export function LeadDetails({ leadId }: LeadDetailsProps) {
                     <p className="text-sm text-muted-foreground">Total Debt</p>
                   </div>
                 </div>
-                <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-                  <div>
-                    <p className="text-muted-foreground">Employment Status</p>
-                    <p className="font-medium">
-                      {financialData.employmentStatus}
-                    </p>
+
+                {/* Enhanced Financial Profile */}
+                <div className="mt-6 space-y-6">
+                  <div className="border-t pt-6">
+                    <h4 className="text-sm font-medium mb-4">
+                      Employment & Income Details
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                      <div>
+                        <p className="text-muted-foreground">
+                          Employment Status
+                        </p>
+                        <p className="font-medium">
+                          {leadData.employmentStatus || "Not specified"}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Employer</p>
+                        <p className="font-medium">
+                          {leadData.employerName || "Not provided"}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">
+                          Years at Current Job
+                        </p>
+                        <p className="font-medium">
+                          {leadData.yearsAtCurrentJob
+                            ? leadData.yearsAtCurrentJob
+                                .replace("_", "-")
+                                .replace("over_", "Over ") +
+                              (leadData.yearsAtCurrentJob.includes("year")
+                                ? ""
+                                : " years")
+                            : "Not provided"}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">
+                          Monthly Income Range
+                        </p>
+                        <p className="font-medium">
+                          {leadData.monthlyIncomeRange
+                            ? leadData.monthlyIncomeRange
+                                .replace("under_", "Under $")
+                                .replace("over_", "Over $")
+                                .replace("_", " - $")
+                            : "Not provided"}
+                        </p>
+                      </div>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-muted-foreground">Employer</p>
-                    <p className="font-medium">{financialData.employerName}</p>
+
+                  <div className="border-t pt-6">
+                    <h4 className="text-sm font-medium mb-4">
+                      Debt & Financial Obligations
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                      <div>
+                        <p className="text-muted-foreground">
+                          Has Existing Loans
+                        </p>
+                        <p className="font-medium">
+                          <Badge
+                            variant={
+                              leadData.hasExistingLoans
+                                ? "destructive"
+                                : "secondary"
+                            }
+                          >
+                            {leadData.hasExistingLoans ? "Yes" : "No"}
+                          </Badge>
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">
+                          Monthly Debt Payments
+                        </p>
+                        <p className="font-medium">
+                          {leadData.monthlyDebtPayments
+                            ? `$${leadData.monthlyDebtPayments.toLocaleString()}`
+                            : "$0"}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">
+                          Property Ownership
+                        </p>
+                        <p className="font-medium">
+                          {leadData.propertyOwnership
+                            ? leadData.propertyOwnership
+                                .replace("_", " ")
+                                .toLowerCase()
+                                .replace(/\b\w/g, (l) => l.toUpperCase())
+                            : "Not specified"}
+                        </p>
+                      </div>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-muted-foreground">Years Employed</p>
-                    <p className="font-medium">{financialData.yearsEmployed}</p>
+
+                  <div className="border-t pt-6">
+                    <h4 className="text-sm font-medium mb-4">
+                      Business Information
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <p className="text-muted-foreground">
+                          Business Ownership
+                        </p>
+                        <p className="font-medium">
+                          <Badge
+                            variant={
+                              leadData.businessOwnership
+                                ? "default"
+                                : "secondary"
+                            }
+                          >
+                            {leadData.businessOwnership
+                              ? "Business Owner"
+                              : "Not a Business Owner"}
+                          </Badge>
+                        </p>
+                      </div>
+                      {leadData.businessOwnership && leadData.businessType && (
+                        <div>
+                          <p className="text-muted-foreground">Business Type</p>
+                          <p className="font-medium">{leadData.businessType}</p>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               </CardContent>

@@ -74,7 +74,7 @@ export function LeadActions({ leadId }: LeadActionsProps) {
         <DropdownMenuTrigger asChild>
           <Button
             variant="outline"
-            className="border-[#1a2035] text-white hover:bg-[#1a2035]"
+            className="border-[#1a2035] dark:text-white hover:bg-[#1a2035]"
           >
             More Actions
             <ChevronDown className="ml-2 h-4 w-4" />

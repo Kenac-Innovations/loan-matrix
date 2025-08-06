@@ -116,21 +116,69 @@ export async function GET(
       }
     }
 
-    // Mock team members (in a real system, this would come from assignments table)
-    const teamMembers = [
-      {
-        id: "1",
-        name: lead.firstname
-          ? `${lead.firstname} ${lead.lastname || ""}`.trim()
-          : "Lead Owner",
-        role: "Lead Owner",
-        status: "in_progress" as const,
-        initials: lead.firstname
-          ? lead.firstname.charAt(0) + (lead.lastname?.charAt(0) || "")
-          : "LO",
-        color: "bg-blue-500",
-      },
-    ];
+    // Get actual team members assigned to this lead's current stage
+    const teamMembers = [];
+
+    if (lead.currentStage) {
+      // Find teams responsible for the current stage
+      const teamsForStage = await prisma.team.findMany({
+        where: {
+          tenantId: tenant.id,
+          pipelineStageIds: {
+            has: lead.currentStage.id,
+          },
+        },
+        include: {
+          members: true,
+        },
+      });
+
+      // Get team members from all teams responsible for this stage
+      for (const team of teamsForStage) {
+        for (const member of team.members) {
+          // Generate initials from name
+          const nameParts = member.name.split(" ");
+          const initials =
+            nameParts.length >= 2
+              ? nameParts[0].charAt(0) + nameParts[1].charAt(0)
+              : nameParts[0].charAt(0) + (nameParts[0].charAt(1) || "");
+
+          // Generate a consistent color based on the member's name
+          const colors = [
+            "bg-blue-500",
+            "bg-green-500",
+            "bg-purple-500",
+            "bg-orange-500",
+            "bg-pink-500",
+            "bg-indigo-500",
+            "bg-teal-500",
+            "bg-red-500",
+          ];
+          const colorIndex = member.name.length % colors.length;
+
+          teamMembers.push({
+            id: member.id,
+            name: member.name,
+            role: member.role,
+            status: "in_progress" as const, // You can enhance this based on actual task status
+            initials: initials.toUpperCase(),
+            color: colors[colorIndex],
+          });
+        }
+      }
+    }
+
+    // If no team members found, show a default message
+    if (teamMembers.length === 0) {
+      teamMembers.push({
+        id: "no-assignment",
+        name: "No team assigned",
+        role: "Unassigned",
+        status: "pending" as const,
+        initials: "NA",
+        color: "bg-gray-500",
+      });
+    }
 
     // Get validation results from the validations API
     let validations = [];
