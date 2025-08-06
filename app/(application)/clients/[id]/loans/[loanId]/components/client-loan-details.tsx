@@ -339,7 +339,7 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
         setClient(clientData);
 
         // Fetch loan details
-        const loanResponse = await fetch(`/api/loans/${loanId}`);
+        const loanResponse = await fetch(`/api/fineract/loans/${loanId}`);
         if (!loanResponse.ok) {
           throw new Error(`Failed to fetch loan details: ${loanResponse.statusText}`);
         }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import useSWR from 'swr';
 import {
   FileText,
   Download,
@@ -45,72 +45,39 @@ interface ClientDocumentsProps {
   clientId: number;
 }
 
+// Simple fetcher for SWR
+const fetcher = (url: string) => fetch(url).then(res => res.json());
+
 export function ClientDocuments({ clientId }: ClientDocumentsProps) {
-  const [documents, setDocuments] = useState<FineractDocument[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { data, error, isLoading } = useSWR(`/api/fineract/clients/${clientId}/documents`, fetcher);
 
-  useEffect(() => {
-    async function fetchClientDocuments() {
-      try {
-        const response = await fetch(`/api/clients/${clientId}/documents`);
-        if (!response.ok) {
-          throw new Error("Failed to fetch client documents");
-        }
-        const data = await response.json();
-        setDocuments(data);
-      } catch (err) {
-        console.error("Error fetching client documents:", err);
-        setError("Failed to load client documents");
-        // Set mock data for development
-        setDocuments([
-          {
-            id: 1,
-            parentEntityType: "clients",
-            parentEntityId: clientId,
-            name: "National ID",
-            fileName: "national_id.pdf",
-            size: 1024000,
-            type: "application/pdf",
-            description: "National identification document",
-            location: "/documents/clients/1/national_id.pdf",
-            storageType: 1,
-            createdDate: "2024-01-10",
-          },
-          {
-            id: 2,
-            parentEntityType: "clients",
-            parentEntityId: clientId,
-            name: "Proof of Income",
-            fileName: "salary_slip.pdf",
-            size: 512000,
-            type: "application/pdf",
-            description: "Latest salary slip",
-            location: "/documents/clients/1/salary_slip.pdf",
-            storageType: 1,
-            createdDate: "2024-01-12",
-          },
-          {
-            id: 3,
-            parentEntityType: "clients",
-            parentEntityId: clientId,
-            name: "Bank Statement",
-            fileName: "bank_statement.pdf",
-            size: 2048000,
-            type: "application/pdf",
-            description: "3 months bank statement",
-            location: "/documents/clients/1/bank_statement.pdf",
-            storageType: 1,
-            createdDate: "2024-01-15",
-          },
-        ]);
-      } finally {
-        setLoading(false);
-      }
+  // Handle different response formats
+  const documents: FineractDocument[] = (() => {
+    if (!data) return [];
+    
+    // If data is directly an array
+    if (Array.isArray(data)) {
+      return data;
     }
-
-    fetchClientDocuments();
-  }, [clientId]);
+    
+    // If data has pageItems (Fineract pagination format)
+    if (data.pageItems && Array.isArray(data.pageItems)) {
+      return data.pageItems;
+    }
+    
+    // If data has content (another Fineract format)
+    if (data.content && Array.isArray(data.content)) {
+      return data.content;
+    }
+    
+    // If data has documents property
+    if (data.documents && Array.isArray(data.documents)) {
+      return data.documents;
+    }
+    
+    // Fallback to empty array
+    return [];
+  })();
 
   const formatFileSize = (bytes: number) => {
     if (bytes === 0) return "0 Bytes";
@@ -160,7 +127,7 @@ export function ClientDocuments({ clientId }: ClientDocumentsProps) {
     );
   };
 
-  if (loading) {
+  if (isLoading) {
     return (
       <Card>
         <CardContent className="p-6">
@@ -180,7 +147,7 @@ export function ClientDocuments({ clientId }: ClientDocumentsProps) {
         <CardContent className="p-6">
           <div className="flex items-center gap-2 text-destructive">
             <AlertCircle className="h-4 w-4" />
-            <span>{error}</span>
+            <span>Failed to load client documents from Fineract</span>
           </div>
         </CardContent>
       </Card>

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getFineractServiceWithSession } from "@/lib/fineract-api";
+import { fetchFineractAPI } from "@/lib/api";
 
 export async function GET(
   request: NextRequest,
@@ -13,13 +13,9 @@ export async function GET(
       return NextResponse.json({ error: "Invalid loan ID" }, { status: 400 });
     }
 
-    const fineractService = await getFineractServiceWithSession();
-    const loanResponse = await fineractService.getLoan(loanId);
-
-    console.log("==========> log on server side getLoan response ::", loanResponse);
-
-    return NextResponse.json(loanResponse);
-  } catch (error) {
+    const data = await fetchFineractAPI(`/loans/${loanId}`);
+    return NextResponse.json(data);
+  } catch (error: any) {
     console.error("Failed to get loan details:", error);
     return NextResponse.json(
       { error: "Failed to get loan details" },

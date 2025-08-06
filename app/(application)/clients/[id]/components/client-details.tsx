@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import useSWR from 'swr';
 import {
   User,
   Phone,
@@ -54,57 +54,29 @@ interface ClientDetailsProps {
   clientId: number;
 }
 
+// Simple fetcher for SWR
+const fetcher = (url: string) => fetch(url).then(res => res.json());
+
 export function ClientDetails({ clientId }: ClientDetailsProps) {
-  const [client, setClient] = useState<FineractClient | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { data, error, isLoading } = useSWR(`/api/fineract/clients/${clientId}`, fetcher);
 
-  useEffect(() => {
-    async function fetchClient() {
-      try {
-        const response = await fetch(`/api/clients/${clientId}`);
-        if (!response.ok) {
-          throw new Error("Failed to fetch client");
-        }
-        const data = await response.json();
-        setClient(data);
-      } catch (err) {
-        console.error("Error fetching client:", err);
-        setError("Failed to load client details");
-        // Set mock data for development
-        setClient({
-          id: clientId,
-          accountNo: "000000001",
-          displayName: "John Doe",
-          firstname: "John",
-          lastname: "Doe",
-          mobileNo: "+1234567890",
-          emailAddress: "john.doe@email.com",
-          status: {
-            id: 300,
-            code: "clientStatusType.active",
-            value: "Active",
-          },
-          active: true,
-          activationDate: "2024-01-15",
-          officeName: "Head Office",
-          timeline: {
-            submittedOnDate: "2024-01-10",
-            activatedOnDate: "2024-01-15",
-          },
-          dateOfBirth: "1985-06-15",
-          gender: {
-            id: 1,
-            name: "Male",
-          },
-        });
-      } finally {
-        setLoading(false);
-      }
+  // Handle different response formats
+  const client: FineractClient | null = (() => {
+    if (!data) return null;
+    
+    // If data has a client property (our wrapper)
+    if (data.client) {
+      return data.client;
     }
-
-    fetchClient();
-  }, [clientId]);
+    
+    // If data is directly the client object
+    if (data.id && data.accountNo) {
+      return data;
+    }
+    
+    // Fallback to null
+    return null;
+  })();
 
   const getStatusBadge = (
     status: FineractClient["status"],
@@ -158,7 +130,7 @@ export function ClientDetails({ clientId }: ClientDetailsProps) {
     });
   };
 
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         {[...Array(3)].map((_, i) => (
@@ -185,7 +157,7 @@ export function ClientDetails({ clientId }: ClientDetailsProps) {
         <CardContent className="p-6">
           <div className="flex items-center gap-2 text-destructive">
             <AlertCircle className="h-4 w-4" />
-            <span>{error || "Client not found"}</span>
+            <span>Failed to load client details from Fineract</span>
           </div>
         </CardContent>
       </Card>

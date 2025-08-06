@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import useSWR from 'swr';
 import Link from "next/link";
 import {
   CreditCard,
@@ -62,125 +62,64 @@ interface ClientLoansProps {
   clientId: number;
 }
 
+// Simple fetcher for SWR
+const fetcher = (url: string) => fetch(url).then(res => res.json());
+
 export function ClientLoans({ clientId }: ClientLoansProps) {
-  const [loans, setLoans] = useState<FineractLoan[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { data, error, isLoading } = useSWR(`/api/fineract/clients/${clientId}/loans`, fetcher);
 
-  useEffect(() => {
-    async function fetchClientLoans() {
-      try {
-        const response = await fetch(`/api/clients/${clientId}/loans`);
-        if (!response.ok) {
-          throw new Error("Failed to fetch client loans");
-        }
-        const data = await response.json();
-        console.log("==========> loans data ::", data);
-        // Ensure data is an array
-        if (Array.isArray(data)) {
-          // Transform the loan data to match the expected interface
-          const transformedLoans = data.map((loan: any) => ({
-            id: loan.id,
-            accountNo: loan.accountNo,
-            loanProductName: loan.productName || loan.loanProductName,
-            principal: loan.originalLoan || loan.principal,
-            approvedPrincipal: loan.originalLoan || loan.approvedPrincipal,
-            interestRatePerPeriod: loan.interestRatePerPeriod || 0,
-            numberOfRepayments: loan.numberOfRepayments || 0,
-            status: {
-              id: loan.status?.id || 0,
-              code: loan.status?.code || "",
-              value: loan.status?.value || "",
-              active: loan.status?.active || false,
-              closed: loan.status?.closed || false,
-            },
-            timeline: {
-              submittedOnDate: loan.timeline?.submittedOnDate || "",
-              approvedOnDate: loan.timeline?.approvedOnDate || "",
-              actualDisbursementDate: loan.timeline?.actualDisbursementDate || "",
-              expectedMaturityDate: loan.timeline?.expectedMaturityDate || "",
-            },
-            summary: {
-              principalOutstanding: loan.loanBalance || 0,
-              totalOutstanding: loan.loanBalance || 0,
-              totalOverdue: loan.inArrears ? (loan.loanBalance || 0) : 0,
-            },
-          }));
-          setLoans(transformedLoans);
-        } else if (data && Array.isArray(data.pageItems)) {
-          // Handle paginated response
-          setLoans(data.pageItems);
-        } else {
-          console.warn("Unexpected loans data format:", data);
-          setLoans([]);
-        }
-      } catch (err) {
-        console.error("Error fetching client loans:", err);
-        setError("Failed to load client loans");
-        // Set mock data for development
-        setLoans([
-          {
-            id: 1,
-            accountNo: "000000001",
-            loanProductName: "Personal Loan",
-            principal: 50000,
-            approvedPrincipal: 50000,
-            interestRatePerPeriod: 12,
-            numberOfRepayments: 24,
-            status: {
-              id: 300,
-              code: "loanStatusType.active",
-              value: "Active",
-              active: true,
-              closed: false,
-            },
-            timeline: {
-              submittedOnDate: "2024-01-10",
-              approvedOnDate: "2024-01-15",
-              actualDisbursementDate: "2024-01-20",
-              expectedMaturityDate: "2026-01-20",
-            },
-            summary: {
-              principalOutstanding: 35000,
-              totalOutstanding: 37500,
-              totalOverdue: 0,
-            },
-          },
-          {
-            id: 2,
-            accountNo: "000000002",
-            loanProductName: "Business Loan",
-            principal: 100000,
-            approvedPrincipal: 100000,
-            interestRatePerPeriod: 15,
-            numberOfRepayments: 36,
-            status: {
-              id: 200,
-              code: "loanStatusType.approved",
-              value: "Approved",
-              active: false,
-              closed: false,
-            },
-            timeline: {
-              submittedOnDate: "2024-03-01",
-              approvedOnDate: "2024-03-05",
-              expectedDisbursementDate: "2024-03-10",
-              expectedMaturityDate: "2027-03-10",
-            },
-            summary: {
-              principalOutstanding: 100000,
-              totalOutstanding: 100000,
-              totalOverdue: 0,
-            },
-          },
-        ]);
-      } finally {
-        setLoading(false);
-      }
+  // Handle different response formats and transform the loan data
+  const loans: FineractLoan[] = (() => {
+    if (!data) return [];
+    
+    let rawLoans: any[] = [];
+    
+    // If data is directly an array
+    if (Array.isArray(data)) {
+      rawLoans = data;
     }
-
-    fetchClientLoans();
-  }, [clientId]);
+    // If data has pageItems (Fineract pagination format)
+    else if (data.pageItems && Array.isArray(data.pageItems)) {
+      rawLoans = data.pageItems;
+    }
+    // If data has content (another Fineract format)
+    else if (data.content && Array.isArray(data.content)) {
+      rawLoans = data.content;
+    }
+    // If data has loans property
+    else if (data.loans && Array.isArray(data.loans)) {
+      rawLoans = data.loans;
+    }
+    
+    // Transform the loan data to match the expected interface
+    return rawLoans.map((loan: any) => ({
+      id: loan.id,
+      accountNo: loan.accountNo,
+      loanProductName: loan.productName || loan.loanProductName,
+      principal: loan.originalLoan || loan.principal,
+      approvedPrincipal: loan.originalLoan || loan.approvedPrincipal,
+      interestRatePerPeriod: loan.interestRatePerPeriod || 0,
+      numberOfRepayments: loan.numberOfRepayments || 0,
+      status: {
+        id: loan.status?.id || 0,
+        code: loan.status?.code || "",
+        value: loan.status?.value || "",
+        active: loan.status?.active || false,
+        closed: loan.status?.closed || false,
+      },
+      timeline: {
+        submittedOnDate: loan.timeline?.submittedOnDate || "",
+        approvedOnDate: loan.timeline?.approvedOnDate || "",
+        actualDisbursementDate: loan.timeline?.actualDisbursementDate || "",
+        expectedMaturityDate: loan.timeline?.expectedMaturityDate || "",
+      },
+      summary: {
+        principalOutstanding: loan.loanBalance || 0,
+        totalOutstanding: loan.loanBalance || 0,
+        totalOverdue: loan.inArrears ? (loan.loanBalance || 0) : 0,
+      },
+    }));
+  })();
 
   const getStatusBadge = (status: FineractLoan["status"]) => {
     if (status.active) {
@@ -247,7 +186,7 @@ export function ClientLoans({ clientId }: ClientLoansProps) {
   );
   const activeLoans = loans.filter((loan) => loan.status.active).length;
 
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="space-y-6">
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -282,7 +221,7 @@ export function ClientLoans({ clientId }: ClientLoansProps) {
         <CardContent className="p-6">
           <div className="flex items-center gap-2 text-destructive">
             <AlertCircle className="h-4 w-4" />
-            <span>{error}</span>
+            <span>Failed to load client loans from Fineract</span>
           </div>
         </CardContent>
       </Card>

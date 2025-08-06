@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
+import useSWR from 'swr';
 import {
   Eye,
   Edit,
@@ -54,11 +55,11 @@ interface FineractClient {
     value: string;
   };
   active: boolean;
-  activationDate?: string;
+  activationDate?: string | number[];
   officeName: string;
   timeline: {
-    submittedOnDate: string;
-    activatedOnDate?: string;
+    submittedOnDate: string | number[];
+    activatedOnDate?: string | number[];
   };
 }
 
@@ -69,65 +70,74 @@ interface PaginationInfo {
   hasMore: boolean;
 }
 
-interface ClientsResponse {
-  data: FineractClient[];
-  pagination: PaginationInfo;
-}
+// Simple fetcher for SWR
+const fetcher = (url: string) => fetch(url).then(res => res.json());
 
 export function ClientsTable() {
-  const [clients, setClients] = useState<FineractClient[]>([]);
-  const [pagination, setPagination] = useState<PaginationInfo>({
-    offset: 0,
-    limit: 20,
-    total: 0,
-    hasMore: false,
-  });
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [offset, setOffset] = useState(0);
+  const [limit, setLimit] = useState(20);
+  const [query, setQuery] = useState('');
 
-  const fetchClients = async (offset = 0, limit = 20) => {
-    try {
-      setLoading(true);
-      const response = await fetch(
-        `/api/clients?offset=${offset}&limit=${limit}`
-      );
-      if (!response.ok) {
-        throw new Error("Failed to fetch clients");
-      }
-      const data: ClientsResponse = await response.json();
+  // Build the API URL with query parameters
+  const apiUrl = `/api/fineract/clients?offset=${offset}&limit=${limit}${query ? `&query=${encodeURIComponent(query)}` : ''}`;
 
-      // Handle both new API format and legacy format
-      if (data.data && data.pagination) {
-        setClients(data.data);
-        setPagination(data.pagination);
-      } else {
-        // Legacy format - treat as direct array
-        setClients(data as any);
-        setPagination({
-          offset,
-          limit,
-          total: (data as any).length,
-          hasMore: false,
-        });
-      }
-    } catch (err) {
-      console.error("Error fetching clients:", err);
-      setError("Failed to load clients from Fineract");
-    } finally {
-      setLoading(false);
+  const { data, error, isLoading, mutate } = useSWR(apiUrl, fetcher);
+
+  // Handle different response formats from Fineract API
+  const clients: FineractClient[] = (() => {
+    if (!data) return [];
+    
+    // Handle the specific response format from your backend
+    if (data.clients && data.clients.pageItems && Array.isArray(data.clients.pageItems)) {
+      return data.clients.pageItems;
     }
-  };
+    
+    // If data has a clients property (our wrapper)
+    if (data.clients && Array.isArray(data.clients)) {
+      return data.clients;
+    }
+    
+    // If data is directly an array
+    if (Array.isArray(data)) {
+      return data;
+    }
+    
+    // If data has pageItems (Fineract pagination format)
+    if (data.pageItems && Array.isArray(data.pageItems)) {
+      return data.pageItems;
+    }
+    
+    // If data has content (another Fineract format)
+    if (data.content && Array.isArray(data.content)) {
+      return data.content;
+    }
+    
+    // Fallback to empty array
+    return [];
+  })();
 
-  useEffect(() => {
-    fetchClients(pagination.offset, pagination.limit);
-  }, []);
+  // Get total count from the response
+  const totalCount = (() => {
+    if (!data) return 0;
+    
+    // Handle the specific response format from your backend
+    if (data.clients && data.clients.totalFilteredRecords) {
+      return data.clients.totalFilteredRecords;
+    }
+    
+    // Fallback to array length
+    return clients.length;
+  })();
+
+  const hasMore = clients.length === limit;
 
   const handlePageChange = (newOffset: number) => {
-    fetchClients(newOffset, pagination.limit);
+    setOffset(newOffset);
   };
 
   const handlePageSizeChange = (newLimit: number) => {
-    fetchClients(0, newLimit);
+    setLimit(newLimit);
+    setOffset(0); // Reset to first page when changing page size
   };
 
   const getStatusBadge = (
@@ -162,15 +172,27 @@ export function ClientsTable() {
     );
   };
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString("en-US", {
+  const formatDate = (dateInput: string | number[] | undefined) => {
+    if (!dateInput) return "Not specified";
+    
+    let date: Date;
+    if (Array.isArray(dateInput) && dateInput.length === 3) {
+      const [year, month, day] = dateInput;
+      date = new Date(year, month - 1, day); // month is 0-indexed in Date constructor
+    } else if (typeof dateInput === "string") {
+      date = new Date(dateInput);
+    } else {
+      return "Invalid date";
+    }
+    
+    return date.toLocaleDateString("en-US", {
       year: "numeric",
       month: "short",
       day: "numeric",
     });
   };
 
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="space-y-4">
         {[...Array(5)].map((_, i) => (
@@ -197,7 +219,7 @@ export function ClientsTable() {
         <CardContent className="p-6">
           <div className="flex items-center gap-2 text-destructive">
             <AlertCircle className="h-4 w-4" />
-            <span>{error}</span>
+            <span>Failed to load clients from Fineract</span>
           </div>
         </CardContent>
       </Card>
@@ -216,13 +238,10 @@ export function ClientsTable() {
     );
   }
 
-  const currentPage = Math.floor(pagination.offset / pagination.limit) + 1;
-  const totalPages = Math.ceil(pagination.total / pagination.limit);
-  const startRecord = pagination.offset + 1;
-  const endRecord = Math.min(
-    pagination.offset + pagination.limit,
-    pagination.total
-  );
+  const currentPage = Math.floor(offset / limit) + 1;
+  const totalPages = Math.ceil(totalCount / limit);
+  const startRecord = offset + 1;
+  const endRecord = Math.min(offset + limit, totalCount);
 
   return (
     <div className="space-y-4">
@@ -332,7 +351,7 @@ export function ClientsTable() {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <p className="text-sm text-muted-foreground">
-            Showing {startRecord} to {endRecord} of {pagination.total} clients
+            Showing {startRecord} to {endRecord} of {totalCount} clients
           </p>
         </div>
 
@@ -340,7 +359,7 @@ export function ClientsTable() {
           <div className="flex items-center gap-2">
             <p className="text-sm font-medium">Rows per page</p>
             <Select
-              value={pagination.limit.toString()}
+              value={limit.toString()}
               onValueChange={(value) => handlePageSizeChange(parseInt(value))}
             >
               <SelectTrigger className="h-8 w-[70px]">
@@ -365,11 +384,9 @@ export function ClientsTable() {
                 variant="outline"
                 size="sm"
                 onClick={() =>
-                  handlePageChange(
-                    Math.max(0, pagination.offset - pagination.limit)
-                  )
+                  handlePageChange(Math.max(0, offset - limit))
                 }
-                disabled={pagination.offset === 0}
+                disabled={offset === 0}
               >
                 <ChevronLeft className="h-4 w-4" />
                 Previous
@@ -378,9 +395,9 @@ export function ClientsTable() {
                 variant="outline"
                 size="sm"
                 onClick={() =>
-                  handlePageChange(pagination.offset + pagination.limit)
+                  handlePageChange(offset + limit)
                 }
-                disabled={!pagination.hasMore}
+                disabled={!hasMore}
               >
                 Next
                 <ChevronRight className="h-4 w-4" />

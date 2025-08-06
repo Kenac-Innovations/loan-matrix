@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import useSWR from 'swr';
 import {
   Users,
   UserCheck,
@@ -22,32 +22,31 @@ interface ClientMetricsData {
   riskClients: number;
 }
 
+// Simple fetcher for SWR
+const fetcher = (url: string) => fetch(url).then(res => res.json());
+
 export function ClientMetrics() {
-  const [metrics, setMetrics] = useState<ClientMetricsData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { data, error, isLoading } = useSWR('/api/fineract/clients-metrics', fetcher);
 
-  useEffect(() => {
-    async function fetchMetrics() {
-      try {
-        const response = await fetch("/api/clients/metrics");
-        if (!response.ok) {
-          throw new Error("Failed to fetch client metrics");
-        }
-        const data = await response.json();
-        setMetrics(data);
-      } catch (err) {
-        console.error("Error fetching client metrics:", err);
-        setError("Failed to load client metrics from Fineract");
-      } finally {
-        setLoading(false);
-      }
+  // Handle different response formats
+  const metrics: ClientMetricsData | null = (() => {
+    if (!data) return null;
+    
+    // If data is directly the metrics object
+    if (data.totalClients !== undefined) {
+      return data;
     }
+    
+    // If data has a metrics property
+    if (data.metrics && data.metrics.totalClients !== undefined) {
+      return data.metrics;
+    }
+    
+    // Fallback to null
+    return null;
+  })();
 
-    fetchMetrics();
-  }, []);
-
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
         {[...Array(4)].map((_, i) => (

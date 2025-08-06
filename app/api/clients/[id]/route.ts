@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getFineractServiceWithSession } from "@/lib/fineract-api";
+import { fetchFineractAPI } from "@/lib/api";
 
 export async function GET(
   request: NextRequest,
@@ -13,11 +13,9 @@ export async function GET(
       return NextResponse.json({ error: "Invalid client ID" }, { status: 400 });
     }
 
-    const fineractService = await getFineractServiceWithSession();
-    const client = await fineractService.getClient(clientId);
-
-    return NextResponse.json(client);
-  } catch (error) {
+    const data = await fetchFineractAPI(`/clients/${clientId}`);
+    return NextResponse.json(data);
+  } catch (error: any) {
     console.error("Failed to get client:", error);
     return NextResponse.json(
       { error: "Failed to get client" },
@@ -39,13 +37,14 @@ export async function PUT(
     }
 
     const body = await request.json();
-    const fineractService = await getFineractServiceWithSession();
-    
-    // Update client using Fineract API
-    const updatedClient = await fineractService.updateClient(clientId, body);
+    const data = await fetchFineractAPI(`/clients/${clientId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
 
-    return NextResponse.json(updatedClient);
-  } catch (error) {
+    return NextResponse.json(data);
+  } catch (error: any) {
     console.error("Failed to update client:", error);
     return NextResponse.json(
       { error: "Failed to update client" },

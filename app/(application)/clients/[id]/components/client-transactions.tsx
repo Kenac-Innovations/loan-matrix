@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import useSWR from 'swr';
 import {
   ArrowUpRight,
   ArrowDownLeft,
@@ -48,87 +48,39 @@ interface ClientTransactionsProps {
   clientId: number;
 }
 
+// Simple fetcher for SWR
+const fetcher = (url: string) => fetch(url).then(res => res.json());
+
 export function ClientTransactions({ clientId }: ClientTransactionsProps) {
-  const [transactions, setTransactions] = useState<FineractTransaction[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { data, error, isLoading } = useSWR(`/api/fineract/clients/${clientId}/transactions`, fetcher);
 
-  useEffect(() => {
-    async function fetchClientTransactions() {
-      try {
-        const response = await fetch(`/api/clients/${clientId}/transactions`);
-        if (!response.ok) {
-          throw new Error("Failed to fetch client transactions");
-        }
-        const data = await response.json();
-        setTransactions(data);
-      } catch (err) {
-        console.error("Error fetching client transactions:", err);
-        setError("Failed to load client transactions");
-        // Set mock data for development
-        setTransactions([
-          {
-            id: 1,
-            type: {
-              id: 1,
-              code: "disbursement",
-              value: "Disbursement",
-              disbursement: true,
-              repayment: false,
-            },
-            date: "2024-01-20",
-            amount: 50000,
-            principalPortion: 50000,
-            interestPortion: 0,
-            feeChargesPortion: 0,
-            outstandingLoanBalance: 50000,
-            submittedOnDate: "2024-01-20",
-            manuallyReversed: false,
-          },
-          {
-            id: 2,
-            type: {
-              id: 2,
-              code: "repayment",
-              value: "Repayment",
-              disbursement: false,
-              repayment: true,
-            },
-            date: "2024-02-20",
-            amount: 2500,
-            principalPortion: 2000,
-            interestPortion: 500,
-            feeChargesPortion: 0,
-            outstandingLoanBalance: 48000,
-            submittedOnDate: "2024-02-20",
-            manuallyReversed: false,
-          },
-          {
-            id: 3,
-            type: {
-              id: 2,
-              code: "repayment",
-              value: "Repayment",
-              disbursement: false,
-              repayment: true,
-            },
-            date: "2024-03-20",
-            amount: 2500,
-            principalPortion: 2100,
-            interestPortion: 400,
-            feeChargesPortion: 0,
-            outstandingLoanBalance: 45900,
-            submittedOnDate: "2024-03-20",
-            manuallyReversed: false,
-          },
-        ]);
-      } finally {
-        setLoading(false);
-      }
+  // Handle different response formats
+  const transactions: FineractTransaction[] = (() => {
+    if (!data) return [];
+    
+    // If data is directly an array
+    if (Array.isArray(data)) {
+      return data;
     }
-
-    fetchClientTransactions();
-  }, [clientId]);
+    
+    // If data has pageItems (Fineract pagination format)
+    if (data.pageItems && Array.isArray(data.pageItems)) {
+      return data.pageItems;
+    }
+    
+    // If data has content (another Fineract format)
+    if (data.content && Array.isArray(data.content)) {
+      return data.content;
+    }
+    
+    // If data has transactions property
+    if (data.transactions && Array.isArray(data.transactions)) {
+      return data.transactions;
+    }
+    
+    // Fallback to empty array
+    return [];
+  })();
 
   const getTransactionIcon = (transaction: FineractTransaction) => {
     if (transaction.type.disbursement) {
@@ -186,7 +138,7 @@ export function ClientTransactions({ clientId }: ClientTransactionsProps) {
     });
   };
 
-  if (loading) {
+  if (isLoading) {
     return (
       <Card>
         <CardContent className="p-6">
@@ -206,7 +158,7 @@ export function ClientTransactions({ clientId }: ClientTransactionsProps) {
         <CardContent className="p-6">
           <div className="flex items-center gap-2 text-destructive">
             <AlertCircle className="h-4 w-4" />
-            <span>{error}</span>
+            <span>Failed to load client transactions from Fineract</span>
           </div>
         </CardContent>
       </Card>
