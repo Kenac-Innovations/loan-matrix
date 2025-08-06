@@ -191,6 +191,7 @@ export default function AccountingRulesPage() {
         </CardContent>
       </Card>
 
+
       {/* Rules Table */}
       <Card className="bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700">
         <CardHeader>

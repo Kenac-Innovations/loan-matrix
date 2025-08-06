@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, Save, Settings, Building, Tag, CreditCard, DebitCard } from 'lucide-react';
+import { ArrowLeft, Save, Settings, Building, Tag, CreditCard, Minus } from 'lucide-react';
 import { toast } from '@/components/ui/use-toast';
 import { AccountingRuleTemplate, FineractAccountingRule } from '@/lib/fineract-api';
 
@@ -290,7 +290,7 @@ export default function EditAccountingRulePage() {
         <Card className="bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700">
           <CardHeader>
             <CardTitle className="text-lg font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-              <DebitCard className="h-5 w-5 text-red-500" />
+              <Minus className="h-5 w-5 text-red-500" />
               Affected GL Entry (Debit) Rule Type *
             </CardTitle>
             <CardDescription className="text-slate-600 dark:text-slate-400">

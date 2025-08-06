@@ -11,7 +11,8 @@ import {
   ListChecks, 
   ArrowRight,
   Shield,
-  Settings
+  Settings,
+  Calculator
 } from 'lucide-react';
 
 const features = [
@@ -62,6 +63,14 @@ const features = [
     description: 'Configure automatic journal entry rules and mappings',
     badge: 'Rules',
     color: 'bg-indigo-500'
+  },
+  { 
+    title: 'Accruals', 
+    href: '/accounting/accruals', 
+    icon: Calculator,
+    description: 'Run periodic accruals for financial calculations',
+    badge: 'Periodic',
+    color: 'bg-teal-500'
   },
 ];
 
