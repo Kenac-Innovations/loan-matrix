@@ -3,7 +3,7 @@ import { fetchFineractAPI } from '@/lib/api';
 
 /**
  * GET /api/fineract/loans/[id]
- * Gets a specific loan by ID
+ * Gets a specific loan by ID with optional associations
  */
 export async function GET(
   request: Request,
@@ -11,7 +11,24 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const data = await fetchFineractAPI(`/loans/${id}`);
+    const { searchParams } = new URL(request.url);
+    
+    // Build query parameters
+    const queryParams = new URLSearchParams();
+    
+    // Add associations parameter if provided, otherwise default to 'all'
+    const associations = searchParams.get('associations') || 'all';
+    queryParams.append('associations', associations);
+    
+    // Add exclude parameter if provided
+    const exclude = searchParams.get('exclude');
+    if (exclude) {
+      queryParams.append('exclude', exclude);
+    }
+    
+    // Build the endpoint URL with query parameters
+    const endpoint = `/loans/${id}${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
+    const data = await fetchFineractAPI(endpoint);
     
     // Return the data as-is to preserve the original structure
     return NextResponse.json(data);
