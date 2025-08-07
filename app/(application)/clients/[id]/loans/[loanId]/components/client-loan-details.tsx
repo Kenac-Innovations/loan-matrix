@@ -8,7 +8,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { AlertCircle, Download, MoreVertical, X, ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight, Edit, Flag, Plus, Heart, Coins, RotateCcw, Calendar, ChevronRight as ChevronRightIcon, User, Building, Phone, Mail, CreditCard, TrendingUp, Clock, FileText, Shield, DollarSign, Percent, CalendarDays } from "lucide-react";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { AlertCircle, Download, MoreVertical, X, ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight, Edit, Flag, Plus, Heart, Coins, RotateCcw, Calendar, ChevronRight as ChevronRightIcon, User, Building, Phone, Mail, CreditCard, TrendingUp, Clock, FileText, Shield, DollarSign, Percent, CalendarDays, Settings } from "lucide-react";
 import { ClientTransactions } from "../../../components/client-transactions";
 
 interface ClientLoanDetailsProps {
@@ -360,6 +363,11 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
   const [editingNote, setEditingNote] = useState<number | null>(null);
   const [editNoteText, setEditNoteText] = useState("");
   const [showActionsMenu, setShowActionsMenu] = useState(false);
+  const [showExportDialog, setShowExportDialog] = useState(false);
+  const [exportDateRange, setExportDateRange] = useState({
+    fromDate: new Date().toISOString().split('T')[0], // Today's date in YYYY-MM-DD format
+    toDate: new Date().toISOString().split('T')[0]
+  });
 
   // Close actions menu when clicking outside
   useEffect(() => {
@@ -436,11 +444,184 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
     return "N/A";
   };
 
-  const formatCurrency = (amount: number, currencyCode: string = "KES"): string => {
+  const formatCurrency = (amount: number | undefined | null, currencyCode: string = "KES"): string => {
+    // Return blank if amount is undefined, null, NaN, or 0
+    if (amount === undefined || amount === null || isNaN(amount) || amount === 0) {
+      return "";
+    }
+    
     return new Intl.NumberFormat("en-KE", {
       style: "currency",
       currency: currencyCode,
     }).format(amount);
+  };
+
+  const exportTransactionsToPDF = () => {
+    if (!loan || !loan.transactions) {
+      console.warn('No transaction data available for PDF export');
+      return;
+    }
+
+    // Filter transactions by date range
+    const filteredTransactions = loan.transactions.filter((transaction: any) => {
+      if (!transaction.date) return false;
+      const transactionDate = new Date(transaction.date);
+      const fromDate = new Date(exportDateRange.fromDate);
+      const toDate = new Date(exportDateRange.toDate);
+      return transactionDate >= fromDate && transactionDate <= toDate;
+    });
+
+    if (filteredTransactions.length === 0) {
+      alert('No transactions found for the selected date range');
+      return;
+    }
+
+    // Import jsPDF dynamically to avoid SSR issues
+    import('jspdf').then(({ default: jsPDF }) => {
+      import('jspdf-autotable').then((autoTable) => {
+        const pdf = new jsPDF('l', 'mm', 'a4'); // Landscape orientation
+        
+        // Set modern fonts and colors
+        pdf.setFont('helvetica');
+        
+        // Add modern header
+        pdf.setFillColor(30, 64, 175); // Dark blue background
+        pdf.rect(0, 0, 297, 30, 'F');
+        
+        // Add title
+        pdf.setTextColor(255, 255, 255);
+        pdf.setFontSize(18);
+        pdf.setFont('helvetica', 'bold');
+        pdf.text('Loan Transaction History', 148, 12, { align: 'center' });
+        
+        // Add client and loan information
+        pdf.setFontSize(10);
+        pdf.setFont('helvetica', 'normal');
+        const clientName = client?.displayName || `Client #${clientId}`;
+        const loanName = loan.accountNo || `Loan #${loanId}`;
+        pdf.text(`Client: ${clientName} | Loan: ${loanName}`, 148, 20, { align: 'center' });
+        pdf.text(`Date Range: ${exportDateRange.fromDate} to ${exportDateRange.toDate}`, 148, 26, { align: 'center' });
+        pdf.setTextColor(0, 0, 0);
+
+        // Summary section
+        const currencyCode = loan.currency?.code || 'USD';
+        const totalAmount = filteredTransactions.reduce((sum: number, t: any) => sum + (t.amount || 0), 0);
+        const totalPrincipal = filteredTransactions.reduce((sum: number, t: any) => sum + (t.principalPortion || 0), 0);
+        const totalInterest = filteredTransactions.reduce((sum: number, t: any) => sum + (t.interestPortion || 0), 0);
+        const totalFees = filteredTransactions.reduce((sum: number, t: any) => sum + (t.feeChargesPortion || 0), 0);
+        const totalPenalties = filteredTransactions.reduce((sum: number, t: any) => sum + (t.penaltyChargesPortion || 0), 0);
+
+        const summaryData = [
+          ['Total Transactions', filteredTransactions.length.toString()],
+          ['Total Amount', formatCurrency(totalAmount, currencyCode)],
+          ['Total Principal', formatCurrency(totalPrincipal, currencyCode)],
+          ['Total Interest', formatCurrency(totalInterest, currencyCode)],
+          ['Total Fees', formatCurrency(totalFees, currencyCode)],
+          ['Total Penalties', formatCurrency(totalPenalties, currencyCode)],
+          ['Currency', currencyCode]
+        ];
+
+        autoTable.default(pdf, {
+          startY: 35,
+          head: [['Category', 'Amount']],
+          body: summaryData,
+          theme: 'grid',
+          headStyles: {
+            fillColor: [30, 64, 175],
+            textColor: 255,
+            fontStyle: 'bold'
+          },
+          styles: {
+            fontSize: 9,
+            cellPadding: 2
+          },
+          columnStyles: {
+            0: { fontStyle: 'bold' },
+            1: { halign: 'right' }
+          },
+          margin: { left: 15, right: 15 }
+        });
+
+        // Prepare transaction data
+        const tableData = filteredTransactions.map((transaction: any, index: number) => [
+          (index + 1).toString(),
+          transaction.id?.toString() || '',
+          transaction.officeName || '',
+          transaction.externalId || '',
+          transaction.date ? formatDate(transaction.date) : '',
+          transaction.type?.value || '',
+          formatCurrency(transaction.amount, currencyCode),
+          formatCurrency(transaction.principalPortion, currencyCode),
+          formatCurrency(transaction.interestPortion, currencyCode),
+          formatCurrency(transaction.feeChargesPortion, currencyCode),
+          formatCurrency(transaction.penaltyChargesPortion, currencyCode),
+          formatCurrency(transaction.outstandingLoanBalance, currencyCode)
+        ]);
+
+        // Add totals row
+        const totalsRow = [
+          'Total', '', '', '', '', '',
+          formatCurrency(totalAmount, currencyCode),
+          formatCurrency(totalPrincipal, currencyCode),
+          formatCurrency(totalInterest, currencyCode),
+          formatCurrency(totalFees, currencyCode),
+          formatCurrency(totalPenalties, currencyCode),
+          formatCurrency(filteredTransactions[filteredTransactions.length - 1]?.outstandingLoanBalance || 0, currencyCode)
+        ];
+        tableData.push(totalsRow);
+
+        autoTable.default(pdf, {
+          startY: 80,
+          head: [
+            ['#', 'Id', 'Office', 'External Id', 'Transaction Date', 'Transaction Type', 'Amount', 'Principal', 'Interest', 'Fees', 'Penalties', 'Loan Balance']
+          ],
+          body: tableData,
+          theme: 'grid',
+          headStyles: {
+            fillColor: [30, 64, 175],
+            textColor: 255,
+            fontStyle: 'bold',
+            fontSize: 8
+          },
+          styles: {
+            fontSize: 7,
+            cellPadding: 2,
+            overflow: 'linebreak'
+          },
+          columnStyles: {
+            0: { halign: 'center', fontStyle: 'bold' },
+            1: { halign: 'center' },
+            2: { halign: 'left' },
+            3: { halign: 'center' },
+            4: { halign: 'center' },
+            5: { halign: 'left' },
+            6: { halign: 'right' },
+            7: { halign: 'right' },
+            8: { halign: 'right' },
+            9: { halign: 'right' },
+            10: { halign: 'right' },
+            11: { halign: 'right' }
+          },
+          margin: { left: 15, right: 15 },
+          didParseCell: function(data: any) {
+            if (data.row.index === tableData.length - 1) {
+              data.cell.styles.fontStyle = 'bold';
+              data.cell.styles.fillColor = [243, 244, 246];
+            }
+          },
+          didDrawPage: function(data: any) {
+            const pageCount = (pdf as any).getNumberOfPages();
+            pdf.setFontSize(8);
+            pdf.setTextColor(100, 100, 100);
+            pdf.text(`Page ${data.pageNumber} of ${pageCount}`, 148, 205, { align: 'center' });
+          }
+        });
+
+        const fileName = `loan-transactions-${exportDateRange.fromDate}-to-${exportDateRange.toDate}.pdf`;
+        pdf.save(fileName);
+        setShowExportDialog(false);
+      });
+    });
   };
 
   if (loading) {
@@ -476,6 +657,103 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
 
   return (
     <div className="space-y-8">
+      {/* Loan Actions */}
+      <div className="flex justify-end">
+        <div className="relative actions-dropdown">
+          <Button
+            variant="outline"
+            onClick={() => setShowActionsMenu(!showActionsMenu)}
+            className="flex items-center space-x-2 shadow-sm"
+          >
+            <MoreVertical className="h-4 w-4" />
+            <span>Loan Actions</span>
+          </Button>
+
+          {showActionsMenu && (
+            <div className="absolute top-full right-0 mt-2 w-64 bg-card border rounded-xl shadow-lg z-50">
+              <div className="py-2">
+                <button
+                  onClick={() => {
+                    console.log("Add Loan Charge");
+                    setShowActionsMenu(false);
+                  }}
+                  className="w-full px-4 py-3 text-left hover:bg-accent flex items-center space-x-3 text-foreground transition-colors"
+                >
+                  <Plus className="h-4 w-4 text-muted-foreground" />
+                  <span>Add Loan Charge</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    console.log("Foreclosure");
+                    setShowActionsMenu(false);
+                  }}
+                  className="w-full px-4 py-3 text-left hover:bg-accent flex items-center space-x-3 text-foreground transition-colors"
+                >
+                  <Heart className="h-4 w-4 text-muted-foreground" />
+                  <span>Foreclosure</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    console.log("Make Repayment");
+                    setShowActionsMenu(false);
+                  }}
+                  className="w-full px-4 py-3 text-left hover:bg-accent flex items-center space-x-3 text-foreground transition-colors"
+                >
+                  <Coins className="h-4 w-4 text-muted-foreground" />
+                  <span>Make Repayment</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    console.log("Undo Disbursal");
+                    setShowActionsMenu(false);
+                  }}
+                  className="w-full px-4 py-3 text-left hover:bg-accent flex items-center space-x-3 text-foreground transition-colors"
+                >
+                  <RotateCcw className="h-4 w-4 text-muted-foreground" />
+                  <span>Undo Disbursal</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    console.log("Add Interest Pause");
+                    setShowActionsMenu(false);
+                  }}
+                  className="w-full px-4 py-3 text-left hover:bg-accent flex items-center space-x-3 text-foreground transition-colors"
+                >
+                  <Calendar className="h-4 w-4 text-muted-foreground" />
+                  <span>Add Interest Pause</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    console.log("Prepay Loan");
+                    setShowActionsMenu(false);
+                  }}
+                  className="w-full px-4 py-3 text-left hover:bg-accent flex items-center space-x-3 text-foreground transition-colors"
+                >
+                  <Coins className="h-4 w-4 text-muted-foreground" />
+                  <span>Prepay Loan</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    console.log("Charge-Off");
+                    setShowActionsMenu(false);
+                  }}
+                  className="w-full px-4 py-3 text-left hover:bg-accent flex items-center space-x-3 text-foreground transition-colors"
+                >
+                  <Coins className="h-4 w-4 text-muted-foreground" />
+                  <span>Charge-Off</span>
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* Quick Stats Cards */}
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
         <Card className="border-0 shadow-sm bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-950 dark:to-blue-900">
@@ -544,35 +822,35 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
       </div>
 
       {/* Client Information */}
-      <Card className="border-0 shadow-sm">
-        <CardHeader className="pb-4">
+      <Card className="border shadow-sm">
+        <CardHeader className="pb-3">
           <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center">
-              <User className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+            <div className="h-8 w-8 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center">
+              <User className="h-4 w-4 text-blue-600 dark:text-blue-400" />
             </div>
             <div>
-              <CardTitle className="text-xl">Client Information</CardTitle>
-              <CardDescription>Basic client details and contact information</CardDescription>
+              <CardTitle className="text-lg">Client Information</CardTitle>
+              <CardDescription className="text-sm">Basic client details and contact information</CardDescription>
             </div>
           </div>
         </CardHeader>
-        <CardContent>
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-            <div className="space-y-2">
+        <CardContent className="pt-0">
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <div className="space-y-1">
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <User className="h-4 w-4" />
                 <span>Full Name</span>
               </div>
-              <p className="text-lg font-semibold">{client.displayName}</p>
+              <p className="text-base font-medium">{client.displayName}</p>
             </div>
-            <div className="space-y-2">
+            <div className="space-y-1">
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <CreditCard className="h-4 w-4" />
                 <span>Account No</span>
               </div>
-              <p className="text-lg font-semibold">{client.accountNo}</p>
+              <p className="text-base font-medium">{client.accountNo}</p>
             </div>
-            <div className="space-y-2">
+            <div className="space-y-1">
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Shield className="h-4 w-4" />
                 <span>Status</span>
@@ -581,169 +859,30 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                 {client.status.value}
               </Badge>
             </div>
-            <div className="space-y-2">
+            <div className="space-y-1">
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Building className="h-4 w-4" />
                 <span>Office</span>
               </div>
-              <p className="text-lg font-semibold">{client.officeName}</p>
+              <p className="text-base font-medium">{client.officeName}</p>
             </div>
-            <div className="space-y-2">
+            <div className="space-y-1">
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Phone className="h-4 w-4" />
                 <span>Mobile</span>
               </div>
-              <p className="text-lg font-semibold">{client.mobileNo || "N/A"}</p>
+              <p className="text-base font-medium">{client.mobileNo || "N/A"}</p>
             </div>
-            <div className="space-y-2">
+            <div className="space-y-1">
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Mail className="h-4 w-4" />
                 <span>Email</span>
               </div>
-              <p className="text-lg font-semibold">{client.emailAddress || "N/A"}</p>
+              <p className="text-base font-medium">{client.emailAddress || "N/A"}</p>
             </div>
           </div>
         </CardContent>
       </Card>
-
-      {/* Loan Actions */}
-      <div className="relative actions-dropdown">
-        <Button
-          variant="outline"
-          onClick={() => setShowActionsMenu(!showActionsMenu)}
-          className="flex items-center space-x-2 shadow-sm"
-        >
-          <MoreVertical className="h-4 w-4" />
-          <span>Loan Actions</span>
-        </Button>
-
-        {showActionsMenu && (
-          <div className="absolute top-full left-0 mt-2 w-64 bg-card border rounded-xl shadow-lg z-50">
-            <div className="py-2">
-              <button
-                onClick={() => {
-                  console.log("Add Loan Charge");
-                  setShowActionsMenu(false);
-                }}
-                className="w-full px-4 py-3 text-left hover:bg-accent flex items-center space-x-3 text-foreground transition-colors"
-              >
-                <Plus className="h-4 w-4 text-muted-foreground" />
-                <span>Add Loan Charge</span>
-              </button>
-
-              <button
-                onClick={() => {
-                  console.log("Foreclosure");
-                  setShowActionsMenu(false);
-                }}
-                className="w-full px-4 py-3 text-left hover:bg-accent flex items-center space-x-3 text-foreground transition-colors"
-              >
-                <Heart className="h-4 w-4 text-muted-foreground" />
-                <span>Foreclosure</span>
-              </button>
-
-              <button
-                onClick={() => {
-                  console.log("Make Repayment");
-                  setShowActionsMenu(false);
-                }}
-                className="w-full px-4 py-3 text-left hover:bg-accent flex items-center space-x-3 text-foreground transition-colors"
-              >
-                <Coins className="h-4 w-4 text-muted-foreground" />
-                <span>Make Repayment</span>
-              </button>
-
-              <button
-                onClick={() => {
-                  console.log("Undo Disbursal");
-                  setShowActionsMenu(false);
-                }}
-                className="w-full px-4 py-3 text-left hover:bg-accent flex items-center space-x-3 text-foreground transition-colors"
-              >
-                <RotateCcw className="h-4 w-4 text-muted-foreground" />
-                <span>Undo Disbursal</span>
-              </button>
-
-              <button
-                onClick={() => {
-                  console.log("Add Interest Pause");
-                  setShowActionsMenu(false);
-                }}
-                className="w-full px-4 py-3 text-left hover:bg-accent flex items-center space-x-3 text-foreground transition-colors"
-              >
-                <Calendar className="h-4 w-4 text-muted-foreground" />
-                <span>Add Interest Pause</span>
-              </button>
-
-              <button
-                onClick={() => {
-                  console.log("Prepay Loan");
-                  setShowActionsMenu(false);
-                }}
-                className="w-full px-4 py-3 text-left hover:bg-accent flex items-center space-x-3 text-foreground transition-colors"
-              >
-                <Coins className="h-4 w-4 text-muted-foreground" />
-                <span>Prepay Loan</span>
-              </button>
-
-              <button
-                onClick={() => {
-                  console.log("Charge-Off");
-                  setShowActionsMenu(false);
-                }}
-                className="w-full px-4 py-3 text-left hover:bg-accent flex items-center space-x-3 text-foreground transition-colors"
-              >
-                <Coins className="h-4 w-4 text-muted-foreground" />
-                <span>Charge-Off</span>
-              </button>
-
-              <button
-                onClick={() => {
-                  console.log("Re-Age");
-                  setShowActionsMenu(false);
-                }}
-                className="w-full px-4 py-3 text-left hover:bg-accent flex items-center space-x-3 text-foreground transition-colors"
-              >
-                <Calendar className="h-4 w-4 text-muted-foreground" />
-                <span>Re-Age</span>
-              </button>
-
-              <button
-                onClick={() => {
-                  console.log("Re-Amortize");
-                  setShowActionsMenu(false);
-                }}
-                className="w-full px-4 py-3 text-left hover:bg-accent flex items-center space-x-3 text-foreground transition-colors"
-              >
-                <Calendar className="h-4 w-4 text-muted-foreground" />
-                <span>Re-Amortize</span>
-              </button>
-
-              <button
-                onClick={() => {
-                  console.log("Payments");
-                  setShowActionsMenu(false);
-                }}
-                className="w-full px-4 py-3 text-left hover:bg-accent flex items-center justify-between text-foreground transition-colors"
-              >
-                <span>Payments</span>
-                <ChevronRightIcon className="h-4 w-4 text-muted-foreground" />
-              </button>
-
-              <button
-                onClick={() => {
-                  console.log("More");
-                  setShowActionsMenu(false);
-                }}
-                className="w-full px-4 py-3 text-left hover:bg-accent flex items-center justify-between text-foreground transition-colors"
-              >
-                <span>More</span>
-                <ChevronRightIcon className="h-4 w-4 text-muted-foreground" />
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
 
       <Tabs defaultValue="general" className="space-y-6">
         <TabsList className="grid w-full grid-cols-6 lg:grid-cols-12 bg-muted/50 p-1 rounded-lg">
@@ -763,26 +902,26 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
         <TabsContent value="general" className="space-y-6">
           {/* Performance History */}
           <Card className="border-0 shadow-sm">
-            <CardHeader className="pb-4">
+            <CardHeader className="pb-3">
               <div className="flex items-center gap-3">
-                <div className="h-8 w-8 rounded-lg bg-green-100 dark:bg-green-900 flex items-center justify-center">
-                  <TrendingUp className="h-4 w-4 text-green-600 dark:text-green-400" />
+                <div className="h-6 w-6 rounded-lg bg-green-100 dark:bg-green-900 flex items-center justify-center">
+                  <TrendingUp className="h-3 w-3 text-green-600 dark:text-green-400" />
                 </div>
                 <div>
-                  <CardTitle>Performance History</CardTitle>
-                  <CardDescription>Loan performance metrics and key dates</CardDescription>
+                  <CardTitle className="text-lg">Performance History</CardTitle>
+                  <CardDescription className="text-xs">Loan performance metrics and key dates</CardDescription>
                 </div>
               </div>
             </CardHeader>
-            <CardContent>
-              <div className="grid gap-6 md:grid-cols-2">
-                <div className="space-y-2">
-                  <p className="text-sm font-medium text-muted-foreground">Number of Repayments</p>
-                  <p className="text-2xl font-bold">{loan.numberOfRepayments}</p>
+            <CardContent className="pt-0">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-muted-foreground">Number of Repayments</p>
+                  <p className="text-sm font-medium">{loan.numberOfRepayments}</p>
                 </div>
-                <div className="space-y-2">
-                  <p className="text-sm font-medium text-muted-foreground">Maturity Date</p>
-                  <p className="text-2xl font-bold">{loan.timeline.expectedMaturityDate ? formatDate(loan.timeline.expectedMaturityDate) : "Not set"}</p>
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-muted-foreground">Maturity Date</p>
+                  <p className="text-sm font-medium">{loan.timeline.expectedMaturityDate ? formatDate(loan.timeline.expectedMaturityDate) : "Not set"}</p>
                 </div>
               </div>
             </CardContent>
@@ -869,46 +1008,46 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
 
           {/* Loan Details */}
           <Card className="border-0 shadow-sm">
-            <CardHeader className="pb-4">
+            <CardHeader className="pb-3">
               <div className="flex items-center gap-3">
-                <div className="h-8 w-8 rounded-lg bg-purple-100 dark:bg-purple-900 flex items-center justify-center">
-                  <CreditCard className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+                <div className="h-6 w-6 rounded-lg bg-purple-100 dark:bg-purple-900 flex items-center justify-center">
+                  <CreditCard className="h-3 w-3 text-purple-600 dark:text-purple-400" />
                 </div>
                 <div>
-                  <CardTitle>Loan Details</CardTitle>
-                  <CardDescription>Key loan information and specifications</CardDescription>
+                  <CardTitle className="text-lg">Loan Details</CardTitle>
+                  <CardDescription className="text-xs">Key loan information and specifications</CardDescription>
                 </div>
               </div>
             </CardHeader>
-            <CardContent>
-              <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                <div className="space-y-2">
-                  <p className="text-sm font-medium text-muted-foreground">Disbursement Date</p>
-                  <p className="text-lg font-semibold">{loan.timeline.actualDisbursementDate ? formatDate(loan.timeline.actualDisbursementDate) : "Not disbursed"}</p>
+            <CardContent className="pt-0">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-muted-foreground">Disbursement Date</p>
+                  <p className="text-sm font-medium">{loan.timeline.actualDisbursementDate ? formatDate(loan.timeline.actualDisbursementDate) : "Not disbursed"}</p>
                 </div>
-                <div className="space-y-2">
-                  <p className="text-sm font-medium text-muted-foreground">Loan Purpose</p>
-                  <p className="text-lg font-semibold">{loan.loanPurpose?.name || "N/A"}</p>
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-muted-foreground">Loan Purpose</p>
+                  <p className="text-sm font-medium">{loan.loanPurpose?.name || "N/A"}</p>
                 </div>
-                <div className="space-y-2">
-                  <p className="text-sm font-medium text-muted-foreground">Loan Officer</p>
-                  <p className="text-lg font-semibold">{loan.loanOfficerName || "N/A"}</p>
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-muted-foreground">Loan Officer</p>
+                  <p className="text-sm font-medium">{loan.loanOfficerName || "N/A"}</p>
                 </div>
-                <div className="space-y-2">
-                  <p className="text-sm font-medium text-muted-foreground">Currency</p>
-                  <p className="text-lg font-semibold">{loan.currency.name} {loan.currency.code}</p>
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-muted-foreground">Currency</p>
+                  <p className="text-sm font-medium">{loan.currency.name} {loan.currency.code}</p>
                 </div>
-                <div className="space-y-2">
-                  <p className="text-sm font-medium text-muted-foreground">External Id</p>
-                  <p className="text-lg font-semibold">{loan.externalId || "Not Available"}</p>
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-muted-foreground">External Id</p>
+                  <p className="text-sm font-medium">{loan.externalId || "Not Available"}</p>
                 </div>
-                <div className="space-y-2">
-                  <p className="text-sm font-medium text-muted-foreground">Proposed Amount</p>
-                  <p className="text-lg font-semibold">{formatCurrency(loan.proposedPrincipal, loan.currency.code)}</p>
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-muted-foreground">Proposed Amount</p>
+                  <p className="text-sm font-medium">{formatCurrency(loan.proposedPrincipal, loan.currency.code)}</p>
                 </div>
-                <div className="space-y-2">
-                  <p className="text-sm font-medium text-muted-foreground">Approved Amount</p>
-                  <p className="text-lg font-semibold">{formatCurrency(loan.approvedPrincipal, loan.currency.code)}</p>
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-muted-foreground">Approved Amount</p>
+                  <p className="text-sm font-medium">{formatCurrency(loan.approvedPrincipal, loan.currency.code)}</p>
                 </div>
               </div>
             </CardContent>
@@ -1070,7 +1209,7 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                     Hide Accruals
                   </label>
                 </div>
-                <Button variant="outline" size="sm">
+                <Button variant="outline" size="sm" onClick={() => setShowExportDialog(true)}>
                   <Download className="h-4 w-4 mr-2" />
                   Export
                 </Button>
@@ -1107,11 +1246,11 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                           <TableCell>{transaction.date ? formatDate(transaction.date) : ""}</TableCell>
                           <TableCell>{transaction.type?.value || ""}</TableCell>
                           <TableCell>{formatCurrency(transaction.amount, loan.currency.code)}</TableCell>
-                          <TableCell>{formatCurrency(transaction.principalPortion || 0, loan.currency.code)}</TableCell>
-                          <TableCell>{formatCurrency(transaction.interestPortion || 0, loan.currency.code)}</TableCell>
-                          <TableCell>{formatCurrency(transaction.feeChargesPortion || 0, loan.currency.code)}</TableCell>
-                          <TableCell>{formatCurrency(transaction.penaltyChargesPortion || 0, loan.currency.code)}</TableCell>
-                          <TableCell>{formatCurrency(transaction.outstandingLoanBalance || 0, loan.currency.code)}</TableCell>
+                          <TableCell>{formatCurrency(transaction.principalPortion, loan.currency.code)}</TableCell>
+                          <TableCell>{formatCurrency(transaction.interestPortion, loan.currency.code)}</TableCell>
+                          <TableCell>{formatCurrency(transaction.feeChargesPortion, loan.currency.code)}</TableCell>
+                          <TableCell>{formatCurrency(transaction.penaltyChargesPortion, loan.currency.code)}</TableCell>
+                          <TableCell>{formatCurrency(transaction.outstandingLoanBalance, loan.currency.code)}</TableCell>
                           <TableCell>
                             <Button variant="ghost" size="sm">
                               <MoreVertical className="h-4 w-4" />
@@ -2194,6 +2333,51 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
           </div>
         </div>
       )}
+
+      {/* Export Transactions Dialog */}
+      <Dialog open={showExportDialog} onOpenChange={setShowExportDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Export Transactions</DialogTitle>
+            <DialogDescription>
+              Select a date range to export loan transactions
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="from-date">From Date *</Label>
+                <Input
+                  id="from-date"
+                  type="date"
+                  value={exportDateRange.fromDate}
+                  onChange={(e) => setExportDateRange({...exportDateRange, fromDate: e.target.value})}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="to-date">To Date *</Label>
+                <Input
+                  id="to-date"
+                  type="date"
+                  value={exportDateRange.toDate}
+                  onChange={(e) => setExportDateRange({...exportDateRange, toDate: e.target.value})}
+                  required
+                />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowExportDialog(false)}>
+              Cancel
+            </Button>
+            <Button onClick={exportTransactionsToPDF} disabled={!exportDateRange.fromDate || !exportDateRange.toDate}>
+              <Settings className="h-4 w-4 mr-2" />
+              Generate Report
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 } 

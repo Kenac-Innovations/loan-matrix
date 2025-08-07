@@ -40,8 +40,7 @@ export default async function ClientLoanDetailsPage({ params }: PageProps) {
       <div className="flex items-center gap-6">
         <Link href={`/clients/${clientId}`}>
           <Button variant="outline" size="sm" className="shadow-sm">
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Client
+            <ArrowLeft className="h-4 w-4" />
           </Button>
         </Link>
         <div className="flex-1">

@@ -705,19 +705,13 @@ export function ClientTransactions({ clientId, loanId }: ClientTransactionsProps
                       </div>
                     </TableCell>
                     <TableCell>
-                      {transaction.principalPortion
-                        ? formatCurrency(transaction.principalPortion)
-                        : "-"}
+                      {formatCurrency(transaction.principalPortion)}
                     </TableCell>
                     <TableCell>
-                      {transaction.interestPortion
-                        ? formatCurrency(transaction.interestPortion)
-                        : "-"}
+                      {formatCurrency(transaction.interestPortion)}
                     </TableCell>
                     <TableCell>
-                      {transaction.outstandingLoanBalance
-                        ? formatCurrency(transaction.outstandingLoanBalance)
-                        : "-"}
+                      {formatCurrency(transaction.outstandingLoanBalance)}
                     </TableCell>
                   </TableRow>
                 ))}
