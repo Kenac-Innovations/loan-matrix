@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { AlertCircle, Download, MoreVertical, X, ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight, Edit, Flag, Plus, Heart, Coins, RotateCcw, Calendar, ChevronRight as ChevronRightIcon, User, Building, Phone, Mail, CreditCard, TrendingUp, Clock, FileText, Shield, DollarSign, Percent, CalendarDays, Settings } from "lucide-react";
 import { ClientTransactions } from "../../../components/client-transactions";
+import { RepaymentModal } from "./repayment-modal";
 
 interface ClientLoanDetailsProps {
   clientId: number;
@@ -368,6 +369,8 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
     fromDate: new Date().toISOString().split('T')[0], // Today's date in YYYY-MM-DD format
     toDate: new Date().toISOString().split('T')[0]
   });
+  const [showRepaymentModal, setShowRepaymentModal] = useState(false);
+  const [activeTab, setActiveTab] = useState("general");
 
   // Close actions menu when clicking outside
   useEffect(() => {
@@ -696,7 +699,7 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
 
                 <button
                   onClick={() => {
-                    console.log("Make Repayment");
+                    setShowRepaymentModal(true);
                     setShowActionsMenu(false);
                   }}
                   className="w-full px-4 py-3 text-left hover:bg-accent flex items-center space-x-3 text-foreground transition-colors"
@@ -884,7 +887,7 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
         </CardContent>
       </Card>
 
-      <Tabs defaultValue="general" className="space-y-6">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
         <TabsList className="grid w-full grid-cols-6 lg:grid-cols-12 bg-muted/50 p-1 rounded-lg">
           <TabsTrigger value="general" className="rounded-md">General</TabsTrigger>
           <TabsTrigger value="account-details" className="rounded-md">Account Details</TabsTrigger>
@@ -1856,6 +1859,18 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Repayment Modal */}
+      <RepaymentModal
+        isOpen={showRepaymentModal}
+        onClose={() => setShowRepaymentModal(false)}
+        loanId={loanId}
+        onSuccess={() => {
+          // Refresh loan data and switch to transactions tab
+          window.location.reload();
+          setActiveTab("transactions");
+        }}
+      />
 
       {/* Add Collateral Modal */}
       {showAddCollateral && (

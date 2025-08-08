@@ -102,7 +102,7 @@ const fetcher = (url: string) => fetch(url).then(res => res.json());
 
 export function ClientTransactions({ clientId, loanId }: ClientTransactionsProps) {
   // If loanId is provided, fetch repayment schedule, otherwise fetch transactions
-  const endpoint = loanId 
+  const endpoint = loanId
     ? `/api/fineract/loans/${loanId}?associations=all&exclude=guarantors,futureSchedule`
     : `/api/fineract/clients/${clientId}/transactions`;
 
@@ -113,7 +113,7 @@ export function ClientTransactions({ clientId, loanId }: ClientTransactionsProps
     if (amount === undefined || amount === null || isNaN(amount) || amount === 0) {
       return "";
     }
-    
+
     return new Intl.NumberFormat("en-US", {
       style: "currency",
       currency: currencyCode,
@@ -146,29 +146,29 @@ export function ClientTransactions({ clientId, loanId }: ClientTransactionsProps
     if (period.completed) {
       return "bg-green-50 dark:bg-green-950/20";
     }
-    
+
     const dueDate = period.dueDate;
     if (!dueDate) return "";
-    
-    const dueDateObj = typeof dueDate === "string" 
-      ? new Date(dueDate) 
+
+    const dueDateObj = typeof dueDate === "string"
+      ? new Date(dueDate)
       : new Date(dueDate[0], dueDate[1] - 1, dueDate[2]);
-    
+
     const today = new Date();
-    
+
     if (dueDateObj < today) {
       return "bg-red-50 dark:bg-red-950/20";
     }
-    
+
     // Check if this is the current period
-    const fromDateObj = typeof period.fromDate === "string" 
-      ? new Date(period.fromDate) 
+    const fromDateObj = typeof period.fromDate === "string"
+      ? new Date(period.fromDate)
       : new Date(period.fromDate[0], period.fromDate[1] - 1, period.fromDate[2]);
-    
+
     if (fromDateObj <= today && today < dueDateObj) {
       return "bg-blue-50 dark:bg-blue-950/20";
     }
-    
+
     return "";
   };
 
@@ -178,10 +178,10 @@ export function ClientTransactions({ clientId, loanId }: ClientTransactionsProps
       console.warn('No data or loanId available for PDF export');
       return;
     }
-    
+
     const loan = data;
     const repaymentSchedule: RepaymentSchedule | undefined = loan.repaymentSchedule || loan.schedule;
-    
+
     if (!repaymentSchedule || !repaymentSchedule.periods || repaymentSchedule.periods.length === 0) {
       console.warn('No repayment schedule data available for PDF export');
       return;
@@ -191,37 +191,37 @@ export function ClientTransactions({ clientId, loanId }: ClientTransactionsProps
     import('jspdf').then(({ default: jsPDF }) => {
       import('jspdf-autotable').then((autoTable) => {
         const pdf = new jsPDF('l', 'mm', 'a4'); // Landscape orientation
-        
+
         // Set modern fonts and colors
         pdf.setFont('helvetica');
-        
+
         // Add modern header
         pdf.setFillColor(30, 64, 175); // Even darker blue background
         pdf.rect(0, 0, 297, 30, 'F');
-        
+
         // Add title
         pdf.setTextColor(255, 255, 255);
         pdf.setFontSize(18);
         pdf.setFont('helvetica', 'bold');
         pdf.text('Loan Repayment Schedule', 148, 12, { align: 'center' });
-        
+
         // Add client and loan information
         pdf.setFontSize(10);
         pdf.setFont('helvetica', 'normal');
         const clientName = loan.clientName || `Client #${clientId}`;
         const loanName = loan.accountNo || `Loan #${loanId}`;
         pdf.text(`Client: ${clientName} | Loan: ${loanName}`, 148, 20, { align: 'center' });
-        
+
         // Add generation date
-                     pdf.text(`Generated on: ${new Date().toLocaleDateString("en-GB", {
-               year: "numeric",
-               month: "long",
-               day: "numeric"
-             })}`, 148, 26, { align: 'center' });
-        
+        pdf.text(`Generated on: ${new Date().toLocaleDateString("en-GB", {
+          year: "numeric",
+          month: "long",
+          day: "numeric"
+        })}`, 148, 26, { align: 'center' });
+
         // Reset text color for content
         pdf.setTextColor(0, 0, 0);
-        
+
         // Simplified summary table
         const currencyCode = repaymentSchedule.currency?.code || 'USD';
         const summaryData = [
@@ -231,7 +231,7 @@ export function ClientTransactions({ clientId, loanId }: ClientTransactionsProps
           ['Total Repayment', formatCurrency(repaymentSchedule.totalRepaymentExpected, currencyCode)],
           ['Currency', currencyCode]
         ];
-        
+
         autoTable.default(pdf, {
           startY: 35,
           head: [['Category', 'Amount']],
@@ -252,7 +252,7 @@ export function ClientTransactions({ clientId, loanId }: ClientTransactionsProps
           },
           margin: { left: 15, right: 15 }
         });
-        
+
         // Prepare data for the main table
         const tableData = repaymentSchedule.periods.map((period) => {
           const row = [
@@ -270,16 +270,16 @@ export function ClientTransactions({ clientId, loanId }: ClientTransactionsProps
             formatCurrency(period.totalInAdvanceForPeriod, currencyCode),
             formatCurrency(period.totalPaidLateForPeriod || period.totalOverdue, currencyCode)
           ];
-          
+
           // Add waived column if there are waived amounts
           if ((repaymentSchedule.totalWaived || 0) > 0) {
             row.push(formatCurrency(period.totalWaivedForPeriod || 0, currencyCode));
           }
-          
+
           row.push(formatCurrency(period.totalOutstandingForPeriod || period.outstanding, currencyCode));
           return row;
         });
-        
+
         // Add totals row
         const totalsRow = [
           'Total',
@@ -296,35 +296,35 @@ export function ClientTransactions({ clientId, loanId }: ClientTransactionsProps
           formatCurrency(repaymentSchedule.totalPaidInAdvance, currencyCode),
           formatCurrency(repaymentSchedule.totalPaidLate, currencyCode)
         ];
-        
+
         // Add waived total if there are waived amounts
         if ((repaymentSchedule.totalWaived || 0) > 0) {
           totalsRow.push(formatCurrency(repaymentSchedule.totalWaived, currencyCode));
         }
-        
+
         totalsRow.push(formatCurrency(repaymentSchedule.totalOutstanding, currencyCode));
-        
+
         tableData.push(totalsRow);
-        
+
         // Prepare dynamic header
         const baseHeaders = [
           '#', 'Days', 'Date', 'Paid Date', 'Balance Of Loan',
           'Principal Due', 'Interest', 'Fees', 'Penalties', 'Due',
           'Paid', 'In advance', 'Late'
         ];
-        
+
         if ((repaymentSchedule.totalWaived || 0) > 0) {
           baseHeaders.push('Waived');
         }
-        
+
         baseHeaders.push('Outstanding');
-        
+
         // Calculate column spans for header groups
         const hasWaived = (repaymentSchedule.totalWaived || 0) > 0;
         const loanBalanceCols = 2; // #, Days
         const totalCostCols = 3; // Date, Paid Date, Balance Of Loan
         const installmentCols = hasWaived ? 9 : 8; // Principal Due through Outstanding
-        
+
         // Fix header alignment - based on the actual column structure
         let headerGroups = [
           { content: '', colSpan: 4 }, // #, Days, Date, Paid Date (no header)
@@ -333,15 +333,15 @@ export function ClientTransactions({ clientId, loanId }: ClientTransactionsProps
           { content: '', colSpan: 1 }, // Due (no header)
           { content: 'Installment Totals', colSpan: 3 } // Paid, In advance, Late
         ];
-        
+
         // Add waived column if present
         if ((repaymentSchedule.totalWaived || 0) > 0) {
           headerGroups.push({ content: '', colSpan: 1 }); // Waived (no header)
         }
-        
+
         // Add Outstanding column
         headerGroups.push({ content: '', colSpan: 1 }); // Outstanding (no header)
-        
+
         // Main repayment schedule table
         autoTable.default(pdf, {
           startY: 80,
@@ -379,22 +379,22 @@ export function ClientTransactions({ clientId, loanId }: ClientTransactionsProps
             13: { halign: 'right' } // Outstanding
           },
           margin: { left: 15, right: 15 },
-                     didParseCell: function(data: any) {
-             // Style the totals row
-             if (data.row.index === tableData.length - 1) {
-               data.cell.styles.fontStyle = 'bold';
-               data.cell.styles.fillColor = [243, 244, 246]; // Light gray background
-             }
-           },
-           didDrawPage: function(data: any) {
-             // Add page number
-             const pageCount = (pdf as any).getNumberOfPages();
-             pdf.setFontSize(8);
-             pdf.setTextColor(100, 100, 100);
-             pdf.text(`Page ${data.pageNumber} of ${pageCount}`, 148, 205, { align: 'center' });
-           }
+          didParseCell: function (data: any) {
+            // Style the totals row
+            if (data.row.index === tableData.length - 1) {
+              data.cell.styles.fontStyle = 'bold';
+              data.cell.styles.fillColor = [243, 244, 246]; // Light gray background
+            }
+          },
+          didDrawPage: function (data: any) {
+            // Add page number
+            const pageCount = (pdf as any).getNumberOfPages();
+            pdf.setFontSize(8);
+            pdf.setTextColor(100, 100, 100);
+            pdf.text(`Page ${data.pageNumber} of ${pageCount}`, 148, 205, { align: 'center' });
+          }
         });
-        
+
         // Save the PDF
         const fileName = `repayment-schedule-${new Date().toISOString().split('T')[0]}.pdf`;
         pdf.save(fileName);
@@ -511,9 +511,9 @@ export function ClientTransactions({ clientId, loanId }: ClientTransactionsProps
                       <TableHead className="font-semibold text-right">Paid</TableHead>
                       <TableHead className="font-semibold text-right">In advance</TableHead>
                       <TableHead className="font-semibold text-right">Late</TableHead>
-                                             {(repaymentSchedule.totalWaived || 0) > 0 && (
-                         <TableHead className="font-semibold text-right">Waived</TableHead>
-                       )}
+                      {(repaymentSchedule.totalWaived || 0) > 0 && (
+                        <TableHead className="font-semibold text-right">Waived</TableHead>
+                      )}
                       <TableHead className="font-semibold text-right">Outstanding</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -522,7 +522,7 @@ export function ClientTransactions({ clientId, loanId }: ClientTransactionsProps
                     {repaymentSchedule.periods.map((period: RepaymentSchedulePeriod, index: number) => {
                       const style = getInstallmentStyle(period);
                       const isPaid = period.obligationsMetOnDate;
-                      
+
                       return (
                         <TableRow key={`period-${period.period}-${index}`} className={style}>
                           <TableCell className="font-medium text-center">{period.period}</TableCell>
@@ -627,23 +627,23 @@ export function ClientTransactions({ clientId, loanId }: ClientTransactionsProps
   // Original transaction history code for when no loanId is provided
   const transactions = (() => {
     if (!data) return [];
-    
+
     if (Array.isArray(data)) {
       return data;
     }
-    
+
     if (data.pageItems && Array.isArray(data.pageItems)) {
       return data.pageItems;
     }
-    
+
     if (data.content && Array.isArray(data.content)) {
       return data.content;
     }
-    
+
     if (data.transactions && Array.isArray(data.transactions)) {
       return data.transactions;
     }
-    
+
     return [];
   })();
 
