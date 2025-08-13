@@ -8,6 +8,8 @@ import { mapApiPermissionsToSpecific } from "./authorization";
 
 // Define the NextAuth options
 export const authOptions: NextAuthOptions = {
+  debug: process.env.NODE_ENV === "development",
+  secret: process.env.NEXTAUTH_SECRET,
   providers: [
     CredentialsProvider({
       name: "Fineract API",
@@ -81,6 +83,10 @@ export const authOptions: NextAuthOptions = {
           };
         } catch (error) {
           console.error("Authentication error:", error);
+          console.error("Error details:", {
+            message: error instanceof Error ? error.message : "Unknown error",
+            stack: error instanceof Error ? error.stack : undefined,
+          });
           return null;
         }
       },
@@ -88,43 +94,54 @@ export const authOptions: NextAuthOptions = {
   ],
   callbacks: {
     async jwt({ token, user }) {
-      // Add user data to the token right after sign in
-      if (user) {
-        token.accessToken = user.accessToken;
-        token.userId = user.userId;
-        token.base64EncodedAuthenticationKey =
-          user.base64EncodedAuthenticationKey;
-        token.officeId = user.officeId;
-        token.officeName = user.officeName;
-        token.roles = user.roles;
-        token.permissions = user.permissions;
-        token.shouldRenewPassword = user.shouldRenewPassword;
-        token.isTwoFactorAuthenticationRequired =
-          user.isTwoFactorAuthenticationRequired;
+      try {
+        // Add user data to the token right after sign in
+        if (user) {
+          token.accessToken = user.accessToken;
+          token.userId = user.userId;
+          token.base64EncodedAuthenticationKey =
+            user.base64EncodedAuthenticationKey;
+          token.officeId = user.officeId;
+          token.officeName = user.officeName;
+          token.roles = user.roles;
+          token.permissions = user.permissions;
+          token.rawPermissions = user.rawPermissions;
+          token.shouldRenewPassword = user.shouldRenewPassword;
+          token.isTwoFactorAuthenticationRequired =
+            user.isTwoFactorAuthenticationRequired;
+        }
+        return token;
+      } catch (error) {
+        console.error("JWT callback error:", error);
+        return token;
       }
-      return token;
     },
     async session({ session, token }) {
-      // Add user data to the session
-      session.accessToken = token.accessToken;
-      session.base64EncodedAuthenticationKey =
-        token.base64EncodedAuthenticationKey;
+      try {
+        // Add user data to the session
+        session.accessToken = token.accessToken;
+        session.base64EncodedAuthenticationKey =
+          token.base64EncodedAuthenticationKey;
 
-      // Add user data to session.user
-      if (session.user) {
-        session.user.id = token.sub ?? "";
-        session.user.userId = token.userId as number;
-        session.user.officeId = token.officeId as number;
-        session.user.officeName = token.officeName as string;
-        session.user.roles = token.roles as any[];
-        session.user.permissions = token.permissions as SpecificPermission[];
-        session.user.rawPermissions = token.rawPermissions as string[];
-        session.user.shouldRenewPassword = token.shouldRenewPassword as boolean;
-        session.user.isTwoFactorAuthenticationRequired =
-          token.isTwoFactorAuthenticationRequired as boolean;
+        // Add user data to session.user
+        if (session.user) {
+          session.user.id = token.sub ?? "";
+          session.user.userId = token.userId as number;
+          session.user.officeId = token.officeId as number;
+          session.user.officeName = token.officeName as string;
+          session.user.roles = token.roles as any[];
+          session.user.permissions = token.permissions as SpecificPermission[];
+          session.user.rawPermissions = token.rawPermissions as string[];
+          session.user.shouldRenewPassword = token.shouldRenewPassword as boolean;
+          session.user.isTwoFactorAuthenticationRequired =
+            token.isTwoFactorAuthenticationRequired as boolean;
+        }
+
+        return session;
+      } catch (error) {
+        console.error("Session callback error:", error);
+        return session;
       }
-
-      return session;
     },
   },
   pages: {

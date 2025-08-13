@@ -51,8 +51,7 @@ export default async function ClientDetailPage({ params }: PageProps) {
       <div className="flex items-center gap-4">
         <Link href="/clients">
           <Button variant="outline" size="sm">
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Clients
+            <ArrowLeft className="h-4 w-4" />
           </Button>
         </Link>
         <div className="flex-1">

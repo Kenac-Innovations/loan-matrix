@@ -24,6 +24,7 @@ import {
   ProgressChart,
 } from "@/components/charts";
 
+
 export default function DashboardPage() {
   return (
     <>

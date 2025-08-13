@@ -1,18 +1,16 @@
-import { NextRequest, NextResponse } from "next/server";
-import { fetchFineractAPI } from "@/lib/api";
+import { NextResponse } from 'next/server';
+import { fetchFineractAPI } from '@/lib/api';
 
+/**
+ * GET /api/fineract/clients/[id]/documents
+ * Gets documents for a specific client
+ */
 export async function GET(
-  request: NextRequest,
+  request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { id } = await params;
-    const clientId = parseInt(id);
-
-    if (isNaN(clientId)) {
-      return NextResponse.json({ error: "Invalid client ID" }, { status: 400 });
-    }
-
     const { searchParams } = new URL(request.url);
     const offset = searchParams.get('offset') || '0';
     const limit = searchParams.get('limit') || '20';
@@ -23,7 +21,7 @@ export async function GET(
     
     // First try the standard documents endpoint with client filter
     try {
-      const endpoint = `/documents?entityType=clients&entityId=${clientId}&offset=${offset}&limit=${limit}`;
+      const endpoint = `/documents?entityType=clients&entityId=${id}&offset=${offset}&limit=${limit}`;
       data = await fetchFineractAPI(endpoint);
     } catch (e: any) {
       error = e;
@@ -31,7 +29,7 @@ export async function GET(
       
       // Try alternative endpoint
       try {
-        const endpoint = `/clients/${clientId}/documents?offset=${offset}&limit=${limit}`;
+        const endpoint = `/clients/${id}/documents?offset=${offset}&limit=${limit}`;
         data = await fetchFineractAPI(endpoint);
       } catch (e2: any) {
         error = e2;
@@ -45,7 +43,7 @@ export async function GET(
           // Filter by client ID if we get all documents
           if (data && Array.isArray(data.pageItems)) {
             data.pageItems = data.pageItems.filter((doc: any) => 
-              doc.parentEntityType === 'clients' && doc.parentEntityId == clientId
+              doc.parentEntityType === 'clients' && doc.parentEntityId == id
             );
           }
         } catch (e3: any) {
@@ -54,13 +52,13 @@ export async function GET(
         }
       }
     }
-
+    
     return NextResponse.json(data);
   } catch (error: any) {
-    console.error("Failed to get client documents:", error);
+    console.error('Error fetching client documents:', error);
     return NextResponse.json(
-      { error: "Failed to get client documents" },
+      { error: error.message || 'Unknown error' },
       { status: 500 }
     );
   }
-}
+} 

@@ -30,10 +30,17 @@ export async function middleware(request: NextRequest) {
   }
 
   // Get the NextAuth.js token
-  const token = await getToken({
-    req: request,
-    secret: process.env.NEXTAUTH_SECRET,
-  });
+  let token;
+  try {
+    token = await getToken({
+      req: request,
+      secret: process.env.NEXTAUTH_SECRET,
+    });
+  } catch (error) {
+    console.error("Middleware token error:", error);
+    // If there's an error getting the token, treat as unauthenticated
+    token = null;
+  }
 
   // If the route is protected and the user is not authenticated, redirect to login
   if (isProtectedRoute && !token) {

@@ -8,7 +8,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { AlertCircle, Download, MoreVertical, X, ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight, Edit, Flag, Plus, Heart, Coins, RotateCcw, Calendar, ChevronRight as ChevronRightIcon } from "lucide-react";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { AlertCircle, Download, MoreVertical, X, ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight, Edit, Flag, Plus, Heart, Coins, RotateCcw, Calendar, ChevronRight as ChevronRightIcon, User, Building, Phone, Mail, CreditCard, TrendingUp, Clock, FileText, Shield, DollarSign, Percent, CalendarDays, Settings } from "lucide-react";
+import { ClientTransactions } from "../../../components/client-transactions";
+import { RepaymentModal } from "./repayment-modal";
 
 interface ClientLoanDetailsProps {
   clientId: number;
@@ -194,6 +199,57 @@ interface FineractLoan {
     futureSchedule: any[];
     schedule: any[];
   };
+  repaymentSchedule?: {
+    currency: {
+      code: string;
+      name: string;
+      decimalPlaces: number;
+      inMultiplesOf: number;
+      displaySymbol: string;
+      nameCode: string;
+      displayLabel: string;
+    };
+    totalPrincipalDisbursed: number;
+    totalPrincipalExpected: number;
+    totalPrincipalPaid: number;
+    totalInterestCharged: number;
+    totalInterestPaid: number;
+    totalFeeChargesCharged: number;
+    totalPenaltyChargesCharged: number;
+    totalWaived: number;
+    totalWrittenOff: number;
+    totalRepaymentExpected: number;
+    totalRepayment: number;
+    totalOutstanding: number;
+    period: number;
+    loanTermInDays: number;
+    totalFeeChargesAtDisbursement: number;
+    fixedEmiAmount: number;
+    maxOutstandingLoanBalance: number;
+    disbursedAmount: number;
+    disbursedAmountPercentage: number;
+    feeChargesAtDisbursementCharged: number;
+    scheduleRegenerated: boolean;
+    futureSchedule: any[];
+    periods: Array<{
+      period: number;
+      fromDate: string | number[];
+      dueDate: string | number[];
+      obligationsMetOnDate?: string | number[];
+      completed: boolean;
+      daysInPeriod: number;
+      principal: number;
+      principalLoanBalanceOutstanding: number;
+      interest: number;
+      feeCharges: number;
+      penaltyCharges: number;
+      totalDueForPeriod: number;
+      totalPaidForPeriod: number;
+      totalInAdvanceForPeriod: number;
+      totalOverdue: number;
+      outstanding: number;
+    }>;
+  };
   loanOfficerId: number;
   loanOfficerName: string;
   loanPurposeName: string;
@@ -308,6 +364,13 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
   const [editingNote, setEditingNote] = useState<number | null>(null);
   const [editNoteText, setEditNoteText] = useState("");
   const [showActionsMenu, setShowActionsMenu] = useState(false);
+  const [showExportDialog, setShowExportDialog] = useState(false);
+  const [exportDateRange, setExportDateRange] = useState({
+    fromDate: new Date().toISOString().split('T')[0], // Today's date in YYYY-MM-DD format
+    toDate: new Date().toISOString().split('T')[0]
+  });
+  const [showRepaymentModal, setShowRepaymentModal] = useState(false);
+  const [activeTab, setActiveTab] = useState("general");
 
   // Close actions menu when clicking outside
   useEffect(() => {
@@ -338,12 +401,27 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
         const clientData = await clientResponse.json();
         setClient(clientData);
 
-        // Fetch loan details
-        const loanResponse = await fetch(`/api/loans/${loanId}`);
+        // Fetch loan details with associations
+        const loanResponse = await fetch(`/api/fineract/loans/${loanId}?associations=all&exclude=guarantors,futureSchedule`);
         if (!loanResponse.ok) {
           throw new Error(`Failed to fetch loan details: ${loanResponse.statusText}`);
         }
         const loanData = await loanResponse.json();
+        
+        // Log the response structure for debugging
+        console.log('Loan API Response:', loanData);
+        
+        // Handle the API response structure
+        // The API response might have repaymentSchedule at the root level
+        if (loanData.repaymentSchedule && !loanData.repaymentSchedule.periods) {
+          // If repaymentSchedule exists but doesn't have periods, it might be the old structure
+          console.log('Using legacy schedule structure');
+        } else if (loanData.repaymentSchedule && loanData.repaymentSchedule.periods) {
+          console.log('Using new repaymentSchedule structure with periods');
+        } else {
+          console.log('No repaymentSchedule found in response');
+        }
+        
         setLoan(loanData);
 
       } catch (err) {
@@ -369,315 +447,554 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
     return "N/A";
   };
 
-  const formatCurrency = (amount: number, currencyCode: string = "KES"): string => {
+  const formatCurrency = (amount: number | undefined | null, currencyCode: string = "KES"): string => {
+    // Return blank if amount is undefined, null, NaN, or 0
+    if (amount === undefined || amount === null || isNaN(amount) || amount === 0) {
+      return "";
+    }
+    
     return new Intl.NumberFormat("en-KE", {
       style: "currency",
       currency: currencyCode,
     }).format(amount);
   };
 
+  const exportTransactionsToPDF = () => {
+    if (!loan || !loan.transactions) {
+      console.warn('No transaction data available for PDF export');
+      return;
+    }
+
+    // Filter transactions by date range
+    const filteredTransactions = loan.transactions.filter((transaction: any) => {
+      if (!transaction.date) return false;
+      const transactionDate = new Date(transaction.date);
+      const fromDate = new Date(exportDateRange.fromDate);
+      const toDate = new Date(exportDateRange.toDate);
+      return transactionDate >= fromDate && transactionDate <= toDate;
+    });
+
+    if (filteredTransactions.length === 0) {
+      alert('No transactions found for the selected date range');
+      return;
+    }
+
+    // Import jsPDF dynamically to avoid SSR issues
+    import('jspdf').then(({ default: jsPDF }) => {
+      import('jspdf-autotable').then((autoTable) => {
+        const pdf = new jsPDF('l', 'mm', 'a4'); // Landscape orientation
+        
+        // Set modern fonts and colors
+        pdf.setFont('helvetica');
+        
+        // Add modern header
+        pdf.setFillColor(30, 64, 175); // Dark blue background
+        pdf.rect(0, 0, 297, 30, 'F');
+        
+        // Add title
+        pdf.setTextColor(255, 255, 255);
+        pdf.setFontSize(18);
+        pdf.setFont('helvetica', 'bold');
+        pdf.text('Loan Transaction History', 148, 12, { align: 'center' });
+        
+        // Add client and loan information
+        pdf.setFontSize(10);
+        pdf.setFont('helvetica', 'normal');
+        const clientName = client?.displayName || `Client #${clientId}`;
+        const loanName = loan.accountNo || `Loan #${loanId}`;
+        pdf.text(`Client: ${clientName} | Loan: ${loanName}`, 148, 20, { align: 'center' });
+        pdf.text(`Date Range: ${exportDateRange.fromDate} to ${exportDateRange.toDate}`, 148, 26, { align: 'center' });
+        pdf.setTextColor(0, 0, 0);
+
+        // Summary section
+        const currencyCode = loan.currency?.code || 'USD';
+        const totalAmount = filteredTransactions.reduce((sum: number, t: any) => sum + (t.amount || 0), 0);
+        const totalPrincipal = filteredTransactions.reduce((sum: number, t: any) => sum + (t.principalPortion || 0), 0);
+        const totalInterest = filteredTransactions.reduce((sum: number, t: any) => sum + (t.interestPortion || 0), 0);
+        const totalFees = filteredTransactions.reduce((sum: number, t: any) => sum + (t.feeChargesPortion || 0), 0);
+        const totalPenalties = filteredTransactions.reduce((sum: number, t: any) => sum + (t.penaltyChargesPortion || 0), 0);
+
+        const summaryData = [
+          ['Total Transactions', filteredTransactions.length.toString()],
+          ['Total Amount', formatCurrency(totalAmount, currencyCode)],
+          ['Total Principal', formatCurrency(totalPrincipal, currencyCode)],
+          ['Total Interest', formatCurrency(totalInterest, currencyCode)],
+          ['Total Fees', formatCurrency(totalFees, currencyCode)],
+          ['Total Penalties', formatCurrency(totalPenalties, currencyCode)],
+          ['Currency', currencyCode]
+        ];
+
+        autoTable.default(pdf, {
+          startY: 35,
+          head: [['Category', 'Amount']],
+          body: summaryData,
+          theme: 'grid',
+          headStyles: {
+            fillColor: [30, 64, 175],
+            textColor: 255,
+            fontStyle: 'bold'
+          },
+          styles: {
+            fontSize: 9,
+            cellPadding: 2
+          },
+          columnStyles: {
+            0: { fontStyle: 'bold' },
+            1: { halign: 'right' }
+          },
+          margin: { left: 15, right: 15 }
+        });
+
+        // Prepare transaction data
+        const tableData = filteredTransactions.map((transaction: any, index: number) => [
+          (index + 1).toString(),
+          transaction.id?.toString() || '',
+          transaction.officeName || '',
+          transaction.externalId || '',
+          transaction.date ? formatDate(transaction.date) : '',
+          transaction.type?.value || '',
+          formatCurrency(transaction.amount, currencyCode),
+          formatCurrency(transaction.principalPortion, currencyCode),
+          formatCurrency(transaction.interestPortion, currencyCode),
+          formatCurrency(transaction.feeChargesPortion, currencyCode),
+          formatCurrency(transaction.penaltyChargesPortion, currencyCode),
+          formatCurrency(transaction.outstandingLoanBalance, currencyCode)
+        ]);
+
+        // Add totals row
+        const totalsRow = [
+          'Total', '', '', '', '', '',
+          formatCurrency(totalAmount, currencyCode),
+          formatCurrency(totalPrincipal, currencyCode),
+          formatCurrency(totalInterest, currencyCode),
+          formatCurrency(totalFees, currencyCode),
+          formatCurrency(totalPenalties, currencyCode),
+          formatCurrency(filteredTransactions[filteredTransactions.length - 1]?.outstandingLoanBalance || 0, currencyCode)
+        ];
+        tableData.push(totalsRow);
+
+        autoTable.default(pdf, {
+          startY: 80,
+          head: [
+            ['#', 'Id', 'Office', 'External Id', 'Transaction Date', 'Transaction Type', 'Amount', 'Principal', 'Interest', 'Fees', 'Penalties', 'Loan Balance']
+          ],
+          body: tableData,
+          theme: 'grid',
+          headStyles: {
+            fillColor: [30, 64, 175],
+            textColor: 255,
+            fontStyle: 'bold',
+            fontSize: 8
+          },
+          styles: {
+            fontSize: 7,
+            cellPadding: 2,
+            overflow: 'linebreak'
+          },
+          columnStyles: {
+            0: { halign: 'center', fontStyle: 'bold' },
+            1: { halign: 'center' },
+            2: { halign: 'left' },
+            3: { halign: 'center' },
+            4: { halign: 'center' },
+            5: { halign: 'left' },
+            6: { halign: 'right' },
+            7: { halign: 'right' },
+            8: { halign: 'right' },
+            9: { halign: 'right' },
+            10: { halign: 'right' },
+            11: { halign: 'right' }
+          },
+          margin: { left: 15, right: 15 },
+          didParseCell: function(data: any) {
+            if (data.row.index === tableData.length - 1) {
+              data.cell.styles.fontStyle = 'bold';
+              data.cell.styles.fillColor = [243, 244, 246];
+            }
+          },
+          didDrawPage: function(data: any) {
+            const pageCount = (pdf as any).getNumberOfPages();
+            pdf.setFontSize(8);
+            pdf.setTextColor(100, 100, 100);
+            pdf.text(`Page ${data.pageNumber} of ${pageCount}`, 148, 205, { align: 'center' });
+          }
+        });
+
+        const fileName = `loan-transactions-${exportDateRange.fromDate}-to-${exportDateRange.toDate}.pdf`;
+        pdf.save(fileName);
+        setShowExportDialog(false);
+      });
+    });
+  };
+
   if (loading) {
     return (
-      <div className="space-y-6">
-        <Skeleton className="h-8 w-1/3" />
-        <div className="grid gap-6 md:grid-cols-2">
-          <Skeleton className="h-64" />
-          <Skeleton className="h-64" />
+      <div className="space-y-8">
+        <div className="grid gap-6 md:grid-cols-3">
+          <Skeleton className="h-32 rounded-xl" />
+          <Skeleton className="h-32 rounded-xl" />
+          <Skeleton className="h-32 rounded-xl" />
         </div>
+        <Skeleton className="h-96 rounded-xl" />
       </div>
     );
   }
 
   if (error) {
     return (
-      <Alert>
-        <AlertCircle className="h-4 w-4" />
-        <AlertDescription>{error}</AlertDescription>
+      <Alert className="border-red-200 bg-red-50">
+        <AlertCircle className="h-4 w-4 text-red-600" />
+        <AlertDescription className="text-red-800">{error}</AlertDescription>
       </Alert>
     );
   }
 
   if (!client || !loan) {
     return (
-      <Alert>
-        <AlertCircle className="h-4 w-4" />
-        <AlertDescription>No data available</AlertDescription>
+      <Alert className="border-yellow-200 bg-yellow-50">
+        <AlertCircle className="h-4 w-4 text-yellow-600" />
+        <AlertDescription className="text-yellow-800">No data available</AlertDescription>
       </Alert>
     );
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
+      {/* Loan Actions */}
+      <div className="flex justify-end">
+        <div className="relative actions-dropdown">
+          <Button
+            variant="outline"
+            onClick={() => setShowActionsMenu(!showActionsMenu)}
+            className="flex items-center space-x-2 shadow-sm"
+          >
+            <MoreVertical className="h-4 w-4" />
+            <span>Loan Actions</span>
+          </Button>
+
+          {showActionsMenu && (
+            <div className="absolute top-full right-0 mt-2 w-64 bg-card border rounded-xl shadow-lg z-50">
+              <div className="py-2">
+                <button
+                  onClick={() => {
+                    console.log("Add Loan Charge");
+                    setShowActionsMenu(false);
+                  }}
+                  className="w-full px-4 py-3 text-left hover:bg-accent flex items-center space-x-3 text-foreground transition-colors"
+                >
+                  <Plus className="h-4 w-4 text-muted-foreground" />
+                  <span>Add Loan Charge</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    console.log("Foreclosure");
+                    setShowActionsMenu(false);
+                  }}
+                  className="w-full px-4 py-3 text-left hover:bg-accent flex items-center space-x-3 text-foreground transition-colors"
+                >
+                  <Heart className="h-4 w-4 text-muted-foreground" />
+                  <span>Foreclosure</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    setShowRepaymentModal(true);
+                    setShowActionsMenu(false);
+                  }}
+                  className="w-full px-4 py-3 text-left hover:bg-accent flex items-center space-x-3 text-foreground transition-colors"
+                >
+                  <Coins className="h-4 w-4 text-muted-foreground" />
+                  <span>Make Repayment</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    console.log("Undo Disbursal");
+                    setShowActionsMenu(false);
+                  }}
+                  className="w-full px-4 py-3 text-left hover:bg-accent flex items-center space-x-3 text-foreground transition-colors"
+                >
+                  <RotateCcw className="h-4 w-4 text-muted-foreground" />
+                  <span>Undo Disbursal</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    console.log("Add Interest Pause");
+                    setShowActionsMenu(false);
+                  }}
+                  className="w-full px-4 py-3 text-left hover:bg-accent flex items-center space-x-3 text-foreground transition-colors"
+                >
+                  <Calendar className="h-4 w-4 text-muted-foreground" />
+                  <span>Add Interest Pause</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    console.log("Prepay Loan");
+                    setShowActionsMenu(false);
+                  }}
+                  className="w-full px-4 py-3 text-left hover:bg-accent flex items-center space-x-3 text-foreground transition-colors"
+                >
+                  <Coins className="h-4 w-4 text-muted-foreground" />
+                  <span>Prepay Loan</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    console.log("Charge-Off");
+                    setShowActionsMenu(false);
+                  }}
+                  className="w-full px-4 py-3 text-left hover:bg-accent flex items-center space-x-3 text-foreground transition-colors"
+                >
+                  <Coins className="h-4 w-4 text-muted-foreground" />
+                  <span>Charge-Off</span>
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Quick Stats Cards */}
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+        <Card className="border-0 shadow-sm bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-950 dark:to-blue-900">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-blue-600 dark:text-blue-400">Principal Amount</p>
+                <p className="text-2xl font-bold text-blue-900 dark:text-blue-100">
+                  {formatCurrency(loan.principal, loan.currency.code)}
+                </p>
+              </div>
+              <div className="h-12 w-12 rounded-lg bg-blue-500 flex items-center justify-center">
+                <DollarSign className="h-6 w-6 text-white" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-0 shadow-sm bg-gradient-to-br from-green-50 to-green-100 dark:from-green-950 dark:to-green-900">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-green-600 dark:text-green-400">Outstanding Balance</p>
+                <p className="text-2xl font-bold text-green-900 dark:text-green-100">
+                  {formatCurrency(loan.summary.totalOutstanding, loan.currency.code)}
+                </p>
+              </div>
+              <div className="h-12 w-12 rounded-lg bg-green-500 flex items-center justify-center">
+                <TrendingUp className="h-6 w-6 text-white" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-0 shadow-sm bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-950 dark:to-purple-900">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-purple-600 dark:text-purple-400">Interest Rate</p>
+                <p className="text-2xl font-bold text-purple-900 dark:text-purple-100">
+                  {loan.annualInterestRate}%
+                </p>
+              </div>
+              <div className="h-12 w-12 rounded-lg bg-purple-500 flex items-center justify-center">
+                <Percent className="h-6 w-6 text-white" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-0 shadow-sm bg-gradient-to-br from-orange-50 to-orange-100 dark:from-orange-950 dark:to-orange-900">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-orange-600 dark:text-orange-400">Repayments</p>
+                <p className="text-2xl font-bold text-orange-900 dark:text-orange-100">
+                  {loan.numberOfRepayments}
+                </p>
+              </div>
+              <div className="h-12 w-12 rounded-lg bg-orange-500 flex items-center justify-center">
+                <CalendarDays className="h-6 w-6 text-white" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
       {/* Client Information */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Client Information</CardTitle>
-          <CardDescription>Basic client details</CardDescription>
+      <Card className="border shadow-sm">
+        <CardHeader className="pb-3">
+          <div className="flex items-center gap-3">
+            <div className="h-8 w-8 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center">
+              <User className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+            </div>
+            <div>
+              <CardTitle className="text-lg">Client Information</CardTitle>
+              <CardDescription className="text-sm">Basic client details and contact information</CardDescription>
+            </div>
+          </div>
         </CardHeader>
-        <CardContent>
-          <div className="grid gap-4 md:grid-cols-2">
-            <div>
-              <p className="text-sm font-medium text-muted-foreground">Name</p>
-              <p className="text-lg">{client.displayName}</p>
+        <CardContent className="pt-0">
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <User className="h-4 w-4" />
+                <span>Full Name</span>
+              </div>
+              <p className="text-base font-medium">{client.displayName}</p>
             </div>
-            <div>
-              <p className="text-sm font-medium text-muted-foreground">Account No</p>
-              <p className="text-lg">{client.accountNo}</p>
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <CreditCard className="h-4 w-4" />
+                <span>Account No</span>
+              </div>
+              <p className="text-base font-medium">{client.accountNo}</p>
             </div>
-            <div>
-              <p className="text-sm font-medium text-muted-foreground">Status</p>
-              <Badge variant={client.active ? "default" : "secondary"}>
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Shield className="h-4 w-4" />
+                <span>Status</span>
+              </div>
+              <Badge variant={client.active ? "default" : "secondary"} className="text-sm">
                 {client.status.value}
               </Badge>
             </div>
-            <div>
-              <p className="text-sm font-medium text-muted-foreground">Office</p>
-              <p className="text-lg">{client.officeName}</p>
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Building className="h-4 w-4" />
+                <span>Office</span>
+              </div>
+              <p className="text-base font-medium">{client.officeName}</p>
             </div>
-            <div>
-              <p className="text-sm font-medium text-muted-foreground">Mobile</p>
-              <p className="text-lg">{client.mobileNo || "N/A"}</p>
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Phone className="h-4 w-4" />
+                <span>Mobile</span>
+              </div>
+              <p className="text-base font-medium">{client.mobileNo || "N/A"}</p>
             </div>
-            <div>
-              <p className="text-sm font-medium text-muted-foreground">Email</p>
-              <p className="text-lg">{client.emailAddress || "N/A"}</p>
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Mail className="h-4 w-4" />
+                <span>Email</span>
+              </div>
+              <p className="text-base font-medium">{client.emailAddress || "N/A"}</p>
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Loan Details */}
-      {/* Loan Actions Dropdown */}
-      <div className="relative actions-dropdown">
-        <Button
-          variant="outline"
-          onClick={() => setShowActionsMenu(!showActionsMenu)}
-          className="flex items-center space-x-2"
-        >
-          <MoreVertical className="h-4 w-4" />
-          <span>Actions</span>
-        </Button>
-
-        {showActionsMenu && (
-          <div className="absolute top-full left-0 mt-1 w-64 bg-card border rounded-lg shadow-lg z-50">
-            <div className="py-1">
-              <button
-                onClick={() => {
-                  console.log("Add Loan Charge");
-                  setShowActionsMenu(false);
-                }}
-                className="w-full px-4 py-2 text-left hover:bg-accent flex items-center space-x-3 text-foreground"
-              >
-                <Plus className="h-4 w-4 text-muted-foreground" />
-                <span>Add Loan Charge</span>
-              </button>
-
-              <button
-                onClick={() => {
-                  console.log("Foreclosure");
-                  setShowActionsMenu(false);
-                }}
-                className="w-full px-4 py-2 text-left hover:bg-accent flex items-center space-x-3 text-foreground"
-              >
-                <Heart className="h-4 w-4 text-muted-foreground" />
-                <span>Foreclosure</span>
-              </button>
-
-              <button
-                onClick={() => {
-                  console.log("Make Repayment");
-                  setShowActionsMenu(false);
-                }}
-                className="w-full px-4 py-2 text-left hover:bg-accent flex items-center space-x-3 text-foreground"
-              >
-                <Coins className="h-4 w-4 text-muted-foreground" />
-                <span>Make Repayment</span>
-              </button>
-
-              <button
-                onClick={() => {
-                  console.log("Undo Disbursal");
-                  setShowActionsMenu(false);
-                }}
-                className="w-full px-4 py-2 text-left hover:bg-accent flex items-center space-x-3 text-foreground"
-              >
-                <RotateCcw className="h-4 w-4 text-muted-foreground" />
-                <span>Undo Disbursal</span>
-              </button>
-
-              <button
-                onClick={() => {
-                  console.log("Add Interest Pause");
-                  setShowActionsMenu(false);
-                }}
-                className="w-full px-4 py-2 text-left hover:bg-accent flex items-center space-x-3 text-foreground"
-              >
-                <Calendar className="h-4 w-4 text-muted-foreground" />
-                <span>Add Interest Pause</span>
-              </button>
-
-              <button
-                onClick={() => {
-                  console.log("Prepay Loan");
-                  setShowActionsMenu(false);
-                }}
-                className="w-full px-4 py-2 text-left hover:bg-accent flex items-center space-x-3 text-foreground"
-              >
-                <Coins className="h-4 w-4 text-muted-foreground" />
-                <span>Prepay Loan</span>
-              </button>
-
-              <button
-                onClick={() => {
-                  console.log("Charge-Off");
-                  setShowActionsMenu(false);
-                }}
-                className="w-full px-4 py-2 text-left hover:bg-accent flex items-center space-x-3 text-foreground"
-              >
-                <Coins className="h-4 w-4 text-muted-foreground" />
-                <span>Charge-Off</span>
-              </button>
-
-              <button
-                onClick={() => {
-                  console.log("Re-Age");
-                  setShowActionsMenu(false);
-                }}
-                className="w-full px-4 py-2 text-left hover:bg-accent flex items-center space-x-3 text-foreground"
-              >
-                <Calendar className="h-4 w-4 text-muted-foreground" />
-                <span>Re-Age</span>
-              </button>
-
-              <button
-                onClick={() => {
-                  console.log("Re-Amortize");
-                  setShowActionsMenu(false);
-                }}
-                className="w-full px-4 py-2 text-left hover:bg-accent flex items-center space-x-3 text-foreground"
-              >
-                <Calendar className="h-4 w-4 text-muted-foreground" />
-                <span>Re-Amortize</span>
-              </button>
-
-              <button
-                onClick={() => {
-                  console.log("Payments");
-                  setShowActionsMenu(false);
-                }}
-                className="w-full px-4 py-2 text-left hover:bg-accent flex items-center justify-between text-foreground"
-              >
-                <span>Payments</span>
-                <ChevronRightIcon className="h-4 w-4 text-muted-foreground" />
-              </button>
-
-              <button
-                onClick={() => {
-                  console.log("More");
-                  setShowActionsMenu(false);
-                }}
-                className="w-full px-4 py-2 text-left hover:bg-accent flex items-center justify-between text-foreground"
-              >
-                <span>More</span>
-                <ChevronRightIcon className="h-4 w-4 text-muted-foreground" />
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-
-      <Tabs defaultValue="general" className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="general">General</TabsTrigger>
-          <TabsTrigger value="account-details">Account Details</TabsTrigger>
-          <TabsTrigger value="schedule">Schedule</TabsTrigger>
-          <TabsTrigger value="transactions">Transactions</TabsTrigger>
-          <TabsTrigger value="collateral">Loan Collateral Details</TabsTrigger>
-          <TabsTrigger value="overdue-charges">Overdue Charges</TabsTrigger>
-          <TabsTrigger value="charges">Charges</TabsTrigger>
-          <TabsTrigger value="loan-reschedules">Loan Reschedules</TabsTrigger>
-          <TabsTrigger value="loan-documents">Loan Documents</TabsTrigger>
-          <TabsTrigger value="notes">Notes</TabsTrigger>
-          <TabsTrigger value="timeline">Timeline</TabsTrigger>
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+        <TabsList className="grid w-full grid-cols-6 lg:grid-cols-12 bg-muted/50 p-1 rounded-lg">
+          <TabsTrigger value="general" className="rounded-md">General</TabsTrigger>
+          <TabsTrigger value="account-details" className="rounded-md">Account Details</TabsTrigger>
+          <TabsTrigger value="schedule" className="rounded-md">Repayment Schedule</TabsTrigger>
+          <TabsTrigger value="transactions" className="rounded-md">Transactions</TabsTrigger>
+          <TabsTrigger value="collateral" className="rounded-md">Collateral</TabsTrigger>
+          <TabsTrigger value="overdue-charges" className="rounded-md">Overdue</TabsTrigger>
+          <TabsTrigger value="charges" className="rounded-md">Charges</TabsTrigger>
+          <TabsTrigger value="loan-reschedules" className="rounded-md">Reschedules</TabsTrigger>
+          <TabsTrigger value="loan-documents" className="rounded-md">Documents</TabsTrigger>
+          <TabsTrigger value="notes" className="rounded-md">Notes</TabsTrigger>
+          <TabsTrigger value="timeline" className="rounded-md">Timeline</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="general" className="space-y-4">
+        <TabsContent value="general" className="space-y-6">
           {/* Performance History */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Performance History</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid gap-4 md:grid-cols-2">
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">Number of Repayments</p>
-                  <p className="text-lg">{loan.numberOfRepayments}</p>
+          <Card className="border-0 shadow-sm">
+            <CardHeader className="pb-3">
+              <div className="flex items-center gap-3">
+                <div className="h-6 w-6 rounded-lg bg-green-100 dark:bg-green-900 flex items-center justify-center">
+                  <TrendingUp className="h-3 w-3 text-green-600 dark:text-green-400" />
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-muted-foreground">Maturity Date</p>
-                  <p className="text-lg">{loan.timeline.expectedMaturityDate ? formatDate(loan.timeline.expectedMaturityDate) : "Not set"}</p>
+                  <CardTitle className="text-lg">Performance History</CardTitle>
+                  <CardDescription className="text-xs">Loan performance metrics and key dates</CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-muted-foreground">Number of Repayments</p>
+                  <p className="text-sm font-medium">{loan.numberOfRepayments}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-muted-foreground">Maturity Date</p>
+                  <p className="text-sm font-medium">{loan.timeline.expectedMaturityDate ? formatDate(loan.timeline.expectedMaturityDate) : "Not set"}</p>
                 </div>
               </div>
             </CardContent>
           </Card>
 
           {/* Loan Summary */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Loan Summary</CardTitle>
+          <Card className="border-0 shadow-sm">
+            <CardHeader className="pb-4">
+              <div className="flex items-center gap-3">
+                <div className="h-8 w-8 rounded-lg bg-blue-100 dark:bg-blue-900 flex items-center justify-center">
+                  <FileText className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                </div>
+                <div>
+                  <CardTitle>Loan Summary</CardTitle>
+                  <CardDescription>Comprehensive breakdown of loan amounts and payments</CardDescription>
+                </div>
+              </div>
             </CardHeader>
             <CardContent>
-              <div className="rounded-md border">
+              <div className="rounded-lg border bg-muted/30">
                 <Table>
                   <TableHeader>
-                    <TableRow>
-                      <TableHead></TableHead>
-                      <TableHead>Original</TableHead>
-                      <TableHead>Paid</TableHead>
-                      <TableHead>Waived</TableHead>
-                      <TableHead>Written Off</TableHead>
-                      <TableHead>Outstanding</TableHead>
-                      <TableHead>Over Due</TableHead>
+                    <TableRow className="border-b">
+                      <TableHead className="font-semibold"></TableHead>
+                      <TableHead className="font-semibold">Original</TableHead>
+                      <TableHead className="font-semibold">Paid</TableHead>
+                      <TableHead className="font-semibold">Waived</TableHead>
+                      <TableHead className="font-semibold">Written Off</TableHead>
+                      <TableHead className="font-semibold">Outstanding</TableHead>
+                      <TableHead className="font-semibold">Over Due</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    <TableRow>
-                      <TableCell className="font-medium">Principal</TableCell>
-                      <TableCell>{formatCurrency(loan.principal, loan.currency.code)}</TableCell>
-                      <TableCell>{formatCurrency(loan.summary.principalPaid, loan.currency.code)}</TableCell>
-                      <TableCell>{formatCurrency(loan.summary.principalWrittenOff || 0, loan.currency.code)}</TableCell>
-                      <TableCell>{formatCurrency(loan.summary.principalWrittenOff || 0, loan.currency.code)}</TableCell>
-                      <TableCell>{formatCurrency(loan.summary.principalOutstanding, loan.currency.code)}</TableCell>
-                      <TableCell>{formatCurrency(loan.summary.principalOverdue, loan.currency.code)}</TableCell>
+                    <TableRow className="border-b">
+                      <TableCell className="font-semibold">Principal</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.principal, loan.currency.code)}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary.principalPaid, loan.currency.code)}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary.principalWrittenOff || 0, loan.currency.code)}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary.principalWrittenOff || 0, loan.currency.code)}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary.principalOutstanding, loan.currency.code)}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary.principalOverdue, loan.currency.code)}</TableCell>
                     </TableRow>
-                    <TableRow>
-                      <TableCell className="font-medium">Interest</TableCell>
-                      <TableCell>{formatCurrency(loan.summary.interestCharged, loan.currency.code)}</TableCell>
-                      <TableCell>{formatCurrency(loan.summary.interestPaid, loan.currency.code)}</TableCell>
-                      <TableCell>{formatCurrency(loan.summary.interestWaived || 0, loan.currency.code)}</TableCell>
-                      <TableCell>{formatCurrency(loan.summary.interestWrittenOff || 0, loan.currency.code)}</TableCell>
-                      <TableCell>{formatCurrency(loan.summary.interestOutstanding, loan.currency.code)}</TableCell>
-                      <TableCell>{formatCurrency(loan.summary.interestOverdue, loan.currency.code)}</TableCell>
+                    <TableRow className="border-b">
+                      <TableCell className="font-semibold">Interest</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary.interestCharged, loan.currency.code)}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary.interestPaid, loan.currency.code)}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary.interestWaived || 0, loan.currency.code)}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary.interestWrittenOff || 0, loan.currency.code)}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary.interestOutstanding, loan.currency.code)}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary.interestOverdue, loan.currency.code)}</TableCell>
                     </TableRow>
-                    <TableRow>
-                      <TableCell className="font-medium">Fees</TableCell>
-                      <TableCell>{formatCurrency(loan.summary.feeChargesCharged, loan.currency.code)}</TableCell>
-                      <TableCell>{formatCurrency(loan.summary.feeChargesPaid, loan.currency.code)}</TableCell>
-                      <TableCell>{formatCurrency(loan.summary.feeChargesWaived || 0, loan.currency.code)}</TableCell>
-                      <TableCell>{formatCurrency(loan.summary.feeChargesWrittenOff || 0, loan.currency.code)}</TableCell>
-                      <TableCell>{formatCurrency(loan.summary.feeChargesOutstanding, loan.currency.code)}</TableCell>
-                      <TableCell>{formatCurrency(loan.summary.feeChargesOverdue, loan.currency.code)}</TableCell>
+                    <TableRow className="border-b">
+                      <TableCell className="font-semibold">Fees</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary.feeChargesCharged, loan.currency.code)}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary.feeChargesPaid, loan.currency.code)}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary.feeChargesWaived || 0, loan.currency.code)}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary.feeChargesWrittenOff || 0, loan.currency.code)}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary.feeChargesOutstanding, loan.currency.code)}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary.feeChargesOverdue, loan.currency.code)}</TableCell>
                     </TableRow>
-                    <TableRow>
-                      <TableCell className="font-medium">Penalties</TableCell>
-                      <TableCell>{formatCurrency(loan.summary.penaltyChargesCharged, loan.currency.code)}</TableCell>
-                      <TableCell>{formatCurrency(loan.summary.penaltyChargesPaid, loan.currency.code)}</TableCell>
-                      <TableCell>{formatCurrency(loan.summary.penaltyChargesWaived || 0, loan.currency.code)}</TableCell>
-                      <TableCell>{formatCurrency(loan.summary.penaltyChargesWrittenOff || 0, loan.currency.code)}</TableCell>
-                      <TableCell>{formatCurrency(loan.summary.penaltyChargesOutstanding, loan.currency.code)}</TableCell>
-                      <TableCell>{formatCurrency(loan.summary.penaltyChargesOverdue, loan.currency.code)}</TableCell>
+                    <TableRow className="border-b">
+                      <TableCell className="font-semibold">Penalties</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary.penaltyChargesCharged, loan.currency.code)}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary.penaltyChargesPaid, loan.currency.code)}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary.penaltyChargesWaived || 0, loan.currency.code)}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary.penaltyChargesWrittenOff || 0, loan.currency.code)}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary.penaltyChargesOutstanding, loan.currency.code)}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary.penaltyChargesOverdue, loan.currency.code)}</TableCell>
                     </TableRow>
-                    <TableRow className="font-bold">
+                    <TableRow className="bg-muted/50 font-bold">
                       <TableCell>Total</TableCell>
                       <TableCell>{formatCurrency(loan.summary.totalExpectedRepayment, loan.currency.code)}</TableCell>
                       <TableCell>{formatCurrency(loan.summary.totalRepayment, loan.currency.code)}</TableCell>
@@ -693,49 +1010,65 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
           </Card>
 
           {/* Loan Details */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Loan Details</CardTitle>
+          <Card className="border-0 shadow-sm">
+            <CardHeader className="pb-3">
+              <div className="flex items-center gap-3">
+                <div className="h-6 w-6 rounded-lg bg-purple-100 dark:bg-purple-900 flex items-center justify-center">
+                  <CreditCard className="h-3 w-3 text-purple-600 dark:text-purple-400" />
+                </div>
+                <div>
+                  <CardTitle className="text-lg">Loan Details</CardTitle>
+                  <CardDescription className="text-xs">Key loan information and specifications</CardDescription>
+                </div>
+              </div>
             </CardHeader>
-            <CardContent>
-              <div className="grid gap-4 md:grid-cols-2">
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">Disbursement Date</p>
-                  <p className="text-lg">{loan.timeline.actualDisbursementDate ? formatDate(loan.timeline.actualDisbursementDate) : "Not disbursed"}</p>
+            <CardContent className="pt-0">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-muted-foreground">Disbursement Date</p>
+                  <p className="text-sm font-medium">{loan.timeline.actualDisbursementDate ? formatDate(loan.timeline.actualDisbursementDate) : "Not disbursed"}</p>
                 </div>
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">Loan Purpose</p>
-                  <p className="text-lg">{loan.loanPurpose?.name || "N/A"}</p>
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-muted-foreground">Loan Purpose</p>
+                  <p className="text-sm font-medium">{loan.loanPurpose?.name || "N/A"}</p>
                 </div>
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">Loan Officer</p>
-                  <p className="text-lg">{loan.loanOfficerName || "N/A"}</p>
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-muted-foreground">Loan Officer</p>
+                  <p className="text-sm font-medium">{loan.loanOfficerName || "N/A"}</p>
                 </div>
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">Currency</p>
-                  <p className="text-lg">{loan.currency.name} {loan.currency.code}</p>
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-muted-foreground">Currency</p>
+                  <p className="text-sm font-medium">{loan.currency.name} {loan.currency.code}</p>
                 </div>
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">External Id</p>
-                  <p className="text-lg">{loan.externalId || "Not Available"}</p>
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-muted-foreground">External Id</p>
+                  <p className="text-sm font-medium">{loan.externalId || "Not Available"}</p>
                 </div>
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">Proposed Amount</p>
-                  <p className="text-lg">{formatCurrency(loan.proposedPrincipal, loan.currency.code)}</p>
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-muted-foreground">Proposed Amount</p>
+                  <p className="text-sm font-medium">{formatCurrency(loan.proposedPrincipal, loan.currency.code)}</p>
                 </div>
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">Approved Amount</p>
-                  <p className="text-lg">{formatCurrency(loan.approvedPrincipal, loan.currency.code)}</p>
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-muted-foreground">Approved Amount</p>
+                  <p className="text-sm font-medium">{formatCurrency(loan.approvedPrincipal, loan.currency.code)}</p>
                 </div>
               </div>
             </CardContent>
           </Card>
         </TabsContent>
 
-        <TabsContent value="account-details" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Loan Details</CardTitle>
+        <TabsContent value="account-details" className="space-y-6">
+          <Card className="border-0 shadow-sm">
+            <CardHeader className="pb-4">
+              <div className="flex items-center gap-3">
+                <div className="h-8 w-8 rounded-lg bg-yellow-100 dark:bg-yellow-900 flex items-center justify-center">
+                  <Clock className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
+                </div>
+                <div>
+                  <CardTitle>Loan Details</CardTitle>
+                  <CardDescription>Key loan information and specifications</CardDescription>
+                </div>
+              </div>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
@@ -842,141 +1175,21 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
           </Card>
         </TabsContent>
 
-        <TabsContent value="schedule" className="space-y-4">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <div>
-                <CardTitle>Repayment Schedule</CardTitle>
-                <CardDescription>Detailed loan repayment schedule</CardDescription>
-              </div>
-              <Button variant="outline" size="sm">
-                <Download className="h-4 w-4 mr-2" />
-                Export to PDF
-              </Button>
-            </CardHeader>
-            <CardContent>
-              {loan.schedule && loan.schedule.schedule ? (
-                <div className="space-y-4">
-                  {/* Summary Section */}
-                  <div className="grid gap-4 md:grid-cols-3">
-                    <div className="text-center p-4 border rounded">
-                      <h4 className="font-medium text-sm text-muted-foreground">Loan Amount and Balance</h4>
-                      <p className="text-lg font-bold">{formatCurrency(loan.schedule.totalPrincipalExpected, loan.currency.code)}</p>
-                    </div>
-                    <div className="text-center p-4 border rounded">
-                      <h4 className="font-medium text-sm text-muted-foreground">Total Cost of Loan</h4>
-                      <p className="text-lg font-bold">{formatCurrency(loan.schedule.totalRepaymentExpected, loan.currency.code)}</p>
-                    </div>
-                    <div className="text-center p-4 border rounded">
-                      <h4 className="font-medium text-sm text-muted-foreground">Installment Totals</h4>
-                      <p className="text-lg font-bold">{loan.schedule.schedule.length} installments</p>
-                    </div>
-                  </div>
-
-                  {/* Repayment Schedule Table */}
-                  <div className="rounded-md border">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>#</TableHead>
-                          <TableHead>Days</TableHead>
-                          <TableHead>Date</TableHead>
-                          <TableHead>Paid Date</TableHead>
-                          <TableHead>Balance Of Loan</TableHead>
-                          <TableHead>Principal Due</TableHead>
-                          <TableHead>Interest</TableHead>
-                          <TableHead>Fees</TableHead>
-                          <TableHead>Penalties</TableHead>
-                          <TableHead>Due</TableHead>
-                          <TableHead>Paid</TableHead>
-                          <TableHead>In advance</TableHead>
-                          <TableHead>Late</TableHead>
-                          <TableHead>Outstanding</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {/* Pre-installment row (if exists) */}
-                        {loan.schedule.schedule.length > 0 && (
-                          <TableRow>
-                            <TableCell>-</TableCell>
-                            <TableCell>-</TableCell>
-                            <TableCell>{loan.timeline.actualDisbursementDate ? formatDate(loan.timeline.actualDisbursementDate) : ""}</TableCell>
-                            <TableCell>-</TableCell>
-                            <TableCell>{formatCurrency(loan.schedule.totalPrincipalExpected, loan.currency.code)}</TableCell>
-                            <TableCell>-</TableCell>
-                            <TableCell>{formatCurrency(loan.schedule.totalInterestCharged / loan.schedule.schedule.length, loan.currency.code)}</TableCell>
-                            <TableCell>-</TableCell>
-                            <TableCell>-</TableCell>
-                            <TableCell>{formatCurrency(loan.schedule.totalInterestCharged / loan.schedule.schedule.length, loan.currency.code)}</TableCell>
-                            <TableCell>{formatCurrency(loan.schedule.totalInterestCharged / loan.schedule.schedule.length, loan.currency.code)}</TableCell>
-                            <TableCell>-</TableCell>
-                            <TableCell>-</TableCell>
-                            <TableCell>-</TableCell>
-                          </TableRow>
-                        )}
-
-                        {/* Installment rows */}
-                        {loan.schedule.schedule.map((installment: any, index: number) => {
-                          const isOverdue = installment.outstanding > 0;
-                          return (
-                            <TableRow key={index} className={isOverdue ? "bg-red-50" : ""}>
-                              <TableCell className="font-medium">{index + 1}</TableCell>
-                              <TableCell>{installment.daysInPeriod || 30}</TableCell>
-                              <TableCell>{installment.dueDate ? formatDate(installment.dueDate) : ""}</TableCell>
-                              <TableCell>{installment.obligationsMetOnDate ? formatDate(installment.obligationsMetOnDate) : ""}</TableCell>
-                              <TableCell className={isOverdue ? "text-red-600 font-medium" : ""}>
-                                {formatCurrency(installment.principalLoanBalanceOutstanding, loan.currency.code)}
-                              </TableCell>
-                              <TableCell>{formatCurrency(installment.principal, loan.currency.code)}</TableCell>
-                              <TableCell>{formatCurrency(installment.interest, loan.currency.code)}</TableCell>
-                              <TableCell>{formatCurrency(installment.feeCharges, loan.currency.code)}</TableCell>
-                              <TableCell className={isOverdue ? "text-red-600 font-medium" : ""}>
-                                {formatCurrency(installment.penaltyCharges, loan.currency.code)}
-                              </TableCell>
-                              <TableCell className={isOverdue ? "text-red-600 font-medium" : ""}>
-                                {formatCurrency(installment.totalDueForPeriod, loan.currency.code)}
-                              </TableCell>
-                              <TableCell>{formatCurrency(installment.totalPaidForPeriod, loan.currency.code)}</TableCell>
-                              <TableCell>{formatCurrency(installment.totalInAdvanceForPeriod, loan.currency.code)}</TableCell>
-                              <TableCell>{formatCurrency(installment.totalOverdue, loan.currency.code)}</TableCell>
-                              <TableCell className={isOverdue ? "text-red-600 font-medium" : ""}>
-                                {formatCurrency(installment.outstanding, loan.currency.code)}
-                              </TableCell>
-                            </TableRow>
-                          );
-                        })}
-
-                        {/* Total row */}
-                        <TableRow className="font-bold bg-muted">
-                          <TableCell colSpan={4}>Total</TableCell>
-                          <TableCell>{formatCurrency(loan.schedule.totalPrincipalExpected, loan.currency.code)}</TableCell>
-                          <TableCell>{formatCurrency(loan.schedule.totalPrincipalExpected, loan.currency.code)}</TableCell>
-                          <TableCell>{formatCurrency(loan.schedule.totalInterestCharged, loan.currency.code)}</TableCell>
-                          <TableCell>{formatCurrency(loan.schedule.totalFeeChargesCharged, loan.currency.code)}</TableCell>
-                          <TableCell>{formatCurrency(loan.schedule.totalPenaltyChargesCharged, loan.currency.code)}</TableCell>
-                          <TableCell>{formatCurrency(loan.schedule.totalRepaymentExpected, loan.currency.code)}</TableCell>
-                          <TableCell>{formatCurrency(loan.schedule.totalRepayment, loan.currency.code)}</TableCell>
-                          <TableCell>{formatCurrency(0, loan.currency.code)}</TableCell>
-                          <TableCell>{formatCurrency(loan.schedule.totalOutstanding, loan.currency.code)}</TableCell>
-                          <TableCell>{formatCurrency(loan.schedule.totalOutstanding, loan.currency.code)}</TableCell>
-                        </TableRow>
-                      </TableBody>
-                    </Table>
-                  </div>
-                </div>
-              ) : (
-                <p className="text-muted-foreground">No schedule available</p>
-              )}
-            </CardContent>
-          </Card>
+        <TabsContent value="schedule" className="space-y-6">
+          <ClientTransactions clientId={clientId} loanId={loanId} />
         </TabsContent>
 
-        <TabsContent value="transactions" className="space-y-4">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <div>
-                <CardTitle>Transactions</CardTitle>
-                <CardDescription>Loan transaction history</CardDescription>
+        <TabsContent value="transactions" className="space-y-6">
+          <Card className="border-0 shadow-sm">
+            <CardHeader className="flex flex-row items-center justify-between pb-4">
+              <div className="flex items-center gap-3">
+                <div className="h-8 w-8 rounded-lg bg-blue-100 dark:bg-blue-900 flex items-center justify-center">
+                  <TrendingUp className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                </div>
+                <div>
+                  <CardTitle>Transactions</CardTitle>
+                  <CardDescription>Loan transaction history</CardDescription>
+                </div>
               </div>
               <div className="flex items-center gap-4">
                 <div className="flex items-center space-x-2">
@@ -999,7 +1212,7 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                     Hide Accruals
                   </label>
                 </div>
-                <Button variant="outline" size="sm">
+                <Button variant="outline" size="sm" onClick={() => setShowExportDialog(true)}>
                   <Download className="h-4 w-4 mr-2" />
                   Export
                 </Button>
@@ -1036,11 +1249,11 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                           <TableCell>{transaction.date ? formatDate(transaction.date) : ""}</TableCell>
                           <TableCell>{transaction.type?.value || ""}</TableCell>
                           <TableCell>{formatCurrency(transaction.amount, loan.currency.code)}</TableCell>
-                          <TableCell>{formatCurrency(transaction.principalPortion || 0, loan.currency.code)}</TableCell>
-                          <TableCell>{formatCurrency(transaction.interestPortion || 0, loan.currency.code)}</TableCell>
-                          <TableCell>{formatCurrency(transaction.feeChargesPortion || 0, loan.currency.code)}</TableCell>
-                          <TableCell>{formatCurrency(transaction.penaltyChargesPortion || 0, loan.currency.code)}</TableCell>
-                          <TableCell>{formatCurrency(transaction.outstandingLoanBalance || 0, loan.currency.code)}</TableCell>
+                          <TableCell>{formatCurrency(transaction.principalPortion, loan.currency.code)}</TableCell>
+                          <TableCell>{formatCurrency(transaction.interestPortion, loan.currency.code)}</TableCell>
+                          <TableCell>{formatCurrency(transaction.feeChargesPortion, loan.currency.code)}</TableCell>
+                          <TableCell>{formatCurrency(transaction.penaltyChargesPortion, loan.currency.code)}</TableCell>
+                          <TableCell>{formatCurrency(transaction.outstandingLoanBalance, loan.currency.code)}</TableCell>
                           <TableCell>
                             <Button variant="ghost" size="sm">
                               <MoreVertical className="h-4 w-4" />
@@ -1062,14 +1275,19 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
           </Card>
         </TabsContent>
 
-        <TabsContent value="collateral" className="space-y-4">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <div>
-                <CardTitle>Loan Collateral Details</CardTitle>
-                <CardDescription>Collateral associated with this loan</CardDescription>
+        <TabsContent value="collateral" className="space-y-6">
+          <Card className="border-0 shadow-sm">
+            <CardHeader className="flex flex-row items-center justify-between pb-4">
+              <div className="flex items-center gap-3">
+                <div className="h-8 w-8 rounded-lg bg-orange-100 dark:bg-orange-900 flex items-center justify-center">
+                  <Shield className="h-4 w-4 text-orange-600 dark:text-orange-400" />
+                </div>
+                <div>
+                  <CardTitle>Loan Collateral Details</CardTitle>
+                  <CardDescription>Collateral associated with this loan</CardDescription>
+                </div>
               </div>
-              <Button onClick={() => setShowAddCollateral(true)}>
+              <Button onClick={() => setShowAddCollateral(true)} className="shadow-sm">
                 Add Collateral
               </Button>
             </CardHeader>
@@ -1111,11 +1329,18 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
           </Card>
         </TabsContent>
 
-        <TabsContent value="overdue-charges" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Overdue Charges</CardTitle>
-              <CardDescription>Charges that are overdue for this loan</CardDescription>
+        <TabsContent value="overdue-charges" className="space-y-6">
+          <Card className="border-0 shadow-sm">
+            <CardHeader className="pb-4">
+              <div className="flex items-center gap-3">
+                <div className="h-8 w-8 rounded-lg bg-red-100 dark:bg-red-900 flex items-center justify-center">
+                  <AlertCircle className="h-4 w-4 text-red-600 dark:text-red-400" />
+                </div>
+                <div>
+                  <CardTitle>Overdue Charges</CardTitle>
+                  <CardDescription>Charges that are overdue for this loan</CardDescription>
+                </div>
+              </div>
             </CardHeader>
             <CardContent>
               <div className="rounded-md border">
@@ -1185,11 +1410,18 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
           </Card>
         </TabsContent>
 
-        <TabsContent value="charges" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Charges</CardTitle>
-              <CardDescription>All charges associated with this loan</CardDescription>
+        <TabsContent value="charges" className="space-y-6">
+          <Card className="border-0 shadow-sm">
+            <CardHeader className="pb-4">
+              <div className="flex items-center gap-3">
+                <div className="h-8 w-8 rounded-lg bg-yellow-100 dark:bg-yellow-900 flex items-center justify-center">
+                  <Coins className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
+                </div>
+                <div>
+                  <CardTitle>Charges</CardTitle>
+                  <CardDescription>All charges associated with this loan</CardDescription>
+                </div>
+              </div>
             </CardHeader>
             <CardContent>
               <div className="rounded-md border">
@@ -1253,10 +1485,10 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                 <div className="flex items-center justify-between mt-4">
                   <div className="flex items-center space-x-2">
                     <span className="text-sm text-muted-foreground">Items per page:</span>
-                    <select className="text-sm border rounded px-2 py-1">
+                    <select className="text-sm border rounded px-2 py-1" value="50">
                       <option value="10">10</option>
                       <option value="25">25</option>
-                      <option value="50" selected>50</option>
+                      <option value="50">50</option>
                     </select>
                   </div>
                   <div className="flex items-center space-x-2">
@@ -1284,15 +1516,20 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
           </Card>
         </TabsContent>
 
-        <TabsContent value="loan-reschedules" className="space-y-4">
-          <Card>
-            <CardHeader>
+        <TabsContent value="loan-reschedules" className="space-y-6">
+          <Card className="border-0 shadow-sm">
+            <CardHeader className="pb-4">
               <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle>Loan Reschedules</CardTitle>
-                  <CardDescription>Loan rescheduling events and history</CardDescription>
+                <div className="flex items-center gap-3">
+                  <div className="h-8 w-8 rounded-lg bg-purple-100 dark:bg-purple-900 flex items-center justify-center">
+                    <Calendar className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+                  </div>
+                  <div>
+                    <CardTitle>Loan Reschedules</CardTitle>
+                    <CardDescription>Loan rescheduling events and history</CardDescription>
+                  </div>
                 </div>
-                <Button onClick={() => setShowReschedule(true)}>
+                <Button onClick={() => setShowReschedule(true)} className="shadow-sm">
                   Reschedule
                 </Button>
               </div>
@@ -1347,15 +1584,20 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
           </Card>
         </TabsContent>
 
-        <TabsContent value="loan-documents" className="space-y-4">
-          <Card>
-            <CardHeader>
+        <TabsContent value="loan-documents" className="space-y-6">
+          <Card className="border-0 shadow-sm">
+            <CardHeader className="pb-4">
               <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle>Documents</CardTitle>
-                  <CardDescription>Loan documents and files</CardDescription>
+                <div className="flex items-center gap-3">
+                  <div className="h-8 w-8 rounded-lg bg-indigo-100 dark:bg-indigo-900 flex items-center justify-center">
+                    <FileText className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+                  </div>
+                  <div>
+                    <CardTitle>Documents</CardTitle>
+                    <CardDescription>Loan documents and files</CardDescription>
+                  </div>
                 </div>
-                <Button onClick={() => setShowUploadDocuments(true)}>
+                <Button onClick={() => setShowUploadDocuments(true)} className="shadow-sm">
                   + Add
                 </Button>
               </div>
@@ -1404,11 +1646,18 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
           </Card>
         </TabsContent>
 
-        <TabsContent value="notes" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Notes</CardTitle>
-              <CardDescription>Loan notes and comments</CardDescription>
+        <TabsContent value="notes" className="space-y-6">
+          <Card className="border-0 shadow-sm">
+            <CardHeader className="pb-4">
+              <div className="flex items-center gap-3">
+                <div className="h-8 w-8 rounded-lg bg-teal-100 dark:bg-teal-900 flex items-center justify-center">
+                  <FileText className="h-4 w-4 text-teal-600 dark:text-teal-400" />
+                </div>
+                <div>
+                  <CardTitle>Notes</CardTitle>
+                  <CardDescription>Loan notes and comments</CardDescription>
+                </div>
+              </div>
             </CardHeader>
             <CardContent>
               {/* Add Note Section */}
@@ -1538,11 +1787,18 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
           </Card>
         </TabsContent>
 
-        <TabsContent value="timeline" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Timeline</CardTitle>
-              <CardDescription>Loan timeline events</CardDescription>
+        <TabsContent value="timeline" className="space-y-6">
+          <Card className="border-0 shadow-sm">
+            <CardHeader className="pb-4">
+              <div className="flex items-center gap-3">
+                <div className="h-8 w-8 rounded-lg bg-gray-100 dark:bg-gray-900 flex items-center justify-center">
+                  <Clock className="h-4 w-4 text-gray-600 dark:text-gray-400" />
+                </div>
+                <div>
+                  <CardTitle>Timeline</CardTitle>
+                  <CardDescription>Loan timeline events</CardDescription>
+                </div>
+              </div>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
@@ -1604,7 +1860,19 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
         </TabsContent>
       </Tabs>
 
-            {/* Add Collateral Modal */}
+      {/* Repayment Modal */}
+      <RepaymentModal
+        isOpen={showRepaymentModal}
+        onClose={() => setShowRepaymentModal(false)}
+        loanId={loanId}
+        onSuccess={() => {
+          // Refresh loan data and switch to transactions tab
+          window.location.reload();
+          setActiveTab("transactions");
+        }}
+      />
+
+      {/* Add Collateral Modal */}
       {showAddCollateral && (
         <div
           className="fixed inset-0 bg-background/80 backdrop-blur-sm flex items-center justify-center z-50"
@@ -2080,6 +2348,51 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
           </div>
         </div>
       )}
+
+      {/* Export Transactions Dialog */}
+      <Dialog open={showExportDialog} onOpenChange={setShowExportDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Export Transactions</DialogTitle>
+            <DialogDescription>
+              Select a date range to export loan transactions
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="from-date">From Date *</Label>
+                <Input
+                  id="from-date"
+                  type="date"
+                  value={exportDateRange.fromDate}
+                  onChange={(e) => setExportDateRange({...exportDateRange, fromDate: e.target.value})}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="to-date">To Date *</Label>
+                <Input
+                  id="to-date"
+                  type="date"
+                  value={exportDateRange.toDate}
+                  onChange={(e) => setExportDateRange({...exportDateRange, toDate: e.target.value})}
+                  required
+                />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowExportDialog(false)}>
+              Cancel
+            </Button>
+            <Button onClick={exportTransactionsToPDF} disabled={!exportDateRange.fromDate || !exportDateRange.toDate}>
+              <Settings className="h-4 w-4 mr-2" />
+              Generate Report
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 } 

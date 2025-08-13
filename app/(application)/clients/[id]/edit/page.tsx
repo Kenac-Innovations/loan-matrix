@@ -36,8 +36,7 @@ export default async function ClientEditPage({ params }: PageProps) {
       <div className="flex items-center gap-4">
         <Link href={`/clients/${clientId}`}>
           <Button variant="outline" size="sm">
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Client
+            <ArrowLeft className="h-4 w-4" />
           </Button>
         </Link>
         <div className="flex-1">
