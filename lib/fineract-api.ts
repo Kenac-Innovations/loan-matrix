@@ -346,6 +346,63 @@ export interface FineractTransaction {
   loanChargePaidByList?: any[];
 }
 
+export interface AccountingRuleAccount {
+  id: number;
+  name: string;
+  glCode: string;
+}
+
+export interface AccountingRuleTag {
+  id: number;
+  name: string;
+  position: number;
+  description: string;
+  active: boolean;
+  mandatory: boolean;
+}
+
+export interface AccountingRuleCreditTag {
+  id: number;
+  tag: {
+    id: number;
+    name: string;
+    active: boolean;
+    mandatory: boolean;
+  };
+  transactionType: {
+    id: number;
+    code: string;
+    value: string;
+  };
+}
+
+export interface FineractAccountingRule {
+  id: number;
+  officeId: number;
+  officeName: string;
+  name: string;
+  description: string;
+  systemDefined: boolean;
+  allowMultipleDebitEntries: boolean;
+  allowMultipleCreditEntries: boolean;
+  allowedOffices: any[];
+  allowedAccounts: any[];
+  creditAccounts?: AccountingRuleAccount[];
+  debitAccounts?: AccountingRuleAccount[];
+  creditTags?: AccountingRuleCreditTag[];
+  debitTags?: AccountingRuleCreditTag[];
+}
+
+export interface AccountingRuleTemplate {
+  systemDefined: boolean;
+  allowMultipleDebitEntries: boolean;
+  allowMultipleCreditEntries: boolean;
+  allowedOffices: any[];
+  allowedAccounts: any[];
+  allowedCreditTagOptions: AccountingRuleTag[];
+  allowedDebitTagOptions: AccountingRuleTag[];
+}
+
 export class FineractAPIService {
   private client: AxiosInstance;
   private clientV2: AxiosInstance;
@@ -632,6 +689,67 @@ export class FineractAPIService {
       return true;
     } catch (error) {
       return false;
+    }
+  }
+
+  // Accounting Rules operations
+  async getAccountingRules(url = '/accountingrules'): Promise<FineractAccountingRule[]> {
+    try {
+      const response: AxiosResponse<FineractAccountingRule[]> = await this.client.get(url);
+      return response.data;
+    } catch (error) {
+      console.error('Fineract API Error:', error);
+      throw error;
+    }
+  }
+
+  async getAccountingRule(id: string): Promise<FineractAccountingRule> {
+    try {
+      const response: AxiosResponse<FineractAccountingRule> = await this.client.get(`/accountingrules/${id}`);
+      return response.data;
+    } catch (error) {
+      console.error('Fineract API Error:', error);
+      throw error;
+    }
+  }
+
+  async getAccountingRulesTemplate(): Promise<AccountingRuleTemplate> {
+    try {
+      const response: AxiosResponse<AccountingRuleTemplate> = await this.client.get('/accountingrules/template');
+      return response.data;
+    } catch (error) {
+      console.error('Fineract API Error:', error);
+      throw error;
+    }
+  }
+
+  async createAccountingRule(data: any): Promise<FineractAccountingRule> {
+    try {
+      const response: AxiosResponse<FineractAccountingRule> = await this.client.post('/accountingrules', data);
+      return response.data;
+    } catch (error) {
+      console.error('Fineract API Error:', error);
+      throw error;
+    }
+  }
+
+  async updateAccountingRule(id: string, data: any): Promise<FineractAccountingRule> {
+    try {
+      const response: AxiosResponse<FineractAccountingRule> = await this.client.put(`/accountingrules/${id}`, data);
+      return response.data;
+    } catch (error) {
+      console.error('Fineract API Error:', error);
+      throw error;
+    }
+  }
+
+  async deleteAccountingRule(id: string): Promise<any> {
+    try {
+      const response: AxiosResponse<any> = await this.client.delete(`/accountingrules/${id}`);
+      return response.data;
+    } catch (error) {
+      console.error('Fineract API Error:', error);
+      throw error;
     }
   }
 }

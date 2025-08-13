@@ -49,7 +49,36 @@ export async function fetchFineractAPI(
     console.log("Response:::", response);
 
     if (!response.ok) {
-      throw new Error(`API error: ${response.status} ${response.statusText}`);
+      // Try to get the error response body
+      let errorData;
+      try {
+        errorData = await response.json();
+      } catch (e) {
+        // If we can't parse JSON, use the status text
+        errorData = { 
+          defaultUserMessage: `HTTP ${response.status}: ${response.statusText}`,
+          developerMessage: `HTTP ${response.status}: ${response.statusText}`
+        };
+      }
+      
+      // Extract the most specific error message from the errors array
+      let specificErrorMessage = errorData.defaultUserMessage || errorData.developerMessage;
+      
+      if (errorData.errors && Array.isArray(errorData.errors) && errorData.errors.length > 0) {
+        // Use the first error's defaultUserMessage if available, otherwise developerMessage
+        const firstError = errorData.errors[0];
+        specificErrorMessage = firstError.defaultUserMessage || firstError.developerMessage || specificErrorMessage;
+      }
+      
+      // Create a custom error that includes the backend error data
+      const error = new Error(`API error: ${response.status} ${response.statusText}`);
+      (error as any).status = response.status;
+      (error as any).errorData = {
+        ...errorData,
+        defaultUserMessage: specificErrorMessage,
+        developerMessage: specificErrorMessage
+      };
+      throw error;
     }
 
     return await response.json();
@@ -93,7 +122,36 @@ export function createClientFineractAPI(accessToken: string) {
       });
 
       if (!response.ok) {
-        throw new Error(`API error: ${response.status} ${response.statusText}`);
+        // Try to get the error response body
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (e) {
+          // If we can't parse JSON, use the status text
+          errorData = { 
+            defaultUserMessage: `HTTP ${response.status}: ${response.statusText}`,
+            developerMessage: `HTTP ${response.status}: ${response.statusText}`
+          };
+        }
+        
+        // Extract the most specific error message from the errors array
+        let specificErrorMessage = errorData.defaultUserMessage || errorData.developerMessage;
+        
+        if (errorData.errors && Array.isArray(errorData.errors) && errorData.errors.length > 0) {
+          // Use the first error's defaultUserMessage if available, otherwise developerMessage
+          const firstError = errorData.errors[0];
+          specificErrorMessage = firstError.defaultUserMessage || firstError.developerMessage || specificErrorMessage;
+        }
+        
+        // Create a custom error that includes the backend error data
+        const error = new Error(`API error: ${response.status} ${response.statusText}`);
+        (error as any).status = response.status;
+        (error as any).errorData = {
+          ...errorData,
+          defaultUserMessage: specificErrorMessage,
+          developerMessage: specificErrorMessage
+        };
+        throw error;
       }
 
       return await response.json();

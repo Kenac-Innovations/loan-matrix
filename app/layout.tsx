@@ -4,8 +4,13 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Providers } from "./providers";
+import { Toaster } from "sonner";
 
-const inter = Inter({ subsets: ["latin"] });
+const inter = Inter({ 
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--font-inter",
+});
 
 export const metadata: Metadata = {
   title: "Loan Matrix Dashboard",
@@ -22,9 +27,15 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${inter.className} theme-transition`}>
+      <body className={`${inter.variable} font-sans theme-transition`} suppressHydrationWarning>
         <ThemeProvider>
           <Providers>{children}</Providers>
+          <Toaster 
+            position="top-right"
+            richColors
+            closeButton
+            duration={5000}
+          />
         </ThemeProvider>
       </body>
     </html>

@@ -31,9 +31,15 @@ export function MobileSidebar({ userProfileData }: MobileSidebarProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const mobileMenuRef = useRef<HTMLDivElement>(null);
   const { theme } = useTheme();
+  const [mounted, setMounted] = useState(false);
 
   // Get login status and tenant
   const { isLoggedIn, tenantId } = userProfileData;
+
+  // Avoid hydration mismatch
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Close mobile menu when changing routes
   useEffect(() => {
@@ -71,16 +77,16 @@ export function MobileSidebar({ userProfileData }: MobileSidebarProps) {
   }, [mobileMenuOpen]);
 
   // Define colors based on theme
-  const bgColor = theme === "light" ? "bg-white" : "bg-[#0d121f]";
+  const bgColor = mounted && theme === "light" ? "bg-white" : "bg-[#0d121f]";
   const borderColor =
-    theme === "light" ? "border-gray-200" : "border-[#1a2035]";
-  const textColor = theme === "light" ? "text-gray-900" : "text-white";
-  const textColorMuted = theme === "light" ? "text-gray-500" : "text-gray-300";
-  const iconColor = theme === "light" ? "text-gray-500" : "text-gray-400";
-  const iconColorActive = theme === "light" ? "text-blue-500" : "text-blue-400";
+    mounted && theme === "light" ? "border-gray-200" : "border-[#1a2035]";
+  const textColor = mounted && theme === "light" ? "text-gray-900" : "text-white";
+  const textColorMuted = mounted && theme === "light" ? "text-gray-500" : "text-gray-300";
+  const iconColor = mounted && theme === "light" ? "text-gray-500" : "text-gray-400";
+  const iconColorActive = mounted && theme === "light" ? "text-blue-500" : "text-blue-400";
   const hoverBgColor =
-    theme === "light" ? "hover:bg-gray-100" : "hover:bg-[#1a2035]";
-  const activeBgColor = theme === "light" ? "bg-gray-100" : "bg-[#1a2035]";
+    mounted && theme === "light" ? "hover:bg-gray-100" : "hover:bg-[#1a2035]";
+  const activeBgColor = mounted && theme === "light" ? "bg-gray-100" : "bg-[#1a2035]";
 
   return (
     <>
