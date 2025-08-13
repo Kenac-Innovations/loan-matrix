@@ -6,6 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm, Controller } from "react-hook-form";
 import { z } from "zod";
 import { format } from "date-fns";
+import useSWR from "swr";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -63,41 +64,48 @@ type ClientFormData = {
   activationDate: Date | null;
 };
 
-// Props for the NewLeadForm component
-interface NewLeadFormProps {
-  clientFormData: ClientFormData;
-}
+// Simple fetcher for SWR
+const fetcher = (url: string) => fetch(url).then(res => res.json());
 
 // Form validation schema
 const leadFormSchema = z.object({
   // Client Information
-  clientName: z.string().min(2, { message: "Client name is required" }),
-  clientEmail: z.string().email({ message: "Valid email is required" }),
-  clientPhone: z
-    .string()
-    .min(10, { message: "Valid phone number is required" }),
-  clientCompany: z.string().optional(),
-  clientAddress: z.string().optional(),
-  applicationDate: z.date().default(() => new Date()),
-
-  // Loan Information
-  loanType: z.string().min(1, { message: "Loan type is required" }),
-  loanAmount: z.string().min(1, { message: "Loan amount is required" }),
-  loanPurpose: z.string().optional(),
-  loanTerm: z.string().optional(),
-  interestRate: z.string().optional(),
-  collateral: z.string().optional(),
-
-  // Additional Information
-  notes: z.string().optional(),
-  priority: z.string().default("medium"),
-  assignTo: z.string().optional(),
-  isExistingClient: z.boolean().default(false),
+  officeId: z.string().min(1, { message: "Office is required" }),
+  legalFormId: z.string().min(1, { message: "Legal form is required" }),
+  externalId: z.string().optional(),
+  firstname: z.string().min(2, { message: "First name is required" }),
+  middlename: z.string().optional(),
+  lastname: z.string().min(2, { message: "Last name is required" }),
+  dateOfBirth: z.date().optional(),
+  gender: z.string().optional(),
+  isStaff: z.boolean().default(false),
+  mobileNo: z.string().min(10, { message: "Valid phone number is required" }),
+  countryCode: z.string().default("+1"),
+  emailAddress: z.string().email({ message: "Valid email is required" }),
+  clientTypeId: z.string().optional(),
+  clientClassificationId: z.string().optional(),
+  submittedOnDate: z.date().default(() => new Date()),
+  active: z.boolean().default(true),
+  activationDate: z.date().optional(),
+  openSavingsAccount: z.boolean().default(false),
+  savingsProductId: z.string().optional(),
+  
+  // Financial fields
+  monthlyIncomeRange: z.string().optional(),
+  employmentStatus: z.string().optional(),
+  employerName: z.string().optional(),
+  yearsAtCurrentJob: z.string().optional(),
+  hasExistingLoans: z.boolean().default(false),
+  monthlyDebtPayments: z.number().default(0),
+  propertyOwnership: z.string().optional(),
+  businessOwnership: z.boolean().default(false),
+  businessType: z.string().optional(),
 });
 
 type LeadFormValues = z.infer<typeof leadFormSchema>;
 
-export function NewLeadForm({ clientFormData }: NewLeadFormProps) {
+export function NewLeadForm() {
+  // ALL HOOKS MUST BE CALLED FIRST, BEFORE ANY CONDITIONAL RETURNS
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [affordabilityResult, setAffordabilityResult] =
@@ -106,46 +114,168 @@ export function NewLeadForm({ clientFormData }: NewLeadFormProps) {
   const [activeTab, setActiveTab] = useState("client");
   const [creditScoreResult, setCreditScoreResult] = useState<any>(null);
 
-  // Initialize form with default values
-  const form = useForm({
-    resolver: zodResolver(leadFormSchema) as any,
+  // Fetch template data using SWR
+  const { data: templateResult, error: templateError } = useSWR('/api/leads/template', fetcher);
+  const clientFormData = templateResult?.data || {
+    offices: [],
+    legalForms: [],
+    genders: [],
+    clientTypes: [],
+    clientClassifications: [],
+    savingsProducts: [],
+    activationDate: null,
+  };
+
+  // Initialize form with default values - MUST BE BEFORE ANY CONDITIONAL RETURNS
+  const form = useForm<LeadFormValues>({
+    resolver: zodResolver(leadFormSchema),
     defaultValues: {
-      clientName: "",
-      clientEmail: "",
-      clientPhone: "",
-      clientCompany: "",
-      clientAddress: "",
-      applicationDate: new Date(),
-      loanType: "",
-      loanAmount: "",
-      loanPurpose: "",
-      loanTerm: "",
-      interestRate: "",
-      collateral: "",
-      notes: "",
-      priority: "medium",
-      assignTo: "",
-      isExistingClient: false,
+      officeId: "",
+      legalFormId: "",
+      externalId: "",
+      firstname: "",
+      middlename: "",
+      lastname: "",
+      dateOfBirth: undefined,
+      gender: "",
+      isStaff: false,
+      mobileNo: "",
+      countryCode: "+1",
+      emailAddress: "",
+      clientTypeId: "",
+      clientClassificationId: "",
+      submittedOnDate: new Date(),
+      active: true,
+      activationDate: undefined,
+      openSavingsAccount: false,
+      savingsProductId: "",
+      // Financial fields
+      monthlyIncomeRange: "",
+      employmentStatus: "",
+      employerName: "",
+      yearsAtCurrentJob: "",
+      hasExistingLoans: false,
+      monthlyDebtPayments: 0,
+      propertyOwnership: "",
+      businessOwnership: false,
+      businessType: "",
     },
   });
+
+  // Handle template loading error
+  if (templateError) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="icon" asChild className="h-8 w-8">
+              <Link href="/leads">
+                <ArrowLeft className="h-4 w-4" />
+              </Link>
+            </Button>
+            <h1 className="text-2xl font-bold tracking-tight">Create New Lead</h1>
+          </div>
+        </div>
+        
+        <Card className="border-red-200 bg-red-50">
+          <CardContent className="pt-6">
+            <div className="text-center">
+              <div className="text-red-600 font-medium">Error loading form data</div>
+              <div className="text-sm text-red-500 mt-1">{templateError.message}</div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // Handle loading state
+  if (!templateResult) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="icon" asChild className="h-8 w-8">
+              <Link href="/leads">
+                <ArrowLeft className="h-4 w-4" />
+              </Link>
+            </Button>
+            <h1 className="text-2xl font-bold tracking-tight">Create New Lead</h1>
+          </div>
+        </div>
+        
+        <Card className="animate-pulse">
+          <CardHeader>
+            <div className="h-6 bg-gray-200 rounded w-1/3 mb-2"></div>
+            <div className="h-4 bg-gray-200 rounded w-1/2"></div>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {[...Array(6)].map((_, i) => (
+                <div key={i}>
+                  <div className="h-4 bg-gray-200 rounded w-1/3 mb-2"></div>
+                  <div className="h-10 bg-gray-200 rounded"></div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   // Handle form submission
   const onSubmit = async (data: LeadFormValues) => {
     setIsSubmitting(true);
 
     try {
-      // This would normally be an API call to create the lead
-      console.log("Form data:", data);
-      console.log("Affordability result:", affordabilityResult);
-      console.log("Selected offer:", selectedOffer);
+      // Create lead using the new API
+      const response = await fetch('/api/leads/operations', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          operation: 'saveDraft',
+          data: {
+            ...data,
+            // Add affordability and credit score data
+            affordabilityResult,
+            selectedOffer,
+            creditScoreResult,
+          },
+        }),
+      });
 
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1500));
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to create lead');
+      }
+
+      const result = await response.json();
+      
+      // Submit the lead
+      const submitResponse = await fetch('/api/leads/operations', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          operation: 'submitLead',
+          leadId: result.leadId,
+        }),
+      });
+
+      if (!submitResponse.ok) {
+        const errorData = await submitResponse.json();
+        throw new Error(errorData.error || 'Failed to submit lead');
+      }
 
       // Redirect to leads page after successful submission
       router.push("/leads");
     } catch (error) {
       console.error("Error creating lead:", error);
+      // You might want to show a toast notification here
     } finally {
       setIsSubmitting(false);
     }
@@ -158,32 +288,16 @@ export function NewLeadForm({ clientFormData }: NewLeadFormProps) {
     if (result.offers.length > 0) {
       // Update the form with the first offer's details
       const firstOffer = result.offers[0];
-      form.setValue("loanAmount", firstOffer.loanAmount.toString());
-      form.setValue("loanTerm", firstOffer.termYears.toString());
-      form.setValue("interestRate", (firstOffer.interestRate * 100).toFixed(2));
-
-      // Add a note about the affordability calculation
-      const currentNotes = form.getValues("notes");
-      const affordabilityNote =
-        `Affordability calculation completed on ${new Date().toLocaleDateString()}.\n` +
-        `Monthly income: $${result.totalMonthlyIncome}\n` +
-        `Monthly expenditure: $${result.totalMonthlyExpenditure}\n` +
-        `Maximum affordable loan: $${result.maxLoanAmount}\n\n`;
-
-      form.setValue("notes", affordabilityNote + (currentNotes || ""));
-
-      // Do NOT automatically move to the loan details tab
-      // setActiveTab("loan");
+      // Note: We're not updating form fields here since this form is for client registration
+      // The loan details will be handled in a separate loan application form
     }
   };
 
   const handleOfferSelect = (offer: LoanOffer) => {
     setSelectedOffer(offer);
 
-    // Update loan details in the form
-    form.setValue("loanAmount", offer.loanAmount.toString());
-    form.setValue("loanTerm", offer.termYears.toString());
-    form.setValue("interestRate", (offer.interestRate * 100).toString());
+    // Note: We're not updating form fields here since this form is for client registration
+    // The loan details will be handled in a separate loan application form
   };
 
   const handleCreditScoreCalculated = (result: any) => {
@@ -217,12 +331,11 @@ export function NewLeadForm({ clientFormData }: NewLeadFormProps) {
         </div>
       </div>
 
-      <form onSubmit={form.handleSubmit(onSubmit)}>
-        <Tabs
-          value={activeTab}
-          onValueChange={setActiveTab}
-          className="space-y-4"
-        >
+      <Tabs
+        value={activeTab}
+        onValueChange={setActiveTab}
+        className="space-y-4"
+      >
           <TabsList className="w-full sm:w-auto overflow-x-auto">
             <TabsTrigger
               value="client"
@@ -279,7 +392,11 @@ export function NewLeadForm({ clientFormData }: NewLeadFormProps) {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <ClientRegistrationForm formData={clientFormData} />
+                <ClientRegistrationForm 
+                  formData={clientFormData} 
+                  externalForm={form}
+                  onFormSubmit={onSubmit}
+                />
 
                 <div className="flex justify-end">
                   <Button
@@ -675,9 +792,10 @@ export function NewLeadForm({ clientFormData }: NewLeadFormProps) {
                   </Button>
 
                   <Button
-                    type="submit"
+                    type="button"
                     className="bg-blue-500 hover:bg-blue-600"
                     disabled={isSubmitting}
+                    onClick={form.handleSubmit(onSubmit)}
                   >
                     {isSubmitting ? (
                       <>
@@ -696,7 +814,6 @@ export function NewLeadForm({ clientFormData }: NewLeadFormProps) {
             </Card>
           </TabsContent>
         </Tabs>
-      </form>
     </div>
   );
 }

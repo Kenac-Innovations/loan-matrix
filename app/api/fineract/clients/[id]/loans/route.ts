@@ -1,18 +1,16 @@
-import { NextRequest, NextResponse } from "next/server";
-import { fetchFineractAPI } from "@/lib/api";
+import { NextResponse } from 'next/server';
+import { fetchFineractAPI } from '@/lib/api';
 
+/**
+ * GET /api/fineract/clients/[id]/loans
+ * Gets loans for a specific client
+ */
 export async function GET(
-  request: NextRequest,
+  request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { id } = await params;
-    const clientId = parseInt(id);
-
-    if (isNaN(clientId)) {
-      return NextResponse.json({ error: "Invalid client ID" }, { status: 400 });
-    }
-
     const { searchParams } = new URL(request.url);
     const offset = searchParams.get('offset') || '0';
     const limit = searchParams.get('limit') || '20';
@@ -23,7 +21,7 @@ export async function GET(
     
     // First try the standard loans endpoint with client filter
     try {
-      const endpoint = `/loans?clientId=${clientId}&offset=${offset}&limit=${limit}`;
+      const endpoint = `/loans?clientId=${id}&offset=${offset}&limit=${limit}`;
       data = await fetchFineractAPI(endpoint);
     } catch (e: any) {
       error = e;
@@ -31,7 +29,7 @@ export async function GET(
       
       // Try alternative endpoint
       try {
-        const endpoint = `/clients/${clientId}/loans?offset=${offset}&limit=${limit}`;
+        const endpoint = `/clients/${id}/loans?offset=${offset}&limit=${limit}`;
         data = await fetchFineractAPI(endpoint);
       } catch (e2: any) {
         error = e2;
@@ -44,7 +42,7 @@ export async function GET(
           
           // Filter by client ID if we get all loans
           if (data && Array.isArray(data.pageItems)) {
-            data.pageItems = data.pageItems.filter((loan: any) => loan.clientId == clientId);
+            data.pageItems = data.pageItems.filter((loan: any) => loan.clientId == id);
           }
         } catch (e3: any) {
           error = e3;
@@ -52,13 +50,13 @@ export async function GET(
         }
       }
     }
-
+    
     return NextResponse.json(data);
   } catch (error: any) {
-    console.error("Failed to get client loans:", error);
+    console.error('Error fetching client loans:', error);
     return NextResponse.json(
-      { error: "Failed to get client loans" },
+      { error: error.message || 'Unknown error' },
       { status: 500 }
     );
   }
-}
+} 

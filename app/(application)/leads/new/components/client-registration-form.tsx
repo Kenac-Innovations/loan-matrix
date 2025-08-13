@@ -225,11 +225,15 @@ type ClientFormData = {
 interface ClientRegistrationFormProps {
   leadId?: string;
   formData?: ClientFormData;
+  externalForm?: any;
+  onFormSubmit?: (data: any) => void;
 }
 
 export function ClientRegistrationForm({
   leadId,
   formData,
+  externalForm,
+  onFormSubmit,
 }: ClientRegistrationFormProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -294,8 +298,8 @@ export function ClientRegistrationForm({
   const [isSettingLeadIdFromAutoSave, setIsSettingLeadIdFromAutoSave] =
     useState(false);
 
-  // Initialize form
-  const form = useForm<ClientFormValues>({
+  // Initialize form - use external form if provided, otherwise create new one
+  const form = externalForm || useForm<ClientFormValues>({
     resolver: zodResolver(clientFormSchema) as any,
     defaultValues: {
       officeId: 1,
@@ -762,77 +766,174 @@ export function ClientRegistrationForm({
     setClientLookupStatus("idle");
 
     try {
-      // Mock API call - replace with actual client lookup
-      // Simulate API delay
-      await new Promise((resolve) => setTimeout(resolve, 800));
+      // First, try to get client details directly by external ID (this includes email address)
+      try {
+        const externalIdResponse = await fetch(`/api/fineract/clients/external-id/${nationalIdLookup}`);
+        
+        if (externalIdResponse.ok) {
+          // Client found by external ID - this gives us the email address
+          const clientData = await externalIdResponse.json();
+          
+          // Now we need to get the FULL client details using the client ID
+          // This will give us gender, client type, classification, etc.
+          const fullClientResponse = await fetch(`/api/fineract/clients/${clientData.id}`);
+          
+          if (fullClientResponse.ok) {
+            const fullClientData = await fullClientResponse.json();
+            
+            // Combine both responses: email from external ID endpoint, everything else from full client endpoint
+            const combinedClientData = {
+              ...fullClientData, // Base data (gender, client type, classification, etc.)
+              emailAddress: clientData.emailAddress, // Email from external ID endpoint
+              externalId: clientData.externalId, // External ID from external ID endpoint
+            };
+            
+            // Pre-populate form with COMBINED client data
+            form.reset({
+              officeId: combinedClientData.officeId || 1,
+              legalFormId: combinedClientData.legalForm?.id || 1,
+              externalId: combinedClientData.externalId || nationalIdLookup,
+              firstname: combinedClientData.firstname || '',
+              middlename: combinedClientData.middlename || '',
+              lastname: combinedClientData.lastname || '',
+              dateOfBirth: combinedClientData.dateOfBirth ? new Date(combinedClientData.dateOfBirth) : undefined,
+              genderId: combinedClientData.gender?.id || undefined,
+              isStaff: combinedClientData.isStaff !== undefined ? combinedClientData.isStaff : false,
+              mobileNo: combinedClientData.mobileNo || '',
+              countryCode: combinedClientData.countryCode || '+1',
+              emailAddress: combinedClientData.emailAddress || '', // This is the key field we needed!
+              clientTypeId: combinedClientData.clientType?.id || undefined,
+              clientClassificationId: combinedClientData.clientClassification?.id || undefined,
+              submittedOnDate: new Date(),
+              active: combinedClientData.active !== false,
+              activationDate: combinedClientData.activationDate ? new Date(combinedClientData.activationDate) : undefined,
+              openSavingsAccount: false,
+              currentStep: 1,
+            });
 
-      // For demo purposes, we'll pretend National ID "48-147220J12" exists and "99999" doesn't
-      if (nationalIdLookup === "48-147220J12") {
-        // Mock client data - replace with actual API response
-        const clientData = {
-          id: "12345",
-          officeId: 2,
-          legalFormId: 1,
-          externalId: "ID-12345",
-          firstname: "John",
-          middlename: "Michael",
-          lastname: "Doe",
-          dateOfBirth: new Date("1990-05-15"),
-          genderId: 1,
-          isStaff: true,
-          mobileNo: "5551234567",
-          countryCode: "+1",
-          emailAddress: "john.doe@example.com",
-          clientTypeId: 2,
-          clientClassificationId: 1,
-          active: true,
-          activationDate: new Date(),
-          familyMembers: [
-            {
-              id: "fam-1",
-              firstname: "Jane",
-              middlename: "",
-              lastname: "Doe",
-              relationship: "Spouse",
-              mobileNo: "5559876543",
-              emailAddress: "jane.doe@example.com",
-              isDependent: false,
-            },
-          ],
-        };
+            // Set family members if available
+            if (combinedClientData.familyMembers && combinedClientData.familyMembers.length > 0) {
+              setFamilyMembers(combinedClientData.familyMembers);
+            }
+
+            setClientLookupStatus("found");
+            setIsFormDisabled(false);
+
+            toast({
+              title: "Client Found",
+              description: `Found client: ${combinedClientData.firstname || ''} ${combinedClientData.lastname || ''} (Email: ${combinedClientData.emailAddress || 'Not provided'})`,
+              variant: "default",
+            });
+            
+            return; // Exit early since we found the client
+          } else {
+            // Fall back to using just the external ID data if full client lookup fails
+            // This will give us the email address but may miss some other fields
+            form.reset({
+              officeId: clientData.officeId || 1,
+              legalFormId: 1, // Default legal form ID
+              externalId: clientData.externalId || nationalIdLookup,
+              firstname: clientData.firstname || '',
+              middlename: clientData.middlename || '',
+              lastname: clientData.lastname || '',
+              dateOfBirth: clientData.dateOfBirth ? new Date(clientData.dateOfBirth) : undefined,
+              genderId: undefined, // Will need to be set manually
+              isStaff: clientData.isStaff !== undefined ? clientData.isStaff : false,
+              mobileNo: '', // Mobile number not available from this endpoint
+              countryCode: '+1',
+              emailAddress: clientData.emailAddress || '', // This is the key field we needed!
+              clientTypeId: undefined, // Will need to be set manually
+              clientClassificationId: undefined, // Will need to be set manually
+              submittedOnDate: new Date(),
+              active: clientData.active !== false,
+              activationDate: clientData.activationDate ? new Date(clientData.activationDate) : undefined,
+              openSavingsAccount: false,
+              currentStep: 1,
+            });
+
+            setClientLookupStatus("found");
+            setIsFormDisabled(false);
+
+            toast({
+              title: "Client Found (Partial Data)",
+              description: `Found client with email, but some fields may need manual entry: ${clientData.firstname || ''} ${clientData.lastname || ''} (Email: ${clientData.emailAddress || 'Not provided'})`,
+              variant: "default",
+            });
+            
+            return; // Exit early since we found the client
+          }
+        }
+      } catch (externalIdError) {
+        // Continue with the fallback search method
+      }
+
+      // If external ID lookup failed, fall back to the search method
+      // Search for client by external ID
+      const searchResponse = await fetch('/api/fineract/clients/search', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          text: nationalIdLookup,
+          page: 0,
+          size: 50,
+        }),
+      });
+
+      if (!searchResponse.ok) {
+        throw new Error('Failed to search for client');
+      }
+
+      const searchData = await searchResponse.json();
+      
+      if (searchData.pageItems && searchData.pageItems.length > 0) {
+        // Client found - get detailed information
+        const client = searchData.pageItems[0];
+        
+        // Fetch detailed client information
+        const detailResponse = await fetch(`/api/fineract/clients/${client.id}`);
+        
+        if (!detailResponse.ok) {
+          throw new Error('Failed to fetch client details');
+        }
+
+        const clientData = await detailResponse.json();
 
         // Pre-populate form with client data
         form.reset({
-          officeId: clientData.officeId,
-          legalFormId: clientData.legalFormId,
-          externalId: clientData.externalId,
-          firstname: clientData.firstname,
-          middlename: clientData.middlename,
-          lastname: clientData.lastname,
-          dateOfBirth: clientData.dateOfBirth,
-          genderId: clientData.genderId,
-          isStaff: clientData.isStaff,
-          mobileNo: clientData.mobileNo,
-          countryCode: clientData.countryCode,
-          emailAddress: clientData.emailAddress,
-          clientTypeId: clientData.clientTypeId,
-          clientClassificationId: clientData.clientClassificationId,
+          officeId: clientData.officeId || client.officeId,
+          legalFormId: clientData.legalForm?.id || client.legalForm?.id || 1,
+          externalId: clientData.externalId || client.externalId,
+          firstname: clientData.firstname || client.firstname || '',
+          middlename: clientData.middlename || '',
+          lastname: clientData.lastname || client.lastname || '',
+          dateOfBirth: clientData.dateOfBirth ? new Date(clientData.dateOfBirth) : (client.dateOfBirth ? new Date(client.dateOfBirth[0], client.dateOfBirth[1] - 1, client.dateOfBirth[2]) : undefined),
+          genderId: clientData.gender?.id || client.gender?.id || undefined,
+          isStaff: clientData.isStaff !== undefined ? clientData.isStaff : client.isStaff || false,
+          mobileNo: clientData.mobileNo || '',
+          countryCode: clientData.countryCode || '+1',
+          emailAddress: clientData.emailAddress || '',
+          clientTypeId: clientData.clientType?.id || client.clientType?.id || undefined,
+          clientClassificationId: clientData.clientClassification?.id || client.clientClassification?.id || undefined,
           submittedOnDate: new Date(),
-          active: clientData.active,
-          activationDate: clientData.activationDate,
+          active: clientData.active !== false,
+          activationDate: clientData.activationDate ? new Date(clientData.activationDate) : (client.activationDate ? new Date(client.activationDate[0], client.activationDate[1] - 1, client.activationDate[2]) : undefined),
           openSavingsAccount: false,
           currentStep: 1,
         });
 
-        // Set family members
-        setFamilyMembers(clientData.familyMembers);
+        // Set family members if available
+        if (clientData.familyMembers && clientData.familyMembers.length > 0) {
+          setFamilyMembers(clientData.familyMembers);
+        }
 
         setClientLookupStatus("found");
         setIsFormDisabled(false);
 
         toast({
           title: "Client Found",
-          description: "Form has been pre-populated with existing client data.",
+          description: `Found client: ${clientData.firstname || client.firstname} ${clientData.lastname || client.lastname}`,
           variant: "default",
         });
       } else {
@@ -1313,9 +1414,15 @@ export function ClientRegistrationForm({
                     <div className="flex space-x-2">
                       <Input
                         id="nationalIdLookup"
-                        placeholder="Enter national ID number (e.g. 48-147220J12)"
+                        placeholder="Enter national ID number (e.g. 22-000000Z12)"
                         value={nationalIdLookup}
                         onChange={(e) => setNationalIdLookup(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && nationalIdLookup.trim() && !isSearchingClient) {
+                            e.preventDefault();
+                            handleClientLookup();
+                          }
+                        }}
                         className={`h-10 flex-1 border-${colors.borderColor} ${colors.inputBg}`}
                         disabled={isSearchingClient}
                       />
@@ -1389,15 +1496,20 @@ export function ClientRegistrationForm({
               </CardContent>
             </Card>
 
-            <form onSubmit={() => submitClientForm}>
-              {/* Hidden field for current lead ID */}
-              <input
-                type="hidden"
-                name="currentLeadId"
-                value={currentLeadId || ""}
-              />
+            {(() => {
+              const FormWrapper = externalForm ? 'div' : 'form';
+              const formProps = externalForm ? {} : { onSubmit: () => submitClientForm };
+              
+              return (
+                <FormWrapper {...formProps}>
+                  {/* Hidden field for current lead ID */}
+                  <input
+                    type="hidden"
+                    name="currentLeadId"
+                    value={currentLeadId || ""}
+                  />
 
-              <Card className={`border-${colors.borderColor} ${colors.cardBg}`}>
+                  <Card className={`border-${colors.borderColor} ${colors.cardBg}`}>
                 <CardHeader>
                   <CardTitle className={colors.textColor}>
                     Client Information
@@ -2748,9 +2860,10 @@ export function ClientRegistrationForm({
                   </Button>
 
                   <Button
-                    type="submit"
+                    type={externalForm ? "button" : "submit"}
                     className="bg-blue-500 hover:bg-blue-600"
                     disabled={isSubmitting || isFormDisabled}
+                    onClick={externalForm && onFormSubmit ? () => onFormSubmit(form.getValues()) : undefined}
                   >
                     {isSubmitting ? (
                       <>
@@ -2763,7 +2876,9 @@ export function ClientRegistrationForm({
                   </Button>
                 </CardFooter>
               </Card>
-            </form>
+                </FormWrapper>
+              );
+            })()}
           </>
         )}
 

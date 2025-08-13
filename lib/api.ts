@@ -89,6 +89,21 @@ export async function fetchFineractAPI(
 }
 
 /**
+ * Fetches client details by external ID (national ID)
+ * @param externalId - The external ID (national ID) of the client
+ * @returns Promise with the client details including email address
+ */
+export async function fetchClientByExternalId(externalId: string) {
+  try {
+    const data = await fetchFineractAPI(`/clients/external-id/${externalId}`);
+    return data;
+  } catch (error) {
+    console.error('Error fetching client by external ID:', error);
+    throw error;
+  }
+}
+
+/**
  * Client-side API fetcher that includes the access token from the auth context
  */
 export function createClientFineractAPI(accessToken: string) {
