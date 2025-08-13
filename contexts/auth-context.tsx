@@ -42,7 +42,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         redirect: false,
       });
 
-      return !result?.error;
+      if (result?.error) {
+        console.error("SignIn error:", result.error);
+        return false;
+      }
+
+      return true;
     } catch (error) {
       console.error("Login failed:", error);
       return false;

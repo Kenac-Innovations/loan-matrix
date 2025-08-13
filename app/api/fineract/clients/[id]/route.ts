@@ -3,20 +3,15 @@ import { fetchFineractAPI } from '@/lib/api';
 
 /**
  * GET /api/fineract/clients/[id]
- * Gets a specific client by ID
+ * Fetches detailed client information by ID
  */
-export async function GET(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
     const data = await fetchFineractAPI(`/clients/${id}`);
-    
-    // Return the data as-is to preserve the original structure
     return NextResponse.json(data);
   } catch (error: any) {
-    console.error('Error fetching client:', error);
+    console.error('Error fetching client details:', error);
     return NextResponse.json(
       { error: error.message || 'Unknown error' },
       { status: 500 }

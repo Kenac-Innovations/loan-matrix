@@ -1,13 +1,6 @@
 import { DefaultSession } from "next-auth";
 import { JWT } from "next-auth/jwt";
-
-// Define the role interface based on the authentication response
-interface Role {
-  id: number;
-  name: string;
-  description: string;
-  disabled: boolean;
-}
+import { Role, SpecificPermission } from "@/types/auth";
 
 declare module "next-auth" {
   /**
@@ -22,7 +15,8 @@ declare module "next-auth" {
       officeId?: number;
       officeName?: string;
       roles?: Role[];
-      permissions?: string[];
+      permissions?: SpecificPermission[];
+      rawPermissions?: string[];
       shouldRenewPassword?: boolean;
       isTwoFactorAuthenticationRequired?: boolean;
     } & DefaultSession["user"];
@@ -38,7 +32,8 @@ declare module "next-auth" {
     officeId?: number;
     officeName?: string;
     roles?: Role[];
-    permissions?: string[];
+    permissions?: SpecificPermission[];
+    rawPermissions?: string[];
     shouldRenewPassword?: boolean;
     isTwoFactorAuthenticationRequired?: boolean;
   }
@@ -55,7 +50,8 @@ declare module "next-auth/jwt" {
     officeId?: number;
     officeName?: string;
     roles?: Role[];
-    permissions?: string[];
+    permissions?: SpecificPermission[];
+    rawPermissions?: string[];
     shouldRenewPassword?: boolean;
     isTwoFactorAuthenticationRequired?: boolean;
   }

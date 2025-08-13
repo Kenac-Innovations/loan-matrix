@@ -1485,10 +1485,10 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                 <div className="flex items-center justify-between mt-4">
                   <div className="flex items-center space-x-2">
                     <span className="text-sm text-muted-foreground">Items per page:</span>
-                    <select className="text-sm border rounded px-2 py-1">
+                    <select className="text-sm border rounded px-2 py-1" value="50">
                       <option value="10">10</option>
                       <option value="25">25</option>
-                      <option value="50" selected>50</option>
+                      <option value="50">50</option>
                     </select>
                   </div>
                   <div className="flex items-center space-x-2">
