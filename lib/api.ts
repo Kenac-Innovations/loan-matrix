@@ -33,18 +33,29 @@ export async function fetchFineractAPI(
     "Content-Type": "application/json",
   };
 
-  // Skip SSL verification for local development
-  // In production, you should use proper SSL certificates
-  const https = require("https");
-  const agent = new https.Agent({ rejectUnauthorized: false });
-
   try {
-    const response = await fetch(url, {
-      ...options,
-      headers,
-      //@ts-ignore
-      agent,
-    });
+    let response;
+    
+    // Check if it's HTTP and use different approach
+    if (url.startsWith('http://')) {
+      // Use standard fetch for HTTP URLs (no agent needed)
+      response = await fetch(url, {
+        ...options,
+        headers,
+      });
+    } else {
+      // Skip SSL verification for local development
+      // In production, you should use proper SSL certificates
+      const https = require("https");
+      const agent = new https.Agent({ rejectUnauthorized: false });
+      
+      response = await fetch(url, {
+        ...options,
+        headers,
+        //@ts-ignore
+        agent,
+      });
+    }
 
     console.log("Response:::", response);
 
@@ -123,18 +134,29 @@ export function createClientFineractAPI(accessToken: string) {
       "Content-Type": "application/json",
     };
 
-    // Skip SSL verification for local development
-    // In production, you should use proper SSL certificates
-    const https = require("https");
-    const agent = new https.Agent({ rejectUnauthorized: false });
-
     try {
-      const response = await fetch(url, {
-        ...options,
-        headers,
-        //@ts-ignore
-        agent,
-      });
+      let response;
+      
+      // Check if it's HTTP and use different approach
+      if (url.startsWith('http://')) {
+        // Use standard fetch for HTTP URLs (no agent needed)
+        response = await fetch(url, {
+          ...options,
+          headers,
+        });
+      } else {
+        // Skip SSL verification for local development
+        // In production, you should use proper SSL certificates
+        const https = require("https");
+        const agent = new https.Agent({ rejectUnauthorized: false });
+        
+        response = await fetch(url, {
+          ...options,
+          headers,
+          //@ts-ignore
+          agent,
+        });
+      }
 
       if (!response.ok) {
         // Try to get the error response body

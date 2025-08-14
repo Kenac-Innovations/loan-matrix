@@ -9,13 +9,15 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Input } from "@/components/ui/input";
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
 import { AlertCircle, Download, MoreVertical, X, ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight, Edit, Flag, Plus, Heart, Coins, RotateCcw, Calendar, ChevronRight as ChevronRightIcon, User, Building, Phone, Mail, CreditCard, TrendingUp, Clock, FileText, Shield, DollarSign, Percent, CalendarDays, Settings } from "lucide-react";
 import { ClientTransactions } from "../../../components/client-transactions";
 import { RepaymentModal } from "./repayment-modal";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { TransactionsDataTable } from "./transactions-data-table";
 
 interface ClientLoanDetailsProps {
   clientId: number;
@@ -1235,111 +1237,15 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                   <CardDescription>Loan transaction history</CardDescription>
                 </div>
               </div>
-              <div className="flex items-center gap-4">
-                <div className="flex items-center space-x-2">
-                  <input
-                    type="checkbox"
-                    id="hide-reversed"
-                    className="rounded border-gray-300"
-                  />
-                  <label htmlFor="hide-reversed" className="text-sm text-muted-foreground">
-                    Hide Reversed
-                  </label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <input
-                    type="checkbox"
-                    id="hide-accruals"
-                    className="rounded border-gray-300"
-                  />
-                  <label htmlFor="hide-accruals" className="text-sm text-muted-foreground">
-                    Hide Accruals
-                  </label>
-                </div>
-                <Button variant="outline" size="sm" onClick={() => setShowExportDialog(true)}>
-                  <Download className="h-4 w-4 mr-2" />
-                  Export
-                </Button>
-              </div>
             </CardHeader>
             <CardContent>
-              <div className="rounded-md border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>#</TableHead>
-                      <TableHead>Id</TableHead>
-                      <TableHead>Office</TableHead>
-                      <TableHead>External Id</TableHead>
-                      <TableHead>Transaction Date</TableHead>
-                      <TableHead>Transaction Type</TableHead>
-                      <TableHead>Amount</TableHead>
-                      <TableHead>Principal</TableHead>
-                      <TableHead>Interest</TableHead>
-                      <TableHead>Fees</TableHead>
-                      <TableHead>Penalties</TableHead>
-                      <TableHead>Loan Balance</TableHead>
-                      <TableHead>Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {loan.transactions && loan.transactions.length > 0 ? (
-                      loan.transactions.map((transaction: any, index: number) => (
-                        <TableRow key={transaction.id}>
-                          <TableCell className="font-medium">{index + 1}</TableCell>
-                          <TableCell>{transaction.id}</TableCell>
-                          <TableCell>{transaction.officeName}</TableCell>
-                          <TableCell>{transaction.externalId || ""}</TableCell>
-                          <TableCell>{transaction.date ? formatDate(transaction.date) : ""}</TableCell>
-                          <TableCell>{transaction.type?.value || ""}</TableCell>
-                          <TableCell>{formatCurrency(transaction.amount, loan.currency.code)}</TableCell>
-                          <TableCell>{formatCurrency(transaction.principalPortion, loan.currency.code)}</TableCell>
-                          <TableCell>{formatCurrency(transaction.interestPortion, loan.currency.code)}</TableCell>
-                          <TableCell>{formatCurrency(transaction.feeChargesPortion, loan.currency.code)}</TableCell>
-                          <TableCell>{formatCurrency(transaction.penaltyChargesPortion, loan.currency.code)}</TableCell>
-                          <TableCell>{formatCurrency(transaction.outstandingLoanBalance, loan.currency.code)}</TableCell>
-                          <TableCell>
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                                  <MoreVertical className="h-4 w-4" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuItem
-                                  onClick={() => {
-                                    const chooseTxRef = (tx: any): string | undefined => {
-                                      if (!tx) return undefined;
-                                      if (typeof tx.transactionId === 'string' && /^L\d+$/.test(tx.transactionId)) return tx.transactionId;
-                                      if (typeof tx.id === 'number') return `L${tx.id}`;
-                                      if (typeof tx.externalId === 'string' && /^L\d+$/.test(tx.externalId)) return tx.externalId;
-                                      return undefined;
-                                    };
-                                    const ref = chooseTxRef(transaction);
-                                    if (!ref) {
-                                      alert('No valid transaction reference found for this row');
-                                      return;
-                                    }
-                                    router.push(`/clients/${clientId}/loans/${loanId}/journal-entries?transactionId=${encodeURIComponent(ref)}`);
-                                  }}
-                                >
-                                  View Journal Entry
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </TableCell>
-                        </TableRow>
-                      ))
-                    ) : (
-                      <TableRow>
-                        <TableCell colSpan={13} className="text-center py-8 text-muted-foreground">
-                          No transactions found
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
+              <TransactionsDataTable
+                transactions={loan.transactions || []}
+                clientId={clientId}
+                loanId={loanId}
+                currencyCode={loan.currency?.code || 'USD'}
+                onExport={() => setShowExportDialog(true)}
+              />
             </CardContent>
           </Card>
         </TabsContent>
