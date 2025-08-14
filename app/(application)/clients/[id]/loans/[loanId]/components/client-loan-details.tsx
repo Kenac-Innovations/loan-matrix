@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -14,6 +15,7 @@ import { Input } from "@/components/ui/input";
 import { AlertCircle, Download, MoreVertical, X, ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight, Edit, Flag, Plus, Heart, Coins, RotateCcw, Calendar, ChevronRight as ChevronRightIcon, User, Building, Phone, Mail, CreditCard, TrendingUp, Clock, FileText, Shield, DollarSign, Percent, CalendarDays, Settings } from "lucide-react";
 import { ClientTransactions } from "../../../components/client-transactions";
 import { RepaymentModal } from "./repayment-modal";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 interface ClientLoanDetailsProps {
   clientId: number;
@@ -328,6 +330,7 @@ interface FineractLoan {
 }
 
 export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) {
+  const router = useRouter();
   const [client, setClient] = useState<FineractClient | null>(null);
   const [loan, setLoan] = useState<FineractLoan | null>(null);
   const [loading, setLoading] = useState(true);
@@ -750,6 +753,47 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                 >
                   <Coins className="h-4 w-4 text-muted-foreground" />
                   <span>Charge-Off</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    console.log("View Journal Entry");
+                    setShowActionsMenu(false);
+                    // Determine latest transaction externalId to view its journal entries
+                    const parseTxDate = (d: any): number => {
+                      if (!d) return 0;
+                      if (typeof d === "string") return new Date(d).getTime();
+                      if (Array.isArray(d) && d.length === 3) {
+                        const [y, m, day] = d;
+                        return new Date(y, m - 1, day).getTime();
+                      }
+                      return 0;
+                    };
+                    const latestTx = (loan?.transactions || []).reduce((latest: any, curr: any) => {
+                      return parseTxDate(curr?.date) > parseTxDate(latest?.date) ? curr : latest;
+                    }, null as any);
+                    // Prefer Fineract transaction reference (e.g., L26). Fall back to numeric id with L prefix.
+                    const chooseTxRef = (tx: any): string | undefined => {
+                      if (!tx) return undefined;
+                      if (typeof tx.transactionId === 'string' && /^L\d+$/.test(tx.transactionId)) return tx.transactionId;
+                      if (typeof tx.id === 'number') return `L${tx.id}`;
+                      if (typeof tx.externalId === 'string' && /^L\d+$/.test(tx.externalId)) return tx.externalId; // only accept externalId that matches L\d+
+                      return undefined;
+                    };
+                    let txExternalId = chooseTxRef(latestTx);
+                    if (!txExternalId) {
+                      alert('No transaction found with an externalId to view journal entries.');
+                      return;
+                    }
+                    let txParam = String(txExternalId);
+                    // Navigate to journal entries page with transactionId as query param
+                    const url = `/clients/${clientId}/loans/${loanId}/journal-entries?transactionId=${encodeURIComponent(txParam)}`;
+                    window.location.href = url;
+                  }}
+                  className="w-full px-4 py-3 text-left hover:bg-accent flex items-center space-x-3 text-foreground transition-colors"
+                >
+                  <FileText className="h-4 w-4 text-muted-foreground" />
+                  <span>View Journal Entry</span>
                 </button>
               </div>
             </div>
@@ -1255,9 +1299,34 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                           <TableCell>{formatCurrency(transaction.penaltyChargesPortion, loan.currency.code)}</TableCell>
                           <TableCell>{formatCurrency(transaction.outstandingLoanBalance, loan.currency.code)}</TableCell>
                           <TableCell>
-                            <Button variant="ghost" size="sm">
-                              <MoreVertical className="h-4 w-4" />
-                            </Button>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                                  <MoreVertical className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem
+                                  onClick={() => {
+                                    const chooseTxRef = (tx: any): string | undefined => {
+                                      if (!tx) return undefined;
+                                      if (typeof tx.transactionId === 'string' && /^L\d+$/.test(tx.transactionId)) return tx.transactionId;
+                                      if (typeof tx.id === 'number') return `L${tx.id}`;
+                                      if (typeof tx.externalId === 'string' && /^L\d+$/.test(tx.externalId)) return tx.externalId;
+                                      return undefined;
+                                    };
+                                    const ref = chooseTxRef(transaction);
+                                    if (!ref) {
+                                      alert('No valid transaction reference found for this row');
+                                      return;
+                                    }
+                                    router.push(`/clients/${clientId}/loans/${loanId}/journal-entries?transactionId=${encodeURIComponent(ref)}`);
+                                  }}
+                                >
+                                  View Journal Entry
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                           </TableCell>
                         </TableRow>
                       ))
