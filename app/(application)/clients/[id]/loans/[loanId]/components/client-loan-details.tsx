@@ -14,7 +14,7 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { toast } from "@/components/ui/use-toast";
-import { AlertCircle, Download, MoreVertical, X, ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight, Edit, Flag, Plus, Heart, Coins, RotateCcw, Calendar, ChevronRight as ChevronRightIcon, User, Building, Phone, Mail, CreditCard, TrendingUp, Clock, FileText, Shield, DollarSign, Percent, CalendarDays, Settings, Trash2 } from "lucide-react";
+import { AlertCircle, Download, MoreVertical, X, ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight, Edit, Flag, Plus, Heart, Coins, RotateCcw, Calendar, ChevronRight as ChevronRightIcon, User, Building, Phone, Mail, CreditCard, TrendingUp, Clock, FileText, Shield, DollarSign, Percent, CalendarDays, Settings, Trash2, StickyNote } from "lucide-react";
 import { ClientTransactions } from "../../../components/client-transactions";
 import { RepaymentModal } from "./repayment-modal";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -363,6 +363,10 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
     description: "",
     file: null as File | null,
   });
+  const [notes, setNotes] = useState<any[]>([]);
+  const [loadingNotes, setLoadingNotes] = useState(false);
+  const [submittingNote, setSubmittingNote] = useState(false);
+  const [showEditNote, setShowEditNote] = useState(false);
   const [rescheduleForm, setRescheduleForm] = useState({
     rescheduleFromDate: new Date().toISOString().split('T')[0], // Today's date
     rescheduleReasonId: "",
@@ -449,6 +453,13 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
   useEffect(() => {
     if (activeTab === "loan-documents" && loan) {
       fetchDocuments();
+    }
+  }, [activeTab, loan]);
+
+  // Fetch notes data when notes tab is active
+  useEffect(() => {
+    if (activeTab === "notes" && loan) {
+      fetchNotes();
     }
   }, [activeTab, loan]);
 
@@ -1108,6 +1119,256 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
       });
     } finally {
       setSubmittingDocument(false);
+    }
+  };
+
+  // Fetch notes for the loan
+  const fetchNotes = async () => {
+    setLoadingNotes(true);
+    try {
+      const response = await fetch(`/api/fineract/loans/${loanId}/notes`);
+      if (response.ok) {
+        const data = await response.json();
+        setNotes(Array.isArray(data) ? data : []);
+      } else {
+        const errorData = await response.json();
+        console.error("Failed to fetch notes:", errorData);
+        
+        // Extract and show user-friendly error message
+        let errorMessage = "Failed to fetch notes";
+        if (errorData.defaultUserMessage) {
+          errorMessage = errorData.defaultUserMessage;
+        } else if (errorData.errors && errorData.errors.length > 0 && errorData.errors[0].defaultUserMessage) {
+          errorMessage = errorData.errors[0].defaultUserMessage;
+        } else if (errorData.error) {
+          errorMessage = errorData.error;
+        }
+        
+        // Show error to user (log for now)
+        console.warn("Notes fetch error:", errorMessage);
+        setNotes([]);
+      }
+    } catch (error) {
+      console.error("Error fetching notes:", error);
+      setNotes([]);
+    } finally {
+      setLoadingNotes(false);
+    }
+  };
+
+  // Add new note
+  const handleAddNote = async (noteText: string) => {
+    if (!noteText.trim()) {
+      toast({
+        title: "Validation Error",
+        description: "Please enter a note",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setSubmittingNote(true);
+    try {
+      const response = await fetch(`/api/fineract/loans/${loanId}/notes`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ note: noteText.trim() }),
+      });
+
+      if (response.ok) {
+        // Refresh notes list
+        fetchNotes();
+        // Show success notification
+        toast({
+          title: "Success",
+          description: "Note added successfully!",
+          variant: "success",
+        });
+      } else {
+        // Handle error response
+        let errorData: any = {};
+        let errorMessage = "Failed to add note";
+        
+        try {
+          const contentType = response.headers.get('content-type') || '';
+          if (contentType.includes('application/json')) {
+            errorData = await response.json();
+            console.error("Failed to add note:", errorData);
+            
+            if (errorData.defaultUserMessage) {
+              errorMessage = errorData.defaultUserMessage;
+            } else if (errorData.errors && errorData.errors.length > 0 && errorData.errors[0].defaultUserMessage) {
+              errorMessage = errorData.errors[0].defaultUserMessage;
+            } else if (errorData.error) {
+              errorMessage = errorData.error;
+            }
+          } else {
+            const responseText = await response.text();
+            console.error("Failed to add note (non-JSON):", response.status, response.statusText, responseText);
+            errorMessage = `Add note failed: ${response.status} ${response.statusText}`;
+          }
+        } catch (parseError) {
+          console.error("Error parsing add note response:", parseError);
+          errorMessage = `Add note failed: ${response.status} ${response.statusText}`;
+        }
+        
+        // Show error notification
+        toast({
+          title: "Error",
+          description: errorMessage,
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error("Error adding note:", error);
+      toast({
+        title: "Error",
+        description: "An unexpected error occurred while adding note",
+        variant: "destructive",
+      });
+    } finally {
+      setSubmittingNote(false);
+    }
+  };
+
+  // Edit note
+  const handleEditNote = async (noteId: string, noteText: string) => {
+    if (!noteText.trim()) {
+      toast({
+        title: "Validation Error",
+        description: "Please enter a note",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setSubmittingNote(true);
+    try {
+      const response = await fetch(`/api/fineract/loans/${loanId}/notes/${noteId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ note: noteText.trim() }),
+      });
+
+      if (response.ok) {
+        setShowEditNote(false);
+        setEditingNote(null);
+        setEditNoteText("");
+        // Refresh notes list
+        fetchNotes();
+        // Show success notification
+        toast({
+          title: "Success",
+          description: "Note updated successfully!",
+          variant: "success",
+        });
+      } else {
+        // Handle error response
+        let errorData: any = {};
+        let errorMessage = "Failed to update note";
+        
+        try {
+          const contentType = response.headers.get('content-type') || '';
+          if (contentType.includes('application/json')) {
+            errorData = await response.json();
+            console.error("Failed to update note:", errorData);
+            
+            if (errorData.defaultUserMessage) {
+              errorMessage = errorData.defaultUserMessage;
+            } else if (errorData.errors && errorData.errors.length > 0 && errorData.errors[0].defaultUserMessage) {
+              errorMessage = errorData.errors[0].defaultUserMessage;
+            } else if (errorData.error) {
+              errorMessage = errorData.error;
+            }
+          } else {
+            const responseText = await response.text();
+            console.error("Failed to update note (non-JSON):", response.status, response.statusText, responseText);
+            errorMessage = `Update note failed: ${response.status} ${response.statusText}`;
+          }
+        } catch (parseError) {
+          console.error("Error parsing update note response:", parseError);
+          errorMessage = `Update note failed: ${response.status} ${response.statusText}`;
+        }
+        
+        // Show error notification
+        toast({
+          title: "Error",
+          description: errorMessage,
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error("Error updating note:", error);
+      toast({
+        title: "Error",
+        description: "An unexpected error occurred while updating note",
+        variant: "destructive",
+      });
+    } finally {
+      setSubmittingNote(false);
+    }
+  };
+
+  // Delete note with confirmation
+  const handleDeleteNote = async (noteId: string, noteText: string) => {
+    // Simple confirmation dialog
+    const confirmed = window.confirm(`Are you sure you want to delete this note? "${noteText.substring(0, 50)}${noteText.length > 50 ? '...' : ''}"\n\nThis action cannot be undone.`);
+    
+    if (!confirmed) return;
+    
+    try {
+      const response = await fetch(`/api/fineract/loans/${loanId}/notes/${noteId}`, {
+        method: "DELETE",
+      });
+      
+      if (response.ok) {
+        // Refresh notes list
+        fetchNotes();
+        toast({
+          title: "Success",
+          description: "Note deleted successfully!",
+          variant: "success",
+        });
+      } else {
+        let errorData: any = {};
+        let errorMessage = "Failed to delete note";
+        
+        try {
+          const contentType = response.headers.get('content-type') || '';
+          if (contentType.includes('application/json')) {
+            errorData = await response.json();
+            console.error("Failed to delete note:", errorData);
+            
+            if (errorData.defaultUserMessage) {
+              errorMessage = errorData.defaultUserMessage;
+            } else if (errorData.errors && errorData.errors.length > 0 && errorData.errors[0].defaultUserMessage) {
+              errorMessage = errorData.errors[0].defaultUserMessage;
+            } else if (errorData.error) {
+              errorMessage = errorData.error;
+            }
+          } else {
+            const responseText = await response.text();
+            console.error("Failed to delete note (non-JSON):", response.status, response.statusText, responseText);
+            errorMessage = `Delete note failed: ${response.status} ${response.statusText}`;
+          }
+        } catch (parseError) {
+          console.error("Error parsing delete note response:", parseError);
+          errorMessage = `Delete note failed: ${response.status} ${response.statusText}`;
+        }
+        
+        toast({
+          title: "Error",
+          description: errorMessage,
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error("Error deleting note:", error);
+      toast({
+        title: "Error",
+        description: "An unexpected error occurred while deleting note",
+        variant: "destructive",
+      });
     }
   };
 
@@ -2335,6 +2596,12 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                       onChange={(e) => setNewNote(e.target.value)}
                       placeholder="Write a note ..."
                       className="w-full px-3 py-2 border-b-2 border-blue-500 bg-transparent focus:outline-none focus:border-blue-600"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && newNote.trim() && !submittingNote) {
+                          handleAddNote(newNote);
+                          setNewNote("");
+                        }
+                      }}
                     />
                     {!newNote && (
                       <p className="text-sm text-muted-foreground text-center mt-1">
@@ -2343,55 +2610,59 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                     )}
                   </div>
                   <div className="flex items-center space-x-2">
-                    <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center">
-                      <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
-                        <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                      </svg>
-                    </div>
-                    <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center">
-                      <span className="text-white font-bold text-sm">G</span>
-                    </div>
                     <Button
                       onClick={() => {
-                        if (newNote.trim()) {
-                          console.log("Adding note:", newNote);
+                        if (newNote.trim() && !submittingNote) {
+                          handleAddNote(newNote);
                           setNewNote("");
                         }
                       }}
-                      disabled={!newNote.trim()}
+                      disabled={!newNote.trim() || submittingNote}
                       className="bg-gray-300 text-gray-700 border border-gray-400 hover:bg-gray-400"
                     >
-                      + Add
+                      {submittingNote ? "Adding..." : "+ Add"}
                     </Button>
                   </div>
                 </div>
               </div>
 
               {/* Notes List */}
-              <div className="space-y-4">
-                {loan.notes && loan.notes.length > 0 ? (
-                  loan.notes.map((note: any, index: number) => (
-                    <div key={index} className="flex items-start space-x-3 p-3 border rounded-lg">
+              {loadingNotes ? (
+                <div className="space-y-3">
+                  <Skeleton className="h-4 w-full" />
+                  <Skeleton className="h-4 w-3/4" />
+                  <Skeleton className="h-4 w-1/2" />
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {notes && notes.length > 0 ? (
+                    notes.map((note: any) => (
+                    <div key={note.id} className="flex items-start space-x-3 p-3 border rounded-lg">
                       <div className="w-2 h-2 bg-black rounded-full mt-2 flex-shrink-0"></div>
                       <div className="flex-1">
-                        {editingNote === index ? (
+                        {editingNote === note.id ? (
                           <div className="space-y-2">
                             <input
                               type="text"
                               value={editNoteText}
                               onChange={(e) => setEditNoteText(e.target.value)}
                               className="w-full px-2 py-1 border border-input bg-background rounded focus:outline-none focus:ring-2 focus:ring-ring"
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' && editNoteText.trim() && !submittingNote) {
+                                  handleEditNote(note.id, editNoteText);
+                                } else if (e.key === 'Escape') {
+                                  setEditingNote(null);
+                                  setEditNoteText("");
+                                }
+                              }}
                             />
                             <div className="flex space-x-2">
                               <Button
                                 size="sm"
-                                onClick={() => {
-                                  console.log("Saving edited note:", editNoteText);
-                                  setEditingNote(null);
-                                  setEditNoteText("");
-                                }}
+                                onClick={() => handleEditNote(note.id, editNoteText)}
+                                disabled={!editNoteText.trim() || submittingNote}
                               >
-                                Save
+                                {submittingNote ? "Saving..." : "Save"}
                               </Button>
                               <Button
                                 variant="outline"
@@ -2400,54 +2671,75 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                                   setEditingNote(null);
                                   setEditNoteText("");
                                 }}
+                                disabled={submittingNote}
                               >
                                 Cancel
                               </Button>
                             </div>
                           </div>
                         ) : (
-                          <div>
-                            <p className="text-sm">{note.content}</p>
-                            <div className="text-xs text-muted-foreground mt-1">
-                              <p>Created By: {note.createdBy}</p>
-                              <p>Date: {formatDate(note.createdOn)}</p>
+                          <>
+                            <p className="text-foreground">{note.note}</p>
+                            <div className="flex items-center gap-2 text-sm text-muted-foreground mt-1">
+                              <span>By {note.createdByUsername}</span>
+                              <span>•</span>
+                              <span>{new Date(note.createdOn).toLocaleDateString()} at {new Date(note.createdOn).toLocaleTimeString()}</span>
+                              {note.noteType && (
+                                <>
+                                  <span>•</span>
+                                  <Badge variant="secondary" className="text-xs">
+                                    {note.noteType.value}
+                                  </Badge>
+                                </>
+                              )}
+                              {note.loanTransactionId && (
+                                <>
+                                  <span>•</span>
+                                  <Badge variant="outline" className="text-xs">
+                                    Transaction #{note.loanTransactionId}
+                                  </Badge>
+                                </>
+                              )}
                             </div>
-                          </div>
+                          </>
                         )}
                       </div>
-                      <div className="flex space-x-1">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-8 w-8 p-0 bg-blue-500 text-white hover:bg-blue-600"
-                          onClick={() => {
-                            setEditingNote(index);
-                            setEditNoteText(note.content);
-                          }}
-                        >
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-8 w-8 p-0 bg-red-500 text-white hover:bg-red-600"
-                          onClick={() => {
-                            console.log("Deleting note:", note);
-                          }}
-                        >
-                          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1-1H9a1 1 0 00-1 1v3M4 7h16" />
-                          </svg>
-                        </Button>
-                      </div>
+                      {editingNote !== note.id && (
+                        <div className="flex space-x-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              setEditingNote(note.id);
+                              setEditNoteText(note.note);
+                            }}
+                            className="h-6 w-6 p-0"
+                            title="Edit note"
+                          >
+                            <Edit className="h-3 w-3" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleDeleteNote(note.id, note.note)}
+                            className="h-6 w-6 p-0 text-red-500 hover:text-red-700"
+                            title="Delete note"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   ))
-                ) : (
-                  <div className="text-center py-8 text-muted-foreground">
-                    No notes found
-                  </div>
-                )}
-              </div>
+                  ) : (
+                    <div className="text-center py-8 text-muted-foreground">
+                      <StickyNote className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                      <p>No notes found for this loan</p>
+                      <p className="text-sm mt-2">Add your first note above</p>
+                    </div>
+                  )}
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
