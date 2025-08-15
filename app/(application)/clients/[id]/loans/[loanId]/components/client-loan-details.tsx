@@ -469,6 +469,18 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
     bankNumber: '',
   });
 
+  // Charge-Off Modal state
+  const [showChargeOffModal, setShowChargeOffModal] = useState(false);
+  const [chargeOffTemplate, setChargeOffTemplate] = useState<any>(null);
+  const [isLoadingChargeOffTemplate, setIsLoadingChargeOffTemplate] = useState(false);
+  const [isSubmittingChargeOff, setIsSubmittingChargeOff] = useState(false);
+  const [chargeOffForm, setChargeOffForm] = useState({
+    transactionDate: '',
+    chargeOffReasonId: '',
+    externalId: '',
+    note: ''
+  });
+
   // Close actions menu when clicking outside
 
 
@@ -882,7 +894,7 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                 openPrepayLoanModal();
                 break;
               case 'charge-off':
-                console.log("Charge-Off");
+                openChargeOffModal();
                 break;
               case 're-age':
                 console.log("Re-Age");
@@ -2520,6 +2532,104 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
     setShowPrepayLoanModal(true);
     setShowPaymentDetails(false);
     fetchPrepayLoanTemplate();
+  };
+
+  // Fetch charge-off template
+  const fetchChargeOffTemplate = async () => {
+    if (!loanId) return;
+
+    setIsLoadingChargeOffTemplate(true);
+    try {
+      const response = await fetch(`/api/fineract/loans/${loanId}/transactions/charge-off-template`);
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.defaultUserMessage || errorData.error || 'Failed to fetch charge-off template');
+      }
+
+      const data = await response.json();
+      setChargeOffTemplate(data);
+
+      // Auto-populate form with template data
+      const today = new Date();
+      // Use ISO date for consistency and proper display
+      const todayISO = today.toISOString().split('T')[0];
+      const formattedDate = today.toLocaleDateString('en-GB', { 
+        day: '2-digit', 
+        month: 'long', 
+        year: 'numeric' 
+      });
+
+      setChargeOffForm({
+        transactionDate: formattedDate,
+        chargeOffReasonId: data.chargeOffReasonOptions?.[0]?.id || '',
+        externalId: '',
+        note: ''
+      });
+
+    } catch (error: any) {
+      console.error('Error fetching charge-off template:', error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to fetch charge-off template data",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoadingChargeOffTemplate(false);
+    }
+  };
+
+  // Handle charge-off submission
+  const handleSubmitChargeOff = async () => {
+    if (!chargeOffForm.transactionDate || !chargeOffForm.chargeOffReasonId || isSubmittingChargeOff) return;
+
+    setIsSubmittingChargeOff(true);
+    try {
+      const payload = {
+        transactionDate: chargeOffForm.transactionDate,
+        chargeOffReasonId: parseInt(chargeOffForm.chargeOffReasonId),
+        dateFormat: "dd MMMM yyyy",
+        locale: "en"
+      };
+
+      if (chargeOffForm.externalId) payload.externalId = chargeOffForm.externalId;
+      if (chargeOffForm.note) payload.note = chargeOffForm.note;
+
+      const response = await fetch(`/api/fineract/loans/${loanId}/transactions/charge-off`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.defaultUserMessage || errorData.error || 'Failed to execute charge-off');
+      }
+
+      toast({
+        title: "Success",
+        description: "Charge-off executed successfully",
+      });
+
+      setShowChargeOffModal(false);
+      // Refresh loan data
+      window.location.reload();
+
+    } catch (error: any) {
+      console.error('Error executing charge-off:', error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to execute charge-off",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmittingChargeOff(false);
+    }
+  };
+
+  // Open charge-off modal
+  const openChargeOffModal = () => {
+    setShowChargeOffModal(true);
+    fetchChargeOffTemplate();
   };
 
   if (loading) {
@@ -4760,6 +4870,116 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
               disabled={!prepayLoanForm.transactionDate || !prepayLoanForm.transactionAmount || isSubmittingPrepayLoan || isLoadingPrepayTemplate}
             >
               {isSubmittingPrepayLoan ? "Processing..." : "Submit"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Charge-Off Modal */}
+      <Dialog open={showChargeOffModal} onOpenChange={setShowChargeOffModal}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Charge-Off</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            {isLoadingChargeOffTemplate ? (
+              <div className="space-y-4">
+                <Skeleton className="h-10 w-full" />
+                <Skeleton className="h-10 w-full" />
+                <Skeleton className="h-10 w-full" />
+                <Skeleton className="h-20 w-full" />
+              </div>
+            ) : (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="chargeOffTransactionDate">Transaction Date *</Label>
+                  <Input
+                    id="chargeOffTransactionDate"
+                    type="date"
+                    value={chargeOffForm.transactionDate ? (() => {
+                      // If it's already in dd Month yyyy format, convert to yyyy-mm-dd for input
+                      if (chargeOffForm.transactionDate.includes(' ')) {
+                        const date = new Date(chargeOffForm.transactionDate);
+                        return date.toISOString().split('T')[0];
+                      } else {
+                        // If it's already in yyyy-mm-dd format, use as is
+                        return chargeOffForm.transactionDate;
+                      }
+                    })() : new Date().toISOString().split('T')[0]}
+                    onChange={(e) => {
+                      const date = new Date(e.target.value);
+                      const formattedDate = date.toLocaleDateString('en-GB', { 
+                        day: '2-digit', 
+                        month: 'long', 
+                        year: 'numeric' 
+                      });
+                      setChargeOffForm(prev => ({ ...prev, transactionDate: formattedDate }));
+                    }}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="chargeOffReason">Reason for Charge-Off *</Label>
+                  <Select
+                    value={chargeOffForm.chargeOffReasonId}
+                    onValueChange={(value) => setChargeOffForm(prev => ({ ...prev, chargeOffReasonId: value }))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select reason for charge-off" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {chargeOffTemplate?.chargeOffReasonOptions?.map((reason: any) => (
+                        <SelectItem key={reason.id} value={reason.id.toString()}>
+                          {reason.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="chargeOffExternalId">External Id</Label>
+                  <Input
+                    id="chargeOffExternalId"
+                    value={chargeOffForm.externalId}
+                    onChange={(e) => setChargeOffForm(prev => ({ ...prev, externalId: e.target.value }))}
+                    placeholder="Enter external id"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="chargeOffNote">Note</Label>
+                  <textarea
+                    id="chargeOffNote"
+                    value={chargeOffForm.note}
+                    onChange={(e) => setChargeOffForm(prev => ({ ...prev, note: e.target.value }))}
+                    placeholder="Enter note"
+                    className="w-full min-h-[60px] p-2 border border-gray-300 rounded-md resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+              </>
+            )}
+          </div>
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                setShowChargeOffModal(false);
+                setChargeOffForm({
+                  transactionDate: '',
+                  chargeOffReasonId: '',
+                  externalId: '',
+                  note: ''
+                });
+              }}
+            >
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleSubmitChargeOff}
+              disabled={!chargeOffForm.transactionDate || !chargeOffForm.chargeOffReasonId || isSubmittingChargeOff}
+            >
+              {isSubmittingChargeOff ? "Processing..." : "Submit"}
             </Button>
           </DialogFooter>
         </DialogContent>
