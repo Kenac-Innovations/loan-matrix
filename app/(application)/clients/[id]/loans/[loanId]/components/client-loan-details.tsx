@@ -445,6 +445,30 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
     maturityDate: '',
   });
 
+  // Prepay Loan Modal State
+  const [showPrepayLoanModal, setShowPrepayLoanModal] = useState(false);
+  const [prepayLoanTemplate, setPrepayLoanTemplate] = useState<any>(null);
+  const [isLoadingPrepayTemplate, setIsLoadingPrepayTemplate] = useState(false);
+  const [isSubmittingPrepayLoan, setIsSubmittingPrepayLoan] = useState(false);
+  const [showPaymentDetails, setShowPaymentDetails] = useState(false);
+  const [prepayLoanForm, setPrepayLoanForm] = useState({
+    transactionDate: '',
+    principal: '',
+    interest: '',
+    fees: '',
+    penalties: '',
+    transactionAmount: '',
+    externalId: '',
+    paymentTypeId: '',
+    note: '',
+    // Payment details
+    accountNumber: '',
+    checkNumber: '',
+    routingCode: '',
+    receiptNumber: '',
+    bankNumber: '',
+  });
+
   // Close actions menu when clicking outside
 
 
@@ -855,7 +879,7 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                 openInterestPauseModal();
                 break;
               case 'prepay-loan':
-                console.log("Prepay Loan");
+                openPrepayLoanModal();
                 break;
               case 'charge-off':
                 console.log("Charge-Off");
@@ -2358,6 +2382,144 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
       endDate: formattedToday,
       maturityDate: maturityDate || '17 June 2026', // Default fallback
     });
+  };
+
+  // Handle Prepay Loan
+  const fetchPrepayLoanTemplate = async () => {
+    setIsLoadingPrepayTemplate(true);
+    try {
+      // Get today's date in the required format
+      const today = new Date();
+      const formattedDate = today.toLocaleDateString('en-GB', {
+        day: '2-digit',
+        month: 'long',
+        year: 'numeric'
+      });
+
+      const queryParams = new URLSearchParams({
+        command: 'prepayLoan',
+        transactionDate: formattedDate,
+        locale: 'en',
+        dateFormat: 'dd MMMM yyyy'
+      });
+
+      const response = await fetch(`/api/fineract/loans/${loanId}/transactions/template?${queryParams.toString()}`);
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.defaultUserMessage || 'Failed to fetch prepay loan template');
+      }
+
+      const data = await response.json();
+      setPrepayLoanTemplate(data);
+      
+      // Set default values from the template
+      setPrepayLoanForm({
+        transactionDate: formattedDate,
+        principal: data.principalPortion ? data.principalPortion.toString() : '',
+        interest: data.interestPortion ? data.interestPortion.toString() : '',
+        fees: data.feeChargesPortion ? data.feeChargesPortion.toString() : '',
+        penalties: data.penaltyChargesPortion ? data.penaltyChargesPortion.toString() : '',
+        transactionAmount: data.amount ? data.amount.toString() : '',
+        externalId: '',
+        paymentTypeId: data.paymentTypeOptions && data.paymentTypeOptions.length > 0 ? data.paymentTypeOptions[0].id.toString() : '',
+        note: '',
+        // Payment details
+        accountNumber: '',
+        checkNumber: '',
+        routingCode: '',
+        receiptNumber: '',
+        bankNumber: '',
+      });
+    } catch (error: any) {
+      console.error('Error fetching prepay loan template:', error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error.message || "Failed to fetch prepay loan template",
+      });
+    } finally {
+      setIsLoadingPrepayTemplate(false);
+    }
+  };
+
+  const handleSubmitPrepayLoan = async () => {
+    if (!prepayLoanForm.transactionDate || !prepayLoanForm.transactionAmount || isSubmittingPrepayLoan) return;
+
+    setIsSubmittingPrepayLoan(true);
+    try {
+      const payload: any = {
+        dateFormat: "dd MMMM yyyy",
+        locale: "en",
+        transactionDate: prepayLoanForm.transactionDate,
+        transactionAmount: parseFloat(prepayLoanForm.transactionAmount)
+      };
+
+      // Add optional fields if provided
+      if (prepayLoanForm.externalId) payload.externalId = prepayLoanForm.externalId;
+      if (prepayLoanForm.paymentTypeId) payload.paymentTypeId = parseInt(prepayLoanForm.paymentTypeId);
+      if (prepayLoanForm.note) payload.note = prepayLoanForm.note;
+
+      // Add payment details if provided
+      if (prepayLoanForm.accountNumber) payload.accountNumber = prepayLoanForm.accountNumber;
+      if (prepayLoanForm.checkNumber) payload.checkNumber = prepayLoanForm.checkNumber;
+      if (prepayLoanForm.routingCode) payload.routingCode = prepayLoanForm.routingCode;
+      if (prepayLoanForm.receiptNumber) payload.receiptNumber = prepayLoanForm.receiptNumber;
+      if (prepayLoanForm.bankNumber) payload.bankNumber = prepayLoanForm.bankNumber;
+
+      const response = await fetch(`/api/fineract/loans/${loanId}/transactions?command=repayment`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.defaultUserMessage || 'Failed to execute prepay loan');
+      }
+
+      toast({
+        title: "Success",
+        description: "Loan prepayment executed successfully",
+      });
+
+      setShowPrepayLoanModal(false);
+      setPrepayLoanForm({
+        transactionDate: '',
+        principal: '',
+        interest: '',
+        fees: '',
+        penalties: '',
+        transactionAmount: '',
+        externalId: '',
+        paymentTypeId: '',
+        note: '',
+        accountNumber: '',
+        checkNumber: '',
+        routingCode: '',
+        receiptNumber: '',
+        bankNumber: '',
+      });
+      setShowPaymentDetails(false);
+      // Refresh loan data if needed
+    } catch (error: any) {
+      console.error('Error executing prepay loan:', error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error.message || "Failed to execute prepay loan",
+      });
+    } finally {
+      setIsSubmittingPrepayLoan(false);
+    }
+  };
+
+  const openPrepayLoanModal = () => {
+    setShowPrepayLoanModal(true);
+    setShowPaymentDetails(false);
+    fetchPrepayLoanTemplate();
   };
 
   if (loading) {
@@ -4347,6 +4509,257 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
               disabled={!interestPauseForm.startDate || !interestPauseForm.endDate || isSubmittingInterestPause}
             >
               {isSubmittingInterestPause ? "Processing..." : "Submit"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Prepay Loan Modal */}
+      <Dialog open={showPrepayLoanModal} onOpenChange={setShowPrepayLoanModal}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Prepay Loan</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            {isLoadingPrepayTemplate ? (
+              <div className="space-y-4">
+                <Skeleton className="h-4 w-full" />
+                <Skeleton className="h-10 w-full" />
+                <Skeleton className="h-10 w-full" />
+                <Skeleton className="h-10 w-full" />
+                <Skeleton className="h-10 w-full" />
+                <Skeleton className="h-10 w-full" />
+              </div>
+            ) : (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="prepayTransactionDate">Transaction Date *</Label>
+                  <Input
+                    id="prepayTransactionDate"
+                    type="date"
+                    value={prepayLoanForm.transactionDate ? 
+                      new Date(prepayLoanForm.transactionDate).toISOString().split('T')[0] : 
+                      new Date().toISOString().split('T')[0]
+                    }
+                    onChange={(e) => {
+                      const selectedDate = new Date(e.target.value);
+                      const formattedDate = selectedDate.toLocaleDateString('en-GB', {
+                        day: '2-digit',
+                        month: 'long',
+                        year: 'numeric'
+                      });
+                      setPrepayLoanForm(prev => ({ ...prev, transactionDate: formattedDate }));
+                    }}
+                  />
+                </div>
+
+                {/* Principal, Interest, Fees, Penalties - Read only */}
+                <div className="space-y-3">
+                  <div className="flex justify-between items-center">
+                    <Label className="text-sm font-medium text-gray-700">Principal</Label>
+                    <div className="text-lg font-semibold text-gray-900">
+                      {prepayLoanForm.principal ? parseFloat(prepayLoanForm.principal).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0.00'}
+                    </div>
+                  </div>
+                  
+                  <div className="flex justify-between items-center">
+                    <Label className="text-sm font-medium text-gray-700">Interest</Label>
+                    <div className="text-lg font-semibold text-gray-900">
+                      {prepayLoanForm.interest ? parseFloat(prepayLoanForm.interest).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0.00'}
+                    </div>
+                  </div>
+                  
+                  <div className="flex justify-between items-center">
+                    <Label className="text-sm font-medium text-gray-700">Fees</Label>
+                    <div className="text-lg font-semibold text-gray-900">
+                      {prepayLoanForm.fees ? parseFloat(prepayLoanForm.fees).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0.00'}
+                    </div>
+                  </div>
+                  
+                  <div className="flex justify-between items-center">
+                    <Label className="text-sm font-medium text-gray-700">Penalties</Label>
+                    <div className="text-lg font-semibold text-gray-900">
+                      {prepayLoanForm.penalties ? parseFloat(prepayLoanForm.penalties).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0.00'}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="prepayTransactionAmount">Transaction Amount * {prepayLoanTemplate?.currency?.code || 'USD'}</Label>
+                  <div className="flex items-center space-x-2">
+                    <span className="text-lg font-semibold">{prepayLoanTemplate?.currency?.displaySymbol || '$'}</span>
+                    <Input
+                      id="prepayTransactionAmount"
+                      type="number"
+                      step="0.01"
+                      value={prepayLoanForm.transactionAmount}
+                      onChange={(e) => setPrepayLoanForm(prev => ({ ...prev, transactionAmount: e.target.value }))}
+                      className="text-right font-semibold text-lg"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="prepayExternalId">External Id</Label>
+                  <Input
+                    id="prepayExternalId"
+                    value={prepayLoanForm.externalId}
+                    onChange={(e) => setPrepayLoanForm(prev => ({ ...prev, externalId: e.target.value }))}
+                    placeholder="Enter external ID"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="prepayPaymentType">Payment Type</Label>
+                  <Select
+                    value={prepayLoanForm.paymentTypeId}
+                    onValueChange={(value) => setPrepayLoanForm(prev => ({ ...prev, paymentTypeId: value }))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select payment type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {prepayLoanTemplate?.paymentTypeOptions?.map((paymentType: any) => (
+                        <SelectItem key={paymentType.id} value={paymentType.id.toString()}>
+                          {paymentType.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Show Payment Details Toggle */}
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    id="showPaymentDetails"
+                    checked={showPaymentDetails}
+                    onChange={(e) => setShowPaymentDetails(e.target.checked)}
+                    className="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500"
+                  />
+                  <Label htmlFor="showPaymentDetails" className="flex items-center space-x-2 cursor-pointer">
+                    <span className="w-4 h-4 bg-green-500 rounded-full"></span>
+                    <span>Show Payment Details</span>
+                  </Label>
+                </div>
+
+                {/* Payment Details Section */}
+                {showPaymentDetails && (
+                  <div className="space-y-4 p-4 bg-gray-50 rounded-lg border">
+                    <div className="flex items-center space-x-2 mb-4">
+                      <span className="w-4 h-4 bg-green-500 rounded-full"></span>
+                      <span className="font-medium">Show Payment Details</span>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="accountNumber">Account #</Label>
+                      <Input
+                        id="accountNumber"
+                        value={prepayLoanForm.accountNumber}
+                        onChange={(e) => setPrepayLoanForm(prev => ({ ...prev, accountNumber: e.target.value }))}
+                        placeholder="Enter account number"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="checkNumber">Cheque #</Label>
+                      <Input
+                        id="checkNumber"
+                        value={prepayLoanForm.checkNumber}
+                        onChange={(e) => setPrepayLoanForm(prev => ({ ...prev, checkNumber: e.target.value }))}
+                        placeholder="Enter cheque number"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="routingCode">Routing Code</Label>
+                      <Input
+                        id="routingCode"
+                        value={prepayLoanForm.routingCode}
+                        onChange={(e) => setPrepayLoanForm(prev => ({ ...prev, routingCode: e.target.value }))}
+                        placeholder="Enter routing code"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="receiptNumber">Receipt #</Label>
+                      <Input
+                        id="receiptNumber"
+                        value={prepayLoanForm.receiptNumber}
+                        onChange={(e) => setPrepayLoanForm(prev => ({ ...prev, receiptNumber: e.target.value }))}
+                        placeholder="Enter receipt number"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="bankNumber">Bank #</Label>
+                      <Input
+                        id="bankNumber"
+                        value={prepayLoanForm.bankNumber}
+                        onChange={(e) => setPrepayLoanForm(prev => ({ ...prev, bankNumber: e.target.value }))}
+                        placeholder="Enter bank number"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="prepayNote">Note</Label>
+                      <textarea
+                        id="prepayNote"
+                        value={prepayLoanForm.note}
+                        onChange={(e) => setPrepayLoanForm(prev => ({ ...prev, note: e.target.value }))}
+                        placeholder="Enter note"
+                        className="w-full min-h-[60px] p-2 border border-gray-300 rounded-md resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {!showPaymentDetails && (
+                  <div className="space-y-2">
+                    <Label htmlFor="prepayNoteSimple">Note</Label>
+                    <textarea
+                      id="prepayNoteSimple"
+                      value={prepayLoanForm.note}
+                      onChange={(e) => setPrepayLoanForm(prev => ({ ...prev, note: e.target.value }))}
+                      placeholder="Enter note"
+                      className="w-full min-h-[60px] p-2 border border-gray-300 rounded-md resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                setShowPrepayLoanModal(false);
+                setPrepayLoanForm({
+                  transactionDate: '',
+                  principal: '',
+                  interest: '',
+                  fees: '',
+                  penalties: '',
+                  transactionAmount: '',
+                  externalId: '',
+                  paymentTypeId: '',
+                  note: '',
+                  accountNumber: '',
+                  checkNumber: '',
+                  routingCode: '',
+                  receiptNumber: '',
+                  bankNumber: '',
+                });
+                setShowPaymentDetails(false);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSubmitPrepayLoan}
+              disabled={!prepayLoanForm.transactionDate || !prepayLoanForm.transactionAmount || isSubmittingPrepayLoan || isLoadingPrepayTemplate}
+            >
+              {isSubmittingPrepayLoan ? "Processing..." : "Submit"}
             </Button>
           </DialogFooter>
         </DialogContent>
