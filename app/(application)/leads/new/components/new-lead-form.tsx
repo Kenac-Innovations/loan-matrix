@@ -529,19 +529,19 @@ export function NewLeadForm() {
                     <div className="text-center py-8">
                       <p className="text-muted-foreground mb-4">No loan template data available</p>
                       <p className="text-sm text-muted-foreground">Please complete the Loan Details tab first to load the template data.</p>
-                      <Button 
+                  <Button
                         onClick={() => setActiveTab("loan")}
                         className="mt-2"
                       >
                         Go to Loan Details
-                      </Button>
-                    </div>
+                  </Button>
+                </div>
                   )}
-                </CardContent>
-              </Card>
-            </TabsContent>
+              </CardContent>
+            </Card>
+          </TabsContent>
 
-            {/* Additional Information Tab */}
+          {/* Additional Information Tab */}
           <TabsContent value="additional">
             <Card>
               <CardHeader>

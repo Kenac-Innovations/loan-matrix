@@ -397,7 +397,7 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
   const [newNote, setNewNote] = useState("");
   const [editingNote, setEditingNote] = useState<number | null>(null);
   const [editNoteText, setEditNoteText] = useState("");
-  const [showActionsMenu, setShowActionsMenu] = useState(false);
+
   const [showExportDialog, setShowExportDialog] = useState(false);
   const [exportDateRange, setExportDateRange] = useState({
     fromDate: new Date().toISOString().split('T')[0], // Today's date in YYYY-MM-DD format
@@ -405,21 +405,19 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
   });
   const [showRepaymentModal, setShowRepaymentModal] = useState(false);
   const [activeTab, setActiveTab] = useState("general");
+  
+  // Add Loan Charge Modal State
+  const [showAddChargeModal, setShowAddChargeModal] = useState(false);
+  const [chargeTemplate, setChargeTemplate] = useState<any>(null);
+  const [isLoadingChargeTemplate, setIsLoadingChargeTemplate] = useState(false);
+  const [isSubmittingCharge, setIsSubmittingCharge] = useState(false);
+  const [chargeForm, setChargeForm] = useState({
+    chargeId: '',
+    amount: '',
+  });
 
   // Close actions menu when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      const target = event.target as Element;
-      if (!target.closest('.actions-dropdown')) {
-        setShowActionsMenu(false);
-      }
-    };
 
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, []);
 
   // Fetch collateral data when collateral tab is active
   useEffect(() => {
@@ -462,6 +460,475 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
       fetchNotes();
     }
   }, [activeTab, loan]);
+
+  // Mount Loan Actions button to header container
+  useEffect(() => {
+    const container = document.getElementById('loan-actions-container');
+    if (container && loan) {
+      // Create the loan actions element with dropdown
+      const actionsDiv = document.createElement('div');
+      actionsDiv.className = 'relative';
+      actionsDiv.innerHTML = `
+        <button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2 shadow-sm" id="loan-actions-trigger">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
+            <circle cx="12" cy="12" r="3"/>
+          </svg>
+          <span>Loan Actions</span>
+        </button>
+        <div class="absolute top-full right-0 mt-2 w-56 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 hidden" id="loan-actions-dropdown">
+          <div class="py-2">
+            <button class="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 text-sm" data-action="add-charge">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M5 12h14"/>
+                <path d="M12 5v14"/>
+              </svg>
+              Add Loan Charge
+            </button>
+            <button class="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 text-sm" data-action="foreclosure">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+              </svg>
+              Foreclosure
+            </button>
+            <button class="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 text-sm" data-action="make-repayment">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 2v20m9-2-3-3m-6 3-3-3"/>
+              </svg>
+              Make Repayment
+            </button>
+            <button class="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 text-sm" data-action="undo-disbursal">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 7v6h6"/>
+                <path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/>
+              </svg>
+              Undo Disbursal
+            </button>
+            <button class="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 text-sm" data-action="add-interest-pause">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+                <line x1="16" y1="2" x2="16" y2="6"/>
+                <line x1="8" y1="2" x2="8" y2="6"/>
+                <line x1="3" y1="10" x2="21" y2="10"/>
+              </svg>
+              Add Interest Pause
+            </button>
+            <button class="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 text-sm" data-action="prepay-loan">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 2v20m9-2-3-3m-6 3-3-3"/>
+              </svg>
+              Prepay Loan
+            </button>
+            <button class="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 text-sm" data-action="charge-off">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 2v20m9-2-3-3m-6 3-3-3"/>
+              </svg>
+              Charge-Off
+            </button>
+            <button class="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 text-sm" data-action="re-age">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+                <line x1="16" y1="2" x2="16" y2="6"/>
+                <line x1="8" y1="2" x2="8" y2="6"/>
+                <line x1="3" y1="10" x2="21" y2="10"/>
+              </svg>
+              Re-Age
+            </button>
+            <button class="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 text-sm" data-action="re-amortize">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+                <line x1="16" y1="2" x2="16" y2="6"/>
+                <line x1="8" y1="2" x2="8" y2="6"/>
+                <line x1="3" y1="10" x2="21" y2="10"/>
+              </svg>
+              Re-Amortize
+            </button>
+            <div class="border-t border-gray-200 dark:border-gray-700 my-2"></div>
+            <div class="relative" id="payments-container">
+              <button class="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center justify-between text-sm" data-action="payments" id="payments-trigger">
+                <div class="flex items-center gap-2">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="12" y1="1" x2="12" y2="23"/>
+                    <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+                  </svg>
+                  Payments
+                </div>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="9,18 15,12 9,6"/>
+                </svg>
+              </button>
+              <!-- Payments Submenu -->
+              <div class="absolute right-full top-0 mr-2 w-56 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-[60]" id="payments-submenu" style="display: none;">
+                <div class="py-2">
+                  <button class="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 text-sm" data-action="goodwill-credit">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M12 2v20m9-2-3-3m-6 3-3-3"/>
+                    </svg>
+                    Goodwill Credit
+                  </button>
+                  <button class="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 text-sm" data-action="interest-payment-waiver">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M18 6L6 18M6 6l12 12"/>
+                    </svg>
+                    Interest Payment Waiver
+                  </button>
+                  <button class="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 text-sm" data-action="payout-refund">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M3 7v6h6"/>
+                      <path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/>
+                    </svg>
+                    Payout Refund
+                  </button>
+                  <button class="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 text-sm" data-action="merchant-issued-refund">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+                      <line x1="8" y1="21" x2="16" y2="21"/>
+                      <line x1="12" y1="17" x2="12" y2="21"/>
+                    </svg>
+                    Merchant Issued Refund
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div class="relative" id="more-container">
+              <button class="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center justify-between text-sm" data-action="more" id="more-trigger">
+                <div class="flex items-center gap-2">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="1"/>
+                    <circle cx="19" cy="12" r="1"/>
+                    <circle cx="5" cy="12" r="1"/>
+                  </svg>
+                  More
+                </div>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="9,18 15,12 9,6"/>
+                </svg>
+              </button>
+              <!-- More Submenu -->
+              <div class="absolute right-full top-0 mr-2 w-56 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-[60]" id="more-submenu" style="display: none;">
+                <div class="py-2">
+                  <button class="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 text-sm" data-action="waive-interest">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M18 6L6 18M6 6l12 12"/>
+                    </svg>
+                    Waive Interest
+                  </button>
+                  <button class="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 text-sm" data-action="reschedule">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+                      <line x1="16" y1="2" x2="16" y2="6"/>
+                      <line x1="8" y1="2" x2="8" y2="6"/>
+                      <line x1="3" y1="10" x2="21" y2="10"/>
+                    </svg>
+                    Reschedule
+                  </button>
+                  <button class="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 text-sm" data-action="write-off">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M18 6L6 18M6 6l12 12"/>
+                    </svg>
+                    Write Off
+                  </button>
+                  <button class="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 text-sm" data-action="close-as-rescheduled">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M20 6L9 17l-5-5"/>
+                    </svg>
+                    Close (as Rescheduled)
+                  </button>
+                  <button class="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 text-sm" data-action="close">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M18 6L6 18M6 6l12 12"/>
+                    </svg>
+                    Close
+                  </button>
+                  <button class="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 text-sm" data-action="loan-screen-report">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                      <polyline points="14,2 14,8 20,8"/>
+                    </svg>
+                    Loan Screen Report
+                  </button>
+                  <button class="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 text-sm" data-action="view-guarantors">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                      <circle cx="12" cy="7" r="4"/>
+                    </svg>
+                    View Guarantors
+                  </button>
+                  <button class="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 text-sm" data-action="create-guarantor">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
+                      <circle cx="9" cy="7" r="4"/>
+                      <path d="M22 21v-2a4 4 0 0 0-3-3.87"/>
+                      <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                    </svg>
+                    Create Guarantor
+                  </button>
+                  <button class="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 text-sm" data-action="recover-from-guarantor">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M3 7v6h6"/>
+                      <path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/>
+                    </svg>
+                    Recover From Guarantor
+                  </button>
+                  <button class="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 text-sm" data-action="sell-loan">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <line x1="12" y1="1" x2="12" y2="23"/>
+                      <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+                    </svg>
+                    Sell Loan
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+      
+      container.appendChild(actionsDiv);
+      
+              // Add click handlers
+        const button = container.querySelector('#loan-actions-trigger');
+        const dropdown = container.querySelector('#loan-actions-dropdown');
+        const paymentsSubmenu = container.querySelector('#payments-submenu');
+        const paymentsTrigger = container.querySelector('#payments-trigger');
+        const moreSubmenu = container.querySelector('#more-submenu');
+        const moreTrigger = container.querySelector('#more-trigger');
+
+        console.log('Elements found:', {
+          button: !!button,
+          dropdown: !!dropdown,
+          paymentsSubmenu: !!paymentsSubmenu,
+          paymentsTrigger: !!paymentsTrigger,
+          moreSubmenu: !!moreSubmenu,
+          moreTrigger: !!moreTrigger
+        });
+
+        if (button && dropdown) {
+          // Toggle dropdown on button click
+          button.addEventListener('click', (e) => {
+            e.stopPropagation();
+            dropdown.classList.toggle('hidden');
+            if (paymentsSubmenu) paymentsSubmenu.style.display = 'none';
+            if (moreSubmenu) moreSubmenu.style.display = 'none';
+          });
+
+          // Close dropdown when clicking outside
+          document.addEventListener('click', () => {
+            dropdown.classList.add('hidden');
+            if (paymentsSubmenu) paymentsSubmenu.style.display = 'none';
+            if (moreSubmenu) moreSubmenu.style.display = 'none';
+          });
+
+          // Handle payments submenu
+          if (paymentsTrigger && paymentsSubmenu) {
+            console.log('Setting up payments submenu events');
+            let submenuTimeout;
+            
+            // Show submenu on hover
+            paymentsTrigger.addEventListener('mouseenter', () => {
+              console.log('Payments hover - showing submenu');
+              clearTimeout(submenuTimeout);
+              paymentsSubmenu.style.display = 'block';
+            });
+            
+            // Hide submenu with delay
+            paymentsTrigger.addEventListener('mouseleave', () => {
+              submenuTimeout = setTimeout(() => {
+                paymentsSubmenu.style.display = 'none';
+              }, 200);
+            });
+
+            // Keep submenu visible when hovering over it
+            paymentsSubmenu.addEventListener('mouseenter', () => {
+              clearTimeout(submenuTimeout);
+            });
+
+            // Hide submenu when leaving it
+            paymentsSubmenu.addEventListener('mouseleave', () => {
+              paymentsSubmenu.style.display = 'none';
+            });
+
+            // Also show submenu on click for mobile/touch devices
+            paymentsTrigger.addEventListener('click', (e) => {
+              console.log('Payments clicked - toggling submenu');
+              e.preventDefault();
+              e.stopPropagation();
+              paymentsSubmenu.style.display = paymentsSubmenu.style.display === 'none' ? 'block' : 'none';
+            });
+          }
+
+          // Handle more submenu
+          if (moreTrigger && moreSubmenu) {
+            console.log('Setting up more submenu events');
+            let moreSubmenuTimeout;
+            
+            // Show submenu on hover
+            moreTrigger.addEventListener('mouseenter', () => {
+              console.log('More hover - showing submenu');
+              clearTimeout(moreSubmenuTimeout);
+              moreSubmenu.style.display = 'block';
+            });
+            
+            // Hide submenu with delay
+            moreTrigger.addEventListener('mouseleave', () => {
+              moreSubmenuTimeout = setTimeout(() => {
+                moreSubmenu.style.display = 'none';
+              }, 200);
+            });
+
+            // Keep submenu visible when hovering over it
+            moreSubmenu.addEventListener('mouseenter', () => {
+              clearTimeout(moreSubmenuTimeout);
+            });
+
+            // Hide submenu when leaving it
+            moreSubmenu.addEventListener('mouseleave', () => {
+              moreSubmenu.style.display = 'none';
+            });
+
+            // Also show submenu on click for mobile/touch devices
+            moreTrigger.addEventListener('click', (e) => {
+              console.log('More clicked - toggling submenu');
+              e.preventDefault();
+              e.stopPropagation();
+              moreSubmenu.style.display = moreSubmenu.style.display === 'none' ? 'block' : 'none';
+            });
+          }
+
+          // Handle action clicks
+          const actionButtons = dropdown.querySelectorAll('[data-action]');
+          actionButtons.forEach(actionBtn => {
+            actionBtn.addEventListener('click', (e) => {
+              e.stopPropagation();
+              const action = actionBtn.getAttribute('data-action');
+              
+              // Don't close dropdown for submenu triggers
+              if (action !== 'payments' && action !== 'more') {
+                dropdown.classList.add('hidden');
+                if (paymentsSubmenu) paymentsSubmenu.style.display = 'none';
+                if (moreSubmenu) moreSubmenu.style.display = 'none';
+              }
+
+              switch(action) {
+              case 'add-charge':
+                openAddChargeModal();
+                break;
+              case 'foreclosure':
+                console.log("Foreclosure");
+                break;
+              case 'make-repayment':
+                setShowRepaymentModal(true);
+                break;
+              case 'undo-disbursal':
+                console.log("Undo Disbursal");
+                break;
+              case 'add-interest-pause':
+                console.log("Add Interest Pause");
+                break;
+              case 'prepay-loan':
+                console.log("Prepay Loan");
+                break;
+              case 'charge-off':
+                console.log("Charge-Off");
+                break;
+              case 're-age':
+                console.log("Re-Age");
+                break;
+              case 're-amortize':
+                console.log("Re-Amortize");
+                break;
+              case 'payments':
+                // Submenu handled by hover events
+                break;
+              case 'goodwill-credit':
+                console.log("Goodwill Credit");
+                break;
+              case 'interest-payment-waiver':
+                console.log("Interest Payment Waiver");
+                break;
+              case 'payout-refund':
+                console.log("Payout Refund");
+                break;
+              case 'merchant-issued-refund':
+                console.log("Merchant Issued Refund");
+                break;
+              case 'more':
+                // Submenu handled by hover events
+                break;
+              case 'waive-interest':
+                console.log("Waive Interest");
+                break;
+              case 'reschedule':
+                console.log("Reschedule");
+                break;
+              case 'write-off':
+                console.log("Write Off");
+                break;
+              case 'close-as-rescheduled':
+                console.log("Close (as Rescheduled)");
+                break;
+              case 'close':
+                console.log("Close");
+                break;
+              case 'loan-screen-report':
+                console.log("Loan Screen Report");
+                break;
+              case 'view-guarantors':
+                console.log("View Guarantors");
+                break;
+              case 'create-guarantor':
+                console.log("Create Guarantor");
+                break;
+              case 'recover-from-guarantor':
+                console.log("Recover From Guarantor");
+                break;
+              case 'sell-loan':
+                console.log("Sell Loan");
+                break;
+              case 'view-journal':
+                // View Journal Entry logic
+                const parseTxDate = (d: any): number => {
+                  if (!d) return 0;
+                  if (typeof d === "string") return new Date(d).getTime();
+                  if (Array.isArray(d) && d.length === 3) {
+                    const [y, m, day] = d;
+                    return new Date(y, m - 1, day).getTime();
+                  }
+                  return 0;
+                };
+                const latestTx = (loan?.transactions || []).reduce((latest: any, curr: any) => {
+                  return parseTxDate(curr?.date) > parseTxDate(latest?.date) ? curr : latest;
+                }, null as any);
+                const chooseTxRef = (tx: any): string | undefined => {
+                  if (!tx) return undefined;
+                  if (typeof tx.transactionId === 'string' && /^L\\\\d+$/.test(tx.transactionId)) return tx.transactionId;
+                  if (typeof tx.id === 'number') return 'L' + tx.id;
+                  if (typeof tx.externalId === 'string' && /^L\\\\d+$/.test(tx.externalId)) return tx.externalId;
+                  return undefined;
+                };
+                let txExternalId = chooseTxRef(latestTx);
+                if (!txExternalId) {
+                  alert('No transaction found with an externalId to view journal entries.');
+                  return;
+                }
+                let txParam = String(txExternalId);
+                const url = '/clients/' + clientId + '/loans/' + loanId + '/journal-entries?transactionId=' + encodeURIComponent(txParam);
+                window.location.href = url;
+                break;
+            }
+          });
+        });
+      }
+    }
+    
+    // Cleanup function
+    return () => {
+      const container = document.getElementById('loan-actions-container');
+      if (container) {
+        container.innerHTML = '';
+      }
+    };
+  }, [loan, clientId, loanId, setShowRepaymentModal]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -1540,6 +2007,90 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
     });
   };
 
+  // Handle Add Loan Charge
+  const fetchChargeTemplate = async () => {
+    setIsLoadingChargeTemplate(true);
+    try {
+      const response = await fetch(`/api/fineract/loans/${loanId}/charges/template`);
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.defaultUserMessage || 'Failed to fetch charge template');
+      }
+
+      const data = await response.json();
+      setChargeTemplate(data);
+      
+      // Set default values if available
+      if (data.chargeOptions && data.chargeOptions.length > 0) {
+        const firstCharge = data.chargeOptions[0];
+        setChargeForm({
+          chargeId: firstCharge.id.toString(),
+          amount: firstCharge.amount ? firstCharge.amount.toString() : '',
+        });
+      }
+    } catch (error: any) {
+      console.error('Error fetching charge template:', error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error.message || "Failed to fetch charge template",
+      });
+    } finally {
+      setIsLoadingChargeTemplate(false);
+    }
+  };
+
+  const handleSubmitCharge = async () => {
+    if (!chargeForm.chargeId || !chargeForm.amount || isSubmittingCharge) return;
+
+    setIsSubmittingCharge(true);
+    try {
+      const payload = {
+        chargeId: parseInt(chargeForm.chargeId),
+        amount: parseFloat(chargeForm.amount),
+        dateFormat: "dd MMMM yyyy",
+        locale: "en"
+      };
+
+      const response = await fetch(`/api/fineract/loans/${loanId}/charges`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.defaultUserMessage || 'Failed to add loan charge');
+      }
+
+      toast({
+        title: "Success",
+        description: "Loan charge added successfully",
+      });
+
+      setShowAddChargeModal(false);
+      setChargeForm({ chargeId: '', amount: '' });
+      // Refresh loan data if needed
+    } catch (error: any) {
+      console.error('Error adding loan charge:', error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error.message || "Failed to add loan charge",
+      });
+    } finally {
+      setIsSubmittingCharge(false);
+    }
+  };
+
+  const openAddChargeModal = () => {
+    setShowAddChargeModal(true);
+    fetchChargeTemplate();
+  };
+
   if (loading) {
     return (
       <div className="space-y-8">
@@ -1572,144 +2123,8 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
   }
 
   return (
-    <div className="space-y-8">
-      {/* Loan Actions */}
-      <div className="flex justify-end">
-        <div className="relative actions-dropdown">
-          <Button
-            variant="outline"
-            onClick={() => setShowActionsMenu(!showActionsMenu)}
-            className="flex items-center space-x-2 shadow-sm"
-          >
-            <MoreVertical className="h-4 w-4" />
-            <span>Loan Actions</span>
-          </Button>
+    <div className="space-y-6">
 
-          {showActionsMenu && (
-            <div className="absolute top-full right-0 mt-2 w-64 bg-card border rounded-xl shadow-lg z-50">
-              <div className="py-2">
-                <button
-                  onClick={() => {
-                    console.log("Add Loan Charge");
-                    setShowActionsMenu(false);
-                  }}
-                  className="w-full px-4 py-3 text-left hover:bg-accent flex items-center space-x-3 text-foreground transition-colors"
-                >
-                  <Plus className="h-4 w-4 text-muted-foreground" />
-                  <span>Add Loan Charge</span>
-                </button>
-
-                <button
-                  onClick={() => {
-                    console.log("Foreclosure");
-                    setShowActionsMenu(false);
-                  }}
-                  className="w-full px-4 py-3 text-left hover:bg-accent flex items-center space-x-3 text-foreground transition-colors"
-                >
-                  <Heart className="h-4 w-4 text-muted-foreground" />
-                  <span>Foreclosure</span>
-                </button>
-
-                <button
-                  onClick={() => {
-                    setShowRepaymentModal(true);
-                    setShowActionsMenu(false);
-                  }}
-                  className="w-full px-4 py-3 text-left hover:bg-accent flex items-center space-x-3 text-foreground transition-colors"
-                >
-                  <Coins className="h-4 w-4 text-muted-foreground" />
-                  <span>Make Repayment</span>
-                </button>
-
-                <button
-                  onClick={() => {
-                    console.log("Undo Disbursal");
-                    setShowActionsMenu(false);
-                  }}
-                  className="w-full px-4 py-3 text-left hover:bg-accent flex items-center space-x-3 text-foreground transition-colors"
-                >
-                  <RotateCcw className="h-4 w-4 text-muted-foreground" />
-                  <span>Undo Disbursal</span>
-                </button>
-
-                <button
-                  onClick={() => {
-                    console.log("Add Interest Pause");
-                    setShowActionsMenu(false);
-                  }}
-                  className="w-full px-4 py-3 text-left hover:bg-accent flex items-center space-x-3 text-foreground transition-colors"
-                >
-                  <Calendar className="h-4 w-4 text-muted-foreground" />
-                  <span>Add Interest Pause</span>
-                </button>
-
-                <button
-                  onClick={() => {
-                    console.log("Prepay Loan");
-                    setShowActionsMenu(false);
-                  }}
-                  className="w-full px-4 py-3 text-left hover:bg-accent flex items-center space-x-3 text-foreground transition-colors"
-                >
-                  <Coins className="h-4 w-4 text-muted-foreground" />
-                  <span>Prepay Loan</span>
-                </button>
-
-                <button
-                  onClick={() => {
-                    console.log("Charge-Off");
-                    setShowActionsMenu(false);
-                  }}
-                  className="w-full px-4 py-3 text-left hover:bg-accent flex items-center space-x-3 text-foreground transition-colors"
-                >
-                  <Coins className="h-4 w-4 text-muted-foreground" />
-                  <span>Charge-Off</span>
-                </button>
-
-                <button
-                  onClick={() => {
-                    console.log("View Journal Entry");
-                    setShowActionsMenu(false);
-                    // Determine latest transaction externalId to view its journal entries
-                    const parseTxDate = (d: any): number => {
-                      if (!d) return 0;
-                      if (typeof d === "string") return new Date(d).getTime();
-                      if (Array.isArray(d) && d.length === 3) {
-                        const [y, m, day] = d;
-                        return new Date(y, m - 1, day).getTime();
-                      }
-                      return 0;
-                    };
-                    const latestTx = (loan?.transactions || []).reduce((latest: any, curr: any) => {
-                      return parseTxDate(curr?.date) > parseTxDate(latest?.date) ? curr : latest;
-                    }, null as any);
-                    // Prefer Fineract transaction reference (e.g., L26). Fall back to numeric id with L prefix.
-                    const chooseTxRef = (tx: any): string | undefined => {
-                      if (!tx) return undefined;
-                      if (typeof tx.transactionId === 'string' && /^L\d+$/.test(tx.transactionId)) return tx.transactionId;
-                      if (typeof tx.id === 'number') return `L${tx.id}`;
-                      if (typeof tx.externalId === 'string' && /^L\d+$/.test(tx.externalId)) return tx.externalId; // only accept externalId that matches L\d+
-                      return undefined;
-                    };
-                    let txExternalId = chooseTxRef(latestTx);
-                    if (!txExternalId) {
-                      alert('No transaction found with an externalId to view journal entries.');
-                      return;
-                    }
-                    let txParam = String(txExternalId);
-                    // Navigate to journal entries page with transactionId as query param
-                    const url = `/clients/${clientId}/loans/${loanId}/journal-entries?transactionId=${encodeURIComponent(txParam)}`;
-                    window.location.href = url;
-                  }}
-                  className="w-full px-4 py-3 text-left hover:bg-accent flex items-center space-x-3 text-foreground transition-colors"
-                >
-                  <FileText className="h-4 w-4 text-muted-foreground" />
-                  <span>View Journal Entry</span>
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
 
       {/* Quick Stats Cards */}
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
@@ -1842,18 +2257,18 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
       </Card>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="grid w-full grid-cols-6 lg:grid-cols-12 bg-muted/50 p-1 rounded-lg">
-          <TabsTrigger value="general" className="rounded-md">General</TabsTrigger>
-          <TabsTrigger value="account-details" className="rounded-md">Account Details</TabsTrigger>
-          <TabsTrigger value="schedule" className="rounded-md">Repayment Schedule</TabsTrigger>
-          <TabsTrigger value="transactions" className="rounded-md">Transactions</TabsTrigger>
-          <TabsTrigger value="collateral" className="rounded-md">Collateral</TabsTrigger>
-          <TabsTrigger value="overdue-charges" className="rounded-md">Overdue</TabsTrigger>
-          <TabsTrigger value="charges" className="rounded-md">Charges</TabsTrigger>
-          <TabsTrigger value="loan-reschedules" className="rounded-md">Reschedules</TabsTrigger>
-          <TabsTrigger value="loan-documents" className="rounded-md">Documents</TabsTrigger>
-          <TabsTrigger value="notes" className="rounded-md">Notes</TabsTrigger>
-          <TabsTrigger value="timeline" className="rounded-md">Timeline</TabsTrigger>
+        <TabsList className="flex flex-wrap w-full bg-muted/50 p-1 rounded-lg gap-1">
+          <TabsTrigger value="general" className="rounded-md px-4 py-2 text-sm font-medium whitespace-nowrap">General</TabsTrigger>
+          <TabsTrigger value="account-details" className="rounded-md px-4 py-2 text-sm font-medium whitespace-nowrap">Account Details</TabsTrigger>
+          <TabsTrigger value="schedule" className="rounded-md px-4 py-2 text-sm font-medium whitespace-nowrap">Repayment Schedule</TabsTrigger>
+          <TabsTrigger value="transactions" className="rounded-md px-4 py-2 text-sm font-medium whitespace-nowrap">Transactions</TabsTrigger>
+          <TabsTrigger value="collateral" className="rounded-md px-4 py-2 text-sm font-medium whitespace-nowrap">Collateral</TabsTrigger>
+          <TabsTrigger value="overdue-charges" className="rounded-md px-4 py-2 text-sm font-medium whitespace-nowrap">Overdue</TabsTrigger>
+          <TabsTrigger value="charges" className="rounded-md px-4 py-2 text-sm font-medium whitespace-nowrap">Charges</TabsTrigger>
+          <TabsTrigger value="loan-reschedules" className="rounded-md px-4 py-2 text-sm font-medium whitespace-nowrap">Reschedules</TabsTrigger>
+          <TabsTrigger value="loan-documents" className="rounded-md px-4 py-2 text-sm font-medium whitespace-nowrap">Documents</TabsTrigger>
+          <TabsTrigger value="notes" className="rounded-md px-4 py-2 text-sm font-medium whitespace-nowrap">Notes</TabsTrigger>
+
         </TabsList>
 
         <TabsContent value="general" className="space-y-6">
@@ -2432,17 +2847,17 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                   <Skeleton className="h-4 w-1/2" />
                 </div>
               ) : (
-                <div className="rounded-md border">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>#</TableHead>
-                        <TableHead>From Date</TableHead>
-                        <TableHead>Reason</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
+              <div className="rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>#</TableHead>
+                      <TableHead>From Date</TableHead>
+                      <TableHead>Reason</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
                   <TableBody>
                     {reschedules && reschedules.length > 0 ? (
                       reschedules.map((reschedule: any, index: number) => (
@@ -2478,7 +2893,7 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                     )}
                   </TableBody>
                 </Table>
-                </div>
+              </div>
               )}
             </CardContent>
           </Card>
@@ -2510,29 +2925,29 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                   <Skeleton className="h-4 w-1/2" />
                 </div>
               ) : (
-                <div className="rounded-md border">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Name</TableHead>
-                        <TableHead>Description</TableHead>
-                        <TableHead>File Name</TableHead>
+              <div className="rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Description</TableHead>
+                      <TableHead>File Name</TableHead>
                         <TableHead>Size</TableHead>
                         <TableHead>Type</TableHead>
-                        <TableHead>Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
+                      <TableHead>Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
                       {documents && documents.length > 0 ? (
                         documents.map((document: any, index: number) => (
                           <TableRow key={document.id || index}>
-                            <TableCell className="font-medium">{document.name}</TableCell>
+                          <TableCell className="font-medium">{document.name}</TableCell>
                             <TableCell>{document.description || "N/A"}</TableCell>
-                            <TableCell>{document.fileName}</TableCell>
+                          <TableCell>{document.fileName}</TableCell>
                             <TableCell>{document.size ? `${(document.size / 1024).toFixed(1)} KB` : "N/A"}</TableCell>
                             <TableCell>{document.type || "N/A"}</TableCell>
-                            <TableCell>
-                              <div className="flex space-x-1">
+                          <TableCell>
+                            <div className="flex space-x-1">
                                 <Button 
                                   variant="outline" 
                                   size="sm" 
@@ -2540,8 +2955,8 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                                   onClick={() => handleDownloadDocument(document.id, document.fileName)}
                                   title="Download"
                                 >
-                                  <Download className="h-4 w-4" />
-                                </Button>
+                                <Download className="h-4 w-4" />
+                              </Button>
                                 <Button 
                                   variant="outline" 
                                   size="sm" 
@@ -2550,23 +2965,23 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                                   title="Delete"
                                 >
                                   <Trash2 className="h-4 w-4" />
-                                </Button>
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        ))
-                      ) : (
-                        <TableRow>
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    ) : (
+                      <TableRow>
                           <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
                             <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
                             <p>No documents found for this loan</p>
                             <p className="text-sm mt-2">Click "+ Add" to upload documents</p>
-                          </TableCell>
-                        </TableRow>
-                      )}
-                    </TableBody>
-                  </Table>
-                </div>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
               )}
             </CardContent>
           </Card>
@@ -2634,7 +3049,7 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                   <Skeleton className="h-4 w-1/2" />
                 </div>
               ) : (
-                <div className="space-y-4">
+              <div className="space-y-4">
                   {notes && notes.length > 0 ? (
                     notes.map((note: any) => (
                     <div key={note.id} className="flex items-start space-x-3 p-3 border rounded-lg">
@@ -2705,116 +3120,46 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                         )}
                       </div>
                       {editingNote !== note.id && (
-                        <div className="flex space-x-1">
-                          <Button
+                      <div className="flex space-x-1">
+                        <Button
                             variant="ghost"
-                            size="sm"
-                            onClick={() => {
+                          size="sm"
+                          onClick={() => {
                               setEditingNote(note.id);
                               setEditNoteText(note.note);
-                            }}
+                          }}
                             className="h-6 w-6 p-0"
                             title="Edit note"
-                          >
+                        >
                             <Edit className="h-3 w-3" />
-                          </Button>
-                          <Button
+                        </Button>
+                        <Button
                             variant="ghost"
-                            size="sm"
+                          size="sm"
                             onClick={() => handleDeleteNote(note.id, note.note)}
                             className="h-6 w-6 p-0 text-red-500 hover:text-red-700"
                             title="Delete note"
                           >
                             <Trash2 className="h-3 w-3" />
-                          </Button>
-                        </div>
+                        </Button>
+                      </div>
                       )}
                     </div>
                   ))
-                  ) : (
-                    <div className="text-center py-8 text-muted-foreground">
+                ) : (
+                  <div className="text-center py-8 text-muted-foreground">
                       <StickyNote className="h-12 w-12 mx-auto mb-4 opacity-50" />
                       <p>No notes found for this loan</p>
                       <p className="text-sm mt-2">Add your first note above</p>
-                    </div>
-                  )}
-                </div>
+                  </div>
+                )}
+              </div>
               )}
             </CardContent>
           </Card>
         </TabsContent>
 
-        <TabsContent value="timeline" className="space-y-6">
-          <Card className="border-0 shadow-sm">
-            <CardHeader className="pb-4">
-              <div className="flex items-center gap-3">
-                <div className="h-8 w-8 rounded-lg bg-gray-100 dark:bg-gray-900 flex items-center justify-center">
-                  <Clock className="h-4 w-4 text-gray-600 dark:text-gray-400" />
-                </div>
-                <div>
-                  <CardTitle>Timeline</CardTitle>
-                  <CardDescription>Loan timeline events</CardDescription>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground">Submitted On</p>
-                    <p className="text-lg">{formatDate(loan.timeline.submittedOnDate)}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground">Submitted By</p>
-                    <p className="text-lg">{loan.timeline.submittedByUsername}</p>
-                  </div>
-                  {loan.timeline.approvedOnDate && (
-                    <>
-                      <div>
-                        <p className="text-sm font-medium text-muted-foreground">Approved On</p>
-                        <p className="text-lg">{formatDate(loan.timeline.approvedOnDate)}</p>
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium text-muted-foreground">Approved By</p>
-                        <p className="text-lg">{loan.timeline.approvedByUsername}</p>
-                      </div>
-                    </>
-                  )}
-                  {loan.timeline.expectedDisbursementDate && (
-                    <div>
-                      <p className="text-sm font-medium text-muted-foreground">Expected Disbursement</p>
-                      <p className="text-lg">{formatDate(loan.timeline.expectedDisbursementDate)}</p>
-                    </div>
-                  )}
-                  {loan.timeline.actualDisbursementDate && (
-                    <div>
-                      <p className="text-sm font-medium text-muted-foreground">Actual Disbursement</p>
-                      <p className="text-lg">{formatDate(loan.timeline.actualDisbursementDate)}</p>
-                    </div>
-                  )}
-                  {loan.timeline.expectedMaturityDate && (
-                    <div>
-                      <p className="text-sm font-medium text-muted-foreground">Expected Maturity</p>
-                      <p className="text-lg">{formatDate(loan.timeline.expectedMaturityDate)}</p>
-                    </div>
-                  )}
-                  {loan.timeline.closedOnDate && (
-                    <>
-                      <div>
-                        <p className="text-sm font-medium text-muted-foreground">Closed On</p>
-                        <p className="text-lg">{formatDate(loan.timeline.closedOnDate)}</p>
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium text-muted-foreground">Closed By</p>
-                        <p className="text-lg">{loan.timeline.closedByUsername}</p>
-                      </div>
-                    </>
-                  )}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
+
       </Tabs>
 
       {/* Repayment Modal */}
@@ -3361,6 +3706,110 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
             <Button onClick={exportTransactionsToPDF} disabled={!exportDateRange.fromDate || !exportDateRange.toDate}>
               <Settings className="h-4 w-4 mr-2" />
               Generate Report
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Loan Charge Modal */}
+      <Dialog open={showAddChargeModal} onOpenChange={setShowAddChargeModal}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add Loan Charge</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            {isLoadingChargeTemplate ? (
+              <div className="space-y-4">
+                <Skeleton className="h-4 w-full" />
+                <Skeleton className="h-10 w-full" />
+                <Skeleton className="h-10 w-full" />
+                <Skeleton className="h-10 w-full" />
+              </div>
+            ) : (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="charge">Charge *</Label>
+                  <Select
+                    value={chargeForm.chargeId}
+                    onValueChange={(value) => {
+                      setChargeForm(prev => ({ ...prev, chargeId: value }));
+                      // Update amount based on selected charge
+                      const selectedCharge = chargeTemplate?.chargeOptions?.find((c: any) => c.id.toString() === value);
+                      if (selectedCharge?.amount) {
+                        setChargeForm(prev => ({ ...prev, amount: selectedCharge.amount.toString() }));
+                      }
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a charge" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {chargeTemplate?.chargeOptions?.map((charge: any) => (
+                        <SelectItem key={charge.id} value={charge.id.toString()}>
+                          {charge.name} ({charge.currency?.displaySymbol}{charge.amount})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="amount">Amount *</Label>
+                  <Input
+                    id="amount"
+                    type="number"
+                    step="0.01"
+                    value={chargeForm.amount}
+                    onChange={(e) => setChargeForm(prev => ({ ...prev, amount: e.target.value }))}
+                    placeholder="Enter amount"
+                  />
+                </div>
+
+                {/* Read-only fields */}
+                {chargeForm.chargeId && (() => {
+                  const selectedCharge = chargeTemplate?.chargeOptions?.find((c: any) => c.id.toString() === chargeForm.chargeId);
+                  return selectedCharge ? (
+                    <>
+                      <div className="space-y-2">
+                        <Label htmlFor="chargeCalculation">Charge Calculation</Label>
+                        <Input
+                          id="chargeCalculation"
+                          value={selectedCharge.chargeCalculationType?.value || '% Amount'}
+                          disabled
+                          className="bg-gray-100 cursor-not-allowed"
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="chargeTime">Charge Time</Label>
+                        <Input
+                          id="chargeTime"
+                          value={selectedCharge.chargeTimeType?.value || 'Disbursement'}
+                          disabled
+                          className="bg-gray-100 cursor-not-allowed"
+                        />
+                      </div>
+                    </>
+                  ) : null;
+                })()}
+              </>
+            )}
+          </div>
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                setShowAddChargeModal(false);
+                setChargeForm({ chargeId: '', amount: '' });
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSubmitCharge}
+              disabled={!chargeForm.chargeId || !chargeForm.amount || isSubmittingCharge || isLoadingChargeTemplate}
+            >
+              {isSubmittingCharge ? "Adding..." : "Submit"}
             </Button>
           </DialogFooter>
         </DialogContent>
