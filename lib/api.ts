@@ -26,12 +26,17 @@ export async function fetchFineractAPI(
     endpoint.startsWith("/") ? endpoint : `/${endpoint}`
   }`;
 
-  const headers = {
+  const headers: any = {
     ...options.headers,
     Authorization: `Basic ${accessToken}`,
     "Fineract-Platform-TenantId": "demo",
-    "Content-Type": "application/json",
   };
+
+  // Only set Content-Type to application/json if body is NOT FormData
+  // For FormData, let the browser set the correct Content-Type with boundary
+  if (!(options.body instanceof FormData)) {
+    headers["Content-Type"] = "application/json";
+  }
 
   try {
     let response;

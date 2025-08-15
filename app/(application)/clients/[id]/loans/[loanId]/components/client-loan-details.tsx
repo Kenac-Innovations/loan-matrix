@@ -13,7 +13,8 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { AlertCircle, Download, MoreVertical, X, ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight, Edit, Flag, Plus, Heart, Coins, RotateCcw, Calendar, ChevronRight as ChevronRightIcon, User, Building, Phone, Mail, CreditCard, TrendingUp, Clock, FileText, Shield, DollarSign, Percent, CalendarDays, Settings } from "lucide-react";
+import { toast } from "@/components/ui/use-toast";
+import { AlertCircle, Download, MoreVertical, X, ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight, Edit, Flag, Plus, Heart, Coins, RotateCcw, Calendar, ChevronRight as ChevronRightIcon, User, Building, Phone, Mail, CreditCard, TrendingUp, Clock, FileText, Shield, DollarSign, Percent, CalendarDays, Settings, Trash2 } from "lucide-react";
 import { ClientTransactions } from "../../../components/client-transactions";
 import { RepaymentModal } from "./repayment-modal";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -339,13 +340,43 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
   const [error, setError] = useState<string | null>(null);
   const [showAddCollateral, setShowAddCollateral] = useState(false);
   const [collateralForm, setCollateralForm] = useState({
-    collateralType: "",
+    collateralTypeId: "",
     value: "",
-    description: ""
+    description: "",
+    locale: "en"
   });
+  const [collaterals, setCollaterals] = useState<any[]>([]);
+  const [collateralTypes, setCollateralTypes] = useState<any[]>([]);
+  const [loadingCollaterals, setLoadingCollaterals] = useState(false);
+  const [submittingCollateral, setSubmittingCollateral] = useState(false);
   const [showReschedule, setShowReschedule] = useState(false);
+  const [reschedules, setReschedules] = useState<any[]>([]);
+  const [rescheduleReasons, setRescheduleReasons] = useState<any[]>([]);
+  const [loadingReschedules, setLoadingReschedules] = useState(false);
+  const [submittingReschedule, setSubmittingReschedule] = useState(false);
+  const [documents, setDocuments] = useState<any[]>([]);
+  const [loadingDocuments, setLoadingDocuments] = useState(false);
+  const [showUploadDocuments, setShowUploadDocuments] = useState(false);
+  const [submittingDocument, setSubmittingDocument] = useState(false);
+  const [documentForm, setDocumentForm] = useState({
+    fileName: "",
+    description: "",
+    file: null as File | null,
+  });
   const [rescheduleForm, setRescheduleForm] = useState({
-    rescheduleFromDate: "",
+    rescheduleFromDate: new Date().toISOString().split('T')[0], // Today's date
+    rescheduleReasonId: "",
+    rescheduleReasonComment: "",
+    submittedOnDate: new Date().toISOString().split('T')[0], // Today's date
+    adjustedDueDate: "",
+    extraTerms: "",
+    newInterestRate: "",
+    graceOnPrincipal: "",
+    graceOnInterest: "",
+    loanId: loanId.toString(),
+    locale: "en",
+    dateFormat: "dd MMMM yyyy",
+    // Legacy fields for form compatibility
     reason: "",
     submittedOn: "",
     comments: "",
@@ -358,12 +389,6 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
     numberOfNewRepayments: "",
     adjustInterestRate: false,
     newInterestRate: ""
-  });
-  const [showUploadDocuments, setShowUploadDocuments] = useState(false);
-  const [documentForm, setDocumentForm] = useState({
-    fileName: "",
-    description: "",
-    file: null as File | null
   });
   const [newNote, setNewNote] = useState("");
   const [editingNote, setEditingNote] = useState<number | null>(null);
@@ -391,6 +416,41 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, []);
+
+  // Fetch collateral data when collateral tab is active
+  useEffect(() => {
+    if (activeTab === "collateral" && loan) {
+      fetchCollaterals();
+    }
+  }, [activeTab, loan]);
+
+  // Fetch collateral template when add collateral modal opens
+  useEffect(() => {
+    if (showAddCollateral) {
+      fetchCollateralTemplate();
+    }
+  }, [showAddCollateral]);
+
+  // Fetch reschedule data when reschedule tab is active
+  useEffect(() => {
+    if (activeTab === "loan-reschedules" && loan) {
+      fetchReschedules();
+    }
+  }, [activeTab, loan]);
+
+  // Fetch reschedule template when reschedule modal opens
+  useEffect(() => {
+    if (showReschedule) {
+      fetchRescheduleTemplate();
+    }
+  }, [showReschedule]);
+
+  // Fetch documents data when documents tab is active
+  useEffect(() => {
+    if (activeTab === "loan-documents" && loan) {
+      fetchDocuments();
+    }
+  }, [activeTab, loan]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -462,6 +522,593 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
       style: "currency",
       currency: currencyCode,
     }).format(amount);
+  };
+
+  // Fetch collaterals for the loan
+  const fetchCollaterals = async () => {
+    setLoadingCollaterals(true);
+    try {
+      const response = await fetch(`/api/fineract/loans/${loanId}/collaterals`);
+      if (response.ok) {
+        const data = await response.json();
+        setCollaterals(Array.isArray(data) ? data : []);
+      } else {
+        const errorData = await response.json();
+        console.error("Failed to fetch collaterals:", errorData);
+        
+        // Extract and show user-friendly error message
+        let errorMessage = "Failed to fetch collaterals";
+        if (errorData.defaultUserMessage) {
+          errorMessage = errorData.defaultUserMessage;
+        } else if (errorData.errors && errorData.errors.length > 0 && errorData.errors[0].defaultUserMessage) {
+          errorMessage = errorData.errors[0].defaultUserMessage;
+        } else if (errorData.error) {
+          errorMessage = errorData.error;
+        }
+        
+        // Show error to user (you can replace alert with a proper toast notification)
+        console.warn("Collateral fetch error:", errorMessage);
+        setCollaterals([]);
+      }
+    } catch (error) {
+      console.error("Error fetching collaterals:", error);
+      setCollaterals([]);
+    } finally {
+      setLoadingCollaterals(false);
+    }
+  };
+
+  // Fetch collateral types template
+  const fetchCollateralTemplate = async () => {
+    try {
+      const response = await fetch(`/api/fineract/loans/${loanId}/collaterals/template`);
+      if (response.ok) {
+        const data = await response.json();
+        setCollateralTypes(data.allowedCollateralTypes || []);
+      } else {
+        const errorData = await response.json();
+        console.error("Failed to fetch collateral template:", errorData);
+        
+        // Extract and show user-friendly error message
+        let errorMessage = "Failed to fetch collateral template";
+        if (errorData.defaultUserMessage) {
+          errorMessage = errorData.defaultUserMessage;
+        } else if (errorData.errors && errorData.errors.length > 0 && errorData.errors[0].defaultUserMessage) {
+          errorMessage = errorData.errors[0].defaultUserMessage;
+        } else if (errorData.error) {
+          errorMessage = errorData.error;
+        }
+        
+        // Show error to user
+        console.warn("Collateral template fetch error:", errorMessage);
+        toast({
+          title: "Error",
+          description: errorMessage,
+          variant: "destructive",
+        });
+        setCollateralTypes([]);
+      }
+    } catch (error) {
+      console.error("Error fetching collateral template:", error);
+      toast({
+        title: "Error",
+        description: "An unexpected error occurred while fetching collateral types",
+        variant: "destructive",
+      });
+      setCollateralTypes([]);
+    }
+  };
+
+  // Submit new collateral
+  const handleSubmitCollateral = async () => {
+    if (!collateralForm.collateralTypeId || !collateralForm.value) {
+      return;
+    }
+
+    setSubmittingCollateral(true);
+    try {
+      const response = await fetch(`/api/fineract/loans/${loanId}/collaterals`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(collateralForm),
+      });
+
+      if (response.ok) {
+        setShowAddCollateral(false);
+        setCollateralForm({ 
+          collateralTypeId: "", 
+          value: "", 
+          description: "",
+          locale: "en"
+        });
+        // Refresh collaterals list
+        fetchCollaterals();
+        // Show success notification
+        toast({
+          title: "Success",
+          description: "Collateral added successfully!",
+          variant: "success",
+        });
+      } else {
+        // Handle error response
+        const errorData = await response.json();
+        console.error("Failed to create collateral:", errorData);
+        
+        // Extract error message for user
+        let errorMessage = "Failed to create collateral";
+        
+        if (errorData.defaultUserMessage) {
+          errorMessage = errorData.defaultUserMessage;
+        } else if (errorData.errors && errorData.errors.length > 0 && errorData.errors[0].defaultUserMessage) {
+          errorMessage = errorData.errors[0].defaultUserMessage;
+        } else if (errorData.error) {
+          errorMessage = errorData.error;
+        }
+        
+        // Show error notification
+        toast({
+          title: "Error",
+          description: errorMessage,
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error("Error creating collateral:", error);
+      toast({
+        title: "Error",
+        description: "An unexpected error occurred while creating collateral",
+        variant: "destructive",
+      });
+    } finally {
+      setSubmittingCollateral(false);
+    }
+  };
+
+  // Fetch reschedules for the loan
+  const fetchReschedules = async () => {
+    setLoadingReschedules(true);
+    try {
+      const response = await fetch(`/api/fineract/rescheduleloans?loanId=${loanId}`);
+      if (response.ok) {
+        const data = await response.json();
+        setReschedules(Array.isArray(data) ? data : []);
+      } else {
+        const errorData = await response.json();
+        console.error("Failed to fetch reschedules:", errorData);
+        
+        // Extract and show user-friendly error message
+        let errorMessage = "Failed to fetch reschedules";
+        if (errorData.defaultUserMessage) {
+          errorMessage = errorData.defaultUserMessage;
+        } else if (errorData.errors && errorData.errors.length > 0 && errorData.errors[0].defaultUserMessage) {
+          errorMessage = errorData.errors[0].defaultUserMessage;
+        } else if (errorData.error) {
+          errorMessage = errorData.error;
+        }
+        
+        // Show error to user (log for now, can be enhanced with toast later)
+        console.warn("Reschedule fetch error:", errorMessage);
+        setReschedules([]);
+      }
+    } catch (error) {
+      console.error("Error fetching reschedules:", error);
+      setReschedules([]);
+    } finally {
+      setLoadingReschedules(false);
+    }
+  };
+
+  // Fetch reschedule reasons template
+  const fetchRescheduleTemplate = async () => {
+    try {
+      const response = await fetch(`/api/fineract/rescheduleloans/template`);
+      if (response.ok) {
+        const data = await response.json();
+        setRescheduleReasons(data.rescheduleReasons || []);
+      } else {
+        const errorData = await response.json();
+        console.error("Failed to fetch reschedule template:", errorData);
+        
+        // Extract and show user-friendly error message
+        let errorMessage = "Failed to fetch reschedule template";
+        if (errorData.defaultUserMessage) {
+          errorMessage = errorData.defaultUserMessage;
+        } else if (errorData.errors && errorData.errors.length > 0 && errorData.errors[0].defaultUserMessage) {
+          errorMessage = errorData.errors[0].defaultUserMessage;
+        } else if (errorData.error) {
+          errorMessage = errorData.error;
+        }
+        
+        // Show error to user
+        console.warn("Reschedule template fetch error:", errorMessage);
+        toast({
+          title: "Error",
+          description: errorMessage,
+          variant: "destructive",
+        });
+        setRescheduleReasons([]);
+      }
+    } catch (error) {
+      console.error("Error fetching reschedule template:", error);
+      toast({
+        title: "Error",
+        description: "An unexpected error occurred while fetching reschedule reasons",
+        variant: "destructive",
+      });
+      setRescheduleReasons([]);
+    }
+  };
+
+  // Submit new reschedule
+  const handleSubmitReschedule = async () => {
+    if (!rescheduleForm.rescheduleFromDate || !rescheduleForm.rescheduleReasonId || !rescheduleForm.submittedOnDate) {
+      toast({
+        title: "Validation Error",
+        description: "Please fill in all required fields",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setSubmittingReschedule(true);
+    try {
+      // Convert dates to required format (dd MMMM yyyy)
+      const formatDateForAPI = (dateString: string) => {
+        const date = new Date(dateString);
+        return date.toLocaleDateString('en-GB', { 
+          day: '2-digit', 
+          month: 'long', 
+          year: 'numeric' 
+        });
+      };
+
+      const payload = {
+        loanId: rescheduleForm.loanId,
+        rescheduleFromDate: formatDateForAPI(rescheduleForm.rescheduleFromDate),
+        rescheduleReasonId: rescheduleForm.rescheduleReasonId,
+        rescheduleReasonComment: rescheduleForm.rescheduleReasonComment,
+        submittedOnDate: formatDateForAPI(rescheduleForm.submittedOnDate),
+        locale: rescheduleForm.locale,
+        dateFormat: rescheduleForm.dateFormat,
+        // Optional fields - include based on form checkboxes and values
+        ...(rescheduleForm.changeRepaymentDate && rescheduleForm.installmentRescheduledTo && { 
+          adjustedDueDate: formatDateForAPI(rescheduleForm.installmentRescheduledTo) 
+        }),
+        ...(rescheduleForm.extendRepaymentPeriod && rescheduleForm.numberOfNewRepayments && { 
+          extraTerms: rescheduleForm.numberOfNewRepayments 
+        }),
+        ...(rescheduleForm.introduceGracePeriods && rescheduleForm.principalGracePeriods && { 
+          graceOnPrincipal: rescheduleForm.principalGracePeriods 
+        }),
+        ...(rescheduleForm.introduceGracePeriods && rescheduleForm.interestGracePeriods && { 
+          graceOnInterest: rescheduleForm.interestGracePeriods 
+        }),
+        ...(rescheduleForm.adjustInterestRates && rescheduleForm.interestRate && { 
+          newInterestRate: rescheduleForm.interestRate 
+        }),
+      };
+
+      console.log("Reschedule payload being sent:", payload);
+      console.log("Form state:", rescheduleForm);
+
+      const response = await fetch(`/api/fineract/rescheduleloans?command=reschedule`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (response.ok) {
+        setShowReschedule(false);
+        setRescheduleForm({
+          rescheduleFromDate: new Date().toISOString().split('T')[0],
+          rescheduleReasonId: "",
+          rescheduleReasonComment: "",
+          submittedOnDate: new Date().toISOString().split('T')[0],
+          adjustedDueDate: "",
+          extraTerms: "",
+          newInterestRate: "",
+          graceOnPrincipal: "",
+          graceOnInterest: "",
+          loanId: loanId.toString(),
+          locale: "en",
+          dateFormat: "dd MMMM yyyy",
+          // Reset legacy fields
+          reason: "",
+          submittedOn: "",
+          comments: "",
+          changeRepaymentDate: false,
+          installmentRescheduledTo: "",
+          introduceGracePeriods: false,
+          principalGracePeriods: "",
+          interestGracePeriods: "",
+          extendRepaymentPeriod: false,
+          numberOfNewRepayments: "",
+          adjustInterestRates: false,
+          newInterestRateFromDate: "",
+          interestRate: ""
+        });
+        // Refresh reschedules list
+        fetchReschedules();
+        // Show success notification
+        toast({
+          title: "Success",
+          description: "Loan reschedule request submitted successfully!",
+          variant: "success",
+        });
+      } else {
+        // Handle error response
+        const errorData = await response.json();
+        console.error("Failed to create reschedule:", errorData);
+        
+        // Extract error message for user
+        let errorMessage = "Failed to create reschedule";
+        
+        if (errorData.defaultUserMessage) {
+          errorMessage = errorData.defaultUserMessage;
+        } else if (errorData.errors && errorData.errors.length > 0 && errorData.errors[0].defaultUserMessage) {
+          errorMessage = errorData.errors[0].defaultUserMessage;
+        } else if (errorData.error) {
+          errorMessage = errorData.error;
+        }
+        
+        // Show error notification
+        toast({
+          title: "Error",
+          description: errorMessage,
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error("Error creating reschedule:", error);
+      toast({
+        title: "Error",
+        description: "An unexpected error occurred while creating reschedule",
+        variant: "destructive",
+      });
+    } finally {
+      setSubmittingReschedule(false);
+    }
+  };
+
+  // Fetch documents for the loan
+  const fetchDocuments = async () => {
+    setLoadingDocuments(true);
+    try {
+      const response = await fetch(`/api/fineract/loans/${loanId}/documents`);
+      if (response.ok) {
+        const data = await response.json();
+        setDocuments(Array.isArray(data) ? data : []);
+      } else {
+        const errorData = await response.json();
+        console.error("Failed to fetch documents:", errorData);
+        
+        // Extract and show user-friendly error message
+        let errorMessage = "Failed to fetch documents";
+        if (errorData.defaultUserMessage) {
+          errorMessage = errorData.defaultUserMessage;
+        } else if (errorData.errors && errorData.errors.length > 0 && errorData.errors[0].defaultUserMessage) {
+          errorMessage = errorData.errors[0].defaultUserMessage;
+        } else if (errorData.error) {
+          errorMessage = errorData.error;
+        }
+        
+        // Show error to user (log for now)
+        console.warn("Documents fetch error:", errorMessage);
+        setDocuments([]);
+      }
+    } catch (error) {
+      console.error("Error fetching documents:", error);
+      setDocuments([]);
+    } finally {
+      setLoadingDocuments(false);
+    }
+  };
+
+  // Download document
+  const handleDownloadDocument = async (documentId: string, fileName: string) => {
+    try {
+      const response = await fetch(`/api/fineract/loans/${loanId}/documents/${documentId}/attachment`);
+      
+      if (response.ok) {
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        
+        toast({
+          title: "Success",
+          description: "Document downloaded successfully!",
+          variant: "success",
+        });
+      } else {
+        // Try to parse as JSON, but handle cases where it's not JSON
+        let errorData: any = {};
+        let errorMessage = "Failed to download document";
+        
+        try {
+          const contentType = response.headers.get('content-type') || '';
+          if (contentType.includes('application/json')) {
+            errorData = await response.json();
+            console.error("Failed to download document:", errorData);
+            
+            if (errorData.defaultUserMessage) {
+              errorMessage = errorData.defaultUserMessage;
+            } else if (errorData.errors && errorData.errors.length > 0 && errorData.errors[0].defaultUserMessage) {
+              errorMessage = errorData.errors[0].defaultUserMessage;
+            } else if (errorData.error) {
+              errorMessage = errorData.error;
+            }
+          } else {
+            // Not JSON response, use status text
+            const responseText = await response.text();
+            console.error("Failed to download document (non-JSON):", response.status, response.statusText, responseText);
+            errorMessage = `Download failed: ${response.status} ${response.statusText}`;
+          }
+        } catch (parseError) {
+          console.error("Error parsing download response:", parseError);
+          errorMessage = `Download failed: ${response.status} ${response.statusText}`;
+        }
+        
+        toast({
+          title: "Error",
+          description: errorMessage,
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error("Error downloading document:", error);
+      toast({
+        title: "Error",
+        description: "An unexpected error occurred while downloading the document",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Delete document with confirmation
+  const handleDeleteDocument = async (documentId: string, fileName: string) => {
+    // Simple confirmation dialog (you can replace with a proper modal)
+    const confirmed = window.confirm(`Are you sure you want to delete "${fileName}"? This action cannot be undone.`);
+    
+    if (!confirmed) return;
+    
+    try {
+      const response = await fetch(`/api/fineract/loans/${loanId}/documents/${documentId}`, {
+        method: "DELETE",
+      });
+      
+      if (response.ok) {
+        // Refresh documents list
+        fetchDocuments();
+        toast({
+          title: "Success",
+          description: "Document deleted successfully!",
+          variant: "success",
+        });
+      } else {
+        const errorData = await response.json();
+        console.error("Failed to delete document:", errorData);
+        
+        let errorMessage = "Failed to delete document";
+        if (errorData.defaultUserMessage) {
+          errorMessage = errorData.defaultUserMessage;
+        } else if (errorData.errors && errorData.errors.length > 0 && errorData.errors[0].defaultUserMessage) {
+          errorMessage = errorData.errors[0].defaultUserMessage;
+        } else if (errorData.error) {
+          errorMessage = errorData.error;
+        }
+        
+        toast({
+          title: "Error",
+          description: errorMessage,
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error("Error deleting document:", error);
+      toast({
+        title: "Error",
+        description: "An unexpected error occurred while deleting the document",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Submit new document
+  const handleSubmitDocument = async () => {
+    if (!documentForm.fileName || !documentForm.file) {
+      toast({
+        title: "Validation Error",
+        description: "Please provide a file name and select a file",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setSubmittingDocument(true);
+    try {
+      const formData = new FormData();
+      formData.append('name', documentForm.fileName);
+      formData.append('file', documentForm.file);
+      if (documentForm.description) {
+        formData.append('description', documentForm.description);
+      }
+
+      const response = await fetch(`/api/fineract/loans/${loanId}/documents`, {
+        method: "POST",
+        body: formData,
+      });
+
+      if (response.ok) {
+        setShowUploadDocuments(false);
+        setDocumentForm({ 
+          fileName: "", 
+          description: "", 
+          file: null 
+        });
+        // Refresh documents list
+        fetchDocuments();
+        // Show success notification
+        toast({
+          title: "Success",
+          description: "Document uploaded successfully!",
+          variant: "success",
+        });
+      } else {
+        // Handle error response
+        let errorData: any = {};
+        let errorMessage = "Failed to upload document";
+        
+        try {
+          const contentType = response.headers.get('content-type') || '';
+          if (contentType.includes('application/json')) {
+            errorData = await response.json();
+            console.error("Failed to upload document:", errorData);
+            
+            if (errorData.defaultUserMessage) {
+              errorMessage = errorData.defaultUserMessage;
+            } else if (errorData.errors && errorData.errors.length > 0 && errorData.errors[0].defaultUserMessage) {
+              errorMessage = errorData.errors[0].defaultUserMessage;
+            } else if (errorData.error) {
+              errorMessage = errorData.error;
+            }
+          } else {
+            // Not JSON response, use status text
+            const responseText = await response.text();
+            console.error("Failed to upload document (non-JSON):", response.status, response.statusText, responseText);
+            errorMessage = `Upload failed: ${response.status} ${response.statusText}`;
+          }
+        } catch (parseError) {
+          console.error("Error parsing upload response:", parseError);
+          errorMessage = `Upload failed: ${response.status} ${response.statusText}`;
+        }
+        
+        // Show error notification
+        toast({
+          title: "Error",
+          description: errorMessage,
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error("Error uploading document:", error);
+      toast({
+        title: "Error",
+        description: "An unexpected error occurred while uploading document",
+        variant: "destructive",
+      });
+    } finally {
+      setSubmittingDocument(false);
+    }
   };
 
   const exportTransactionsToPDF = () => {
@@ -1267,7 +1914,13 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
               </Button>
             </CardHeader>
             <CardContent>
-              {loan.collateral && loan.collateral.length > 0 ? (
+              {loadingCollaterals ? (
+                <div className="space-y-3">
+                  <Skeleton className="h-4 w-full" />
+                  <Skeleton className="h-4 w-3/4" />
+                  <Skeleton className="h-4 w-1/2" />
+                </div>
+              ) : collaterals && collaterals.length > 0 ? (
                 <div className="rounded-md border">
                   <Table>
                     <TableHeader>
@@ -1279,10 +1932,10 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {loan.collateral.map((item: any, index: number) => (
-                        <TableRow key={index}>
-                          <TableCell>{item.type}</TableCell>
-                          <TableCell>{formatCurrency(item.value, loan.currency.code)}</TableCell>
+                      {collaterals.map((item: any, index: number) => (
+                        <TableRow key={item.id || index}>
+                          <TableCell>{item.type?.name || item.collateralType?.name || "N/A"}</TableCell>
+                          <TableCell>{formatCurrency(item.value, loan?.currency?.code || "KES")}</TableCell>
                           <TableCell>{item.description || "N/A"}</TableCell>
                           <TableCell>
                             <Button variant="ghost" size="sm">
@@ -1296,6 +1949,7 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                 </div>
               ) : (
                 <div className="text-center py-8 text-muted-foreground">
+                  <Shield className="h-12 w-12 mx-auto mb-4 opacity-50" />
                   <p>No collateral found for this loan</p>
                   <p className="text-sm mt-2">Click "Add Collateral" to add collateral details</p>
                 </div>
@@ -1510,27 +2164,34 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
               </div>
             </CardHeader>
             <CardContent>
-              <div className="rounded-md border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>#</TableHead>
-                      <TableHead>From Date</TableHead>
-                      <TableHead>Reason</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
+              {loadingReschedules ? (
+                <div className="space-y-3">
+                  <Skeleton className="h-4 w-full" />
+                  <Skeleton className="h-4 w-3/4" />
+                  <Skeleton className="h-4 w-1/2" />
+                </div>
+              ) : (
+                <div className="rounded-md border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>#</TableHead>
+                        <TableHead>From Date</TableHead>
+                        <TableHead>Reason</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
                   <TableBody>
-                    {loan.reschedules && loan.reschedules.length > 0 ? (
-                      loan.reschedules.map((reschedule: any, index: number) => (
-                        <TableRow key={index}>
+                    {reschedules && reschedules.length > 0 ? (
+                      reschedules.map((reschedule: any, index: number) => (
+                        <TableRow key={reschedule.id || index}>
                           <TableCell>{index + 1}</TableCell>
-                          <TableCell>{formatDate(reschedule.fromDate)}</TableCell>
-                          <TableCell>{reschedule.reason}</TableCell>
+                          <TableCell>{formatDate(reschedule.rescheduleFromDate || reschedule.fromDate)}</TableCell>
+                          <TableCell>{reschedule.rescheduleReason?.name || reschedule.reason || "N/A"}</TableCell>
                           <TableCell>
-                            <Badge variant={reschedule.status === "Approved" ? "default" : "secondary"}>
-                              {reschedule.status || "Pending"}
+                            <Badge variant={reschedule.status?.value === "Approved" ? "default" : "secondary"}>
+                              {reschedule.status?.value || reschedule.status || "Pending"}
                             </Badge>
                           </TableCell>
                           <TableCell>
@@ -1548,13 +2209,16 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                     ) : (
                       <TableRow>
                         <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
-                          No reschedules found
+                          <Calendar className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                          <p>No reschedules found for this loan</p>
+                          <p className="text-sm mt-2">Click "Reschedule" to create a reschedule request</p>
                         </TableCell>
                       </TableRow>
                     )}
                   </TableBody>
                 </Table>
-              </div>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -1578,45 +2242,71 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
               </div>
             </CardHeader>
             <CardContent>
-              <div className="rounded-md border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Description</TableHead>
-                      <TableHead>File Name</TableHead>
-                      <TableHead>Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {loan.documents && loan.documents.length > 0 ? (
-                      loan.documents.map((document: any, index: number) => (
-                        <TableRow key={index}>
-                          <TableCell className="font-medium">{document.name}</TableCell>
-                          <TableCell>{document.description}</TableCell>
-                          <TableCell>{document.fileName}</TableCell>
-                          <TableCell>
-                            <div className="flex space-x-1">
-                              <Button variant="outline" size="sm" className="h-8 w-8 p-0 bg-blue-500 text-white hover:bg-blue-600">
-                                <Download className="h-4 w-4" />
-                              </Button>
-                              <Button variant="outline" size="sm" className="h-8 w-8 p-0 bg-red-500 text-white hover:bg-red-600">
-                                <X className="h-4 w-4" />
-                              </Button>
-                            </div>
+              {loadingDocuments ? (
+                <div className="space-y-3">
+                  <Skeleton className="h-4 w-full" />
+                  <Skeleton className="h-4 w-3/4" />
+                  <Skeleton className="h-4 w-1/2" />
+                </div>
+              ) : (
+                <div className="rounded-md border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Name</TableHead>
+                        <TableHead>Description</TableHead>
+                        <TableHead>File Name</TableHead>
+                        <TableHead>Size</TableHead>
+                        <TableHead>Type</TableHead>
+                        <TableHead>Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {documents && documents.length > 0 ? (
+                        documents.map((document: any, index: number) => (
+                          <TableRow key={document.id || index}>
+                            <TableCell className="font-medium">{document.name}</TableCell>
+                            <TableCell>{document.description || "N/A"}</TableCell>
+                            <TableCell>{document.fileName}</TableCell>
+                            <TableCell>{document.size ? `${(document.size / 1024).toFixed(1)} KB` : "N/A"}</TableCell>
+                            <TableCell>{document.type || "N/A"}</TableCell>
+                            <TableCell>
+                              <div className="flex space-x-1">
+                                <Button 
+                                  variant="outline" 
+                                  size="sm" 
+                                  className="h-8 w-8 p-0 bg-blue-500 text-white hover:bg-blue-600"
+                                  onClick={() => handleDownloadDocument(document.id, document.fileName)}
+                                  title="Download"
+                                >
+                                  <Download className="h-4 w-4" />
+                                </Button>
+                                <Button 
+                                  variant="outline" 
+                                  size="sm" 
+                                  className="h-8 w-8 p-0 bg-red-500 text-white hover:bg-red-600"
+                                  onClick={() => handleDeleteDocument(document.id, document.fileName)}
+                                  title="Delete"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      ) : (
+                        <TableRow>
+                          <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                            <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                            <p>No documents found for this loan</p>
+                            <p className="text-sm mt-2">Click "+ Add" to upload documents</p>
                           </TableCell>
                         </TableRow>
-                      ))
-                    ) : (
-                      <TableRow>
-                        <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
-                          No documents found
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -1875,18 +2565,17 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                 </label>
                 <select
                   id="collateral-type"
-                  value={collateralForm.collateralType}
-                  onChange={(e) => setCollateralForm({...collateralForm, collateralType: e.target.value})}
+                  value={collateralForm.collateralTypeId}
+                  onChange={(e) => setCollateralForm({...collateralForm, collateralTypeId: e.target.value})}
                   className="w-full px-3 py-2 border border-input bg-background rounded-md focus:outline-none focus:ring-2 focus:ring-ring focus:border-ring"
                   required
                 >
                   <option value="">Select collateral type</option>
-                  <option value="vehicle">Vehicle</option>
-                  <option value="property">Property</option>
-                  <option value="equipment">Equipment</option>
-                  <option value="inventory">Inventory</option>
-                  <option value="securities">Securities</option>
-                  <option value="other">Other</option>
+                  {collateralTypes.map((type) => (
+                    <option key={type.id} value={type.id}>
+                      {type.name}
+                    </option>
+                  ))}
                 </select>
               </div>
 
@@ -1923,20 +2612,23 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
             <div className="flex justify-end space-x-3 mt-6">
               <Button
                 variant="outline"
-                onClick={() => setShowAddCollateral(false)}
+                onClick={() => {
+                  setShowAddCollateral(false);
+                  setCollateralForm({ 
+                    collateralTypeId: "", 
+                    value: "", 
+                    description: "",
+                    locale: "en"
+                  });
+                }}
               >
                 Cancel
               </Button>
               <Button
-                onClick={() => {
-                  // Handle form submission here
-                  console.log("Adding collateral:", collateralForm);
-                  setShowAddCollateral(false);
-                  setCollateralForm({ collateralType: "", value: "", description: "" });
-                }}
-                disabled={!collateralForm.collateralType || !collateralForm.value}
+                onClick={handleSubmitCollateral}
+                disabled={!collateralForm.collateralTypeId || !collateralForm.value || submittingCollateral}
               >
-                Submit
+                {submittingCollateral ? "Submitting..." : "Submit"}
               </Button>
             </div>
           </div>
@@ -1987,19 +2679,19 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                 </label>
                 <select
                   id="reschedule-reason"
-                  value={rescheduleForm.reason}
-                  onChange={(e) => setRescheduleForm({...rescheduleForm, reason: e.target.value})}
+                  value={rescheduleForm.rescheduleReasonId}
+                  onChange={(e) => setRescheduleForm({...rescheduleForm, rescheduleReasonId: e.target.value, reason: e.target.value})}
                   className="w-full px-3 py-2 border border-input bg-background rounded-md focus:outline-none focus:ring-2 focus:ring-ring focus:border-ring"
                   required
                 >
                   <option value="">Select reason</option>
-                  <option value="client_request">Client Request</option>
-                  <option value="financial_hardship">Financial Hardship</option>
-                  <option value="natural_disaster">Natural Disaster</option>
-                  <option value="business_difficulty">Business Difficulty</option>
-                  <option value="other">Other</option>
+                  {rescheduleReasons.map((reason) => (
+                    <option key={reason.id} value={reason.id}>
+                      {reason.name}
+                    </option>
+                  ))}
                 </select>
-                {!rescheduleForm.reason && (
+                {!rescheduleForm.rescheduleReasonId && (
                   <p className="text-red-500 text-sm mt-1">Reason for Rescheduling is required</p>
                 )}
               </div>
@@ -2012,8 +2704,8 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                 <input
                   type="date"
                   id="submitted-on"
-                  value={rescheduleForm.submittedOn}
-                  onChange={(e) => setRescheduleForm({...rescheduleForm, submittedOn: e.target.value})}
+                  value={rescheduleForm.submittedOnDate}
+                  onChange={(e) => setRescheduleForm({...rescheduleForm, submittedOnDate: e.target.value, submittedOn: e.target.value})}
                   className="w-full px-3 py-2 border border-input bg-background rounded-md focus:outline-none focus:ring-2 focus:ring-ring focus:border-ring"
                   required
                 />
@@ -2026,8 +2718,8 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                 </label>
                 <textarea
                   id="comments"
-                  value={rescheduleForm.comments}
-                  onChange={(e) => setRescheduleForm({...rescheduleForm, comments: e.target.value})}
+                  value={rescheduleForm.rescheduleReasonComment}
+                  onChange={(e) => setRescheduleForm({...rescheduleForm, rescheduleReasonComment: e.target.value, comments: e.target.value})}
                   className="w-full px-3 py-2 border border-input bg-background rounded-md focus:outline-none focus:ring-2 focus:ring-ring focus:border-ring resize-none"
                   rows={3}
                   placeholder="Enter comments"
@@ -2182,17 +2874,22 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
             <div className="flex justify-end space-x-3 mt-6">
               <Button
                 variant="outline"
-                onClick={() => setShowReschedule(false)}
-              >
-                Cancel
-              </Button>
-              <Button
                 onClick={() => {
-                  // Handle form submission here
-                  console.log("Submitting reschedule:", rescheduleForm);
                   setShowReschedule(false);
                   setRescheduleForm({
-                    rescheduleFromDate: "",
+                    rescheduleFromDate: new Date().toISOString().split('T')[0],
+                    rescheduleReasonId: "",
+                    rescheduleReasonComment: "",
+                    submittedOnDate: new Date().toISOString().split('T')[0],
+                    adjustedDueDate: "",
+                    extraTerms: "",
+                    newInterestRate: "",
+                    graceOnPrincipal: "",
+                    graceOnInterest: "",
+                    loanId: loanId.toString(),
+                    locale: "en",
+                    dateFormat: "dd MMMM yyyy",
+                    // Reset legacy fields
                     reason: "",
                     submittedOn: "",
                     comments: "",
@@ -2203,13 +2900,19 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                     interestGracePeriods: "",
                     extendRepaymentPeriod: false,
                     numberOfNewRepayments: "",
-                    adjustInterestRate: false,
-                    newInterestRate: ""
+                    adjustInterestRates: false,
+                    newInterestRateFromDate: "",
+                    interestRate: ""
                   });
                 }}
-                disabled={!rescheduleForm.rescheduleFromDate || !rescheduleForm.reason || !rescheduleForm.submittedOn}
               >
-                Submit
+                Cancel
+              </Button>
+              <Button
+                onClick={handleSubmitReschedule}
+                disabled={!rescheduleForm.rescheduleFromDate || !rescheduleForm.rescheduleReasonId || !rescheduleForm.submittedOnDate || submittingReschedule}
+              >
+                {submittingReschedule ? "Submitting..." : "Submit"}
               </Button>
             </div>
           </div>
@@ -2303,21 +3006,23 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
             <div className="flex justify-end space-x-3 mt-6">
               <Button
                 variant="outline"
-                onClick={() => setShowUploadDocuments(false)}
+                onClick={() => {
+                  setShowUploadDocuments(false);
+                  setDocumentForm({ 
+                    fileName: "", 
+                    description: "", 
+                    file: null 
+                  });
+                }}
               >
                 Cancel
               </Button>
               <Button
-                onClick={() => {
-                  // Handle form submission here
-                  console.log("Uploading document:", documentForm);
-                  setShowUploadDocuments(false);
-                  setDocumentForm({ fileName: "", description: "", file: null });
-                }}
-                disabled={!documentForm.fileName || !documentForm.file}
+                onClick={handleSubmitDocument}
+                disabled={!documentForm.fileName || !documentForm.file || submittingDocument}
                 className="bg-gray-400 text-white hover:bg-gray-500"
               >
-                Confirm
+                {submittingDocument ? "Uploading..." : "Upload"}
               </Button>
             </div>
           </div>
