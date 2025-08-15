@@ -493,6 +493,14 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
     externalId: ''
   });
 
+  // Re-Amortize Modal state
+  const [showReAmortizeModal, setShowReAmortizeModal] = useState(false);
+  const [isSubmittingReAmortize, setIsSubmittingReAmortize] = useState(false);
+  const [reAmortizeForm, setReAmortizeForm] = useState({
+    reason: '',
+    externalId: ''
+  });
+
   // Close actions menu when clicking outside
 
 
@@ -912,7 +920,7 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                 openReAgeModal();
                 break;
               case 're-amortize':
-                console.log("Re-Amortize");
+                openReAmortizeModal();
                 break;
               case 'payments':
                 // Submenu handled by hover events
@@ -2706,6 +2714,55 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
       year: 'numeric' 
     });
     setReAgeForm(prev => ({ ...prev, startDate: formattedDate }));
+  };
+
+  // Handle re-amortize submission
+  const handleSubmitReAmortize = async () => {
+    if (isSubmittingReAmortize) return;
+
+    setIsSubmittingReAmortize(true);
+    try {
+      const payload = {};
+
+      // Add optional fields only if they have values
+      if (reAmortizeForm.reason) payload.note = reAmortizeForm.reason;
+      if (reAmortizeForm.externalId) payload.externalId = reAmortizeForm.externalId;
+
+      const response = await fetch(`/api/fineract/loans/${loanId}/transactions/re-amortize`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.defaultUserMessage || errorData.error || 'Failed to execute re-amortize');
+      }
+
+      toast({
+        title: "Success",
+        description: "Re-amortize executed successfully",
+      });
+
+      setShowReAmortizeModal(false);
+      // Refresh loan data
+      window.location.reload();
+
+    } catch (error: any) {
+      console.error('Error executing re-amortize:', error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to execute re-amortize",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmittingReAmortize(false);
+    }
+  };
+
+  // Open re-amortize modal
+  const openReAmortizeModal = () => {
+    setShowReAmortizeModal(true);
   };
 
   if (loading) {
@@ -5179,6 +5236,56 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
               disabled={!reAgeForm.numberOfInstallments || !reAgeForm.frequencyNumber || !reAgeForm.frequencyType || !reAgeForm.startDate || isSubmittingReAge}
             >
               {isSubmittingReAge ? "Processing..." : "Submit"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Re-Amortize Modal */}
+      <Dialog open={showReAmortizeModal} onOpenChange={setShowReAmortizeModal}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Re-Amortize</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="reAmortizeReason">Reason</Label>
+              <Input
+                id="reAmortizeReason"
+                value={reAmortizeForm.reason}
+                onChange={(e) => setReAmortizeForm(prev => ({ ...prev, reason: e.target.value }))}
+                placeholder="Enter reason"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="reAmortizeExternalId">External Id</Label>
+              <Input
+                id="reAmortizeExternalId"
+                value={reAmortizeForm.externalId}
+                onChange={(e) => setReAmortizeForm(prev => ({ ...prev, externalId: e.target.value }))}
+                placeholder="Enter external id"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                setShowReAmortizeModal(false);
+                setReAmortizeForm({
+                  reason: '',
+                  externalId: ''
+                });
+              }}
+            >
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleSubmitReAmortize}
+              disabled={isSubmittingReAmortize}
+            >
+              {isSubmittingReAmortize ? "Processing..." : "Submit"}
             </Button>
           </DialogFooter>
         </DialogContent>
