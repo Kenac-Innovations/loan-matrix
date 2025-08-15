@@ -481,6 +481,18 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
     note: ''
   });
 
+  // Re-Age Modal state
+  const [showReAgeModal, setShowReAgeModal] = useState(false);
+  const [isSubmittingReAge, setIsSubmittingReAge] = useState(false);
+  const [reAgeForm, setReAgeForm] = useState({
+    numberOfInstallments: '1',
+    frequencyNumber: '1',
+    frequencyType: '',
+    startDate: '',
+    reason: '',
+    externalId: ''
+  });
+
   // Close actions menu when clicking outside
 
 
@@ -897,7 +909,7 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                 openChargeOffModal();
                 break;
               case 're-age':
-                console.log("Re-Age");
+                openReAgeModal();
                 break;
               case 're-amortize':
                 console.log("Re-Amortize");
@@ -2630,6 +2642,70 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
   const openChargeOffModal = () => {
     setShowChargeOffModal(true);
     fetchChargeOffTemplate();
+  };
+
+  // Handle re-age submission
+  const handleSubmitReAge = async () => {
+    if (!reAgeForm.numberOfInstallments || !reAgeForm.frequencyNumber || !reAgeForm.frequencyType || !reAgeForm.startDate || isSubmittingReAge) return;
+
+    setIsSubmittingReAge(true);
+    try {
+      const payload = {
+        numberOfInstallments: parseInt(reAgeForm.numberOfInstallments),
+        frequencyNumber: parseInt(reAgeForm.frequencyNumber),
+        frequencyType: reAgeForm.frequencyType,
+        startDate: reAgeForm.startDate,
+        dateFormat: "dd MMMM yyyy",
+        locale: "en"
+      };
+
+      // Add optional fields only if they have values
+      if (reAgeForm.reason) payload.note = reAgeForm.reason;
+      if (reAgeForm.externalId) payload.externalId = reAgeForm.externalId;
+
+      const response = await fetch(`/api/fineract/loans/${loanId}/transactions/re-age`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.defaultUserMessage || errorData.error || 'Failed to execute re-age');
+      }
+
+      toast({
+        title: "Success",
+        description: "Re-age executed successfully",
+      });
+
+      setShowReAgeModal(false);
+      // Refresh loan data
+      window.location.reload();
+
+    } catch (error: any) {
+      console.error('Error executing re-age:', error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to execute re-age",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmittingReAge(false);
+    }
+  };
+
+  // Open re-age modal
+  const openReAgeModal = () => {
+    setShowReAgeModal(true);
+    // Auto-populate start date with today's date
+    const today = new Date();
+    const formattedDate = today.toLocaleDateString('en-GB', { 
+      day: '2-digit', 
+      month: 'long', 
+      year: 'numeric' 
+    });
+    setReAgeForm(prev => ({ ...prev, startDate: formattedDate }));
   };
 
   if (loading) {
@@ -4980,6 +5056,129 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
               disabled={!chargeOffForm.transactionDate || !chargeOffForm.chargeOffReasonId || isSubmittingChargeOff}
             >
               {isSubmittingChargeOff ? "Processing..." : "Submit"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Re-Age Modal */}
+      <Dialog open={showReAgeModal} onOpenChange={setShowReAgeModal}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Re-Age</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="numberOfInstallments">Number of Installments *</Label>
+              <Input
+                id="numberOfInstallments"
+                type="number"
+                value={reAgeForm.numberOfInstallments}
+                onChange={(e) => setReAgeForm(prev => ({ ...prev, numberOfInstallments: e.target.value }))}
+                placeholder="1"
+                min="1"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="frequencyNumber">Frequency Number *</Label>
+              <Input
+                id="frequencyNumber"
+                type="number"
+                value={reAgeForm.frequencyNumber}
+                onChange={(e) => setReAgeForm(prev => ({ ...prev, frequencyNumber: e.target.value }))}
+                placeholder="1"
+                min="1"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="frequencyType">Frequency Type *</Label>
+              <Select
+                value={reAgeForm.frequencyType}
+                onValueChange={(value) => setReAgeForm(prev => ({ ...prev, frequencyType: value }))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select frequency type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="DAYS">Days</SelectItem>
+                  <SelectItem value="WEEKS">Weeks</SelectItem>
+                  <SelectItem value="MONTHS">Months</SelectItem>
+                  <SelectItem value="YEARS">Years</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="reAgeStartDate">Start Date *</Label>
+              <Input
+                id="reAgeStartDate"
+                type="date"
+                value={reAgeForm.startDate ? (() => {
+                  // If it's already in dd Month yyyy format, convert to yyyy-mm-dd for input
+                  if (reAgeForm.startDate.includes(' ')) {
+                    const date = new Date(reAgeForm.startDate);
+                    return date.toISOString().split('T')[0];
+                  } else {
+                    // If it's already in yyyy-mm-dd format, use as is
+                    return reAgeForm.startDate;
+                  }
+                })() : new Date().toISOString().split('T')[0]}
+                onChange={(e) => {
+                  const date = new Date(e.target.value);
+                  const formattedDate = date.toLocaleDateString('en-GB', { 
+                    day: '2-digit', 
+                    month: 'long', 
+                    year: 'numeric' 
+                  });
+                  setReAgeForm(prev => ({ ...prev, startDate: formattedDate }));
+                }}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="reAgeReason">Reason</Label>
+              <Input
+                id="reAgeReason"
+                value={reAgeForm.reason}
+                onChange={(e) => setReAgeForm(prev => ({ ...prev, reason: e.target.value }))}
+                placeholder="Enter reason"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="reAgeExternalId">External Id</Label>
+              <Input
+                id="reAgeExternalId"
+                value={reAgeForm.externalId}
+                onChange={(e) => setReAgeForm(prev => ({ ...prev, externalId: e.target.value }))}
+                placeholder="Enter external id"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                setShowReAgeModal(false);
+                setReAgeForm({
+                  numberOfInstallments: '1',
+                  frequencyNumber: '1',
+                  frequencyType: '',
+                  startDate: '',
+                  reason: '',
+                  externalId: ''
+                });
+              }}
+            >
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleSubmitReAge}
+              disabled={!reAgeForm.numberOfInstallments || !reAgeForm.frequencyNumber || !reAgeForm.frequencyType || !reAgeForm.startDate || isSubmittingReAge}
+            >
+              {isSubmittingReAge ? "Processing..." : "Submit"}
             </Button>
           </DialogFooter>
         </DialogContent>
