@@ -431,6 +431,20 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
     note: '',
   });
 
+  // Undo Disbursal Modal State
+  const [showUndoDisbursalModal, setShowUndoDisbursalModal] = useState(false);
+  const [isSubmittingUndoDisbursal, setIsSubmittingUndoDisbursal] = useState(false);
+  const [undoDisbursalNote, setUndoDisbursalNote] = useState('');
+
+  // Interest Pause Modal State
+  const [showInterestPauseModal, setShowInterestPauseModal] = useState(false);
+  const [isSubmittingInterestPause, setIsSubmittingInterestPause] = useState(false);
+  const [interestPauseForm, setInterestPauseForm] = useState({
+    startDate: '',
+    endDate: '',
+    maturityDate: '',
+  });
+
   // Close actions menu when clicking outside
 
 
@@ -835,10 +849,10 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                 setShowRepaymentModal(true);
                 break;
               case 'undo-disbursal':
-                console.log("Undo Disbursal");
+                openUndoDisbursalModal();
                 break;
               case 'add-interest-pause':
-                console.log("Add Interest Pause");
+                openInterestPauseModal();
                 break;
               case 'prepay-loan':
                 console.log("Prepay Loan");
@@ -2215,6 +2229,137 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
     fetchForeclosureTemplate();
   };
 
+  // Handle Undo Disbursal
+  const handleSubmitUndoDisbursal = async () => {
+    if (!undoDisbursalNote.trim() || isSubmittingUndoDisbursal) return;
+
+    setIsSubmittingUndoDisbursal(true);
+    try {
+      const payload = {
+        note: undoDisbursalNote.trim()
+      };
+
+      const response = await fetch(`/api/fineract/loans/${loanId}/undodisbursal`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.defaultUserMessage || 'Failed to undo disbursal');
+      }
+
+      toast({
+        title: "Success",
+        description: "Loan disbursal undone successfully",
+      });
+
+      setShowUndoDisbursalModal(false);
+      setUndoDisbursalNote('');
+      // Refresh loan data if needed
+    } catch (error: any) {
+      console.error('Error undoing disbursal:', error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error.message || "Failed to undo disbursal",
+      });
+    } finally {
+      setIsSubmittingUndoDisbursal(false);
+    }
+  };
+
+  const openUndoDisbursalModal = () => {
+    setShowUndoDisbursalModal(true);
+    setUndoDisbursalNote('');
+  };
+
+  // Handle Interest Pause
+  const handleSubmitInterestPause = async () => {
+    if (!interestPauseForm.startDate || !interestPauseForm.endDate || isSubmittingInterestPause) return;
+
+    setIsSubmittingInterestPause(true);
+    try {
+      const payload = {
+        dateFormat: "dd MMMM yyyy",
+        locale: "en",
+        startDate: interestPauseForm.startDate,
+        endDate: interestPauseForm.endDate
+      };
+
+      const response = await fetch(`/api/fineract/loans/${loanId}/interest-pauses`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.defaultUserMessage || 'Failed to add interest pause');
+      }
+
+      toast({
+        title: "Success",
+        description: "Interest pause added successfully",
+      });
+
+      setShowInterestPauseModal(false);
+      setInterestPauseForm({
+        startDate: '',
+        endDate: '',
+        maturityDate: '',
+      });
+      // Refresh loan data if needed
+    } catch (error: any) {
+      console.error('Error adding interest pause:', error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error.message || "Failed to add interest pause",
+      });
+    } finally {
+      setIsSubmittingInterestPause(false);
+    }
+  };
+
+  const openInterestPauseModal = () => {
+    setShowInterestPauseModal(true);
+    
+    // Auto-populate with today's date
+    const today = new Date();
+    const formattedToday = today.toLocaleDateString('en-GB', {
+      day: '2-digit',
+      month: 'long',
+      year: 'numeric'
+    });
+
+    // Auto-populate maturity date from loan data (if available)
+    let maturityDate = '';
+    if (loan?.timeline?.expectedMaturityDate) {
+      const maturityDateArray = loan.timeline.expectedMaturityDate;
+      if (Array.isArray(maturityDateArray) && maturityDateArray.length === 3) {
+        const [year, month, day] = maturityDateArray;
+        const date = new Date(year, month - 1, day);
+        maturityDate = date.toLocaleDateString('en-GB', {
+          day: '2-digit',
+          month: 'long',
+          year: 'numeric'
+        });
+      }
+    }
+
+    setInterestPauseForm({
+      startDate: formattedToday,
+      endDate: formattedToday,
+      maturityDate: maturityDate || '17 June 2026', // Default fallback
+    });
+  };
+
   if (loading) {
     return (
       <div className="space-y-8">
@@ -2258,7 +2403,7 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
               <div>
                 <p className="text-sm font-medium text-blue-600 dark:text-blue-400">Principal Amount</p>
                 <p className="text-2xl font-bold text-blue-900 dark:text-blue-100">
-                  {formatCurrency(loan.principal, loan.currency.code)}
+                  {formatCurrency(loan.principal || 0, loan.currency?.code || 'USD')}
                 </p>
               </div>
               <div className="h-12 w-12 rounded-lg bg-blue-500 flex items-center justify-center">
@@ -2274,7 +2419,7 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
               <div>
                 <p className="text-sm font-medium text-green-600 dark:text-green-400">Outstanding Balance</p>
                 <p className="text-2xl font-bold text-green-900 dark:text-green-100">
-                  {formatCurrency(loan.summary.totalOutstanding, loan.currency.code)}
+                  {formatCurrency(loan.summary?.totalOutstanding || 0, loan.currency?.code || 'USD')}
                 </p>
               </div>
               <div className="h-12 w-12 rounded-lg bg-green-500 flex items-center justify-center">
@@ -2453,48 +2598,48 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                   <TableBody>
                     <TableRow className="border-b">
                       <TableCell className="font-semibold">Principal</TableCell>
-                      <TableCell className="font-medium">{formatCurrency(loan.principal, loan.currency.code)}</TableCell>
-                      <TableCell className="font-medium">{formatCurrency(loan.summary.principalPaid, loan.currency.code)}</TableCell>
-                      <TableCell className="font-medium">{formatCurrency(loan.summary.principalWrittenOff || 0, loan.currency.code)}</TableCell>
-                      <TableCell className="font-medium">{formatCurrency(loan.summary.principalWrittenOff || 0, loan.currency.code)}</TableCell>
-                      <TableCell className="font-medium">{formatCurrency(loan.summary.principalOutstanding, loan.currency.code)}</TableCell>
-                      <TableCell className="font-medium">{formatCurrency(loan.summary.principalOverdue, loan.currency.code)}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.principal, loan.currency?.code || 'USD')}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary?.principalPaid || 0, loan.currency?.code || 'USD')}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary?.principalWrittenOff || 0, loan.currency?.code || 'USD')}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary?.principalWrittenOff || 0, loan.currency?.code || 'USD')}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary?.principalOutstanding || 0, loan.currency?.code || 'USD')}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary?.principalOverdue || 0, loan.currency?.code || 'USD')}</TableCell>
                     </TableRow>
                     <TableRow className="border-b">
                       <TableCell className="font-semibold">Interest</TableCell>
-                      <TableCell className="font-medium">{formatCurrency(loan.summary.interestCharged, loan.currency.code)}</TableCell>
-                      <TableCell className="font-medium">{formatCurrency(loan.summary.interestPaid, loan.currency.code)}</TableCell>
-                      <TableCell className="font-medium">{formatCurrency(loan.summary.interestWaived || 0, loan.currency.code)}</TableCell>
-                      <TableCell className="font-medium">{formatCurrency(loan.summary.interestWrittenOff || 0, loan.currency.code)}</TableCell>
-                      <TableCell className="font-medium">{formatCurrency(loan.summary.interestOutstanding, loan.currency.code)}</TableCell>
-                      <TableCell className="font-medium">{formatCurrency(loan.summary.interestOverdue, loan.currency.code)}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary?.interestCharged || 0, loan.currency?.code || 'USD')}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary?.interestPaid || 0, loan.currency?.code || 'USD')}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary?.interestWaived || 0, loan.currency?.code || 'USD')}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary?.interestWrittenOff || 0, loan.currency?.code || 'USD')}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary?.interestOutstanding || 0, loan.currency?.code || 'USD')}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary?.interestOverdue || 0, loan.currency?.code || 'USD')}</TableCell>
                     </TableRow>
                     <TableRow className="border-b">
                       <TableCell className="font-semibold">Fees</TableCell>
-                      <TableCell className="font-medium">{formatCurrency(loan.summary.feeChargesCharged, loan.currency.code)}</TableCell>
-                      <TableCell className="font-medium">{formatCurrency(loan.summary.feeChargesPaid, loan.currency.code)}</TableCell>
-                      <TableCell className="font-medium">{formatCurrency(loan.summary.feeChargesWaived || 0, loan.currency.code)}</TableCell>
-                      <TableCell className="font-medium">{formatCurrency(loan.summary.feeChargesWrittenOff || 0, loan.currency.code)}</TableCell>
-                      <TableCell className="font-medium">{formatCurrency(loan.summary.feeChargesOutstanding, loan.currency.code)}</TableCell>
-                      <TableCell className="font-medium">{formatCurrency(loan.summary.feeChargesOverdue, loan.currency.code)}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary?.feeChargesCharged || 0, loan.currency?.code || 'USD')}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary?.feeChargesPaid || 0, loan.currency?.code || 'USD')}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary?.feeChargesWaived || 0, loan.currency?.code || 'USD')}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary?.feeChargesWrittenOff || 0, loan.currency?.code || 'USD')}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary?.feeChargesOutstanding || 0, loan.currency?.code || 'USD')}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary?.feeChargesOverdue || 0, loan.currency?.code || 'USD')}</TableCell>
                     </TableRow>
                     <TableRow className="border-b">
                       <TableCell className="font-semibold">Penalties</TableCell>
-                      <TableCell className="font-medium">{formatCurrency(loan.summary.penaltyChargesCharged, loan.currency.code)}</TableCell>
-                      <TableCell className="font-medium">{formatCurrency(loan.summary.penaltyChargesPaid, loan.currency.code)}</TableCell>
-                      <TableCell className="font-medium">{formatCurrency(loan.summary.penaltyChargesWaived || 0, loan.currency.code)}</TableCell>
-                      <TableCell className="font-medium">{formatCurrency(loan.summary.penaltyChargesWrittenOff || 0, loan.currency.code)}</TableCell>
-                      <TableCell className="font-medium">{formatCurrency(loan.summary.penaltyChargesOutstanding, loan.currency.code)}</TableCell>
-                      <TableCell className="font-medium">{formatCurrency(loan.summary.penaltyChargesOverdue, loan.currency.code)}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary?.penaltyChargesCharged || 0, loan.currency?.code || 'USD')}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary?.penaltyChargesPaid || 0, loan.currency?.code || 'USD')}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary?.penaltyChargesWaived || 0, loan.currency?.code || 'USD')}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary?.penaltyChargesWrittenOff || 0, loan.currency?.code || 'USD')}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary?.penaltyChargesOutstanding || 0, loan.currency?.code || 'USD')}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary?.penaltyChargesOverdue || 0, loan.currency?.code || 'USD')}</TableCell>
                     </TableRow>
                     <TableRow className="bg-muted/50 font-bold">
                       <TableCell>Total</TableCell>
-                      <TableCell>{formatCurrency(loan.summary.totalExpectedRepayment, loan.currency.code)}</TableCell>
-                      <TableCell>{formatCurrency(loan.summary.totalRepayment, loan.currency.code)}</TableCell>
-                      <TableCell>{formatCurrency(loan.summary.totalWaived || 0, loan.currency.code)}</TableCell>
-                      <TableCell>{formatCurrency(loan.summary.totalWrittenOff || 0, loan.currency.code)}</TableCell>
-                      <TableCell>{formatCurrency(loan.summary.totalOutstanding, loan.currency.code)}</TableCell>
-                      <TableCell>{formatCurrency(loan.summary.totalOverdue, loan.currency.code)}</TableCell>
+                      <TableCell>{formatCurrency(loan.summary?.totalExpectedRepayment || 0, loan.currency?.code || 'USD')}</TableCell>
+                      <TableCell>{formatCurrency(loan.summary?.totalRepayment || 0, loan.currency?.code || 'USD')}</TableCell>
+                      <TableCell>{formatCurrency(loan.summary?.totalWaived || 0, loan.currency?.code || 'USD')}</TableCell>
+                      <TableCell>{formatCurrency(loan.summary?.totalWrittenOff || 0, loan.currency?.code || 'USD')}</TableCell>
+                      <TableCell>{formatCurrency(loan.summary?.totalOutstanding || 0, loan.currency?.code || 'USD')}</TableCell>
+                      <TableCell>{formatCurrency(loan.summary?.totalOverdue || 0, loan.currency?.code || 'USD')}</TableCell>
                     </TableRow>
                   </TableBody>
                 </Table>
@@ -2531,7 +2676,7 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                 </div>
                 <div className="space-y-1">
                   <p className="text-xs font-medium text-muted-foreground">Currency</p>
-                  <p className="text-sm font-medium">{loan.currency.name} {loan.currency.code}</p>
+                  <p className="text-sm font-medium">{loan.currency?.name || 'US Dollar'} {loan.currency?.code || 'USD'}</p>
                 </div>
                 <div className="space-y-1">
                   <p className="text-xs font-medium text-muted-foreground">External Id</p>
@@ -2539,11 +2684,11 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                 </div>
                 <div className="space-y-1">
                   <p className="text-xs font-medium text-muted-foreground">Proposed Amount</p>
-                  <p className="text-sm font-medium">{formatCurrency(loan.proposedPrincipal, loan.currency.code)}</p>
+                  <p className="text-sm font-medium">{formatCurrency(loan.proposedPrincipal || 0, loan.currency?.code || 'USD')}</p>
                 </div>
                 <div className="space-y-1">
                   <p className="text-xs font-medium text-muted-foreground">Approved Amount</p>
-                  <p className="text-sm font-medium">{formatCurrency(loan.approvedPrincipal, loan.currency.code)}</p>
+                  <p className="text-sm font-medium">{formatCurrency(loan.approvedPrincipal || 0, loan.currency?.code || 'USD')}</p>
                 </div>
               </div>
             </CardContent>
@@ -2788,7 +2933,7 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                         <TableRow key={index}>
                           <TableCell className="font-medium">{charge.name}</TableCell>
                           <TableCell>{charge.chargeCalculationType?.value || charge.type || "N/A"}</TableCell>
-                          <TableCell>{formatCurrency(charge.amount, loan.currency.code)}</TableCell>
+                          <TableCell>{formatCurrency(charge.amount, loan.currency?.code || 'USD')}</TableCell>
                           <TableCell>{charge.collectedOn || "Overdue Fees"}</TableCell>
                         </TableRow>
                       ))
@@ -2882,10 +3027,10 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                           <TableCell>{charge.chargeTimeType?.value || "N/A"}</TableCell>
                           <TableCell>{charge.dueDate ? formatDate(charge.dueDate) : "N/A"}</TableCell>
                           <TableCell>{charge.chargeCalculationType?.value || "N/A"}</TableCell>
-                          <TableCell>{formatCurrency(charge.amount, loan.currency.code)}</TableCell>
-                          <TableCell>{formatCurrency(charge.amountPaid || 0, loan.currency.code)}</TableCell>
-                          <TableCell>{formatCurrency(charge.amountWaived || 0, loan.currency.code)}</TableCell>
-                          <TableCell>{formatCurrency(charge.amountOutstanding || charge.amount, loan.currency.code)}</TableCell>
+                          <TableCell>{formatCurrency(charge.amount, loan.currency?.code || 'USD')}</TableCell>
+                          <TableCell>{formatCurrency(charge.amountPaid || 0, loan.currency?.code || 'USD')}</TableCell>
+                          <TableCell>{formatCurrency(charge.amountWaived || 0, loan.currency?.code || 'USD')}</TableCell>
+                          <TableCell>{formatCurrency(charge.amountOutstanding || charge.amount, loan.currency?.code || 'USD')}</TableCell>
                           <TableCell>
                             <div className="flex space-x-1">
                               <Button variant="outline" size="sm" className="h-8 w-8 p-0">
@@ -4076,6 +4221,132 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
               className="bg-gray-500 hover:bg-gray-600"
             >
               {isSubmittingForeclosure ? "Processing..." : "Foreclosure"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Undo Disbursal Modal */}
+      <Dialog open={showUndoDisbursalModal} onOpenChange={setShowUndoDisbursalModal}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Undo Disbursal</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="undoDisbursalNote" className="text-red-600">Note *</Label>
+              <textarea
+                id="undoDisbursalNote"
+                value={undoDisbursalNote}
+                onChange={(e) => setUndoDisbursalNote(e.target.value)}
+                placeholder="Enter mandatory note for undo disbursal"
+                className="w-full min-h-[80px] p-3 border border-gray-300 rounded-md resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                required
+              />
+              {!undoDisbursalNote.trim() && (
+                <p className="text-sm text-red-500">Note is mandatory</p>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                setShowUndoDisbursalModal(false);
+                setUndoDisbursalNote('');
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSubmitUndoDisbursal}
+              disabled={!undoDisbursalNote.trim() || isSubmittingUndoDisbursal}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {isSubmittingUndoDisbursal ? "Processing..." : "Undo Disbursal"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Interest Pause Modal */}
+      <Dialog open={showInterestPauseModal} onOpenChange={setShowInterestPauseModal}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add Interest Pause</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="maturityDate">Maturity Date</Label>
+              <Input
+                id="maturityDate"
+                value={interestPauseForm.maturityDate}
+                disabled
+                className="bg-gray-100 cursor-not-allowed"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="startDate">Start Date *</Label>
+              <Input
+                id="startDate"
+                type="date"
+                value={interestPauseForm.startDate ? 
+                  new Date(interestPauseForm.startDate).toISOString().split('T')[0] : 
+                  new Date().toISOString().split('T')[0]
+                }
+                onChange={(e) => {
+                  const selectedDate = new Date(e.target.value);
+                  const formattedDate = selectedDate.toLocaleDateString('en-GB', {
+                    day: '2-digit',
+                    month: 'long',
+                    year: 'numeric'
+                  });
+                  setInterestPauseForm(prev => ({ ...prev, startDate: formattedDate }));
+                }}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="endDate">End Date *</Label>
+              <Input
+                id="endDate"
+                type="date"
+                value={interestPauseForm.endDate ? 
+                  new Date(interestPauseForm.endDate).toISOString().split('T')[0] : 
+                  new Date().toISOString().split('T')[0]
+                }
+                onChange={(e) => {
+                  const selectedDate = new Date(e.target.value);
+                  const formattedDate = selectedDate.toLocaleDateString('en-GB', {
+                    day: '2-digit',
+                    month: 'long',
+                    year: 'numeric'
+                  });
+                  setInterestPauseForm(prev => ({ ...prev, endDate: formattedDate }));
+                }}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                setShowInterestPauseModal(false);
+                setInterestPauseForm({
+                  startDate: '',
+                  endDate: '',
+                  maturityDate: '',
+                });
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSubmitInterestPause}
+              disabled={!interestPauseForm.startDate || !interestPauseForm.endDate || isSubmittingInterestPause}
+            >
+              {isSubmittingInterestPause ? "Processing..." : "Submit"}
             </Button>
           </DialogFooter>
         </DialogContent>
