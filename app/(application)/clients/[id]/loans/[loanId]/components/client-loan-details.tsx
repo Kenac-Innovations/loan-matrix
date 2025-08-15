@@ -416,6 +416,21 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
     amount: '',
   });
 
+  // Foreclosure Modal State
+  const [showForeclosureModal, setShowForeclosureModal] = useState(false);
+  const [foreclosureTemplate, setForeclosureTemplate] = useState<any>(null);
+  const [isLoadingForeclosureTemplate, setIsLoadingForeclosureTemplate] = useState(false);
+  const [isSubmittingForeclosure, setIsSubmittingForeclosure] = useState(false);
+  const [foreclosureForm, setForeclosureForm] = useState({
+    transactionDate: '',
+    principal: '',
+    interest: '',
+    feeAmount: '',
+    penaltyAmount: '',
+    transactionAmount: '',
+    note: '',
+  });
+
   // Close actions menu when clicking outside
 
 
@@ -814,7 +829,7 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                 openAddChargeModal();
                 break;
               case 'foreclosure':
-                console.log("Foreclosure");
+                openForeclosureModal();
                 break;
               case 'make-repayment':
                 setShowRepaymentModal(true);
@@ -2089,6 +2104,115 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
   const openAddChargeModal = () => {
     setShowAddChargeModal(true);
     fetchChargeTemplate();
+  };
+
+  // Handle Foreclosure
+  const fetchForeclosureTemplate = async () => {
+    setIsLoadingForeclosureTemplate(true);
+    try {
+      // Get today's date in the required format
+      const today = new Date();
+      const formattedDate = today.toLocaleDateString('en-GB', {
+        day: '2-digit',
+        month: 'long',
+        year: 'numeric'
+      });
+
+      const queryParams = new URLSearchParams({
+        command: 'foreclosure',
+        locale: 'en',
+        dateFormat: 'dd MMMM yyyy',
+        transactionDate: formattedDate
+      });
+
+      const response = await fetch(`/api/fineract/loans/${loanId}/transactions/template?${queryParams.toString()}`);
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.defaultUserMessage || 'Failed to fetch foreclosure template');
+      }
+
+      const data = await response.json();
+      setForeclosureTemplate(data);
+      
+      // Set default values from the template
+      setForeclosureForm({
+        transactionDate: formattedDate,
+        principal: data.principalPortion ? data.principalPortion.toString() : '',
+        interest: data.interestPortion ? data.interestPortion.toString() : '',
+        feeAmount: data.feeChargesPortion ? data.feeChargesPortion.toString() : '',
+        penaltyAmount: data.penaltyChargesPortion ? data.penaltyChargesPortion.toString() : '',
+        transactionAmount: data.amount ? data.amount.toString() : '',
+        note: '',
+      });
+    } catch (error: any) {
+      console.error('Error fetching foreclosure template:', error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error.message || "Failed to fetch foreclosure template",
+      });
+    } finally {
+      setIsLoadingForeclosureTemplate(false);
+    }
+  };
+
+  const handleSubmitForeclosure = async () => {
+    if (!foreclosureForm.transactionDate || isSubmittingForeclosure) return;
+
+    setIsSubmittingForeclosure(true);
+    try {
+      const payload = {
+        dateFormat: "dd MMMM yyyy",
+        locale: "en",
+        transactionDate: foreclosureForm.transactionDate,
+        note: foreclosureForm.note || ""
+      };
+
+      const response = await fetch(`/api/fineract/loans/${loanId}/transactions?command=foreclosure`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.defaultUserMessage || 'Failed to execute foreclosure');
+      }
+
+      toast({
+        title: "Success",
+        description: "Loan foreclosure executed successfully",
+      });
+
+      setShowForeclosureModal(false);
+      setForeclosureForm({
+        transactionDate: '',
+        principal: '',
+        interest: '',
+        feeAmount: '',
+        penaltyAmount: '',
+        transactionAmount: '',
+        note: '',
+      });
+      // Refresh loan data if needed
+    } catch (error: any) {
+      console.error('Error executing foreclosure:', error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error.message || "Failed to execute foreclosure",
+      });
+    } finally {
+      setIsSubmittingForeclosure(false);
+    }
+  };
+
+  const openForeclosureModal = () => {
+    setShowForeclosureModal(true);
+    fetchForeclosureTemplate();
   };
 
   if (loading) {
@@ -3810,6 +3934,148 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
               disabled={!chargeForm.chargeId || !chargeForm.amount || isSubmittingCharge || isLoadingChargeTemplate}
             >
               {isSubmittingCharge ? "Adding..." : "Submit"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Foreclosure Modal */}
+      <Dialog open={showForeclosureModal} onOpenChange={setShowForeclosureModal}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Foreclosure</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            {isLoadingForeclosureTemplate ? (
+              <div className="space-y-4">
+                <Skeleton className="h-4 w-full" />
+                <Skeleton className="h-10 w-full" />
+                <Skeleton className="h-10 w-full" />
+                <Skeleton className="h-10 w-full" />
+                <Skeleton className="h-10 w-full" />
+                <Skeleton className="h-10 w-full" />
+                <Skeleton className="h-20 w-full" />
+              </div>
+            ) : (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="transactionDate">Transaction Date *</Label>
+                  <Input
+                    id="transactionDate"
+                    type="date"
+                    value={foreclosureForm.transactionDate ? 
+                      new Date(foreclosureForm.transactionDate).toISOString().split('T')[0] : 
+                      new Date().toISOString().split('T')[0]
+                    }
+                    onChange={(e) => {
+                      const selectedDate = new Date(e.target.value);
+                      const formattedDate = selectedDate.toLocaleDateString('en-GB', {
+                        day: '2-digit',
+                        month: 'long',
+                        year: 'numeric'
+                      });
+                      setForeclosureForm(prev => ({ ...prev, transactionDate: formattedDate }));
+                    }}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="principal">Principal</Label>
+                  <Input
+                    id="principal"
+                    type="number"
+                    step="0.01"
+                    value={foreclosureForm.principal}
+                    disabled
+                    className="bg-gray-100 cursor-not-allowed"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="interest">Interest</Label>
+                  <Input
+                    id="interest"
+                    type="number"
+                    step="0.01"
+                    value={foreclosureForm.interest}
+                    disabled
+                    className="bg-gray-100 cursor-not-allowed"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="feeAmount">Fee Amount</Label>
+                  <Input
+                    id="feeAmount"
+                    type="number"
+                    step="0.01"
+                    value={foreclosureForm.feeAmount}
+                    disabled
+                    className="bg-gray-100 cursor-not-allowed"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="penaltyAmount">Penalty Amount</Label>
+                  <Input
+                    id="penaltyAmount"
+                    type="number"
+                    step="0.01"
+                    value={foreclosureForm.penaltyAmount}
+                    disabled
+                    className="bg-gray-100 cursor-not-allowed"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="transactionAmount">Transaction Amount</Label>
+                  <Input
+                    id="transactionAmount"
+                    type="number"
+                    step="0.01"
+                    value={foreclosureForm.transactionAmount}
+                    disabled
+                    className="bg-gray-100 cursor-not-allowed"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="note" className="text-blue-600">Note *</Label>
+                  <textarea
+                    id="note"
+                    value={foreclosureForm.note}
+                    onChange={(e) => setForeclosureForm(prev => ({ ...prev, note: e.target.value }))}
+                    placeholder="Enter note"
+                    className="w-full min-h-[60px] p-2 border border-gray-300 rounded-md resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+              </>
+            )}
+          </div>
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                setShowForeclosureModal(false);
+                setForeclosureForm({
+                  transactionDate: '',
+                  principal: '',
+                  interest: '',
+                  feeAmount: '',
+                  penaltyAmount: '',
+                  transactionAmount: '',
+                  note: '',
+                });
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSubmitForeclosure}
+              disabled={!foreclosureForm.transactionDate || isSubmittingForeclosure || isLoadingForeclosureTemplate}
+              className="bg-gray-500 hover:bg-gray-600"
+            >
+              {isSubmittingForeclosure ? "Processing..." : "Foreclosure"}
             </Button>
           </DialogFooter>
         </DialogContent>

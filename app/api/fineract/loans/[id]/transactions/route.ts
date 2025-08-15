@@ -1,74 +1,59 @@
-import { NextResponse } from 'next/server';
-import { fetchFineractAPI } from '@/lib/api';
+import { NextRequest, NextResponse } from "next/server";
+import { fetchFineractAPI } from "@/lib/api";
 
-/**
- * POST /api/fineract/loans/[id]/transactions
- * Creates a new transaction for a specific loan (e.g., repayment)
- */
-export async function POST(
-  request: Request,
+export async function GET(
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = await params;
-    const payload = await request.json();
+    const { id: loanId } = await params;
     
-    // Get the command parameter from the request body
-    const command = payload.command || 'repayment';
-    
-    // Remove command from payload body as it should only be in URL
-    const { command: _, ...requestBody } = payload;
-    
-    // Build the endpoint URL
-    const endpoint = `/loans/${id}/transactions?command=${command}`;
-    
-    const data = await fetchFineractAPI(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(requestBody),
+    const data = await fetchFineractAPI(`/loans/${loanId}/transactions`, {
+      method: "GET",
     });
-    
+
     return NextResponse.json(data);
   } catch (error: any) {
-    console.error('Error creating loan transaction:', error);
+    console.error("Error fetching loan transactions:", error);
+    if (error.status && error.errorData) {
+      return NextResponse.json(error.errorData, { status: error.status });
+    }
     return NextResponse.json(
-      { error: error.message || 'Unknown error' },
+      { error: error.message || "Failed to fetch loan transactions" },
       { status: 500 }
     );
   }
 }
 
-/**
- * GET /api/fineract/loans/[id]/transactions
- * Gets all transactions for a specific loan
- */
-export async function GET(
-  request: Request,
+export async function POST(
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = await params;
+    const { id: loanId } = await params;
     const { searchParams } = new URL(request.url);
+    const command = searchParams.get('command');
     
-    // Build query parameters
-    const queryParams = new URLSearchParams();
+    const body = await request.json();
     
-    // Add offset and limit if provided
-    const offset = searchParams.get('offset');
-    const limit = searchParams.get('limit');
-    
-    if (offset) queryParams.append('offset', offset);
-    if (limit) queryParams.append('limit', limit);
-    
-    // Build the endpoint URL
-    const endpoint = `/loans/${id}/transactions${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
-    const data = await fetchFineractAPI(endpoint);
-    
+    let endpoint = `/loans/${loanId}/transactions`;
+    if (command) {
+      endpoint += `?command=${command}`;
+    }
+
+    const data = await fetchFineractAPI(endpoint, {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+
     return NextResponse.json(data);
   } catch (error: any) {
-    console.error('Error fetching loan transactions:', error);
+    console.error("Error creating loan transaction:", error);
+    if (error.status && error.errorData) {
+      return NextResponse.json(error.errorData, { status: error.status });
+    }
     return NextResponse.json(
-      { error: error.message || 'Unknown error' },
+      { error: error.message || "Failed to create loan transaction" },
       { status: 500 }
     );
   }
