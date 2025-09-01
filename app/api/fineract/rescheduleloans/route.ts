@@ -1,72 +1,46 @@
-import { NextRequest, NextResponse } from "next/server";
-import { fetchFineractAPI } from "@/lib/api";
+import { NextResponse } from 'next/server';
+import { fetchFineractAPI } from '@/lib/api';
 
-export async function GET(request: NextRequest) {
+/**
+ * POST /api/fineract/rescheduleloans
+ * Proxies to Fineract's reschedule loans endpoint
+ */
+export async function POST(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
-    const loanId = searchParams.get("loanId");
-    const command = searchParams.get("command");
-    
-    if (!loanId) {
-      return NextResponse.json(
-        { error: "loanId is required" },
-        { status: 400 }
-      );
-    }
+    const command = searchParams.get('command');
 
-    const data = await fetchFineractAPI(`/rescheduleloans?loanId=${loanId}`);
-    return NextResponse.json(data);
-  } catch (error: any) {
-    console.error("Error fetching loan reschedules:", error);
-    
-    // If it's a Fineract API error with status code, preserve it
-    if (error.status && error.errorData) {
+    if (!command) {
       return NextResponse.json(
-        error.errorData,
-        { status: error.status }
-      );
-    }
-    
-    return NextResponse.json(
-      { error: error.message || "Failed to fetch loan reschedules" },
-      { status: 500 }
-    );
-  }
-}
-
-export async function POST(request: NextRequest) {
-  try {
-    const { searchParams } = new URL(request.url);
-    const command = searchParams.get("command");
-    
-    if (command !== "reschedule") {
-      return NextResponse.json(
-        { error: "Invalid command. Expected 'reschedule'" },
+        { error: 'Command parameter is required' },
         { status: 400 }
       );
     }
 
     const body = await request.json();
-    
-    const data = await fetchFineractAPI(`/rescheduleloans?command=reschedule`, {
-      method: "POST",
+    const data = await fetchFineractAPI(`/rescheduleloans?command=${command}`, {
+      method: 'POST',
       body: JSON.stringify(body),
     });
-    
+
     return NextResponse.json(data);
   } catch (error: any) {
-    console.error("Error creating loan reschedule:", error);
+    console.error('Error submitting reschedule loan request:', error);
     
-    // If it's a Fineract API error with status code, preserve it
+    // Check if it's an API error with status and errorData
     if (error.status && error.errorData) {
       return NextResponse.json(
-        error.errorData,
+        { 
+          error: error.message,
+          status: error.status,
+          details: error.errorData 
+        },
         { status: error.status }
       );
     }
     
     return NextResponse.json(
-      { error: error.message || "Failed to create loan reschedule" },
+      { error: error.message || 'Unknown error' },
       { status: 500 }
     );
   }

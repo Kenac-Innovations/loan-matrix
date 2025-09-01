@@ -8,7 +8,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { ChevronLeft, FileText, Building, User, Calendar, Clock } from "lucide-react";
+import { ChevronLeft, FileText, Building, User, Calendar, Clock, DollarSign, RotateCcw } from "lucide-react";
+import WriteOffModal from "@/components/WriteOffModal";
+import CloseAsRescheduledModal from "@/components/CloseAsRescheduledModal";
+import CloseModal from "@/components/CloseModal";
+import { toast } from "@/components/ui/use-toast";
 
 interface JournalEntry {
   id: number;
@@ -89,6 +93,9 @@ export default function JournalEntriesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [transactionId, setTransactionId] = useState<string>("");
+  const [writeOffModalOpen, setWriteOffModalOpen] = useState(false);
+  const [closeAsRescheduledModalOpen, setCloseAsRescheduledModalOpen] = useState(false);
+  const [closeModalOpen, setCloseModalOpen] = useState(false);
 
   // Read transactionId from the query string
   useEffect(() => {
@@ -182,7 +189,7 @@ export default function JournalEntriesPage() {
   if (journalEntries.length === 0) {
     return (
       <div className="space-y-8">
-        <div className="flex items-center gap-4">
+        <div className="flex items-center justify-between">
           <Button
             variant="outline"
             onClick={() => router.back()}
@@ -191,6 +198,32 @@ export default function JournalEntriesPage() {
             <ChevronLeft className="h-4 w-4" />
             Back
           </Button>
+          
+          <div className="flex items-center gap-2">
+            <Button
+              onClick={() => setWriteOffModalOpen(true)}
+              className="flex items-center gap-2 bg-red-600 hover:bg-red-700"
+            >
+              <DollarSign className="h-4 w-4" />
+              Write Off
+            </Button>
+            
+            <Button
+              onClick={() => setCloseModalOpen(true)}
+              className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700"
+            >
+              <RotateCcw className="h-4 w-4" />
+              Close
+            </Button>
+            
+            <Button
+              onClick={() => setCloseAsRescheduledModalOpen(true)}
+              className="flex items-center gap-2 bg-orange-600 hover:bg-orange-700"
+            >
+              <RotateCcw className="h-4 w-4" />
+              Close (as Rescheduled)
+            </Button>
+          </div>
         </div>
         <Card className="border shadow-sm">
           <CardContent className="p-6 space-y-2">
@@ -198,6 +231,45 @@ export default function JournalEntriesPage() {
             <p className="text-sm text-muted-foreground">Tip: Fineract expects the loan transaction reference (e.g. L26). If you passed a numeric id, we tried prefixing it with "L" automatically.</p>
           </CardContent>
         </Card>
+
+        {/* Write Off Modal */}
+        <WriteOffModal
+          isOpen={writeOffModalOpen}
+          onClose={() => setWriteOffModalOpen(false)}
+          loanId={loanId}
+          onSuccess={() => {
+            toast({
+              title: "Write-off Successful",
+              description: "The loan has been written off successfully.",
+            });
+          }}
+        />
+
+        {/* Close Modal */}
+        <CloseModal
+          isOpen={closeModalOpen}
+          onClose={() => setCloseModalOpen(false)}
+          loanId={loanId}
+          onSuccess={() => {
+            toast({
+              title: "Close Successful",
+              description: "The loan has been closed successfully.",
+            });
+          }}
+        />
+
+        {/* Close (as Rescheduled) Modal */}
+        <CloseAsRescheduledModal
+          isOpen={closeAsRescheduledModalOpen}
+          onClose={() => setCloseAsRescheduledModalOpen(false)}
+          loanId={loanId}
+          onSuccess={() => {
+            toast({
+              title: "Close as Rescheduled Successful",
+              description: "The loan has been closed as rescheduled successfully.",
+            });
+          }}
+        />
       </div>
     );
   }
@@ -207,8 +279,8 @@ export default function JournalEntriesPage() {
 
   return (
     <div className="space-y-8">
-      {/* Header with Back Button */}
-      <div className="flex items-center gap-4">
+      {/* Header with Back Button and Write Off Button */}
+      <div className="flex items-center justify-between">
         <Button
           variant="outline"
           onClick={() => router.back()}
@@ -217,6 +289,32 @@ export default function JournalEntriesPage() {
           <ChevronLeft className="h-4 w-4" />
           Back
         </Button>
+        
+        <div className="flex items-center gap-2">
+          <Button
+            onClick={() => setWriteOffModalOpen(true)}
+            className="flex items-center gap-2 bg-red-600 hover:bg-red-700"
+          >
+            <DollarSign className="h-4 w-4" />
+            Write Off
+          </Button>
+          
+          <Button
+            onClick={() => setCloseModalOpen(true)}
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700"
+          >
+            <RotateCcw className="h-4 w-4" />
+            Close
+          </Button>
+          
+          <Button
+            onClick={() => setCloseAsRescheduledModalOpen(true)}
+            className="flex items-center gap-2 bg-orange-600 hover:bg-orange-700"
+          >
+            <RotateCcw className="h-4 w-4" />
+            Close (as Rescheduled)
+          </Button>
+        </div>
       </div>
 
       {/* Transaction Summary Header */}
@@ -397,6 +495,46 @@ export default function JournalEntriesPage() {
           Back
         </Button>
       </div>
+
+      {/* Write Off Modal */}
+      <WriteOffModal
+        isOpen={writeOffModalOpen}
+        onClose={() => setWriteOffModalOpen(false)}
+        loanId={loanId}
+        onSuccess={() => {
+          // Optionally refresh data or show success message
+          toast({
+            title: "Write-off Successful",
+            description: "The loan has been written off successfully.",
+          });
+        }}
+      />
+
+      {/* Close Modal */}
+      <CloseModal
+        isOpen={closeModalOpen}
+        onClose={() => setCloseModalOpen(false)}
+        loanId={loanId}
+        onSuccess={() => {
+          toast({
+            title: "Close Successful",
+            description: "The loan has been closed successfully.",
+          });
+        }}
+      />
+
+      {/* Close (as Rescheduled) Modal */}
+      <CloseAsRescheduledModal
+        isOpen={closeAsRescheduledModalOpen}
+        onClose={() => setCloseAsRescheduledModalOpen(false)}
+        loanId={loanId}
+        onSuccess={() => {
+          toast({
+            title: "Close as Rescheduled Successful",
+            description: "The loan has been closed as rescheduled successfully.",
+          });
+        }}
+      />
     </div>
   );
 }

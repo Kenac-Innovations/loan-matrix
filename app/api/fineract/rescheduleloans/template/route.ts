@@ -1,23 +1,18 @@
-import { NextRequest, NextResponse } from "next/server";
-import { fetchFineractAPI } from "@/lib/api";
+import { NextResponse } from 'next/server';
+import { fetchFineractAPI } from '@/lib/api';
 
-export async function GET(request: NextRequest) {
+/**
+ * GET /api/fineract/rescheduleloans/template
+ * Proxies to Fineract's reschedule loans template endpoint
+ */
+export async function GET() {
   try {
-    const data = await fetchFineractAPI(`/rescheduleloans/template`);
+    const data = await fetchFineractAPI('/rescheduleloans/template');
     return NextResponse.json(data);
   } catch (error: any) {
-    console.error("Error fetching reschedule template:", error);
-    
-    // If it's a Fineract API error with status code, preserve it
-    if (error.status && error.errorData) {
-      return NextResponse.json(
-        error.errorData,
-        { status: error.status }
-      );
-    }
-    
+    console.error('Error fetching reschedule loan template:', error);
     return NextResponse.json(
-      { error: error.message || "Failed to fetch reschedule template" },
+      { error: error.message || 'Unknown error' },
       { status: 500 }
     );
   }

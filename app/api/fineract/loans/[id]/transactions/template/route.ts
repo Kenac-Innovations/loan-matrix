@@ -1,41 +1,32 @@
-import { NextRequest, NextResponse } from "next/server";
-import { fetchFineractAPI } from "@/lib/api";
+import { NextResponse } from 'next/server';
+import { fetchFineractAPI } from '@/lib/api';
 
+/**
+ * GET /api/fineract/loans/[id]/transactions/template
+ * Proxies to Fineract's loan transaction template endpoint
+ */
 export async function GET(
-  request: NextRequest,
+  request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id: loanId } = await params;
+    const { id } = await params;
     const { searchParams } = new URL(request.url);
-    
-    // Extract query parameters
     const command = searchParams.get('command');
-    const locale = searchParams.get('locale') || 'en';
-    const dateFormat = searchParams.get('dateFormat') || 'dd MMMM yyyy';
-    const transactionDate = searchParams.get('transactionDate');
-    
-    // Build query string
-    const queryParams = new URLSearchParams();
-    if (command) queryParams.append('command', command);
-    if (locale) queryParams.append('locale', locale);
-    if (dateFormat) queryParams.append('dateFormat', dateFormat);
-    if (transactionDate) queryParams.append('transactionDate', transactionDate);
-    
-    const endpoint = `/loans/${loanId}/transactions/template?${queryParams.toString()}`;
-    
-    const data = await fetchFineractAPI(endpoint, {
-      method: "GET",
-    });
 
+    if (!command) {
+      return NextResponse.json(
+        { error: 'Command parameter is required' },
+        { status: 400 }
+      );
+    }
+
+    const data = await fetchFineractAPI(`/loans/${id}/transactions/template?command=${command}`);
     return NextResponse.json(data);
   } catch (error: any) {
-    console.error("Error fetching loan transaction template:", error);
-    if (error.status && error.errorData) {
-      return NextResponse.json(error.errorData, { status: error.status });
-    }
+    console.error('Error fetching loan transaction template:', error);
     return NextResponse.json(
-      { error: error.message || "Failed to fetch loan transaction template" },
+      { error: error.message || 'Unknown error' },
       { status: 500 }
     );
   }

@@ -17,6 +17,19 @@ import { toast } from "@/components/ui/use-toast";
 import { AlertCircle, Download, MoreVertical, X, ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight, Edit, Flag, Plus, Heart, Coins, RotateCcw, Calendar, ChevronRight as ChevronRightIcon, User, Building, Phone, Mail, CreditCard, TrendingUp, Clock, FileText, Shield, DollarSign, Percent, CalendarDays, Settings, Trash2, StickyNote } from "lucide-react";
 import { ClientTransactions } from "../../../components/client-transactions";
 import { RepaymentModal } from "./repayment-modal";
+import { PaymentModal } from "./payment-modal";
+import { InterestPaymentWaiverModal } from "./interest-payment-waiver-modal";
+import { PayoutRefundModal } from "./payout-refund-modal";
+import { MerchantIssuedRefundModal } from "./merchant-issued-refund-modal";
+import { WaiveInterestModal } from "./waive-interest-modal";
+import { RescheduleModal } from "./reschedule-modal";
+import WriteOffModal from "@/components/WriteOffModal";
+import CloseAsRescheduledModal from "@/components/CloseAsRescheduledModal";
+import CloseModal from "@/components/CloseModal";
+import GuarantorsModal from "@/components/GuarantorsModal";
+import CreateGuarantorModal from "@/components/CreateGuarantorModal";
+import RecoverFromGuarantorModal from "@/components/RecoverFromGuarantorModal";
+import SellLoanModal from "@/components/SellLoanModal";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { TransactionsDataTable } from "./transactions-data-table";
 
@@ -493,6 +506,12 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
     externalId: ''
   });
 
+  // Waive Interest Modal State
+  const [showWaiveInterestModal, setShowWaiveInterestModal] = useState(false);
+
+  // Reschedule Modal State
+  const [showRescheduleModal, setShowRescheduleModal] = useState(false);
+
   // Re-Amortize Modal state
   const [showReAmortizeModal, setShowReAmortizeModal] = useState(false);
   const [isSubmittingReAmortize, setIsSubmittingReAmortize] = useState(false);
@@ -500,6 +519,37 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
     reason: '',
     externalId: ''
   });
+
+  // Payment Modal state (for Goodwill Credit only)
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [paymentCommand, setPaymentCommand] = useState("");
+  const [paymentTitle, setPaymentTitle] = useState("");
+
+  // Separate modal states
+  const [showInterestPaymentWaiverModal, setShowInterestPaymentWaiverModal] = useState(false);
+  const [showPayoutRefundModal, setShowPayoutRefundModal] = useState(false);
+  const [showMerchantIssuedRefundModal, setShowMerchantIssuedRefundModal] = useState(false);
+
+  // Write Off Modal State
+  const [showWriteOffModal, setShowWriteOffModal] = useState(false);
+
+  // Close (as Rescheduled) Modal State
+  const [showCloseAsRescheduledModal, setShowCloseAsRescheduledModal] = useState(false);
+
+  // Close Modal State
+  const [showCloseModal, setShowCloseModal] = useState(false);
+
+  // Guarantors Modal State
+  const [showGuarantorsModal, setShowGuarantorsModal] = useState(false);
+
+  // Create Guarantor Modal State
+  const [showCreateGuarantorModal, setShowCreateGuarantorModal] = useState(false);
+
+  // Recover from Guarantor Modal State
+  const [showRecoverFromGuarantorModal, setShowRecoverFromGuarantorModal] = useState(false);
+
+  // Sell Loan Modal State
+  const [showSellLoanModal, setShowSellLoanModal] = useState(false);
 
   // Close actions menu when clicking outside
 
@@ -926,49 +976,49 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                 // Submenu handled by hover events
                 break;
               case 'goodwill-credit':
-                console.log("Goodwill Credit");
+                openPaymentModal('goodwillCredit', 'Goodwill Credit');
                 break;
               case 'interest-payment-waiver':
-                console.log("Interest Payment Waiver");
+                setShowInterestPaymentWaiverModal(true);
                 break;
               case 'payout-refund':
-                console.log("Payout Refund");
+                setShowPayoutRefundModal(true);
                 break;
               case 'merchant-issued-refund':
-                console.log("Merchant Issued Refund");
+                setShowMerchantIssuedRefundModal(true);
                 break;
               case 'more':
                 // Submenu handled by hover events
                 break;
               case 'waive-interest':
-                console.log("Waive Interest");
+                setShowWaiveInterestModal(true);
                 break;
               case 'reschedule':
-                console.log("Reschedule");
+                setShowRescheduleModal(true);
                 break;
               case 'write-off':
-                console.log("Write Off");
+                setShowWriteOffModal(true);
                 break;
               case 'close-as-rescheduled':
-                console.log("Close (as Rescheduled)");
+                setShowCloseAsRescheduledModal(true);
                 break;
               case 'close':
-                console.log("Close");
+                setShowCloseModal(true);
                 break;
               case 'loan-screen-report':
                 console.log("Loan Screen Report");
                 break;
               case 'view-guarantors':
-                console.log("View Guarantors");
+                setShowGuarantorsModal(true);
                 break;
               case 'create-guarantor':
-                console.log("Create Guarantor");
+                setShowCreateGuarantorModal(true);
                 break;
               case 'recover-from-guarantor':
-                console.log("Recover From Guarantor");
+                setShowRecoverFromGuarantorModal(true);
                 break;
               case 'sell-loan':
-                console.log("Sell Loan");
+                setShowSellLoanModal(true);
                 break;
               case 'view-journal':
                 // View Journal Entry logic
@@ -2765,6 +2815,13 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
     setShowReAmortizeModal(true);
   };
 
+  // Helper function to open payment modal with different commands
+  const openPaymentModal = (command: string, title: string) => {
+    setPaymentCommand(command);
+    setPaymentTitle(title);
+    setShowPaymentModal(true);
+  };
+
   if (loading) {
     return (
       <div className="space-y-8">
@@ -3846,6 +3903,70 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
           window.location.reload();
           setActiveTab("transactions");
         }}
+      />
+
+      {/* Payment Modal (Goodwill Credit only) */}
+      <PaymentModal
+        isOpen={showPaymentModal}
+        onClose={() => setShowPaymentModal(false)}
+        loanId={loanId}
+        command={paymentCommand}
+        title={paymentTitle}
+        onSuccess={() => {
+          // Refresh loan data and switch to transactions tab
+          window.location.reload();
+          setActiveTab("transactions");
+        }}
+      />
+
+      {/* Interest Payment Waiver Modal */}
+      <InterestPaymentWaiverModal
+        isOpen={showInterestPaymentWaiverModal}
+        onClose={() => setShowInterestPaymentWaiverModal(false)}
+        loanId={loanId}
+        onSuccess={() => {
+          // Refresh loan data and switch to transactions tab
+          window.location.reload();
+          setActiveTab("transactions");
+        }}
+      />
+
+      {/* Payout Refund Modal */}
+      <PayoutRefundModal
+        isOpen={showPayoutRefundModal}
+        onClose={() => setShowPayoutRefundModal(false)}
+        loanId={loanId}
+        onSuccess={() => {
+          // Refresh loan data and switch to transactions tab
+          window.location.reload();
+          setActiveTab("transactions");
+        }}
+      />
+
+      {/* Merchant Issued Refund Modal */}
+      <MerchantIssuedRefundModal
+        isOpen={showMerchantIssuedRefundModal}
+        onClose={() => setShowMerchantIssuedRefundModal(false)}
+        loanId={loanId}
+        onSuccess={() => {
+          // Refresh loan data and switch to transactions tab
+          window.location.reload();
+          setActiveTab("transactions");
+        }}
+      />
+
+      {/* Waive Interest Modal */}
+      <WaiveInterestModal
+        isOpen={showWaiveInterestModal}
+        onClose={() => setShowWaiveInterestModal(false)}
+        loanId={loanId}
+      />
+
+      {/* Reschedule Modal */}
+      <RescheduleModal
+        isOpen={showRescheduleModal}
+        onClose={() => setShowRescheduleModal(false)}
+        loanId={loanId}
       />
 
       {/* Add Collateral Modal */}
@@ -5290,6 +5411,103 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Write Off Modal */}
+      <WriteOffModal
+        isOpen={showWriteOffModal}
+        onClose={() => setShowWriteOffModal(false)}
+        loanId={loanId.toString()}
+        onSuccess={() => {
+          toast({
+            title: "Write-off Successful",
+            description: "The loan has been written off successfully.",
+          });
+          // Optionally refresh loan data
+          // You can add a refetch function here if needed
+        }}
+      />
+
+      {/* Close (as Rescheduled) Modal */}
+      <CloseAsRescheduledModal
+        isOpen={showCloseAsRescheduledModal}
+        onClose={() => setShowCloseAsRescheduledModal(false)}
+        loanId={loanId.toString()}
+        onSuccess={() => {
+          toast({
+            title: "Close as Rescheduled Successful",
+            description: "The loan has been closed as rescheduled successfully.",
+          });
+          // Optionally refresh loan data
+          // You can add a refetch function here if needed
+        }}
+      />
+
+      {/* Close Modal */}
+      <CloseModal
+        isOpen={showCloseModal}
+        onClose={() => setShowCloseModal(false)}
+        loanId={loanId.toString()}
+        onSuccess={() => {
+          toast({
+            title: "Close Successful",
+            description: "The loan has been closed successfully.",
+          });
+          // Optionally refresh loan data
+          // You can add a refetch function here if needed
+        }}
+      />
+
+      {/* Guarantors Modal */}
+      <GuarantorsModal
+        isOpen={showGuarantorsModal}
+        onClose={() => setShowGuarantorsModal(false)}
+        loanId={loanId.toString()}
+      />
+
+      {/* Create Guarantor Modal */}
+      <CreateGuarantorModal
+        isOpen={showCreateGuarantorModal}
+        onClose={() => setShowCreateGuarantorModal(false)}
+        loanId={loanId.toString()}
+        onSuccess={() => {
+          toast({
+            title: "Success",
+            description: "Guarantor created successfully.",
+          });
+          // Optionally refresh guarantors data
+          // You can add a refetch function here if needed
+        }}
+      />
+
+      {/* Recover from Guarantor Modal */}
+      <RecoverFromGuarantorModal
+        isOpen={showRecoverFromGuarantorModal}
+        onClose={() => setShowRecoverFromGuarantorModal(false)}
+        loanId={loanId}
+        onSuccess={() => {
+          toast({
+            title: "Success",
+            description: "Successfully recovered from guarantor.",
+          });
+          // Optionally refresh loan data
+          // You can add a refetch function here if needed
+        }}
+      />
+
+      {/* Sell Loan Modal */}
+      <SellLoanModal
+        isOpen={showSellLoanModal}
+        onClose={() => setShowSellLoanModal(false)}
+        loanId={loanId}
+        onSuccess={() => {
+          toast({
+            title: "Success",
+            description: "Loan sold successfully.",
+          });
+          // Optionally refresh loan data
+          // You can add a refetch function here if needed
+        }}
+      />
     </div>
   );
 } 
