@@ -23,17 +23,86 @@ export const authOptions: NextAuthOptions = {
         }
 
         try {
-          // Make a request to the Fineract API for authentication
-          const response = await fetch(
-            `${
-              process.env.FINERACT_BASE_URL || "https://demo.mifos.io"
-            }/fineract-provider/api/v1/authentication`,
-            {
+          const baseUrl = process.env.FINERACT_BASE_URL || "https://demo.mifos.io";
+          const authUrl = `${baseUrl}/fineract-provider/api/v1/authentication`;
+          
+          console.log("Auth Debug - baseUrl:", baseUrl);
+          console.log("Auth Debug - authUrl:", authUrl);
+          console.log("Auth Debug - isHTTP:", baseUrl.startsWith('http://'));
+          console.log("Auth Debug - FINERACT_TENANT_ID:", process.env.FINERACT_TENANT_ID);
+          console.log("Auth Debug - All env vars:", {
+            FINERACT_BASE_URL: process.env.FINERACT_BASE_URL,
+            FINERACT_TENANT_ID: process.env.FINERACT_TENANT_ID,
+            FINERACT_USERNAME: process.env.FINERACT_USERNAME,
+            FINERACT_PASSWORD: process.env.FINERACT_PASSWORD
+          });
+          
+          let response;
+          
+          // Check if it's HTTP and use different approach
+          if (baseUrl.startsWith('http://')) {
+            console.log("Auth Debug - Using HTTP path");
+            // Use Node.js built-in http module for HTTP URLs
+            const http = require('http');
+            const url = require('url');
+            
+            const parsedUrl = url.parse(authUrl);
+            const postData = JSON.stringify({
+              username: credentials.username,
+              password: credentials.password,
+            });
+            
+            const options = {
+              hostname: parsedUrl.hostname,
+              port: parsedUrl.port || 80,
+              path: parsedUrl.path,
+              method: 'POST',
+              headers: {
+                'Accept': 'application/json, text/plain, */*',
+                'Content-Type': 'application/json',
+                'Fineract-Platform-TenantId': "demo",
+                'Content-Length': Buffer.byteLength(postData),
+              },
+            };
+            
+            console.log("Auth Debug - HTTP request options:", options);
+            console.log("Auth Debug - POST data:", postData);
+            
+            response = await new Promise<any>((resolve, reject) => {
+              const req = http.request(options, (res: any) => {
+                let data = '';
+                console.log("Auth Debug - HTTP response status:", res.statusCode);
+                res.on('data', (chunk: any) => {
+                  data += chunk;
+                });
+                res.on('end', () => {
+                  console.log("Auth Debug - HTTP response data:", data);
+                  resolve({
+                    ok: res.statusCode >= 200 && res.statusCode < 300,
+                    status: res.statusCode,
+                    statusText: res.statusMessage,
+                    json: async () => JSON.parse(data),
+                    text: async () => data,
+                  });
+                });
+              });
+              
+              req.on('error', (error) => {
+                console.error("Auth Debug - HTTP request error:", error);
+                reject(error);
+              });
+              req.write(postData);
+              req.end();
+            });
+          } else {
+            console.log("Auth Debug - Using HTTPS path");
+            // Use fetch for HTTPS URLs (original code)
+            response = await fetch(authUrl, {
               method: "POST",
               headers: {
                 Accept: "application/json, text/plain, */*",
                 "Content-Type": "application/json",
-                "Fineract-Platform-TenantId": "default",
+                "Fineract-Platform-TenantId": "demo",
               },
               body: JSON.stringify({
                 username: credentials.username,
@@ -43,15 +112,20 @@ export const authOptions: NextAuthOptions = {
               agent: new https.Agent({
                 rejectUnauthorized: false,
               }),
-            }
-          );
+            });
+          }
 
+          console.log("Auth Debug - Response status:", response.status, response.statusText);
+          
           if (!response.ok) {
-            console.error("Authentication failed:", response.statusText);
+            console.error("Authentication failed:", response.status, response.statusText);
+            const errorText = await response.text();
+            console.error("Error response body:", errorText);
             return null;
           }
 
           const data = await response.json();
+          console.log("Auth Debug - Response data keys:", Object.keys(data));
           const accessToken = data.base64EncodedAuthenticationKey;
 
           if (!accessToken) {

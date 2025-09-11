@@ -26,60 +26,84 @@ export async function fetchFineractAPI(
     endpoint.startsWith("/") ? endpoint : `/${endpoint}`
   }`;
 
-  const headers = {
+  const headers: any = {
     ...options.headers,
     Authorization: `Basic ${accessToken}`,
     "Fineract-Platform-TenantId": "demo",
-    "Content-Type": "application/json",
   };
 
-  // Skip SSL verification for local development
-  // In production, you should use proper SSL certificates
-  const https = require("https");
-  const agent = new https.Agent({ rejectUnauthorized: false });
+  // Only set Content-Type to application/json if body is NOT FormData
+  // For FormData, let the browser set the correct Content-Type with boundary
+  if (!(options.body instanceof FormData)) {
+    headers["Content-Type"] = "application/json";
+  }
 
   try {
-    const response = await fetch(url, {
-      ...options,
-      headers,
-      //@ts-ignore
-      agent,
-    });
-
-    console.log("Response:::", response);
-
-    if (!response.ok) {
-      // Try to get the error response body
-      let errorData;
-      try {
-        errorData = await response.json();
-      } catch (e) {
-        // If we can't parse JSON, use the status text
-        errorData = { 
-          defaultUserMessage: `HTTP ${response.status}: ${response.statusText}`,
-          developerMessage: `HTTP ${response.status}: ${response.statusText}`
-        };
-      }
+    let response;
+    
+    // Check if it's HTTP and use different approach
+    if (url.startsWith('http://')) {
+      // Use standard fetch for HTTP URLs (no agent needed)
+      response = await fetch(url, {
+        ...options,
+        headers,
+      });
+    } else {
+      // Skip SSL verification for local development
+      // In production, you should use proper SSL certificates
+      const https = require("https");
+      const agent = new https.Agent({ rejectUnauthorized: false });
       
-      // Extract the most specific error message from the errors array
-      let specificErrorMessage = errorData.defaultUserMessage || errorData.developerMessage;
-      
-      if (errorData.errors && Array.isArray(errorData.errors) && errorData.errors.length > 0) {
-        // Use the first error's defaultUserMessage if available, otherwise developerMessage
-        const firstError = errorData.errors[0];
-        specificErrorMessage = firstError.defaultUserMessage || firstError.developerMessage || specificErrorMessage;
-      }
-      
-      // Create a custom error that includes the backend error data
-      const error = new Error(`API error: ${response.status} ${response.statusText}`);
-      (error as any).status = response.status;
-      (error as any).errorData = {
-        ...errorData,
-        defaultUserMessage: specificErrorMessage,
-        developerMessage: specificErrorMessage
-      };
-      throw error;
+      response = await fetch(url, {
+        ...options,
+        headers,
+        //@ts-ignore
+        agent,
+      });
     }
+
+
+
+          if (!response.ok) {
+        // Try to get the error response body
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (e) {
+          // If we can't parse JSON, use the status text
+          errorData = { 
+            defaultUserMessage: `HTTP ${response.status}: ${response.statusText}`,
+            developerMessage: `HTTP ${response.status}: ${response.statusText}`
+          };
+        }
+        
+        // Handle empty response bodies (common with 403/401 errors)
+        if (!errorData || Object.keys(errorData).length === 0) {
+          errorData = {
+            defaultUserMessage: `HTTP ${response.status}: ${response.statusText}`,
+            developerMessage: `HTTP ${response.status}: ${response.statusText}`
+          };
+        }
+        
+        // Extract the most specific error message from the errors array
+        let specificErrorMessage = errorData.defaultUserMessage || errorData.developerMessage;
+        
+        if (errorData.errors && Array.isArray(errorData.errors) && errorData.errors.length > 0) {
+          // Use the first error's defaultUserMessage if available, otherwise developerMessage
+          const firstError = errorData.errors[0];
+          specificErrorMessage = firstError.defaultUserMessage || firstError.developerMessage || specificErrorMessage;
+        }
+        
+        // Create a custom error that includes the backend error data
+        const error = new Error(`API error: ${response.status} ${response.statusText}`);
+        (error as any).status = response.status;
+        (error as any).errorData = {
+          ...errorData,
+          defaultUserMessage: specificErrorMessage,
+          developerMessage: specificErrorMessage
+        };
+        throw error;
+      }
 
     return await response.json();
   } catch (error) {
@@ -123,18 +147,29 @@ export function createClientFineractAPI(accessToken: string) {
       "Content-Type": "application/json",
     };
 
-    // Skip SSL verification for local development
-    // In production, you should use proper SSL certificates
-    const https = require("https");
-    const agent = new https.Agent({ rejectUnauthorized: false });
-
     try {
-      const response = await fetch(url, {
-        ...options,
-        headers,
-        //@ts-ignore
-        agent,
-      });
+      let response;
+      
+      // Check if it's HTTP and use different approach
+      if (url.startsWith('http://')) {
+        // Use standard fetch for HTTP URLs (no agent needed)
+        response = await fetch(url, {
+          ...options,
+          headers,
+        });
+      } else {
+        // Skip SSL verification for local development
+        // In production, you should use proper SSL certificates
+        const https = require("https");
+        const agent = new https.Agent({ rejectUnauthorized: false });
+        
+        response = await fetch(url, {
+          ...options,
+          headers,
+          //@ts-ignore
+          agent,
+        });
+      }
 
       if (!response.ok) {
         // Try to get the error response body

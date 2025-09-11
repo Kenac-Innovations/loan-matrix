@@ -3,7 +3,7 @@ import { fetchFineractAPI } from '@/lib/api';
 
 /**
  * POST /api/fineract/loans/[id]/transactions
- * Creates a new transaction for a specific loan (e.g., repayment)
+ * Proxies to Fineract's loan transactions endpoint
  */
 export async function POST(
   request: Request,
@@ -11,62 +11,38 @@ export async function POST(
 ) {
   try {
     const { id } = await params;
-    const payload = await request.json();
-    
-    // Get the command parameter from the request body
-    const command = payload.command || 'repayment';
-    
-    // Remove command from payload body as it should only be in URL
-    const { command: _, ...requestBody } = payload;
-    
-    // Build the endpoint URL
-    const endpoint = `/loans/${id}/transactions?command=${command}`;
-    
-    const data = await fetchFineractAPI(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(requestBody),
-    });
-    
-    return NextResponse.json(data);
-  } catch (error: any) {
-    console.error('Error creating loan transaction:', error);
-    return NextResponse.json(
-      { error: error.message || 'Unknown error' },
-      { status: 500 }
-    );
-  }
-}
-
-/**
- * GET /api/fineract/loans/[id]/transactions
- * Gets all transactions for a specific loan
- */
-export async function GET(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  try {
-    const { id } = await params;
     const { searchParams } = new URL(request.url);
-    
-    // Build query parameters
-    const queryParams = new URLSearchParams();
-    
-    // Add offset and limit if provided
-    const offset = searchParams.get('offset');
-    const limit = searchParams.get('limit');
-    
-    if (offset) queryParams.append('offset', offset);
-    if (limit) queryParams.append('limit', limit);
-    
-    // Build the endpoint URL
-    const endpoint = `/loans/${id}/transactions${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
-    const data = await fetchFineractAPI(endpoint);
-    
+    const command = searchParams.get('command');
+
+    if (!command) {
+      return NextResponse.json(
+        { error: 'Command parameter is required' },
+        { status: 400 }
+      );
+    }
+
+    const body = await request.json();
+    const data = await fetchFineractAPI(`/loans/${id}/transactions?command=${command}`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+
     return NextResponse.json(data);
   } catch (error: any) {
-    console.error('Error fetching loan transactions:', error);
+    console.error('Error submitting loan transaction:', error);
+    
+    // Check if it's an API error with status and errorData
+    if (error.status && error.errorData) {
+      return NextResponse.json(
+        { 
+          error: error.message,
+          status: error.status,
+          details: error.errorData 
+        },
+        { status: error.status }
+      );
+    }
+    
     return NextResponse.json(
       { error: error.message || 'Unknown error' },
       { status: 500 }

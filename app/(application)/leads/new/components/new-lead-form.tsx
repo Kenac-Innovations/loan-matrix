@@ -3,11 +3,11 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm, Controller } from "react-hook-form";
+import { useForm } from "react-hook-form";
 import { z } from "zod";
-import { format } from "date-fns";
 import useSWR from "swr";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
 import {
   Card,
   CardContent,
@@ -16,7 +16,6 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
@@ -26,21 +25,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Switch } from "@/components/ui/switch";
-import { Calendar } from "@/components/ui/calendar";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import { CalendarIcon } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import {
   ArrowLeft,
   Save,
   Loader2,
   Calculator,
   CreditCard,
-  Check,
   Shield,
 } from "lucide-react";
 import Link from "next/link";
@@ -48,10 +39,11 @@ import type {
   AffordabilityResult,
   LoanOffer,
 } from "@/lib/affordability-calculator";
-import { Badge } from "@/components/ui/badge";
 import { AffordabilityCalculator } from "./affordability-calculator";
 import { ClientRegistrationForm } from "./client-registration-form";
 import { CreditScoringCalculator } from "./credit-scoring-calculator";
+import { LoanDetailsForm } from "@/components/loan-details-form";
+import { LoanTermsForm } from "@/components/loan-terms-form";
 
 // Define the type for the client form data
 type ClientFormData = {
@@ -100,6 +92,11 @@ const leadFormSchema = z.object({
   propertyOwnership: z.string().optional(),
   businessOwnership: z.boolean().default(false),
   businessType: z.string().optional(),
+  
+  // Additional Information fields
+  priority: z.string().optional(),
+  assignTo: z.string().optional(),
+  notes: z.string().optional(),
 });
 
 type LeadFormValues = z.infer<typeof leadFormSchema>;
@@ -113,6 +110,7 @@ export function NewLeadForm() {
   const [selectedOffer, setSelectedOffer] = useState<LoanOffer | null>(null);
   const [activeTab, setActiveTab] = useState("client");
   const [creditScoreResult, setCreditScoreResult] = useState<any>(null);
+  const [loanTemplateData, setLoanTemplateData] = useState<any>(null);
 
   // Fetch template data using SWR
   const { data: templateResult, error: templateError } = useSWR('/api/leads/template', fetcher);
@@ -159,6 +157,10 @@ export function NewLeadForm() {
       propertyOwnership: "",
       businessOwnership: false,
       businessType: "",
+      // Additional Information fields
+      priority: "",
+      assignTo: "",
+      notes: "",
     },
   });
 
@@ -368,11 +370,13 @@ export function NewLeadForm() {
             >
               <CreditCard className="mr-2 h-4 w-4" />
               <span className="whitespace-nowrap">Loan Details</span>
-              {selectedOffer && (
-                <Badge className="ml-2 bg-green-500 text-white">
-                  Offer Selected
-                </Badge>
-              )}
+            </TabsTrigger>
+            <TabsTrigger
+              value="terms"
+              className="data-[state=active]:bg-blue-500"
+            >
+              <Calculator className="mr-2 h-4 w-4" />
+              <span className="whitespace-nowrap">Terms</span>
             </TabsTrigger>
             <TabsTrigger
               value="additional"
@@ -489,221 +493,50 @@ export function NewLeadForm() {
           {/* Loan Details Tab */}
           <TabsContent value="loan">
             <Card>
-              <CardHeader>
-                <CardTitle>Loan Details</CardTitle>
-                <CardDescription>
-                  {selectedOffer
-                    ? "Review and confirm the selected loan offer details"
-                    : "Enter information about the requested loan"}
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {selectedOffer && (
-                  <div className="mb-6 p-4 rounded-lg border border-blue-500 bg-blue-500/10">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Check className="h-5 w-5 text-green-400" />
-                      <h3 className="font-medium">
-                        Selected Offer: {selectedOffer.productName}
-                      </h3>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-                      <div>
-                        <span className="text-gray-400">Loan Amount:</span>{" "}
-                        <span className="font-medium">
-                          {formatCurrency(selectedOffer.loanAmount)}
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-gray-400">Interest Rate:</span>{" "}
-                        <span className="font-medium">
-                          {(selectedOffer.interestRate * 100).toFixed(2)}%
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-gray-400">Term:</span>{" "}
-                        <span className="font-medium">
-                          {selectedOffer.termYears} years
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-gray-400">Monthly Payment:</span>{" "}
-                        <span className="font-medium">
-                          {formatCurrency(selectedOffer.monthlyPayment)}
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-gray-400">Total Repayment:</span>{" "}
-                        <span className="font-medium">
-                          {formatCurrency(selectedOffer.totalRepayment)}
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-gray-400">Product Code:</span>{" "}
-                        <span className="font-medium">
-                          {selectedOffer.productCode}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                )}
+              <CardContent className="p-6">
+                                   <LoanDetailsForm
+                     clientId={1} // This should come from the client registration
+                     onSubmit={(data) => {
+                       console.log('Loan details submitted:', data);
+                       // Handle loan details submission
+                     }}
+                     onBack={() => setActiveTab("credit-scoring")}
+                     onNext={(templateData) => {
+                       console.log('Received template data in main form:', templateData);
+                       setLoanTemplateData(templateData);
+                       setActiveTab("terms");
+                     }}
+                   />
+              </CardContent>
+            </Card>
+                      </TabsContent>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="loanType">
-                      Loan Type <span className="text-red-500">*</span>
-                    </Label>
-                    <Select
-                      onValueChange={(value) =>
-                        form.setValue("loanType", value)
-                      }
-                      defaultValue={form.watch("loanType")}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select loan type" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="business">Business Loan</SelectItem>
-                        <SelectItem value="personal">Personal Loan</SelectItem>
-                        <SelectItem value="mortgage">Mortgage</SelectItem>
-                        <SelectItem value="auto">Auto Loan</SelectItem>
-                        <SelectItem value="education">
-                          Education Loan
-                        </SelectItem>
-                        <SelectItem value="other">Other</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    {form.formState.errors.loanType && (
-                      <p className="text-sm text-red-500">
-                        {form.formState.errors.loanType.message}
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="loanAmount">
-                      Loan Amount <span className="text-red-500">*</span>
-                    </Label>
-                    <Input
-                      id="loanAmount"
-                      placeholder="Enter loan amount"
-                      className=""
-                      {...form.register("loanAmount")}
+            {/* Loan Terms Tab */}
+            <TabsContent value="terms">
+              <Card>
+                <CardContent className="p-6">
+                  {loanTemplateData ? (
+                    <LoanTermsForm
+                      loanTemplate={loanTemplateData}
+                      onSubmit={(data) => {
+                        console.log('Loan terms submitted:', data);
+                        // Handle loan terms submission
+                      }}
+                      onBack={() => setActiveTab("loan")}
+                      onNext={() => setActiveTab("additional")}
                     />
-                    {form.formState.errors.loanAmount && (
-                      <p className="text-sm text-red-500">
-                        {form.formState.errors.loanAmount.message}
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="loanTerm">Loan Term</Label>
-                    <Select
-                      onValueChange={(value) =>
-                        form.setValue("loanTerm", value)
-                      }
-                      value={form.watch("loanTerm")}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select loan term" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="3">3 years</SelectItem>
-                        <SelectItem value="5">5 years</SelectItem>
-                        <SelectItem value="7">7 years</SelectItem>
-                        <SelectItem value="10">10 years</SelectItem>
-                        <SelectItem value="15">15 years</SelectItem>
-                        <SelectItem value="20">20 years</SelectItem>
-                        <SelectItem value="30">30 years</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="clientAddress">Client Address</Label>
-                    <Textarea
-                      id="clientAddress"
-                      placeholder="Enter client address"
-                      className="min-h-[100px]"
-                      {...form.register("clientAddress")}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="applicationDate">Application Date</Label>
-                    <Controller
-                      control={form.control}
-                      name="applicationDate"
-                      render={({ field: { value, onChange } }) => (
-                        <Popover>
-                          <PopoverTrigger asChild>
-                            <Button
-                              variant="outline"
-                              className="w-full justify-start text-left font-normal"
-                            >
-                              <CalendarIcon className="mr-2 h-4 w-4" />
-                              {value ? (
-                                format(value, "PPP")
-                              ) : (
-                                <span>Pick a date</span>
-                              )}
-                            </Button>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-auto p-0">
-                            <Calendar
-                              mode="single"
-                              selected={value}
-                              onSelect={onChange}
-                              initialFocus
-                              captionLayout="dropdown-buttons"
-                              fromYear={2020}
-                              toYear={2030}
-                            />
-                          </PopoverContent>
-                        </Popover>
-                      )}
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="loanPurpose">Loan Purpose</Label>
-                  <Textarea
-                    id="loanPurpose"
-                    placeholder="Describe the purpose of the loan"
-                    className="min-h-[100px]"
-                    {...form.register("loanPurpose")}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="collateral">Collateral (if any)</Label>
-                  <Textarea
-                    id="collateral"
-                    placeholder="Describe any collateral for the loan"
-                    className="min-h-[100px]"
-                    {...form.register("collateral")}
-                  />
-                </div>
-
-                <div className="flex justify-between mt-6 pt-6 border-t">
+                  ) : (
+                    <div className="text-center py-8">
+                      <p className="text-muted-foreground mb-4">No loan template data available</p>
+                      <p className="text-sm text-muted-foreground">Please complete the Loan Details tab first to load the template data.</p>
                   <Button
-                    type="button"
-                    variant="outline"
-                    className=""
-                    onClick={() => setActiveTab("affordability")}
-                  >
-                    Back: Affordability
-                  </Button>
-
-                  <Button
-                    type="button"
-                    className="bg-blue-500 hover:bg-blue-600"
-                    onClick={() => setActiveTab("additional")}
-                  >
-                    Next: Additional Information
+                        onClick={() => setActiveTab("loan")}
+                        className="mt-2"
+                      >
+                        Go to Loan Details
                   </Button>
                 </div>
+                  )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -786,9 +619,9 @@ export function NewLeadForm() {
                     type="button"
                     variant="outline"
                     className=""
-                    onClick={() => setActiveTab("loan")}
+                    onClick={() => setActiveTab("terms")}
                   >
-                    Back: Loan Details
+                    Back: Loan Terms
                   </Button>
 
                   <Button

@@ -22,7 +22,7 @@ export default async function ClientLoanDetailsPage({ params }: PageProps) {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-4">
       {/* Enhanced Breadcrumbs */}
       <nav className="flex items-center space-x-2 text-sm text-muted-foreground bg-muted/30 px-4 py-3 rounded-lg">
         <Link href="/" className="hover:text-foreground transition-colors">Home</Link>
@@ -44,16 +44,20 @@ export default async function ClientLoanDetailsPage({ params }: PageProps) {
           </Button>
         </Link>
         <div className="flex-1">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="h-10 w-10 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center">
-              <CreditCard className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center">
+                <CreditCard className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+              </div>
+              <div>
+                <h1 className="text-3xl font-bold tracking-tight">Loan Details</h1>
+                <p className="text-muted-foreground">
+                  Client #{clientId} - Loan #{loanId}
+                </p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-3xl font-bold tracking-tight">Loan Details</h1>
-              <p className="text-muted-foreground">
-                Client #{clientId} - Loan #{loanId}
-              </p>
-            </div>
+            {/* Loan Actions will be rendered here by ClientLoanDetails */}
+            <div id="loan-actions-container"></div>
           </div>
         </div>
       </div>
