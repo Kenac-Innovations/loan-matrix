@@ -5,6 +5,7 @@ import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Providers } from "./providers";
 import { Toaster } from "sonner";
+import { QueueInitializer } from "@/components/queue-initializer";
 
 const inter = Inter({ 
   subsets: ["latin"],
@@ -30,6 +31,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`${inter.variable} font-sans theme-transition`} suppressHydrationWarning>
+        <QueueInitializer />
         <ThemeProvider>
           <Providers>{children}</Providers>
           <Toaster 
