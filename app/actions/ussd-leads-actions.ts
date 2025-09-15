@@ -1,6 +1,9 @@
 "use server";
 
 import { getTenantBySlug } from "@/lib/tenant-service";
+import { PrismaClient } from "@/app/generated/prisma";
+
+const prisma = new PrismaClient();
 
 // Types for USSD Loan Applications
 export interface UssdLoanApplication {
@@ -145,32 +148,63 @@ export async function getUssdLeadsData(
       throw new Error("Tenant not found");
     }
 
-    // Generate dummy data
-    let applications = generateDummyUssdApplications();
+    // Build where clause
+    const where: any = {
+      tenantId: tenant.id,
+    };
 
-    // Filter by status if provided
     if (status) {
-      applications = applications.filter(app => app.status === status);
+      where.status = status;
     }
 
-    // Apply pagination
-    const paginatedApplications = applications.slice(offset, offset + limit);
+    // Get applications with pagination
+    const applications = await prisma.ussdLoanApplication.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+      skip: offset,
+    });
+
+    // Get total count for pagination
+    const totalCount = await prisma.ussdLoanApplication.count({ where });
+
+    // Get all applications for metrics calculation (without pagination)
+    const allApplications = await prisma.ussdLoanApplication.findMany({
+      where: { tenantId: tenant.id },
+      select: { status: true, createdAt: true, processedAt: true }
+    });
 
     // Calculate metrics
-    const totalApplications = applications.length;
-    const pendingAction = applications.filter(app => 
+    const totalApplications = allApplications.length;
+    const pendingAction = allApplications.filter(app => 
       ["CREATED", "SUBMITTED"].includes(app.status)
     ).length;
-    const approved = applications.filter(app => app.status === "APPROVED").length;
-    const rejected = applications.filter(app => app.status === "REJECTED").length;
-    const disbursed = applications.filter(app => app.status === "DISBURSED").length;
-    const underReview = applications.filter(app => app.status === "UNDER_REVIEW").length;
-    const cancelled = applications.filter(app => app.status === "CANCELLED").length;
-    const expired = applications.filter(app => app.status === "EXPIRED").length;
+    const approved = allApplications.filter(app => app.status === "APPROVED").length;
+    const rejected = allApplications.filter(app => app.status === "REJECTED").length;
+    const disbursed = allApplications.filter(app => app.status === "DISBURSED").length;
+    const underReview = allApplications.filter(app => app.status === "UNDER_REVIEW").length;
+    const cancelled = allApplications.filter(app => app.status === "CANCELLED").length;
+    const expired = allApplications.filter(app => app.status === "EXPIRED").length;
+    
+    // Calculate average processing time
+    const processedApps = allApplications.filter(app => 
+      app.processedAt && ["APPROVED", "REJECTED", "DISBURSED"].includes(app.status)
+    );
+    
+    let averageProcessingTime = 0;
+    if (processedApps.length > 0) {
+      const totalProcessingTime = processedApps.reduce((sum, app) => {
+        if (app.processedAt) {
+          const processingTime = app.processedAt.getTime() - app.createdAt.getTime();
+          return sum + processingTime;
+        }
+        return sum;
+      }, 0);
+      averageProcessingTime = Math.round(totalProcessingTime / processedApps.length / (1000 * 60 * 60)); // Convert to hours
+    }
     
     const monthlyTarget = 100;
     const approvalRate = totalApplications > 0 ? Math.round((approved / totalApplications) * 100) : 0;
-    const averageProcessingTime = 24; // hours
 
     const metrics: UssdLeadsMetrics = {
       totalApplications,
@@ -186,10 +220,40 @@ export async function getUssdLeadsData(
       averageProcessingTime,
     };
 
+    // Convert database records to the expected interface format
+    const formattedApplications: UssdLoanApplication[] = applications.map(app => ({
+      loanApplicationUssdId: app.loanApplicationUssdId,
+      messageId: app.messageId,
+      referenceNumber: app.referenceNumber,
+      userPhoneNumber: app.userPhoneNumber,
+      loanMatrixClientId: app.loanMatrixClientId,
+      userFullName: app.userFullName,
+      userNationalId: app.userNationalId,
+      loanMatrixLoanProductId: app.loanMatrixLoanProductId,
+      loanProductName: app.loanProductName,
+      loanProductDisplayName: app.loanProductDisplayName,
+      principalAmount: app.principalAmount,
+      loanTermMonths: app.loanTermMonths,
+      payoutMethod: app.payoutMethod,
+      mobileMoneyNumber: app.mobileMoneyNumber,
+      mobileMoneyProvider: app.mobileMoneyProvider,
+      branchName: app.branchName,
+      officeLocationId: app.officeLocationId,
+      bankAccountNumber: app.bankAccountNumber,
+      bankName: app.bankName,
+      bankBranch: app.bankBranch,
+      status: app.status as UssdLoanApplication["status"],
+      createdAt: app.createdAt,
+      updatedAt: app.updatedAt,
+      source: app.source,
+      channel: app.channel,
+      queuedAt: app.queuedAt,
+    }));
+
     return {
-      applications: paginatedApplications,
+      applications: formattedApplications,
       metrics,
-      totalCount: totalApplications,
+      totalCount,
     };
   } catch (error) {
     console.error("Error fetching USSD leads:", error);
@@ -203,12 +267,30 @@ export async function updateUssdApplicationStatus(
   notes?: string
 ): Promise<{ success: boolean; message: string }> {
   try {
-    // In a real implementation, this would update the database
-    // For now, we'll simulate the update
-    console.log(`Updating application ${applicationId} to status: ${status}`, notes ? `Notes: ${notes}` : '');
-    
-    // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    // Find the application by loanApplicationUssdId
+    const application = await prisma.ussdLoanApplication.findFirst({
+      where: { loanApplicationUssdId: applicationId }
+    });
+
+    if (!application) {
+      return {
+        success: false,
+        message: "Application not found"
+      };
+    }
+
+    // Update the application status
+    await prisma.ussdLoanApplication.update({
+      where: { id: application.id },
+      data: {
+        status,
+        processingNotes: notes,
+        processedAt: new Date(),
+        updatedAt: new Date(),
+      }
+    });
+
+    console.log(`Updated application ${applicationId} to status: ${status}`, notes ? `Notes: ${notes}` : '');
     
     return {
       success: true,
@@ -227,9 +309,43 @@ export async function getUssdApplicationById(
   applicationId: number
 ): Promise<UssdLoanApplication | null> {
   try {
-    // In a real implementation, this would fetch from the database
-    const applications = generateDummyUssdApplications();
-    return applications.find(app => app.loanApplicationUssdId === applicationId) || null;
+    const application = await prisma.ussdLoanApplication.findFirst({
+      where: { loanApplicationUssdId: applicationId }
+    });
+
+    if (!application) {
+      return null;
+    }
+
+    // Convert database record to the expected interface format
+    return {
+      loanApplicationUssdId: application.loanApplicationUssdId,
+      messageId: application.messageId,
+      referenceNumber: application.referenceNumber,
+      userPhoneNumber: application.userPhoneNumber,
+      loanMatrixClientId: application.loanMatrixClientId,
+      userFullName: application.userFullName,
+      userNationalId: application.userNationalId,
+      loanMatrixLoanProductId: application.loanMatrixLoanProductId,
+      loanProductName: application.loanProductName,
+      loanProductDisplayName: application.loanProductDisplayName,
+      principalAmount: application.principalAmount,
+      loanTermMonths: application.loanTermMonths,
+      payoutMethod: application.payoutMethod,
+      mobileMoneyNumber: application.mobileMoneyNumber,
+      mobileMoneyProvider: application.mobileMoneyProvider,
+      branchName: application.branchName,
+      officeLocationId: application.officeLocationId,
+      bankAccountNumber: application.bankAccountNumber,
+      bankName: application.bankName,
+      bankBranch: application.bankBranch,
+      status: application.status as UssdLoanApplication["status"],
+      createdAt: application.createdAt,
+      updatedAt: application.updatedAt,
+      source: application.source,
+      channel: application.channel,
+      queuedAt: application.queuedAt,
+    };
   } catch (error) {
     console.error("Error fetching USSD application:", error);
     return null;

@@ -523,3 +523,60 @@ model QueryLog {
   @@index([userId])
   @@index([timestamp])
 }
+
+model UssdLoanApplication {
+  id                        String    @id @default(cuid())
+  tenantId                  String    // Multi-tenant support
+  createdAt                 DateTime  @default(now())
+  updatedAt                 DateTime  @updatedAt
+  
+  // USSD Application Details
+  loanApplicationUssdId     Int       @unique
+  messageId                 String    @unique
+  referenceNumber           String    @unique
+  userPhoneNumber           String
+  loanMatrixClientId        Int?
+  userFullName              String
+  userNationalId            String
+  
+  // Loan Product Information
+  loanMatrixLoanProductId   Int
+  loanProductName           String
+  loanProductDisplayName    String
+  
+  // Loan Details
+  principalAmount           Float
+  loanTermMonths            Int
+  
+  // Payout Information
+  payoutMethod              String    // 1: Mobile Money, 2: Cash Pickup, 3: Bank Transfer
+  mobileMoneyNumber         String?
+  mobileMoneyProvider       String?
+  branchName                String?
+  officeLocationId          Int?
+  bankAccountNumber         String?
+  bankName                  String?
+  bankBranch                String?
+  
+  // Status Information
+  status                    String    @default("CREATED") // CREATED, SUBMITTED, UNDER_REVIEW, APPROVED, REJECTED, DISBURSED, CANCELLED, EXPIRED
+  
+  // Queue specific fields
+  source                    String    @default("USSD")
+  channel                   String    @default("USSD_LOAN_APPLICATION")
+  queuedAt                  DateTime  @default(now())
+  processedAt               DateTime?
+  
+  // Processing notes and metadata
+  processingNotes           String?
+  rejectionReason           String?
+  approvalNotes             String?
+  
+  // Indexes for performance
+  @@index([tenantId, status])
+  @@index([tenantId, createdAt])
+  @@index([messageId])
+  @@index([referenceNumber])
+  @@index([userPhoneNumber])
+  @@index([status, createdAt])
+}
