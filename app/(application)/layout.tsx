@@ -12,6 +12,7 @@ import {
   FileText,
   Home,
   Lock,
+  Phone,
   PlusCircle,
   Settings,
   Shield,
@@ -85,7 +86,7 @@ export default async function DashboardLayout({
                   href="/leads"
                   subMenuItems={[
                     { label: "Pipeline", href: "/leads" },
-                    { label: "USSD Leads", href: "/leads/ussd" },
+                    { label: "USSD Leads", href: "/ussd-leads" },
                     { label: "Configuration", href: "/leads/config" },
                   ]}
                 />

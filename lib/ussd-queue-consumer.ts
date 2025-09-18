@@ -69,16 +69,4 @@ export function getUssdQueueConsumer(): UssdQueueConsumer {
   return consumer;
 }
 
-// Auto-start the consumer when this module is imported
-if (process.env.NODE_ENV !== 'test') {
-  const ussdConsumer = getUssdQueueConsumer();
-  
-  // Start the consumer with a small delay to ensure the app is fully initialized
-  setTimeout(async () => {
-    try {
-      await ussdConsumer.start();
-    } catch (error) {
-      console.error('Failed to auto-start USSD queue consumer:', error);
-    }
-  }, 2000);
-}
+// Consumer will be started by the queue-initializer module

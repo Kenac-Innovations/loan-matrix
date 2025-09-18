@@ -40,7 +40,7 @@ export class AmqpQueueService {
   private reconnectDelay = 5000; // 5 seconds
 
   constructor() {
-    this.connect();
+    // Don't auto-connect in constructor
   }
 
   private async connect(): Promise<void> {
@@ -99,26 +99,26 @@ export class AmqpQueueService {
   private async setupQueue(): Promise<void> {
     if (!this.channel) throw new Error('Channel not available');
 
-    const exchangeName = process.env.AMQP_EXCHANGE_NAME || 'ussd_exchange';
-    const queueName = process.env.AMQP_QUEUE_NAME || 'ussd_loan_applications';
-    const routingKey = process.env.AMQP_ROUTING_KEY || 'loan.application';
+    const exchangeName = process.env.AMQP_EXCHANGE_NAME || 'ussdloanapplications.exchange';
+    const queueName = process.env.AMQP_QUEUE_NAME || 'ussdloanapplications.queue';
+    const routingKey = process.env.AMQP_ROUTING_KEY || 'ussdloanapplications.routing.key';
 
-    // Declare exchange
-    await this.channel.assertExchange(exchangeName, 'direct', { durable: true });
+    try {
+      // Declare main exchange
+      await this.channel.assertExchange(exchangeName, 'direct', { durable: true });
 
-    // Declare queue
-    await this.channel.assertQueue(queueName, { 
-      durable: true,
-      arguments: {
-        'x-message-ttl': 3600000, // 1 hour TTL
-        'x-max-length': 10000, // Max 10k messages
-      }
-    });
+      // Just check that the queue exists (don't try to modify it)
+      await this.channel.checkQueue(queueName);
+      console.log(`Using existing queue: ${queueName}`);
 
-    // Bind queue to exchange
-    await this.channel.bindQueue(queueName, exchangeName, routingKey);
+      // Bind main queue to main exchange
+      await this.channel.bindQueue(queueName, exchangeName, routingKey);
 
-    console.log(`Queue setup complete: ${queueName} -> ${exchangeName} (${routingKey})`);
+      console.log(`Queue setup complete: ${queueName} -> ${exchangeName} (${routingKey})`);
+    } catch (error) {
+      console.error('Error setting up queues:', error);
+      throw error;
+    }
   }
 
   private async handleReconnect(): Promise<void> {
@@ -136,11 +136,25 @@ export class AmqpQueueService {
   }
 
   public async startConsuming(): Promise<void> {
+    // Ensure connection is established first
+    if (!this.isConnected) {
+      await this.connect();
+    }
+    
+    // Wait for connection to be established
+    let attempts = 0;
+    const maxAttempts = 30; // 30 seconds timeout
+    
+    while ((!this.channel || !this.isConnected) && attempts < maxAttempts) {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      attempts++;
+    }
+    
     if (!this.channel || !this.isConnected) {
-      throw new Error('Not connected to AMQP broker');
+      throw new Error('Not connected to AMQP broker after waiting');
     }
 
-    const queueName = process.env.AMQP_QUEUE_NAME || 'ussd_loan_applications';
+    const queueName = process.env.AMQP_QUEUE_NAME || 'ussdloanapplications.queue';
     
     // Set prefetch to 1 to process messages one at a time
     await this.channel.prefetch(1);
