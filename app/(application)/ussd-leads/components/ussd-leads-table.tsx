@@ -103,6 +103,28 @@ export function UssdLeadsTable({ initialData }: UssdLeadsTableProps) {
     }
   };
 
+  const handleMarkAsSubmitted = async (app: UssdLoanApplication) => {
+    try {
+      // Create Fineract loan using backend mapping
+      const res = await fetch(`/api/ussd-leads/${app.loanApplicationUssdId}/submit`, {
+        method: 'POST',
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        const msg = data?.errorData?.defaultUserMessage || data?.error || 'Failed to create loan';
+        alert(msg);
+        return;
+      }
+
+      // Update status to SUBMITTED locally and in DB
+      await handleStatusUpdate(app.loanApplicationUssdId, 'SUBMITTED');
+      alert('Loan submitted successfully');
+    } catch (e: any) {
+      console.error(e);
+      alert(e.message || 'Failed to submit loan');
+    }
+  };
+
   return (
     <div className="space-y-4">
       {/* Filters */}
@@ -244,7 +266,7 @@ export function UssdLeadsTable({ initialData }: UssdLeadsTableProps) {
                           View Details
                         </DropdownMenuItem>
                         {app.status === "CREATED" && (
-                          <DropdownMenuItem onClick={() => handleStatusUpdate(app.loanApplicationUssdId, "SUBMITTED")}>
+                          <DropdownMenuItem onClick={() => handleMarkAsSubmitted(app)}>
                             <CheckCircle className="mr-2 h-4 w-4" />
                             Mark as Submitted
                           </DropdownMenuItem>
