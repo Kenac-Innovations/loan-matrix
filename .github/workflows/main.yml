@@ -59,22 +59,7 @@ jobs:
         cache-from: type=gha
         cache-to: type=gha,mode=max
 
-    - name: Update GitOps values
+    - name: Build completed successfully
       run: |
-        # Get the image tag
-        IMAGE_TAG=$(echo "${{ steps.meta.outputs.tags }}" | head -n1 | sed 's/.*://')
-        
-        # Update values.yaml files
-        for env in dev qa prod; do
-          if [ "${{ github.ref_name }}" = "$env" ]; then
-            sed -i "s/tag: \".*\"/tag: \"$IMAGE_TAG\"/" projects/loan-matrix/environments/$env/values.yaml
-          fi
-        done
-
-    - name: Commit and push changes
-      run: |
-        git config --local user.email "action@github.com"
-        git config --local user.name "GitHub Action"
-        git add projects/loan-matrix/environments/*/values.yaml
-        git diff --staged --quiet || git commit -m "Update loan-matrix image tag to ${{ steps.meta.outputs.tags }}"
-        git push
+        echo "Docker image built and pushed successfully!"
+        echo "Image tags: ${{ steps.meta.outputs.tags }}"
