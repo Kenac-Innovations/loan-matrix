@@ -64,10 +64,15 @@ jobs:
         # Get the image tag
         IMAGE_TAG=$(echo "${{ steps.meta.outputs.tags }}" | head -n1 | sed 's/.*://')
         
-        # Update values.yaml files
+        # Update values.yaml files if they exist
         for env in dev qa prod; do
           if [ "${{ github.ref_name }}" = "$env" ]; then
-            sed -i "s/tag: \".*\"/tag: \"$IMAGE_TAG\"/" projects/loan-matrix/environments/$env/values.yaml
+            if [ -f "projects/loan-matrix/environments/$env/values.yaml" ]; then
+              sed -i "s/tag: \".*\"/tag: \"$IMAGE_TAG\"/" projects/loan-matrix/environments/$env/values.yaml
+              echo "Updated $env environment with image tag: $IMAGE_TAG"
+            else
+              echo "Warning: projects/loan-matrix/environments/$env/values.yaml not found"
+            fi
           fi
         done
 
@@ -75,6 +80,14 @@ jobs:
       run: |
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action"
-        git add projects/loan-matrix/environments/*/values.yaml
-        git diff --staged --quiet || git commit -m "Update loan-matrix image tag to ${{ steps.meta.outputs.tags }}"
-        git push
+        if [ -d "projects/loan-matrix/environments" ]; then
+          git add projects/loan-matrix/environments/*/values.yaml
+          if ! git diff --staged --quiet; then
+            git commit -m "Update loan-matrix image tag to ${{ steps.meta.outputs.tags }}"
+            git push
+          else
+            echo "No changes to commit"
+          fi
+        else
+          echo "No environments directory found, skipping commit"
+        fi
