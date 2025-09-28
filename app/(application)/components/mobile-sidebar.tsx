@@ -197,6 +197,16 @@ export function MobileSidebar({ userProfileData }: MobileSidebarProps) {
                     Pipeline
                   </Link>
                   <Link
+                    href="/leads/ussd"
+                    className={`flex items-center gap-3 rounded-md px-3 py-2 text-xs font-medium ${
+                      pathname === "/leads/ussd"
+                        ? iconColorActive
+                        : `${iconColor} hover:${textColor}`
+                    }`}
+                  >
+                    USSD Leads
+                  </Link>
+                  <Link
                     href="/leads/config"
                     className={`flex items-center gap-3 rounded-md px-3 py-2 text-xs font-medium ${
                       pathname === "/leads/config"
