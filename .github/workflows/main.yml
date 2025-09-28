@@ -42,17 +42,18 @@ jobs:
           type=ref,event=pr
           type=sha,prefix={{branch}}-
 
-    - name: Clone source repository
-      run: |
-        git clone https://github.com/Kenac-Innovations/loan-matrix.git source-repo
-        cd source-repo
-        git checkout ${{ github.ref_name }}
+    - name: Checkout application repository
+      uses: actions/checkout@v4
+      with:
+        repository: Kenac-Innovations/loan-matrix
+        path: app-source
+        fetch-depth: 0
 
     - name: Build and push Docker image
       uses: docker/build-push-action@v5
       with:
-        context: ./source-repo
-        file: ./source-repo/Dockerfile
+        context: ./app-source
+        file: ./app-source/Dockerfile
         push: true
         tags: ${{ steps.meta.outputs.tags }}
         labels: ${{ steps.meta.outputs.labels }}
