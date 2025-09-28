@@ -13,10 +13,12 @@ env:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    env:
+      GITOPS_APP_ID: ${{ secrets.GITOPS_APP_ID }}
     permissions:
       contents: read
       packages: write
-      id-token: write
+      actions: read
 
     steps:
     - name: Checkout repository
@@ -48,6 +50,7 @@ jobs:
         repository: Kenac-Innovations/loan-matrix
         path: app-source
         fetch-depth: 0
+
     - name: Build and push Docker image
       uses: docker/build-push-action@v5
       with:
@@ -145,7 +148,12 @@ jobs:
         NEW_TAG="${{ steps.image-tag.outputs.tag }}"
         
         git add .
-        git commit -m "Update loan-matrix image tag to $NEW_TAG for $ENV environment - Updated by GitHub Actions - Commit: ${{ github.sha }} - Branch: ${{ github.ref_name }} - Workflow: ${{ github.workflow }}"
+        git commit -m "Update loan-matrix image tag to $NEW_TAG for $ENV environment
+        
+        - Updated by GitHub Actions
+        - Commit: ${{ github.sha }}
+        - Branch: ${{ github.ref_name }}
+        - Workflow: ${{ github.workflow }}"
         
         git push origin master
 
