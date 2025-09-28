@@ -1,94 +1,176 @@
-name: loan-matrix CI/CD
+name: goodfellow-ussd CI/CD
 
 on:
   push:
-    branches: [ dev, qa, prod ]
+    branches: [main, master, dev]
   pull_request:
-    branches: [ dev, qa, prod ]
+    branches: [main, master, dev]
+
+# Grant necessary permissions to the built-in GITHUB_TOKEN
+permissions:
+  contents: read
+  packages: write
+  actions: read
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
+  IMAGE_NAME: ghcr.io/kenac-innovations/goodfellowussd
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-      id-token: write
-
+    env:
+      GITOPS_APP_ID: ${{ secrets.GITOPS_APP_ID }}
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
+      - name: Checkout application repository
+        uses: actions/checkout@v4
+        with:
+          repository: Kenac-Innovations/GoodFellowUssd
+          path: app-source
 
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: 'maven'
 
-    - name: Log in to Container Registry
-      uses: docker/login-action@v3
-      with:
-        registry: ${{ env.REGISTRY }}
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Run tests
+        run: |
+          cd app-source
+          ./mvnw test || echo "No tests configured"
 
-    - name: Extract metadata
-      id: meta
-      uses: docker/metadata-action@v5
-      with:
-        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-        tags: |
-          type=ref,event=branch
-          type=ref,event=pr
-          type=sha,prefix={{branch}}-
+      - name: Build application
+        run: |
+          cd app-source
+          ./mvnw clean package -DskipTests
 
-    - name: Checkout application repository
-      uses: actions/checkout@v4
-      with:
-        repository: Kenac-Innovations/loan-matrix
-        path: app-source
-        fetch-depth: 0
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Build and push Docker image
-      uses: docker/build-push-action@v5
-      with:
-        context: ./app-source
-        file: ./app-source/Dockerfile
-        push: true
-        tags: ${{ steps.meta.outputs.tags }}
-        labels: ${{ steps.meta.outputs.labels }}
-        cache-from: type=gha
-        cache-to: type=gha,mode=max
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
 
-    - name: Update GitOps values
-      run: |
-        # Get the image tag
-        IMAGE_TAG=$(echo "${{ steps.meta.outputs.tags }}" | head -n1 | sed 's/.*://')
-        
-        # Update values.yaml files if they exist
-        for env in dev qa prod; do
-          if [ "${{ github.ref_name }}" = "$env" ]; then
-            if [ -f "projects/loan-matrix/environments/$env/values.yaml" ]; then
-              sed -i "s/tag: \".*\"/tag: \"$IMAGE_TAG\"/" projects/loan-matrix/environments/$env/values.yaml
-              echo "Updated $env environment with image tag: $IMAGE_TAG"
-            else
-              echo "Warning: projects/loan-matrix/environments/$env/values.yaml not found"
-            fi
-          fi
-        done
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-    - name: Commit and push changes
-      run: |
-        git config --local user.email "action@github.com"
-        git config --local user.name "GitHub Action"
-        if [ -d "projects/loan-matrix/environments" ]; then
-          git add projects/loan-matrix/environments/*/values.yaml
-          if ! git diff --staged --quiet; then
-            git commit -m "Update loan-matrix image tag to ${{ steps.meta.outputs.tags }}"
-            git push
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: app-source
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # GitOps automation steps
+      - name: Determine environment
+        id: env
+        run: |
+          if [[ "${{ github.ref_name }}" == "main" || "${{ github.ref_name }}" == "master" ]]; then
+            echo "environment=prod" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref_name }}" == "dev" ]]; then
+            echo "environment=dev" >> $GITHUB_OUTPUT
           else
-            echo "No changes to commit"
+            echo "environment=qa" >> $GITHUB_OUTPUT
           fi
-        else
-          echo "No environments directory found, skipping commit"
-        fi
+
+      - name: Extract image tag
+        id: image-tag
+        run: |
+          TAGS="${{ steps.meta.outputs.tags }}"
+          SHA_TAG=$(echo "$TAGS" | grep -E "${{ github.ref_name }}-[a-f0-9]{7}" | head -1 | cut -d':' -f2)
+          echo "tag=$SHA_TAG" >> $GITHUB_OUTPUT
+          echo "Found image tag: $SHA_TAG"
+
+      # GitHub App Token Generation
+      - name: Generate GitHub App Token
+        id: github-app-token
+        if: env.GITOPS_APP_ID != ''
+        uses: tibdex/github-app-token@v2
+        with:
+          app_id: ${{ secrets.GITOPS_APP_ID }}
+          private_key: ${{ secrets.GITOPS_APP_PRIVATE_KEY }}
+          repository: Kenac-Innovations/kenac-gitops
+
+      - name: Checkout GitOps repository
+        uses: actions/checkout@v4
+        with:
+          repository: Kenac-Innovations/kenac-gitops
+          token: ${{ steps.github-app-token.outputs.token || secrets.GITOPS_TOKEN || github.token }}
+          path: gitops-repo
+
+      - name: Update image tag in GitOps repo
+        run: |
+          cd gitops-repo
+          
+          ENV="${{ steps.env.outputs.environment }}"
+          VALUES_FILE="projects/goodfellow-ussd/environments/${ENV}/values.yaml"
+          NEW_TAG="${{ steps.image-tag.outputs.tag }}"
+          
+          echo "Environment: $ENV"
+          echo "Values file path: $VALUES_FILE"
+          echo "New tag: $NEW_TAG"
+          echo "Current directory: $(pwd)"
+          echo "Files in projects directory:"
+          ls -la projects/ || echo "No projects directory found"
+          echo "Files in goodfellow-ussd directory:"
+          ls -la projects/goodfellow-ussd/ || echo "No goodfellow-ussd directory found"
+          
+          echo "Updating $VALUES_FILE with tag: $NEW_TAG"
+          
+          if ! command -v yq &> /dev/null; then
+            sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+            sudo chmod +x /usr/local/bin/yq
+          fi
+          
+          yq eval ".image.tag = \"$NEW_TAG\"" -i "$VALUES_FILE"
+          
+          echo "Updated values file:"
+          cat "$VALUES_FILE"
+
+      - name: Commit and push changes
+        run: |
+          cd gitops-repo
+          
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          
+          if git diff --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          
+          ENV="${{ steps.env.outputs.environment }}"
+          NEW_TAG="${{ steps.image-tag.outputs.tag }}"
+          
+          git add .
+          git commit -m "Update goodfellow-ussd image tag to $NEW_TAG for $ENV environment
+          
+          - Updated by GitHub Actions
+          - Commit: ${{ github.sha }}
+          - Branch: ${{ github.ref_name }}
+          - Workflow: ${{ github.workflow }}"
+          
+          git push origin master
+
+      - name: Deployment summary
+        run: |
+          echo "🚀 Deployment Summary:"
+          echo "- Environment: ${{ steps.env.outputs.environment }}"
+          echo "- Image Tag: ${{ steps.image-tag.outputs.tag }}"
+          echo "- GitOps repo updated successfully"
+          echo "- ArgoCD will automatically sync the changes"
