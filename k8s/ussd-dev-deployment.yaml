@@ -1,0 +1,140 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ussd-dev
+  namespace: ussd-dev
+  labels:
+    app.kubernetes.io/instance: ussd-dev
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: ussd
+    app.kubernetes.io/version: 1.0.0
+    helm.sh/chart: ussd-0.1.0
+spec:
+  replicas: 1
+  progressDeadlineSeconds: 600
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: ussd-dev
+      app.kubernetes.io/name: ussd
+  strategy:
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/instance: ussd-dev
+        app.kubernetes.io/name: ussd
+    spec:
+      serviceAccountName: ussd-dev
+      imagePullSecrets:
+        - name: ghcr-secret
+      terminationGracePeriodSeconds: 300
+      containers:
+      - name: ussd
+        image: ghcr.io/kenac-innovations/goodfellowussd:dev-ce57c54
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8080
+          name: http
+          protocol: TCP
+        env:
+        - name: APP_NAME
+          value: GoodFellowUssd
+        - name: APP_PORT
+          value: "8080"
+        - name: PORT
+          value: "8080"
+        - name: ENVIRONMENT
+          value: dev
+        - name: DB_HOST
+          value: postgresql.infrastructure.svc.cluster.local
+        - name: DB_PORT
+          value: "5432"
+        - name: DB_NAME
+          value: goodfellowussd
+        - name: DB_USER
+          value: postgres
+        - name: DB_PASS
+          value: postgres123
+        - name: MAIL_HOST
+          value: ""
+        - name: MAIL_PORT
+          value: "587"
+        - name: MAIL_USER
+          value: ""
+        - name: MAIL_PASS
+          value: ""
+        - name: AUTH_TRUE
+          value: "true"
+        - name: AUTH_TLS
+          value: "true"
+        - name: REDIS_HOST
+          value: redis-ussd.infrastructure.svc.cluster.local
+        - name: REDIS_PORT
+          value: "6379"
+        - name: REDIS_PASSWORD
+          value: redis123
+        - name: LOG_LEVEL
+          value: DEBUG
+        - name: REDIS_LOG_LEVEL
+          value: DEBUG
+        - name: HIBERNATE_LOG_LEVEL
+          value: DEBUG
+        - name: HIBERNATE_BINDER_LOG_LEVEL
+          value: TRACE
+        - name: SHOW_SQL
+          value: "true"
+        - name: USSD_SERVICE_CODE
+          value: '*774#'
+        - name: USSD_SESSION_TIMEOUT
+          value: "30"
+        - name: RABBITMQ_HOST
+          value: rabbitmq.infrastructure.svc.cluster.local
+        - name: RABBITMQ_PORT
+          value: "5672"
+        - name: RABBITMQ_USERNAME
+          value: admin
+        - name: RABBITMQ_PASSWORD
+          value: rabbitmq123
+        - name: NOTIFICATION_SERVICE_URL
+          value: http://kenac-notification-service-dev.kenac-notification-service.svc.cluster.local:8080/api/v1/notifications/sms
+        - name: NOTIFICATION_TENANT_ID
+          value: goodfellow
+        - name: NOTIFICATION_CONFIG_ID
+          value: "0"
+        - name: JAVA_OPTS
+          value: "-Xms256m -Xmx768m -XX:+UseG1GC -XX:+UseContainerSupport"
+        resources:
+          limits:
+            cpu: 500m
+            memory: 1Gi
+          requests:
+            cpu: 50m
+            memory: 256Mi
+        securityContext: {}
+        # Health checks are commented out as the application may not have /health endpoint
+        # Uncomment and adjust paths when health endpoints are available
+        # livenessProbe:
+        #   httpGet:
+        #     path: /health
+        #     port: 8080
+        #     scheme: HTTP
+        #   initialDelaySeconds: 300
+        #   timeoutSeconds: 30
+        #   periodSeconds: 30
+        #   failureThreshold: 3
+        #   successThreshold: 1
+        # readinessProbe:
+        #   httpGet:
+        #     path: /health
+        #     port: 8080
+        #     scheme: HTTP
+        #   initialDelaySeconds: 300
+        #   timeoutSeconds: 30
+        #   periodSeconds: 30
+        #   failureThreshold: 3
+        #   successThreshold: 1
+
