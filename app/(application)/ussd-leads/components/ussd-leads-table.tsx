@@ -36,6 +36,7 @@ import {
   Clock,
   Eye
 } from "lucide-react";
+import Link from "next/link";
 import { UssdLeadsData, UssdLoanApplication } from "@/app/actions/ussd-leads-actions";
 import { format } from "date-fns";
 
@@ -261,9 +262,25 @@ export function UssdLeadsTable({ initialData }: UssdLeadsTableProps) {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem>
+                        <DropdownMenuItem asChild>
+                          <Link href={`/leads/${app.referenceNumber}`}>
+                            <Eye className="mr-2 h-4 w-4" />
+                            View Details
+                          </Link>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={async () => {
+                          try {
+                            const res = await fetch(`/api/ussd-leads/${app.loanApplicationUssdId}/to-lead`, { method: 'POST' });
+                            const data = await res.json();
+                            if (!res.ok) throw new Error(data?.error || 'Failed to create lead');
+                            const leadId = data.leadId || app.referenceNumber;
+                            window.location.href = `/leads/${leadId}`;
+                          } catch (e: any) {
+                            alert(e.message || 'Failed to open lead');
+                          }
+                        }}>
                           <Eye className="mr-2 h-4 w-4" />
-                          View Details
+                          Open in Lead Details
                         </DropdownMenuItem>
                         {app.status === "CREATED" && (
                           <DropdownMenuItem onClick={() => handleMarkAsSubmitted(app)}>
