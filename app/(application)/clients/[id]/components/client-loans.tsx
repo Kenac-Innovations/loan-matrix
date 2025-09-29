@@ -66,7 +66,8 @@ interface ClientLoansProps {
 const fetcher = (url: string) => fetch(url).then(res => res.json());
 
 export function ClientLoans({ clientId }: ClientLoansProps) {
-  const { data, error, isLoading } = useSWR(`/api/fineract/clients/${clientId}/loans`, fetcher);
+  // Use accounts endpoint to get loanAccounts for accuracy
+  const { data, error, isLoading } = useSWR(`/api/fineract/clients/${clientId}/accounts`, fetcher);
 
   // Handle different response formats and transform the loan data
   const loans: FineractLoan[] = (() => {
@@ -90,6 +91,10 @@ export function ClientLoans({ clientId }: ClientLoansProps) {
     else if (data.loans && Array.isArray(data.loans)) {
       rawLoans = data.loans;
     }
+    // If data has loanAccounts (from /clients/{id}/accounts)
+    else if (data.loanAccounts && Array.isArray(data.loanAccounts)) {
+      rawLoans = data.loanAccounts;
+    }
     
     // Transform the loan data to match the expected interface
     return rawLoans.map((loan: any) => ({
@@ -97,7 +102,7 @@ export function ClientLoans({ clientId }: ClientLoansProps) {
       accountNo: loan.accountNo,
       loanProductName: loan.productName || loan.loanProductName,
       principal: loan.originalLoan || loan.principal,
-      approvedPrincipal: loan.originalLoan || loan.approvedPrincipal,
+      approvedPrincipal: loan.originalLoan || loan.approvedPrincipal || loan.principal,
       interestRatePerPeriod: loan.interestRatePerPeriod || 0,
       numberOfRepayments: loan.numberOfRepayments || 0,
       status: {

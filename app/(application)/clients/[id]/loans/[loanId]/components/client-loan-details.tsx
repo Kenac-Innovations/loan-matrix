@@ -23,6 +23,8 @@ import { PayoutRefundModal } from "./payout-refund-modal";
 import { MerchantIssuedRefundModal } from "./merchant-issued-refund-modal";
 import { WaiveInterestModal } from "./waive-interest-modal";
 import { RescheduleModal } from "./reschedule-modal";
+import { DisburseModal } from "./disburse-modal";
+import { LoanApprovalModal } from "./loan-approval-modal";
 import WriteOffModal from "@/components/WriteOffModal";
 import CloseAsRescheduledModal from "@/components/CloseAsRescheduledModal";
 import CloseModal from "@/components/CloseModal";
@@ -551,6 +553,12 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
   // Sell Loan Modal State
   const [showSellLoanModal, setShowSellLoanModal] = useState(false);
 
+  // Loan Approval Modal State
+  const [showLoanApprovalModal, setShowLoanApprovalModal] = useState(false);
+
+  // Disburse Modal State
+  const [showDisburseModal, setShowDisburseModal] = useState(false);
+
   // Close actions menu when clicking outside
 
 
@@ -613,6 +621,22 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
         </button>
         <div class="absolute top-full right-0 mt-2 w-56 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 hidden" id="loan-actions-dropdown">
           <div class="py-2">
+            <button class="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed" data-action="approve-loan" id="approve-loan-btn">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M9 12l2 2 4-4"/>
+                <path d="M21 12c-1 0-3-1-3-3s2-3 3-3 3 1 3 3-2 3-3 3"/>
+                <path d="M3 12c1 0 3-1 3-3s-2-3-3-3-3 1-3 3 2 3 3 3"/>
+                <path d="M13 12h3"/>
+                <path d="M8 12h3"/>
+              </svg>
+              Approve
+            </button>
+            <button class="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed" data-action="disburse-loan" id="disburse-loan-btn">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 2v20m9-2-3-3m-6 3-3-3"/>
+              </svg>
+              Disburse
+            </button>
             <button class="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 text-sm" data-action="add-charge">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M5 12h14"/>
@@ -945,6 +969,12 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
               }
 
               switch(action) {
+              case 'approve-loan':
+                setShowLoanApprovalModal(true);
+                break;
+              case 'disburse-loan':
+                setShowDisburseModal(true);
+                break;
               case 'add-charge':
                 openAddChargeModal();
                 break;
@@ -1101,6 +1131,50 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
         }
         
         setLoan(loanData);
+        
+        // Update approve button state based on loan status
+        const approveButton = document.getElementById('approve-loan-btn');
+        if (approveButton) {
+          const isPendingApproval = loanData?.status?.pendingApproval === true;
+          approveButton.disabled = !isPendingApproval;
+          if (!isPendingApproval) {
+            approveButton.classList.add('opacity-50', 'cursor-not-allowed');
+          } else {
+            approveButton.classList.remove('opacity-50', 'cursor-not-allowed');
+          }
+        }
+
+        // Status-based gating for actions
+        const dropdownEl = document.getElementById('loan-actions-dropdown');
+        if (dropdownEl) {
+          const approveBtn = document.getElementById('approve-loan-btn') as HTMLButtonElement | null;
+          const disburseBtn = document.getElementById('disburse-loan-btn') as HTMLButtonElement | null;
+          const isPendingApproval = loanData?.status?.pendingApproval === true;
+          const isWaitingForDisbursal = loanData?.status?.waitingForDisbursal === true;
+
+          if (approveBtn) {
+            approveBtn.disabled = !isPendingApproval;
+            approveBtn.classList.toggle('opacity-50', !isPendingApproval);
+            approveBtn.classList.toggle('cursor-not-allowed', !isPendingApproval);
+          }
+          if (disburseBtn) {
+            disburseBtn.disabled = !isWaitingForDisbursal;
+            disburseBtn.classList.toggle('opacity-50', !isWaitingForDisbursal);
+            disburseBtn.classList.toggle('cursor-not-allowed', !isWaitingForDisbursal);
+          }
+
+          // If pending approval, disable all other actions except approve
+          if (isPendingApproval) {
+            dropdownEl.querySelectorAll('[data-action]')
+              .forEach((el) => {
+                const action = (el as HTMLElement).getAttribute('data-action');
+                if (action !== 'approve-loan') {
+                  (el as HTMLButtonElement).setAttribute('disabled', 'true');
+                  el.classList.add('opacity-50', 'cursor-not-allowed');
+                }
+              });
+          }
+        }
 
       } catch (err) {
         console.error("Error fetching data:", err);
@@ -3900,6 +3974,29 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
         loanId={loanId}
         onSuccess={() => {
           // Refresh loan data and switch to transactions tab
+          window.location.reload();
+          setActiveTab("transactions");
+        }}
+      />
+
+      {/* Loan Approval Modal */}
+      <LoanApprovalModal
+        isOpen={showLoanApprovalModal}
+        onClose={() => setShowLoanApprovalModal(false)}
+        loanId={loanId}
+        onApprovalSuccess={() => {
+          // Refresh loan data and switch to transactions tab
+          window.location.reload();
+          setActiveTab("transactions");
+        }}
+      />
+
+      {/* Disburse Modal */}
+      <DisburseModal
+        isOpen={showDisburseModal}
+        onClose={() => setShowDisburseModal(false)}
+        loanId={loanId}
+        onSuccess={() => {
           window.location.reload();
           setActiveTab("transactions");
         }}

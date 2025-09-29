@@ -1,9 +1,7 @@
 "use server";
 
 import { getTenantBySlug } from "@/lib/tenant-service";
-import { PrismaClient } from "@/app/generated/prisma";
-
-const prisma = new PrismaClient();
+import prisma from "@/lib/prisma";
 
 // Types for USSD Loan Applications
 export interface UssdLoanApplication {

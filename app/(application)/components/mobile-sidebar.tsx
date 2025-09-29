@@ -13,6 +13,7 @@ import {
   FileText,
   Home,
   Lock,
+  Phone,
   Settings,
   Shield,
   Users,
@@ -184,7 +185,7 @@ export function MobileSidebar({ userProfileData }: MobileSidebarProps) {
               </Link>
 
               {/* Sub-menu items for Leads */}
-              {pathname.startsWith("/leads") && (
+              {(pathname.startsWith("/leads") || pathname.startsWith("/ussd-leads")) && (
                 <div className="pl-10 space-y-1">
                   <Link
                     href="/leads"
@@ -197,9 +198,9 @@ export function MobileSidebar({ userProfileData }: MobileSidebarProps) {
                     Pipeline
                   </Link>
                   <Link
-                    href="/leads/ussd"
+                    href="/ussd-leads"
                     className={`flex items-center gap-3 rounded-md px-3 py-2 text-xs font-medium ${
-                      pathname === "/leads/ussd"
+                      pathname === "/ussd-leads"
                         ? iconColorActive
                         : `${iconColor} hover:${textColor}`
                     }`}

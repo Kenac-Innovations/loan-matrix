@@ -102,6 +102,15 @@ export async function fetchFineractAPI(
           defaultUserMessage: specificErrorMessage,
           developerMessage: specificErrorMessage
         };
+        
+        console.error('API Error Details:', {
+          status: response.status,
+          statusText: response.statusText,
+          url: url,
+          errorData: errorData,
+          specificErrorMessage: specificErrorMessage
+        });
+        
         throw error;
       }
 
