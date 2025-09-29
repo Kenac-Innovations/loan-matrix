@@ -1,3 +1,4 @@
+
 import { NextResponse } from 'next/server';
 import { fetchFineractAPI } from '@/lib/api';
 
@@ -8,6 +9,7 @@ import { fetchFineractAPI } from '@/lib/api';
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
+
     const offset = searchParams.get('offset') || '0';
     const limit = searchParams.get('limit') || '50';
     const endpoint = `/loans?offset=${offset}&limit=${limit}`;
@@ -18,5 +20,6 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: error.message || 'Unknown error' }, { status: 500 });
   }
 }
+
 
 
