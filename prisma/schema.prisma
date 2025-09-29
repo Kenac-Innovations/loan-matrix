@@ -485,6 +485,7 @@ model UssdLoanApplication {
   processingNotes         String?
   rejectionReason         String?
   approvalNotes           String?
+  paymentStatus           String?
 
   @@index([tenantId, status])
   @@index([tenantId, createdAt])
