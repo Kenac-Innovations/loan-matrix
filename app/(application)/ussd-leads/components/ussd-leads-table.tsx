@@ -262,12 +262,6 @@ export function UssdLeadsTable({ initialData }: UssdLeadsTableProps) {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem asChild>
-                          <Link href={`/leads/${app.referenceNumber}`}>
-                            <Eye className="mr-2 h-4 w-4" />
-                            View Details
-                          </Link>
-                        </DropdownMenuItem>
                         <DropdownMenuItem onClick={async () => {
                           try {
                             const res = await fetch(`/api/ussd-leads/${app.loanApplicationUssdId}/to-lead`, { method: 'POST' });
@@ -280,7 +274,7 @@ export function UssdLeadsTable({ initialData }: UssdLeadsTableProps) {
                           }
                         }}>
                           <Eye className="mr-2 h-4 w-4" />
-                          Open in Lead Details
+                          View Details
                         </DropdownMenuItem>
                         {app.status === "CREATED" && (
                           <DropdownMenuItem onClick={() => handleMarkAsSubmitted(app)}>

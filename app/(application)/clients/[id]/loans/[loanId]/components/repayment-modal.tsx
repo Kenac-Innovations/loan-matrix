@@ -122,7 +122,6 @@ export function RepaymentModal({ isOpen, onClose, loanId, onSuccess }: Repayment
 
       // Prepare payload
       const payload: any = {
-        command: "repayment",
         transactionDate: formattedDate,
         transactionAmount: parseFloat(formData.transactionAmount),
         dateFormat: "yyyy-MM-dd",
@@ -143,7 +142,7 @@ export function RepaymentModal({ isOpen, onClose, loanId, onSuccess }: Repayment
         if (formData.bankNumber) payload.bankNumber = formData.bankNumber;
       }
 
-      const response = await fetch(`/api/fineract/loans/${loanId}/transactions`, {
+      const response = await fetch(`/api/fineract/loans/${loanId}/transactions?command=repayment`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
