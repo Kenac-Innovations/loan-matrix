@@ -20,6 +20,12 @@ export async function POST(
       return NextResponse.json({ error: 'Invalid application id' }, { status: 400 });
     }
 
+    // Optional payload from caller (leadId override for externalId)
+    let incoming: any = {};
+    try {
+      incoming = await request.json();
+    } catch {}
+
     // Load application by loanApplicationUssdId
     const app = await prisma.ussdLoanApplication.findFirst({
       where: { loanApplicationUssdId: applicationId },
@@ -94,7 +100,7 @@ export async function POST(
       expectedDisbursementDate: dateStr,
       locale: 'en',
       dateFormat: 'yyyy-MM-dd',
-      externalId: app.referenceNumber || app.messageId || undefined,
+      externalId: (incoming?.leadId ? String(incoming.leadId) : undefined) || app.referenceNumber || app.messageId || undefined,
       allowPartialPeriodInterestCalcualtion: false,
       isEqualAmortization: false,
       charges: [],
