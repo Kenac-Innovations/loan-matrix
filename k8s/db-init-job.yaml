@@ -1,0 +1,32 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: loan-matrix-db-init
+  namespace: ussd-dev
+  labels:
+    app.kubernetes.io/name: loan-matrix-db-init
+    app.kubernetes.io/instance: db-init
+spec:
+  ttlSecondsAfterFinished: 300  # Clean up job after 5 minutes
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: db-init
+        image: ghcr.io/kenac-innovations/goodfellowussd:dev-ce57c54
+        imagePullPolicy: IfNotPresent
+        command: ["npm", "run", "init-db"]
+        env:
+        - name: DATABASE_URL
+          value: "postgresql://postgres:postgres123@postgresql.infrastructure.svc.cluster.local:5432/goodfellowussd"
+        - name: NODE_ENV
+          value: "production"
+        resources:
+          limits:
+            cpu: 200m
+            memory: 512Mi
+          requests:
+            cpu: 100m
+            memory: 256Mi
+      imagePullSecrets:
+        - name: ghcr-secret
