@@ -57,6 +57,49 @@ export function DisburseModal({ isOpen, onClose, loanId, onSuccess }: DisburseMo
 
         // Payment types
         setPaymentTypeOptions(Array.isArray(data.paymentTypeOptions) ? data.paymentTypeOptions : []);
+
+        // Auto-select payment type using USSD application's loanMatrixPaymentMethodId
+        try {
+          // Load loan to get externalId, then ussd lead
+          const loanRes = await fetch(`/api/fineract/loans/${loanId}`);
+          if (loanRes.ok) {
+            const loan = await loanRes.json();
+            const loanExternalId = loan?.externalId;
+            console.log('Loan externalId:', loanExternalId);
+            
+            if (loanExternalId) {
+              // Set the externalId state for the payload
+              setExternalId(loanExternalId);
+              
+              // externalId is the USSD app primary key id (string like "cmg6iyaop0000rllpahnto16q")
+              // We need to fetch the USSD application by this string id
+              const ussdRes = await fetch(`/api/ussd-leads/by-id/${loanExternalId}`);
+              if (ussdRes.ok) {
+                const ussd = await ussdRes.json();
+                console.log('USSD application:', ussd);
+                const pmId = ussd?.loanMatrixPaymentMethodId;
+                console.log('Payment method ID from USSD:', pmId);
+                console.log('Available payment type options:', data.paymentTypeOptions);
+                
+                if (pmId && Array.isArray(data.paymentTypeOptions)) {
+                  const match = data.paymentTypeOptions.find((p: any) => p.id === pmId);
+                  if (match) {
+                    setPaymentTypeId(String(pmId));
+                    console.log(`Auto-selected payment type: ${match.name} (ID: ${pmId})`);
+                  } else {
+                    console.log(`No matching payment type found for ID: ${pmId}`);
+                  }
+                }
+              } else {
+                console.log('Failed to fetch USSD application:', ussdRes.status);
+              }
+            } else {
+              console.log('No externalId found in loan');
+            }
+          }
+        } catch (error) {
+          console.error('Error auto-selecting payment type:', error);
+        }
       } catch (e) {
         console.error(e);
         toast({ title: "Error", description: "Failed to load disbursement data.", variant: "destructive" });
@@ -222,5 +265,7 @@ export function DisburseModal({ isOpen, onClose, loanId, onSuccess }: DisburseMo
     </Dialog>
   );
 }
+
+
 
 

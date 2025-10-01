@@ -36,6 +36,7 @@ export async function POST(
 
     // Build callback URL to be used by payment gateway
     const callbackUrl = `${base}/api/ussd-leads/payment-callback`;
+    //const callbackUrl = `https://webhook.site/45f26e26-5c80-4290-9a1a-87b60be151a4`;
 
     // Augment payload per requirements (send only supported fields to Fineract)
     const augmentedPayload = {
@@ -43,6 +44,12 @@ export async function POST(
       accountNumber: ussdPhone ?? payload.accountNumber,
       note: callbackUrl,
     };
+
+    // Log the payload being sent to Fineract
+    console.log('=== DISBURSEMENT PAYLOAD ===');
+    console.log('Loan ID:', id);
+    console.log('Payload sent to Fineract:', JSON.stringify(augmentedPayload, null, 2));
+    console.log('=== END DISBURSEMENT PAYLOAD ===');
 
     // POST to /loans/{id}?command=disburse with payload
     const data = await fetchFineractAPI(`/loans/${id}?command=disburse`, {

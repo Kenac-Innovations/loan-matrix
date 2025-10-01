@@ -486,6 +486,7 @@ model UssdLoanApplication {
   rejectionReason         String?
   approvalNotes           String?
   paymentStatus           String?
+  loanMatrixPaymentMethodId Int?
 
   @@index([tenantId, status])
   @@index([tenantId, createdAt])

@@ -34,6 +34,7 @@ export interface UssdLoanApplication {
   
   // Status Information
   status: "CREATED" | "SUBMITTED" | "UNDER_REVIEW" | "APPROVED" | "REJECTED" | "DISBURSED" | "CANCELLED" | "EXPIRED";
+  paymentStatus?: string | null;
   
   // Timestamps
   createdAt: Date;
@@ -241,6 +242,7 @@ export async function getUssdLeadsData(
       bankName: app.bankName,
       bankBranch: app.bankBranch,
       status: app.status as UssdLoanApplication["status"],
+      paymentStatus: app.paymentStatus,
       createdAt: app.createdAt,
       updatedAt: app.updatedAt,
       source: app.source,
@@ -338,6 +340,7 @@ export async function getUssdApplicationById(
       bankName: application.bankName,
       bankBranch: application.bankBranch,
       status: application.status as UssdLoanApplication["status"],
+      paymentStatus: application.paymentStatus,
       createdAt: application.createdAt,
       updatedAt: application.updatedAt,
       source: application.source,

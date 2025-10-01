@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import useSWR from "swr";
 import {
   Table,
   TableBody,
@@ -55,19 +56,38 @@ const statusColors = {
   EXPIRED: "bg-red-100 text-red-800",
 };
 
+const paymentStatusColors = {
+  PENDING: "bg-yellow-100 text-yellow-800",
+  COMPLETED: "bg-green-100 text-green-800",
+  FAILED: "bg-red-100 text-red-800",
+  PROCESSING: "bg-blue-100 text-blue-800",
+  CANCELLED: "bg-gray-100 text-gray-800",
+};
+
 const payoutMethodLabels = {
   "1": "Mobile Money",
   "2": "Cash Pickup", 
   "3": "Bank Transfer",
 };
 
+// Fetcher function for SWR
+const fetcher = (url: string) => fetch(url).then((res) => res.json());
+
 export function UssdLeadsTable({ initialData }: UssdLeadsTableProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [applications, setApplications] = useState(initialData.applications);
+  
+  // Use SWR for real-time updates
+  const { data, error, mutate } = useSWR('/api/ussd-leads', fetcher, {
+    initialData,
+    refreshInterval: 5000, // Refresh every 5 seconds
+    revalidateOnFocus: true,
+  });
+  
+  const applications = data?.applications || initialData.applications;
 
   // Filter applications based on search and status
-  const filteredApplications = applications.filter((app) => {
+  const filteredApplications = applications.filter((app: UssdLoanApplication) => {
     const matchesSearch = 
       app.userFullName.toLowerCase().includes(searchQuery.toLowerCase()) ||
       app.userPhoneNumber.includes(searchQuery) ||
@@ -90,14 +110,8 @@ export function UssdLeadsTable({ initialData }: UssdLeadsTableProps) {
       });
 
       if (response.ok) {
-        // Update local state
-        setApplications(prev => 
-          prev.map(app => 
-            app.loanApplicationUssdId === applicationId 
-              ? { ...app, status: newStatus as UssdLoanApplication["status"] }
-              : app
-          )
-        );
+        // Trigger SWR revalidation to get fresh data
+        mutate();
       }
     } catch (error) {
       console.error('Error updating status:', error);
@@ -166,13 +180,14 @@ export function UssdLeadsTable({ initialData }: UssdLeadsTableProps) {
               <TableHead>Loan Details</TableHead>
               <TableHead>Payout Method</TableHead>
               <TableHead>Status</TableHead>
+              <TableHead>Payment Status</TableHead>
               <TableHead>Created</TableHead>
               <TableHead className="w-[50px]">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {filteredApplications.length > 0 ? (
-              filteredApplications.map((app) => (
+              filteredApplications.map((app: UssdLoanApplication) => (
                 <TableRow key={app.loanApplicationUssdId}>
                   <TableCell>
                     <div className="space-y-1">
@@ -242,6 +257,14 @@ export function UssdLeadsTable({ initialData }: UssdLeadsTableProps) {
                       className={statusColors[app.status as keyof typeof statusColors] || "bg-gray-100 text-gray-800"}
                     >
                       {app.status.replace('_', ' ')}
+                    </Badge>
+                  </TableCell>
+                  
+                  <TableCell>
+                    <Badge 
+                      className={paymentStatusColors[(app.paymentStatus || 'PENDING') as keyof typeof paymentStatusColors] || "bg-gray-100 text-gray-800"}
+                    >
+                      {app.paymentStatus || 'PENDING'}
                     </Badge>
                   </TableCell>
                   
@@ -331,7 +354,7 @@ export function UssdLeadsTable({ initialData }: UssdLeadsTableProps) {
               ))
             ) : (
               <TableRow>
-                <TableCell colSpan={7} className="h-24 text-center">
+                <TableCell colSpan={8} className="h-24 text-center">
                   No USSD applications found.
                 </TableCell>
               </TableRow>
