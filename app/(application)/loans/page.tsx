@@ -39,14 +39,14 @@ function transformLoanData(rawLoan: any): Loan {
 
 export default async function LoansPage() {
   const data = await fetchAllLoans();
-  
+
   console.log("Loans Page Debug:", {
     dataType: typeof data,
     data: data,
     hasPageItems: !!data?.pageItems,
     hasContent: !!data?.content,
     hasLoans: !!data?.loans,
-    isArray: Array.isArray(data)
+    isArray: Array.isArray(data),
   });
 
   const rawItems: any[] = Array.isArray(data?.pageItems)
@@ -61,7 +61,7 @@ export default async function LoansPage() {
 
   console.log("Raw Items Debug:", {
     rawItemsLength: rawItems.length,
-    rawItems: rawItems.slice(0, 2) // Show first 2 items
+    rawItems: rawItems.slice(0, 2), // Show first 2 items
   });
 
   const loans: Loan[] = rawItems.map(transformLoanData);

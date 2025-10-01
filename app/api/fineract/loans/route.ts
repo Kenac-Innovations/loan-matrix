@@ -15,7 +15,7 @@ export async function GET(request: Request) {
     console.log("Loans API Debug:", {
       offset,
       limit,
-      url: request.url
+      url: request.url,
     });
 
     const fineractService = await getFineractServiceWithSession();
@@ -27,9 +27,9 @@ export async function GET(request: Request) {
     console.log("Loans API Response:", {
       dataType: typeof data,
       isArray: Array.isArray(data),
-      length: Array.isArray(data) ? data.length : 'N/A',
-      firstItem: Array.isArray(data) && data.length > 0 ? data[0] : 'No items',
-      fullData: data
+      length: Array.isArray(data) ? data.length : "N/A",
+      firstItem: Array.isArray(data) && data.length > 0 ? data[0] : "No items",
+      fullData: data,
     });
 
     return NextResponse.json(data);

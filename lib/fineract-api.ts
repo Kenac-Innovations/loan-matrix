@@ -515,22 +515,40 @@ export class FineractAPIService {
   // Loan operations
   async getLoans(offset = 0, limit = 100): Promise<FineractLoan[]> {
     console.log("Fineract getLoans called with:", { offset, limit });
-    
-    const response: AxiosResponse<FineractLoan[]> = await this.client.get(
+
+    const response: AxiosResponse<any> = await this.client.get(
       `/loans?offset=${offset}&limit=${limit}&orderBy=id&sortOrder=desc`
     );
-    
+
     console.log("Fineract getLoans response:", {
       status: response.status,
       dataType: typeof response.data,
       isArray: Array.isArray(response.data),
-      length: Array.isArray(response.data) ? response.data.length : 'N/A',
+      length: Array.isArray(response.data) ? response.data.length : "N/A",
       hasPageItems: !!response.data?.pageItems,
       hasContent: !!response.data?.content,
-      fullResponse: response.data
+      fullResponse: response.data,
     });
-    
-    return response.data;
+
+    // Handle different response structures
+    if (Array.isArray(response.data)) {
+      return response.data;
+    } else if (
+      response.data?.pageItems &&
+      Array.isArray(response.data.pageItems)
+    ) {
+      return response.data.pageItems;
+    } else if (response.data?.content && Array.isArray(response.data.content)) {
+      return response.data.content;
+    } else if (response.data?.loans && Array.isArray(response.data.loans)) {
+      return response.data.loans;
+    } else {
+      console.warn(
+        "Unexpected response structure from Fineract loans API:",
+        response.data
+      );
+      return [];
+    }
   }
 
   async getLoan(loanId: number): Promise<FineractLoan> {
