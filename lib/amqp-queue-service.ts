@@ -222,7 +222,7 @@ export class AmqpQueueService {
       console.log('Full message content received from queue:', JSON.stringify(messageContent, null, 2));
 
       // Get default tenant (you might want to make this configurable)
-      const tenant = await getTenantBySlug('default');
+      const tenant = await getTenantBySlug('goodfellow');
       if (!tenant) {
         throw new Error('Default tenant not found');
       }
