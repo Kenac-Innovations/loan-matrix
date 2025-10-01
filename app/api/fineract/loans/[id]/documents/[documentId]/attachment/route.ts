@@ -13,7 +13,7 @@ export async function GET(
 
     const { id: loanId, documentId } = await params;
     const baseUrl = process.env.FINERACT_BASE_URL;
-    const tenantId = process.env.FINERACT_TENANT_ID || "demo";
+    const tenantId = process.env.FINERACT_TENANT_ID || "goodfellow";
 
     // For file downloads, we need to handle the response differently
     const url = `${baseUrl}/fineract-provider/api/v1/loans/${loanId}/documents/${documentId}/attachment`;
