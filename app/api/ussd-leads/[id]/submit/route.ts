@@ -100,7 +100,14 @@ export async function POST(
       expectedDisbursementDate: dateStr,
       locale: 'en',
       dateFormat: 'yyyy-MM-dd',
-      externalId: (incoming?.leadId ? String(incoming.leadId) : undefined) || app.referenceNumber || app.messageId || undefined,
+      // Prefer provided leadId, else use the USSD application's primary key `id`,
+      // then fall back to referenceNumber or messageId
+      externalId:
+        (app.id ? String(app.id) : undefined) ||
+        (incoming?.leadId ? String(incoming.leadId) : undefined) ||
+        app.referenceNumber ||
+        app.messageId ||
+        undefined,
       allowPartialPeriodInterestCalcualtion: false,
       isEqualAmortization: false,
       charges: [],

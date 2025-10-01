@@ -1,7 +1,7 @@
 import { getSession } from "./auth";
 
 
-const API_BASE_URL = "http://10.10.0.143:8443/fineract-provider/api/v1";
+const API_BASE_URL = "http://fineract-dev.10.10.0.24.nip.io:31778/fineract-provider/api/v1";
 
 /**
  * Makes an authenticated request to the Fineract API
