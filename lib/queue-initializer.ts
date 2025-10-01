@@ -3,8 +3,14 @@
 
 import { getUssdQueueConsumer } from './ussd-queue-consumer';
 
-// Initialize the queue consumer
-if (process.env.NODE_ENV !== 'test') {
+// Prevent multiple initializations using global variable
+declare global {
+  var __queueConsumerInitialized: boolean | undefined;
+}
+
+// Initialize the queue consumer only once
+if (process.env.NODE_ENV !== 'test' && !global.__queueConsumerInitialized) {
+  global.__queueConsumerInitialized = true;
   try {
     const consumer = getUssdQueueConsumer();
     console.log('Queue consumer initialized');

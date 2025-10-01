@@ -1,8 +1,7 @@
-import amqp, { Connection, Channel, ConsumeMessage } from "amqplib";
-import { PrismaClient } from "@/app/generated/prisma";
-import { getTenantBySlug } from "./tenant-service";
+import amqp, { Connection, Channel, ConsumeMessage } from 'amqplib';
+import prisma from './prisma';
+import { getTenantBySlug } from './tenant-service';
 
-const prisma = new PrismaClient();
 
 export interface UssdLoanApplicationMessage {
   loanApplicationUssdId: number;
@@ -29,12 +28,19 @@ export interface UssdLoanApplicationMessage {
   source: string;
   channel: string;
   queuedAt: string;
+  loanMatrixPaymentMethodId?: number;
+}
+
+// Global flag to prevent multiple consumers
+declare global {
+  var __amqpConsumerActive: boolean | undefined;
 }
 
 export class AmqpQueueService {
   private connection: Connection | null = null;
   private channel: Channel | null = null;
   private isConnected = false;
+  private isConsuming = false;
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 5;
   private reconnectDelay = 5000; // 5 seconds
@@ -43,7 +49,7 @@ export class AmqpQueueService {
     // Don't auto-connect in constructor
   }
 
-  private async connect(): Promise<void> {
+  public async connect(): Promise<void> {
     try {
       const amqpUrl = this.buildAmqpUrl();
       console.log(
@@ -81,7 +87,10 @@ export class AmqpQueueService {
 
       this.isConnected = true;
       this.reconnectAttempts = 0;
-      console.log("Successfully connected to AMQP broker");
+
+      console.log('Successfully connected to AMQP broker');
+      console.log('Queue service is ready to consume messages');
+      
     } catch (error) {
       console.error("Failed to connect to AMQP broker:", error);
       this.handleReconnect();
@@ -149,6 +158,17 @@ export class AmqpQueueService {
   }
 
   public async startConsuming(): Promise<void> {
+    // Prevent multiple consumers globally
+    if (global.__amqpConsumerActive) {
+      console.log('AMQP consumer already active globally, skipping...');
+      return;
+    }
+
+    if (this.isConsuming) {
+      console.log('Already consuming messages, skipping...');
+      return;
+    }
+
     // Ensure connection is established first
     if (!this.isConnected) {
       await this.connect();
@@ -175,35 +195,58 @@ export class AmqpQueueService {
 
     console.log(`Starting to consume messages from queue: ${queueName}`);
 
-    await this.channel.consume(
-      queueName,
-      async (msg: ConsumeMessage | null) => {
-        if (msg) {
-          try {
-            await this.processMessage(msg);
-            this.channel?.ack(msg);
-          } catch (error) {
-            console.error("Error processing message:", error);
-            // Reject and requeue the message
-            this.channel?.nack(msg, false, true);
-          }
+
+    await this.channel.consume(queueName, async (msg: ConsumeMessage | null) => {
+      console.log('=== CONSUME CALLBACK TRIGGERED ===');
+      console.log('Message received:', msg ? 'YES' : 'NO');
+      console.log('Queue name:', queueName);
+      
+      if (msg) {
+        console.log('Received message from queue:', queueName);
+        console.log('Message properties:', msg.properties);
+        console.log('Message routing key:', msg.fields.routingKey);
+        try {
+          await this.processMessage(msg);
+          this.channel?.ack(msg);
+          console.log('Message processed and acknowledged successfully');
+        } catch (error) {
+          console.error('Error processing message:', error);
+          // Reject and requeue the message
+          this.channel?.nack(msg, false, true);
+
         }
+      } else {
+        console.log('No message received from queue:', queueName);
       }
-    );
+    });
+
+    this.isConsuming = true;
+    global.__amqpConsumerActive = true;
+    console.log('Consumer started and listening for messages');
+
   }
 
   private async processMessage(msg: ConsumeMessage): Promise<void> {
     try {
-      const messageContent = JSON.parse(
-        msg.content.toString()
-      ) as UssdLoanApplicationMessage;
-      console.log(
-        "Processing USSD loan application:",
-        messageContent.messageId
-      );
+
+      // Log raw message before parsing
+      console.log('=== RAW MESSAGE FROM QUEUE ===');
+      console.log('Raw message content (Buffer):', msg.content);
+      console.log('Raw message content (String):', msg.content.toString());
+      console.log('Message size (bytes):', msg.content.length);
+      console.log('Message properties:', msg.properties);
+      console.log('Message fields:', msg.fields);
+      console.log('=== END RAW MESSAGE ===');
+      
+      const messageContent = JSON.parse(msg.content.toString()) as UssdLoanApplicationMessage;
+      console.log('Processing USSD loan application:', messageContent.messageId);
+      console.log('Full message content received from queue:', JSON.stringify(messageContent, null, 2));
+
 
       // Get default tenant (you might want to make this configurable)
-      const tenant = await getTenantBySlug("default");
+
+      const tenant = await getTenantBySlug('goodfellow');
+
       if (!tenant) {
         throw new Error("Default tenant not found");
       }
@@ -255,7 +298,10 @@ export class AmqpQueueService {
           channel: messageContent.channel || "USSD_LOAN_APPLICATION",
           queuedAt: new Date(messageContent.queuedAt),
           processedAt: new Date(),
-        },
+
+          loanMatrixPaymentMethodId: messageContent.loanMatrixPaymentMethodId,
+        }
+
       });
 
       console.log(
@@ -329,19 +375,25 @@ export function getQueueService(): AmqpQueueService {
   return queueService;
 }
 
-// Graceful shutdown handler
-process.on("SIGINT", async () => {
-  console.log("Received SIGINT, closing AMQP connection...");
-  if (queueService) {
-    await queueService.close();
-  }
-  process.exit(0);
-});
 
-process.on("SIGTERM", async () => {
-  console.log("Received SIGTERM, closing AMQP connection...");
-  if (queueService) {
-    await queueService.close();
-  }
-  process.exit(0);
-});
+// Graceful shutdown handler - only add once
+if (!process.env.AMQP_SHUTDOWN_HANDLERS_ADDED) {
+  process.env.AMQP_SHUTDOWN_HANDLERS_ADDED = 'true';
+  
+  process.on('SIGINT', async () => {
+    console.log('Received SIGINT, closing AMQP connection...');
+    if (queueService) {
+      await queueService.close();
+    }
+    process.exit(0);
+  });
+
+  process.on('SIGTERM', async () => {
+    console.log('Received SIGTERM, closing AMQP connection...');
+    if (queueService) {
+      await queueService.close();
+    }
+    process.exit(0);
+  });
+}
+

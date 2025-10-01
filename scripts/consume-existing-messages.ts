@@ -25,7 +25,7 @@ async function consumeExistingMessages() {
     
     // Check database for all applications
     console.log('📊 Checking database for all processed messages...');
-    const ussdLeadsData = await getUssdLeadsData('default', { limit: 50 });
+    const ussdLeadsData = await getUssdLeadsData('goodfellow', { limit: 50 });
     
     console.log(`📈 Total applications: ${ussdLeadsData.metrics.totalApplications}`);
     console.log(`📋 All applications:`);
