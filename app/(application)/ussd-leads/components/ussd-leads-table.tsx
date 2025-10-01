@@ -71,7 +71,15 @@ const payoutMethodLabels = {
 };
 
 // Fetcher function for SWR
-const fetcher = (url: string) => fetch(url).then((res) => res.json());
+//const fetcher = (url: string) => fetch(url).then((res) => res.json());
+
+// Should be:
+const fetcher = (url: string) => 
+  fetch(url, {
+    headers: {
+      'x-tenant-slug': 'goodfellow' // Or get this dynamically
+    }
+  }).then((res) => res.json());
 
 export function UssdLeadsTable({ initialData }: UssdLeadsTableProps) {
   const [searchQuery, setSearchQuery] = useState("");
