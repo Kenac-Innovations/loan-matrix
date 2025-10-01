@@ -163,6 +163,11 @@ export function ClientLoans({ clientId }: ClientLoansProps) {
   };
 
   const formatCurrency = (amount: number) => {
+    // Return empty string if amount is undefined, null, NaN, or 0
+    if (amount === undefined || amount === null || isNaN(amount) || amount === 0) {
+      return "";
+    }
+    
     return new Intl.NumberFormat("en-US", {
       style: "currency",
       currency: "USD",
