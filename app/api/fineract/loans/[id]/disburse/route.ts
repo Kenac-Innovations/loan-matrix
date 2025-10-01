@@ -35,8 +35,10 @@ export async function POST(
     } catch {}
 
     // Build callback URL to be used by payment gateway
-    const callbackUrl = `${base}/api/ussd-leads/payment-callback`;
+    //const callbackUrl = `${base}/api/ussd-leads/payment-callback`;
     //const callbackUrl = `https://webhook.site/45f26e26-5c80-4290-9a1a-87b60be151a4`;
+    // Use specific callback URL for payment gateway
+    const callbackUrl = `http://loan-matrix-dev.10.10.0.24.nip.io:31778/api/ussd-leads/payment-callback`;
 
     // Augment payload per requirements (send only supported fields to Fineract)
     const augmentedPayload = {
