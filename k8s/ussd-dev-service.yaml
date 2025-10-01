@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: ussd-dev
+  namespace: ussd-dev
+  labels:
+    app.kubernetes.io/instance: ussd-dev
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: ussd
+    app.kubernetes.io/version: 1.0.0
+    helm.sh/chart: ussd-0.1.0
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8080
+    targetPort: 8080
+    protocol: TCP
+    name: http
+  selector:
+    app.kubernetes.io/instance: ussd-dev
+    app.kubernetes.io/name: ussd
+
