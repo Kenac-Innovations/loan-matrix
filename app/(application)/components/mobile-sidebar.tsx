@@ -169,16 +169,16 @@ export function MobileSidebar({ userProfileData }: MobileSidebarProps) {
             </Link>
             <div className="space-y-1">
               <Link
-                href="/leads"
+                href="/ussd-leads"
                 className={`flex items-center gap-3 rounded-md px-3 py-3 text-sm font-medium ${
-                  pathname.startsWith("/leads")
+                  pathname.startsWith("/leads") || pathname.startsWith("/ussd-leads")
                     ? `${activeBgColor} ${textColor}`
                     : `${textColorMuted} ${hoverBgColor} hover:${textColor}`
                 }`}
               >
                 <TrendingUp
                   className={`h-5 w-5 ${
-                    pathname.startsWith("/leads") ? iconColorActive : iconColor
+                    pathname.startsWith("/leads") || pathname.startsWith("/ussd-leads") ? iconColorActive : iconColor
                   }`}
                 />
                 Leads
@@ -187,7 +187,7 @@ export function MobileSidebar({ userProfileData }: MobileSidebarProps) {
               {/* Sub-menu items for Leads */}
               {(pathname.startsWith("/leads") || pathname.startsWith("/ussd-leads")) && (
                 <div className="pl-10 space-y-1">
-                  <Link
+                  {/* <Link
                     href="/leads"
                     className={`flex items-center gap-3 rounded-md px-3 py-2 text-xs font-medium ${
                       pathname === "/leads"
@@ -196,7 +196,7 @@ export function MobileSidebar({ userProfileData }: MobileSidebarProps) {
                     }`}
                   >
                     Pipeline
-                  </Link>
+                  </Link> */}
                   <Link
                     href="/ussd-leads"
                     className={`flex items-center gap-3 rounded-md px-3 py-2 text-xs font-medium ${
@@ -207,7 +207,7 @@ export function MobileSidebar({ userProfileData }: MobileSidebarProps) {
                   >
                     USSD Leads
                   </Link>
-                  <Link
+                  {/* <Link
                     href="/leads/config"
                     className={`flex items-center gap-3 rounded-md px-3 py-2 text-xs font-medium ${
                       pathname === "/leads/config"
@@ -216,7 +216,7 @@ export function MobileSidebar({ userProfileData }: MobileSidebarProps) {
                     }`}
                   >
                     Configuration
-                  </Link>
+                  </Link> */}
                 </div>
               )}
             </div>

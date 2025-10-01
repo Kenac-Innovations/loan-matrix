@@ -83,11 +83,11 @@ export default async function DashboardLayout({
                 <MenuItemWithSubmenu
                   icon={<TrendingUp />}
                   label="Leads"
-                  href="/leads"
+                  href="/ussd-leads"
                   subMenuItems={[
-                    { label: "Pipeline", href: "/leads" },
+                    // { label: "Pipeline", href: "/leads" },
                     { label: "USSD Leads", href: "/ussd-leads" },
-                    { label: "Configuration", href: "/leads/config" },
+                    // { label: "Configuration", href: "/leads/config" },
                   ]}
                 />
               </div>
