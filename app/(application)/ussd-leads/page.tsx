@@ -34,7 +34,7 @@ export const metadata: Metadata = {
 export default async function UssdLeadsPage() {
   // Get tenant slug from headers (set by middleware)
   const headersList = await headers();
-  const tenantSlug = headersList.get("x-tenant-slug") || "default";
+  const tenantSlug = headersList.get("x-tenant-slug") || "goodfellow";
 
   // Fetch USSD leads data server-side
   const ussdLeadsData = await getUssdLeadsData(tenantSlug);
