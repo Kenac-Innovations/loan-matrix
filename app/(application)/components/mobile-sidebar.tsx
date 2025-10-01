@@ -22,6 +22,7 @@ import {
   Menu,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { TenantDisplayClient } from "@/components/tenant-display-client";
 
 interface MobileSidebarProps {
   userProfileData: UserProfileData;
@@ -81,13 +82,18 @@ export function MobileSidebar({ userProfileData }: MobileSidebarProps) {
   const bgColor = mounted && theme === "light" ? "bg-white" : "bg-[#0d121f]";
   const borderColor =
     mounted && theme === "light" ? "border-gray-200" : "border-[#1a2035]";
-  const textColor = mounted && theme === "light" ? "text-gray-900" : "text-white";
-  const textColorMuted = mounted && theme === "light" ? "text-gray-500" : "text-gray-300";
-  const iconColor = mounted && theme === "light" ? "text-gray-500" : "text-gray-400";
-  const iconColorActive = mounted && theme === "light" ? "text-blue-500" : "text-blue-400";
+  const textColor =
+    mounted && theme === "light" ? "text-gray-900" : "text-white";
+  const textColorMuted =
+    mounted && theme === "light" ? "text-gray-500" : "text-gray-300";
+  const iconColor =
+    mounted && theme === "light" ? "text-gray-500" : "text-gray-400";
+  const iconColorActive =
+    mounted && theme === "light" ? "text-blue-500" : "text-blue-400";
   const hoverBgColor =
     mounted && theme === "light" ? "hover:bg-gray-100" : "hover:bg-[#1a2035]";
-  const activeBgColor = mounted && theme === "light" ? "bg-gray-100" : "bg-[#1a2035]";
+  const activeBgColor =
+    mounted && theme === "light" ? "bg-gray-100" : "bg-[#1a2035]";
 
   return (
     <>
@@ -150,7 +156,8 @@ export function MobileSidebar({ userProfileData }: MobileSidebarProps) {
             <X className="h-5 w-5" />
           </Button>
         </div>
-        <div className="py-4 h-[calc(100vh-4rem)] overflow-y-auto">
+        <TenantDisplayClient />
+        <div className="py-4 h-[calc(100vh-7rem)] overflow-y-auto">
           <nav className="space-y-1 px-2">
             <Link
               href="/dashboard"
@@ -185,7 +192,8 @@ export function MobileSidebar({ userProfileData }: MobileSidebarProps) {
               </Link>
 
               {/* Sub-menu items for Leads */}
-              {(pathname.startsWith("/leads") || pathname.startsWith("/ussd-leads")) && (
+              {(pathname.startsWith("/leads") ||
+                pathname.startsWith("/ussd-leads")) && (
                 <div className="pl-10 space-y-1">
                   {/* <Link
                     href="/leads"

@@ -22,7 +22,9 @@ const MenuItemWithSubmenu: React.FC<MenuItemWithSubmenuProps> = ({
   subMenuItems = [],
 }) => {
   const pathname = usePathname();
-  const isActive = pathname.startsWith(href);
+  const isActive =
+    pathname.startsWith(href) ||
+    subMenuItems.some((item) => pathname === item.href);
 
   return (
     <div className="space-y-1">
