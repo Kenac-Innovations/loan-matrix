@@ -1,17 +1,17 @@
-import { getSession } from "@/lib/auth";
+"use client";
+
+import { useSession } from "next-auth/react";
 import { AccessLevel, Resource, SpecificPermission } from "@/types/auth";
 
 /**
- * Server-side function to check if the user has a specific permission
+ * Client-side React hook to check if the user has a specific permission
  * @param permission - The permission to check for
  * @returns Boolean indicating if the user has the permission
  */
-export async function checkPermission(
-  permission: SpecificPermission
-): Promise<boolean> {
-  const session = await getSession();
+export function usePermission(permission: SpecificPermission): boolean {
+  const { data: session, status } = useSession();
 
-  if (!session?.user?.permissions) {
+  if (status !== "authenticated" || !session?.user?.permissions) {
     return false;
   }
 
@@ -25,14 +25,14 @@ export async function checkPermission(
 }
 
 /**
- * Server-side function to check if the user has a specific role
+ * Client-side React hook to check if the user has a specific role
  * @param roleName - The role to check for
  * @returns Boolean indicating if the user has the role
  */
-export async function checkRole(roleName: string): Promise<boolean> {
-  const session = await getSession();
+export function useRole(roleName: string): boolean {
+  const { data: session, status } = useSession();
 
-  if (!session?.user?.roles) {
+  if (status !== "authenticated" || !session?.user?.roles) {
     return false;
   }
 
@@ -44,16 +44,14 @@ export async function checkRole(roleName: string): Promise<boolean> {
 }
 
 /**
- * Server-side function to get the user's access level for a resource
+ * Client-side React hook to get the user's access level for a resource
  * @param resource - The resource to check access for
  * @returns The user's access level for the resource
  */
-export async function getResourceAccessLevel(
-  resource: Resource
-): Promise<AccessLevel> {
-  const session = await getSession();
+export function useResourceAccessLevel(resource: Resource): AccessLevel {
+  const { data: session, status } = useSession();
 
-  if (!session?.user?.permissions) {
+  if (status !== "authenticated" || !session?.user?.permissions) {
     return AccessLevel.NONE;
   }
 
@@ -122,16 +120,16 @@ export async function getResourceAccessLevel(
 }
 
 /**
- * Server-side function to check if the user can perform a specific action on a resource
+ * Client-side React hook to check if the user can perform a specific action on a resource
  * @param resource - The resource to check access for
  * @param requiredLevel - The minimum access level required
  * @returns Boolean indicating if the user has the required access level
  */
-export async function canAccess(
+export function useCanAccess(
   resource: Resource,
   requiredLevel: AccessLevel
-): Promise<boolean> {
-  const userAccessLevel = await getResourceAccessLevel(resource);
+): boolean {
+  const userAccessLevel = useResourceAccessLevel(resource);
 
   // Map access levels to numeric values for comparison
   const accessLevelValues = {
