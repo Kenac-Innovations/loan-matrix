@@ -8,17 +8,14 @@ import { getFineractServiceWithSession } from "@/lib/fineract-api";
 export async function GET(request: Request) {
   try {
     const fineractService = await getFineractServiceWithSession();
-    
+
     // Fetch data from multiple endpoints in parallel
-    const [
-      clientsResponse,
-      loansResponse,
-      loanProductsResponse,
-    ] = await Promise.allSettled([
-      fineractService.getClients(0, 1000),
-      fineractService.getLoans(0, 1000),
-      fineractService.getLoanProducts(),
-    ]);
+    const [clientsResponse, loansResponse, loanProductsResponse] =
+      await Promise.allSettled([
+        fineractService.getClients(0, 1000),
+        fineractService.getLoans(0, 1000),
+        fineractService.getLoanProducts(),
+      ]);
 
     // Extract data from successful responses
     const clients =
@@ -46,11 +43,12 @@ export async function GET(request: Request) {
       ? loans.filter((loan: any) => loan.status?.id === 100).length
       : 0;
     const overdueCount = Array.isArray(loans)
-      ? loans.filter((loan: any) => 
-          loan.status?.id === 300 && 
-          loan.summary?.totalOutstanding > 0 && 
-          loan.timeline?.expectedMaturityDate &&
-          new Date(loan.timeline.expectedMaturityDate) < new Date()
+      ? loans.filter(
+          (loan: any) =>
+            loan.status?.id === 300 &&
+            loan.summary?.totalOutstanding > 0 &&
+            loan.timeline?.expectedMaturityDate &&
+            new Date(loan.timeline.expectedMaturityDate) < new Date()
         ).length
       : 0;
 

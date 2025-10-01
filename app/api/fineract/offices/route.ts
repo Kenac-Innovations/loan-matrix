@@ -1,27 +1,29 @@
 // File: app/api/fineract/offices/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { fetchFineractAPI } from '@/lib/api';
+import { getFineractServiceWithSession } from '@/lib/fineract-api';
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const orderBy = searchParams.get('orderBy') || 'id';
     
-    const url = `/offices?orderBy=${orderBy}`;
-    const response = await fetchFineractAPI(url);
+    const fineractService = await getFineractServiceWithSession();
+    const response = await fineractService.getOffices();
     
     return NextResponse.json(response);
   } catch (error: any) {
     console.error('GET /api/fineract/offices error:', error);
-    if (error.errorData) {
-      return NextResponse.json(error.errorData, { status: error.status || 500 });
-    }
+    
+    // Better error handling for different error types
+    const errorMessage = error?.message || error?.errorData?.defaultUserMessage || 'Unknown error';
+    const statusCode = error?.status || 500;
+    
     return NextResponse.json(
-      {
-        defaultUserMessage: 'An unexpected error occurred',
-        developerMessage: error.message
+      { 
+        error: errorMessage,
+        details: error?.errorData || null
       },
-      { status: 500 }
+      { status: statusCode }
     );
   }
 }

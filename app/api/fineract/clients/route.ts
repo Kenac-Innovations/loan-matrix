@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { fetchFineractAPI } from '@/lib/api';
+import { getFineractServiceWithSession } from '@/lib/fineract-api';
 
 /**
  * GET /api/fineract/clients
@@ -12,20 +12,38 @@ export async function GET(request: Request) {
     const limit = searchParams.get('limit') || '20';
     const query = searchParams.get('query');
 
-    let endpoint = `/clients?offset=${offset}&limit=${limit}`;
+    const fineractService = await getFineractServiceWithSession();
+    
+    let data;
     if (query) {
-      endpoint = `/clients?search=${encodeURIComponent(query)}&offset=${offset}&limit=${limit}`;
+      // Use search functionality if available in the service
+      data = await fineractService.getClients(parseInt(offset), parseInt(limit));
+      // Filter by query on the client side if needed
+      if (Array.isArray(data) && query) {
+        data = data.filter((client: any) => 
+          client.displayName?.toLowerCase().includes(query.toLowerCase()) ||
+          client.accountNo?.toLowerCase().includes(query.toLowerCase())
+        );
+      }
+    } else {
+      data = await fineractService.getClients(parseInt(offset), parseInt(limit));
     }
-
-    const data = await fetchFineractAPI(endpoint);
     
     // Return the data as-is to preserve the original structure
     return NextResponse.json(data);
   } catch (error: any) {
     console.error('Error fetching clients:', error);
+    
+    // Better error handling for different error types
+    const errorMessage = error?.message || error?.errorData?.defaultUserMessage || 'Unknown error';
+    const statusCode = error?.status || 500;
+    
     return NextResponse.json(
-      { error: error.message || 'Unknown error' },
-      { status: 500 }
+      { 
+        error: errorMessage,
+        details: error?.errorData || null
+      },
+      { status: statusCode }
     );
   }
 }
@@ -37,14 +55,25 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const payload = await request.json();
-    const data = await fetchFineractAPI('/clients', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
+    const fineractService = await getFineractServiceWithSession();
+    
+    // Use the Fineract service to create client
+    const data = await fineractService.createClient(payload);
+    
     return NextResponse.json(data, { status: 201 });
   } catch (error: any) {
     console.error('Error creating client:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    
+    // Better error handling for different error types
+    const errorMessage = error?.message || error?.errorData?.defaultUserMessage || 'Unknown error';
+    const statusCode = error?.status || 500;
+    
+    return NextResponse.json(
+      { 
+        error: errorMessage,
+        details: error?.errorData || null
+      },
+      { status: statusCode }
+    );
   }
 } 

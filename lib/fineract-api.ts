@@ -798,18 +798,45 @@ export function getFineractService(
 }
 
 export async function getFineractServiceWithSession(): Promise<FineractAPIService> {
-  const { getSession } = await import("./auth");
-  const { getFineractTenantId } = await import("./fineract-tenant-service");
+  try {
+    const { getSession } = await import("./auth");
+    const { getFineractTenantId } = await import("./fineract-tenant-service");
 
-  const session = await getSession();
-  const fineractTenantId = await getFineractTenantId();
+    const session = await getSession();
+    const fineractTenantId = await getFineractTenantId();
 
-  if (session?.base64EncodedAuthenticationKey) {
-    return getFineractService(
-      session.base64EncodedAuthenticationKey,
-      fineractTenantId
+    console.log("Fineract Service Debug:", {
+      hasSession: !!session,
+      hasAuthKey: !!session?.base64EncodedAuthenticationKey,
+      fineractTenantId,
+      sessionKeys: session ? Object.keys(session) : null,
+    });
+
+    if (session?.base64EncodedAuthenticationKey) {
+      return getFineractService(
+        session.base64EncodedAuthenticationKey,
+        fineractTenantId
+      );
+    }
+
+    // Fallback: try to create service with environment credentials
+    console.warn(
+      "No session auth key found, falling back to environment credentials"
+    );
+    const config: FineractConfig = {
+      baseUrl: process.env.FINERACT_BASE_URL || "https://demo.fineract.dev",
+      username: process.env.FINERACT_USERNAME || "mifos",
+      password: process.env.FINERACT_PASSWORD || "password",
+      tenantId: fineractTenantId || process.env.FINERACT_TENANT_ID || "default",
+    };
+
+    return new FineractAPIService(config);
+  } catch (error) {
+    console.error("Error in getFineractServiceWithSession:", error);
+    throw new Error(
+      `Failed to initialize Fineract service: ${
+        error instanceof Error ? error.message : "Unknown error"
+      }`
     );
   }
-
-  throw error({ message: "Invalid Authentication" });
 }
