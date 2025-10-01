@@ -29,7 +29,7 @@ export async function fetchFineractAPI(
   const headers: any = {
     ...options.headers,
     Authorization: `Basic ${accessToken}`,
-    "Fineract-Platform-TenantId": "demo",
+    "Fineract-Platform-TenantId": "goodfellow",
   };
 
   // Only set Content-Type to application/json if body is NOT FormData

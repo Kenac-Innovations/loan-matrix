@@ -60,7 +60,7 @@ export const authOptions: NextAuthOptions = {
               headers: {
                 'Accept': 'application/json, text/plain, */*',
                 'Content-Type': 'application/json',
-                'Fineract-Platform-TenantId': "demo",
+                'Fineract-Platform-TenantId': "goodfellow",
                 'Content-Length': Buffer.byteLength(postData),
               },
             };
@@ -102,7 +102,7 @@ export const authOptions: NextAuthOptions = {
               headers: {
                 Accept: "application/json, text/plain, */*",
                 "Content-Type": "application/json",
-                "Fineract-Platform-TenantId": "demo",
+                "Fineract-Platform-TenantId": "goodfellow",
               },
               body: JSON.stringify({
                 username: credentials.username,
