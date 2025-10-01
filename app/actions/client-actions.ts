@@ -298,7 +298,7 @@ export async function fetchFineractClientTemplate() {
           "Accept-Language": "en-US,en;q=0.9",
           Authorization: "Basic bWlmb3M6cGFzc3dvcmQ=",
           Connection: "keep-alive",
-          "Fineract-Platform-TenantId": "default",
+          "Fineract-Platform-TenantId": "goodfellow",
           "User-Agent":
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
         },
