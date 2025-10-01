@@ -157,21 +157,36 @@ export async function getUssdLeadsData(
     }
 
     // Get applications with pagination
+    console.log('=== DEBUG: Table Query ===');
+    console.log('Tenant ID:', tenant.id);
+    console.log('Where clause:', JSON.stringify(where, null, 2));
+    console.log('Limit:', limit, 'Offset:', offset);
+    
     const applications = await prisma.ussdLoanApplication.findMany({
       where,
       orderBy: { createdAt: 'desc' },
       take: limit,
       skip: offset,
     });
+    
+    console.log('Raw applications count:', applications.length);
+    console.log('First application (if any):', applications[0] ? JSON.stringify(applications[0], null, 2) : 'None');
+    console.log('=== END DEBUG ===');
 
     // Get total count for pagination
     const totalCount = await prisma.ussdLoanApplication.count({ where });
 
     // Get all applications for metrics calculation (without pagination)
+    console.log('=== DEBUG: Stats Query ===');
+    console.log('Stats query tenant ID:', tenant.id);
+    
     const allApplications = await prisma.ussdLoanApplication.findMany({
       where: { tenantId: tenant.id },
       select: { status: true, createdAt: true, processedAt: true }
     });
+    
+    console.log('Stats applications count:', allApplications.length);
+    console.log('=== END DEBUG ===');
 
     // Calculate metrics
     const totalApplications = allApplications.length;

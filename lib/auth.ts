@@ -282,7 +282,7 @@ export async function getCurrentUserDetails(userId: String) {
     const headers = {
       Accept: "application/json, text/plain, */*",
       Authorization: "Basic bWlmb3M6cGFzc3dvcmQ=",
-      "Fineract-Platform-TenantId": "default",
+      "Fineract-Platform-TenantId": "goodfellow",
       Origin: "http://localhost:4200",
       Referer: "http://localhost:4200/",
     };
