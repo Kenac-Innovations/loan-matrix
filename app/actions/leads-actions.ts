@@ -74,7 +74,7 @@ export interface LeadsData {
 }
 
 export async function getLeadsData(
-  tenantSlug: string = "default",
+  tenantSlug: string = "goodfellow",
   options: {
     stage?: string;
     status?: string;
