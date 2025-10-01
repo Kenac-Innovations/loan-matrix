@@ -28,6 +28,7 @@ import { UserProfileClient } from "./components/user-profile-client";
 import { MobileSidebar } from "./components/mobile-sidebar";
 import MenuItemWithSubmenu from "@/components/menu-with-sub";
 import { ChatProvider } from "@/contexts/chat-context";
+import { TenantDisplay } from "@/components/tenant-display";
 
 export default async function DashboardLayout({
   children,
@@ -62,7 +63,8 @@ export default async function DashboardLayout({
               />
             </div>
           </div>
-          <div className="py-4 h-[calc(100vh-4rem)] overflow-y-auto">
+          <TenantDisplay />
+          <div className="py-4 h-[calc(100vh-7rem)] overflow-y-auto">
             <nav className="space-y-1 px-2">
               <Link
                 href="/leads/new"
@@ -117,10 +119,19 @@ export default async function DashboardLayout({
                 label="Accounting"
                 href="/accounting"
                 subMenuItems={[
-                    { label: "Home", href: "/accounting" },
-                    { label: "Chart of Accounts", href: "/accounting/chart-of-accounts" },
-                    { label: "Journal Entries", href: "/accounting/search-journal" },
-                    { label: "Frequent Postings", href: "/accounting/frequent-postings" },
+                  { label: "Home", href: "/accounting" },
+                  {
+                    label: "Chart of Accounts",
+                    href: "/accounting/chart-of-accounts",
+                  },
+                  {
+                    label: "Journal Entries",
+                    href: "/accounting/search-journal",
+                  },
+                  {
+                    label: "Frequent Postings",
+                    href: "/accounting/frequent-postings",
+                  },
                 ]}
               />
 

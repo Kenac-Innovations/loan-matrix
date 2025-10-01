@@ -2,6 +2,7 @@ import amqp, { Connection, Channel, ConsumeMessage } from 'amqplib';
 import prisma from './prisma';
 import { getTenantBySlug } from './tenant-service';
 
+
 export interface UssdLoanApplicationMessage {
   loanApplicationUssdId: number;
   messageId: string;
@@ -51,67 +52,76 @@ export class AmqpQueueService {
   public async connect(): Promise<void> {
     try {
       const amqpUrl = this.buildAmqpUrl();
-      console.log('Connecting to AMQP broker...', amqpUrl.replace(/\/\/.*@/, '//***:***@'));
-      
+      console.log(
+        "Connecting to AMQP broker...",
+        amqpUrl.replace(/\/\/.*@/, "//***:***@")
+      );
+
       this.connection = await amqp.connect(amqpUrl);
       this.channel = await this.connection.createChannel();
-      
+
       // Set up connection event handlers
-      this.connection.on('error', (err) => {
-        console.error('AMQP connection error:', err);
+      this.connection.on("error", (err) => {
+        console.error("AMQP connection error:", err);
         this.isConnected = false;
         this.handleReconnect();
       });
 
-      this.connection.on('close', () => {
-        console.log('AMQP connection closed');
+      this.connection.on("close", () => {
+        console.log("AMQP connection closed");
         this.isConnected = false;
         this.handleReconnect();
       });
 
       // Set up channel event handlers
-      this.channel.on('error', (err) => {
-        console.error('AMQP channel error:', err);
+      this.channel.on("error", (err) => {
+        console.error("AMQP channel error:", err);
       });
 
-      this.channel.on('close', () => {
-        console.log('AMQP channel closed');
+      this.channel.on("close", () => {
+        console.log("AMQP channel closed");
       });
 
       // Set up queue and exchange
       await this.setupQueue();
-      
+
       this.isConnected = true;
       this.reconnectAttempts = 0;
+
       console.log('Successfully connected to AMQP broker');
       console.log('Queue service is ready to consume messages');
       
     } catch (error) {
-      console.error('Failed to connect to AMQP broker:', error);
+      console.error("Failed to connect to AMQP broker:", error);
       this.handleReconnect();
     }
   }
 
   private buildAmqpUrl(): string {
-    const host = process.env.AMQP_HOST || '10.10.0.24';
-    const port = process.env.AMQP_PORT || '30672';
-    const username = process.env.AMQP_USERNAME || 'admin';
-    const password = process.env.AMQP_PASSWORD || 'rabbitmq123';
-    const vhost = process.env.AMQP_VHOST || '/';
-    
+    const host = process.env.AMQP_HOST || "10.10.0.24";
+    const port = process.env.AMQP_PORT || "30672";
+    const username = process.env.AMQP_USERNAME || "admin";
+    const password = process.env.AMQP_PASSWORD || "rabbitmq123";
+    const vhost = process.env.AMQP_VHOST || "/";
+
     return `amqp://${username}:${password}@${host}:${port}${vhost}`;
   }
 
   private async setupQueue(): Promise<void> {
-    if (!this.channel) throw new Error('Channel not available');
+    if (!this.channel) throw new Error("Channel not available");
 
-    const exchangeName = process.env.AMQP_EXCHANGE_NAME || 'ussdloanapplications.exchange';
-    const queueName = process.env.AMQP_QUEUE_NAME || 'ussdloanapplications.queue';
-    const routingKey = process.env.AMQP_ROUTING_KEY || 'ussdloanapplications.routing.key';
+    const exchangeName =
+      process.env.AMQP_EXCHANGE_NAME || "ussdloanapplications.exchange";
+    const queueName =
+      process.env.AMQP_QUEUE_NAME || "ussdloanapplications.queue";
+    const routingKey =
+      process.env.AMQP_ROUTING_KEY || "ussdloanapplications.routing.key";
 
     try {
       // Declare main exchange
-      await this.channel.assertExchange(exchangeName, 'direct', { durable: true });
+      await this.channel.assertExchange(exchangeName, "direct", {
+        durable: true,
+      });
 
       // Just check that the queue exists (don't try to modify it)
       await this.channel.checkQueue(queueName);
@@ -120,22 +130,28 @@ export class AmqpQueueService {
       // Bind main queue to main exchange
       await this.channel.bindQueue(queueName, exchangeName, routingKey);
 
-      console.log(`Queue setup complete: ${queueName} -> ${exchangeName} (${routingKey})`);
+      console.log(
+        `Queue setup complete: ${queueName} -> ${exchangeName} (${routingKey})`
+      );
     } catch (error) {
-      console.error('Error setting up queues:', error);
+      console.error("Error setting up queues:", error);
       throw error;
     }
   }
 
   private async handleReconnect(): Promise<void> {
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-      console.error('Max reconnection attempts reached. Stopping reconnection attempts.');
+      console.error(
+        "Max reconnection attempts reached. Stopping reconnection attempts."
+      );
       return;
     }
 
     this.reconnectAttempts++;
-    console.log(`Attempting to reconnect (${this.reconnectAttempts}/${this.maxReconnectAttempts}) in ${this.reconnectDelay}ms...`);
-    
+    console.log(
+      `Attempting to reconnect (${this.reconnectAttempts}/${this.maxReconnectAttempts}) in ${this.reconnectDelay}ms...`
+    );
+
     setTimeout(() => {
       this.connect();
     }, this.reconnectDelay);
@@ -157,26 +173,28 @@ export class AmqpQueueService {
     if (!this.isConnected) {
       await this.connect();
     }
-    
+
     // Wait for connection to be established
     let attempts = 0;
     const maxAttempts = 30; // 30 seconds timeout
-    
+
     while ((!this.channel || !this.isConnected) && attempts < maxAttempts) {
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise((resolve) => setTimeout(resolve, 1000));
       attempts++;
     }
-    
+
     if (!this.channel || !this.isConnected) {
-      throw new Error('Not connected to AMQP broker after waiting');
+      throw new Error("Not connected to AMQP broker after waiting");
     }
 
-    const queueName = process.env.AMQP_QUEUE_NAME || 'ussdloanapplications.queue';
-    
+    const queueName =
+      process.env.AMQP_QUEUE_NAME || "ussdloanapplications.queue";
+
     // Set prefetch to 1 to process messages one at a time
     await this.channel.prefetch(1);
 
     console.log(`Starting to consume messages from queue: ${queueName}`);
+
 
     await this.channel.consume(queueName, async (msg: ConsumeMessage | null) => {
       console.log('=== CONSUME CALLBACK TRIGGERED ===');
@@ -195,6 +213,7 @@ export class AmqpQueueService {
           console.error('Error processing message:', error);
           // Reject and requeue the message
           this.channel?.nack(msg, false, true);
+
         }
       } else {
         console.log('No message received from queue:', queueName);
@@ -204,10 +223,12 @@ export class AmqpQueueService {
     this.isConsuming = true;
     global.__amqpConsumerActive = true;
     console.log('Consumer started and listening for messages');
+
   }
 
   private async processMessage(msg: ConsumeMessage): Promise<void> {
     try {
+
       // Log raw message before parsing
       console.log('=== RAW MESSAGE FROM QUEUE ===');
       console.log('Raw message content (Buffer):', msg.content);
@@ -221,10 +242,11 @@ export class AmqpQueueService {
       console.log('Processing USSD loan application:', messageContent.messageId);
       console.log('Full message content received from queue:', JSON.stringify(messageContent, null, 2));
 
+
       // Get default tenant (you might want to make this configurable)
-      const tenant = await getTenantBySlug('default');
+      const tenant = await getTenantBySlug("default");
       if (!tenant) {
-        throw new Error('Default tenant not found');
+        throw new Error("Default tenant not found");
       }
 
       // Check if application already exists
@@ -233,13 +255,15 @@ export class AmqpQueueService {
           OR: [
             { messageId: messageContent.messageId },
             { referenceNumber: messageContent.referenceNumber },
-            { loanApplicationUssdId: messageContent.loanApplicationUssdId }
-          ]
-        }
+            { loanApplicationUssdId: messageContent.loanApplicationUssdId },
+          ],
+        },
       });
 
       if (existingApp) {
-        console.log(`USSD application already exists: ${messageContent.messageId}`);
+        console.log(
+          `USSD application already exists: ${messageContent.messageId}`
+        );
         return;
       }
 
@@ -267,33 +291,38 @@ export class AmqpQueueService {
           bankAccountNumber: messageContent.bankAccountNumber,
           bankName: messageContent.bankName,
           bankBranch: messageContent.bankBranch,
-          status: messageContent.status || 'CREATED',
-          source: messageContent.source || 'USSD',
-          channel: messageContent.channel || 'USSD_LOAN_APPLICATION',
+          status: messageContent.status || "CREATED",
+          source: messageContent.source || "USSD",
+          channel: messageContent.channel || "USSD_LOAN_APPLICATION",
           queuedAt: new Date(messageContent.queuedAt),
           processedAt: new Date(),
+
           loanMatrixPaymentMethodId: messageContent.loanMatrixPaymentMethodId,
         }
+
       });
 
-      console.log(`Successfully processed USSD application: ${ussdApplication.id} (${ussdApplication.messageId})`);
-
+      console.log(
+        `Successfully processed USSD application: ${ussdApplication.id} (${ussdApplication.messageId})`
+      );
     } catch (error) {
-      console.error('Error processing USSD loan application message:', error);
+      console.error("Error processing USSD loan application message:", error);
       throw error;
     }
   }
 
-  public async publishMessage(message: UssdLoanApplicationMessage): Promise<void> {
+  public async publishMessage(
+    message: UssdLoanApplicationMessage
+  ): Promise<void> {
     if (!this.channel || !this.isConnected) {
-      throw new Error('Not connected to AMQP broker');
+      throw new Error("Not connected to AMQP broker");
     }
 
-    const exchangeName = process.env.AMQP_EXCHANGE_NAME || 'ussd_exchange';
-    const routingKey = process.env.AMQP_ROUTING_KEY || 'loan.application';
+    const exchangeName = process.env.AMQP_EXCHANGE_NAME || "ussd_exchange";
+    const routingKey = process.env.AMQP_ROUTING_KEY || "loan.application";
 
     const messageBuffer = Buffer.from(JSON.stringify(message));
-    
+
     const published = this.channel.publish(
       exchangeName,
       routingKey,
@@ -306,7 +335,7 @@ export class AmqpQueueService {
     );
 
     if (!published) {
-      throw new Error('Failed to publish message to queue');
+      throw new Error("Failed to publish message to queue");
     }
 
     console.log(`Published message: ${message.messageId}`);
@@ -321,14 +350,16 @@ export class AmqpQueueService {
         await this.connection.close();
       }
       this.isConnected = false;
-      console.log('AMQP connection closed');
+      console.log("AMQP connection closed");
     } catch (error) {
-      console.error('Error closing AMQP connection:', error);
+      console.error("Error closing AMQP connection:", error);
     }
   }
 
   public isHealthy(): boolean {
-    return this.isConnected && this.connection !== null && this.channel !== null;
+    return (
+      this.isConnected && this.connection !== null && this.channel !== null
+    );
   }
 }
 
@@ -341,6 +372,7 @@ export function getQueueService(): AmqpQueueService {
   }
   return queueService;
 }
+
 
 // Graceful shutdown handler - only add once
 if (!process.env.AMQP_SHUTDOWN_HANDLERS_ADDED) {
@@ -362,3 +394,4 @@ if (!process.env.AMQP_SHUTDOWN_HANDLERS_ADDED) {
     process.exit(0);
   });
 }
+

@@ -1,8 +1,7 @@
 import { Suspense } from "react";
 import { headers, cookies } from "next/headers";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import Link from "next/link";
+import { LoansDataTable, Loan } from "@/components/tables/loans-data-table";
 
 async function fetchAllLoans() {
   const hdrs = await headers();
@@ -11,15 +10,36 @@ async function fetchAllLoans() {
   const base = host ? `${proto}://${host}` : "http://localhost:3000";
   const cookieHeader = cookies().toString();
   const res = await fetch(`${base}/api/fineract/loans`, {
-    cache: 'no-store',
+    cache: "no-store",
     headers: cookieHeader ? { cookie: cookieHeader } : undefined,
   });
   return res.ok ? res.json() : null;
 }
 
+function transformLoanData(rawLoan: any): Loan {
+  return {
+    id: rawLoan.id?.toString() || "",
+    accountNo: rawLoan.accountNo || "",
+    clientName:
+      rawLoan.clientName || rawLoan.clientId?.toString() || "Unknown Client",
+    clientId: rawLoan.clientId?.toString() || "",
+    productName:
+      rawLoan.productName || rawLoan.loanProductName || "Unknown Product",
+    status: rawLoan.status?.value || rawLoan.status || "Unknown",
+    principal: parseFloat(rawLoan.principal || rawLoan.principalAmount || "0"),
+    currency: rawLoan.currency?.code || rawLoan.currency || "USD",
+    disbursedAmount: parseFloat(rawLoan.disbursedAmount || "0"),
+    outstandingBalance: parseFloat(rawLoan.outstandingBalance || "0"),
+    daysInArrears: parseInt(rawLoan.daysInArrears || "0"),
+    approvedOnDate: rawLoan.approvedOnDate || "",
+    disbursedOnDate: rawLoan.disbursedOnDate || "",
+    maturityDate: rawLoan.maturityDate || "",
+  };
+}
+
 export default async function LoansPage() {
   const data = await fetchAllLoans();
-  const items: any[] = Array.isArray(data?.pageItems)
+  const rawItems: any[] = Array.isArray(data?.pageItems)
     ? data.pageItems
     : Array.isArray(data?.content)
     ? data.content
@@ -29,46 +49,29 @@ export default async function LoansPage() {
     ? data
     : [];
 
+  const loans: Loan[] = rawItems.map(transformLoanData);
+
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Loans</h1>
+      <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
+        <div>
+          <h1 className="text-2xl font-bold">Loans</h1>
+          <p className="text-muted-foreground">
+            Manage and track all loan applications and disbursements
+          </p>
+        </div>
+      </div>
+
       <Card>
         <CardHeader>
           <CardTitle>All Loans</CardTitle>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>ID</TableHead>
-                <TableHead>Account #</TableHead>
-                <TableHead>Client</TableHead>
-                <TableHead>Product</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {items.map((l: any) => (
-                <TableRow key={l.id}>
-                  <TableCell>{l.id}</TableCell>
-                  <TableCell>{l.accountNo}</TableCell>
-                  <TableCell>{l.clientName ?? l.clientId}</TableCell>
-                  <TableCell>{l.productName ?? l.loanProductName}</TableCell>
-                  <TableCell>{l.status?.value}</TableCell>
-                  <TableCell>
-                    {l.clientId ? (
-                      <Link className="text-blue-600" href={`/clients/${l.clientId}/loans/${l.id}`}>View</Link>
-                    ) : null}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+          <Suspense fallback={<div>Loading loans...</div>}>
+            <LoansDataTable data={loans} />
+          </Suspense>
         </CardContent>
       </Card>
     </div>
   );
 }
-
-
