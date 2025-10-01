@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { SignJWT, jwtVerify } from "jose";
 import { z } from "zod";
 import { SpecificPermission } from "@/types/auth";
+import { getFineractTenantId } from "@/lib/fineract-tenant-service";
 
 // Type for user details
 export type UserDetails = {
@@ -74,6 +75,9 @@ export async function loginAction(
 
     const { username, password } = validationResult.data;
 
+    // Get the Fineract tenant ID based on the current subdomain
+    const fineractTenantId = await getFineractTenantId();
+
     // Using node-fetch for server-side to handle SSL certificate issues
     const https = require("https");
     const fetch = require("node-fetch");
@@ -86,7 +90,7 @@ export async function loginAction(
         headers: {
           Accept: "application/json, text/plain, */*",
           "Content-Type": "application/json",
-          "Fineract-Platform-TenantId": "default",
+          "Fineract-Platform-TenantId": fineractTenantId,
         },
         body: JSON.stringify({ username, password }),
         // Skip SSL verification for local development
@@ -198,6 +202,7 @@ export async function fetchFineractAPI(
   options: RequestInit = {}
 ) {
   const accessToken = await getAccessToken();
+  const fineractTenantId = await getFineractTenantId();
 
   if (!accessToken) {
     throw new Error("No access token available");
@@ -210,7 +215,7 @@ export async function fetchFineractAPI(
   const headers = {
     ...options.headers,
     Authorization: `Basic ${accessToken}`,
-    "Fineract-Platform-TenantId": "default",
+    "Fineract-Platform-TenantId": fineractTenantId,
     "Content-Type": "application/json",
   };
 

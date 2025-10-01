@@ -1,6 +1,6 @@
 
 import { NextResponse } from 'next/server';
-import { fetchFineractAPI } from '@/lib/api';
+import { getFineractServiceWithSession } from '@/lib/fineract-api';
 
 /**
  * GET /api/fineract/loans
@@ -12,8 +12,10 @@ export async function GET(request: Request) {
 
     const offset = searchParams.get('offset') || '0';
     const limit = searchParams.get('limit') || '50';
-    const endpoint = `/loans?offset=${offset}&limit=${limit}`;
-    const data = await fetchFineractAPI(endpoint);
+    
+    const fineractService = await getFineractServiceWithSession();
+    const data = await fineractService.getLoans(parseInt(offset), parseInt(limit));
+    
     return NextResponse.json(data);
   } catch (error: any) {
     console.error('Error fetching loans:', error);

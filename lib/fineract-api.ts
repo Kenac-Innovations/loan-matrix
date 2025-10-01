@@ -693,62 +693,74 @@ export class FineractAPIService {
   }
 
   // Accounting Rules operations
-  async getAccountingRules(url = '/accountingrules'): Promise<FineractAccountingRule[]> {
+  async getAccountingRules(
+    url = "/accountingrules"
+  ): Promise<FineractAccountingRule[]> {
     try {
-      const response: AxiosResponse<FineractAccountingRule[]> = await this.client.get(url);
+      const response: AxiosResponse<FineractAccountingRule[]> =
+        await this.client.get(url);
       return response.data;
     } catch (error) {
-      console.error('Fineract API Error:', error);
+      console.error("Fineract API Error:", error);
       throw error;
     }
   }
 
   async getAccountingRule(id: string): Promise<FineractAccountingRule> {
     try {
-      const response: AxiosResponse<FineractAccountingRule> = await this.client.get(`/accountingrules/${id}`);
+      const response: AxiosResponse<FineractAccountingRule> =
+        await this.client.get(`/accountingrules/${id}`);
       return response.data;
     } catch (error) {
-      console.error('Fineract API Error:', error);
+      console.error("Fineract API Error:", error);
       throw error;
     }
   }
 
   async getAccountingRulesTemplate(): Promise<AccountingRuleTemplate> {
     try {
-      const response: AxiosResponse<AccountingRuleTemplate> = await this.client.get('/accountingrules/template');
+      const response: AxiosResponse<AccountingRuleTemplate> =
+        await this.client.get("/accountingrules/template");
       return response.data;
     } catch (error) {
-      console.error('Fineract API Error:', error);
+      console.error("Fineract API Error:", error);
       throw error;
     }
   }
 
   async createAccountingRule(data: any): Promise<FineractAccountingRule> {
     try {
-      const response: AxiosResponse<FineractAccountingRule> = await this.client.post('/accountingrules', data);
+      const response: AxiosResponse<FineractAccountingRule> =
+        await this.client.post("/accountingrules", data);
       return response.data;
     } catch (error) {
-      console.error('Fineract API Error:', error);
+      console.error("Fineract API Error:", error);
       throw error;
     }
   }
 
-  async updateAccountingRule(id: string, data: any): Promise<FineractAccountingRule> {
+  async updateAccountingRule(
+    id: string,
+    data: any
+  ): Promise<FineractAccountingRule> {
     try {
-      const response: AxiosResponse<FineractAccountingRule> = await this.client.put(`/accountingrules/${id}`, data);
+      const response: AxiosResponse<FineractAccountingRule> =
+        await this.client.put(`/accountingrules/${id}`, data);
       return response.data;
     } catch (error) {
-      console.error('Fineract API Error:', error);
+      console.error("Fineract API Error:", error);
       throw error;
     }
   }
 
   async deleteAccountingRule(id: string): Promise<any> {
     try {
-      const response: AxiosResponse<any> = await this.client.delete(`/accountingrules/${id}`);
+      const response: AxiosResponse<any> = await this.client.delete(
+        `/accountingrules/${id}`
+      );
       return response.data;
     } catch (error) {
-      console.error('Fineract API Error:', error);
+      console.error("Fineract API Error:", error);
       throw error;
     }
   }
@@ -757,14 +769,17 @@ export class FineractAPIService {
 // Singleton instance for fallback
 let fineractService: FineractAPIService | null = null;
 
-export function getFineractService(authToken: string): FineractAPIService {
+export function getFineractService(
+  authToken: string,
+  tenantId?: string
+): FineractAPIService {
   // If we have an auth token, create a new instance with it
   if (authToken) {
     const config: FineractConfig = {
       baseUrl: process.env.FINERACT_BASE_URL || "https://demo.fineract.dev",
       username: "", // Not needed when using token
       password: "", // Not needed when using token
-      tenantId: process.env.FINERACT_TENANT_ID || "default",
+      tenantId: tenantId || process.env.FINERACT_TENANT_ID || "default",
     };
     return new FineractAPIService(config, authToken);
   }
@@ -775,7 +790,7 @@ export function getFineractService(authToken: string): FineractAPIService {
       baseUrl: process.env.FINERACT_BASE_URL || "https://demo.fineract.dev",
       username: process.env.FINERACT_USERNAME || "mifos",
       password: process.env.FINERACT_PASSWORD || "password",
-      tenantId: process.env.FINERACT_TENANT_ID || "default",
+      tenantId: tenantId || process.env.FINERACT_TENANT_ID || "default",
     };
     fineractService = new FineractAPIService(config);
   }
@@ -784,10 +799,16 @@ export function getFineractService(authToken: string): FineractAPIService {
 
 export async function getFineractServiceWithSession(): Promise<FineractAPIService> {
   const { getSession } = await import("./auth");
+  const { getFineractTenantId } = await import("./fineract-tenant-service");
+
   const session = await getSession();
+  const fineractTenantId = await getFineractTenantId();
 
   if (session?.base64EncodedAuthenticationKey) {
-    return getFineractService(session.base64EncodedAuthenticationKey);
+    return getFineractService(
+      session.base64EncodedAuthenticationKey,
+      fineractTenantId
+    );
   }
 
   throw error({ message: "Invalid Authentication" });

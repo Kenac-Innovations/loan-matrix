@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { fetchFineractAPI } from "@/lib/api";
+import { getFineractServiceWithSession } from "@/lib/fineract-api";
 
 /**
  * GET /api/fineract/dashboard
@@ -7,21 +7,17 @@ import { fetchFineractAPI } from "@/lib/api";
  */
 export async function GET(request: Request) {
   try {
+    const fineractService = await getFineractServiceWithSession();
+    
     // Fetch data from multiple endpoints in parallel
     const [
       clientsResponse,
       loansResponse,
-      pendingLoansResponse,
-      overdueLoansResponse,
       loanProductsResponse,
     ] = await Promise.allSettled([
-      fetchFineractAPI("/clients?limit=1000"),
-      fetchFineractAPI("/loans?limit=1000"),
-      fetchFineractAPI("/loans?sqlSearch=l.loan_status_id = 100"), // Pending approval
-      fetchFineractAPI(
-        "/loans?sqlSearch=l.loan_status_id = 300 AND l.total_outstanding_derived > 0 AND DATEDIFF(CURDATE(), l.expected_maturedon_date) > 0"
-      ), // Overdue
-      fetchFineractAPI("/loanproducts"),
+      fineractService.getClients(0, 1000),
+      fineractService.getLoans(0, 1000),
+      fineractService.getLoanProducts(),
     ]);
 
     // Extract data from successful responses
@@ -29,14 +25,6 @@ export async function GET(request: Request) {
       clientsResponse.status === "fulfilled" ? clientsResponse.value : [];
     const loans =
       loansResponse.status === "fulfilled" ? loansResponse.value : [];
-    const pendingLoans =
-      pendingLoansResponse.status === "fulfilled"
-        ? pendingLoansResponse.value
-        : [];
-    const overdueLoans =
-      overdueLoansResponse.status === "fulfilled"
-        ? overdueLoansResponse.value
-        : [];
     const loanProducts =
       loanProductsResponse.status === "fulfilled"
         ? loanProductsResponse.value
@@ -53,10 +41,18 @@ export async function GET(request: Request) {
       ? loans.reduce((sum: number, loan: any) => sum + (loan.principal || 0), 0)
       : 0;
 
-    const pendingApprovals = Array.isArray(pendingLoans)
-      ? pendingLoans.length
+    // Calculate pending approvals and overdue loans from the main loans array
+    const pendingApprovals = Array.isArray(loans)
+      ? loans.filter((loan: any) => loan.status?.id === 100).length
       : 0;
-    const overdueCount = Array.isArray(overdueLoans) ? overdueLoans.length : 0;
+    const overdueCount = Array.isArray(loans)
+      ? loans.filter((loan: any) => 
+          loan.status?.id === 300 && 
+          loan.summary?.totalOutstanding > 0 && 
+          loan.timeline?.expectedMaturityDate &&
+          new Date(loan.timeline.expectedMaturityDate) < new Date()
+        ).length
+      : 0;
 
     // Calculate portfolio distribution by loan product
     const portfolioByProduct: {

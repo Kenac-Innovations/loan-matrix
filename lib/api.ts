@@ -1,5 +1,5 @@
 import { getSession } from "./auth";
-
+import { getFineractTenantId } from "./fineract-tenant-service";
 
 const API_BASE_URL = "http://10.10.0.143:8443/fineract-provider/api/v1";
 
@@ -15,8 +15,7 @@ export async function fetchFineractAPI(
 ) {
   const session = await getSession();
   const accessToken = session?.accessToken as string | undefined;
-
-  
+  const fineractTenantId = await getFineractTenantId();
 
   if (!accessToken) {
     throw new Error("No access token available");
@@ -29,7 +28,7 @@ export async function fetchFineractAPI(
   const headers: any = {
     ...options.headers,
     Authorization: `Basic ${accessToken}`,
-    "Fineract-Platform-TenantId": "demo",
+    "Fineract-Platform-TenantId": fineractTenantId,
   };
 
   // Only set Content-Type to application/json if body is NOT FormData
@@ -40,9 +39,9 @@ export async function fetchFineractAPI(
 
   try {
     let response;
-    
+
     // Check if it's HTTP and use different approach
-    if (url.startsWith('http://')) {
+    if (url.startsWith("http://")) {
       // Use standard fetch for HTTP URLs (no agent needed)
       response = await fetch(url, {
         ...options,
@@ -53,7 +52,7 @@ export async function fetchFineractAPI(
       // In production, you should use proper SSL certificates
       const https = require("https");
       const agent = new https.Agent({ rejectUnauthorized: false });
-      
+
       response = await fetch(url, {
         ...options,
         headers,
@@ -62,57 +61,65 @@ export async function fetchFineractAPI(
       });
     }
 
-
-
-          if (!response.ok) {
-        // Try to get the error response body
-        let errorData;
-        try {
-          errorData = await response.json();
-        } catch (e) {
-          // If we can't parse JSON, use the status text
-          errorData = { 
-            defaultUserMessage: `HTTP ${response.status}: ${response.statusText}`,
-            developerMessage: `HTTP ${response.status}: ${response.statusText}`
-          };
-        }
-        
-        // Handle empty response bodies (common with 403/401 errors)
-        if (!errorData || Object.keys(errorData).length === 0) {
-          errorData = {
-            defaultUserMessage: `HTTP ${response.status}: ${response.statusText}`,
-            developerMessage: `HTTP ${response.status}: ${response.statusText}`
-          };
-        }
-        
-        // Extract the most specific error message from the errors array
-        let specificErrorMessage = errorData.defaultUserMessage || errorData.developerMessage;
-        
-        if (errorData.errors && Array.isArray(errorData.errors) && errorData.errors.length > 0) {
-          // Use the first error's defaultUserMessage if available, otherwise developerMessage
-          const firstError = errorData.errors[0];
-          specificErrorMessage = firstError.defaultUserMessage || firstError.developerMessage || specificErrorMessage;
-        }
-        
-        // Create a custom error that includes the backend error data
-        const error = new Error(`API error: ${response.status} ${response.statusText}`);
-        (error as any).status = response.status;
-        (error as any).errorData = {
-          ...errorData,
-          defaultUserMessage: specificErrorMessage,
-          developerMessage: specificErrorMessage
+    if (!response.ok) {
+      // Try to get the error response body
+      let errorData;
+      try {
+        errorData = await response.json();
+      } catch (e) {
+        // If we can't parse JSON, use the status text
+        errorData = {
+          defaultUserMessage: `HTTP ${response.status}: ${response.statusText}`,
+          developerMessage: `HTTP ${response.status}: ${response.statusText}`,
         };
-        
-        console.error('API Error Details:', {
-          status: response.status,
-          statusText: response.statusText,
-          url: url,
-          errorData: errorData,
-          specificErrorMessage: specificErrorMessage
-        });
-        
-        throw error;
       }
+
+      // Handle empty response bodies (common with 403/401 errors)
+      if (!errorData || Object.keys(errorData).length === 0) {
+        errorData = {
+          defaultUserMessage: `HTTP ${response.status}: ${response.statusText}`,
+          developerMessage: `HTTP ${response.status}: ${response.statusText}`,
+        };
+      }
+
+      // Extract the most specific error message from the errors array
+      let specificErrorMessage =
+        errorData.defaultUserMessage || errorData.developerMessage;
+
+      if (
+        errorData.errors &&
+        Array.isArray(errorData.errors) &&
+        errorData.errors.length > 0
+      ) {
+        // Use the first error's defaultUserMessage if available, otherwise developerMessage
+        const firstError = errorData.errors[0];
+        specificErrorMessage =
+          firstError.defaultUserMessage ||
+          firstError.developerMessage ||
+          specificErrorMessage;
+      }
+
+      // Create a custom error that includes the backend error data
+      const error = new Error(
+        `API error: ${response.status} ${response.statusText}`
+      );
+      (error as any).status = response.status;
+      (error as any).errorData = {
+        ...errorData,
+        defaultUserMessage: specificErrorMessage,
+        developerMessage: specificErrorMessage,
+      };
+
+      console.error("API Error Details:", {
+        status: response.status,
+        statusText: response.statusText,
+        url: url,
+        errorData: errorData,
+        specificErrorMessage: specificErrorMessage,
+      });
+
+      throw error;
+    }
 
     return await response.json();
   } catch (error) {
@@ -131,7 +138,7 @@ export async function fetchClientByExternalId(externalId: string) {
     const data = await fetchFineractAPI(`/clients/external-id/${externalId}`);
     return data;
   } catch (error) {
-    console.error('Error fetching client by external ID:', error);
+    console.error("Error fetching client by external ID:", error);
     throw error;
   }
 }
@@ -158,9 +165,9 @@ export function createClientFineractAPI(accessToken: string) {
 
     try {
       let response;
-      
+
       // Check if it's HTTP and use different approach
-      if (url.startsWith('http://')) {
+      if (url.startsWith("http://")) {
         // Use standard fetch for HTTP URLs (no agent needed)
         response = await fetch(url, {
           ...options,
@@ -171,7 +178,7 @@ export function createClientFineractAPI(accessToken: string) {
         // In production, you should use proper SSL certificates
         const https = require("https");
         const agent = new https.Agent({ rejectUnauthorized: false });
-        
+
         response = await fetch(url, {
           ...options,
           headers,
@@ -187,28 +194,38 @@ export function createClientFineractAPI(accessToken: string) {
           errorData = await response.json();
         } catch (e) {
           // If we can't parse JSON, use the status text
-          errorData = { 
+          errorData = {
             defaultUserMessage: `HTTP ${response.status}: ${response.statusText}`,
-            developerMessage: `HTTP ${response.status}: ${response.statusText}`
+            developerMessage: `HTTP ${response.status}: ${response.statusText}`,
           };
         }
-        
+
         // Extract the most specific error message from the errors array
-        let specificErrorMessage = errorData.defaultUserMessage || errorData.developerMessage;
-        
-        if (errorData.errors && Array.isArray(errorData.errors) && errorData.errors.length > 0) {
+        let specificErrorMessage =
+          errorData.defaultUserMessage || errorData.developerMessage;
+
+        if (
+          errorData.errors &&
+          Array.isArray(errorData.errors) &&
+          errorData.errors.length > 0
+        ) {
           // Use the first error's defaultUserMessage if available, otherwise developerMessage
           const firstError = errorData.errors[0];
-          specificErrorMessage = firstError.defaultUserMessage || firstError.developerMessage || specificErrorMessage;
+          specificErrorMessage =
+            firstError.defaultUserMessage ||
+            firstError.developerMessage ||
+            specificErrorMessage;
         }
-        
+
         // Create a custom error that includes the backend error data
-        const error = new Error(`API error: ${response.status} ${response.statusText}`);
+        const error = new Error(
+          `API error: ${response.status} ${response.statusText}`
+        );
         (error as any).status = response.status;
         (error as any).errorData = {
           ...errorData,
           defaultUserMessage: specificErrorMessage,
-          developerMessage: specificErrorMessage
+          developerMessage: specificErrorMessage,
         };
         throw error;
       }

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { fetchFineractAPI } from '@/lib/api';
+import { getFineractServiceWithSession } from '@/lib/fineract-api';
 
 /**
  * GET /api/fineract/loans/[id]
@@ -13,22 +13,11 @@ export async function GET(
     const { id } = await params;
     const { searchParams } = new URL(request.url);
     
-    // Build query parameters
-    const queryParams = new URLSearchParams();
-    
-    // Add associations parameter if provided, otherwise default to 'all'
+    // Get associations parameter if provided, otherwise default to 'all'
     const associations = searchParams.get('associations') || 'all';
-    queryParams.append('associations', associations);
     
-    // Add exclude parameter if provided
-    const exclude = searchParams.get('exclude');
-    if (exclude) {
-      queryParams.append('exclude', exclude);
-    }
-    
-    // Build the endpoint URL with query parameters
-    const endpoint = `/loans/${id}${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
-    const data = await fetchFineractAPI(endpoint);
+    const fineractService = await getFineractServiceWithSession();
+    const data = await fineractService.getLoan(id, associations);
     
     // Return the data as-is to preserve the original structure
     return NextResponse.json(data);
