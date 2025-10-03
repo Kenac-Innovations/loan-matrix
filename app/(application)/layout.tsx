@@ -66,7 +66,7 @@ export default async function DashboardLayout({
           <TenantDisplay />
           <div className="py-4 h-[calc(100vh-7rem)] overflow-y-auto">
             <nav className="space-y-1 px-2">
-              <Link
+              {/* <Link
                 href="/leads/new"
                 className="flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
               >
@@ -79,7 +79,7 @@ export default async function DashboardLayout({
               >
                 <Home className="h-4 w-4" />
                 Dashboard
-              </Link>
+              </Link> */}
 
               <div className="space-y-1">
                 <MenuItemWithSubmenu
