@@ -50,18 +50,18 @@ export default async function UssdLeadsPage() {
 
       <UssdLeadMetrics className="mt-6" metrics={ussdLeadsData.metrics} />
 
-      <Tabs defaultValue="table" className="mt-6">
-        <TabsList className="w-full sm:w-auto overflow-x-auto">
+      <Tabs defaultValue="table" className="mt-6 w-full">
+        <TabsList className="w-full overflow-x-auto">
           <TabsTrigger
             value="table"
-            className="data-[state=active]:bg-blue-500"
+            className="w-full data-[state=active]:bg-blue-500"
           >
             <FileText className="mr-2 h-4 w-4" />
             <span className="whitespace-nowrap">All Applications</span>
           </TabsTrigger>
           <TabsTrigger
             value="analytics"
-            className="data-[state=active]:bg-blue-500"
+            className="w-full data-[state=active]:bg-blue-500"
           >
             <BarChart3 className="mr-2 h-4 w-4" />
             <span className="whitespace-nowrap">Analytics</span>

@@ -79,11 +79,31 @@ export async function POST(request: Request) {
 
 async function handleSaveDraft(data: any, leadId?: string) {
   try {
+    // Convert data types before validation
+    const processedData = {
+      ...data,
+      // Convert string IDs to numbers
+      officeId: data.officeId ? Number(data.officeId) : undefined,
+      legalFormId: data.legalFormId ? Number(data.legalFormId) : undefined,
+      clientTypeId: data.clientTypeId ? Number(data.clientTypeId) : undefined,
+      clientClassificationId: data.clientClassificationId ? Number(data.clientClassificationId) : undefined,
+      genderId: data.genderId ? Number(data.genderId) : undefined,
+      // Convert date strings to Date objects
+      dateOfBirth: data.dateOfBirth ? new Date(data.dateOfBirth) : undefined,
+      submittedOnDate: data.submittedOnDate ? new Date(data.submittedOnDate) : new Date(),
+      activationDate: data.activationDate ? new Date(data.activationDate) : undefined,
+      // Convert savingsProductId to number if it exists
+      savingsProductId: data.savingsProductId ? Number(data.savingsProductId) : undefined,
+      // Convert monthlyDebtPayments to number if it exists
+      monthlyDebtPayments: data.monthlyDebtPayments ? Number(data.monthlyDebtPayments) : undefined,
+    };
+
     // Validate data
-    const validatedData = clientFormSchema.parse(data);
+    const validatedData = clientFormSchema.parse(processedData);
 
     // Get current user ID (in a real app, this would come from auth)
-    const userId = "user_1"; // Placeholder - replace with actual user ID from auth
+    const userId = "cmgb1zy200001loa45x2tc2fk"; // Placeholder - replace with actual user ID from auth
+    const tenantId = "cmg7mf9ns0005rllprwiwxmko"; // Placeholder - replace with actual tenant ID from auth
 
     if (leadId) {
       // Update existing lead
@@ -136,6 +156,7 @@ async function handleSaveDraft(data: any, leadId?: string) {
       const newLead = await prisma.lead.create({
         data: {
           userId,
+          tenantId,
           officeId: validatedData.officeId,
           officeName: validatedData.officeName,
           legalFormId: validatedData.legalFormId,

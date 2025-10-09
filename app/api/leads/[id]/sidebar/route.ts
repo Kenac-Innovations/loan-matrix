@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { PrismaClient } from "@/app/generated/prisma";
+import { prisma } from "@/lib/prisma";
 import { getTenantBySlug } from "@/lib/tenant-service";
-
-const prisma = new PrismaClient();
 
 export async function GET(
   request: NextRequest,
@@ -13,7 +11,13 @@ export async function GET(
 
     // Get tenant from x-tenant-slug header or default to "default"
     const tenantSlug = request.headers.get("x-tenant-slug") || "default";
-    const tenant = await getTenantBySlug(tenantSlug);
+    let tenant = await getTenantBySlug(tenantSlug);
+
+    // If tenant not found, try to create default tenant
+    if (!tenant) {
+      const { getOrCreateDefaultTenant } = await import("@/lib/tenant-service");
+      tenant = await getOrCreateDefaultTenant();
+    }
 
     if (!tenant) {
       return NextResponse.json({ error: "Tenant not found" }, { status: 404 });

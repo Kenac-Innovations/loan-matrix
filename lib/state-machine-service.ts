@@ -1,7 +1,5 @@
 import { createMachine, assign, StateMachine } from "xstate";
-import { PrismaClient } from "@/app/generated/prisma";
-
-const prisma = new PrismaClient();
+import { prisma } from "./prisma";
 
 export interface LeadContext {
   leadId: string;

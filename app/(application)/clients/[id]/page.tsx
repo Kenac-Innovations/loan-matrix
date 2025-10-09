@@ -13,6 +13,9 @@ import {
   FileText,
   Activity,
   Edit,
+  Receipt,
+  FileSpreadsheet,
+  History,
 } from "lucide-react";
 import Link from "next/link";
 import {
@@ -75,11 +78,35 @@ export default async function ClientDetailPage({ params }: PageProps) {
 
       {/* Detailed Information Tabs */}
       <Tabs defaultValue="loans" className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="loans">Loans</TabsTrigger>
-          <TabsTrigger value="transactions">Transactions</TabsTrigger>
-          <TabsTrigger value="documents">Documents</TabsTrigger>
-          <TabsTrigger value="activity">Activity</TabsTrigger>
+        <TabsList className="grid w-full grid-cols-4 md:grid-cols-4">
+          <TabsTrigger 
+            value="loans" 
+            className="flex items-center gap-2 px-2 md:px-3"
+          >
+            <CreditCard className="h-4 w-4" />
+            <span className="hidden sm:inline">Loans</span>
+          </TabsTrigger>
+          <TabsTrigger 
+            value="transactions" 
+            className="flex items-center gap-2 px-2 md:px-3"
+          >
+            <Receipt className="h-4 w-4" />
+            <span className="hidden sm:inline">Transactions</span>
+          </TabsTrigger>
+          <TabsTrigger 
+            value="documents" 
+            className="flex items-center gap-2 px-2 md:px-3"
+          >
+            <FileSpreadsheet className="h-4 w-4" />
+            <span className="hidden sm:inline">Documents</span>
+          </TabsTrigger>
+          <TabsTrigger 
+            value="activity" 
+            className="flex items-center gap-2 px-2 md:px-3"
+          >
+            <History className="h-4 w-4" />
+            <span className="hidden sm:inline">Activity</span>
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="loans" className="space-y-4">

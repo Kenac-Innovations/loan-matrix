@@ -40,16 +40,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         username,
         password,
         redirect: false,
+        callbackUrl: "/dashboard",
       });
 
       if (result?.error) {
         console.error("SignIn error:", result.error);
+        // Handle specific NextAuth errors
+        if (result.error.includes("CLIENT_FETCH_ERROR")) {
+          console.error("NextAuth CLIENT_FETCH_ERROR - Check NEXTAUTH_URL configuration");
+        }
         return false;
       }
 
       return true;
     } catch (error) {
       console.error("Login failed:", error);
+      // Handle network or fetch errors
+      if (error instanceof Error && error.message.includes("fetch")) {
+        console.error("Network error during authentication - check API connectivity");
+      }
       return false;
     }
   };

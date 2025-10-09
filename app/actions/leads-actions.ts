@@ -1,9 +1,8 @@
 "use server";
 
-import { PrismaClient } from "@/app/generated/prisma";
-import { getTenantBySlug } from "@/lib/tenant-service";
-
-const prisma = new PrismaClient();
+import { prisma } from "@/lib/prisma";
+import { getOrCreateDefaultTenant, getTenantBySlug } from "@/lib/tenant-service";
+import { UssdLeadsMetrics, UssdLoanApplication } from "./ussd-leads-actions";
 
 export interface Lead {
   id: string;
@@ -62,9 +61,9 @@ export interface LeadMetrics {
 }
 
 export interface LeadsData {
-  leads: Lead[];
+  leads: Lead[] | UssdLoanApplication[];
   pipelineStages: PipelineStage[];
-  metrics: LeadMetrics;
+  metrics: LeadMetrics | UssdLeadsMetrics;
   pagination: {
     total: number;
     limit: number;
@@ -86,7 +85,8 @@ export async function getLeadsData(
     const { stage, status, limit = 50, offset = 0 } = options;
 
     // Get tenant
-    const tenant = await getTenantBySlug(tenantSlug);
+    const tenant = await getOrCreateDefaultTenant();
+    console.log("==========> log on server side getLeadsData response ::", tenant);
     if (!tenant) {
       throw new Error("Tenant not found");
     }

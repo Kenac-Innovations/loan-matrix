@@ -29,6 +29,7 @@ import { MobileSidebar } from "./components/mobile-sidebar";
 import MenuItemWithSubmenu from "@/components/menu-with-sub";
 import { ChatProvider } from "@/contexts/chat-context";
 import { TenantDisplay } from "@/components/tenant-display";
+import { MobileMenuProvider } from "./components/mobile-menu-context";
 
 export default async function DashboardLayout({
   children,
@@ -40,7 +41,8 @@ export default async function DashboardLayout({
 
   return (
     <ChatProvider>
-      <div className="flex h-screen overflow-hidden bg-background">
+      <MobileMenuProvider>
+        <div className="flex h-screen overflow-hidden bg-background">
         {/* Desktop Sidebar */}
         <div className="hidden lg:block lg:w-64 bg-background border-border border-r h-screen sticky top-0 z-30 overflow-y-auto">
           <div className="flex h-16 items-center justify-center border-border border-b px-4 sticky top-0 bg-background z-10">
@@ -87,7 +89,7 @@ export default async function DashboardLayout({
                   label="Leads"
                   href="/ussd-leads"
                   subMenuItems={[
-                    // { label: "Pipeline", href: "/leads" },
+                    { label: "Pipeline", href: "/leads" },
                     { label: "USSD Leads", href: "/ussd-leads" },
                     // { label: "Configuration", href: "/leads/config" },
                   ]}
@@ -207,14 +209,15 @@ export default async function DashboardLayout({
           <UserProfileClient userProfileData={userProfileData} />
 
           {/* Main Content */}
-          <main className="flex-1 overflow-y-auto bg-background p-4 lg:p-6">
+          <main className="flex-1 overflow-y-auto p-8 bg-background">
             <Suspense fallback={<div>Loading...</div>}>{children}</Suspense>
           </main>
         </div>
 
         {/* AI Assistant */}
         <AIAssistant />
-      </div>
+        </div>
+      </MobileMenuProvider>
     </ChatProvider>
   );
 }

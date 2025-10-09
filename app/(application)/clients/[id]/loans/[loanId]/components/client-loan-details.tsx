@@ -1220,7 +1220,15 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
         const data = await response.json();
         setCollaterals(Array.isArray(data) ? data : []);
       } else {
-        const errorData = await response.json();
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (jsonError) {
+          // Handle case where response is not valid JSON
+          console.error("Failed to parse error response as JSON:", jsonError);
+          errorData = { error: `HTTP ${response.status}: ${response.statusText}` };
+        }
+        
         console.error("Failed to fetch collaterals:", errorData);
         
         // Extract and show user-friendly error message
@@ -1362,7 +1370,16 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
         const data = await response.json();
         setReschedules(Array.isArray(data) ? data : []);
       } else {
-        const errorData = await response.json();
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (jsonError) {
+          console.log(response);
+          // Handle case where response is not valid JSON
+          console.error("Failed to parse error response as JSON:", jsonError);
+          errorData = { error: `HTTP ${response.status}: ${response.statusText}` };
+        }
+        
         console.error("Failed to fetch reschedules:", errorData);
         
         // Extract and show user-friendly error message
@@ -1529,7 +1546,7 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
       } else {
         // Handle error response
         const errorData = await response.json();
-        console.error("Failed to create reschedule:", errorData);
+       // console.error("Failed to create reschedule:", errorData);
         
         // Extract error message for user
         let errorMessage = "Failed to create reschedule";
@@ -1570,7 +1587,15 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
         const data = await response.json();
         setDocuments(Array.isArray(data) ? data : []);
       } else {
-        const errorData = await response.json();
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (jsonError) {
+          // Handle case where response is not valid JSON
+          console.error("Failed to parse error response as JSON:", jsonError);
+          errorData = { error: `HTTP ${response.status}: ${response.statusText}` };
+        }
+        
         console.error("Failed to fetch documents:", errorData);
         
         // Extract and show user-friendly error message
@@ -1807,7 +1832,15 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
         const data = await response.json();
         setNotes(Array.isArray(data) ? data : []);
       } else {
-        const errorData = await response.json();
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (jsonError) {
+          // Handle case where response is not valid JSON
+          console.error("Failed to parse error response as JSON:", jsonError);
+          errorData = { error: `HTTP ${response.status}: ${response.statusText}` };
+        }
+        
         console.error("Failed to fetch notes:", errorData);
         
         // Extract and show user-friendly error message
@@ -2929,8 +2962,6 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
 
   return (
     <div className="space-y-6">
-
-
       {/* Quick Stats Cards */}
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
         <Card className="border-0 shadow-sm bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-950 dark:to-blue-900">
@@ -3062,19 +3093,80 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
       </Card>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="flex flex-wrap w-full bg-muted/50 p-1 rounded-lg gap-1">
-          <TabsTrigger value="general" className="rounded-md px-4 py-2 text-sm font-medium whitespace-nowrap">General</TabsTrigger>
-          <TabsTrigger value="account-details" className="rounded-md px-4 py-2 text-sm font-medium whitespace-nowrap">Account Details</TabsTrigger>
-          <TabsTrigger value="schedule" className="rounded-md px-4 py-2 text-sm font-medium whitespace-nowrap">Repayment Schedule</TabsTrigger>
-          <TabsTrigger value="transactions" className="rounded-md px-4 py-2 text-sm font-medium whitespace-nowrap">Transactions</TabsTrigger>
-          <TabsTrigger value="collateral" className="rounded-md px-4 py-2 text-sm font-medium whitespace-nowrap">Collateral</TabsTrigger>
-          <TabsTrigger value="overdue-charges" className="rounded-md px-4 py-2 text-sm font-medium whitespace-nowrap">Overdue</TabsTrigger>
-          <TabsTrigger value="charges" className="rounded-md px-4 py-2 text-sm font-medium whitespace-nowrap">Charges</TabsTrigger>
-          <TabsTrigger value="loan-reschedules" className="rounded-md px-4 py-2 text-sm font-medium whitespace-nowrap">Reschedules</TabsTrigger>
-          <TabsTrigger value="loan-documents" className="rounded-md px-4 py-2 text-sm font-medium whitespace-nowrap">Documents</TabsTrigger>
-          <TabsTrigger value="notes" className="rounded-md px-4 py-2 text-sm font-medium whitespace-nowrap">Notes</TabsTrigger>
-
-        </TabsList>
+        <div className="w-full">
+          <TabsList className="h-12 flex w-max min-w-full bg-muted/50 p-1 rounded-lg gap-1 sm:flex-wrap sm:w-full">
+            <TabsTrigger 
+              value="general" 
+              className="flex-1 flex items-center justify-center gap-1 rounded-md px-2 py-2 text-xs font-medium whitespace-nowrap sm:px-4 sm:text-sm sm:gap-2 data-[state=active]:bg-blue-500 data-[state=active]:text-white"
+            >
+              <User className="h-4 w-4" />
+              <span className="hidden sm:inline">General</span>
+            </TabsTrigger>
+            <TabsTrigger 
+              value="account-details" 
+              className="flex-1 flex items-center justify-center gap-1 rounded-md px-2 py-2 text-xs font-medium whitespace-nowrap sm:px-4 sm:text-sm sm:gap-2 data-[state=active]:bg-blue-500 data-[state=active]:text-white"
+            >
+              <CreditCard className="h-4 w-4" />
+              <span className="hidden sm:inline">Account Details</span>
+            </TabsTrigger>
+            <TabsTrigger 
+              value="schedule" 
+              className="flex-1 flex items-center justify-center gap-1 rounded-md px-2 py-2 text-xs font-medium whitespace-nowrap sm:px-4 sm:text-sm sm:gap-2 data-[state=active]:bg-blue-500 data-[state=active]:text-white"
+            >
+              <Calendar className="h-4 w-4" />
+              <span className="hidden sm:inline">Repayment Schedule</span>
+            </TabsTrigger>
+            <TabsTrigger 
+              value="transactions" 
+              className="flex-1 flex items-center justify-center gap-1 rounded-md px-2 py-2 text-xs font-medium whitespace-nowrap sm:px-4 sm:text-sm sm:gap-2 data-[state=active]:bg-blue-500 data-[state=active]:text-white"
+            >
+              <DollarSign className="h-4 w-4" />
+              <span className="hidden sm:inline">Transactions</span>
+            </TabsTrigger>
+            <TabsTrigger 
+              value="collateral" 
+              className="flex-1 flex items-center justify-center gap-1 rounded-md px-2 py-2 text-xs font-medium whitespace-nowrap sm:px-4 sm:text-sm sm:gap-2 data-[state=active]:bg-blue-500 data-[state=active]:text-white"
+            >
+              <Shield className="h-4 w-4" />
+              <span className="hidden sm:inline">Collateral</span>
+            </TabsTrigger>
+            <TabsTrigger 
+              value="overdue-charges" 
+              className="flex-1 flex items-center justify-center gap-1 rounded-md px-2 py-2 text-xs font-medium whitespace-nowrap sm:px-4 sm:text-sm sm:gap-2 data-[state=active]:bg-blue-500 data-[state=active]:text-white"
+            >
+              <AlertCircle className="h-4 w-4" />
+              <span className="hidden sm:inline">Overdue</span>
+            </TabsTrigger>
+            <TabsTrigger 
+              value="charges" 
+              className="flex-1 flex items-center justify-center gap-1 rounded-md px-2 py-2 text-xs font-medium whitespace-nowrap sm:px-4 sm:text-sm sm:gap-2 data-[state=active]:bg-blue-500 data-[state=active]:text-white"
+            >
+              <Coins className="h-4 w-4" />
+              <span className="hidden sm:inline">Charges</span>
+            </TabsTrigger>
+            <TabsTrigger 
+              value="loan-reschedules" 
+              className="flex-1 flex items-center justify-center gap-1 rounded-md px-2 py-2 text-xs font-medium whitespace-nowrap sm:px-4 sm:text-sm sm:gap-2 data-[state=active]:bg-blue-500 data-[state=active]:text-white"
+            >
+              <RotateCcw className="h-4 w-4" />
+              <span className="hidden sm:inline">Reschedules</span>
+            </TabsTrigger>
+            <TabsTrigger 
+              value="loan-documents" 
+              className="flex-1 flex items-center justify-center gap-1 rounded-md px-2 py-2 text-xs font-medium whitespace-nowrap sm:px-4 sm:text-sm sm:gap-2 data-[state=active]:bg-blue-500 data-[state=active]:text-white"
+            >
+              <FileText className="h-4 w-4" />
+              <span className="hidden sm:inline">Documents</span>
+            </TabsTrigger>
+            <TabsTrigger 
+              value="notes" 
+              className="flex-1 flex items-center justify-center gap-1 rounded-md px-2 py-2 text-xs font-medium whitespace-nowrap sm:px-4 sm:text-sm sm:gap-2 data-[state=active]:bg-blue-500 data-[state=active]:text-white"
+            >
+              <StickyNote className="h-4 w-4" />
+              <span className="hidden sm:inline">Notes</span>
+            </TabsTrigger>
+          </TabsList>
+        </div>
 
         <TabsContent value="general" className="space-y-6">
           {/* Performance History */}

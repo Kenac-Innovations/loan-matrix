@@ -3,37 +3,39 @@ import { fetchFineractAPI } from '@/lib/api';
 import { ClientSearchRequest, ClientSearchResponse } from '@/types/client-search';
 
 /**
- * POST /api/fineract/clients/search
- * Searches for clients by external ID or other criteria
+ * POST /api/fineract/clients/search-v2
+ * Searches for clients using the v2 API with proper payload structure
  */
 export async function POST(request: Request) {
   try {
-    const payload = await request.json();
-    const { text, page = 0, size = 50 } = payload;
+    const payload: ClientSearchRequest = await request.json();
+    const { request: searchRequest, page = 0, size = 50 } = payload;
 
-    if (!text) {
+    if (!searchRequest?.text) {
       return NextResponse.json(
         { error: 'Search text is required' },
         { status: 400 }
       );
     }
 
-    // Fineract v2 API expects the text to be nested inside a request object
+    // Use the v2 API endpoint with proper payload structure
     const searchPayload = {
-      request: { text },
+      request: {
+        text: searchRequest.text
+      },
       page,
-      size,
+      size
     };
 
-    // Use the v2 API endpoint with proper payload structure
-    const data = await fetchFineractAPI('/clients/search', {
+    // Make the request to the v2 API endpoint using the unified function
+    const data: ClientSearchResponse = await fetchFineractAPI('/clients/search', {
       method: 'POST',
       body: JSON.stringify(searchPayload),
     }, 'v2');
 
     return NextResponse.json(data);
   } catch (error: any) {
-    console.error('Error searching clients:', error);
+    console.error('Error searching clients with v2 API:', error);
     
     // Handle specific error cases
     if (error.status === 404) {

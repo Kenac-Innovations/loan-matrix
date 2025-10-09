@@ -1,9 +1,7 @@
 import { NextResponse } from 'next/server';
-import { PrismaClient } from '@/app/generated/prisma';
+import { prisma } from '@/lib/prisma';
 import { fetchFineractAPI } from '@/lib/api';
 import { format } from 'date-fns';
-
-const prisma = new PrismaClient();
 
 /**
  * POST /api/ussd-leads/[id]/submit
@@ -121,6 +119,28 @@ export async function POST(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
+
+    if (result && result.resourceId) {
+      const loanId = result.resourceId;
+      
+      // Update the loan with the external ID set to the loan ID
+      try {
+        await fetchFineractAPI(`/loans/${loanId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            externalId: String(loanId),
+            locale: 'en',
+            dateFormat: 'yyyy-MM-dd',
+          }),
+        });
+        
+        console.log(`Updated loan ${loanId} with external ID set to loan ID`);
+      } catch (updateError) {
+        console.error('Failed to update loan external ID:', updateError);
+        // Don't fail the entire operation if external ID update fails
+      }
+    }
 
     return NextResponse.json({ success: true, coreResponse: result });
   } catch (error: any) {

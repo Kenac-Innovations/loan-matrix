@@ -8,7 +8,8 @@ async function fetchAllLoans() {
   const host = hdrs.get("x-forwarded-host") || hdrs.get("host");
   const proto = hdrs.get("x-forwarded-proto") || "http";
   const base = host ? `${proto}://${host}` : "http://localhost:3000";
-  const cookieHeader = cookies().toString();
+  const cookie = await cookies();
+  const cookieHeader = cookie.toString();
   const res = await fetch(`${base}/api/fineract/loans`, {
     cache: "no-store",
     headers: cookieHeader ? { cookie: cookieHeader } : undefined,

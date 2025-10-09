@@ -1,8 +1,6 @@
 import OpenAI from "openai";
-import { PrismaClient } from "@/app/generated/prisma";
+import { prisma } from "./prisma";
 import { getFineractService } from "./fineract-api";
-
-const prisma = new PrismaClient();
 
 export interface RAGDocument {
   id: string;

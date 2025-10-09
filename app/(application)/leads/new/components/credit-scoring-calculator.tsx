@@ -4,7 +4,6 @@ import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Slider } from "@/components/ui/slider";
 import {
   Select,
   SelectContent,
@@ -24,15 +23,7 @@ import {
 import {
   Calculator,
   TrendingUp,
-  AlertCircle,
-  Info,
   Shield,
-  CreditCard,
-  User,
-  DollarSign,
-  Building,
-  Calendar,
-  Target,
 } from "lucide-react";
 
 import { ScoringFactor, CreditScoreResult, ScoreBreakdown, defaultScoringFactors } from "@/types/credit-scoring";
@@ -83,7 +74,7 @@ export function CreditScoringCalculator({
           };
           normalizedValue =
             employmentScores[
-              data.employmentStatus as keyof typeof employmentScores
+            data.employmentStatus as keyof typeof employmentScores
             ] || 0;
           break;
         case "debt-to-income":
@@ -160,63 +151,63 @@ export function CreditScoringCalculator({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* Credit History */}
             <div className="space-y-3">
-                                <Label className="text-sm font-medium text-foreground">
-                    Credit History Score
-                  </Label>
-                              <Input
-                  type="number"
-                  value={formData.creditHistory}
-                  onChange={(e) =>
-                    setFormData((prev) => ({
-                      ...prev,
-                      creditHistory: Number(e.target.value),
-                    }))
-                  }
-                  min={300}
-                  max={850}
-                  className="h-10 border-border bg-background"
-                />
-                                 <p className="text-xs text-muted-foreground dark:text-muted-foreground">
-                     FICO credit score (300-850 range)
-                   </p>
+              <Label className="text-sm font-medium text-foreground">
+                Credit History Score
+              </Label>
+              <Input
+                type="number"
+                value={formData.creditHistory}
+                onChange={(e) =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    creditHistory: Number(e.target.value),
+                  }))
+                }
+                min={300}
+                max={850}
+                className="h-10 border-border bg-background"
+              />
+              <p className="text-xs text-muted-foreground dark:text-muted-foreground">
+                FICO credit score (300-850 range)
+              </p>
             </div>
 
             {/* Annual Income */}
             <div className="space-y-3">
-                                <Label className="text-sm font-medium text-foreground">
-                    Annual Income (USD)
-                  </Label>
-                              <Input
-                  type="number"
-                  value={formData.incomeLevel}
-                  onChange={(e) =>
-                    setFormData((prev) => ({
-                      ...prev,
-                      incomeLevel: Number(e.target.value),
-                    }))
-                  }
-                  min={0}
-                  className="h-10 border-border bg-background"
-                />
+              <Label className="text-sm font-medium text-foreground">
+                Annual Income (USD)
+              </Label>
+              <Input
+                type="number"
+                value={formData.incomeLevel}
+                onChange={(e) =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    incomeLevel: Number(e.target.value),
+                  }))
+                }
+                min={0}
+                className="h-10 border-border bg-background"
+              />
             </div>
 
             {/* Employment Status */}
             <div className="space-y-3">
-                                <Label className="text-sm font-medium text-foreground">
-                    Employment Status
-                  </Label>
-                              <Select
-                  value={formData.employmentStatus}
-                  onValueChange={(value) =>
-                    setFormData((prev) => ({
-                      ...prev,
-                      employmentStatus: value,
-                    }))
-                  }
-                >
-                  <SelectTrigger className="h-10 border-border bg-background">
-                    <SelectValue />
-                  </SelectTrigger>
+              <Label className="text-sm font-medium text-foreground">
+                Employment Status
+              </Label>
+              <Select
+                value={formData.employmentStatus}
+                onValueChange={(value) =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    employmentStatus: value,
+                  }))
+                }
+              >
+                <SelectTrigger className="h-10 w-full border-border bg-background">
+                  <SelectValue />
+                </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="full-time">Full-time Employment</SelectItem>
                   <SelectItem value="part-time">Part-time Employment</SelectItem>
@@ -228,63 +219,63 @@ export function CreditScoringCalculator({
 
             {/* Debt-to-Income Ratio */}
             <div className="space-y-3">
-                                <Label className="text-sm font-medium text-foreground">
-                    Debt-to-Income Ratio
-                  </Label>
-                              <Input
-                  type="number"
-                  step="0.01"
-                  value={formData.debtToIncomeRatio}
-                  onChange={(e) =>
-                    setFormData((prev) => ({
-                      ...prev,
-                      debtToIncomeRatio: Number(e.target.value),
-                    }))
-                  }
-                  min={0}
-                  max={1}
-                  className="h-10 border-border bg-background"
-                />
-                                 <p className="text-xs text-muted-foreground dark:text-muted-foreground">
-                     As decimal (0.25 = 25%)
-                   </p>
+              <Label className="text-sm font-medium text-foreground">
+                Debt-to-Income Ratio
+              </Label>
+              <Input
+                type="number"
+                step="0.01"
+                value={formData.debtToIncomeRatio}
+                onChange={(e) =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    debtToIncomeRatio: Number(e.target.value),
+                  }))
+                }
+                min={0}
+                max={1}
+                className="h-10 border-border bg-background"
+              />
+              <p className="text-xs text-muted-foreground dark:text-muted-foreground">
+                As decimal (0.25 = 25%)
+              </p>
             </div>
 
             {/* Age */}
             <div className="space-y-3">
-                                <Label className="text-sm font-medium text-foreground">Age</Label>
-                              <Input
-                  type="number"
-                  value={formData.age}
-                  onChange={(e) =>
-                    setFormData((prev) => ({
-                      ...prev,
-                      age: Number(e.target.value),
-                    }))
-                  }
-                  min={18}
-                  max={100}
-                  className="h-10 border-border bg-background"
-                />
+              <Label className="text-sm font-medium text-foreground">Age</Label>
+              <Input
+                type="number"
+                value={formData.age}
+                onChange={(e) =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    age: Number(e.target.value),
+                  }))
+                }
+                min={18}
+                max={100}
+                className="h-10 border-border bg-background"
+              />
             </div>
 
             {/* Loan Amount */}
             <div className="space-y-3">
-                                <Label className="text-sm font-medium text-foreground">
-                    Requested Loan Amount (USD)
-                  </Label>
-                              <Input
-                  type="number"
-                  value={formData.loanAmount}
-                  onChange={(e) =>
-                    setFormData((prev) => ({
-                      ...prev,
-                      loanAmount: Number(e.target.value),
-                    }))
-                  }
-                  min={0}
-                  className="h-10 border-border bg-background"
-                />
+              <Label className="text-sm font-medium text-foreground">
+                Requested Loan Amount (USD)
+              </Label>
+              <Input
+                type="number"
+                value={formData.loanAmount}
+                onChange={(e) =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    loanAmount: Number(e.target.value),
+                  }))
+                }
+                min={0}
+                className="h-10 border-border bg-background"
+              />
             </div>
           </div>
 
@@ -299,17 +290,17 @@ export function CreditScoringCalculator({
                 >
                   {currentScore.totalScore}
                 </div>
-                               <div className="text-lg font-semibold mb-4 text-muted-foreground dark:text-muted-foreground">
-                 Credit Score
-               </div>
+                <div className="text-lg font-semibold mb-4 text-muted-foreground dark:text-muted-foreground">
+                  Credit Score
+                </div>
                 <div className="flex items-center justify-center gap-4 mb-4">
                   <Badge
                     variant={
                       currentScore.riskLevel === "Low"
                         ? "default"
                         : currentScore.riskLevel === "Medium"
-                        ? "secondary"
-                        : "destructive"
+                          ? "secondary"
+                          : "destructive"
                     }
                     className="text-sm"
                   >
@@ -320,8 +311,8 @@ export function CreditScoringCalculator({
                       currentScore.recommendation === "Approve"
                         ? "default"
                         : currentScore.recommendation === "Review"
-                        ? "secondary"
-                        : "destructive"
+                          ? "secondary"
+                          : "destructive"
                     }
                     className="text-sm"
                   >
@@ -348,9 +339,9 @@ export function CreditScoringCalculator({
                       <span className="text-sm font-medium">
                         {item.factor}
                       </span>
-                                           <span className="text-sm text-muted-foreground dark:text-muted-foreground">
-                       {Math.round(item.contribution)} points ({item.weight}%)
-                     </span>
+                      <span className="text-sm text-muted-foreground dark:text-muted-foreground">
+                        {Math.round(item.contribution)} points ({item.weight}%)
+                      </span>
                     </div>
                     <Progress
                       value={(item.contribution / currentScore.totalScore) * 100}
@@ -364,7 +355,8 @@ export function CreditScoringCalculator({
 
           <Button
             onClick={handleCalculate}
-            className="w-full bg-gradient-to-r from-primary-500 to-primary-600 hover:from-primary-600 hover:to-primary-700 text-primary-foreground"
+            variant="default"
+            className="border-1 border-primary-500 bg-gradient-to-r from-primary-500 to-primary-500 hover:from-primary-600 hover:to-primary-700 text-white"
           >
             <Shield className="w-4 h-4 mr-2" />
             Calculate Credit Score

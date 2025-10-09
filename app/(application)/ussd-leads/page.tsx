@@ -8,23 +8,20 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Badge } from "@/components/ui/badge";
-import { 
-  Phone, 
-  FileText, 
-  BarChart3, 
+import {
+  Phone,
+  FileText,
+  BarChart3,
   RefreshCw,
   CheckCircle,
   XCircle,
-  Clock,
-  DollarSign,
-  User,
-  Calendar
+  Clock
 } from "lucide-react";
-import { getUssdLeadsData } from "@/app/actions/ussd-leads-actions";
+import { getUssdLeadsData, UssdLoanApplication } from "@/app/actions/ussd-leads-actions";
 import { headers } from "next/headers";
-import { UssdLeadsTable } from "./components/ussd-leads-table";
 import { UssdLeadsMetrics } from "./components/ussd-leads-metrics";
+import { LeadsTable } from "../leads/components/leads-table";
+import { Lead, LeadsData } from "@/app/actions/leads-actions";
 
 export const metadata: Metadata = {
   title: "USSD Leads | KENAC Loan Matrix",
@@ -38,6 +35,17 @@ export default async function UssdLeadsPage() {
 
   // Fetch USSD leads data server-side
   const ussdLeadsData = await getUssdLeadsData(tenantSlug);
+  const leadsData = {
+    leads: ussdLeadsData.applications,
+    pipelineStages: [],
+    pagination: {
+      total: ussdLeadsData.totalCount,
+      limit: 10,
+      offset: 0,
+      hasMore: ussdLeadsData.totalCount > 10
+    },
+    metrics: ussdLeadsData.metrics
+  }
 
   return (
     <>
@@ -62,23 +70,23 @@ export default async function UssdLeadsPage() {
       <UssdLeadsMetrics className="mt-6" metrics={ussdLeadsData.metrics} />
 
       <Tabs defaultValue="table" className="mt-6">
-        <TabsList className="w-full sm:w-auto overflow-x-auto">
+        <TabsList className="w-full overflow-x-auto">
           <TabsTrigger
             value="table"
-            className="data-[state=active]:bg-blue-500"
+            className="w-full data-[state=active]:bg-blue-500"
           >
             <FileText className="mr-2 h-4 w-4" />
             <span className="whitespace-nowrap">Applications</span>
           </TabsTrigger>
           <TabsTrigger
             value="metrics"
-            className="data-[state=active]:bg-blue-500"
+            className="w-full data-[state=active]:bg-blue-500"
           >
             <BarChart3 className="mr-2 h-4 w-4" />
             <span className="whitespace-nowrap">Analytics</span>
           </TabsTrigger>
         </TabsList>
-        
+
         <TabsContent value="table" className="mt-4">
           <Card>
             <CardHeader>
@@ -88,11 +96,11 @@ export default async function UssdLeadsPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <UssdLeadsTable initialData={ussdLeadsData} />
+              <LeadsTable initialData={leadsData} />
             </CardContent>
           </Card>
         </TabsContent>
-        
+
         <TabsContent value="metrics" className="mt-4">
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             <Card>
@@ -107,7 +115,7 @@ export default async function UssdLeadsPage() {
                 </p>
               </CardContent>
             </Card>
-            
+
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Pending Action</CardTitle>
@@ -120,7 +128,7 @@ export default async function UssdLeadsPage() {
                 </p>
               </CardContent>
             </Card>
-            
+
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Approval Rate</CardTitle>
@@ -133,7 +141,7 @@ export default async function UssdLeadsPage() {
                 </p>
               </CardContent>
             </Card>
-            
+
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Approved</CardTitle>
@@ -146,7 +154,7 @@ export default async function UssdLeadsPage() {
                 </p>
               </CardContent>
             </Card>
-            
+
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Rejected</CardTitle>
@@ -159,7 +167,7 @@ export default async function UssdLeadsPage() {
                 </p>
               </CardContent>
             </Card>
-            
+
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Avg Processing Time</CardTitle>

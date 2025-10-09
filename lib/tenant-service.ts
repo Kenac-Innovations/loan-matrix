@@ -1,7 +1,5 @@
-import { PrismaClient } from "@/app/generated/prisma";
+import { prisma } from "./prisma";
 import { headers } from "next/headers";
-
-const prisma = new PrismaClient();
 
 export interface TenantInfo {
   id: string;
@@ -31,7 +29,7 @@ export function extractTenantSlug(host: string): string {
 
   // Extract subdomain
   const parts = hostWithoutPort.split(".");
-  if (parts.length > 2) {
+  if (parts.length > 2) { 
     return parts[0]; // First part is the subdomain
   }
 
@@ -89,7 +87,7 @@ export async function getOrCreateDefaultTenant(): Promise<TenantInfo> {
       data: {
         name: "Default Organization",
         slug: "default",
-        settings: {
+        settings: {     
           theme: "default",
           features: {
             statemachine: true,

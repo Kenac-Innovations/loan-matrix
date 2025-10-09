@@ -27,10 +27,8 @@ import {
   Play,
 } from "lucide-react";
 import Link from "next/link";
-import { PrismaClient } from "@/app/generated/prisma";
+import { prisma } from "@/lib/prisma";
 import { headers } from "next/headers";
-
-const prisma = new PrismaClient();
 
 async function getLeadData(leadId: string) {
   try {
