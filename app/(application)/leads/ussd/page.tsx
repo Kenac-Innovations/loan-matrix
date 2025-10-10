@@ -11,9 +11,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 import { RefreshCw, FileText, BarChart3, Smartphone } from "lucide-react";
 import { UssdLeadMetrics } from "./components/ussd-lead-metrics";
-import { UssdLeadsTable } from "./components/ussd-leads-table";
 import { getUssdLeadsData } from "@/app/actions/ussd-leads-actions";
 import { headers } from "next/headers";
+import UssdLoanApplicationsTable from "@/components/tables/UssdLoanApplicationsTable";
 
 export const metadata: Metadata = {
   title: "USSD Leads | KENAC Loan Matrix",
@@ -76,7 +76,7 @@ export default async function UssdLeadsPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <UssdLeadsTable initialData={ussdLeadsData} />
+              <UssdLoanApplicationsTable ussdLoanApplications={ussdLeadsData.applications} />
             </CardContent>
           </Card>
         </TabsContent>

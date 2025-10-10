@@ -20,8 +20,7 @@ import {
 import { getUssdLeadsData } from "@/app/actions/ussd-leads-actions";
 import { headers } from "next/headers";
 import { UssdLeadsMetrics } from "./components/ussd-leads-metrics";
-import { LeadsTable } from "../leads/components/leads-table";
-import { UssdLoanApplication } from "@/shared/types";
+import UssdLoanApplicationsTable from "@/components/tables/UssdLoanApplicationsTable";
 
 export const metadata: Metadata = {
   title: "USSD Leads | KENAC Loan Matrix",
@@ -35,19 +34,6 @@ export default async function UssdLeadsPage() {
 
   // Fetch USSD leads data server-side
   const ussdLeadsData = await getUssdLeadsData("demo");
-  const leadsData = {
-    leads: ussdLeadsData.applications,
-    pipelineStages: [],
-    pagination: {
-      total: ussdLeadsData.totalCount,
-      limit: 10,
-      offset: 0,
-      hasMore: ussdLeadsData.totalCount > 10
-    },
-    metrics: ussdLeadsData.metrics
-  }
-
-  console.log(ussdLeadsData);
 
   return (
     <>
@@ -98,7 +84,7 @@ export default async function UssdLeadsPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <LeadsTable initialData={leadsData} />
+              <UssdLoanApplicationsTable ussdLoanApplications={ussdLeadsData.applications} />
             </CardContent>
           </Card>
         </TabsContent>

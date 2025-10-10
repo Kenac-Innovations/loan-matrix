@@ -555,14 +555,14 @@ export default function ReportsPage() {
               <TabsList className="w-full sm:w-auto overflow-x-auto">
                 <TabsTrigger
                   value="cards"
-                  className="data-[state=active]:bg-blue-500"
+                  className="w-full data-[state=active]:bg-blue-500"
                 >
                   <Grid3X3 className="mr-2 h-4 w-4" />
                   <span className="whitespace-nowrap">Cards View</span>
                 </TabsTrigger>
                 <TabsTrigger
                   value="table"
-                  className="data-[state=active]:bg-blue-500"
+                  className="w-full data-[state=active]:bg-blue-500"
                 >
                   <List className="mr-2 h-4 w-4" />
                   <span className="whitespace-nowrap">Table View</span>

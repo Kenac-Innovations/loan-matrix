@@ -12,7 +12,4 @@ export * from './fineract';
 export * from './tenant';
 export * from './rag';
 export * from './validation';
-export * from './ui';
-
-// Import NextAuth declarations
-import './next-auth';
+// export * from './next-auth.d';
