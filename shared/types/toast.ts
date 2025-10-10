@@ -55,3 +55,15 @@ export interface UseToastReturn {
   loadingSuccess: (operation?: string) => void;
   loadingError: (operation?: string) => void;
 }
+
+type ToastProps = {
+  title?: string;
+  description?: string;
+  variant?: "default" | "destructive";
+  icon?: React.ReactNode;
+  action?: {
+    altText: string;
+    label: string;
+    onClick: () => void;
+  };
+};

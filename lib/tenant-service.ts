@@ -1,13 +1,6 @@
 import { prisma } from "./prisma";
 import { headers } from "next/headers";
-
-export interface TenantInfo {
-  id: string;
-  name: string;
-  slug: string;
-  domain?: string | null;
-  settings?: any;
-}
+import { TenantInfo } from "@/shared/types/tenant";
 
 /**
  * Extract tenant slug from subdomain

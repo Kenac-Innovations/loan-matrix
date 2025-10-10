@@ -1,6 +1,6 @@
 import { DefaultSession } from "next-auth";
 import { JWT } from "next-auth/jwt";
-import { Role, SpecificPermission } from "@/types/auth";
+import { Role, SpecificPermission } from "./auth";
 
 declare module "next-auth" {
   /**

@@ -3,34 +3,7 @@
 import { prisma } from "@/lib/prisma";
 import { getOrCreateDefaultTenant, getTenantBySlug } from "@/lib/tenant-service";
 import { UssdLeadsMetrics, UssdLoanApplication } from "./ussd-leads-actions";
-
-export interface Lead {
-  id: string;
-  client: string;
-  amount: string;
-  type: string;
-  stage: string;
-  timeInStage: string;
-  sla: string;
-  status: "normal" | "warning" | "overdue";
-  assignee: string;
-  assigneeName: string;
-  assigneeColor: string;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-export interface PipelineStage {
-  id: string;
-  name: string;
-  description?: string;
-  order: number;
-  color: string;
-  isActive: boolean;
-  isInitialState: boolean;
-  isFinalState: boolean;
-  allowedTransitions: string[];
-}
+import { Lead, PipelineStage } from "@/shared/types/lead";
 
 export interface ConversionMetrics {
   labels: string[];

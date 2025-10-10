@@ -26,7 +26,8 @@ import {
   Shield,
 } from "lucide-react";
 
-import { ScoringFactor, CreditScoreResult, ScoreBreakdown, defaultScoringFactors } from "@/types/credit-scoring";
+import { ScoringFactor, CreditScoreResult, ScoreBreakdown } from "@/shared/types/credit-scoring";
+import { defaultScoringFactors } from "@/shared/defaults/credit-scoring";
 
 interface CreditScoringCalculatorProps {
   onScoreCalculated?: (result: CreditScoreResult) => void;

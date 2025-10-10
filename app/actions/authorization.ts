@@ -5,7 +5,7 @@
  */
 
 import { getSession } from "@/lib/auth";
-import { SpecificPermission } from "@/types/auth";
+import { SpecificPermission } from "@/shared/types/auth";
 
 export async function checkPermission(
   permission: SpecificPermission

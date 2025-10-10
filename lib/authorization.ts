@@ -1,5 +1,5 @@
 import { getSession } from "./auth";
-import { AccessLevel, Resource, SpecificPermission } from "@/types/auth";
+import { AccessLevel, Resource, SpecificPermission } from "@/shared/types/auth";
 
 /**
  * Map API permissions to our specific permissions

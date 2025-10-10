@@ -1,44 +1,13 @@
 import "next-auth";
 
-// Extend the built-in session types
 declare module "next-auth" {
   interface Session {
     accessToken?: string;
     base64EncodedAuthenticationKey?: string;
-    user: {
-      id?: string;
-      name?: string | null;
-      email?: string | null;
-      image?: string | null;
-      userId?: number;
-      officeId?: number;
-      officeName?: string;
-      roles?: Role[];
-      permissions?: SpecificPermission[];
-      rawPermissions?: string[];
-      shouldRenewPassword?: boolean;
-      isTwoFactorAuthenticationRequired?: boolean;
-    };
-  }
-
-  interface User {
-    id?: string;
-    userId?: number;
-    name?: string | null;
-    email?: string | null;
-    accessToken?: string;
-    base64EncodedAuthenticationKey?: string;
-    officeId?: number;
-    officeName?: string;
-    roles?: Role[];
-    permissions?: SpecificPermission[];
-    rawPermissions?: string[];
-    shouldRenewPassword?: boolean;
-    isTwoFactorAuthenticationRequired?: boolean;
+    userDetails: UserDetails;
   }
 }
 
-// Define the Role type
 export interface Role {
   id: number;
   name: string;
@@ -46,10 +15,9 @@ export interface Role {
   disabled: boolean;
 }
 
-// Define Permission types
 export type Permission = string;
 
-// Define a more specific permission type that can be used for granular control
+// Define a more specific permission  that can be used for granular control
 export enum SpecificPermission {
   // Client permissions
   CREATE_CLIENT = "CREATE_CLIENT",
@@ -84,7 +52,6 @@ export enum SpecificPermission {
   ALL_FUNCTIONS = "ALL_FUNCTIONS",
 }
 
-// Define a type for resource access levels
 export enum AccessLevel {
   NONE = "NONE",
   READ = "READ",
@@ -92,7 +59,6 @@ export enum AccessLevel {
   ADMIN = "ADMIN",
 }
 
-// Define a type for resources that can be accessed
 export enum Resource {
   CLIENT = "CLIENT",
   LOAN = "LOAN",
@@ -100,3 +66,33 @@ export enum Resource {
   USER = "USER",
   SYSTEM = "SYSTEM",
 }
+
+export type UserDetails = {
+  id: string;
+  userId: number;
+  name: string;
+  email: string;
+  accessToken: string;
+  base64EncodedAuthenticationKey: string;
+  officeId: number;
+  officeName: string;
+  roles: Role[];
+  permissions: SpecificPermission[];
+  rawPermissions: string[];
+  shouldRenewPassword?: boolean;
+  isTwoFactorAuthenticationRequired?: boolean;
+};
+
+export type UserProfileData = {
+  user: {
+    name: string;
+    email: string;
+    roles?: Role[];
+    role?: string;
+    officeName?: string;
+    username?: string;
+    isSelfServiceUser?: boolean;
+  };
+  tenantId: string;
+  isLoggedIn: boolean;
+};

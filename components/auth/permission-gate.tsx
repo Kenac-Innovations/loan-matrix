@@ -1,5 +1,5 @@
 import { ReactNode } from "react";
-import { SpecificPermission } from "@/types/auth";
+import { SpecificPermission } from "@/shared/types/auth";
 import { checkPermission } from "@/app/actions/authorization";
 
 interface PermissionGateProps {

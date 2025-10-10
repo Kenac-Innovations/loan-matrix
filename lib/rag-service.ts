@@ -1,24 +1,7 @@
 import OpenAI from "openai";
 import { prisma } from "./prisma";
 import { getFineractService } from "./fineract-api";
-
-export interface RAGDocument {
-  id: string;
-  title: string;
-  content: string;
-  documentType: string;
-  fineractId?: string;
-  leadId?: string;
-  tenantId?: string;
-  metadata?: any;
-  embedding?: number[];
-}
-
-export interface RAGSearchResult {
-  document: RAGDocument;
-  similarity: number;
-  relevantChunk?: string;
-}
+import { RAGDocument, RAGSearchResult } from "@/shared/types/rag";
 
 export interface RAGResponse {
   answer: string;

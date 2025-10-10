@@ -4,7 +4,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { SignJWT, jwtVerify } from "jose";
 import { z } from "zod";
-import { SpecificPermission } from "@/types/auth";
+import { SpecificPermission } from "@/shared/types/auth";
 import { getFineractTenantId } from "@/lib/fineract-tenant-service";
 
 // Type for user details

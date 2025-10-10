@@ -24,56 +24,14 @@ import {
 } from "@/components/ui/card";
 import { ColourPicker } from "./colour-picker";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-
-type Stage = {
-  id: string;
-  name: string;
-  description: string;
-  color: string;
-  isInitialState?: boolean;
-  isFinalState?: boolean;
-  allowedTransitions?: string[];
-};
+import {
+  defaultStages,
+  defaultStageColors,
+  type Stage
+} from "@/shared/defaults/pipeline-config";
 
 export function PipelineConfig() {
-  const [stages, setStages] = useState<Stage[]>([
-    {
-      id: "1",
-      name: "New Lead",
-      description: "Initial contact with potential client",
-      color: "#3b82f6",
-    },
-    {
-      id: "2",
-      name: "Qualification",
-      description: "Assessing lead requirements and fit",
-      color: "#8b5cf6",
-    },
-    {
-      id: "3",
-      name: "Proposal",
-      description: "Preparing and sending proposal",
-      color: "#ec4899",
-    },
-    {
-      id: "4",
-      name: "Negotiation",
-      description: "Discussing terms and conditions",
-      color: "#f59e0b",
-    },
-    {
-      id: "5",
-      name: "Closed Won",
-      description: "Successfully converted lead to customer",
-      color: "#10b981",
-    },
-    {
-      id: "6",
-      name: "Closed Lost",
-      description: "Lead did not convert to customer",
-      color: "#ef4444",
-    },
-  ]);
+  const [stages, setStages] = useState<Stage[]>(defaultStages);
 
   const [editingStage, setEditingStage] = useState<Stage | null>(null);
   const [newStage, setNewStage] = useState<Partial<Stage>>({

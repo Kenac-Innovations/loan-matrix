@@ -17,11 +17,11 @@ import {
   XCircle,
   Clock
 } from "lucide-react";
-import { getUssdLeadsData, UssdLoanApplication } from "@/app/actions/ussd-leads-actions";
+import { getUssdLeadsData } from "@/app/actions/ussd-leads-actions";
 import { headers } from "next/headers";
 import { UssdLeadsMetrics } from "./components/ussd-leads-metrics";
 import { LeadsTable } from "../leads/components/leads-table";
-import { Lead, LeadsData } from "@/app/actions/leads-actions";
+import { UssdLoanApplication } from "@/shared/types";
 
 export const metadata: Metadata = {
   title: "USSD Leads | KENAC Loan Matrix",
@@ -34,7 +34,7 @@ export default async function UssdLeadsPage() {
   const tenantSlug = headersList.get("x-tenant-slug") || "goodfellow";
 
   // Fetch USSD leads data server-side
-  const ussdLeadsData = await getUssdLeadsData(tenantSlug);
+  const ussdLeadsData = await getUssdLeadsData("demo");
   const leadsData = {
     leads: ussdLeadsData.applications,
     pipelineStages: [],
@@ -46,6 +46,8 @@ export default async function UssdLeadsPage() {
     },
     metrics: ussdLeadsData.metrics
   }
+
+  console.log(ussdLeadsData);
 
   return (
     <>

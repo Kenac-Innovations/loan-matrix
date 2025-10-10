@@ -2,7 +2,7 @@ import { UserPermissionsDisplay } from "@/components/auth/user-permissions-displ
 import { PermissionGate } from "@/components/auth/permission-gate";
 import { RoleGate } from "@/components/auth/role-gate";
 import { ResourceGate } from "@/components/auth/resource-gate";
-import { AccessLevel, Resource, SpecificPermission } from "@/types/auth";
+import { AccessLevel, Resource, SpecificPermission } from "@/shared/types/auth";
 import {
   Card,
   CardContent,

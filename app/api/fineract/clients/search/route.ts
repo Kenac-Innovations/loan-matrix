@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { fetchFineractAPI } from '@/lib/api';
-import { ClientSearchRequest, ClientSearchResponse } from '@/types/client-search';
+import { ClientSearchRequest, ClientSearchResponse } from '@/shared/types/client';
 
 /**
  * POST /api/fineract/clients/search

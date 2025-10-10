@@ -83,10 +83,10 @@ export function LeadsTable({ initialData }: LeadsTableProps) {
               alt={row.getValue("client")}
             />
             <AvatarFallback>
-              {(row.getValue("client") as string)
+              {/* {(row.getValue("client") as string)
                 .split(" ")
                 .map((n) => n[0])
-                .join("")}
+                .join("")} */}
             </AvatarFallback>
           </Avatar>
           <span>{row.getValue("client")}</span>

@@ -25,72 +25,18 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-
-// Sample pipeline stages (would be fetched from API in real app)
-const pipelineStages = [
-  { id: "qualification", name: "Lead Qualification", color: "#3b82f6" },
-  { id: "documents", name: "Document Collection", color: "#8b5cf6" },
-  { id: "assessment", name: "Credit Assessment", color: "#eab308" },
-  { id: "approval", name: "Approval", color: "#22c55e" },
-  { id: "disbursement", name: "Disbursement", color: "#14b8a6" },
-];
-
-// Sample initial notification templates
-const initialTemplates = [
-  {
-    id: "stage-change",
-    name: "Stage Change Notification",
-    type: "email",
-    subject: "Lead Status Update: [Lead ID] moved to [Stage Name]",
-    body: "Dear [Recipient Name],\n\nThe lead [Lead ID] for [Client Name] has been moved to the [Stage Name] stage.\n\nCurrent Status: [Stage Name]\nAssigned To: [Assignee Name]\n\nPlease review and take appropriate action if needed.\n\nRegards,\nKENAC Loan Matrix",
-    triggers: ["stage-change"],
-    recipients: ["team-lead", "team-members"],
-    isActive: true,
-  },
-  {
-    id: "sla-warning",
-    name: "SLA Warning Notification",
-    type: "email",
-    subject: "SLA Warning: [Lead ID] approaching deadline",
-    body: "Dear [Recipient Name],\n\nThe lead [Lead ID] for [Client Name] is approaching its SLA deadline in the [Stage Name] stage.\n\nCurrent Status: [Stage Name]\nTime in Stage: [Time in Stage]\nSLA Deadline: [SLA Deadline]\nAssigned To: [Assignee Name]\n\nPlease take immediate action to ensure timely processing.\n\nRegards,\nKENAC Loan Matrix",
-    triggers: ["sla-warning"],
-    recipients: ["team-lead", "team-members"],
-    isActive: true,
-  },
-  {
-    id: "sla-breach",
-    name: "SLA Breach Notification",
-    type: "email",
-    subject: "URGENT: SLA Breach for [Lead ID]",
-    body: "Dear [Recipient Name],\n\nThe lead [Lead ID] for [Client Name] has exceeded its SLA deadline in the [Stage Name] stage.\n\nCurrent Status: [Stage Name]\nTime in Stage: [Time in Stage]\nSLA Deadline: [SLA Deadline]\nAssigned To: [Assignee Name]\n\nPlease take immediate action to resolve this issue.\n\nRegards,\nKENAC Loan Matrix",
-    triggers: ["sla-breach"],
-    recipients: ["team-lead", "team-members", "manager"],
-    isActive: true,
-  },
-  {
-    id: "assignment",
-    name: "Lead Assignment Notification",
-    type: "email",
-    subject: "New Lead Assignment: [Lead ID]",
-    body: "Dear [Recipient Name],\n\nYou have been assigned to lead [Lead ID] for [Client Name] in the [Stage Name] stage.\n\nLead Details:\nClient: [Client Name]\nLoan Amount: [Loan Amount]\nLoan Type: [Loan Type]\nStage: [Stage Name]\n\nPlease review and take appropriate action.\n\nRegards,\nKENAC Loan Matrix",
-    triggers: ["assignment"],
-    recipients: ["assignee"],
-    isActive: true,
-  },
-  {
-    id: "client-update",
-    name: "Client Update Notification",
-    type: "sms",
-    subject: "",
-    body: "KENAC Loan Matrix: Your loan application [Lead ID] has been updated to status: [Stage Name]. Log in to your portal for details or contact your loan officer.",
-    triggers: ["stage-change"],
-    recipients: ["client"],
-    isActive: true,
-  },
-];
+import {
+  defaultPipelineStages,
+  defaultNotificationTemplates,
+  defaultNotificationTriggers,
+  defaultNotificationRecipients,
+  defaultNotificationTypes,
+  type NotificationTemplate,
+  type PipelineStage
+} from "@/shared/defaults/notifications";
 
 export function NotificationConfig() {
-  const [templates, setTemplates] = useState(initialTemplates);
+  const [templates, setTemplates] = useState<NotificationTemplate[]>(defaultNotificationTemplates);
   const [editingTemplate, setEditingTemplate] = useState<any>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("email");
@@ -568,141 +514,68 @@ export function NotificationConfig() {
                 <div>
                   <Label className="block mb-2">Triggers</Label>
                   <div className="space-y-2 border border-border rounded-md p-2 bg-muted">
-                    <div className="flex items-center space-x-2">
-                      <input
-                        type="checkbox"
-                        id="trigger-stage-change"
-                        checked={editingTemplate?.triggers?.includes(
-                          "stage-change"
-                        )}
-                        onChange={() => handleTriggerChange("stage-change")}
-                        className="rounded border-border bg-background"
-                      />
-                      <Label htmlFor="trigger-stage-change" className="text-sm">
-                        Stage Change
-                      </Label>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <input
-                        type="checkbox"
-                        id="trigger-sla-warning"
-                        checked={editingTemplate?.triggers?.includes(
-                          "sla-warning"
-                        )}
-                        onChange={() => handleTriggerChange("sla-warning")}
-                        className="rounded border-border bg-background"
-                      />
-                      <Label htmlFor="trigger-sla-warning" className="text-sm">
-                        SLA Warning
-                      </Label>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <input
-                        type="checkbox"
-                        id="trigger-sla-breach"
-                        checked={editingTemplate?.triggers?.includes(
-                          "sla-breach"
-                        )}
-                        onChange={() => handleTriggerChange("sla-breach")}
-                        className="rounded border-border bg-background"
-                      />
-                      <Label htmlFor="trigger-sla-breach" className="text-sm">
-                        SLA Breach
-                      </Label>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <input
-                        type="checkbox"
-                        id="trigger-assignment"
-                        checked={editingTemplate?.triggers?.includes(
-                          "assignment"
-                        )}
-                        onChange={() => handleTriggerChange("assignment")}
-                        className="rounded border-border bg-background"
-                      />
-                      <Label htmlFor="trigger-assignment" className="text-sm">
-                        Assignment
-                      </Label>
-                    </div>
+                    {defaultNotificationTriggers.map((trigger) => (
+                      <div key={trigger} className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          id={`trigger-${trigger}`}
+                          checked={editingTemplate?.triggers?.includes(trigger)}
+                          onChange={() => handleTriggerChange(trigger)}
+                          className="rounded border-border bg-background"
+                        />
+                        <Label htmlFor={`trigger-${trigger}`} className="text-sm">
+                          {trigger === "stage-change"
+                            ? "Stage Change"
+                            : trigger === "sla-warning"
+                            ? "SLA Warning"
+                            : trigger === "sla-breach"
+                            ? "SLA Breach"
+                            : trigger === "assignment"
+                            ? "Assignment"
+                            : trigger === "document-upload"
+                            ? "Document Upload"
+                            : trigger === "approval"
+                            ? "Approval"
+                            : trigger === "rejection"
+                            ? "Rejection"
+                            : trigger === "disbursement"
+                            ? "Disbursement"
+                            : trigger}
+                        </Label>
+                      </div>
+                    ))}
                   </div>
                 </div>
 
                 <div>
                   <Label className="block mb-2">Recipients</Label>
                   <div className="space-y-2 border border-border rounded-md p-2 bg-muted">
-                    <div className="flex items-center space-x-2">
-                      <input
-                        type="checkbox"
-                        id="recipient-team-lead"
-                        checked={editingTemplate?.recipients?.includes(
-                          "team-lead"
-                        )}
-                        onChange={() => handleRecipientChange("team-lead")}
-                        className="rounded border-border bg-background"
-                      />
-                      <Label htmlFor="recipient-team-lead" className="text-sm">
-                        Team Lead
-                      </Label>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <input
-                        type="checkbox"
-                        id="recipient-team-members"
-                        checked={editingTemplate?.recipients?.includes(
-                          "team-members"
-                        )}
-                        onChange={() => handleRecipientChange("team-members")}
-                        className="rounded border-border bg-background"
-                      />
-                      <Label
-                        htmlFor="recipient-team-members"
-                        className="text-sm"
-                      >
-                        Team Members
-                      </Label>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <input
-                        type="checkbox"
-                        id="recipient-manager"
-                        checked={editingTemplate?.recipients?.includes(
-                          "manager"
-                        )}
-                        onChange={() => handleRecipientChange("manager")}
-                        className="rounded border-border bg-background"
-                      />
-                      <Label htmlFor="recipient-manager" className="text-sm">
-                        Manager
-                      </Label>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <input
-                        type="checkbox"
-                        id="recipient-assignee"
-                        checked={editingTemplate?.recipients?.includes(
-                          "assignee"
-                        )}
-                        onChange={() => handleRecipientChange("assignee")}
-                        className="rounded border-border bg-background"
-                      />
-                      <Label htmlFor="recipient-assignee" className="text-sm">
-                        Assignee
-                      </Label>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <input
-                        type="checkbox"
-                        id="recipient-client"
-                        checked={editingTemplate?.recipients?.includes(
-                          "client"
-                        )}
-                        onChange={() => handleRecipientChange("client")}
-                        className="rounded border-border bg-background"
-                      />
-                      <Label htmlFor="recipient-client" className="text-sm">
-                        Client
-                      </Label>
-                    </div>
+                    {defaultNotificationRecipients.map((recipient) => (
+                      <div key={recipient} className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          id={`recipient-${recipient}`}
+                          checked={editingTemplate?.recipients?.includes(recipient)}
+                          onChange={() => handleRecipientChange(recipient)}
+                          className="rounded border-border bg-background"
+                        />
+                        <Label htmlFor={`recipient-${recipient}`} className="text-sm">
+                          {recipient === "team-lead"
+                            ? "Team Lead"
+                            : recipient === "team-members"
+                            ? "Team Members"
+                            : recipient === "manager"
+                            ? "Manager"
+                            : recipient === "assignee"
+                            ? "Assignee"
+                            : recipient === "client"
+                            ? "Client"
+                            : recipient === "stakeholder"
+                            ? "Stakeholder"
+                            : recipient}
+                        </Label>
+                      </div>
+                    ))}
                   </div>
                 </div>
 
