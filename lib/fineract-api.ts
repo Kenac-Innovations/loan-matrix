@@ -490,6 +490,10 @@ export class FineractAPIService {
     return response.data;
   }
 
+  async deleteClient(clientId: number): Promise<void> {
+    await this.client.delete(`/clients/${clientId}`);
+  }
+
   async searchClients(query: string): Promise<FineractClient[]> {
     const response: AxiosResponse<FineractClient[]> = await this.client.get(
       `/search?query=${encodeURIComponent(query)}&resource=clients`

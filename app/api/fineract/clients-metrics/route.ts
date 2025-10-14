@@ -1,5 +1,5 @@
-import { NextResponse } from 'next/server';
-import { getFineractServiceWithSession } from '@/lib/fineract-api';
+import { NextResponse } from "next/server";
+import { getFineractServiceWithSession } from "@/lib/fineract-api";
 
 /**
  * GET /api/fineract/clients-metrics
@@ -8,21 +8,21 @@ import { getFineractServiceWithSession } from '@/lib/fineract-api';
 export async function GET() {
   try {
     console.log("Client Metrics API: Starting metrics calculation");
-    
+
     const fineractService = await getFineractServiceWithSession();
-    
+
     // Fetch all clients for metrics calculation
     console.log("Client Metrics API: Fetching clients");
     const clients = await fineractService.getClients(0, 1000);
     console.log("Client Metrics API: Fetched clients:", {
-      count: Array.isArray(clients) ? clients.length : 'Not an array',
-      type: typeof clients
+      count: Array.isArray(clients) ? clients.length : "Not an array",
+      type: typeof clients,
     });
 
     // Calculate metrics
     const totalClients = Array.isArray(clients) ? clients.length : 0;
-    const activeClients = Array.isArray(clients) 
-      ? clients.filter((client: any) => client.active).length 
+    const activeClients = Array.isArray(clients)
+      ? clients.filter((client: any) => client.active).length
       : 0;
     const inactiveClients = totalClients - activeClients;
 
@@ -33,32 +33,38 @@ export async function GET() {
       currentDate.getMonth(),
       1
     );
-    const newClientsThisMonth = Array.isArray(clients) 
+    const newClientsThisMonth = Array.isArray(clients)
       ? clients.filter((client: any) => {
-          const submittedDate = new Date(client.timeline?.submittedOnDate || client.activationDate);
+          const submittedDate = new Date(
+            client.timeline?.submittedOnDate || client.activationDate
+          );
           return submittedDate >= firstDayOfMonth;
-        }).length 
+        }).length
       : 0;
 
     // Calculate growth rate
-    const clientGrowthRate = newClientsThisMonth > 0
-      ? (newClientsThisMonth / Math.max(totalClients - newClientsThisMonth, 1)) * 100
-      : 0;
+    const clientGrowthRate =
+      newClientsThisMonth > 0
+        ? (newClientsThisMonth /
+            Math.max(totalClients - newClientsThisMonth, 1)) *
+          100
+        : 0;
 
     // Fetch loans for portfolio calculations
     console.log("Client Metrics API: Fetching loans");
     const loans = await fineractService.getLoans(0, 1000);
     console.log("Client Metrics API: Fetched loans:", {
-      count: Array.isArray(loans) ? loans.length : 'Not an array',
-      type: typeof loans
+      count: Array.isArray(loans) ? loans.length : "Not an array",
+      type: typeof loans,
     });
 
-    const totalPortfolioValue = Array.isArray(loans) 
+    const totalPortfolioValue = Array.isArray(loans)
       ? loans.reduce((sum: number, loan: any) => sum + (loan.principal || 0), 0)
       : 0;
-    const averageLoanAmount = Array.isArray(loans) && loans.length > 0 
-      ? totalPortfolioValue / loans.length 
-      : 0;
+    const averageLoanAmount =
+      Array.isArray(loans) && loans.length > 0
+        ? totalPortfolioValue / loans.length
+        : 0;
 
     // Calculate risk clients (clients with overdue loans)
     // Note: This is a simplified calculation - in reality you'd need to check loan status
@@ -79,8 +85,8 @@ export async function GET() {
 
     return NextResponse.json(metrics);
   } catch (error: any) {
-    console.error('Error fetching client metrics:', error);
-    
+    console.error("Error fetching client metrics:", error);
+
     // Return mock data if Fineract is not available
     const mockMetrics = {
       totalClients: 0,
@@ -96,4 +102,4 @@ export async function GET() {
     console.log("Client Metrics API: Returning mock data due to error");
     return NextResponse.json(mockMetrics);
   }
-} 
+}

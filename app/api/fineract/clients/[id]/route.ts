@@ -1,20 +1,43 @@
-import { NextResponse } from 'next/server';
-import { fetchFineractAPI } from '@/lib/api';
+import { NextResponse } from "next/server";
+import { getFineractServiceWithSession } from "@/lib/fineract-api";
 
 /**
  * GET /api/fineract/clients/[id]
  * Fetches detailed client information by ID
  */
-export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
     const { id } = await params;
-    const data = await fetchFineractAPI(`/clients/${id}`);
+
+    console.log("Client Details API: Fetching client", { id });
+
+    const fineractService = await getFineractServiceWithSession();
+    const data = await fineractService.getClient(parseInt(id));
+
+    console.log("Client Details API: Fetched client data:", {
+      hasData: !!data,
+      clientId: data?.id,
+      clientName: data?.displayName,
+    });
+
     return NextResponse.json(data);
   } catch (error: any) {
-    console.error('Error fetching client details:', error);
+    console.error("Error fetching client details:", error);
+
+    // Better error handling for different error types
+    const errorMessage =
+      error?.message || error?.errorData?.defaultUserMessage || "Unknown error";
+    const statusCode = error?.status || 500;
+
     return NextResponse.json(
-      { error: error.message || 'Unknown error' },
-      { status: 500 }
+      {
+        error: errorMessage,
+        details: error?.errorData || null,
+      },
+      { status: statusCode }
     );
   }
 }
@@ -30,15 +53,26 @@ export async function PUT(
   try {
     const { id } = await params;
     const payload = await request.json();
-    const data = await fetchFineractAPI(`/clients/${id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
+
+    const fineractService = await getFineractServiceWithSession();
+    const data = await fineractService.updateClient(parseInt(id), payload);
+
     return NextResponse.json(data);
   } catch (error: any) {
-    console.error('Error updating client:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error("Error updating client:", error);
+
+    // Better error handling for different error types
+    const errorMessage =
+      error?.message || error?.errorData?.defaultUserMessage || "Unknown error";
+    const statusCode = error?.status || 500;
+
+    return NextResponse.json(
+      {
+        error: errorMessage,
+        details: error?.errorData || null,
+      },
+      { status: statusCode }
+    );
   }
 }
 
@@ -52,12 +86,25 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
-    const data = await fetchFineractAPI(`/clients/${id}`, {
-      method: 'DELETE',
-    });
+
+    const fineractService = await getFineractServiceWithSession();
+    await fineractService.deleteClient(parseInt(id));
+
     return NextResponse.json({ success: true });
   } catch (error: any) {
-    console.error('Error deleting client:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error("Error deleting client:", error);
+
+    // Better error handling for different error types
+    const errorMessage =
+      error?.message || error?.errorData?.defaultUserMessage || "Unknown error";
+    const statusCode = error?.status || 500;
+
+    return NextResponse.json(
+      {
+        error: errorMessage,
+        details: error?.errorData || null,
+      },
+      { status: statusCode }
+    );
   }
-} 
+}
