@@ -1,7 +1,7 @@
 "use client";
 
 import { useSession } from "next-auth/react";
-import { AccessLevel, Resource, SpecificPermission } from "@/types/auth";
+import { AccessLevel, Resource, SpecificPermission } from "@/shared/types/auth";
 
 /**
  * Client-side React hook to check if the user has a specific permission

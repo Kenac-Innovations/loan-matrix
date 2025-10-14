@@ -11,9 +11,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 import { RefreshCw, FileText, BarChart3, Smartphone } from "lucide-react";
 import { UssdLeadMetrics } from "./components/ussd-lead-metrics";
-import { UssdLeadsTable } from "./components/ussd-leads-table";
 import { getUssdLeadsData } from "@/app/actions/ussd-leads-actions";
 import { headers } from "next/headers";
+import UssdLoanApplicationsTable from "@/components/tables/UssdLoanApplicationsTable";
 
 export const metadata: Metadata = {
   title: "USSD Leads | KENAC Loan Matrix",
@@ -23,7 +23,7 @@ export const metadata: Metadata = {
 export default async function UssdLeadsPage() {
   // Get tenant slug from headers (set by middleware)
   const headersList = await headers();
-  const tenantSlug = headersList.get("x-tenant-slug") || "default";
+  const tenantSlug = headersList.get("x-tenant-slug") || process.env.DEMO_TENANT_SLUG || "default";
 
   // Fetch USSD leads data server-side
   const ussdLeadsData = await getUssdLeadsData(tenantSlug);
@@ -50,18 +50,18 @@ export default async function UssdLeadsPage() {
 
       <UssdLeadMetrics className="mt-6" metrics={ussdLeadsData.metrics} />
 
-      <Tabs defaultValue="table" className="mt-6">
-        <TabsList className="w-full sm:w-auto overflow-x-auto">
+      <Tabs defaultValue="table" className="mt-6 w-full">
+        <TabsList className="w-full overflow-x-auto">
           <TabsTrigger
             value="table"
-            className="data-[state=active]:bg-blue-500"
+            className="w-full data-[state=active]:bg-blue-500"
           >
             <FileText className="mr-2 h-4 w-4" />
             <span className="whitespace-nowrap">All Applications</span>
           </TabsTrigger>
           <TabsTrigger
             value="analytics"
-            className="data-[state=active]:bg-blue-500"
+            className="w-full data-[state=active]:bg-blue-500"
           >
             <BarChart3 className="mr-2 h-4 w-4" />
             <span className="whitespace-nowrap">Analytics</span>
@@ -76,7 +76,7 @@ export default async function UssdLeadsPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <UssdLeadsTable initialData={ussdLeadsData} />
+              <UssdLoanApplicationsTable ussdLoanApplications={ussdLeadsData.applications} />
             </CardContent>
           </Card>
         </TabsContent>

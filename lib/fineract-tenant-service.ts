@@ -17,13 +17,13 @@ export async function getFineractTenantId(): Promise<string> {
 
     if (!tenant) {
       console.warn("No tenant found, using default Fineract tenant");
-      return "goodfellow";
+      return "demo";
     }
 
     // Map tenant slug to Fineract tenant ID
     // You can customize this mapping based on your Fineract setup
     const tenantMapping: Record<string, string> = {
-      default: "goodfellow",
+      default: "demo",
       demo: "demo",
       goodfellow: "goodfellow",
       acme: "acme",
@@ -39,7 +39,7 @@ export async function getFineractTenantId(): Promise<string> {
     return fineractTenantId;
   } catch (error) {
     console.error("Error getting Fineract tenant ID:", error);
-    return "default";
+    return "demo";
   }
 }
 

@@ -39,7 +39,7 @@ const loanDetailsSchema = z.object({
     required_error: "Disbursement date is required",
   }),
   linkSavings: z.string().optional(),
-  createStandingInstructions: z.boolean().default(false),
+  createStandingInstructions: z.boolean(),
 });
 
 type LoanDetailsFormData = z.infer<typeof loanDetailsSchema>;
@@ -99,6 +99,8 @@ export function LoanDetailsForm({ clientId, onSubmit, onBack, onNext }: LoanDeta
   const form = useForm<LoanDetailsFormData>({
     resolver: zodResolver(loanDetailsSchema),
     defaultValues: {
+      productName: '',
+      externalId: '',
       submittedOn: new Date(),
       disbursementOn: new Date(),
       createStandingInstructions: false,
@@ -212,7 +214,13 @@ export function LoanDetailsForm({ clientId, onSubmit, onBack, onNext }: LoanDeta
       return;
     }
     
-    onSubmit(data);
+    // Set external ID to a placeholder that will be updated to loan ID after creation
+    const formDataWithExternalId = {
+      ...data,
+      externalId: data.externalId || 'TEMP_LOAN_ID', // Will be updated to actual loan ID after creation
+    };
+    
+    onSubmit(formDataWithExternalId);
     onNext(loanTemplate);
   };
 
@@ -265,7 +273,7 @@ export function LoanDetailsForm({ clientId, onSubmit, onBack, onNext }: LoanDeta
         </p>
       </div>
 
-      <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-8">
+      <form onSubmit={form.handleSubmit(handleSubmit as any)} className="space-y-8">
         {/* Main Form Fields - Two Columns */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Left Column */}
@@ -286,7 +294,7 @@ export function LoanDetailsForm({ clientId, onSubmit, onBack, onNext }: LoanDeta
                     }} 
                     defaultValue={field.value}
                   >
-                    <SelectTrigger className="h-10">
+                    <SelectTrigger className="h-10 w-full">
                       <SelectValue placeholder="Select product" />
                     </SelectTrigger>
                     <SelectContent>
@@ -306,15 +314,13 @@ export function LoanDetailsForm({ clientId, onSubmit, onBack, onNext }: LoanDeta
               )}
             </div>
 
-            {/* External ID */}
+            {/* External ID: Set to hidden since the user does not need to enter it*/}
             <div className="space-y-2">
-              <Label htmlFor="externalId" className="text-sm font-medium">
-                External ID
-              </Label>
               <Input
                 id="externalId"
                 placeholder="Enter external ID"
                 className="h-10"
+                hidden={true}
                 {...form.register("externalId")}
               />
             </div>
@@ -329,7 +335,7 @@ export function LoanDetailsForm({ clientId, onSubmit, onBack, onNext }: LoanDeta
                 name="loanPurpose"
                 render={({ field }) => (
                   <Select onValueChange={field.onChange} value={field.value}>
-                    <SelectTrigger className="h-10">
+                    <SelectTrigger className="h-10 w-full">
                       <SelectValue placeholder="Select purpose" />
                     </SelectTrigger>
                     <SelectContent>
@@ -404,7 +410,7 @@ export function LoanDetailsForm({ clientId, onSubmit, onBack, onNext }: LoanDeta
                 name="loanOfficer"
                 render={({ field }) => (
                   <Select onValueChange={field.onChange} value={field.value}>
-                    <SelectTrigger className="h-10">
+                    <SelectTrigger className="h-10 w-full">
                       <SelectValue placeholder="Select loan officer" />
                     </SelectTrigger>
                     <SelectContent>
@@ -429,7 +435,7 @@ export function LoanDetailsForm({ clientId, onSubmit, onBack, onNext }: LoanDeta
                 name="fund"
                 render={({ field }) => (
                   <Select onValueChange={field.onChange} value={field.value}>
-                    <SelectTrigger className="h-10">
+                    <SelectTrigger className="h-10 w-full">
                       <SelectValue placeholder="Select fund" />
                     </SelectTrigger>
                                             <SelectContent>
@@ -509,7 +515,7 @@ export function LoanDetailsForm({ clientId, onSubmit, onBack, onNext }: LoanDeta
                   name="linkSavings"
                   render={({ field }) => (
                     <Select onValueChange={field.onChange} value={field.value}>
-                      <SelectTrigger className="h-10">
+                      <SelectTrigger className="h-10 w-full">
                         <SelectValue placeholder="Select savings account" />
                       </SelectTrigger>
                       <SelectContent>

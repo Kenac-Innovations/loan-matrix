@@ -1,39 +1,4 @@
-interface ValidationRule {
-  id: string;
-  name: string;
-  description: string;
-  conditions: {
-    type: "AND" | "OR";
-    rules: Array<{
-      field: string;
-      operator: string;
-      value?: any;
-    }>;
-  };
-  actions: {
-    onPass: { message: string };
-    onFail: {
-      message: string;
-      suggestedAction?: string;
-      actionUrl?: string;
-    };
-  };
-  severity: "info" | "warning" | "error";
-  enabled: boolean;
-  order: number;
-  pipelineStageId: string | null;
-}
-
-interface ValidationResult {
-  id: string;
-  name: string;
-  description: string;
-  status: "passed" | "failed" | "warning";
-  message?: string;
-  suggestedAction?: string;
-  actionUrl?: string;
-  severity: "info" | "warning" | "error";
-}
+import { ValidationRule, ValidationResult } from "@/shared/types/validation";
 
 export class ValidationEngine {
   static evaluateRule(

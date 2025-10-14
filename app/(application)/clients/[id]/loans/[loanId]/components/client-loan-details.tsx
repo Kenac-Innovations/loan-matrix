@@ -32,319 +32,12 @@ import GuarantorsModal from "@/components/GuarantorsModal";
 import CreateGuarantorModal from "@/components/CreateGuarantorModal";
 import RecoverFromGuarantorModal from "@/components/RecoverFromGuarantorModal";
 import SellLoanModal from "@/components/SellLoanModal";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { TransactionsDataTable } from "./transactions-data-table";
+import { FineractClient, FineractLoan } from "@/shared/types";
 
 interface ClientLoanDetailsProps {
   clientId: number;
   loanId: number;
-}
-
-interface FineractClient {
-  id: number;
-  accountNo: string;
-  status: {
-    id: number;
-    code: string;
-    value: string;
-  };
-  active: boolean;
-  activationDate?: string | number[];
-  officeName: string;
-  staffName?: string;
-  firstname: string;
-  lastname: string;
-  displayName: string;
-  mobileNo?: string;
-  emailAddress?: string;
-  dateOfBirth?: string | number[];
-  gender?: {
-    id: number;
-    name: string;
-  };
-  clientType?: {
-    id: number;
-    name: string;
-  };
-  clientClassification?: {
-    id: number;
-    name: string;
-  };
-  timeline: {
-    submittedOnDate: string | number[];
-    submittedByUsername: string;
-    activatedOnDate?: string | number[];
-    activatedByUsername?: string;
-  };
-}
-
-interface FineractLoan {
-  id: number;
-  accountNo: string;
-  externalId?: string;
-  productId: number;
-  productName: string;
-  shortProductName: string;
-  status: {
-    id: number;
-    code: string;
-    value: string;
-    active: boolean;
-    closed: boolean;
-  };
-  loanType: {
-    id: number;
-    code: string;
-    value: string;
-  };
-  loanPurpose: {
-    id: number;
-    name: string;
-  };
-  loanPurposeId: number;
-  currency: {
-    code: string;
-    name: string;
-    decimalPlaces: number;
-    inMultiplesOf: number;
-    displaySymbol: string;
-    nameCode: string;
-    displayLabel: string;
-  };
-  principal: number;
-  approvedPrincipal: number;
-  proposedPrincipal: number;
-  termFrequency: number;
-  termPeriodFrequencyType: {
-    id: number;
-    code: string;
-    value: string;
-  };
-  numberOfRepayments: number;
-  repaymentEvery: number;
-  interestRatePerPeriod: number;
-  interestRateFrequencyType: {
-    id: number;
-    code: string;
-    value: string;
-  };
-  annualInterestRate: number;
-  interestType: {
-    id: number;
-    code: string;
-    value: string;
-  };
-  interestCalculationPeriodType: {
-    id: number;
-    code: string;
-    value: string;
-  };
-  transactionProcessingStrategy: {
-    id: number;
-    code: string;
-    name: string;
-  };
-  timeline: {
-    submittedOnDate: string | number[];
-    submittedByUsername: string;
-    approvedOnDate?: string | number[];
-    approvedByUsername?: string;
-    expectedDisbursementDate?: string | number[];
-    actualDisbursementDate?: string | number[];
-    expectedMaturityDate?: string | number[];
-    closedOnDate?: string | number[];
-    closedByUsername?: string;
-  };
-  summary: {
-    principalDisbursed: number;
-    principalPaid: number;
-    principalOutstanding: number;
-    principalOverdue: number;
-    principalWrittenOff?: number;
-    interestCharged: number;
-    interestPaid: number;
-    interestOutstanding: number;
-    interestOverdue: number;
-    interestWaived?: number;
-    interestWrittenOff?: number;
-    feeChargesCharged: number;
-    feeChargesPaid: number;
-    feeChargesOutstanding: number;
-    feeChargesOverdue: number;
-    feeChargesWaived?: number;
-    feeChargesWrittenOff?: number;
-    penaltyChargesCharged: number;
-    penaltyChargesPaid: number;
-    penaltyChargesOutstanding: number;
-    penaltyChargesOverdue: number;
-    penaltyChargesWaived?: number;
-    penaltyChargesWrittenOff?: number;
-    totalExpectedRepayment: number;
-    totalRepayment: number;
-    totalOutstanding: number;
-    totalOverdue: number;
-    totalWaived?: number;
-    totalWrittenOff?: number;
-  };
-  schedule: {
-    currency: {
-      code: string;
-      name: string;
-      decimalPlaces: number;
-      inMultiplesOf: number;
-      displaySymbol: string;
-      nameCode: string;
-      displayLabel: string;
-    };
-    totalPrincipalDisbursed: number;
-    totalPrincipalExpected: number;
-    totalPrincipalPaid: number;
-    totalInterestCharged: number;
-    totalFeeChargesCharged: number;
-    totalPenaltyChargesCharged: number;
-    totalWaived: number;
-    totalWrittenOff: number;
-    totalRepaymentExpected: number;
-    totalRepayment: number;
-    totalOutstanding: number;
-    period: number;
-    loanTermInDays: number;
-    totalFeeChargesAtDisbursement: number;
-    fixedEmiAmount: number;
-    maxOutstandingLoanBalance: number;
-    disbursedAmount: number;
-    disbursedAmountPercentage: number;
-    feeChargesAtDisbursementCharged: number;
-    scheduleRegenerated: boolean;
-    futureSchedule: any[];
-    schedule: any[];
-  };
-  repaymentSchedule?: {
-    currency: {
-      code: string;
-      name: string;
-      decimalPlaces: number;
-      inMultiplesOf: number;
-      displaySymbol: string;
-      nameCode: string;
-      displayLabel: string;
-    };
-    totalPrincipalDisbursed: number;
-    totalPrincipalExpected: number;
-    totalPrincipalPaid: number;
-    totalInterestCharged: number;
-    totalInterestPaid: number;
-    totalFeeChargesCharged: number;
-    totalPenaltyChargesCharged: number;
-    totalWaived: number;
-    totalWrittenOff: number;
-    totalRepaymentExpected: number;
-    totalRepayment: number;
-    totalOutstanding: number;
-    period: number;
-    loanTermInDays: number;
-    totalFeeChargesAtDisbursement: number;
-    fixedEmiAmount: number;
-    maxOutstandingLoanBalance: number;
-    disbursedAmount: number;
-    disbursedAmountPercentage: number;
-    feeChargesAtDisbursementCharged: number;
-    scheduleRegenerated: boolean;
-    futureSchedule: any[];
-    periods: Array<{
-      period: number;
-      fromDate: string | number[];
-      dueDate: string | number[];
-      obligationsMetOnDate?: string | number[];
-      completed: boolean;
-      daysInPeriod: number;
-      principal: number;
-      principalLoanBalanceOutstanding: number;
-      interest: number;
-      feeCharges: number;
-      penaltyCharges: number;
-      totalDueForPeriod: number;
-      totalPaidForPeriod: number;
-      totalInAdvanceForPeriod: number;
-      totalOverdue: number;
-      outstanding: number;
-    }>;
-  };
-  loanOfficerId: number;
-  loanOfficerName: string;
-  loanPurposeName: string;
-  useInterestRateCharged: boolean;
-  syncDisbursementWithMeeting: boolean;
-  loanCollateral: any[];
-  loanCharge: any[];
-  loanCounter: {
-    id: number;
-    productId: number;
-    clientId: number;
-    loanId: number;
-    loanAccountId: number;
-    loanProductName: string;
-    loanExternalId: string;
-    loanCounterDate: string | number[];
-    loanType: {
-      id: number;
-      code: string;
-      value: string;
-    };
-    loanStatus: {
-      id: number;
-      code: string;
-      value: string;
-    };
-    loanProductId: number;
-  };
-  isNPA: boolean;
-  daysInMonthType: {
-    id: number;
-    code: string;
-    value: string;
-  };
-  daysInYearType: {
-    id: number;
-    code: string;
-    value: string;
-  };
-  interestRecalculationEnabled: boolean;
-  createStandingInstructionAtDisbursement: boolean;
-  isVariableInstallmentsAllowed: boolean;
-  allowVariableInstallments: boolean;
-  minimumGap: number;
-  maximumGap: number;
-  graceOnPrincipalPayment?: number;
-  graceOnInterestPayment?: number;
-  graceOnArrearsAgeing?: number;
-  interestFreePeriod?: number;
-  amortizationType: {
-    id: number;
-    code: string;
-    value: string;
-  };
-  charges: any[];
-  collateral: any[];
-  multiDisburseLoan: boolean;
-  canDefineInstallmentAmount: boolean;
-  canUseForTopup: boolean;
-  isTopup: boolean;
-  closureDate: string | number[];
-  inArrears: boolean;
-  overdueCharges: any[];
-  reschedules?: any[];
-  documents?: any[];
-  notes?: any[];
-  linkedAccount: any;
-  canDisburse: boolean;
-  emiAmountVariations: any[];
-  inArrearsTolerance: number;
-  originalLoan: number;
-  loanBalance: number;
-  amountPaid: number;
-  lastRepaymentDate?: string | number[];
-  transactions?: any[];
 }
 
 export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) {
@@ -406,8 +99,7 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
     interestGracePeriods: "",
     extendRepaymentPeriod: false,
     numberOfNewRepayments: "",
-    adjustInterestRate: false,
-    newInterestRate: ""
+    adjustInterestRate: false
   });
   const [newNote, setNewNote] = useState("");
   const [editingNote, setEditingNote] = useState<number | null>(null);
@@ -1220,7 +912,15 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
         const data = await response.json();
         setCollaterals(Array.isArray(data) ? data : []);
       } else {
-        const errorData = await response.json();
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (jsonError) {
+          // Handle case where response is not valid JSON
+          console.error("Failed to parse error response as JSON:", jsonError);
+          errorData = { error: `HTTP ${response.status}: ${response.statusText}` };
+        }
+        
         console.error("Failed to fetch collaterals:", errorData);
         
         // Extract and show user-friendly error message
@@ -1362,7 +1062,16 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
         const data = await response.json();
         setReschedules(Array.isArray(data) ? data : []);
       } else {
-        const errorData = await response.json();
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (jsonError) {
+          console.log(response);
+          // Handle case where response is not valid JSON
+          console.error("Failed to parse error response as JSON:", jsonError);
+          errorData = { error: `HTTP ${response.status}: ${response.statusText}` };
+        }
+        
         console.error("Failed to fetch reschedules:", errorData);
         
         // Extract and show user-friendly error message
@@ -1529,7 +1238,7 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
       } else {
         // Handle error response
         const errorData = await response.json();
-        console.error("Failed to create reschedule:", errorData);
+       // console.error("Failed to create reschedule:", errorData);
         
         // Extract error message for user
         let errorMessage = "Failed to create reschedule";
@@ -1570,7 +1279,15 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
         const data = await response.json();
         setDocuments(Array.isArray(data) ? data : []);
       } else {
-        const errorData = await response.json();
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (jsonError) {
+          // Handle case where response is not valid JSON
+          console.error("Failed to parse error response as JSON:", jsonError);
+          errorData = { error: `HTTP ${response.status}: ${response.statusText}` };
+        }
+        
         console.error("Failed to fetch documents:", errorData);
         
         // Extract and show user-friendly error message
@@ -1807,7 +1524,15 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
         const data = await response.json();
         setNotes(Array.isArray(data) ? data : []);
       } else {
-        const errorData = await response.json();
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (jsonError) {
+          // Handle case where response is not valid JSON
+          console.error("Failed to parse error response as JSON:", jsonError);
+          errorData = { error: `HTTP ${response.status}: ${response.statusText}` };
+        }
+        
         console.error("Failed to fetch notes:", errorData);
         
         // Extract and show user-friendly error message
@@ -2929,8 +2654,6 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
 
   return (
     <div className="space-y-6">
-
-
       {/* Quick Stats Cards */}
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
         <Card className="border-0 shadow-sm bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-950 dark:to-blue-900">
@@ -3062,19 +2785,80 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
       </Card>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="flex flex-wrap w-full bg-muted/50 p-1 rounded-lg gap-1">
-          <TabsTrigger value="general" className="rounded-md px-4 py-2 text-sm font-medium whitespace-nowrap">General</TabsTrigger>
-          <TabsTrigger value="account-details" className="rounded-md px-4 py-2 text-sm font-medium whitespace-nowrap">Account Details</TabsTrigger>
-          <TabsTrigger value="schedule" className="rounded-md px-4 py-2 text-sm font-medium whitespace-nowrap">Repayment Schedule</TabsTrigger>
-          <TabsTrigger value="transactions" className="rounded-md px-4 py-2 text-sm font-medium whitespace-nowrap">Transactions</TabsTrigger>
-          <TabsTrigger value="collateral" className="rounded-md px-4 py-2 text-sm font-medium whitespace-nowrap">Collateral</TabsTrigger>
-          <TabsTrigger value="overdue-charges" className="rounded-md px-4 py-2 text-sm font-medium whitespace-nowrap">Overdue</TabsTrigger>
-          <TabsTrigger value="charges" className="rounded-md px-4 py-2 text-sm font-medium whitespace-nowrap">Charges</TabsTrigger>
-          <TabsTrigger value="loan-reschedules" className="rounded-md px-4 py-2 text-sm font-medium whitespace-nowrap">Reschedules</TabsTrigger>
-          <TabsTrigger value="loan-documents" className="rounded-md px-4 py-2 text-sm font-medium whitespace-nowrap">Documents</TabsTrigger>
-          <TabsTrigger value="notes" className="rounded-md px-4 py-2 text-sm font-medium whitespace-nowrap">Notes</TabsTrigger>
-
-        </TabsList>
+        <div className="w-full">
+          <TabsList className="h-12 flex w-max min-w-full bg-muted/50 p-1 rounded-lg gap-1 sm:flex-wrap sm:w-full">
+            <TabsTrigger 
+              value="general" 
+              className="flex-1 flex items-center justify-center gap-1 rounded-md px-2 py-2 text-xs font-medium whitespace-nowrap sm:px-4 sm:text-sm sm:gap-2 data-[state=active]:bg-blue-500 data-[state=active]:text-white"
+            >
+              <User className="h-4 w-4" />
+              <span className="hidden sm:inline">General</span>
+            </TabsTrigger>
+            <TabsTrigger 
+              value="account-details" 
+              className="flex-1 flex items-center justify-center gap-1 rounded-md px-2 py-2 text-xs font-medium whitespace-nowrap sm:px-4 sm:text-sm sm:gap-2 data-[state=active]:bg-blue-500 data-[state=active]:text-white"
+            >
+              <CreditCard className="h-4 w-4" />
+              <span className="hidden sm:inline">Account Details</span>
+            </TabsTrigger>
+            <TabsTrigger 
+              value="schedule" 
+              className="flex-1 flex items-center justify-center gap-1 rounded-md px-2 py-2 text-xs font-medium whitespace-nowrap sm:px-4 sm:text-sm sm:gap-2 data-[state=active]:bg-blue-500 data-[state=active]:text-white"
+            >
+              <Calendar className="h-4 w-4" />
+              <span className="hidden sm:inline">Repayment Schedule</span>
+            </TabsTrigger>
+            <TabsTrigger 
+              value="transactions" 
+              className="flex-1 flex items-center justify-center gap-1 rounded-md px-2 py-2 text-xs font-medium whitespace-nowrap sm:px-4 sm:text-sm sm:gap-2 data-[state=active]:bg-blue-500 data-[state=active]:text-white"
+            >
+              <DollarSign className="h-4 w-4" />
+              <span className="hidden sm:inline">Transactions</span>
+            </TabsTrigger>
+            <TabsTrigger 
+              value="collateral" 
+              className="flex-1 flex items-center justify-center gap-1 rounded-md px-2 py-2 text-xs font-medium whitespace-nowrap sm:px-4 sm:text-sm sm:gap-2 data-[state=active]:bg-blue-500 data-[state=active]:text-white"
+            >
+              <Shield className="h-4 w-4" />
+              <span className="hidden sm:inline">Collateral</span>
+            </TabsTrigger>
+            <TabsTrigger 
+              value="overdue-charges" 
+              className="flex-1 flex items-center justify-center gap-1 rounded-md px-2 py-2 text-xs font-medium whitespace-nowrap sm:px-4 sm:text-sm sm:gap-2 data-[state=active]:bg-blue-500 data-[state=active]:text-white"
+            >
+              <AlertCircle className="h-4 w-4" />
+              <span className="hidden sm:inline">Overdue</span>
+            </TabsTrigger>
+            <TabsTrigger 
+              value="charges" 
+              className="flex-1 flex items-center justify-center gap-1 rounded-md px-2 py-2 text-xs font-medium whitespace-nowrap sm:px-4 sm:text-sm sm:gap-2 data-[state=active]:bg-blue-500 data-[state=active]:text-white"
+            >
+              <Coins className="h-4 w-4" />
+              <span className="hidden sm:inline">Charges</span>
+            </TabsTrigger>
+            <TabsTrigger 
+              value="loan-reschedules" 
+              className="flex-1 flex items-center justify-center gap-1 rounded-md px-2 py-2 text-xs font-medium whitespace-nowrap sm:px-4 sm:text-sm sm:gap-2 data-[state=active]:bg-blue-500 data-[state=active]:text-white"
+            >
+              <RotateCcw className="h-4 w-4" />
+              <span className="hidden sm:inline">Reschedules</span>
+            </TabsTrigger>
+            <TabsTrigger 
+              value="loan-documents" 
+              className="flex-1 flex items-center justify-center gap-1 rounded-md px-2 py-2 text-xs font-medium whitespace-nowrap sm:px-4 sm:text-sm sm:gap-2 data-[state=active]:bg-blue-500 data-[state=active]:text-white"
+            >
+              <FileText className="h-4 w-4" />
+              <span className="hidden sm:inline">Documents</span>
+            </TabsTrigger>
+            <TabsTrigger 
+              value="notes" 
+              className="flex-1 flex items-center justify-center gap-1 rounded-md px-2 py-2 text-xs font-medium whitespace-nowrap sm:px-4 sm:text-sm sm:gap-2 data-[state=active]:bg-blue-500 data-[state=active]:text-white"
+            >
+              <StickyNote className="h-4 w-4" />
+              <span className="hidden sm:inline">Notes</span>
+            </TabsTrigger>
+          </TabsList>
+        </div>
 
         <TabsContent value="general" className="space-y-6">
           {/* Performance History */}
@@ -3595,7 +3379,7 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                 <div className="flex items-center justify-between mt-4">
                   <div className="flex items-center space-x-2">
                     <span className="text-sm text-muted-foreground">Items per page:</span>
-                    <select className="text-sm border rounded px-2 py-1" value="50">
+                    <select className="text-sm border rounded px-2 py-1" defaultValue="50">
                       <option value="10">10</option>
                       <option value="25">25</option>
                       <option value="50">50</option>

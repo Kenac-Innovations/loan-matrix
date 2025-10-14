@@ -1,49 +1,6 @@
 import { fetchFineractAPI } from "@/lib/api";
 import { prisma } from "@/lib/prisma";
-
-export interface DashboardData {
-  summary: {
-    totalLoans: {
-      count: number;
-      amount: number;
-      currency?: {
-        code: string;
-        name: string;
-        decimalPlaces: number;
-        displaySymbol: string;
-        displayLabel: string;
-      };
-    };
-    activeClients: number;
-    pendingApprovals: number;
-    overdueLoans: number;
-  };
-  portfolioDistribution: Array<{
-    name: string;
-    count: number;
-    amount: number;
-  }>;
-  riskAssessment: {
-    low: number;
-    medium: number;
-    high: number;
-    total: number;
-  };
-  recentApplications: Array<{
-    id: string | number;
-    clientName: string;
-    amount: number;
-    productName: string;
-    status: string;
-    submittedDate: string;
-    type: "lead" | "loan";
-    currency?: {
-      code: string;
-      displaySymbol: string;
-    };
-  }>;
-  loanProducts: Array<any>;
-}
+import { DashboardData } from "@/shared/types/dashboard";
 
 export async function fetchDashboardData(): Promise<DashboardData> {
   try {

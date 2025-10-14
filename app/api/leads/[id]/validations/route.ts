@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { PrismaClient } from "@/app/generated/prisma";
+import { prisma } from "@/lib/prisma";
 import { getTenantBySlug } from "@/lib/tenant-service";
 import { ValidationEngine } from "@/lib/validation-engine";
-
-const prisma = new PrismaClient();
 
 interface ValidationResult {
   id: string;

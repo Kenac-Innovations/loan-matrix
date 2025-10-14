@@ -1,5 +1,6 @@
 "use client";
 
+
 import { useState, useEffect } from "react";
 import useSWR from "swr";
 import {
@@ -37,7 +38,6 @@ import {
   Clock,
   Eye
 } from "lucide-react";
-import Link from "next/link";
 import { UssdLeadsData, UssdLoanApplication } from "@/app/actions/ussd-leads-actions";
 import { format } from "date-fns";
 
@@ -228,8 +228,7 @@ export function UssdLeadsTable({ initialData }: UssdLeadsTableProps) {
                     <div className="space-y-1">
                       <div className="font-medium">{app.loanProductDisplayName}</div>
                       <div className="flex items-center gap-1 text-sm font-semibold text-green-600">
-                        <DollarSign className="h-3 w-3" />
-                        ${app.principalAmount.toLocaleString()}
+                        {app.principalAmount.toLocaleString()}
                       </div>
                       <div className="text-xs text-muted-foreground">
                         {app.loanTermMonths} months

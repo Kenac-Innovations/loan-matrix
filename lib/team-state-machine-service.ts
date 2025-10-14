@@ -1,6 +1,4 @@
-import { PrismaClient } from "@/app/generated/prisma";
-
-const prisma = new PrismaClient();
+import { prisma } from "./prisma";
 
 export interface StateTransitionRequest {
   leadId: string;

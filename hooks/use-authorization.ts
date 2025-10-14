@@ -1,5 +1,5 @@
 import { getSession } from "@/lib/auth";
-import { AccessLevel, Resource, SpecificPermission } from "@/types/auth";
+import { AccessLevel, Resource, SpecificPermission } from "@/shared/types/auth";
 
 /**
  * Server-side function to check if the user has a specific permission

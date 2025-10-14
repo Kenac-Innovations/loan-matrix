@@ -50,14 +50,29 @@ export async function autoSaveField(
     console.log("Field being saved:", data.fieldName);
     console.log("Current leadId:", leadId);
 
+    // Convert data types before validation
+    const processedData = {
+      ...data,
+      // Convert string IDs to numbers
+      officeId: data.officeId ? Number(data.officeId) : undefined,
+      legalFormId: data.legalFormId ? Number(data.legalFormId) : undefined,
+      clientTypeId: data.clientTypeId ? Number(data.clientTypeId) : undefined,
+      clientClassificationId: data.clientClassificationId ? Number(data.clientClassificationId) : undefined,
+      genderId: data.genderId ? Number(data.genderId) : undefined,
+      // Convert date strings to Date objects
+      dateOfBirth: data.dateOfBirth ? new Date(data.dateOfBirth) : undefined,
+      submittedOnDate: data.submittedOnDate ? new Date(data.submittedOnDate) : new Date(),
+      activationDate: data.activationDate ? new Date(data.activationDate) : undefined,
+      // Convert savingsProductId to number if it exists
+      savingsProductId: data.savingsProductId ? Number(data.savingsProductId) : undefined,
+    };
+
     // Validate data
-    const validatedData = clientFormSchema.parse(data);
+    const validatedData = clientFormSchema.parse(processedData);
 
     // Get current user ID (in a real app, this would come from auth)
     const userId = "user_1"; // Placeholder - replace with actual user ID from auth
-
-    // Use a default tenant ID for now
-    const tenantId = "default-tenant-id";
+    const tenantId = "cmg7mf9ns0005rllprwiwxmko"; // Placeholder - replace with actual tenant ID from auth
 
     // Current timestamp for tracking
     const now = new Date();
@@ -160,6 +175,8 @@ export async function autoSaveField(
         // Create new lead with prospect stage
         const lead = await prisma.lead.create({
           data: {
+            userId,
+            tenantId,
             officeId: validatedData.officeId || null,
             officeName: validatedData.officeName || null,
             legalFormId: validatedData.legalFormId || null,
@@ -209,6 +226,8 @@ export async function autoSaveField(
           console.log("Retrying without user connection");
           // Use type assertion to bypass TypeScript's type checking
           const leadData = {
+            userId,
+            tenantId,
             officeId: validatedData.officeId || null,
             officeName: validatedData.officeName || null,
             legalFormId: validatedData.legalFormId || null,

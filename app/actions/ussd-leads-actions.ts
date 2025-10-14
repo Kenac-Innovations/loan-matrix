@@ -2,63 +2,9 @@
 
 import { getTenantBySlug } from "@/lib/tenant-service";
 import prisma from "@/lib/prisma";
+import { UssdLoanApplication, UssdLeadsMetrics, UssdLoanApplicationStatus } from "@/shared/types/ussd";
 
-// Types for USSD Loan Applications
-export interface UssdLoanApplication {
-  loanApplicationUssdId: number;
-  messageId: string;
-  referenceNumber: string;
-  userPhoneNumber: string;
-  loanMatrixClientId?: number;
-  userFullName: string;
-  userNationalId: string;
-  
-  // Loan Product Information
-  loanMatrixLoanProductId: number;
-  loanProductName: string;
-  loanProductDisplayName: string;
-  
-  // Loan Details
-  principalAmount: number;
-  loanTermMonths: number;
-  
-  // Payout Information
-  payoutMethod: string;
-  mobileMoneyNumber?: string;
-  mobileMoneyProvider?: string;
-  branchName?: string;
-  officeLocationId?: number;
-  bankAccountNumber?: string;
-  bankName?: string;
-  bankBranch?: string;
-  
-  // Status Information
-  status: "CREATED" | "SUBMITTED" | "UNDER_REVIEW" | "APPROVED" | "REJECTED" | "DISBURSED" | "CANCELLED" | "EXPIRED";
-  paymentStatus?: string | null;
-  
-  // Timestamps
-  createdAt: Date;
-  updatedAt: Date;
-  
-  // Queue specific fields
-  source: string;
-  channel: string;
-  queuedAt: Date;
-}
-
-export interface UssdLeadsMetrics {
-  totalApplications: number;
-  pendingAction: number;
-  approved: number;
-  rejected: number;
-  disbursed: number;
-  underReview: number;
-  cancelled: number;
-  expired: number;
-  monthlyTarget: number;
-  approvalRate: number;
-  averageProcessingTime: number; // in hours
-}
+// Types are now imported from shared/types/ussd
 
 export interface UssdLeadsData {
   applications: UssdLoanApplication[];
@@ -69,7 +15,7 @@ export interface UssdLeadsData {
 // Dummy data for USSD applications
 const generateDummyUssdApplications = (): UssdLoanApplication[] => {
   const statuses: UssdLoanApplication["status"][] = [
-    "CREATED", "SUBMITTED", "UNDER_REVIEW", "APPROVED", "REJECTED", "DISBURSED", "CANCELLED", "EXPIRED"
+    UssdLoanApplicationStatus.CREATED, UssdLoanApplicationStatus.SUBMITTED, UssdLoanApplicationStatus.UNDER_REVIEW, UssdLoanApplicationStatus.APPROVED, UssdLoanApplicationStatus.REJECTED, UssdLoanApplicationStatus.DISBURSED, UssdLoanApplicationStatus.CANCELLED, UssdLoanApplicationStatus.EXPIRED
   ];
   
   const payoutMethods = ["1", "2", "3"]; // 1: Mobile Money, 2: Cash Pickup, 3: Bank Transfer
@@ -238,9 +184,9 @@ export async function getUssdLeadsData(
     const formattedApplications: UssdLoanApplication[] = applications.map(app => ({
       loanApplicationUssdId: app.loanApplicationUssdId,
       messageId: app.messageId,
-      referenceNumber: app.referenceNumber,
+      referenceNumber: app.referenceNumber ?? undefined,
       userPhoneNumber: app.userPhoneNumber,
-      loanMatrixClientId: app.loanMatrixClientId,
+      loanMatrixClientId: app.loanMatrixClientId ?? undefined,
       userFullName: app.userFullName,
       userNationalId: app.userNationalId,
       loanMatrixLoanProductId: app.loanMatrixLoanProductId,
@@ -248,14 +194,14 @@ export async function getUssdLeadsData(
       loanProductDisplayName: app.loanProductDisplayName,
       principalAmount: app.principalAmount,
       loanTermMonths: app.loanTermMonths,
-      payoutMethod: app.payoutMethod,
-      mobileMoneyNumber: app.mobileMoneyNumber,
-      mobileMoneyProvider: app.mobileMoneyProvider,
-      branchName: app.branchName,
-      officeLocationId: app.officeLocationId,
-      bankAccountNumber: app.bankAccountNumber,
-      bankName: app.bankName,
-      bankBranch: app.bankBranch,
+      payoutMethod: app.payoutMethod ?? undefined,
+      mobileMoneyNumber: app.mobileMoneyNumber ?? undefined,
+      mobileMoneyProvider: app.mobileMoneyProvider ?? undefined,
+      branchName: app.branchName ?? undefined,
+      officeLocationId: app.officeLocationId ?? undefined,
+      bankAccountNumber: app.bankAccountNumber ?? undefined,
+      bankName: app.bankName ?? undefined,
+      bankBranch: app.bankBranch ?? undefined,
       status: app.status as UssdLoanApplication["status"],
       paymentStatus: app.paymentStatus,
       createdAt: app.createdAt,
@@ -336,24 +282,24 @@ export async function getUssdApplicationById(
     return {
       loanApplicationUssdId: application.loanApplicationUssdId,
       messageId: application.messageId,
-      referenceNumber: application.referenceNumber,
-      userPhoneNumber: application.userPhoneNumber,
-      loanMatrixClientId: application.loanMatrixClientId,
+      referenceNumber: application.referenceNumber ?? undefined,
+      userPhoneNumber: application.userPhoneNumber ?? undefined,
+      loanMatrixClientId: application.loanMatrixClientId ?? undefined,
       userFullName: application.userFullName,
       userNationalId: application.userNationalId,
-      loanMatrixLoanProductId: application.loanMatrixLoanProductId,
+      loanMatrixLoanProductId: application.loanMatrixLoanProductId ?? undefined,
       loanProductName: application.loanProductName,
       loanProductDisplayName: application.loanProductDisplayName,
       principalAmount: application.principalAmount,
       loanTermMonths: application.loanTermMonths,
-      payoutMethod: application.payoutMethod,
-      mobileMoneyNumber: application.mobileMoneyNumber,
-      mobileMoneyProvider: application.mobileMoneyProvider,
-      branchName: application.branchName,
-      officeLocationId: application.officeLocationId,
-      bankAccountNumber: application.bankAccountNumber,
-      bankName: application.bankName,
-      bankBranch: application.bankBranch,
+      payoutMethod: application.payoutMethod ?? undefined,
+      mobileMoneyNumber: application.mobileMoneyNumber ?? undefined,
+      mobileMoneyProvider: application.mobileMoneyProvider ?? undefined,
+      branchName: application.branchName ?? undefined,
+      officeLocationId: application.officeLocationId ?? undefined,
+      bankAccountNumber: application.bankAccountNumber ?? undefined,
+      bankName: application.bankName ?? undefined,
+      bankBranch: application.bankBranch ?? undefined,
       status: application.status as UssdLoanApplication["status"],
       paymentStatus: application.paymentStatus,
       createdAt: application.createdAt,

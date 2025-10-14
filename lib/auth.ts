@@ -3,7 +3,7 @@ import { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import https from "https";
 import fetch from "node-fetch";
-import { SpecificPermission } from "@/types/auth";
+import { SpecificPermission } from "@/shared/types/auth";
 import { mapApiPermissionsToSpecific } from "./authorization";
 import { getFineractTenantId } from "./fineract-tenant-service";
 
@@ -99,7 +99,7 @@ export const authOptions: NextAuthOptions = {
                 });
               });
 
-              req.on("error", (error) => {
+              req.on("error", (error: Error) => {
                 console.error("Auth Debug - HTTP request error:", error);
                 reject(error);
               });

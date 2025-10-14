@@ -1,36 +1,4 @@
-// Credit Scoring Types
-
-export interface ScoringFactor {
-  id: string;
-  name: string;
-  weight: number;
-  minScore: number;
-  maxScore: number;
-  description: string;
-}
-
-export interface CreditScoreResult {
-  totalScore: number;
-  riskLevel: "Low" | "Medium" | "High";
-  recommendation: "Approve" | "Review" | "Decline";
-  breakdown: ScoreBreakdown[];
-}
-
-export interface ScoreBreakdown {
-  factor: string;
-  contribution: number;
-  score: number;
-  weight: number;
-}
-
-export interface CreditScoringConfig {
-  factors: ScoringFactor[];
-  thresholds: {
-    lowRisk: number;
-    mediumRisk: number;
-    highRisk: number;
-  };
-}
+import { ScoringFactor } from '../types/credit-scoring';
 
 export const defaultScoringFactors: ScoringFactor[] = [
   {
@@ -87,4 +55,4 @@ export const defaultThresholds = {
   lowRisk: 700,
   mediumRisk: 500,
   highRisk: 0,
-}; 
+};

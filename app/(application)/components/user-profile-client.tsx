@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { useTheme } from "next-themes";
 import { UserProfileData } from "./user-profile-data";
+import { useMobileMenu } from "./mobile-menu-context";
 import {
   Bell,
   Search,
@@ -34,7 +35,7 @@ export function UserProfileClient({ userProfileData }: UserProfileClientProps) {
   const { logout } = useAuth();
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { mobileMenuOpen, setMobileMenuOpen } = useMobileMenu();
   const notificationRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
   const { theme } = useTheme();
@@ -55,10 +56,12 @@ export function UserProfileClient({ userProfileData }: UserProfileClientProps) {
 
   return (
     <header className="flex h-16 items-center justify-between border-border border-b bg-background px-4 lg:px-6 sticky top-0 z-20">
+      {/* Mobile Menu Button */}
       <div className="lg:hidden">
         <Button
           variant="ghost"
           size="icon"
+          className="h-8 w-8"
           onClick={() => setMobileMenuOpen(true)}
           data-mobile-toggle="true"
         >
@@ -66,7 +69,9 @@ export function UserProfileClient({ userProfileData }: UserProfileClientProps) {
           <span className="sr-only">Toggle menu</span>
         </Button>
       </div>
-      <div className="relative w-full max-w-md lg:max-w-sm mx-4 lg:mx-0">
+
+      {/* Mobile search - hidden on larger screens */}
+      <div className="lg:hidden relative flex-1 max-w-sm mx-2">
         <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
         <input
           type="search"
@@ -74,8 +79,20 @@ export function UserProfileClient({ userProfileData }: UserProfileClientProps) {
           className="w-full rounded-md border border-border bg-background py-2 pl-8 pr-4 text-sm placeholder-muted-foreground focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
         />
       </div>
-      <div className="flex items-center gap-4">
-        <ThemeToggle />
+      
+      {/* Desktop search - hidden on mobile */}
+      <div className="hidden lg:block relative w-full max-w-sm mx-4">
+        <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+        <input
+          type="search"
+          placeholder="Search..."
+          className="w-full rounded-md border border-border bg-background py-2 pl-8 pr-4 text-sm placeholder-muted-foreground focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+        />
+      </div>
+      <div className="flex items-center gap-2 lg:gap-4">
+        <div className="hidden lg:block">
+          <ThemeToggle />
+        </div>
         <div className="relative" ref={notificationRef}>
           <Button
             variant="ghost"
@@ -277,15 +294,26 @@ export function UserProfileClient({ userProfileData }: UserProfileClientProps) {
             }}
           >
             {isLoggedIn ? (
-              <div className="flex items-center gap-2 bg-blue-500/10 border border-blue-500/20 rounded-full px-3 py-1">
-                <span className="text-sm font-medium text-blue-600 dark:text-blue-400">
-                  {userProfileData.tenantId.toUpperCase()}
-                </span>
-                <Avatar className="h-8 w-8 border-2 border-blue-500">
-                  <AvatarImage src="/professional-avatar.png" alt="Avatar" />
-                  <AvatarFallback>{initials}</AvatarFallback>
-                </Avatar>
-              </div>
+              <>
+                {/* Mobile: Icon only */}
+                <div className="lg:hidden">
+                  <Avatar className="h-8 w-8 border-2 border-blue-500">
+                    <AvatarImage src="/professional-avatar.svg" alt="Avatar" />
+                    <AvatarFallback>{initials}</AvatarFallback>
+                  </Avatar>
+                </div>
+                
+                {/* Desktop: Full profile with tenant */}
+                <div className="hidden lg:flex items-center gap-2 bg-blue-500/10 border border-blue-500/20 rounded-full px-3 py-1">
+                  <span className="text-sm font-medium text-blue-600 dark:text-blue-400">
+                    {userProfileData.tenantId.toUpperCase()}
+                  </span>
+                  <Avatar className="h-8 w-8 border-2 border-blue-500">
+                    <AvatarImage src="/professional-avatar.svg" alt="Avatar" />
+                    <AvatarFallback>{initials}</AvatarFallback>
+                  </Avatar>
+                </div>
+              </>
             ) : (
               <Button
                 variant="outline"
@@ -304,7 +332,7 @@ export function UserProfileClient({ userProfileData }: UserProfileClientProps) {
                   {isLoggedIn && (
                     <Avatar className="h-10 w-10 border-2 border-blue-500">
                       <AvatarImage
-                        src="/professional-avatar.png"
+                        src="/professional-avatar.svg"
                         alt="Avatar"
                       />
                       <AvatarFallback>{initials}</AvatarFallback>

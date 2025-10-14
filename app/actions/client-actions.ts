@@ -52,11 +52,29 @@ export async function saveDraft(
   leadId?: string
 ) {
   try {
+    // Convert data types before validation
+    const processedData = {
+      ...data,
+      // Convert string IDs to numbers
+      officeId: data.officeId ? Number(data.officeId) : undefined,
+      legalFormId: data.legalFormId ? Number(data.legalFormId) : undefined,
+      clientTypeId: data.clientTypeId ? Number(data.clientTypeId) : undefined,
+      clientClassificationId: data.clientClassificationId ? Number(data.clientClassificationId) : undefined,
+      genderId: data.genderId ? Number(data.genderId) : undefined,
+      // Convert date strings to Date objects
+      dateOfBirth: data.dateOfBirth ? new Date(data.dateOfBirth) : undefined,
+      submittedOnDate: data.submittedOnDate ? new Date(data.submittedOnDate) : new Date(),
+      activationDate: data.activationDate ? new Date(data.activationDate) : undefined,
+      // Convert savingsProductId to number if it exists
+      savingsProductId: data.savingsProductId ? Number(data.savingsProductId) : undefined,
+    };
+
     // Validate data
-    const validatedData = clientFormSchema.parse(data);
+    const validatedData = clientFormSchema.parse(processedData);
 
     // Get current user ID (in a real app, this would come from auth)
     const userId = "user_1"; // Placeholder - replace with actual user ID from auth
+    const tenantId = "cmg6cf5qv0000rl53zznsz35u"; // Placeholder - replace with actual tenant ID from auth
 
     if (leadId) {
       // Update existing lead
@@ -100,6 +118,8 @@ export async function saveDraft(
       // Create new lead
       const lead = await prisma.lead.create({
         data: {
+          userId,
+          tenantId,
           officeId: validatedData.officeId,
           officeName: validatedData.officeName,
           legalFormId: validatedData.legalFormId,
@@ -128,11 +148,6 @@ export async function saveDraft(
           savingsProductName: validatedData.savingsProductName,
           currentStep: validatedData.currentStep,
           status: "DRAFT",
-          user: {
-            connect: {
-              id: userId,
-            },
-          },
         },
       });
 

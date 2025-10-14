@@ -39,7 +39,8 @@ import {
   Calendar,
   CreditCard,
 } from "lucide-react";
-import { UssdLeadsData, UssdLoanApplication, updateUssdApplicationStatus } from "@/app/actions/ussd-leads-actions";
+import { UssdLeadsData, updateUssdApplicationStatus } from "@/app/actions/ussd-leads-actions";
+import { UssdLoanApplication, UssdLoanApplicationStatus } from "@/shared/types";
 // import { format } from "date-fns";
 
 interface UssdLeadsTableProps {
@@ -77,12 +78,12 @@ export function UssdLeadsTable({ initialData }: UssdLeadsTableProps) {
     setIsLoading(true);
     try {
       const result = await updateUssdApplicationStatus(applicationId, newStatus, notes);
-      
+
       if (result.success) {
         // Update local state
-        setApplications(prev => 
-          prev.map(app => 
-            app.loanApplicationUssdId === applicationId 
+        setApplications(prev =>
+          prev.map(app =>
+            app.loanApplicationUssdId === applicationId
               ? { ...app, status: newStatus, updatedAt: new Date() }
               : app
           )
@@ -171,7 +172,7 @@ export function UssdLeadsTable({ initialData }: UssdLeadsTableProps) {
           </TableHeader>
           <TableBody>
             {applications.map((application) => {
-              const statusInfo = statusConfig[application.status];
+              const statusInfo = statusConfig[application.status as keyof typeof statusConfig];
               const payoutInfo = payoutMethodConfig[application.payoutMethod as keyof typeof payoutMethodConfig];
               const PayoutIcon = payoutInfo?.icon || Smartphone;
 
@@ -246,14 +247,14 @@ export function UssdLeadsTable({ initialData }: UssdLeadsTableProps) {
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem
                           onClick={() => openActionDialog(application, "approve")}
-                          disabled={!["CREATED", "SUBMITTED", "UNDER_REVIEW"].includes(application.status)}
+                          disabled={![UssdLoanApplicationStatus.CREATED, UssdLoanApplicationStatus.SUBMITTED, UssdLoanApplicationStatus.UNDER_REVIEW].includes(application.status)}
                         >
                           <CheckCircle className="mr-2 h-4 w-4 text-green-500" />
                           Approve
                         </DropdownMenuItem>
                         <DropdownMenuItem
                           onClick={() => openActionDialog(application, "reject")}
-                          disabled={!["CREATED", "SUBMITTED", "UNDER_REVIEW"].includes(application.status)}
+                          disabled={![UssdLoanApplicationStatus.CREATED, UssdLoanApplicationStatus.SUBMITTED, UssdLoanApplicationStatus.UNDER_REVIEW].includes(application.status)}
                         >
                           <XCircle className="mr-2 h-4 w-4 text-red-500" />
                           Reject
@@ -280,13 +281,13 @@ export function UssdLeadsTable({ initialData }: UssdLeadsTableProps) {
               {actionDialog.action === "approve" ? "Approve Application" : "Reject Application"}
             </DialogTitle>
             <DialogDescription>
-              {actionDialog.action === "approve" 
-                ? "Are you sure you want to approve this loan application?" 
+              {actionDialog.action === "approve"
+                ? "Are you sure you want to approve this loan application?"
                 : "Are you sure you want to reject this loan application?"
               }
             </DialogDescription>
           </DialogHeader>
-          
+
           {selectedApplication && (
             <div className="space-y-4">
               <div className="bg-gray-50 p-4 rounded-lg">
@@ -318,8 +319,8 @@ export function UssdLeadsTable({ initialData }: UssdLeadsTableProps) {
                 <Textarea
                   id="notes"
                   placeholder={
-                    actionDialog.action === "approve" 
-                      ? "Add any notes about the approval..." 
+                    actionDialog.action === "approve"
+                      ? "Add any notes about the approval..."
                       : "Please provide a reason for rejection..."
                   }
                   value={notes}
@@ -341,14 +342,14 @@ export function UssdLeadsTable({ initialData }: UssdLeadsTableProps) {
             <Button
               onClick={() => {
                 if (selectedApplication && actionDialog.action) {
-                  const newStatus = actionDialog.action === "approve" ? "APPROVED" : "REJECTED";
+                  const newStatus = actionDialog.action === "approve" ? UssdLoanApplicationStatus.APPROVED : UssdLoanApplicationStatus.REJECTED;
                   handleStatusUpdate(selectedApplication.loanApplicationUssdId, newStatus);
                 }
               }}
               disabled={isLoading}
               className={
-                actionDialog.action === "approve" 
-                  ? "bg-green-600 hover:bg-green-700" 
+                actionDialog.action === "approve"
+                  ? "bg-green-600 hover:bg-green-700"
                   : "bg-red-600 hover:bg-red-700"
               }
             >

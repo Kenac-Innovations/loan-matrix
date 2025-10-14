@@ -2,7 +2,7 @@
 
 import { ReactNode } from "react";
 import { useCanAccess } from "@/hooks/use-client-auth";
-import { AccessLevel, Resource } from "@/types/auth";
+import { AccessLevel, Resource } from "@/shared/types/auth";
 
 interface ResourceGateProps {
   resource: Resource;

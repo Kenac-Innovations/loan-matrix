@@ -1,27 +1,60 @@
 import { getSession } from "./auth";
+import { getSession as getCustomSession } from "../app/actions/auth";
 import { getFineractTenantId } from "./fineract-tenant-service";
 
-const API_BASE_URL = "http://10.10.0.143:8443/fineract-provider/api/v1";
+// Get base URL from environment variable with fallback
+// If FINERACT_BASE_URL doesn't include /fineract-provider, we'll add it
+const baseUrl = process.env.FINERACT_BASE_URL || "http://10.10.0.143:8443";
+
+/**
+ * Get access token from either NextAuth session or custom JWT session
+ */
+async function getAccessToken(): Promise<string | undefined> {
+  try {
+    // Try NextAuth session first
+    const nextAuthSession = await getSession();
+    if (nextAuthSession?.accessToken) {
+      console.log("Using NextAuth session token");
+      return nextAuthSession.accessToken;
+    }
+
+    // Fallback to custom JWT session
+    const customSession = await getCustomSession();
+    if (customSession?.accessToken) {
+      console.log("Using custom JWT session token");
+      return customSession.accessToken;
+    }
+
+    console.log("No access token found in either session");
+    return undefined;
+  } catch (error) {
+    console.error("Error getting access token:", error);
+    return undefined;
+  }
+}
 
 /**
  * Makes an authenticated request to the Fineract API
  * @param endpoint - The API endpoint to call (without the base URL)
  * @param options - Fetch options
+ * @param version - API version (defaults to 'v1')
  * @returns Promise with the response data
  */
 export async function fetchFineractAPI(
   endpoint: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
+  version: 'v1' | 'v2' = 'v1'
 ) {
-  const session = await getSession();
-  const accessToken = session?.accessToken as string | undefined;
+  const accessToken = await getAccessToken();
   const fineractTenantId = await getFineractTenantId();
 
+  console.log("Session debug:", { accessToken: !!accessToken, fineractTenantId });
+
   if (!accessToken) {
-    throw new Error("No access token available");
+    throw new Error("No access token available - user may not be authenticated");
   }
 
-  const url = `${API_BASE_URL}${
+  const url = `${baseUrl}/fineract-provider/api/${version}${
     endpoint.startsWith("/") ? endpoint : `/${endpoint}`
   }`;
 
@@ -142,6 +175,18 @@ export async function fetchClientByExternalId(externalId: string) {
     throw error;
   }
 }
+/**
+ * Makes an authenticated request to the Fineract API v2
+ * @param endpoint - The API endpoint to call (without the base URL)
+ * @param options - Fetch options
+ * @returns Promise with the response data
+ */
+export async function fetchFineractAPIV2(
+  endpoint: string,
+  options: RequestInit = {}
+) {
+  return fetchFineractAPI(endpoint, options, 'v2');
+}
 
 /**
  * Client-side API fetcher that includes the access token from the auth context
@@ -149,10 +194,10 @@ export async function fetchClientByExternalId(externalId: string) {
 export function createClientFineractAPI(accessToken: string) {
   return async (endpoint: string, options: RequestInit = {}) => {
     if (!accessToken) {
-      throw new Error("No access token available");
+      throw new Error("No access token available - user may not be authenticated");
     }
 
-    const url = `${API_BASE_URL}${
+    const url = `${baseUrl}/fineract-provider/api/v1${
       endpoint.startsWith("/") ? endpoint : `/${endpoint}`
     }`;
 
