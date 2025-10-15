@@ -33,7 +33,7 @@ export async function POST(
         ussdPhone = ussd?.userPhoneNumber || undefined;
       }
     } catch {}
-
+//test
     // Build callback URL to be used by payment gateway
     //const callbackUrl = `${base}/api/ussd-leads/payment-callback`;
     //const callbackUrl = `https://webhook.site/45f26e26-5c80-4290-9a1a-87b60be151a4`;
