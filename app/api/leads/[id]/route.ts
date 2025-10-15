@@ -10,10 +10,14 @@ export async function GET(
     const { id } = await params;
 
     // Get tenant from x-tenant-slug header or default to "default"
+    const tenantSlug = request.headers.get("x-tenant-slug") || "default";
+    let tenant = await getTenantBySlug(tenantSlug);
 
-    const tenantSlug = request.headers.get("x-tenant-slug") || "goodfellow";
-    const tenant = await getTenantBySlug(tenantSlug);
-
+    // If tenant not found, try to create default tenant
+    if (!tenant) {
+      const { getOrCreateDefaultTenant } = await import("@/lib/tenant-service");
+      tenant = await getOrCreateDefaultTenant();
+    }
 
     if (!tenant) {
       return NextResponse.json({ error: "Tenant not found" }, { status: 404 });
@@ -96,10 +100,14 @@ export async function PUT(
     const { id } = await params;
 
     // Get tenant from x-tenant-slug header or default to "default"
+    const tenantSlug = request.headers.get("x-tenant-slug") || "default";
+    let tenant = await getTenantBySlug(tenantSlug);
 
-    const tenantSlug = request.headers.get("x-tenant-slug") || "goodfellow";
-    const tenant = await getTenantBySlug(tenantSlug);
-
+    // If tenant not found, try to create default tenant
+    if (!tenant) {
+      const { getOrCreateDefaultTenant } = await import("@/lib/tenant-service");
+      tenant = await getOrCreateDefaultTenant();
+    }
 
     if (!tenant) {
       return NextResponse.json({ error: "Tenant not found" }, { status: 404 });

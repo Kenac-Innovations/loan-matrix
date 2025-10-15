@@ -81,7 +81,7 @@ export async function getUserProfileData(): Promise<UserProfileData> {
             username,
             isSelfServiceUser,
           },
-          tenantId: "goodfellow", // You might want to fetch this from an API
+          tenantId: "default", // You might want to fetch this from an API
           isLoggedIn: true,
         };
       } catch (error) {
@@ -110,7 +110,7 @@ export async function getUserProfileData(): Promise<UserProfileData> {
             role,
             officeName: session.user.officeName,
           },
-          tenantId: "goodfellow",
+          tenantId: "default",
           isLoggedIn: true,
         };
       }
@@ -118,7 +118,7 @@ export async function getUserProfileData(): Promise<UserProfileData> {
       // Return default values when not authenticated
       return {
         user: defaultUser,
-        tenantId: "goodfellow",
+        tenantId: "default",
         isLoggedIn: false,
       };
     }
@@ -128,7 +128,7 @@ export async function getUserProfileData(): Promise<UserProfileData> {
     // Return default values on error
     return {
       user: defaultUser,
-      tenantId: "goodfellow",
+      tenantId: "default",
       isLoggedIn: false,
     };
   }

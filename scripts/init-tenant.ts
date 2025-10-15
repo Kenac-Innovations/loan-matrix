@@ -7,52 +7,10 @@ async function initTenant() {
   try {
     console.log("Initializing tenants...");
 
-    // Check if default tenant exists
-    let tenant = await prisma.tenant.findUnique({
-      where: { slug: "default" },
-    });
-
-    if (!tenant) {
-      console.log("Creating default tenant...");
-      tenant = await prisma.tenant.create({
-        data: {
-          name: "Default Organization",
-          slug: "goodfellow",
-          domain: "localhost",
-          settings: {
-            theme: "default",
-            features: {
-              statemachine: true,
-              notifications: true,
-            },
-          },
-        },
-      });
-      console.log("Default tenant created:", tenant);
-    } else {
-      console.log("Default tenant already exists:", tenant);
-    }
-
-    // Also create a demo tenant if it doesn't exist
-    let demoTenant = await prisma.tenant.findUnique({
-      where: { slug: "demo" },
-    });
-
-    if (!demoTenant) {
-      console.log("Creating demo tenant...");
-      demoTenant = await prisma.tenant.create({
-        data: {
-          name: "Demo Organization",
-          slug: "demo",
-          domain: "demo.localhost",
-          settings: {
-            theme: "default",
-            features: {
-              statemachine: true,
-              notifications: true,
-            },
-          },
-        },
+    for (const tenantConfig of allTenantConfigs) {
+      // Check if tenant exists
+      let tenant = await prisma.tenant.findUnique({
+        where: { slug: tenantConfig.slug },
       });
 
       if (!tenant) {
