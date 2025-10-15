@@ -4,7 +4,7 @@ import { getUssdLeadsData } from "@/app/actions/ussd-leads-actions";
 export async function GET(request: NextRequest) {
   try {
     // Get tenant from x-tenant-slug header or default to "default"
-    const tenantSlug = request.headers.get("x-tenant-slug") || "goodfellow";
+    const tenantSlug = request.headers.get("x-tenant-slug") || "default";
     
     const { searchParams } = new URL(request.url);
     const status = searchParams.get("status");

@@ -45,14 +45,14 @@ export function TenantDisplayClient() {
 }
 
 function extractTenantSlug(host: string): string {
-  if (!host) return "goodfellow";
+  if (!host) return "default";
 
   // Remove port if present
   const hostWithoutPort = host.split(":")[0];
 
   // Handle localhost development
   if (hostWithoutPort === "localhost") {
-    return "goodfellow";
+    return "default";
   }
 
   // Extract subdomain
@@ -62,5 +62,5 @@ function extractTenantSlug(host: string): string {
   }
 
   // If no subdomain, use default
-  return "goodfellow";
+  return "default";
 }

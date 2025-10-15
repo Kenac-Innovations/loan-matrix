@@ -217,9 +217,7 @@ export async function fetchFineractAPI(
   const headers = {
     ...options.headers,
     Authorization: `Basic ${accessToken}`,
-
-    "Fineract-Platform-TenantId": "goodfellow",
-
+    "Fineract-Platform-TenantId": fineractTenantId,
     "Content-Type": "application/json",
   };
 
@@ -270,5 +268,5 @@ export async function fetchUserDetails(
 export async function getCurrentTenant(): Promise<string> {
   // In a real application, this might be fetched from the API or stored in the session
   // For now, we'll return the default tenant ID
-  return "goodfellow";
+  return "default";
 }
