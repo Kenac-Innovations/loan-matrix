@@ -814,7 +814,7 @@ export function getFineractService(
       baseUrl: process.env.FINERACT_BASE_URL || "https://demo.fineract.dev",
       username: "", // Not needed when using token
       password: "", // Not needed when using token
-      tenantId: tenantId || process.env.FINERACT_TENANT_ID || "default",
+      tenantId: process.env.FINERACT_TENANT_ID || "goodfellow",
     };
     return new FineractAPIService(config, authToken);
   }
@@ -825,7 +825,7 @@ export function getFineractService(
       baseUrl: process.env.FINERACT_BASE_URL || "https://demo.fineract.dev",
       username: process.env.FINERACT_USERNAME || "mifos",
       password: process.env.FINERACT_PASSWORD || "password",
-      tenantId: tenantId || process.env.FINERACT_TENANT_ID || "default",
+      tenantId: process.env.FINERACT_TENANT_ID || "goodfellow",
     };
     fineractService = new FineractAPIService(config);
   }

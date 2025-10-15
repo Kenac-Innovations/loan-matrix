@@ -25,7 +25,7 @@ export const metadata: Metadata = {
 export default async function LeadsPage() {
   // Get tenant slug from headers (set by middleware)
   const headersList = await headers();
-  const tenantSlug = headersList.get("x-tenant-slug") || "default";
+  const tenantSlug = headersList.get("x-tenant-slug") || "goodfellow";
 
   // Fetch leads data server-side (full dataset for metrics)
   const leadsData = await getLeadsData(tenantSlug);

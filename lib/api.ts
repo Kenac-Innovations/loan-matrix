@@ -6,32 +6,9 @@ import { getFineractTenantId } from "./fineract-tenant-service";
 // If FINERACT_BASE_URL doesn't include /fineract-provider, we'll add it
 const baseUrl = process.env.FINERACT_BASE_URL || "http://10.10.0.143:8443";
 
-/**
- * Get access token from either NextAuth session or custom JWT session
- */
-async function getAccessToken(): Promise<string | undefined> {
-  try {
-    // Try NextAuth session first
-    const nextAuthSession = await getSession();
-    if (nextAuthSession?.accessToken) {
-      console.log("Using NextAuth session token");
-      return nextAuthSession.accessToken;
-    }
-
-    // Fallback to custom JWT session
-    const customSession = await getCustomSession();
-    if (customSession?.accessToken) {
-      console.log("Using custom JWT session token");
-      return customSession.accessToken;
-    }
-
-    console.log("No access token found in either session");
-    return undefined;
-  } catch (error) {
-    console.error("Error getting access token:", error);
-    return undefined;
-  }
-}
+const API_BASE_URL = process.env.FINERACT_BASE_URL 
+  ? `${process.env.FINERACT_BASE_URL}/fineract-provider/api/v1`
+  : "http://fineract-dev.10.10.0.24.nip.io:31778/fineract-provider/api/v1";
 
 /**
  * Makes an authenticated request to the Fineract API
@@ -48,10 +25,13 @@ export async function fetchFineractAPI(
   const accessToken = await getAccessToken();
   const fineractTenantId = await getFineractTenantId();
 
-  console.log("Session debug:", { accessToken: !!accessToken, fineractTenantId });
+  console.log("API Debug - Session:", session ? "exists" : "null");
+  console.log("API Debug - Access Token:", accessToken ? "exists" : "null");
+  console.log("API Debug - Environment:", process.env.NODE_ENV);
 
   if (!accessToken) {
-    throw new Error("No access token available - user may not be authenticated");
+    console.error("API Debug - No access token available");
+    throw new Error("No access token available");
   }
 
   const url = `${baseUrl}/fineract-provider/api/${version}${

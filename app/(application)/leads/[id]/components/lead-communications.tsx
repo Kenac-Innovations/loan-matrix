@@ -117,7 +117,7 @@ export function LeadCommunications({ leadId }: LeadCommunicationsProps) {
       setLoading(true);
       const response = await fetch(`/api/leads/${leadId}/communications`, {
         headers: {
-          "x-tenant-slug": "default",
+          "x-tenant-slug": "goodfellow",
         },
       });
 

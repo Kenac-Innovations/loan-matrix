@@ -93,14 +93,14 @@ async function seedLookupTables() {
 
 async function setupDefaultTenant() {
   let tenant = await prisma.tenant.findUnique({
-    where: { slug: "default" },
+    where: { slug: "goodfellow" },
   });
 
   if (!tenant) {
     tenant = await prisma.tenant.create({
       data: {
-        name: "Default Organization",
-        slug: "default",
+        name: "Goodfellow Organization",
+        slug: "goodfellow",
         settings: {
           theme: "default",
           features: {
