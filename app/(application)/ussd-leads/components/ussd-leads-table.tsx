@@ -1,5 +1,6 @@
 "use client";
 
+
 import { useState, useEffect } from "react";
 import useSWR from "swr";
 import {
@@ -37,7 +38,6 @@ import {
   Clock,
   Eye
 } from "lucide-react";
-import Link from "next/link";
 import { UssdLeadsData, UssdLoanApplication } from "@/app/actions/ussd-leads-actions";
 import { format } from "date-fns";
 

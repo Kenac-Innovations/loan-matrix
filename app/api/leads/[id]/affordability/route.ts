@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { PrismaClient } from "@/app/generated/prisma";
+import { prisma } from "@/lib/prisma";
 import { getTenantBySlug } from "@/lib/tenant-service";
-
-const prisma = new PrismaClient();
 
 export async function GET(
   request: NextRequest,

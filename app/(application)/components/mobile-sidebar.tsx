@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { TenantDisplayClient } from "@/components/tenant-display-client";
+import { useMobileMenu } from "./mobile-menu-context";
 
 interface MobileSidebarProps {
   userProfileData: UserProfileData;
@@ -30,7 +31,7 @@ interface MobileSidebarProps {
 
 export function MobileSidebar({ userProfileData }: MobileSidebarProps) {
   const pathname = usePathname();
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { mobileMenuOpen, setMobileMenuOpen } = useMobileMenu();
   const mobileMenuRef = useRef<HTMLDivElement>(null);
   const { theme } = useTheme();
   const [mounted, setMounted] = useState(false);
@@ -97,19 +98,6 @@ export function MobileSidebar({ userProfileData }: MobileSidebarProps) {
 
   return (
     <>
-      {/* Mobile Menu Toggle Button */}
-      <div className="lg:hidden">
-        <Button
-          variant="ghost"
-          size="icon"
-          className={textColor}
-          onClick={() => setMobileMenuOpen(true)}
-          data-mobile-toggle="true"
-        >
-          <Menu className="h-6 w-6" />
-          <span className="sr-only">Toggle menu</span>
-        </Button>
-      </div>
 
       {/* Mobile Sidebar Overlay */}
       {mobileMenuOpen && (

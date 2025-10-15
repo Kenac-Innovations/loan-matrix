@@ -3,7 +3,7 @@ import {
   createPermissionHandler,
   createResourceAccessHandler,
 } from "@/middleware/auth-middleware";
-import { AccessLevel, Resource, SpecificPermission } from "@/types/auth";
+import { AccessLevel, Resource, SpecificPermission } from "@/shared/types/auth";
 import { getFineractServiceWithSession } from "@/lib/fineract-api";
 
 // Handler for GET requests - list all clients

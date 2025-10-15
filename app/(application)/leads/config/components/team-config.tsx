@@ -18,82 +18,16 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { TeamAwareStateMachineService } from "@/lib/team-state-machine-service";
-
-type TeamMember = {
-  id: string;
-  name: string;
-  email: string;
-  role: string;
-  avatar?: string;
-};
-
-type Team = {
-  id: string;
-  name: string;
-  description: string;
-  members: TeamMember[];
-  pipelineStages: string[];
-};
+import {
+  defaultTeams,
+  defaultPipelineStages,
+  defaultRoles,
+  type TeamMember,
+  type Team
+} from "@/shared/defaults/team-config";
 
 export function TeamConfig() {
-  const [teams, setTeams] = useState<Team[]>([
-    {
-      id: "1",
-      name: "Sales Team",
-      description:
-        "Responsible for initial lead qualification and sales process",
-      members: [
-        {
-          id: "1",
-          name: "John Doe",
-          email: "john@example.com",
-          role: "Sales Manager",
-          avatar: "/robert-johnson-avatar.png",
-        },
-        {
-          id: "2",
-          name: "Jane Smith",
-          email: "jane@example.com",
-          role: "Sales Representative",
-        },
-      ],
-      pipelineStages: ["New Lead", "Qualification", "Proposal"],
-    },
-    {
-      id: "2",
-      name: "Finance Team",
-      description: "Handles financial verification and approval",
-      members: [
-        {
-          id: "3",
-          name: "Robert Johnson",
-          email: "robert@example.com",
-          role: "Finance Manager",
-        },
-        {
-          id: "4",
-          name: "Sarah Williams",
-          email: "sarah@example.com",
-          role: "Financial Analyst",
-        },
-      ],
-      pipelineStages: ["Negotiation"],
-    },
-    {
-      id: "3",
-      name: "Customer Success",
-      description: "Manages onboarding and customer relationship",
-      members: [
-        {
-          id: "5",
-          name: "Michael Brown",
-          email: "michael@example.com",
-          role: "Customer Success Manager",
-        },
-      ],
-      pipelineStages: ["Closed Won"],
-    },
-  ]);
+  const [teams, setTeams] = useState<Team[]>(defaultTeams);
 
   const [editingTeam, setEditingTeam] = useState<Team | null>(null);
   const [newTeam, setNewTeam] = useState<Partial<Team>>({
@@ -109,14 +43,7 @@ export function TeamConfig() {
     role: "",
   });
 
-  const pipelineStages = [
-    "New Lead",
-    "Qualification",
-    "Proposal",
-    "Negotiation",
-    "Closed Won",
-    "Closed Lost",
-  ];
+  const pipelineStages = defaultPipelineStages;
 
   const handleAddTeam = () => {
     if (!newTeam.name) return;

@@ -17,81 +17,16 @@ import { Switch } from "@/components/ui/switch";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
-
-type FieldOption = {
-  id: string;
-  label: string;
-  value: string;
-};
-
-type CustomField = {
-  id: string;
-  name: string;
-  label: string;
-  type:
-    | "text"
-    | "number"
-    | "email"
-    | "phone"
-    | "date"
-    | "select"
-    | "multiselect"
-    | "checkbox"
-    | "textarea";
-  placeholder?: string;
-  required: boolean;
-  defaultValue?: string;
-  options?: FieldOption[];
-  description?: string;
-  visibleTo: string[];
-};
+import { 
+  defaultCustomFields, 
+  defaultFieldTypes, 
+  defaultFieldTeams,
+  type CustomField,
+  type FieldOption
+} from "@/shared/defaults/field-config";
 
 export function FieldConfig() {
-  const [fields, setFields] = useState<CustomField[]>([
-    {
-      id: "1",
-      name: "company_name",
-      label: "Company Name",
-      type: "text",
-      placeholder: "Enter company name",
-      required: true,
-      description: "Legal name of the company",
-      visibleTo: ["Sales Team", "Finance Team", "Customer Success"],
-    },
-    {
-      id: "2",
-      name: "industry",
-      label: "Industry",
-      type: "select",
-      required: true,
-      options: [
-        { id: "1", label: "Technology", value: "technology" },
-        { id: "2", label: "Healthcare", value: "healthcare" },
-        { id: "3", label: "Finance", value: "finance" },
-        { id: "4", label: "Education", value: "education" },
-        { id: "5", label: "Other", value: "other" },
-      ],
-      visibleTo: ["Sales Team"],
-    },
-    {
-      id: "3",
-      name: "annual_revenue",
-      label: "Annual Revenue",
-      type: "number",
-      placeholder: "Enter annual revenue",
-      required: false,
-      visibleTo: ["Finance Team"],
-    },
-    {
-      id: "4",
-      name: "notes",
-      label: "Additional Notes",
-      type: "textarea",
-      placeholder: "Enter any additional information",
-      required: false,
-      visibleTo: ["Sales Team", "Customer Success"],
-    },
-  ]);
+  const [fields, setFields] = useState<CustomField[]>(defaultCustomFields);
 
   const [editingField, setEditingField] = useState<CustomField | null>(null);
   const [newField, setNewField] = useState<Partial<CustomField>>({
@@ -107,19 +42,8 @@ export function FieldConfig() {
     value: "",
   });
 
-  const teams = ["Sales Team", "Finance Team", "Customer Success"];
-
-  const fieldTypes = [
-    { value: "text", label: "Text" },
-    { value: "number", label: "Number" },
-    { value: "email", label: "Email" },
-    { value: "phone", label: "Phone" },
-    { value: "date", label: "Date" },
-    { value: "select", label: "Dropdown" },
-    { value: "multiselect", label: "Multi-select" },
-    { value: "checkbox", label: "Checkbox" },
-    { value: "textarea", label: "Text Area" },
-  ];
+  const teams = defaultFieldTeams;
+  const fieldTypes = defaultFieldTypes;
 
   const handleDragEnd = (result: any) => {
     if (!result.destination) return;

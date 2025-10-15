@@ -1,22 +1,27 @@
 // File: app/api/fineract/currencies/route.ts
-import { NextRequest, NextResponse } from 'next/server';
-import { fetchFineractAPI } from '@/lib/api';
+import { NextRequest, NextResponse } from "next/server";
+import { getFineractServiceWithSession } from "@/lib/fineract-api";
 
 export async function GET(request: NextRequest) {
   try {
-    const response = await fetchFineractAPI('/currencies');
+    const fineractService = await getFineractServiceWithSession();
+    const response = await fineractService.getCurrencies();
+
     return NextResponse.json(response);
   } catch (error: any) {
-    console.error('GET /api/fineract/currencies error:', error);
-    if (error.errorData) {
-      return NextResponse.json(error.errorData, { status: error.status || 500 });
-    }
+    console.error("GET /api/fineract/currencies error:", error);
+
+    // Better error handling for different error types
+    const errorMessage =
+      error?.message || error?.errorData?.defaultUserMessage || "Unknown error";
+    const statusCode = error?.status || 500;
+
     return NextResponse.json(
       {
-        defaultUserMessage: 'An unexpected error occurred',
-        developerMessage: error.message
+        error: errorMessage,
+        details: error?.errorData || null,
       },
-      { status: 500 }
+      { status: statusCode }
     );
   }
 }

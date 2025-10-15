@@ -5,7 +5,7 @@ import {
   withResourceAccessAction,
   isAuthError,
 } from "@/lib/auth-actions";
-import { AccessLevel, Resource, SpecificPermission } from "@/types/auth";
+import { AccessLevel, Resource, SpecificPermission } from "@/shared/types/auth";
 import { fetchFineractAPI } from "@/lib/api";
 import { revalidatePath } from "next/cache";
 

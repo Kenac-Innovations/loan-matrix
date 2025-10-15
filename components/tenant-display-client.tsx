@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Badge } from "@/components/ui/badge";
 import { Building2 } from "lucide-react";
 
 interface TenantInfo {
@@ -37,14 +36,9 @@ export function TenantDisplayClient() {
     <div className="px-4 py-3 border-b border-gray-200 dark:border-[#1a2035]">
       <div className="flex items-center gap-2 text-sm">
         <Building2 className="h-4 w-4 text-gray-500 dark:text-gray-400" />
-        <div className="flex flex-col">
-          <span className="font-medium text-gray-900 dark:text-white">
-            {tenant.name}
-          </span>
-          <Badge variant="secondary" className="text-xs w-fit">
-            {tenant.slug}
-          </Badge>
-        </div>
+        <span className="font-medium text-gray-900 dark:text-white">
+          {tenant.name}
+        </span>
       </div>
     </div>
   );

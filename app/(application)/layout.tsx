@@ -29,6 +29,7 @@ import { MobileSidebar } from "./components/mobile-sidebar";
 import MenuItemWithSubmenu from "@/components/menu-with-sub";
 import { ChatProvider } from "@/contexts/chat-context";
 import { TenantDisplay } from "@/components/tenant-display";
+import { MobileMenuProvider } from "./components/mobile-menu-context";
 
 export default async function DashboardLayout({
   children,
@@ -40,7 +41,8 @@ export default async function DashboardLayout({
 
   return (
     <ChatProvider>
-      <div className="flex h-screen overflow-hidden bg-background">
+      <MobileMenuProvider>
+        <div className="flex h-screen overflow-hidden bg-background">
         {/* Desktop Sidebar */}
         <div className="hidden lg:block lg:w-64 bg-background border-border border-r h-screen sticky top-0 z-30 overflow-y-auto">
           <div className="flex h-16 items-center justify-center border-border border-b px-4 sticky top-0 bg-background z-10">
@@ -66,7 +68,7 @@ export default async function DashboardLayout({
           <TenantDisplay />
           <div className="py-4 h-[calc(100vh-7rem)] overflow-y-auto">
             <nav className="space-y-1 px-2">
-              <Link
+              {/* <Link
                 href="/leads/new"
                 className="flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
               >
@@ -79,7 +81,7 @@ export default async function DashboardLayout({
               >
                 <Home className="h-4 w-4" />
                 Dashboard
-              </Link>
+              </Link> */}
 
               <div className="space-y-1">
                 <MenuItemWithSubmenu
@@ -89,7 +91,7 @@ export default async function DashboardLayout({
                   subMenuItems={[
                     { label: "Pipeline", href: "/leads" },
                     { label: "USSD Leads", href: "/ussd-leads" },
-                    // { label: "Configuration", href: "/leads/config" },
+                    { label: "Configuration", href: "/leads/config" },
                   ]}
                 />
               </div>
@@ -207,14 +209,15 @@ export default async function DashboardLayout({
           <UserProfileClient userProfileData={userProfileData} />
 
           {/* Main Content */}
-          <main className="flex-1 overflow-y-auto bg-background p-4 lg:p-6">
+          <main className="flex-1 overflow-y-auto p-8 bg-background">
             <Suspense fallback={<div>Loading...</div>}>{children}</Suspense>
           </main>
         </div>
 
         {/* AI Assistant */}
         <AIAssistant />
-      </div>
+        </div>
+      </MobileMenuProvider>
     </ChatProvider>
   );
 }

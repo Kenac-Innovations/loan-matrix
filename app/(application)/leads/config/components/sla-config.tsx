@@ -16,89 +16,17 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
-
-type SLALevel = {
-  id: string;
-  name: string;
-  timeframe: number;
-  timeUnit: "minutes" | "hours" | "days";
-  escalation: boolean;
-  notifyTeam: boolean;
-  notifyManager: boolean;
-  color: string;
-};
-
-type StageSLA = {
-  id: string;
-  stageName: string;
-  description: string;
-  slaLevels: SLALevel[];
-};
+import {
+  defaultStageSLAs,
+  defaultTimeUnits,
+  defaultSLAColors,
+  type SLALevel,
+  type StageSLA
+} from "@/shared/defaults/sla-config";
+import { defaultPipelineStages } from "@/shared/defaults";
 
 export function SLAConfig() {
-  const [stageSLAs, setStageSLAs] = useState<StageSLA[]>([
-    {
-      id: "1",
-      stageName: "New Lead",
-      description: "Initial contact with potential client",
-      slaLevels: [
-        {
-          id: "1",
-          name: "First Response",
-          timeframe: 4,
-          timeUnit: "hours",
-          escalation: true,
-          notifyTeam: true,
-          notifyManager: false,
-          color: "#3b82f6",
-        },
-        {
-          id: "2",
-          name: "Qualification",
-          timeframe: 1,
-          timeUnit: "days",
-          escalation: true,
-          notifyTeam: true,
-          notifyManager: true,
-          color: "#f59e0b",
-        },
-      ],
-    },
-    {
-      id: "2",
-      stageName: "Qualification",
-      description: "Assessing lead requirements and fit",
-      slaLevels: [
-        {
-          id: "3",
-          name: "Requirements Gathering",
-          timeframe: 2,
-          timeUnit: "days",
-          escalation: true,
-          notifyTeam: true,
-          notifyManager: false,
-          color: "#3b82f6",
-        },
-      ],
-    },
-    {
-      id: "3",
-      stageName: "Proposal",
-      description: "Preparing and sending proposal",
-      slaLevels: [
-        {
-          id: "4",
-          name: "Proposal Submission",
-          timeframe: 3,
-          timeUnit: "days",
-          escalation: true,
-          notifyTeam: true,
-          notifyManager: false,
-          color: "#3b82f6",
-        },
-      ],
-    },
-  ]);
+  const [stageSLAs, setStageSLAs] = useState<StageSLA[]>(defaultStageSLAs);
 
   const [editingSLA, setEditingSLA] = useState<StageSLA | null>(null);
   const [editingSLALevel, setEditingSLALevel] = useState<SLALevel | null>(null);
@@ -112,14 +40,7 @@ export function SLAConfig() {
     color: "#3b82f6",
   });
 
-  const pipelineStages = [
-    "New Lead",
-    "Qualification",
-    "Proposal",
-    "Negotiation",
-    "Closed Won",
-    "Closed Lost",
-  ];
+  const pipelineStages = defaultPipelineStages;
 
   const handleEditSLA = (sla: StageSLA) => {
     setEditingSLA(sla);
@@ -195,15 +116,15 @@ export function SLAConfig() {
     // Find a stage that doesn't have an SLA yet
     const stagesWithSLA = stageSLAs.map((sla) => sla.stageName);
     const availableStages = pipelineStages.filter(
-      (stage) => !stagesWithSLA.includes(stage)
+      (stage) => !stagesWithSLA.includes(stage.name)
     );
 
     if (availableStages.length === 0) return;
 
     const newStageSLA: StageSLA = {
       id: Date.now().toString(),
-      stageName: availableStages[0],
-      description: `SLA for ${availableStages[0]} stage`,
+      stageName: availableStages[0].name,
+      description: `SLA for ${availableStages[0].name} stage`,
       slaLevels: [],
     };
 
@@ -496,9 +417,11 @@ export function SLAConfig() {
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent>
-                                <SelectItem value="minutes">Minutes</SelectItem>
-                                <SelectItem value="hours">Hours</SelectItem>
-                                <SelectItem value="days">Days</SelectItem>
+                                {defaultTimeUnits.map((unit) => (
+                                  <SelectItem key={unit.value} value={unit.value}>
+                                    {unit.label}
+                                  </SelectItem>
+                                ))}
                               </SelectContent>
                             </Select>
                           </div>
@@ -651,9 +574,11 @@ export function SLAConfig() {
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent>
-                                <SelectItem value="minutes">Minutes</SelectItem>
-                                <SelectItem value="hours">Hours</SelectItem>
-                                <SelectItem value="days">Days</SelectItem>
+                                {defaultTimeUnits.map((unit) => (
+                                  <SelectItem key={unit.value} value={unit.value}>
+                                    {unit.label}
+                                  </SelectItem>
+                                ))}
                               </SelectContent>
                             </Select>
                           </div>

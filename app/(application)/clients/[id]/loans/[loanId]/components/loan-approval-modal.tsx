@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, VisuallyHidden } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -259,7 +259,7 @@ export function LoanApprovalModal({ isOpen, onClose, loanId, onApprovalSuccess }
   const [submitting, setSubmitting] = useState(false);
   
   // Form state
-  const [approvedLoanAmount, setApprovedLoanAmount] = useState<number>(0);
+  const [approvedLoanAmount, setApprovedLoanAmount] = useState<number | "">(0);
   const [approvedOnDate, setApprovedOnDate] = useState<Date | undefined>(undefined);
   const [expectedDisbursementDate, setExpectedDisbursementDate] = useState<Date | undefined>(undefined);
   const [note, setNote] = useState("");
@@ -347,7 +347,7 @@ export function LoanApprovalModal({ isOpen, onClose, loanId, onApprovalSuccess }
     setSubmitting(true);
     try {
       const payload = {
-        approvedLoanAmount,
+        approvedLoanAmount: typeof approvedLoanAmount === 'number' ? approvedLoanAmount : 0,
         approvedOnDate: format(approvedOnDate, "dd MMMM yyyy"),
         dateFormat: "dd MMMM yyyy",
         expectedDisbursementDate: format(expectedDisbursementDate, "dd MMMM yyyy"),
@@ -368,15 +368,22 @@ export function LoanApprovalModal({ isOpen, onClose, loanId, onApprovalSuccess }
         
         // Extract the specific error message from the backend
         let errorMessage = 'Failed to approve loan';
-        if (errorData.errorData?.defaultUserMessage) {
+        
+        // Prioritize user-friendly error messages
+        if (errorData.error) {
+          errorMessage = errorData.error;
+        } else if (errorData.errorData?.defaultUserMessage) {
           errorMessage = errorData.errorData.defaultUserMessage;
         } else if (errorData.errorData?.developerMessage) {
           errorMessage = errorData.errorData.developerMessage;
-        } else if (errorData.error) {
-          errorMessage = errorData.error;
         }
         
-        throw new Error(errorMessage);
+        // Create error object with additional context
+        const error = new Error(errorMessage);
+        (error as any).status = response.status;
+        (error as any).errorData = errorData;
+        
+        throw error;
       }
 
       toast({
@@ -388,9 +395,32 @@ export function LoanApprovalModal({ isOpen, onClose, loanId, onApprovalSuccess }
       onClose();
     } catch (error: any) {
       console.error('Error approving loan:', error);
+      
+      // Provide more specific error messages based on the error type
+      let errorTitle = "Error";
+      let errorDescription = error.message || "Failed to approve loan. Please try again.";
+      
+      if (error.status === 400) {
+        errorTitle = "Cannot Approve Loan";
+        
+        // Check for specific error conditions
+        if (error.message?.includes('not in submitted and pending approval state') || 
+            error.message?.includes('Current status')) {
+          errorDescription = error.message;
+        } else if (error.message?.includes('Validation errors exist')) {
+          errorDescription = "Please check all required fields and try again.";
+        }
+      } else if (error.status === 403) {
+        errorTitle = "Access Denied";
+        errorDescription = "You don't have permission to approve this loan.";
+      } else if (error.status === 404) {
+        errorTitle = "Loan Not Found";
+        errorDescription = "The loan could not be found. Please refresh and try again.";
+      }
+      
       toast({
-        title: "Error",
-        description: error.message || "Failed to approve loan. Please try again.",
+        title: errorTitle,
+        description: errorDescription,
         variant: "destructive",
       });
     } finally {
@@ -407,6 +437,11 @@ export function LoanApprovalModal({ isOpen, onClose, loanId, onApprovalSuccess }
     return (
       <Dialog open={isOpen} onOpenChange={onClose}>
         <DialogContent className="sm:max-w-[600px]">
+          <DialogHeader>
+            <VisuallyHidden>
+              <DialogTitle>Loading Loan Approval</DialogTitle>
+            </VisuallyHidden>
+          </DialogHeader>
           <div className="flex items-center justify-center py-8">
             <Loader2 className="h-8 w-8 animate-spin" />
             <span className="ml-2">Loading approval data...</span>
@@ -448,7 +483,24 @@ export function LoanApprovalModal({ isOpen, onClose, loanId, onApprovalSuccess }
                   <span className="text-muted-foreground">Loan Officer:</span>
                   <p className="font-medium">{multiDisburseDetails.loanOfficerName}</p>
                 </div>
+                <div>
+                  <span className="text-muted-foreground">Current Status:</span>
+                  <p className="font-medium">{multiDisburseDetails.status?.value || 'Unknown'}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Principal Amount:</span>
+                  <p className="font-medium">{formatCurrency(multiDisburseDetails.principal, multiDisburseDetails.currency)}</p>
+                </div>
               </div>
+              {multiDisburseDetails.status?.value && 
+               !['Submitted and pending approval', 'Submitted and Pending Approval'].includes(multiDisburseDetails.status.value) && (
+                <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
+                  <p className="text-sm text-yellow-800">
+                    <strong>Warning:</strong> This loan is currently in "{multiDisburseDetails.status.value}" status. 
+                    Only loans in "Submitted and pending approval" status can be approved.
+                  </p>
+                </div>
+              )}
             </div>
           )}
 
@@ -549,7 +601,16 @@ export function LoanApprovalModal({ isOpen, onClose, loanId, onApprovalSuccess }
           <Button variant="outline" onClick={onClose} disabled={submitting}>
             Cancel
           </Button>
-          <Button onClick={handleSubmit} disabled={submitting || !approvedOnDate || !expectedDisbursementDate}>
+          <Button 
+            onClick={handleSubmit} 
+            disabled={
+              submitting || 
+              !approvedOnDate || 
+              !expectedDisbursementDate ||
+              (multiDisburseDetails?.status?.value && 
+               !['Submitted and pending approval', 'Submitted and Pending Approval'].includes(multiDisburseDetails.status.value))
+            }
+          >
             {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Approve Loan
           </Button>

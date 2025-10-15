@@ -44,19 +44,30 @@ import { Badge } from "@/components/ui/badge";
 // Form validation schema
 const affordabilityFormSchema = z.object({
   // Income
-  primaryIncome: z.string().transform((val) => Number(val) || 0),
-  secondaryIncome: z.string().transform((val) => Number(val) || 0),
-  otherIncome: z.string().transform((val) => Number(val) || 0),
+  primaryIncome: z.coerce.number({
+    required_error: "Primary income is required",
+    invalid_type_error: "Please enter a valid number"
+  }).min(1, "Primary income must be greater than 0"),
+  
+  secondaryIncome: z.coerce.number().min(0, "Secondary income cannot be negative"),
+  otherIncome: z.coerce.number().min(0, "Other income cannot be negative"),
 
   // Expenditure
-  housingCost: z.string().transform((val) => Number(val) || 0),
-  utilitiesCost: z.string().transform((val) => Number(val) || 0),
-  loanRepayments: z.string().transform((val) => Number(val) || 0),
-  otherExpenses: z.string().transform((val) => Number(val) || 0),
+  housingCost: z.coerce.number().min(0, "Housing cost cannot be negative"),
+  utilitiesCost: z.coerce.number().min(0, "Utilities cost cannot be negative"),
+  loanRepayments: z.coerce.number().min(0, "Loan repayments cannot be negative"),
+  otherExpenses: z.coerce.number().min(0, "Other expenses cannot be negative"),
 
   // Loan details
-  requestedAmount: z.string().transform((val) => Number(val) || 0),
-  creditScore: z.string().transform((val) => Number(val) || 650),
+  requestedAmount: z.coerce.number({
+    required_error: "Loan amount is required",
+    invalid_type_error: "Please enter a valid number"
+  }).min(1000, "Minimum loan amount is $1,000"),
+  
+  creditScore: z.coerce.number({
+    required_error: "Credit score is required",
+    invalid_type_error: "Please enter a valid number"
+  }).min(300, "Credit score must be at least 300").max(850, "Credit score cannot exceed 850"),
 
   // Employer based model
   employerType: z.string().optional(),
@@ -83,6 +94,9 @@ export function AffordabilityCalculator({
     useState<AffordabilityResult | null>(null);
   const [selectedOffer, setSelectedOffer] = useState<LoanOffer | null>(null);
   const [activeTab, setActiveTab] = useState("calculator");
+  const [isCalculating, setIsCalculating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const [affordabilityModels, setAffordabilityModels] = useState([
     {
@@ -127,23 +141,29 @@ export function AffordabilityCalculator({
   const form = useForm<AffordabilityFormValues>({
     resolver: zodResolver(affordabilityFormSchema),
     defaultValues: {
-      primaryIncome: "5000",
-      secondaryIncome: "0",
-      otherIncome: "0",
-      housingCost: "1500",
-      utilitiesCost: "200",
-      loanRepayments: "300",
-      otherExpenses: "500",
-      requestedAmount: "100000",
-      creditScore: "650",
+      primaryIncome: 5000,
+      secondaryIncome: 0,
+      otherIncome: 0,
+      housingCost: 1500,
+      utilitiesCost: 200,
+      loanRepayments: 300,
+      otherExpenses: 500,
+      requestedAmount: 100000,
+      creditScore: 650,
+      employerType: "",
+      yearsEmployed: 2,
+      location: "",
     },
   });
 
   // Handle form submission
-  const onSubmit = (data: AffordabilityFormValues) => {
-    console.log("Form submitted with data:", data);
+  const onSubmit = async (data: AffordabilityFormValues) => {
+    setIsCalculating(true);
+    setError(null);
+    setSuccessMessage(null);
 
     try {
+
       // Ensure all values are properly converted to numbers
       const income = {
         primaryIncome: Number(data.primaryIncome) || 0,
@@ -158,15 +178,8 @@ export function AffordabilityCalculator({
         otherExpenses: Number(data.otherExpenses) || 0,
       };
 
-      const requestedAmount = Number(data.requestedAmount) || 50000; // Default to 50000 if not provided
-      const creditScore = Number(data.creditScore) || 650; // Default to 650 if not provided
-
-      console.log("Calculating affordability with:", {
-        income,
-        expenditure,
-        requestedAmount,
-        creditScore,
-      });
+      const requestedAmount = Number(data.requestedAmount);
+      const creditScore = Number(data.creditScore);
 
       // Calculate affordability
       const result = calculateAffordability(
@@ -176,20 +189,14 @@ export function AffordabilityCalculator({
         creditScore
       );
 
-      console.log("Calculation result:", result);
-
       // Update state with calculation result
       setCalculationResult(result);
 
       // If there are no offers but we should have some (for demonstration purposes),
       // generate some default offers
       if (result.offers.length === 0) {
-        console.log(
-          "No offers generated, creating default offers for demonstration"
-        );
-
         // Create some default offers
-        const defaultAmount = Number(data.requestedAmount) || 50000;
+        const defaultAmount = Number(data.requestedAmount);
         result.offers = [
           {
             loanAmount: defaultAmount,
@@ -223,6 +230,9 @@ export function AffordabilityCalculator({
       // If there are offers, switch to the offers tab
       if (result.offers.length > 0) {
         setActiveTab("offers");
+        setSuccessMessage(`Great! We found ${result.offers.length} loan offer${result.offers.length > 1 ? 's' : ''} for you.`);
+      } else {
+        setSuccessMessage("Calculation completed. Please review the results below.");
       }
 
       // Call the onCalculationComplete callback if provided
@@ -230,7 +240,13 @@ export function AffordabilityCalculator({
         onCalculationComplete(result);
       }
     } catch (error) {
+      const errorMessage = error instanceof Error 
+        ? error.message 
+        : "An unexpected error occurred while calculating affordability. Please try again.";
+      setError(errorMessage);
       console.error("Error calculating affordability:", error);
+    } finally {
+      setIsCalculating(false);
     }
   };
 
@@ -266,8 +282,8 @@ export function AffordabilityCalculator({
       >
         <TabsList className="w-full sm:w-auto overflow-x-auto">
           <TabsTrigger value="calculator">
-            <Calculator className="mr-2 h-4 w-4" />
-            <span className="whitespace-nowrap">Affordability Calculator</span>
+            <Calculator className="h-4 w-4" />
+            <span className="hidden sm:inline ml-2 whitespace-nowrap">Affordability Calculator</span>
           </TabsTrigger>
           <TabsTrigger
             value="offers"
@@ -275,8 +291,8 @@ export function AffordabilityCalculator({
               !calculationResult || calculationResult.offers.length === 0
             }
           >
-            <CreditCard className="mr-2 h-4 w-4" />
-            <span className="whitespace-nowrap">Loan Offers</span>
+            <CreditCard className="h-4 w-4" />
+            <span className="hidden sm:inline ml-2 whitespace-nowrap">Loan Offers</span>
           </TabsTrigger>
         </TabsList>
 
@@ -291,6 +307,32 @@ export function AffordabilityCalculator({
               </CardDescription>
             </CardHeader>
             <CardContent>
+              {/* Error Display */}
+              {error && (
+                <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-md">
+                  <div className="flex items-start gap-2">
+                    <AlertCircle className="h-5 w-5 text-red-500 mt-0.5 flex-shrink-0" />
+                    <div>
+                      <h4 className="text-sm font-medium text-red-800">Calculation Error</h4>
+                      <p className="text-sm text-red-700 mt-1">{error}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Success Display */}
+              {successMessage && (
+                <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-md">
+                  <div className="flex items-start gap-2">
+                    <Check className="h-5 w-5 text-green-500 mt-0.5 flex-shrink-0" />
+                    <div>
+                      <h4 className="text-sm font-medium text-green-800">Success</h4>
+                      <p className="text-sm text-green-700 mt-1">{successMessage}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div className="space-y-6">
                 <div className="mb-4 border-b border-border pb-4">
                   <Label
@@ -303,7 +345,7 @@ export function AffordabilityCalculator({
                     value={selectedModelId}
                     onValueChange={(value) => setSelectedModelId(value)}
                   >
-                    <SelectTrigger id="affordability-model">
+                    <SelectTrigger id="affordability-model" className="h-10 xl:w-110 lg:w-72 w-full">
                       <SelectValue placeholder="Select affordability model" />
                     </SelectTrigger>
                     <SelectContent>
@@ -336,16 +378,19 @@ export function AffordabilityCalculator({
                   </h3>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div className="space-y-2">
-                      <Label htmlFor="primaryIncome">Primary Income</Label>
+                      <Label htmlFor="primaryIncome">Primary Income *</Label>
                       <div className="relative">
                         <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                         <Input
                           id="primaryIncome"
                           placeholder="0"
-                          className="pl-8"
+                          className={`pl-8 ${form.formState.errors.primaryIncome ? 'border-red-500' : ''}`}
                           {...form.register("primaryIncome")}
                         />
                       </div>
+                      {form.formState.errors.primaryIncome && (
+                        <p className="text-sm text-red-500">{form.formState.errors.primaryIncome.message}</p>
+                      )}
                     </div>
 
                     <div className="space-y-2">
@@ -528,39 +573,51 @@ export function AffordabilityCalculator({
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="requestedAmount">
-                        Requested Loan Amount
+                        Requested Loan Amount *
                       </Label>
                       <div className="relative">
                         <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                         <Input
                           id="requestedAmount"
                           placeholder="0"
-                          className="pl-8"
+                          className={`pl-8 ${form.formState.errors.requestedAmount ? 'border-red-500' : ''}`}
                           {...form.register("requestedAmount")}
                         />
                       </div>
+                      {form.formState.errors.requestedAmount && (
+                        <p className="text-sm text-red-500">{form.formState.errors.requestedAmount.message}</p>
+                      )}
                     </div>
 
                     <div className="space-y-2">
-                      <Label htmlFor="creditScore">Credit Score</Label>
+                      <Label htmlFor="creditScore">Credit Score *</Label>
                       <Input
                         id="creditScore"
                         placeholder="650"
+                        className={form.formState.errors.creditScore ? 'border-red-500' : ''}
                         {...form.register("creditScore")}
                       />
+                      {form.formState.errors.creditScore && (
+                        <p className="text-sm text-red-500">{form.formState.errors.creditScore.message}</p>
+                      )}
                     </div>
                   </div>
                 </div>
 
                 <Button
                   type="button"
-                  className="w-full bg-blue-500 hover:bg-blue-600"
-                  onClick={() => {
-                    const values = form.getValues();
-                    onSubmit(values);
-                  }}
+                  className="w-full bg-blue-500 hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                  onClick={form.handleSubmit(onSubmit)}
+                  disabled={isCalculating}
                 >
-                  Calculate Affordability
+                  {isCalculating ? (
+                    <>
+                      <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                      Calculating...
+                    </>
+                  ) : (
+                    "Calculate Affordability"
+                  )}
                 </Button>
               </div>
 
@@ -683,13 +740,15 @@ export function AffordabilityCalculator({
                             </Button>
                           </div>
                         ) : (
-                          <div className="flex items-start gap-2 text-sm text-red-500">
+                          <div className="flex items-start gap-2 text-sm text-amber-600">
                             <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
-                            <span>
-                              Based on the provided information, we cannot offer
-                              any loan products at this time. Please review your
-                              income and expenditure details.
-                            </span>
+                            <div>
+                              <p className="font-medium">No loan offers available</p>
+                              <p className="text-xs mt-1">
+                                This may be due to high debt-to-income ratio or insufficient income. 
+                                Consider reducing your requested amount or increasing your income.
+                              </p>
+                            </div>
                           </div>
                         )}
                       </div>
@@ -789,15 +848,25 @@ export function AffordabilityCalculator({
                 </div>
               ) : (
                 <div className="flex flex-col items-center justify-center py-8">
-                  <AlertCircle className="h-12 w-12 text-muted-foreground mb-4" />
+                  <AlertCircle className="h-12 w-12 text-amber-500 mb-4" />
                   <h3 className="text-lg font-medium mb-2 text-foreground">
-                    No Offers Available
+                    No Loan Offers Available
                   </h3>
-                  <p className="text-muted-foreground text-center max-w-md">
-                    Based on the provided information, we cannot offer any loan
-                    products at this time. Please review your income and
-                    expenditure details.
-                  </p>
+                  <div className="text-muted-foreground text-center max-w-md space-y-2">
+                    <p>
+                      Based on your financial information, we cannot offer any loan
+                      products at this time.
+                    </p>
+                    <div className="text-sm bg-amber-50 border border-amber-200 rounded-md p-3 mt-4">
+                      <p className="font-medium text-amber-800 mb-1">Suggestions to improve your eligibility:</p>
+                      <ul className="text-left text-amber-700 space-y-1">
+                        <li>• Reduce your requested loan amount</li>
+                        <li>• Increase your monthly income</li>
+                        <li>• Reduce your monthly expenses</li>
+                        <li>• Improve your credit score</li>
+                      </ul>
+                    </div>
+                  </div>
                 </div>
               )}
             </CardContent>

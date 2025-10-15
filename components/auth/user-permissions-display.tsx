@@ -1,7 +1,7 @@
 import { getSession } from "@/lib/auth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Role } from "@/types/auth";
+import { Role } from "@/shared/types/auth";
 
 /**
  * Component to display the current user's permissions and roles

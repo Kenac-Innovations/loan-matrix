@@ -1,10 +1,11 @@
 import { PrismaClient } from "../app/generated/prisma";
+import { allTenantConfigs } from "../shared/defaults/tenants";
 
 const prisma = new PrismaClient();
 
 async function initTenant() {
   try {
-    console.log("Initializing tenant...");
+    console.log("Initializing tenants...");
 
     // Check if default tenant exists
     let tenant = await prisma.tenant.findUnique({
@@ -53,35 +54,16 @@ async function initTenant() {
           },
         },
       });
-      console.log("Demo tenant created:", demoTenant);
-    } else {
-      console.log("Demo tenant already exists:", demoTenant);
-    }
 
-    // Create goodfellow tenant for production
-    let goodfellowTenant = await prisma.tenant.findUnique({
-      where: { slug: "goodfellow" },
-    });
-
-    if (!goodfellowTenant) {
-      console.log("Creating goodfellow tenant...");
-      goodfellowTenant = await prisma.tenant.create({
-        data: {
-          name: "GoodFellow Organization",
-          slug: "goodfellow",
-          domain: "goodfellow.kenacloanmatrix.com",
-          settings: {
-            theme: "default",
-            features: {
-              statemachine: true,
-              notifications: true,
-            },
-          },
-        },
-      });
-      console.log("GoodFellow tenant created:", goodfellowTenant);
-    } else {
-      console.log("GoodFellow tenant already exists:", goodfellowTenant);
+      if (!tenant) {
+        console.log(`Creating ${tenantConfig.name}...`);
+        tenant = await prisma.tenant.create({
+          data: tenantConfig,
+        });
+        console.log(`${tenantConfig.name} created:`, tenant);
+      } else {
+        console.log(`${tenantConfig.name} already exists:`, tenant);
+      }
     }
 
     console.log("Tenant initialization completed successfully!");

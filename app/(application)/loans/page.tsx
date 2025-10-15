@@ -8,7 +8,8 @@ async function fetchAllLoans() {
   const host = hdrs.get("x-forwarded-host") || hdrs.get("host");
   const proto = hdrs.get("x-forwarded-proto") || "http";
   const base = host ? `${proto}://${host}` : "http://localhost:3000";
-  const cookieHeader = cookies().toString();
+  const cookie = await cookies();
+  const cookieHeader = cookie.toString();
   const res = await fetch(`${base}/api/fineract/loans`, {
     cache: "no-store",
     headers: cookieHeader ? { cookie: cookieHeader } : undefined,
@@ -39,6 +40,16 @@ function transformLoanData(rawLoan: any): Loan {
 
 export default async function LoansPage() {
   const data = await fetchAllLoans();
+
+  console.log("Loans Page Debug:", {
+    dataType: typeof data,
+    data: data,
+    hasPageItems: !!data?.pageItems,
+    hasContent: !!data?.content,
+    hasLoans: !!data?.loans,
+    isArray: Array.isArray(data),
+  });
+
   const rawItems: any[] = Array.isArray(data?.pageItems)
     ? data.pageItems
     : Array.isArray(data?.content)
@@ -48,6 +59,11 @@ export default async function LoansPage() {
     : Array.isArray(data)
     ? data
     : [];
+
+  console.log("Raw Items Debug:", {
+    rawItemsLength: rawItems.length,
+    rawItems: rawItems.slice(0, 2), // Show first 2 items
+  });
 
   const loans: Loan[] = rawItems.map(transformLoanData);
 

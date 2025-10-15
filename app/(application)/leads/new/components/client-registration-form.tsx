@@ -48,7 +48,6 @@ import {
   saveDraft,
   getLead,
   closeLead,
-  submitLead,
   addFamilyMember,
   removeFamilyMember,
   getOffices,
@@ -57,12 +56,6 @@ import {
   getClientTypes,
   getClientClassifications,
   getSavingsProducts,
-  addOffice,
-  addLegalForm,
-  addGender,
-  addClientType,
-  addClientClassification,
-  addSavingsProduct,
   getActivationDate,
 } from "@/app/actions/client-actions";
 import {
@@ -70,11 +63,10 @@ import {
   getLeadStageHistory,
   cancelProspect,
   getLeadById,
-  markLeadAsConverted,
 } from "@/app/actions/client-actions-with-autosave";
 import { LeadLocalStorage } from "@/lib/lead-local-storage";
 import { ProspectContinuationDialog } from "@/app/(application)/leads/new/components/prospect-continuation-dialog";
-import { toast } from "@/components/ui/use-toast";
+import { useToast } from "@/hooks/use-toast";
 import { useThemeColors } from "@/lib/theme-utils";
 import { Calendar } from "@/components/ui/calender";
 import { SkeletonForm } from "./client-registration-form-skeleton";
@@ -85,12 +77,8 @@ import { submitClientForm } from "@/app/actions/submit-client-form";
 const clientFormSchema = z
   .object({
     // Step 1: General Information
-    officeId: z.number({
-      required_error: "Office is required",
-    }),
-    legalFormId: z.number({
-      required_error: "Legal form is required",
-    }),
+    officeId: z.string().min(1, "Office is required"),
+    legalFormId: z.string().min(1, "Legal form is required"),
     externalId: z.string().min(1, "National ID is required"),
     firstname: z.string().min(1, "First name is required"),
     middlename: z.string().optional(),
@@ -98,19 +86,13 @@ const clientFormSchema = z
     dateOfBirth: z.date({
       required_error: "Date of birth is required",
     }),
-    genderId: z.number({
-      required_error: "Gender is required",
-    }),
+    genderId: z.string().optional(),
     isStaff: z.boolean().default(false),
     mobileNo: z.string().min(1, "Mobile number is required"),
     countryCode: z.string().default("+263"),
     emailAddress: z.string().email("Invalid email address"),
-    clientTypeId: z.number({
-      required_error: "Client type is required",
-    }),
-    clientClassificationId: z.number({
-      required_error: "Client classification is required",
-    }),
+    clientTypeId: z.string().optional(),
+    clientClassificationId: z.string().optional(),
     submittedOnDate: z.date().default(() => new Date()),
 
     // Financial Information
@@ -128,7 +110,7 @@ const clientFormSchema = z
     active: z.boolean().default(true),
     activationDate: z.date().optional(),
     openSavingsAccount: z.boolean().default(false),
-    savingsProductId: z.number().optional(),
+    savingsProductId: z.string().optional(),
 
     // Tracking
     currentStep: z.number().default(1),
@@ -235,6 +217,7 @@ export function ClientRegistrationForm({
   externalForm,
   onFormSubmit,
 }: ClientRegistrationFormProps) {
+  const { success, error, saveSuccess, saveError, validationError, networkError } = useToast();
   const router = useRouter();
   const searchParams = useSearchParams();
   const colors = useThemeColors();
@@ -302,8 +285,8 @@ export function ClientRegistrationForm({
   const form = externalForm || useForm<ClientFormValues>({
     resolver: zodResolver(clientFormSchema) as any,
     defaultValues: {
-      officeId: 1,
-      legalFormId: 1,
+      officeId: "1",
+      legalFormId: "1",
       externalId: "",
       firstname: "",
       middlename: "",
@@ -527,25 +510,25 @@ export function ClientRegistrationForm({
           if (lead) {
             // Set form values
             form.reset({
-              officeId: lead.officeId || 1,
-              legalFormId: lead.legalFormId || 1,
+              officeId: lead.officeId?.toString() || "1",
+              legalFormId: lead.legalFormId?.toString() || "1",
               externalId: lead.externalId || "",
               firstname: lead.firstname || "",
               middlename: lead.middlename || "",
               lastname: lead.lastname || "",
               dateOfBirth: lead.dateOfBirth || undefined,
-              genderId: lead.genderId || undefined,
+              genderId: lead.genderId?.toString() || undefined,
               isStaff: lead.isStaff || false,
               mobileNo: lead.mobileNo || "",
               countryCode: lead.countryCode || "+263",
               emailAddress: lead.emailAddress || "",
-              clientTypeId: lead.clientTypeId || undefined,
-              clientClassificationId: lead.clientClassificationId || undefined,
+              clientTypeId: lead.clientTypeId?.toString() || undefined,
+              clientClassificationId: lead.clientClassificationId?.toString() || undefined,
               submittedOnDate: lead.submittedOnDate || new Date(),
               active: lead.active,
               activationDate: lead.activationDate || undefined,
               openSavingsAccount: lead.openSavingsAccount || false,
-              savingsProductId: lead.savingsProductId || undefined,
+              savingsProductId: lead.savingsProductId?.toString() || undefined,
               currentStep: lead.currentStep || 1,
             });
 
@@ -553,12 +536,11 @@ export function ClientRegistrationForm({
             setFamilyMembers(lead.familyMembers || []);
           }
         }
-      } catch (error) {
-        console.error("Error loading data:", error);
-        toast({
+      } catch (err) {
+        console.error("Error loading data:", err);
+        error({
           title: "Error",
           description: "Failed to load form data. Please try again.",
-          variant: "destructive",
         });
       } finally {
         setIsLoading(false);
@@ -629,10 +611,9 @@ export function ClientRegistrationForm({
 
       setShowProspectDialog(false);
 
-      toast({
+      success({
         title: "Prospect Restored",
         description: "Continuing with your existing prospect.",
-        variant: "default",
       });
     }
   };
@@ -652,17 +633,16 @@ export function ClientRegistrationForm({
           // Clear local storage
           LeadLocalStorage.clear();
 
-          toast({
+          success({
             title: "Prospect Canceled",
             description:
               "The previous prospect has been canceled. You can now start a new one.",
-            variant: "default",
           });
 
           // Reset the form for a new prospect
           form.reset({
-            officeId: 1,
-            legalFormId: 1,
+            officeId: "1",
+            legalFormId: "1",
             externalId: "",
             firstname: "",
             middlename: "",
@@ -680,19 +660,17 @@ export function ClientRegistrationForm({
           setFamilyMembers([]);
           setCurrentLeadId(undefined);
         } else {
-          toast({
+          error({
             title: "Error",
             description: result.error || "Failed to cancel prospect",
-            variant: "destructive",
           });
         }
-      } catch (error) {
-        console.error("Error canceling prospect:", error);
-        toast({
+      } catch (err) {
+        console.error("Error canceling prospect:", err);
+        error({
           title: "Error",
           description:
             "An unexpected error occurred while canceling the prospect",
-          variant: "destructive",
         });
       }
     }
@@ -754,11 +732,7 @@ export function ClientRegistrationForm({
   // Handle client lookup by National ID
   const handleClientLookup = async () => {
     if (!nationalIdLookup.trim()) {
-      toast({
-        title: "Error",
-        description: "Please enter a national ID number",
-        variant: "destructive",
-      });
+      validationError("Please enter a national ID number");
       return;
     }
 
@@ -769,7 +743,7 @@ export function ClientRegistrationForm({
       // First, try to get client details directly by external ID (this includes email address)
       try {
         const externalIdResponse = await fetch(`/api/fineract/clients/external-id/${nationalIdLookup}`);
-        
+
         if (externalIdResponse.ok) {
           // Client found by external ID - this gives us the email address
           const clientData = await externalIdResponse.json();
@@ -790,20 +764,20 @@ export function ClientRegistrationForm({
             
             // Pre-populate form with COMBINED client data
             form.reset({
-              officeId: combinedClientData.officeId || 1,
-              legalFormId: combinedClientData.legalForm?.id || 1,
+              officeId: combinedClientData.officeId?.toString() || "1",
+              legalFormId: combinedClientData.legalForm?.id?.toString() || "1",
               externalId: combinedClientData.externalId || nationalIdLookup,
               firstname: combinedClientData.firstname || '',
               middlename: combinedClientData.middlename || '',
               lastname: combinedClientData.lastname || '',
               dateOfBirth: combinedClientData.dateOfBirth ? new Date(combinedClientData.dateOfBirth) : undefined,
-              genderId: combinedClientData.gender?.id || undefined,
+              genderId: combinedClientData.gender?.id?.toString() || undefined,
               isStaff: combinedClientData.isStaff !== undefined ? combinedClientData.isStaff : false,
               mobileNo: combinedClientData.mobileNo || '',
               countryCode: combinedClientData.countryCode || '+1',
               emailAddress: combinedClientData.emailAddress || '', // This is the key field we needed!
-              clientTypeId: combinedClientData.clientType?.id || undefined,
-              clientClassificationId: combinedClientData.clientClassification?.id || undefined,
+              clientTypeId: combinedClientData.clientType?.id?.toString() || undefined,
+              clientClassificationId: combinedClientData.clientClassification?.id?.toString() || undefined,
               submittedOnDate: new Date(),
               active: combinedClientData.active !== false,
               activationDate: combinedClientData.activationDate ? new Date(combinedClientData.activationDate) : undefined,
@@ -819,10 +793,9 @@ export function ClientRegistrationForm({
             setClientLookupStatus("found");
             setIsFormDisabled(false);
 
-            toast({
+            success({
               title: "Client Found",
               description: `Found client: ${combinedClientData.firstname || ''} ${combinedClientData.lastname || ''} (Email: ${combinedClientData.emailAddress || 'Not provided'})`,
-              variant: "default",
             });
             
             return; // Exit early since we found the client
@@ -830,8 +803,8 @@ export function ClientRegistrationForm({
             // Fall back to using just the external ID data if full client lookup fails
             // This will give us the email address but may miss some other fields
             form.reset({
-              officeId: clientData.officeId || 1,
-              legalFormId: 1, // Default legal form ID
+              officeId: clientData.officeId?.toString() || "1",
+              legalFormId: "1", // Default legal form ID
               externalId: clientData.externalId || nationalIdLookup,
               firstname: clientData.firstname || '',
               middlename: clientData.middlename || '',
@@ -854,10 +827,9 @@ export function ClientRegistrationForm({
             setClientLookupStatus("found");
             setIsFormDisabled(false);
 
-            toast({
+            success({
               title: "Client Found (Partial Data)",
               description: `Found client with email, but some fields may need manual entry: ${clientData.firstname || ''} ${clientData.lastname || ''} (Email: ${clientData.emailAddress || 'Not provided'})`,
-              variant: "default",
             });
             
             return; // Exit early since we found the client
@@ -902,20 +874,20 @@ export function ClientRegistrationForm({
 
         // Pre-populate form with client data
         form.reset({
-          officeId: clientData.officeId || client.officeId,
-          legalFormId: clientData.legalForm?.id || client.legalForm?.id || 1,
+          officeId: clientData.officeId?.toString() || client.officeId?.toString() || "1",
+          legalFormId: clientData.legalForm?.id?.toString() || client.legalForm?.id?.toString() || "1",
           externalId: clientData.externalId || client.externalId,
           firstname: clientData.firstname || client.firstname || '',
           middlename: clientData.middlename || '',
           lastname: clientData.lastname || client.lastname || '',
           dateOfBirth: clientData.dateOfBirth ? new Date(clientData.dateOfBirth) : (client.dateOfBirth ? new Date(client.dateOfBirth[0], client.dateOfBirth[1] - 1, client.dateOfBirth[2]) : undefined),
-          genderId: clientData.gender?.id || client.gender?.id || undefined,
+          genderId: clientData.gender?.id?.toString() || client.gender?.id?.toString() || undefined,
           isStaff: clientData.isStaff !== undefined ? clientData.isStaff : client.isStaff || false,
           mobileNo: clientData.mobileNo || '',
           countryCode: clientData.countryCode || '+1',
           emailAddress: clientData.emailAddress || '',
-          clientTypeId: clientData.clientType?.id || client.clientType?.id || undefined,
-          clientClassificationId: clientData.clientClassification?.id || client.clientClassification?.id || undefined,
+          clientTypeId: clientData.clientType?.id?.toString() || client.clientType?.id?.toString() || undefined,
+          clientClassificationId: clientData.clientClassification?.id?.toString() || client.clientClassification?.id?.toString() || undefined,
           submittedOnDate: new Date(),
           active: clientData.active !== false,
           activationDate: clientData.activationDate ? new Date(clientData.activationDate) : (client.activationDate ? new Date(client.activationDate[0], client.activationDate[1] - 1, client.activationDate[2]) : undefined),
@@ -931,10 +903,9 @@ export function ClientRegistrationForm({
         setClientLookupStatus("found");
         setIsFormDisabled(false);
 
-        toast({
+        success({
           title: "Client Found",
           description: `Found client: ${clientData.firstname || client.firstname} ${clientData.lastname || client.lastname}`,
-          variant: "default",
         });
       } else {
         setClientLookupStatus("not_found");
@@ -943,21 +914,19 @@ export function ClientRegistrationForm({
         // Set the searched national ID in the form's externalId field for new client
         form.setValue("externalId", nationalIdLookup);
 
-        toast({
+        success({
           title: "Client Not Found",
           description:
             "No client found with this ID. You can proceed with new client registration.",
-          variant: "default",
         });
       }
-    } catch (error) {
-      console.error("Error looking up client:", error);
+    } catch (err) {
+      console.error("Error looking up client:", err);
       setClientLookupStatus("error");
 
-      toast({
+      error({
         title: "Error",
         description: "Failed to look up client. Please try again.",
-        variant: "destructive",
       });
     } finally {
       setIsSearchingClient(false);
@@ -972,8 +941,8 @@ export function ClientRegistrationForm({
 
     // Reset form to default values
     form.reset({
-      officeId: 1,
-      legalFormId: 1,
+      officeId: "1",
+      legalFormId: "1",
       externalId: "",
       firstname: "",
       middlename: "",
@@ -997,10 +966,24 @@ export function ClientRegistrationForm({
     setIsSaving(true);
 
     try {
-      const result = await saveDraft(
-        {
+      // Convert data types to match the schema expectations
+      const processedData = {
           ...data,
-        },
+        dateOfBirth: data.dateOfBirth ? new Date(data.dateOfBirth) : undefined,
+        submittedOnDate: data.submittedOnDate ? new Date(data.submittedOnDate) : new Date(),
+        activationDate: data.activationDate ? new Date(data.activationDate) : undefined,
+        // Convert string IDs to numbers for the API
+        officeId: Number(data.officeId),
+        legalFormId: Number(data.legalFormId),
+        clientTypeId: data.clientTypeId ? Number(data.clientTypeId) : undefined,
+        clientClassificationId: data.clientClassificationId ? Number(data.clientClassificationId) : undefined,
+        genderId: data.genderId ? Number(data.genderId) : undefined,
+        savingsProductId: data.savingsProductId ? Number(data.savingsProductId) : undefined,
+      };
+
+
+      const result = await saveDraft(
+        processedData,
         leadId
       );
 
@@ -1010,11 +993,7 @@ export function ClientRegistrationForm({
           router.push(`/leads/new?id=${result.leadId}`);
         }
 
-        toast({
-          title: "Draft Saved",
-          description: "Your progress has been saved",
-          variant: "default",
-        });
+        saveSuccess("Draft");
 
         return { success: true, leadId: result.leadId };
       } else {
@@ -1031,11 +1010,7 @@ export function ClientRegistrationForm({
   // Handle closing lead
   const handleCloseLead = async () => {
     if (!closeReason) {
-      toast({
-        title: "Error",
-        description: "Please provide a reason for closing",
-        variant: "destructive",
-      });
+      validationError("Please provide a reason for closing");
       return;
     }
 
@@ -1043,10 +1018,9 @@ export function ClientRegistrationForm({
 
     try {
       if (!leadId) {
-        toast({
+        error({
           title: "Error",
           description: "No lead ID found",
-          variant: "destructive",
         });
         return;
       }
@@ -1054,27 +1028,24 @@ export function ClientRegistrationForm({
       const result = await closeLead(leadId, closeReason);
 
       if (result.success) {
-        toast({
+        success({
           title: "Lead Closed",
           description: "The lead has been closed",
-          variant: "default",
         });
 
         // Redirect to leads page
         router.push("/leads");
       } else {
-        toast({
+        error({
           title: "Error",
           description: result.error || "Failed to close lead",
-          variant: "destructive",
         });
       }
-    } catch (error) {
-      console.error("Error closing lead:", error);
-      toast({
+    } catch (err) {
+      console.error("Error closing lead:", err);
+      error({
         title: "Error",
         description: "An unexpected error occurred",
-        variant: "destructive",
       });
     } finally {
       setIsClosing(false);
@@ -1091,10 +1062,9 @@ export function ClientRegistrationForm({
       const saveResult = await handleSaveDraft(formData);
 
       if (!saveResult.success) {
-        toast({
+        error({
           title: "Error",
           description: saveResult.error || "Failed to save draft",
-          variant: "destructive",
         });
         return;
       }
@@ -1107,10 +1077,9 @@ export function ClientRegistrationForm({
       const result = await addFamilyMember(effectiveLeadId!, data);
 
       if (result.success) {
-        toast({
+        success({
           title: "Success",
           description: "Family member added",
-          variant: "default",
         });
 
         // Reset form and close dialog
@@ -1123,18 +1092,16 @@ export function ClientRegistrationForm({
           setFamilyMembers(lead.familyMembers || []);
         }
       } else {
-        toast({
+        error({
           title: "Error",
           description: result.error || "Failed to add family member",
-          variant: "destructive",
         });
       }
-    } catch (error) {
-      console.error("Error adding family member:", error);
-      toast({
+    } catch (err) {
+      console.error("Error adding family member:", err);
+      error({
         title: "Error",
         description: "An unexpected error occurred",
-        variant: "destructive",
       });
     }
   };
@@ -1145,10 +1112,9 @@ export function ClientRegistrationForm({
       const result = await removeFamilyMember(id);
 
       if (result.success) {
-        toast({
+        success({
           title: "Success",
           description: "Family member removed",
-          variant: "default",
         });
 
         // Refresh family members
@@ -1159,18 +1125,16 @@ export function ClientRegistrationForm({
           }
         }
       } else {
-        toast({
+        error({
           title: "Error",
           description: result.error || "Failed to remove family member",
-          variant: "destructive",
         });
       }
-    } catch (error) {
-      console.error("Error removing family member:", error);
-      toast({
+    } catch (err) {
+      console.error("Error removing family member:", err);
+      error({
         title: "Error",
         description: "An unexpected error occurred",
-        variant: "destructive",
       });
     }
   };
@@ -1187,27 +1151,25 @@ export function ClientRegistrationForm({
         description: data.description || null,
       };
 
-      toast({
+      success({
         title: "Success",
         description: "Legal form added successfully",
-        variant: "default",
       });
 
       // Add the new legal form to the local state
       setLegalForms([...legalForms, mockResult]);
 
       // Select the new legal form
-      form.setValue("legalFormId", mockResult.id);
+      form.setValue("legalFormId", mockResult.id.toString());
 
       // Close dialog and reset form
       setShowAddLegalFormDialog(false);
       legalFormForm.reset();
-    } catch (error) {
-      console.error("Error adding legal form:", error);
-      toast({
+    } catch (err) {
+      console.error("Error adding legal form:", err);
+      error({
         title: "Error",
         description: "An unexpected error occurred",
-        variant: "destructive",
       });
     } finally {
       setIsAddingNew(false);
@@ -1226,27 +1188,25 @@ export function ClientRegistrationForm({
         description: null,
       };
 
-      toast({
+      success({
         title: "Success",
         description: "Gender added successfully",
-        variant: "default",
       });
 
       // Add the new gender to the local state
       setGenders([...genders, mockResult]);
 
       // Select the new gender
-      form.setValue("genderId", mockResult.id);
+      form.setValue("genderId", mockResult.id.toString());
 
       // Close dialog and reset form
       setShowAddGenderDialog(false);
       genderForm.reset();
-    } catch (error) {
-      console.error("Error adding gender:", error);
-      toast({
+    } catch (err) {
+      console.error("Error adding gender:", err);
+      error({
         title: "Error",
         description: "An unexpected error occurred",
-        variant: "destructive",
       });
     } finally {
       setIsAddingNew(false);
@@ -1265,27 +1225,25 @@ export function ClientRegistrationForm({
         description: data.description || null,
       };
 
-      toast({
+      success({
         title: "Success",
         description: "Client type added successfully",
-        variant: "default",
       });
 
       // Add the new client type to the local state
       setClientTypes([...clientTypes, mockResult]);
 
       // Select the new client type
-      form.setValue("clientTypeId", mockResult.id);
+      form.setValue("clientTypeId", mockResult.id.toString());
 
       // Close dialog and reset form
       setShowAddClientTypeDialog(false);
       clientTypeForm.reset();
-    } catch (error) {
-      console.error("Error adding client type:", error);
-      toast({
+    } catch (err) {
+      console.error("Error adding client type:", err);
+      error({
         title: "Error",
         description: "An unexpected error occurred",
-        variant: "destructive",
       });
     } finally {
       setIsAddingNew(false);
@@ -1306,27 +1264,25 @@ export function ClientRegistrationForm({
         description: data.description || null,
       };
 
-      toast({
+      success({
         title: "Success",
         description: "Client classification added successfully",
-        variant: "default",
       });
 
       // Add the new client classification to the local state
       setClientClassifications([...clientClassifications, mockResult]);
 
       // Select the new client classification
-      form.setValue("clientClassificationId", mockResult.id);
+      form.setValue("clientClassificationId", mockResult.id.toString());
 
       // Close dialog and reset form
       setShowAddClientClassificationDialog(false);
       clientClassificationForm.reset();
-    } catch (error) {
-      console.error("Error adding client classification:", error);
-      toast({
+    } catch (err) {
+      console.error("Error adding client classification:", err);
+      error({
         title: "Error",
         description: "An unexpected error occurred",
-        variant: "destructive",
       });
     } finally {
       setIsAddingNew(false);
@@ -1347,27 +1303,25 @@ export function ClientRegistrationForm({
         minBalance: 0,
       };
 
-      toast({
+      success({
         title: "Success",
         description: "Savings product added successfully",
-        variant: "default",
       });
 
       // Add the new savings product to the local state
       setSavingsProducts([...savingsProducts, mockResult]);
 
       // Select the new savings product
-      form.setValue("savingsProductId", mockResult.id);
+      form.setValue("savingsProductId", mockResult.id.toString());
 
       // Close dialog and reset form
       setShowAddSavingsProductDialog(false);
       savingsProductForm.reset();
-    } catch (error) {
-      console.error("Error adding savings product:", error);
-      toast({
+    } catch (err) {
+      console.error("Error adding savings product:", err);
+      error({
         title: "Error",
         description: "An unexpected error occurred",
-        variant: "destructive",
       });
     } finally {
       setIsAddingNew(false);
@@ -1411,49 +1365,111 @@ export function ClientRegistrationForm({
                     >
                       National ID Number <span className="text-red-500">*</span>
                     </Label>
-                    <div className="flex space-x-2">
-                      <Input
-                        id="nationalIdLookup"
-                        placeholder="Enter national ID number (e.g. 22-000000Z12)"
-                        value={nationalIdLookup}
-                        onChange={(e) => setNationalIdLookup(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' && nationalIdLookup.trim() && !isSearchingClient) {
-                            e.preventDefault();
-                            handleClientLookup();
-                          }
-                        }}
-                        className={`h-10 flex-1 border-${colors.borderColor} ${colors.inputBg}`}
-                        disabled={isSearchingClient}
-                      />
-                      <Button
-                        type="button"
-                        onClick={handleClientLookup}
-                        disabled={isSearchingClient || !nationalIdLookup.trim()}
-                        className="bg-blue-500 hover:bg-blue-600 min-w-[100px]"
-                      >
-                        {isSearchingClient ? (
-                          <>
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            Searching...
-                          </>
-                        ) : (
-                          <>
-                            <Search className="mr-2 h-4 w-4" />
-                            Search
-                          </>
-                        )}
-                      </Button>
-                      {clientLookupStatus !== "idle" && (
+                    <div className="space-y-2">
+                      {/* Mobile layout - stacked */}
+                      <div className="sm:hidden space-y-2">
+                        {/* Input field with close button on mobile */}
+                        <div className="relative">
+                          <Input
+                            id="nationalIdLookup"
+                            placeholder="Enter national ID number (e.g. 22-000000Z12)"
+                            value={nationalIdLookup}
+                            onChange={(e) => setNationalIdLookup(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' && nationalIdLookup.trim() && !isSearchingClient) {
+                                e.preventDefault();
+                                handleClientLookup();
+                              }
+                            }}
+                            className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg} ${clientLookupStatus !== "idle" ? 'pr-10' : ''}`}
+                            disabled={isSearchingClient}
+                          />
+                          {/* Close button positioned absolutely on mobile */}
+                          {clientLookupStatus !== "idle" && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="icon"
+                              onClick={handleClearClientLookup}
+                              className={`absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8 border-${colors.borderColor} hover:bg-${colors.hoverBgColor}`}
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
+                        
+                        {/* Search button on mobile */}
                         <Button
                           type="button"
-                          variant="outline"
-                          onClick={handleClearClientLookup}
-                          className={`border-${colors.borderColor} hover:bg-${colors.hoverBgColor}`}
+                          onClick={handleClientLookup}
+                          disabled={isSearchingClient || !nationalIdLookup.trim()}
+                          className="bg-blue-500 hover:bg-blue-600 w-full"
                         >
-                          <X className="h-4 w-4" />
+                          {isSearchingClient ? (
+                            <>
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              Searching...
+                            </>
+                          ) : (
+                            <>
+                              <Search className="mr-2 h-4 w-4" />
+                              Search
+                            </>
+                          )}
                         </Button>
-                      )}
+                      </div>
+
+                      {/* Desktop layout - inline */}
+                      <div className="hidden sm:flex items-center gap-2">
+                        <div className="flex-1 relative">
+                          <Input
+                            id="nationalIdLookup"
+                            placeholder="Enter national ID number (e.g. 22-000000Z12)"
+                            value={nationalIdLookup}
+                            onChange={(e) => setNationalIdLookup(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' && nationalIdLookup.trim() && !isSearchingClient) {
+                                e.preventDefault();
+                                handleClientLookup();
+                              }
+                            }}
+                            className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
+                            disabled={isSearchingClient}
+                          />
+                        </div>
+                        
+                        <Button
+                          type="button"
+                          onClick={handleClientLookup}
+                          disabled={isSearchingClient || !nationalIdLookup.trim()}
+                          className="bg-blue-500 hover:bg-blue-600 min-w-[100px] flex-shrink-0"
+                        >
+                          {isSearchingClient ? (
+                            <>
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              Searching...
+                            </>
+                          ) : (
+                            <>
+                              <Search className="mr-2 h-4 w-4" />
+                              Search
+                            </>
+                          )}
+                        </Button>
+                        
+                        {/* Clear button for desktop */}
+                        {clientLookupStatus !== "idle" && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={handleClearClientLookup}
+                            className={`border-${colors.borderColor} hover:bg-${colors.hoverBgColor} flex-shrink-0`}
+                          >
+                            <X className="mr-2 h-4 w-4" />
+                            Clear
+                          </Button>
+                        )}
+                      </div>
                     </div>
                     <p className={`text-xs ${colors.textColorMuted}`}>
                       Enter the client's national ID number to search for
@@ -1540,19 +1556,16 @@ export function ClientRegistrationForm({
                         </Label>
                         <div className="relative">
                           <Controller
-                            control={form.control}
+                            control={externalForm ? externalForm.control : form.control}
                             name="officeId"
                             render={({ field }) => (
                               <SearchableSelect
                                 options={officeOptions}
                                 value={field.value?.toString()}
-                                onValueChange={(value) =>
-                                  field.onChange(Number.parseInt(value))
-                                }
-                                {...form.register("officeId", {
-                                  onBlur: (e) =>
-                                    handleFieldBlur("officeId", e.target.value),
-                                })}
+                                onValueChange={(value) => {
+                                  field.onChange(value);
+                                  handleFieldBlur("officeId", value);
+                                }}
                                 placeholder="Select office"
                                 className={`border-${colors.borderColor} ${colors.inputBg}`}
                                 onAddNew={() => setShowAddOfficeDialog(true)}
@@ -1570,9 +1583,9 @@ export function ClientRegistrationForm({
                         <p className={`text-xs ${colors.textColorMuted}`}>
                           Select the branch office managing this client
                         </p>
-                        {form.formState.errors.officeId && (
+                        {(externalForm ? externalForm.formState.errors.officeId : form.formState.errors.officeId) && (
                           <p className="text-sm text-red-500">
-                            {form.formState.errors.officeId.message}
+                            {(externalForm ? externalForm.formState.errors.officeId : form.formState.errors.officeId)?.message}
                           </p>
                         )}
                       </div>
@@ -1587,15 +1600,16 @@ export function ClientRegistrationForm({
                         </Label>
                         <div className="relative">
                           <Controller
-                            control={form.control}
+                            control={externalForm ? externalForm.control : form.control}
                             name="legalFormId"
                             render={({ field }) => (
                               <SearchableSelect
                                 options={legalFormOptions}
                                 value={field.value?.toString()}
-                                onValueChange={(value) =>
-                                  field.onChange(Number.parseInt(value))
-                                }
+                                onValueChange={(value) => {
+                                  field.onChange(value);
+                                  handleFieldBlur("legalFormId", value);
+                                }}
                                 placeholder="Select legal form"
                                 className={`border-${colors.borderColor} ${colors.inputBg}`}
                                 onAddNew={() => setShowAddLegalFormDialog(true)}
@@ -1608,9 +1622,9 @@ export function ClientRegistrationForm({
                         <p className={`text-xs ${colors.textColorMuted}`}>
                           Legal classification of the client
                         </p>
-                        {form.formState.errors.legalFormId && (
+                        {(externalForm ? externalForm.formState.errors.legalFormId : form.formState.errors.legalFormId) && (
                           <p className="text-sm text-red-500">
-                            {form.formState.errors.legalFormId.message}
+                            {(externalForm ? externalForm.formState.errors.legalFormId : form.formState.errors.legalFormId)?.message}
                           </p>
                         )}
                       </div>
@@ -1640,7 +1654,13 @@ export function ClientRegistrationForm({
                             name="firstname"
                             placeholder="Enter first name"
                             className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
-                            defaultValue={form.getValues("firstname")}
+                            {...(externalForm ? externalForm.register("firstname", {
+                              onBlur: (e: { target: { value: any; }; }) =>
+                                handleFieldBlur("firstname", e.target.value),
+                            }) : form.register("firstname", {
+                              onBlur: (e: { target: { value: any; }; }) =>
+                                handleFieldBlur("firstname", e.target.value),
+                            }))}
                             disabled={isFormDisabled}
                           />
                           {lastSavedField === "firstname" && isAutoSaving && (
@@ -1652,9 +1672,9 @@ export function ClientRegistrationForm({
                         <p className={`text-xs ${colors.textColorMuted}`}>
                           Client's legal first name
                         </p>
-                        {form.formState.errors.firstname && (
+                        {(externalForm ? externalForm.formState.errors.firstname : form.formState.errors.firstname) && (
                           <p className="text-sm text-red-500">
-                            {form.formState.errors.firstname.message}
+                            {(externalForm ? externalForm.formState.errors.firstname : form.formState.errors.firstname)?.message}
                           </p>
                         )}
                       </div>
@@ -1673,7 +1693,13 @@ export function ClientRegistrationForm({
                             name="middlename"
                             placeholder="Enter middle name"
                             className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
-                            defaultValue={form.getValues("middlename")}
+                            {...(externalForm ? externalForm.register("middlename", {
+                              onBlur: (e: { target: { value: any; }; }) =>
+                                handleFieldBlur("middlename", e.target.value),
+                            }) : form.register("middlename", {
+                              onBlur: (e: { target: { value: any; }; }) =>
+                                handleFieldBlur("middlename", e.target.value),
+                            }))}
                             disabled={isFormDisabled}
                           />
                           {lastSavedField === "middlename" && isAutoSaving && (
@@ -1698,7 +1724,13 @@ export function ClientRegistrationForm({
                             name="lastname"
                             placeholder="Enter last name"
                             className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
-                            defaultValue={form.getValues("lastname")}
+                            {...(externalForm ? externalForm.register("lastname", {
+                              onBlur: (e: { target: { value: any; }; }) =>
+                                handleFieldBlur("lastname", e.target.value),
+                            }) : form.register("lastname", {
+                              onBlur: (e: { target: { value: any; }; }) =>
+                                handleFieldBlur("lastname", e.target.value),
+                            }))}
                             disabled={isFormDisabled}
                           />
                           {lastSavedField === "lastname" && isAutoSaving && (
@@ -1710,9 +1742,9 @@ export function ClientRegistrationForm({
                         <p className={`text-xs ${colors.textColorMuted}`}>
                           Client's legal last name/surname
                         </p>
-                        {form.formState.errors.lastname && (
+                        {(externalForm ? externalForm.formState.errors.lastname : form.formState.errors.lastname) && (
                           <p className="text-sm text-red-500">
-                            {form.formState.errors.lastname.message}
+                            {(externalForm ? externalForm.formState.errors.lastname : form.formState.errors.lastname)?.message}
                           </p>
                         )}
                       </div>
@@ -1758,12 +1790,17 @@ export function ClientRegistrationForm({
                                 <Calendar
                                   mode="single"
                                   selected={field.value}
-                                  onSelect={field.onChange}
+                                  onSelect={(date) => {
+                                    field.onChange(date);
+                                    if (date) {
+                                      handleFieldBlur("dateOfBirth", date);
+                                    }
+                                  }}
                                   disabled={(date) =>
                                     date > new Date() ||
                                     date < new Date("1900-01-01")
                                   }
-                                  initialFocus
+                                  captionLayout="dropdown"
                                 />
                               </PopoverContent>
                             </Popover>
@@ -1792,9 +1829,10 @@ export function ClientRegistrationForm({
                             <SearchableSelect
                               options={genderOptions}
                               value={field.value?.toString()}
-                              onValueChange={(value) =>
-                                field.onChange(Number.parseInt(value))
-                              }
+                              onValueChange={(value) => {
+                                field.onChange(value);
+                                handleFieldBlur("genderId", value);
+                              }}
                               placeholder="Select gender"
                               className={`border-${colors.borderColor} ${colors.inputBg}`}
                               onAddNew={() => setShowAddGenderDialog(true)}
@@ -1826,15 +1864,23 @@ export function ClientRegistrationForm({
                             id="externalId"
                             placeholder="Enter national ID (e.g. 48-147220J12)"
                             className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
-                            {...form.register("externalId", {
-                              onBlur: (e) =>
+                            {...(externalForm ? externalForm.register("externalId", {
+                              onBlur: (e: { target: { value: any; }; }) =>
                                 handleFieldBlur("externalId", e.target.value),
                               pattern: {
                                 value: /^[0-9]{2}-[0-9]{6}[A-Za-z][0-9]{2}$/,
                                 message:
                                   "National ID must be in format 48-147220J12",
                               },
-                            })}
+                            }) : form.register("externalId", {
+                              onBlur: (e: { target: { value: any; }; }) =>
+                                handleFieldBlur("externalId", e.target.value),
+                              pattern: {
+                                value: /^[0-9]{2}-[0-9]{6}[A-Za-z][0-9]{2}$/,
+                                message:
+                                  "National ID must be in format 48-147220J12",
+                              },
+                            }))}
                             disabled={isFormDisabled}
                           />
                           {lastSavedField === "externalId" && isAutoSaving && (
@@ -1846,9 +1892,9 @@ export function ClientRegistrationForm({
                         <p className={`text-xs ${colors.textColorMuted}`}>
                           Government-issued identification number
                         </p>
-                        {form.formState.errors.externalId && (
+                        {(externalForm ? externalForm.formState.errors.externalId : form.formState.errors.externalId) && (
                           <p className="text-sm text-red-500">
-                            {form.formState.errors.externalId.message}
+                            {(externalForm ? externalForm.formState.errors.externalId : form.formState.errors.externalId)?.message}
                           </p>
                         )}
                       </div>
@@ -1883,7 +1929,7 @@ export function ClientRegistrationForm({
                                 disabled={isFormDisabled}
                               >
                                 <SelectTrigger
-                                  className={`h-10 w-34 border-${colors.borderColor} ${colors.inputBg}`}
+                                  className={`h-10 w-24 sm:w-28 lg:w-32 border-${colors.borderColor} ${colors.inputBg} flex-shrink-0`}
                                 >
                                   <SelectValue placeholder="+263" />
                                 </SelectTrigger>
@@ -1917,10 +1963,13 @@ export function ClientRegistrationForm({
                               id="mobileNo"
                               placeholder="Enter mobile number"
                               className={`h-10 flex-1 border-${colors.borderColor} ${colors.inputBg}`}
-                              {...form.register("mobileNo", {
-                                onBlur: (e) =>
+                              {...(externalForm ? externalForm.register("mobileNo", {
+                                onBlur: (e: { target: { value: any; }; }) =>
                                   handleFieldBlur("mobileNo", e.target.value),
-                              })}
+                              }) : form.register("mobileNo", {
+                                onBlur: (e: { target: { value: any; }; }) =>
+                                  handleFieldBlur("mobileNo", e.target.value),
+                              }))}
                               disabled={isFormDisabled}
                             />
                             {lastSavedField === "mobileNo" && isAutoSaving && (
@@ -1933,9 +1982,9 @@ export function ClientRegistrationForm({
                         <p className={`text-xs ${colors.textColorMuted}`}>
                           Primary contact number for notifications
                         </p>
-                        {form.formState.errors.mobileNo && (
+                        {(externalForm ? externalForm.formState.errors.mobileNo : form.formState.errors.mobileNo) && (
                           <p className="text-sm text-red-500">
-                            {form.formState.errors.mobileNo.message}
+                            {(externalForm ? externalForm.formState.errors.mobileNo : form.formState.errors.mobileNo)?.message}
                           </p>
                         )}
                       </div>
@@ -1954,10 +2003,13 @@ export function ClientRegistrationForm({
                             type="email"
                             placeholder="Enter email address"
                             className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
-                            {...form.register("emailAddress", {
-                              onBlur: (e) =>
+                            {...(externalForm ? externalForm.register("emailAddress", {
+                              onBlur: (e: { target: { value: any; }; }) =>
                                 handleFieldBlur("emailAddress", e.target.value),
-                            })}
+                            }) : form.register("emailAddress", {
+                              onBlur: (e: { target: { value: any; }; }) =>
+                                handleFieldBlur("emailAddress", e.target.value),
+                            }))}
                             disabled={isFormDisabled}
                           />
                           {lastSavedField === "emailAddress" &&
@@ -1970,9 +2022,9 @@ export function ClientRegistrationForm({
                         <p className={`text-xs ${colors.textColorMuted}`}>
                           Email for statements and notifications
                         </p>
-                        {form.formState.errors.emailAddress && (
+                        {(externalForm ? externalForm.formState.errors.emailAddress : form.formState.errors.emailAddress) && (
                           <p className="text-sm text-red-500">
-                            {form.formState.errors.emailAddress.message}
+                            {(externalForm ? externalForm.formState.errors.emailAddress : form.formState.errors.emailAddress)?.message}
                           </p>
                         )}
                       </div>
@@ -2108,7 +2160,7 @@ export function ClientRegistrationForm({
                             placeholder="Enter employer name"
                             className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
                             {...form.register("employerName", {
-                              onBlur: (e) =>
+                              onBlur: (e: { target: { value: any; }; }) =>
                                 handleFieldBlur("employerName", e.target.value),
                             })}
                             disabled={isFormDisabled}
@@ -2180,7 +2232,7 @@ export function ClientRegistrationForm({
                           Existing Loans
                         </Label>
                         <Card
-                          className={`border-${colors.borderColor} ${colors.cardBg} flex flex-row items-center justify-between p-4`}
+                          className={`border-${colors.borderColor} ${colors.cardBg} flex flex-col sm:flex-row sm:items-center sm:justify-between p-4 space-y-2 sm:space-y-0`}
                         >
                           <div className="flex items-center space-x-2">
                             <Controller
@@ -2223,7 +2275,7 @@ export function ClientRegistrationForm({
                             placeholder="Enter monthly debt payments"
                             className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
                             {...form.register("monthlyDebtPayments", {
-                              onBlur: (e) =>
+                              onBlur: (e: { target: { value: any; }; }) =>
                                 handleFieldBlur(
                                   "monthlyDebtPayments",
                                   parseFloat(e.target.value) || 0
@@ -2297,7 +2349,7 @@ export function ClientRegistrationForm({
                           Business Ownership
                         </Label>
                         <Card
-                          className={`border-${colors.borderColor} ${colors.cardBg} flex flex-row items-center justify-between p-4`}
+                          className={`border-${colors.borderColor} ${colors.cardBg} flex flex-col sm:flex-row sm:items-center sm:justify-between p-4 space-y-2 sm:space-y-0`}
                         >
                           <div className="flex items-center space-x-2">
                             <Controller
@@ -2341,7 +2393,7 @@ export function ClientRegistrationForm({
                             placeholder="Enter type of business"
                             className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
                             {...form.register("businessType", {
-                              onBlur: (e) =>
+                              onBlur: (e: { target: { value: any; }; } ) =>
                                 handleFieldBlur("businessType", e.target.value),
                             })}
                             disabled={isFormDisabled}
@@ -2388,9 +2440,10 @@ export function ClientRegistrationForm({
                             <SearchableSelect
                               options={clientTypeOptions}
                               value={field.value?.toString()}
-                              onValueChange={(value) =>
-                                field.onChange(Number.parseInt(value))
-                              }
+                              onValueChange={(value) => {
+                                field.onChange(value);
+                                handleFieldBlur("clientTypeId", value);
+                              }}
                               placeholder="Select client type"
                               className={`border-${colors.borderColor} ${colors.inputBg}`}
                               onAddNew={() => setShowAddClientTypeDialog(true)}
@@ -2426,9 +2479,10 @@ export function ClientRegistrationForm({
                             <SearchableSelect
                               options={clientClassificationOptions}
                               value={field.value?.toString()}
-                              onValueChange={(value) =>
-                                field.onChange(Number.parseInt(value))
-                              }
+                              onValueChange={(value) => {
+                                field.onChange(value);
+                                handleFieldBlur("clientClassificationId", value);
+                              }}
                               placeholder="Select client classification"
                               className={`border-${colors.borderColor} ${colors.inputBg}`}
                               onAddNew={() =>
@@ -2502,16 +2556,16 @@ export function ClientRegistrationForm({
                                 className="w-auto p-0"
                                 align="start"
                               >
-                                <Calendar
-                                  mode="single"
-                                  selected={field.value}
-                                  onSelect={field.onChange}
-                                  disabled={(date) =>
-                                    date > new Date() ||
-                                    date < new Date("1900-01-01")
-                                  }
-                                  initialFocus
-                                />
+                                  <Calendar
+                                    mode="single"
+                                    selected={field.value}
+                                    onSelect={field.onChange}
+                                    disabled={(date) =>
+                                      date < new Date()
+                                    }
+                                    captionLayout="dropdown"
+                                    initialFocus
+                                  />
                               </PopoverContent>
                             </Popover>
                           )}
@@ -2532,7 +2586,7 @@ export function ClientRegistrationForm({
                           Staff Status
                         </Label>
                         <Card
-                          className={`border-${colors.borderColor} ${colors.cardBg} flex flex-row items-center justify-between p-4`}
+                          className={`border-${colors.borderColor} ${colors.cardBg} flex flex-col sm:flex-row sm:items-center sm:justify-between p-4 space-y-2 sm:space-y-0`}
                         >
                           <div className="flex items-center space-x-2">
                             <Controller
@@ -2674,7 +2728,7 @@ export function ClientRegistrationForm({
                           Account Status
                         </Label>
                         <Card
-                          className={`border-${colors.borderColor} ${colors.cardBg} flex flex-row items-center justify-between p-4`}
+                          className={`border-${colors.borderColor} ${colors.cardBg} flex flex-col sm:flex-row sm:items-center sm:justify-between p-4 space-y-2 sm:space-y-0`}
                         >
                           <div className="flex items-center space-x-2">
                             <Controller
@@ -2711,7 +2765,7 @@ export function ClientRegistrationForm({
                           Savings Account
                         </Label>
                         <Card
-                          className={`border-${colors.borderColor} ${colors.cardBg} flex flex-row items-center justify-between p-4`}
+                          className={`border-${colors.borderColor} ${colors.cardBg} flex flex-col sm:flex-row sm:items-center sm:justify-between p-4 space-y-2 sm:space-y-0`}
                         >
                           <div className="flex items-center space-x-2">
                             <Controller
@@ -2780,16 +2834,16 @@ export function ClientRegistrationForm({
                                   className="w-auto p-0"
                                   align="start"
                                 >
-                                  <Calendar
-                                    mode="single"
-                                    selected={field.value}
-                                    onSelect={field.onChange}
-                                    disabled={(date) =>
-                                      date > new Date() ||
-                                      date < new Date("1900-01-01")
-                                    }
-                                    initialFocus
-                                  />
+                                <Calendar
+                                  mode="single"
+                                  selected={field.value}
+                                  onSelect={field.onChange}
+                                  disabled={(date) =>
+                                    date < new Date()
+                                  }
+                                  captionLayout="dropdown"
+                                  initialFocus
+                                />
                                 </PopoverContent>
                               </Popover>
                             )}
@@ -2823,9 +2877,10 @@ export function ClientRegistrationForm({
                               <SearchableSelect
                                 options={savingsProductOptions}
                                 value={field.value?.toString()}
-                                onValueChange={(value) =>
-                                  field.onChange(Number.parseInt(value))
-                                }
+                                onValueChange={(value) => {
+                                  field.onChange(value);
+                                  handleFieldBlur("savingsProductId", value);
+                                }}
                                 placeholder="Select savings product"
                                 className={`border-${colors.borderColor} ${colors.inputBg}`}
                                 onAddNew={() =>
@@ -3543,6 +3598,7 @@ export function ClientRegistrationForm({
                                   date > new Date() ||
                                   date < new Date("1900-01-01")
                                 }
+                                captionLayout="dropdown"
                                 initialFocus
                               />
                             </PopoverContent>
@@ -3562,7 +3618,7 @@ export function ClientRegistrationForm({
                       <div className="flex space-x-2">
                         <Select defaultValue="+263">
                           <SelectTrigger
-                            className={`h-10 w-24 border-${colors.borderColor} ${colors.inputBg}`}
+                            className={`h-10 w-24 sm:w-28 lg:w-32 border-${colors.borderColor} ${colors.inputBg} flex-shrink-0`}
                           >
                             <SelectValue placeholder="+263" />
                           </SelectTrigger>

@@ -74,6 +74,7 @@ export function PipelineView({ initialData }: PipelineViewProps) {
       }
 
       const response = await fetch(`/api/leads/paginated?${params}`);
+      console.log("==========> log on client side fetchLeads response ::", response);
       if (!response.ok) {
         throw new Error("Failed to fetch leads");
       }
