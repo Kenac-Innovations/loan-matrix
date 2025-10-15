@@ -87,7 +87,7 @@ export default async function DashboardLayout({
                   label="Leads"
                   href="/ussd-leads"
                   subMenuItems={[
-                    // { label: "Pipeline", href: "/leads" },
+                    { label: "Pipeline", href: "/leads" },
                     { label: "USSD Leads", href: "/ussd-leads" },
                     // { label: "Configuration", href: "/leads/config" },
                   ]}

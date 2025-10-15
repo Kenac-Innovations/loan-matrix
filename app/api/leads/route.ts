@@ -7,7 +7,7 @@ const prisma = new PrismaClient();
 export async function GET(request: NextRequest) {
   try {
     // Get tenant from x-tenant-slug header or default to "default"
-    const tenantSlug = request.headers.get("x-tenant-slug") || "default";
+    const tenantSlug = request.headers.get("x-tenant-slug") || "goodfellow";
     const tenant = await getTenantBySlug(tenantSlug);
 
     if (!tenant) {

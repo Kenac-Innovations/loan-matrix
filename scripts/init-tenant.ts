@@ -16,7 +16,7 @@ async function initTenant() {
       tenant = await prisma.tenant.create({
         data: {
           name: "Default Organization",
-          slug: "default",
+          slug: "goodfellow",
           domain: "localhost",
           settings: {
             theme: "default",

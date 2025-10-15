@@ -19,14 +19,14 @@ export interface TenantInfo {
  * - localhost:3000 -> default (fallback)
  */
 export function extractTenantSlug(host: string): string {
-  if (!host) return "default";
+  if (!host) return "goodfellow";
 
   // Remove port if present
   const hostWithoutPort = host.split(":")[0];
 
   // Handle localhost development
   if (hostWithoutPort === "localhost") {
-    return "default";
+    return "goodfellow";
   }
 
   // Extract subdomain
@@ -36,7 +36,7 @@ export function extractTenantSlug(host: string): string {
   }
 
   // If no subdomain, use default
-  return "default";
+  return "goodfellow";
 }
 
 /**
@@ -81,14 +81,14 @@ export async function getTenantBySlug(
  * Get or create default tenant
  */
 export async function getOrCreateDefaultTenant(): Promise<TenantInfo> {
-  let tenant = await getTenantBySlug("default");
+  let tenant = await getTenantBySlug("goodfellow");
 
   if (!tenant) {
     // Create default tenant
     tenant = await prisma.tenant.create({
       data: {
-        name: "Default Organization",
-        slug: "default",
+        name: "Goodfellow Organization",
+        slug: "goodfellow",
         settings: {
           theme: "default",
           features: {

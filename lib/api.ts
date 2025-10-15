@@ -1,7 +1,9 @@
 import { getSession } from "./auth";
 
 
-const API_BASE_URL = "http://fineract-dev.10.10.0.24.nip.io:31778/fineract-provider/api/v1";
+const API_BASE_URL = process.env.FINERACT_BASE_URL 
+  ? `${process.env.FINERACT_BASE_URL}/fineract-provider/api/v1`
+  : "http://fineract-dev.10.10.0.24.nip.io:31778/fineract-provider/api/v1";
 
 /**
  * Makes an authenticated request to the Fineract API
@@ -16,9 +18,12 @@ export async function fetchFineractAPI(
   const session = await getSession();
   const accessToken = session?.accessToken as string | undefined;
 
-  
+  console.log("API Debug - Session:", session ? "exists" : "null");
+  console.log("API Debug - Access Token:", accessToken ? "exists" : "null");
+  console.log("API Debug - Environment:", process.env.NODE_ENV);
 
   if (!accessToken) {
+    console.error("API Debug - No access token available");
     throw new Error("No access token available");
   }
 

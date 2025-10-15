@@ -12,7 +12,7 @@ export async function GET(
     const { id } = await params;
 
     // Get tenant from x-tenant-slug header or default to "default"
-    const tenantSlug = request.headers.get("x-tenant-slug") || "default";
+    const tenantSlug = request.headers.get("x-tenant-slug") || "goodfellow";
     const tenant = await getTenantBySlug(tenantSlug);
 
     if (!tenant) {
@@ -48,7 +48,7 @@ export async function POST(
     const { id } = await params;
 
     // Get tenant from x-tenant-slug header or default to "default"
-    const tenantSlug = request.headers.get("x-tenant-slug") || "default";
+    const tenantSlug = request.headers.get("x-tenant-slug") || "goodfellow";
     const tenant = await getTenantBySlug(tenantSlug);
 
     if (!tenant) {
@@ -96,7 +96,7 @@ export async function PUT(
     const { documentId, ...updateData } = body;
 
     // Get tenant from x-tenant-slug header or default to "default"
-    const tenantSlug = request.headers.get("x-tenant-slug") || "default";
+    const tenantSlug = request.headers.get("x-tenant-slug") || "goodfellow";
     const tenant = await getTenantBySlug(tenantSlug);
 
     if (!tenant) {
@@ -143,7 +143,7 @@ export async function DELETE(
     }
 
     // Get tenant from x-tenant-slug header or default to "default"
-    const tenantSlug = request.headers.get("x-tenant-slug") || "default";
+    const tenantSlug = request.headers.get("x-tenant-slug") || "goodfellow";
     const tenant = await getTenantBySlug(tenantSlug);
 
     if (!tenant) {

@@ -36,7 +36,7 @@ async function getLeadData(leadId: string) {
   try {
     // Get tenant from headers
     const headersList = await headers();
-    const tenantId = headersList.get("x-tenant-id") || "default-tenant";
+    const tenantId = headersList.get("x-tenant-id") || "goodfellow";
 
     // Fetch lead data
     const lead = await prisma.lead.findUnique({
