@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm, Controller } from "react-hook-form";
@@ -296,6 +296,7 @@ export function ClientRegistrationForm({
 
   // Local storage and prospect continuation state
   const [showProspectDialog, setShowProspectDialog] = useState(false);
+  const [hasSeenProspectDialog, setHasSeenProspectDialog] = useState(false);
   const [existingProspectData, setExistingProspectData] = useState<{
     leadId: string;
     firstname?: string;
@@ -310,6 +311,9 @@ export function ClientRegistrationForm({
   );
   const [isSettingLeadIdFromAutoSave, setIsSettingLeadIdFromAutoSave] =
     useState(false);
+  
+  // Use ref to track if we've already checked for prospect dialog (only check once)
+  const hasCheckedProspectDialog = useRef(false);
 
   // Initialize form - use external form if provided, otherwise create new one
   const form =
@@ -425,18 +429,31 @@ export function ClientRegistrationForm({
     label: product.name,
   }));
 
-  // Check for existing prospects on mount
+  // Check for existing prospects on mount - ONLY ONCE
   useEffect(() => {
+    // Only run this check once on initial mount
+    if (hasCheckedProspectDialog.current) {
+      console.log("Already checked for prospect dialog, skipping");
+      return;
+    }
+
+    hasCheckedProspectDialog.current = true;
+
     const checkExistingProspect = async () => {
-      console.log("Checking for existing prospect...", {
+      console.log("Checking for existing prospect on initial mount...", {
         leadId,
+        currentLeadId,
         localStorageExists: LeadLocalStorage.exists(),
         isExpired: LeadLocalStorage.isExpired(),
       });
 
-      // Only check if no leadId is provided (new form)
+      // Only show dialog if:
+      // 1. No leadId in URL (new form)
+      // 2. There's a draft in localStorage
+      // 3. The localStorage draft is NOT the current lead being worked on
       if (
         !leadId &&
+        !hasSeenProspectDialog &&
         LeadLocalStorage.exists() &&
         !LeadLocalStorage.isExpired()
       ) {
@@ -444,8 +461,14 @@ export function ClientRegistrationForm({
         console.log("Found existing data in localStorage:", existingData);
 
         if (existingData) {
+          // Check if this is the SAME lead we're already working on
+          if (existingData.leadId === currentLeadId) {
+            console.log("Same lead in localStorage - already working on it, skipping dialog");
+            return;
+          }
+
+          // Different lead - show the dialog
           try {
-            // Fetch the lead data from the server to verify it still exists
             const result = await getLeadById(existingData.leadId);
             console.log("Server response for existing lead:", result);
 
@@ -460,21 +483,21 @@ export function ClientRegistrationForm({
                 timestamp: existingData.timestamp,
               });
               setShowProspectDialog(true);
+              setHasSeenProspectDialog(true);
               console.log("Showing prospect continuation dialog");
             } else {
-              // Lead not found on server, clear local storage
               console.log("Lead not found on server, clearing localStorage");
               LeadLocalStorage.clear();
             }
           } catch (error) {
             console.error("Error fetching existing prospect:", error);
-            // Clear invalid data
             LeadLocalStorage.clear();
           }
         }
       } else {
         console.log("No existing prospect check needed:", {
           hasLeadId: !!leadId,
+          hasSeenDialog: hasSeenProspectDialog,
           localStorageExists: LeadLocalStorage.exists(),
           isExpired: LeadLocalStorage.isExpired(),
         });
@@ -482,7 +505,7 @@ export function ClientRegistrationForm({
     };
 
     checkExistingProspect();
-  }, [leadId]);
+  }, []); // Empty dependency array - only run once on mount
 
   // Load data on mount or from props
   useEffect(() => {
@@ -570,16 +593,21 @@ export function ClientRegistrationForm({
 
             // Trigger actual lookup if externalId exists
             if (lead.externalId) {
-              console.log("==========> Resuming prospect with externalId:", lead.externalId);
-              console.log("==========> Triggering lookup to determine client state...");
-              
+              console.log(
+                "==========> Resuming prospect with externalId:",
+                lead.externalId
+              );
+              console.log(
+                "==========> Triggering lookup to determine client state..."
+              );
+
               // Set the national ID lookup value and trigger the lookup
               setNationalIdLookup(lead.externalId);
-              
+
               // Trigger the actual lookup process
               // This will check Fineract and local DB to determine if client exists
               setIsSearchingClient(true);
-              
+
               try {
                 let fineractData: any = null;
                 let localData: any = null;
@@ -602,22 +630,28 @@ export function ClientRegistrationForm({
                   }
                 } catch (error) {
                   console.log("Fineract lookup failed, trying search method");
-                  
+
                   // Try search method as fallback
                   try {
-                    const searchResponse = await fetch("/api/fineract/clients/search", {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({
-                        text: lead.externalId,
-                        page: 0,
-                        size: 50,
-                      }),
-                    });
+                    const searchResponse = await fetch(
+                      "/api/fineract/clients/search",
+                      {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          text: lead.externalId,
+                          page: 0,
+                          size: 50,
+                        }),
+                      }
+                    );
 
                     if (searchResponse.ok) {
                       const searchData = await searchResponse.json();
-                      if (searchData.pageItems && searchData.pageItems.length > 0) {
+                      if (
+                        searchData.pageItems &&
+                        searchData.pageItems.length > 0
+                      ) {
                         const client = searchData.pageItems[0];
                         const detailResponse = await fetch(
                           `/api/fineract/clients/${client.id}`
@@ -649,11 +683,15 @@ export function ClientRegistrationForm({
 
                 // Step 3: Determine state based on lookup results
                 if (fineractData || localData) {
-                  console.log("==========> Lookup successful - client found in Fineract or local DB");
-                  
+                  console.log(
+                    "==========> Lookup successful - client found in Fineract or local DB"
+                  );
+
                   // Helper function to check if a value is meaningful
                   const hasValue = (value: any): boolean => {
-                    return value !== null && value !== undefined && value !== "";
+                    return (
+                      value !== null && value !== undefined && value !== ""
+                    );
                   };
 
                   // Helper function to get the best value with proper fallback
@@ -705,14 +743,19 @@ export function ClientRegistrationForm({
                   // If we have Fineract data, client exists in Fineract
                   if (fineractData) {
                     console.log("==========> Client exists in Fineract");
-                    console.log("==========> Setting clientCreatedInFineract to true");
-                    
+                    console.log(
+                      "==========> Setting clientCreatedInFineract to true"
+                    );
+
                     setClientLookupStatus("found");
                     setIsFormDisabled(false);
-                    
+
                     // Update parent component's state
                     if (setFormCompletionStatus) {
-                      setFormCompletionStatus((prev) => ({ ...prev, client: true }));
+                      setFormCompletionStatus((prev) => ({
+                        ...prev,
+                        client: true,
+                      }));
                     }
                     if (setClientCreatedInFineract) {
                       setClientCreatedInFineract(true);
@@ -724,7 +767,9 @@ export function ClientRegistrationForm({
                     }
                   } else if (localData) {
                     // Client exists locally but not in Fineract yet
-                    console.log("==========> Client exists in local DB but not in Fineract");
+                    console.log(
+                      "==========> Client exists in local DB but not in Fineract"
+                    );
                     setClientLookupStatus("not_found");
                     setIsFormDisabled(false);
                   } else {
@@ -734,7 +779,9 @@ export function ClientRegistrationForm({
                     setIsFormDisabled(false);
                   }
                 } else {
-                  console.log("==========> No client found in Fineract or local DB");
+                  console.log(
+                    "==========> No client found in Fineract or local DB"
+                  );
                   setClientLookupStatus("not_found");
                   setIsFormDisabled(false);
                 }
@@ -894,6 +941,7 @@ export function ClientRegistrationForm({
 
   const handleCloseProspectDialog = () => {
     setShowProspectDialog(false);
+    setHasSeenProspectDialog(true);
   };
 
   // Handle field blur for auto-save
