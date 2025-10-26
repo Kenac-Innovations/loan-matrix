@@ -1,7 +1,10 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
-import { getOrCreateDefaultTenant, getTenantBySlug } from "@/lib/tenant-service";
+import {
+  getOrCreateDefaultTenant,
+  getTenantBySlug,
+} from "@/lib/tenant-service";
 import { UssdLeadsMetrics, UssdLoanApplication } from "./ussd-leads-actions";
 import { Lead, PipelineStage } from "@/shared/types/lead";
 
@@ -46,7 +49,7 @@ export interface LeadsData {
 }
 
 export async function getLeadsData(
-  tenantSlug: string = "goodfellow",
+  tenantSlug: string = "demo",
   options: {
     stage?: string;
     status?: string;
@@ -59,7 +62,10 @@ export async function getLeadsData(
 
     // Get tenant
     const tenant = await getOrCreateDefaultTenant();
-    console.log("==========> log on server side getLeadsData response ::", tenant);
+    console.log(
+      "==========> log on server side getLeadsData response ::",
+      tenant
+    );
     if (!tenant) {
       throw new Error("Tenant not found");
     }

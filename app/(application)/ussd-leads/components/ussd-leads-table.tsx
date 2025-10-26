@@ -1,6 +1,5 @@
 "use client";
 
-
 import { useState, useEffect } from "react";
 import useSWR from "swr";
 import {
@@ -27,18 +26,21 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { 
-  MoreHorizontal, 
-  Phone, 
-  User, 
-  DollarSign, 
+import {
+  MoreHorizontal,
+  Phone,
+  User,
+  DollarSign,
   Calendar,
   CheckCircle,
   XCircle,
   Clock,
-  Eye
+  Eye,
 } from "lucide-react";
-import { UssdLeadsData, UssdLoanApplication } from "@/app/actions/ussd-leads-actions";
+import {
+  UssdLeadsData,
+  UssdLoanApplication,
+} from "@/app/actions/ussd-leads-actions";
 import { format } from "date-fns";
 
 interface UssdLeadsTableProps {
@@ -66,7 +68,7 @@ const paymentStatusColors = {
 
 const payoutMethodLabels = {
   "1": "Mobile Money",
-  "2": "Cash Pickup", 
+  "2": "Cash Pickup",
   "3": "Bank Transfer",
 };
 
@@ -74,45 +76,51 @@ const payoutMethodLabels = {
 //const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
 // Should be:
-const fetcher = (url: string) => 
+const fetcher = (url: string) =>
   fetch(url, {
     headers: {
-      'x-tenant-slug': 'goodfellow' // Or get this dynamically
-    }
+      "x-tenant-slug": "demo", // Or get this dynamically
+    },
   }).then((res) => res.json());
 
 export function UssdLeadsTable({ initialData }: UssdLeadsTableProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  
+
   // Use SWR for real-time updates
-  const { data, error, mutate } = useSWR('/api/ussd-leads', fetcher, {
+  const { data, error, mutate } = useSWR("/api/ussd-leads", fetcher, {
     initialData,
     refreshInterval: 5000, // Refresh every 5 seconds
     revalidateOnFocus: true,
   });
-  
+
   const applications = data?.applications || initialData.applications;
 
   // Filter applications based on search and status
-  const filteredApplications = applications.filter((app: UssdLoanApplication) => {
-    const matchesSearch = 
-      app.userFullName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      app.userPhoneNumber.includes(searchQuery) ||
-      app.messageId.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      app.referenceNumber.toLowerCase().includes(searchQuery.toLowerCase());
-    
-    const matchesStatus = statusFilter === "all" || app.status === statusFilter;
-    
-    return matchesSearch && matchesStatus;
-  });
+  const filteredApplications = applications.filter(
+    (app: UssdLoanApplication) => {
+      const matchesSearch =
+        app.userFullName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        app.userPhoneNumber.includes(searchQuery) ||
+        app.messageId.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        app.referenceNumber.toLowerCase().includes(searchQuery.toLowerCase());
 
-  const handleStatusUpdate = async (applicationId: number, newStatus: string) => {
+      const matchesStatus =
+        statusFilter === "all" || app.status === statusFilter;
+
+      return matchesSearch && matchesStatus;
+    }
+  );
+
+  const handleStatusUpdate = async (
+    applicationId: number,
+    newStatus: string
+  ) => {
     try {
       const response = await fetch(`/api/ussd-leads/${applicationId}/status`, {
-        method: 'PUT',
+        method: "PUT",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({ status: newStatus }),
       });
@@ -122,29 +130,35 @@ export function UssdLeadsTable({ initialData }: UssdLeadsTableProps) {
         mutate();
       }
     } catch (error) {
-      console.error('Error updating status:', error);
+      console.error("Error updating status:", error);
     }
   };
 
   const handleMarkAsSubmitted = async (app: UssdLoanApplication) => {
     try {
       // Create Fineract loan using backend mapping
-      const res = await fetch(`/api/ussd-leads/${app.loanApplicationUssdId}/submit`, {
-        method: 'POST',
-      });
+      const res = await fetch(
+        `/api/ussd-leads/${app.loanApplicationUssdId}/submit`,
+        {
+          method: "POST",
+        }
+      );
       const data = await res.json();
       if (!res.ok) {
-        const msg = data?.errorData?.defaultUserMessage || data?.error || 'Failed to create loan';
+        const msg =
+          data?.errorData?.defaultUserMessage ||
+          data?.error ||
+          "Failed to create loan";
         alert(msg);
         return;
       }
 
       // Update status to SUBMITTED locally and in DB
-      await handleStatusUpdate(app.loanApplicationUssdId, 'SUBMITTED');
-      alert('Loan submitted successfully');
+      await handleStatusUpdate(app.loanApplicationUssdId, "SUBMITTED");
+      alert("Loan submitted successfully");
     } catch (e: any) {
       console.error(e);
-      alert(e.message || 'Failed to submit loan');
+      alert(e.message || "Failed to submit loan");
     }
   };
 
@@ -210,7 +224,7 @@ export function UssdLeadsTable({ initialData }: UssdLeadsTableProps) {
                       </div>
                     </div>
                   </TableCell>
-                  
+
                   <TableCell>
                     <div className="space-y-1">
                       <div className="font-medium">{app.userFullName}</div>
@@ -223,10 +237,12 @@ export function UssdLeadsTable({ initialData }: UssdLeadsTableProps) {
                       </div>
                     </div>
                   </TableCell>
-                  
+
                   <TableCell>
                     <div className="space-y-1">
-                      <div className="font-medium">{app.loanProductDisplayName}</div>
+                      <div className="font-medium">
+                        {app.loanProductDisplayName}
+                      </div>
                       <div className="flex items-center gap-1 text-sm font-semibold text-green-600">
                         {app.principalAmount.toLocaleString()}
                       </div>
@@ -235,11 +251,13 @@ export function UssdLeadsTable({ initialData }: UssdLeadsTableProps) {
                       </div>
                     </div>
                   </TableCell>
-                  
+
                   <TableCell>
                     <div className="space-y-1">
                       <div className="text-sm">
-                        {payoutMethodLabels[app.payoutMethod as keyof typeof payoutMethodLabels] || app.payoutMethod}
+                        {payoutMethodLabels[
+                          app.payoutMethod as keyof typeof payoutMethodLabels
+                        ] || app.payoutMethod}
                       </div>
                       {app.payoutMethod === "1" && app.mobileMoneyNumber && (
                         <div className="text-xs text-muted-foreground">
@@ -258,23 +276,31 @@ export function UssdLeadsTable({ initialData }: UssdLeadsTableProps) {
                       )}
                     </div>
                   </TableCell>
-                  
+
                   <TableCell>
-                    <Badge 
-                      className={statusColors[app.status as keyof typeof statusColors] || "bg-gray-100 text-gray-800"}
+                    <Badge
+                      className={
+                        statusColors[app.status as keyof typeof statusColors] ||
+                        "bg-gray-100 text-gray-800"
+                      }
                     >
-                      {app.status.replace('_', ' ')}
+                      {app.status.replace("_", " ")}
                     </Badge>
                   </TableCell>
-                  
+
                   <TableCell>
-                    <Badge 
-                      className={paymentStatusColors[(app.paymentStatus || 'PENDING') as keyof typeof paymentStatusColors] || "bg-gray-100 text-gray-800"}
+                    <Badge
+                      className={
+                        paymentStatusColors[
+                          (app.paymentStatus ||
+                            "PENDING") as keyof typeof paymentStatusColors
+                        ] || "bg-gray-100 text-gray-800"
+                      }
                     >
-                      {app.paymentStatus || 'PENDING'}
+                      {app.paymentStatus || "PENDING"}
                     </Badge>
                   </TableCell>
-                  
+
                   <TableCell>
                     <div className="text-sm">
                       {format(new Date(app.createdAt), "MMM dd, yyyy")}
@@ -283,7 +309,7 @@ export function UssdLeadsTable({ initialData }: UssdLeadsTableProps) {
                       {format(new Date(app.createdAt), "HH:mm")}
                     </div>
                   </TableCell>
-                  
+
                   <TableCell>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
@@ -292,45 +318,81 @@ export function UssdLeadsTable({ initialData }: UssdLeadsTableProps) {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={async () => {
-                          try {
-                            const res = await fetch(`/api/ussd-leads/${app.loanApplicationUssdId}/to-lead`, { method: 'POST' });
-                            const data = await res.json();
-                            if (!res.ok) throw new Error(data?.error || 'Failed to create lead');
-                            const leadId = data.leadId || app.referenceNumber;
-                            // After ensuring lead exists, also submit loan with externalId=leadId
+                        <DropdownMenuItem
+                          onClick={async () => {
                             try {
-                              await fetch(`/api/ussd-leads/${app.loanApplicationUssdId}/submit`, {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ leadId }),
-                              });
-                            } catch {}
-                            window.location.href = `/leads/${leadId}`;
-                          } catch (e: any) {
-                            alert(e.message || 'Failed to open lead');
-                          }
-                        }}>
+                              const res = await fetch(
+                                `/api/ussd-leads/${app.loanApplicationUssdId}/to-lead`,
+                                { method: "POST" }
+                              );
+                              const data = await res.json();
+                              if (!res.ok)
+                                throw new Error(
+                                  data?.error || "Failed to create lead"
+                                );
+                              const leadId = data.leadId || app.referenceNumber;
+                              // After ensuring lead exists, also submit loan with externalId=leadId
+                              try {
+                                await fetch(
+                                  `/api/ussd-leads/${app.loanApplicationUssdId}/submit`,
+                                  {
+                                    method: "POST",
+                                    headers: {
+                                      "Content-Type": "application/json",
+                                    },
+                                    body: JSON.stringify({ leadId }),
+                                  }
+                                );
+                              } catch {}
+                              window.location.href = `/leads/${leadId}`;
+                            } catch (e: any) {
+                              alert(e.message || "Failed to open lead");
+                            }
+                          }}
+                        >
                           <Eye className="mr-2 h-4 w-4" />
                           View Details
                         </DropdownMenuItem>
                         {app.status === "CREATED" && (
-                          <DropdownMenuItem onClick={() => handleMarkAsSubmitted(app)}>
+                          <DropdownMenuItem
+                            onClick={() => handleMarkAsSubmitted(app)}
+                          >
                             <CheckCircle className="mr-2 h-4 w-4" />
                             Mark as Submitted
                           </DropdownMenuItem>
                         )}
                         {app.status === "SUBMITTED" && (
                           <>
-                            <DropdownMenuItem onClick={() => handleStatusUpdate(app.loanApplicationUssdId, "UNDER_REVIEW")}>
+                            <DropdownMenuItem
+                              onClick={() =>
+                                handleStatusUpdate(
+                                  app.loanApplicationUssdId,
+                                  "UNDER_REVIEW"
+                                )
+                              }
+                            >
                               <Clock className="mr-2 h-4 w-4" />
                               Start Review
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleStatusUpdate(app.loanApplicationUssdId, "APPROVED")}>
+                            <DropdownMenuItem
+                              onClick={() =>
+                                handleStatusUpdate(
+                                  app.loanApplicationUssdId,
+                                  "APPROVED"
+                                )
+                              }
+                            >
                               <CheckCircle className="mr-2 h-4 w-4" />
                               Approve
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleStatusUpdate(app.loanApplicationUssdId, "REJECTED")}>
+                            <DropdownMenuItem
+                              onClick={() =>
+                                handleStatusUpdate(
+                                  app.loanApplicationUssdId,
+                                  "REJECTED"
+                                )
+                              }
+                            >
                               <XCircle className="mr-2 h-4 w-4" />
                               Reject
                             </DropdownMenuItem>
@@ -338,18 +400,39 @@ export function UssdLeadsTable({ initialData }: UssdLeadsTableProps) {
                         )}
                         {app.status === "UNDER_REVIEW" && (
                           <>
-                            <DropdownMenuItem onClick={() => handleStatusUpdate(app.loanApplicationUssdId, "APPROVED")}>
+                            <DropdownMenuItem
+                              onClick={() =>
+                                handleStatusUpdate(
+                                  app.loanApplicationUssdId,
+                                  "APPROVED"
+                                )
+                              }
+                            >
                               <CheckCircle className="mr-2 h-4 w-4" />
                               Approve
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleStatusUpdate(app.loanApplicationUssdId, "REJECTED")}>
+                            <DropdownMenuItem
+                              onClick={() =>
+                                handleStatusUpdate(
+                                  app.loanApplicationUssdId,
+                                  "REJECTED"
+                                )
+                              }
+                            >
                               <XCircle className="mr-2 h-4 w-4" />
                               Reject
                             </DropdownMenuItem>
                           </>
                         )}
                         {app.status === "APPROVED" && (
-                          <DropdownMenuItem onClick={() => handleStatusUpdate(app.loanApplicationUssdId, "DISBURSED")}>
+                          <DropdownMenuItem
+                            onClick={() =>
+                              handleStatusUpdate(
+                                app.loanApplicationUssdId,
+                                "DISBURSED"
+                              )
+                            }
+                          >
                             <DollarSign className="mr-2 h-4 w-4" />
                             Mark as Disbursed
                           </DropdownMenuItem>
@@ -372,5 +455,3 @@ export function UssdLeadsTable({ initialData }: UssdLeadsTableProps) {
     </div>
   );
 }
-
-

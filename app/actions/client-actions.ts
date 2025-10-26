@@ -59,14 +59,22 @@ export async function saveDraft(
       officeId: data.officeId ? Number(data.officeId) : undefined,
       legalFormId: data.legalFormId ? Number(data.legalFormId) : undefined,
       clientTypeId: data.clientTypeId ? Number(data.clientTypeId) : undefined,
-      clientClassificationId: data.clientClassificationId ? Number(data.clientClassificationId) : undefined,
+      clientClassificationId: data.clientClassificationId
+        ? Number(data.clientClassificationId)
+        : undefined,
       genderId: data.genderId ? Number(data.genderId) : undefined,
       // Convert date strings to Date objects
       dateOfBirth: data.dateOfBirth ? new Date(data.dateOfBirth) : undefined,
-      submittedOnDate: data.submittedOnDate ? new Date(data.submittedOnDate) : new Date(),
-      activationDate: data.activationDate ? new Date(data.activationDate) : undefined,
+      submittedOnDate: data.submittedOnDate
+        ? new Date(data.submittedOnDate)
+        : new Date(),
+      activationDate: data.activationDate
+        ? new Date(data.activationDate)
+        : undefined,
       // Convert savingsProductId to number if it exists
-      savingsProductId: data.savingsProductId ? Number(data.savingsProductId) : undefined,
+      savingsProductId: data.savingsProductId
+        ? Number(data.savingsProductId)
+        : undefined,
     };
 
     // Validate data
@@ -313,7 +321,7 @@ export async function fetchFineractClientTemplate() {
           "Accept-Language": "en-US,en;q=0.9",
           Authorization: "Basic bWlmb3M6cGFzc3dvcmQ=",
           Connection: "keep-alive",
-          "Fineract-Platform-TenantId": "goodfellow",
+          "Fineract-Platform-TenantId": "demo",
           "User-Agent":
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
         },

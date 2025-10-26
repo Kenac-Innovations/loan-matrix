@@ -15,7 +15,7 @@ import {
   RefreshCw,
   CheckCircle,
   XCircle,
-  Clock
+  Clock,
 } from "lucide-react";
 import { getUssdLeadsData } from "@/app/actions/ussd-leads-actions";
 import { headers } from "next/headers";
@@ -30,7 +30,7 @@ export const metadata: Metadata = {
 export default async function UssdLeadsPage() {
   // Get tenant slug from headers (set by middleware)
   const headersList = await headers();
-  const tenantSlug = headersList.get("x-tenant-slug") || "goodfellow";
+  const tenantSlug = headersList.get("x-tenant-slug") || "demo";
 
   // Fetch USSD leads data server-side
   const ussdLeadsData = await getUssdLeadsData("demo");
@@ -84,7 +84,9 @@ export default async function UssdLeadsPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <UssdLoanApplicationsTable ussdLoanApplications={ussdLeadsData.applications} />
+              <UssdLoanApplicationsTable
+                ussdLoanApplications={ussdLeadsData.applications}
+              />
             </CardContent>
           </Card>
         </TabsContent>
@@ -93,11 +95,15 @@ export default async function UssdLeadsPage() {
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Total Applications</CardTitle>
+                <CardTitle className="text-sm font-medium">
+                  Total Applications
+                </CardTitle>
                 <FileText className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{ussdLeadsData.metrics.totalApplications}</div>
+                <div className="text-2xl font-bold">
+                  {ussdLeadsData.metrics.totalApplications}
+                </div>
                 <p className="text-xs text-muted-foreground">
                   All time applications
                 </p>
@@ -106,27 +112,31 @@ export default async function UssdLeadsPage() {
 
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Pending Action</CardTitle>
+                <CardTitle className="text-sm font-medium">
+                  Pending Action
+                </CardTitle>
                 <Clock className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold text-orange-600">{ussdLeadsData.metrics.pendingAction}</div>
-                <p className="text-xs text-muted-foreground">
-                  Need review
-                </p>
+                <div className="text-2xl font-bold text-orange-600">
+                  {ussdLeadsData.metrics.pendingAction}
+                </div>
+                <p className="text-xs text-muted-foreground">Need review</p>
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Approval Rate</CardTitle>
+                <CardTitle className="text-sm font-medium">
+                  Approval Rate
+                </CardTitle>
                 <CheckCircle className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold text-green-600">{ussdLeadsData.metrics.approvalRate}%</div>
-                <p className="text-xs text-muted-foreground">
-                  Success rate
-                </p>
+                <div className="text-2xl font-bold text-green-600">
+                  {ussdLeadsData.metrics.approvalRate}%
+                </div>
+                <p className="text-xs text-muted-foreground">Success rate</p>
               </CardContent>
             </Card>
 
@@ -136,7 +146,9 @@ export default async function UssdLeadsPage() {
                 <CheckCircle className="h-4 w-4 text-green-600" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold text-green-600">{ussdLeadsData.metrics.approved}</div>
+                <div className="text-2xl font-bold text-green-600">
+                  {ussdLeadsData.metrics.approved}
+                </div>
                 <p className="text-xs text-muted-foreground">
                   Applications approved
                 </p>
@@ -149,7 +161,9 @@ export default async function UssdLeadsPage() {
                 <XCircle className="h-4 w-4 text-red-600" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold text-red-600">{ussdLeadsData.metrics.rejected}</div>
+                <div className="text-2xl font-bold text-red-600">
+                  {ussdLeadsData.metrics.rejected}
+                </div>
                 <p className="text-xs text-muted-foreground">
                   Applications rejected
                 </p>
@@ -158,14 +172,16 @@ export default async function UssdLeadsPage() {
 
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Avg Processing Time</CardTitle>
+                <CardTitle className="text-sm font-medium">
+                  Avg Processing Time
+                </CardTitle>
                 <Clock className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{ussdLeadsData.metrics.averageProcessingTime}h</div>
-                <p className="text-xs text-muted-foreground">
-                  Time to process
-                </p>
+                <div className="text-2xl font-bold">
+                  {ussdLeadsData.metrics.averageProcessingTime}h
+                </div>
+                <p className="text-xs text-muted-foreground">Time to process</p>
               </CardContent>
             </Card>
           </div>
@@ -174,5 +190,3 @@ export default async function UssdLeadsPage() {
     </>
   );
 }
-
-

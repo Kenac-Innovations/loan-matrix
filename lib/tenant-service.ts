@@ -10,24 +10,24 @@ import { TenantInfo } from "@/shared/types/tenant";
  * - localhost:3000 -> default (fallback)
  */
 export function extractTenantSlug(host: string): string {
-  if (!host) return "default";
+  if (!host) return "demo";
 
   // Remove port if present
   const hostWithoutPort = host.split(":")[0];
 
   // Handle localhost development
   if (hostWithoutPort === "localhost") {
-    return "default";
+    return "demo";
   }
 
   // Extract subdomain
   const parts = hostWithoutPort.split(".");
-  if (parts.length > 2) { 
+  if (parts.length > 2) {
     return parts[0]; // First part is the subdomain
   }
 
   // If no subdomain, use default
-  return "default";
+  return "demo";
 }
 
 /**
@@ -80,7 +80,7 @@ export async function getOrCreateDefaultTenant(): Promise<TenantInfo> {
       data: {
         name: "Default Organization",
         slug: "default",
-        settings: {     
+        settings: {
           theme: "default",
           features: {
             statemachine: true,
