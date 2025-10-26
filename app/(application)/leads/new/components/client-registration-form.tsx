@@ -540,7 +540,7 @@ export function ClientRegistrationForm({
         if (currentLeadId) {
           const lead = await getLead(currentLeadId);
           if (lead) {
-            // Set form values
+            // Set form values from saved lead data
             form.reset({
               officeId: lead.officeId?.toString() || "1",
               legalFormId: lead.legalFormId?.toString() || "1",
@@ -568,19 +568,182 @@ export function ClientRegistrationForm({
             // Set family members
             setFamilyMembers(lead.familyMembers || []);
 
-            // Check if client exists in Fineract
-            if (lead.fineractClientId) {
-              console.log("==========> Lead has fineractClientId:", lead.fineractClientId);
-              console.log("==========> Setting clientCreatedInFineract to true");
-              setClientLookupStatus("found");
-              setIsFormDisabled(false);
+            // Trigger actual lookup if externalId exists
+            if (lead.externalId) {
+              console.log("==========> Resuming prospect with externalId:", lead.externalId);
+              console.log("==========> Triggering lookup to determine client state...");
               
-              // Update parent component's state
-              if (setFormCompletionStatus) {
-                setFormCompletionStatus((prev) => ({ ...prev, client: true }));
-              }
-              if (setClientCreatedInFineract) {
-                setClientCreatedInFineract(true);
+              // Set the national ID lookup value and trigger the lookup
+              setNationalIdLookup(lead.externalId);
+              
+              // Trigger the actual lookup process
+              // This will check Fineract and local DB to determine if client exists
+              setIsSearchingClient(true);
+              
+              try {
+                let fineractData: any = null;
+                let localData: any = null;
+
+                // Step 1: Try to get client details from Fineract (PRIMARY SOURCE)
+                try {
+                  const externalIdResponse = await fetch(
+                    `/api/fineract/clients/external-id/${lead.externalId}`
+                  );
+
+                  if (externalIdResponse.ok) {
+                    const clientData = await externalIdResponse.json();
+                    const fullClientResponse = await fetch(
+                      `/api/fineract/clients/${clientData.id}`
+                    );
+
+                    if (fullClientResponse.ok) {
+                      fineractData = await fullClientResponse.json();
+                    }
+                  }
+                } catch (error) {
+                  console.log("Fineract lookup failed, trying search method");
+                  
+                  // Try search method as fallback
+                  try {
+                    const searchResponse = await fetch("/api/fineract/clients/search", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        text: lead.externalId,
+                        page: 0,
+                        size: 50,
+                      }),
+                    });
+
+                    if (searchResponse.ok) {
+                      const searchData = await searchResponse.json();
+                      if (searchData.pageItems && searchData.pageItems.length > 0) {
+                        const client = searchData.pageItems[0];
+                        const detailResponse = await fetch(
+                          `/api/fineract/clients/${client.id}`
+                        );
+                        if (detailResponse.ok) {
+                          fineractData = await detailResponse.json();
+                        }
+                      }
+                    }
+                  } catch (searchError) {
+                    console.log("Fineract search also failed");
+                  }
+                }
+
+                // Step 2: Try to get additional data from local database
+                try {
+                  const localResponse = await fetch(
+                    `/api/leads/search-by-external-id?externalId=${lead.externalId}`
+                  );
+                  if (localResponse.ok) {
+                    const localResult = await localResponse.json();
+                    if (localResult.success && localResult.leads.length > 0) {
+                      localData = localResult.leads[0];
+                    }
+                  }
+                } catch (localError) {
+                  console.log("Local database lookup failed:", localError);
+                }
+
+                // Step 3: Determine state based on lookup results
+                if (fineractData || localData) {
+                  console.log("==========> Lookup successful - client found in Fineract or local DB");
+                  
+                  // Helper function to check if a value is meaningful
+                  const hasValue = (value: any): boolean => {
+                    return value !== null && value !== undefined && value !== "";
+                  };
+
+                  // Helper function to get the best value with proper fallback
+                  const getBestValue = (
+                    fineractValue: any,
+                    localValue: any,
+                    defaultValue: any = ""
+                  ) => {
+                    if (hasValue(fineractValue)) return fineractValue;
+                    if (hasValue(localValue)) return localValue;
+                    return defaultValue;
+                  };
+
+                  const interlacedData = {
+                    fineractClientId: fineractData?.id?.toString(),
+                    fineractAccountNo: fineractData?.accountNo,
+                    officeId: getBestValue(
+                      fineractData?.officeId?.toString(),
+                      localData?.officeId?.toString(),
+                      lead.officeId?.toString() || "1"
+                    ),
+                    legalFormId: getBestValue(
+                      fineractData?.legalForm?.id?.toString(),
+                      localData?.legalFormId?.toString(),
+                      lead.legalFormId?.toString() || "1"
+                    ),
+                    externalId: getBestValue(
+                      fineractData?.externalId,
+                      localData?.externalId,
+                      lead.externalId
+                    ),
+                    firstname: getBestValue(
+                      fineractData?.firstname,
+                      localData?.firstname,
+                      lead.firstname
+                    ),
+                    middlename: getBestValue(
+                      fineractData?.middlename,
+                      localData?.middlename,
+                      lead.middlename
+                    ),
+                    lastname: getBestValue(
+                      fineractData?.lastname,
+                      localData?.lastname,
+                      lead.lastname
+                    ),
+                  };
+
+                  // If we have Fineract data, client exists in Fineract
+                  if (fineractData) {
+                    console.log("==========> Client exists in Fineract");
+                    console.log("==========> Setting clientCreatedInFineract to true");
+                    
+                    setClientLookupStatus("found");
+                    setIsFormDisabled(false);
+                    
+                    // Update parent component's state
+                    if (setFormCompletionStatus) {
+                      setFormCompletionStatus((prev) => ({ ...prev, client: true }));
+                    }
+                    if (setClientCreatedInFineract) {
+                      setClientCreatedInFineract(true);
+                    }
+
+                    // Store the Fineract client ID for future updates
+                    if (fineractData?.id) {
+                      (window as any).fineractClientId = fineractData.id;
+                    }
+                  } else if (localData) {
+                    // Client exists locally but not in Fineract yet
+                    console.log("==========> Client exists in local DB but not in Fineract");
+                    setClientLookupStatus("not_found");
+                    setIsFormDisabled(false);
+                  } else {
+                    // No data found
+                    console.log("==========> No client data found");
+                    setClientLookupStatus("not_found");
+                    setIsFormDisabled(false);
+                  }
+                } else {
+                  console.log("==========> No client found in Fineract or local DB");
+                  setClientLookupStatus("not_found");
+                  setIsFormDisabled(false);
+                }
+              } catch (err) {
+                console.error("Error during lookup:", err);
+                setClientLookupStatus("not_found");
+                setIsFormDisabled(false);
+              } finally {
+                setIsSearchingClient(false);
               }
             }
           }
