@@ -567,6 +567,22 @@ export function ClientRegistrationForm({
 
             // Set family members
             setFamilyMembers(lead.familyMembers || []);
+
+            // Check if client exists in Fineract
+            if (lead.fineractClientId) {
+              console.log("==========> Lead has fineractClientId:", lead.fineractClientId);
+              console.log("==========> Setting clientCreatedInFineract to true");
+              setClientLookupStatus("found");
+              setIsFormDisabled(false);
+              
+              // Update parent component's state
+              if (setFormCompletionStatus) {
+                setFormCompletionStatus((prev) => ({ ...prev, client: true }));
+              }
+              if (setClientCreatedInFineract) {
+                setClientCreatedInFineract(true);
+              }
+            }
           }
         }
       } catch (err) {
