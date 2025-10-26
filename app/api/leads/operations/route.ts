@@ -288,7 +288,7 @@ async function handleSubmitLead(leadId: string) {
   try {
     await prisma.lead.update({
       where: { id: leadId },
-      data: {
+      data: { 
         status: "ACTIVE",
         currentStep: 2,
       },
@@ -308,7 +308,7 @@ async function handleCloseLead(leadId: string, reason: string) {
   try {
     await prisma.lead.update({
       where: { id: leadId },
-      data: {
+      data: { 
         status: "CLOSED",
         closedReason: reason,
       },

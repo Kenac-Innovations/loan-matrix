@@ -1060,6 +1060,57 @@ export function ClientRegistrationForm({
         setClientLookupStatus("found");
         setIsFormDisabled(false);
 
+        // Save the populated form data as a draft in the database
+        try {
+          const formValues = form.getValues();
+          console.log("==========> Saving lookup data as draft:", formValues);
+          console.log("==========> Form values keys:", Object.keys(formValues));
+          console.log(
+            "==========> Email address value:",
+            formValues.emailAddress
+          );
+          console.log("==========> First name value:", formValues.firstname);
+          console.log("==========> Last name value:", formValues.lastname);
+
+          // Save as draft which will create/update a lead in the database
+          const saveResult = await handleSaveDraft(formValues);
+          console.log("==========> Save result:", saveResult);
+
+          if (saveResult.success && saveResult.leadId) {
+            // Update currentLeadId with the newly created lead
+            setCurrentLeadId(saveResult.leadId);
+
+            // Save to localStorage for persistence
+            LeadLocalStorage.save({
+              leadId: saveResult.leadId,
+              formData: formValues,
+              timestamp: Date.now(),
+              step: "client",
+            });
+
+            console.log(
+              "==========> Lookup data saved as draft with leadId:",
+              saveResult.leadId
+            );
+          } else {
+            console.error("==========> Save failed:", saveResult.error);
+          }
+        } catch (error) {
+          console.error(
+            "==========> Error saving lookup data as draft:",
+            error
+          );
+          console.error("==========> Error type:", typeof error);
+          console.error(
+            "==========> Error message:",
+            error instanceof Error ? error.message : String(error)
+          );
+          console.error(
+            "==========> Error stack:",
+            error instanceof Error ? error.stack : "No stack"
+          );
+        }
+
         // Mark the client step as completed since we found an existing client
         console.log("==========> Marking client step as completed");
         if (setFormCompletionStatus) {
@@ -1179,6 +1230,9 @@ export function ClientRegistrationForm({
     setIsSaving(true);
 
     try {
+      console.log("==========> handleSaveDraft called with data:", data);
+      console.log("==========> Email address in data:", data.emailAddress);
+
       // Convert data types to match the schema expectations
       const processedData = {
         ...data,
@@ -1202,7 +1256,16 @@ export function ClientRegistrationForm({
           : undefined,
       };
 
+      console.log("==========> Processed data before save:", processedData);
+      console.log(
+        "==========> Email in processed data:",
+        processedData.emailAddress
+      );
+      console.log("==========> Current leadId:", leadId);
+
       const result = await saveDraft(processedData, leadId);
+
+      console.log("==========> Save draft result:", result);
 
       if (result.success) {
         // If no leadId yet, update URL with the new leadId

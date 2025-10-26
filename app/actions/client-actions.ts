@@ -3,6 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
+import { getSession } from "@/lib/auth";
+import { getOrCreateDefaultTenant } from "@/lib/tenant-service";
 
 // Client form schema
 const clientFormSchema = z.object({
@@ -52,6 +54,11 @@ export async function saveDraft(
   leadId?: string
 ) {
   try {
+    console.log("==========> saveDraft called with data:", data);
+    console.log("==========> Email address:", data.emailAddress);
+    console.log("==========> First name:", data.firstname);
+    console.log("==========> Last name:", data.lastname);
+
     // Convert data types before validation
     const processedData = {
       ...data,
@@ -77,12 +84,27 @@ export async function saveDraft(
         : undefined,
     };
 
+    console.log("==========> Processed data:", processedData);
+    console.log("==========> Attempting schema validation...");
+
     // Validate data
     const validatedData = clientFormSchema.parse(processedData);
 
-    // Get current user ID (in a real app, this would come from auth)
-    const userId = "user_1"; // Placeholder - replace with actual user ID from auth
-    const tenantId = "cmg6cf5qv0000rl53zznsz35u"; // Placeholder - replace with actual tenant ID from auth
+    console.log("==========> Validation successful:", validatedData);
+
+    // Get current user ID and tenant ID
+    const session = await getSession();
+    if (!session?.user?.id) {
+      console.error("==========> User not authenticated");
+      throw new Error("User not authenticated");
+    }
+    const userId = session.user.id;
+    console.log("==========> User ID from session:", userId);
+
+    // Get or create the default tenant
+    const tenant = await getOrCreateDefaultTenant();
+    const tenantId = tenant.id;
+    console.log("==========> Tenant ID:", tenantId);
 
     if (leadId) {
       // Update existing lead
@@ -120,9 +142,11 @@ export async function saveDraft(
         },
       });
 
+      console.log("==========> Lead updated successfully");
       revalidatePath("/leads");
       return { success: true, leadId };
     } else {
+      console.log("==========> Creating new lead...");
       // Create new lead
       const lead = await prisma.lead.create({
         data: {
@@ -159,12 +183,27 @@ export async function saveDraft(
         },
       });
 
+      console.log("==========> New lead created with ID:", lead.id);
       revalidatePath("/leads");
       return { success: true, leadId: lead.id };
     }
   } catch (error) {
-    console.error("Error saving draft:", error);
-    return { success: false, error: "Failed to save draft" };
+    console.error("==========> Error saving draft:", error);
+    console.error(
+      "==========> Error name:",
+      error instanceof Error ? error.name : typeof error
+    );
+    console.error(
+      "==========> Error message:",
+      error instanceof Error ? error.message : String(error)
+    );
+    if (error instanceof Error && "issues" in error) {
+      console.error("==========> Validation errors:", (error as any).issues);
+    }
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to save draft",
+    };
   }
 }
 
