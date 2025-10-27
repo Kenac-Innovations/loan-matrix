@@ -1,10 +1,10 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import useSWR from "swr"
 import { UssdLoanApplication, UssdLoanApplicationStatus } from "@/shared/types"
 import { GenericDataTable } from "./generic-data-table"
-import { DataTableColumn } from "@/shared/types/data-table"
+import { DataTableColumn, DataTableFilter } from "@/shared/types/data-table"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -26,6 +26,7 @@ import { formatCurrency } from "@/lib/format-currency"
 
 interface UssdLoanApplicationsTableProps {
     ussdLoanApplications: UssdLoanApplication[]
+    filterStatus?: UssdLoanApplicationStatus
 }
 
 // Fetcher function for SWR
@@ -36,7 +37,12 @@ const fetcher = (url: string) =>
     }
   }).then((res) => res.json())
 
-export default function UssdLoanApplicationsTable({ ussdLoanApplications }: UssdLoanApplicationsTableProps) {
+export default function UssdLoanApplicationsTable({ ussdLoanApplications, filterStatus }: UssdLoanApplicationsTableProps) {
+    const [customFilters, setCustomFilters] = useState<DataTableFilter[]>([
+        { columnId: "status", value: "", type: "select" },
+        { columnId: "payoutMethod", value: "", type: "select" },
+    ])
+
     // Use SWR for real-time updates
     const { data, error, mutate } = useSWR('/api/ussd-leads', fetcher, {
         initialData: { applications: ussdLoanApplications },
@@ -44,7 +50,11 @@ export default function UssdLoanApplicationsTable({ ussdLoanApplications }: Ussd
         revalidateOnFocus: true,
     })
     
-    const applications = data?.applications || ussdLoanApplications
+    // Filter applications by status if filterStatus is provided
+    const allApplications = data?.applications || ussdLoanApplications
+    const applications = filterStatus 
+        ? allApplications.filter((app: UssdLoanApplication) => app.status === filterStatus)
+        : allApplications
 
     // Status update handlers
     const handleStatusUpdate = async (applicationId: number, newStatus: string) => {
@@ -178,6 +188,12 @@ export default function UssdLoanApplicationsTable({ ussdLoanApplications }: Ussd
                 },
                 meta: { width: 140 },
                 enableSorting: true,
+                filterType: "select",
+                filterOptions: [
+                    { label: "Mobile Money", value: "1" },
+                    { label: "Cash Pickup", value: "2" },
+                    { label: "Bank Transfer", value: "3" },
+                ]
             },
             {
                 id: "mobileMoneyProvider",
@@ -294,10 +310,16 @@ export default function UssdLoanApplicationsTable({ ussdLoanApplications }: Ussd
                                     View Details
                                 </DropdownMenuItem>
                                 {app.status === "CREATED" && (
-                                    <DropdownMenuItem onClick={() => handleMarkAsSubmitted(app)}>
-                                        <CheckCircle className="mr-2 h-4 w-4" />
-                                        Mark as Submitted
-                                    </DropdownMenuItem>
+                                    <>
+                                        <DropdownMenuItem onClick={() => handleMarkAsSubmitted(app)}>
+                                            <CheckCircle className="mr-2 h-4 w-4" />
+                                            Mark as Submitted
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem onClick={() => handleStatusUpdate(app.loanApplicationUssdId, "REJECTED")}>
+                                            <XCircle className="mr-2 h-4 w-4" />
+                                            Reject Application
+                                        </DropdownMenuItem>
+                                    </>
                                 )}
                                 {app.status === "SUBMITTED" && (
                                     <>
@@ -358,6 +380,8 @@ export default function UssdLoanApplicationsTable({ ussdLoanApplications }: Ussd
             tableId="ussd-loan-applications"
             exportFileName="ussd-loan-applications"
             emptyMessage="No USSD loan applications found."
+            customFilters={customFilters}
+            onFilterChange={setCustomFilters}
         />
     )
 }

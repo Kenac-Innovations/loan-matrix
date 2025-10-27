@@ -11,16 +11,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Phone,
   FileText,
-  BarChart3,
   RefreshCw,
-  CheckCircle,
-  XCircle,
   Clock
 } from "lucide-react";
 import { getUssdLeadsData } from "@/app/actions/ussd-leads-actions";
 import { headers } from "next/headers";
 import { UssdLeadsMetrics } from "./components/ussd-leads-metrics";
 import UssdLoanApplicationsTable from "@/components/tables/UssdLoanApplicationsTable";
+import { UssdLoanApplicationStatus } from "@/shared/types";
 
 export const metadata: Metadata = {
   title: "USSD Leads | KENAC Loan Matrix",
@@ -57,30 +55,47 @@ export default async function UssdLeadsPage() {
 
       <UssdLeadsMetrics className="mt-6" metrics={ussdLeadsData.metrics} />
 
-      <Tabs defaultValue="table" className="mt-6">
+      <Tabs defaultValue="new-leads" className="mt-6">
         <TabsList className="w-full overflow-x-auto">
           <TabsTrigger
-            value="table"
+            value="new-leads"
+            className="w-full data-[state=active]:bg-blue-500"
+          >
+            <Clock className="mr-2 h-4 w-4" />
+            <span className="whitespace-nowrap">New USSD Leads</span>
+          </TabsTrigger>
+          <TabsTrigger
+            value="all-leads"
             className="w-full data-[state=active]:bg-blue-500"
           >
             <FileText className="mr-2 h-4 w-4" />
-            <span className="whitespace-nowrap">Applications</span>
-          </TabsTrigger>
-          <TabsTrigger
-            value="metrics"
-            className="w-full data-[state=active]:bg-blue-500"
-          >
-            <BarChart3 className="mr-2 h-4 w-4" />
-            <span className="whitespace-nowrap">Analytics</span>
+            <span className="whitespace-nowrap">All USSD Leads</span>
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="table" className="mt-4">
+        <TabsContent value="new-leads" className="mt-4">
           <Card>
             <CardHeader>
-              <CardTitle>USSD Loan Applications</CardTitle>
+              <CardTitle>New USSD Loan Applications</CardTitle>
               <CardDescription>
-                Review and process loan applications submitted via USSD
+                Review and process new loan applications (Status: CREATED)
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <UssdLoanApplicationsTable 
+                ussdLoanApplications={ussdLeadsData.applications} 
+                filterStatus={UssdLoanApplicationStatus.CREATED}
+              />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="all-leads" className="mt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>All USSD Loan Applications</CardTitle>
+              <CardDescription>
+                View all loan applications with full history
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -89,87 +104,6 @@ export default async function UssdLeadsPage() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="metrics" className="mt-4">
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Total Applications</CardTitle>
-                <FileText className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{ussdLeadsData.metrics.totalApplications}</div>
-                <p className="text-xs text-muted-foreground">
-                  All time applications
-                </p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Pending Action</CardTitle>
-                <Clock className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-orange-600">{ussdLeadsData.metrics.pendingAction}</div>
-                <p className="text-xs text-muted-foreground">
-                  Need review
-                </p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Approval Rate</CardTitle>
-                <CheckCircle className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-green-600">{ussdLeadsData.metrics.approvalRate}%</div>
-                <p className="text-xs text-muted-foreground">
-                  Success rate
-                </p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Approved</CardTitle>
-                <CheckCircle className="h-4 w-4 text-green-600" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-green-600">{ussdLeadsData.metrics.approved}</div>
-                <p className="text-xs text-muted-foreground">
-                  Applications approved
-                </p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Rejected</CardTitle>
-                <XCircle className="h-4 w-4 text-red-600" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-red-600">{ussdLeadsData.metrics.rejected}</div>
-                <p className="text-xs text-muted-foreground">
-                  Applications rejected
-                </p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Avg Processing Time</CardTitle>
-                <Clock className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{ussdLeadsData.metrics.averageProcessingTime}h</div>
-                <p className="text-xs text-muted-foreground">
-                  Time to process
-                </p>
-              </CardContent>
-            </Card>
-          </div>
-        </TabsContent>
       </Tabs>
     </>
   );
