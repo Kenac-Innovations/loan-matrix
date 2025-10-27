@@ -89,7 +89,7 @@ export default function UssdLoanApplicationsTable({ ussdLoanApplications, filter
                 return
             }
 
-            // Update status to SUBMITTED locally and in DB
+            // Update status to SUBMITTED locally and in DB c
             await handleStatusUpdate(app.loanApplicationUssdId, 'SUBMITTED')
             alert('Loan submitted successfully')
         } catch (e: any) {
