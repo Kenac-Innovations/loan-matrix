@@ -1,9 +1,26 @@
 "use client"
 
+import { useState, useEffect } from "react"
+import useSWR from "swr"
 import { UssdLoanApplication, UssdLoanApplicationStatus } from "@/shared/types"
 import { GenericDataTable } from "./generic-data-table"
 import { DataTableColumn } from "@/shared/types/data-table"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { 
+  MoreHorizontal, 
+  Eye, 
+  CheckCircle, 
+  XCircle, 
+  Clock, 
+  DollarSign 
+} from "lucide-react"
 import { format } from "date-fns"
 import { formatCurrency } from "@/lib/format-currency"
 
@@ -11,7 +28,66 @@ interface UssdLoanApplicationsTableProps {
     ussdLoanApplications: UssdLoanApplication[]
 }
 
+// Fetcher function for SWR
+const fetcher = (url: string) => 
+  fetch(url, {
+    headers: {
+      'x-tenant-slug': 'goodfellow' // Or get this dynamically
+    }
+  }).then((res) => res.json())
+
 export default function UssdLoanApplicationsTable({ ussdLoanApplications }: UssdLoanApplicationsTableProps) {
+    // Use SWR for real-time updates
+    const { data, error, mutate } = useSWR('/api/ussd-leads', fetcher, {
+        initialData: { applications: ussdLoanApplications },
+        refreshInterval: 5000, // Refresh every 5 seconds
+        revalidateOnFocus: true,
+    })
+    
+    const applications = data?.applications || ussdLoanApplications
+
+    // Status update handlers
+    const handleStatusUpdate = async (applicationId: number, newStatus: string) => {
+        try {
+            const response = await fetch(`/api/ussd-leads/${applicationId}/status`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ status: newStatus }),
+            })
+
+            if (response.ok) {
+                // Trigger SWR revalidation to get fresh data
+                mutate()
+            }
+        } catch (error) {
+            console.error('Error updating status:', error)
+        }
+    }
+
+    const handleMarkAsSubmitted = async (app: UssdLoanApplication) => {
+        try {
+            // Create Fineract loan using backend mapping
+            const res = await fetch(`/api/ussd-leads/${app.loanApplicationUssdId}/submit`, {
+                method: 'POST',
+            })
+            const data = await res.json()
+            if (!res.ok) {
+                const msg = data?.errorData?.defaultUserMessage || data?.error || 'Failed to create loan'
+                alert(msg)
+                return
+            }
+
+            // Update status to SUBMITTED locally and in DB
+            await handleStatusUpdate(app.loanApplicationUssdId, 'SUBMITTED')
+            alert('Loan submitted successfully')
+        } catch (e: any) {
+            console.error(e)
+            alert(e.message || 'Failed to submit loan')
+        }
+    }
+
     const getStatusBadge = (status: UssdLoanApplicationStatus) => {
         const statusConfig = {
             [UssdLoanApplicationStatus.CREATED]: { variant: "secondary" as const, label: "Created" },
@@ -182,12 +258,95 @@ export default function UssdLoanApplicationsTable({ ussdLoanApplications }: Ussd
                 meta: { width: 150 },
                 enableSorting: true,
             },
+            {
+                id: "actions",
+                header: "Actions",
+                cell: ({ row }) => {
+                    const app = row.original as UssdLoanApplication
+                    return (
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="sm">
+                                    <MoreHorizontal className="h-4 w-4" />
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={async () => {
+                                    try {
+                                        const res = await fetch(`/api/ussd-leads/${app.loanApplicationUssdId}/to-lead`, { method: 'POST' })
+                                        const data = await res.json()
+                                        if (!res.ok) throw new Error(data?.error || 'Failed to create lead')
+                                        const leadId = data.leadId || app.referenceNumber
+                                        // After ensuring lead exists, also submit loan with externalId=leadId
+                                        try {
+                                            await fetch(`/api/ussd-leads/${app.loanApplicationUssdId}/submit`, {
+                                                method: 'POST',
+                                                headers: { 'Content-Type': 'application/json' },
+                                                body: JSON.stringify({ leadId }),
+                                            })
+                                        } catch {}
+                                        window.location.href = `/leads/${leadId}`
+                                    } catch (e: any) {
+                                        alert(e.message || 'Failed to open lead')
+                                    }
+                                }}>
+                                    <Eye className="mr-2 h-4 w-4" />
+                                    View Details
+                                </DropdownMenuItem>
+                                {app.status === "CREATED" && (
+                                    <DropdownMenuItem onClick={() => handleMarkAsSubmitted(app)}>
+                                        <CheckCircle className="mr-2 h-4 w-4" />
+                                        Mark as Submitted
+                                    </DropdownMenuItem>
+                                )}
+                                {app.status === "SUBMITTED" && (
+                                    <>
+                                        <DropdownMenuItem onClick={() => handleStatusUpdate(app.loanApplicationUssdId, "UNDER_REVIEW")}>
+                                            <Clock className="mr-2 h-4 w-4" />
+                                            Start Review
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem onClick={() => handleStatusUpdate(app.loanApplicationUssdId, "APPROVED")}>
+                                            <CheckCircle className="mr-2 h-4 w-4" />
+                                            Approve
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem onClick={() => handleStatusUpdate(app.loanApplicationUssdId, "REJECTED")}>
+                                            <XCircle className="mr-2 h-4 w-4" />
+                                            Reject
+                                        </DropdownMenuItem>
+                                    </>
+                                )}
+                                {app.status === "UNDER_REVIEW" && (
+                                    <>
+                                        <DropdownMenuItem onClick={() => handleStatusUpdate(app.loanApplicationUssdId, "APPROVED")}>
+                                            <CheckCircle className="mr-2 h-4 w-4" />
+                                            Approve
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem onClick={() => handleStatusUpdate(app.loanApplicationUssdId, "REJECTED")}>
+                                            <XCircle className="mr-2 h-4 w-4" />
+                                            Reject
+                                        </DropdownMenuItem>
+                                    </>
+                                )}
+                                {app.status === "APPROVED" && (
+                                    <DropdownMenuItem onClick={() => handleStatusUpdate(app.loanApplicationUssdId, "DISBURSED")}>
+                                        <DollarSign className="mr-2 h-4 w-4" />
+                                        Mark as Disbursed
+                                    </DropdownMenuItem>
+                                )}
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+                    )
+                },
+                meta: { width: 100 },
+                enableSorting: false,
+                enableHiding: false,
+            },
         ]
     }
 
     return (
         <GenericDataTable
-            data={ussdLoanApplications}
+            data={applications}
             columns={getUssdLoanApplicationsColumns()}
             searchPlaceholder="Search applications..."
             enableSelection={true}
