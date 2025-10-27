@@ -33,7 +33,7 @@ export default async function UssdLeadsPage() {
   const tenantSlug = headersList.get("x-tenant-slug") || "goodfellow";
 
   // Fetch USSD leads data server-side
-  const ussdLeadsData = await getUssdLeadsData("demo");
+  const ussdLeadsData = await getUssdLeadsData("goodfellow");
 
   return (
     <>
