@@ -3,7 +3,7 @@ import { getTenantFromHeaders } from "./tenant-service";
 
 /**
  * Get the Fineract tenant ID for the current request
- * This extracts tenant info from subdomain and maps it to Fineract tenant ID
+ * Uses tenant slug directly as Fineract tenant ID, with "demo" as fallback
  */
 export async function getFineractTenantId(): Promise<string> {
   try {
@@ -16,21 +16,13 @@ export async function getFineractTenantId(): Promise<string> {
     });
 
     if (!tenant) {
-      console.warn("No tenant found, using default Fineract tenant");
-      return "demo";
+      console.warn("No tenant found, using demo Fineract tenant");
+      return process.env.FINERACT_TENANT_ID || "demo";
     }
 
-    // Map tenant slug to Fineract tenant ID
-    // You can customize this mapping based on your Fineract setup
-    const tenantMapping: Record<string, string> = {
-      default: "demo",
-      demo: "demo",
-      goodfellow: "goodfellow",
-      acme: "acme",
-      // Add more mappings as needed
-    };
-
-    const fineractTenantId = tenantMapping[tenant.slug] || tenant.slug;
+    // Use tenant slug directly as Fineract tenant ID
+    // If no tenant slug, use "demo" as fallback
+    const fineractTenantId = tenant.slug || "demo";
 
     console.log(
       `Mapped tenant ${tenant.slug} to Fineract tenant: ${fineractTenantId}`

@@ -124,6 +124,10 @@ model Lead {
   monthlyIncomeRange       String?
   propertyOwnership        String?
   yearsAtCurrentJob        String?
+  clientCreatedInFineract  Boolean             @default(false)
+  clientCreationDate       DateTime?
+  fineractAccountNo        String?
+  fineractClientId         Int?
   familyMembers            FamilyMember[]
   currentStage             PipelineStage?      @relation("LeadCurrentStage", fields: [currentStageId], references: [id])
   tenant                   Tenant              @relation(fields: [tenantId], references: [id])
@@ -453,39 +457,39 @@ model QueryLog {
 }
 
 model UssdLoanApplication {
-  id                      String    @id @default(cuid())
-  tenantId                String
-  createdAt               DateTime  @default(now())
-  updatedAt               DateTime  @updatedAt
-  loanApplicationUssdId   Int       @unique
-  messageId               String    @unique
-  referenceNumber         String    @unique
-  userPhoneNumber         String
-  loanMatrixClientId      Int?
-  userFullName            String
-  userNationalId          String
-  loanMatrixLoanProductId Int
-  loanProductName         String
-  loanProductDisplayName  String
-  principalAmount         Float
-  loanTermMonths          Int
-  payoutMethod            String
-  mobileMoneyNumber       String?
-  mobileMoneyProvider     String?
-  branchName              String?
-  officeLocationId        Int?
-  bankAccountNumber       String?
-  bankName                String?
-  bankBranch              String?
-  status                  String    @default("CREATED")
-  source                  String    @default("USSD")
-  channel                 String    @default("USSD_LOAN_APPLICATION")
-  queuedAt                DateTime  @default(now())
-  processedAt             DateTime?
-  processingNotes         String?
-  rejectionReason         String?
-  approvalNotes           String?
-  paymentStatus           String?
+  id                        String    @id @default(cuid())
+  tenantId                  String
+  createdAt                 DateTime  @default(now())
+  updatedAt                 DateTime  @updatedAt
+  loanApplicationUssdId     Int       @unique
+  messageId                 String    @unique
+  referenceNumber           String    @unique
+  userPhoneNumber           String
+  loanMatrixClientId        Int?
+  userFullName              String
+  userNationalId            String
+  loanMatrixLoanProductId   Int
+  loanProductName           String
+  loanProductDisplayName    String
+  principalAmount           Float
+  loanTermMonths            Int
+  payoutMethod              String
+  mobileMoneyNumber         String?
+  mobileMoneyProvider       String?
+  branchName                String?
+  officeLocationId          Int?
+  bankAccountNumber         String?
+  bankName                  String?
+  bankBranch                String?
+  status                    String    @default("CREATED")
+  source                    String    @default("USSD")
+  channel                   String    @default("USSD_LOAN_APPLICATION")
+  queuedAt                  DateTime  @default(now())
+  processedAt               DateTime?
+  processingNotes           String?
+  rejectionReason           String?
+  approvalNotes             String?
+  paymentStatus             String?
   loanMatrixPaymentMethodId Int?
 
   @@index([tenantId, status])

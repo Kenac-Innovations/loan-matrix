@@ -1,4 +1,4 @@
-import { TenantInfo } from '../types/tenant';
+import { TenantInfo } from "../types/tenant";
 
 export const defaultTenantConfig = {
   name: "Default Organization",
@@ -28,8 +28,8 @@ export const demoTenantConfig = {
 
 export const goodfellowTenantConfig = {
   name: "GoodFellow Organization",
-  slug: "goodfellow",
-  domain: "goodfellow.kenacloanmatrix.com",
+  slug: "demo",
+  domain: "demo.kenacloanmatrix.com",
   settings: {
     theme: "default",
     features: {

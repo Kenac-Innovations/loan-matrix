@@ -490,8 +490,64 @@ export class FineractAPIService {
     return response.data;
   }
 
+  async createClient(clientData: any): Promise<FineractClient> {
+    try {
+      console.log(
+        "==========> Sending client data to Fineract:",
+        JSON.stringify(clientData, null, 2)
+      );
+
+      const response: AxiosResponse<FineractClient> = await this.client.post(
+        `/clients`,
+        clientData
+      );
+
+      console.log(
+        "==========> Fineract createClient SUCCESS response ::",
+        response.data
+      );
+      return response.data;
+    } catch (error: any) {
+      console.error("==========> Fineract createClient ERROR ::", {
+        message: error.message,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data,
+        config: {
+          url: error.config?.url,
+          method: error.config?.method,
+          data: error.config?.data,
+        },
+      });
+      throw error;
+    }
+  }
+
   async deleteClient(clientId: number): Promise<void> {
-    await this.client.delete(`/clients/${clientId}`);
+    try {
+      console.log(`==========> Deleting Fineract client ${clientId}`);
+
+      const response = await this.client.delete(`/clients/${clientId}`);
+
+      console.log(
+        `==========> Fineract deleteClient SUCCESS for client ${clientId}`
+      );
+    } catch (error: any) {
+      console.error(
+        `==========> Fineract deleteClient ERROR for client ${clientId} ::`,
+        {
+          message: error.message,
+          status: error.response?.status,
+          statusText: error.response?.statusText,
+          data: error.response?.data,
+          config: {
+            url: error.config?.url,
+            method: error.config?.method,
+          },
+        }
+      );
+      throw error;
+    }
   }
 
   async searchClients(query: string): Promise<FineractClient[]> {

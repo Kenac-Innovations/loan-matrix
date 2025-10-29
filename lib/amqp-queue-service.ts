@@ -1,7 +1,6 @@
-import amqp, { Connection, Channel, ConsumeMessage } from 'amqplib';
-import prisma from './prisma';
-import { getTenantBySlug } from './tenant-service';
-
+import amqp, { Connection, Channel, ConsumeMessage } from "amqplib";
+import prisma from "./prisma";
+import { getTenantBySlug } from "./tenant-service";
 
 export interface UssdLoanApplicationMessage {
   loanApplicationUssdId: number;
@@ -88,9 +87,8 @@ export class AmqpQueueService {
       this.isConnected = true;
       this.reconnectAttempts = 0;
 
-      console.log('Successfully connected to AMQP broker');
-      console.log('Queue service is ready to consume messages');
-      
+      console.log("Successfully connected to AMQP broker");
+      console.log("Queue service is ready to consume messages");
     } catch (error) {
       console.error("Failed to connect to AMQP broker:", error);
       this.handleReconnect();
@@ -160,12 +158,12 @@ export class AmqpQueueService {
   public async startConsuming(): Promise<void> {
     // Prevent multiple consumers globally
     if (global.__amqpConsumerActive) {
-      console.log('AMQP consumer already active globally, skipping...');
+      console.log("AMQP consumer already active globally, skipping...");
       return;
     }
 
     if (this.isConsuming) {
-      console.log('Already consuming messages, skipping...');
+      console.log("Already consuming messages, skipping...");
       return;
     }
 
@@ -195,57 +193,63 @@ export class AmqpQueueService {
 
     console.log(`Starting to consume messages from queue: ${queueName}`);
 
+    await this.channel.consume(
+      queueName,
+      async (msg: ConsumeMessage | null) => {
+        console.log("=== CONSUME CALLBACK TRIGGERED ===");
+        console.log("Message received:", msg ? "YES" : "NO");
+        console.log("Queue name:", queueName);
 
-    await this.channel.consume(queueName, async (msg: ConsumeMessage | null) => {
-      console.log('=== CONSUME CALLBACK TRIGGERED ===');
-      console.log('Message received:', msg ? 'YES' : 'NO');
-      console.log('Queue name:', queueName);
-      
-      if (msg) {
-        console.log('Received message from queue:', queueName);
-        console.log('Message properties:', msg.properties);
-        console.log('Message routing key:', msg.fields.routingKey);
-        try {
-          await this.processMessage(msg);
-          this.channel?.ack(msg);
-          console.log('Message processed and acknowledged successfully');
-        } catch (error) {
-          console.error('Error processing message:', error);
-          // Reject and requeue the message
-          this.channel?.nack(msg, false, true);
-
+        if (msg) {
+          console.log("Received message from queue:", queueName);
+          console.log("Message properties:", msg.properties);
+          console.log("Message routing key:", msg.fields.routingKey);
+          try {
+            await this.processMessage(msg);
+            this.channel?.ack(msg);
+            console.log("Message processed and acknowledged successfully");
+          } catch (error) {
+            console.error("Error processing message:", error);
+            // Reject and requeue the message
+            this.channel?.nack(msg, false, true);
+          }
+        } else {
+          console.log("No message received from queue:", queueName);
         }
-      } else {
-        console.log('No message received from queue:', queueName);
       }
-    });
+    );
 
     this.isConsuming = true;
     global.__amqpConsumerActive = true;
-    console.log('Consumer started and listening for messages');
-
+    console.log("Consumer started and listening for messages");
   }
 
   private async processMessage(msg: ConsumeMessage): Promise<void> {
     try {
-
       // Log raw message before parsing
-      console.log('=== RAW MESSAGE FROM QUEUE ===');
-      console.log('Raw message content (Buffer):', msg.content);
-      console.log('Raw message content (String):', msg.content.toString());
-      console.log('Message size (bytes):', msg.content.length);
-      console.log('Message properties:', msg.properties);
-      console.log('Message fields:', msg.fields);
-      console.log('=== END RAW MESSAGE ===');
-      
-      const messageContent = JSON.parse(msg.content.toString()) as UssdLoanApplicationMessage;
-      console.log('Processing USSD loan application:', messageContent.messageId);
-      console.log('Full message content received from queue:', JSON.stringify(messageContent, null, 2));
+      console.log("=== RAW MESSAGE FROM QUEUE ===");
+      console.log("Raw message content (Buffer):", msg.content);
+      console.log("Raw message content (String):", msg.content.toString());
+      console.log("Message size (bytes):", msg.content.length);
+      console.log("Message properties:", msg.properties);
+      console.log("Message fields:", msg.fields);
+      console.log("=== END RAW MESSAGE ===");
 
+      const messageContent = JSON.parse(
+        msg.content.toString()
+      ) as UssdLoanApplicationMessage;
+      console.log(
+        "Processing USSD loan application:",
+        messageContent.messageId
+      );
+      console.log(
+        "Full message content received from queue:",
+        JSON.stringify(messageContent, null, 2)
+      );
 
       // Get default tenant (you might want to make this configurable)
 
-      const tenant = await getTenantBySlug('goodfellow');
+      const tenant = await getTenantBySlug("demo");
 
       if (!tenant) {
         throw new Error("Default tenant not found");
@@ -300,8 +304,7 @@ export class AmqpQueueService {
           processedAt: new Date(),
 
           loanMatrixPaymentMethodId: messageContent.loanMatrixPaymentMethodId,
-        }
-
+        },
       });
 
       console.log(
@@ -375,25 +378,23 @@ export function getQueueService(): AmqpQueueService {
   return queueService;
 }
 
-
 // Graceful shutdown handler - only add once
 if (!process.env.AMQP_SHUTDOWN_HANDLERS_ADDED) {
-  process.env.AMQP_SHUTDOWN_HANDLERS_ADDED = 'true';
-  
-  process.on('SIGINT', async () => {
-    console.log('Received SIGINT, closing AMQP connection...');
+  process.env.AMQP_SHUTDOWN_HANDLERS_ADDED = "true";
+
+  process.on("SIGINT", async () => {
+    console.log("Received SIGINT, closing AMQP connection...");
     if (queueService) {
       await queueService.close();
     }
     process.exit(0);
   });
 
-  process.on('SIGTERM', async () => {
-    console.log('Received SIGTERM, closing AMQP connection...');
+  process.on("SIGTERM", async () => {
+    console.log("Received SIGTERM, closing AMQP connection...");
     if (queueService) {
       await queueService.close();
     }
     process.exit(0);
   });
 }
-

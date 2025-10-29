@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
@@ -37,10 +37,19 @@ import {
   Info,
 } from "lucide-react";
 import Link from "next/link";
-import type {
-  AffordabilityResult,
-  LoanOffer,
-} from "@/lib/affordability-calculator";
+import type { AffordabilityResult } from "@/lib/affordability-calculator";
+import { FormValidationSummary } from "@/components/ui/form-validation-summary";
+
+// Define LoanOffer type locally
+interface LoanOffer {
+  id: string;
+  amount: number;
+  term: number;
+  interestRate: number;
+  monthlyPayment: number;
+  totalPayment: number;
+  description: string;
+}
 import { AffordabilityCalculator } from "./affordability-calculator";
 import { ClientRegistrationForm } from "./client-registration-form";
 import { CreditScoringCalculator } from "./credit-scoring-calculator";
@@ -61,7 +70,7 @@ type ClientFormData = {
 };
 
 // Simple fetcher for SWR
-const fetcher = (url: string) => fetch(url).then(res => res.json());
+const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
 // Form validation schema
 const leadFormSchema = z.object({
@@ -92,13 +101,16 @@ const leadFormSchema = z.object({
   employerName: z.string().optional(),
   yearsAtCurrentJob: z.string().optional(),
   hasExistingLoans: z.boolean().default(false),
-  monthlyDebtPayments: z.union([z.number(), z.string()]).transform((val) => {
-    if (typeof val === 'string') {
-      const parsed = parseFloat(val);
-      return isNaN(parsed) ? 0 : parsed;
-    }
-    return val;
-  }).default(0),
+  monthlyDebtPayments: z
+    .union([z.number(), z.string()])
+    .transform((val) => {
+      if (typeof val === "string") {
+        const parsed = parseFloat(val);
+        return isNaN(parsed) ? 0 : parsed;
+      }
+      return val;
+    })
+    .default(0),
   propertyOwnership: z.string().optional(),
   businessOwnership: z.boolean().default(false),
   businessType: z.string().optional(),
@@ -121,9 +133,30 @@ export function NewLeadForm() {
   const [activeTab, setActiveTab] = useState("client");
   const [creditScoreResult, setCreditScoreResult] = useState<any>(null);
   const [loanTemplateData, setLoanTemplateData] = useState<any>(null);
+  const [formCompletionStatus, setFormCompletionStatus] = useState({
+    client: false,
+    affordability: false,
+    creditScoring: false,
+    loan: false,
+    terms: false,
+    additional: false,
+  });
+  const [currentLeadId, setCurrentLeadId] = useState<string | null>(null);
+  const [clientCreatedInFineract, setClientCreatedInFineract] = useState(false);
+
+  // Debug state changes
+  useEffect(() => {
+    console.log(
+      "==========> clientCreatedInFineract state changed to:",
+      clientCreatedInFineract
+    );
+  }, [clientCreatedInFineract]);
 
   // Fetch template data using SWR
-  const { data: templateResult, error: templateError } = useSWR('/api/leads/template', fetcher);
+  const { data: templateResult, error: templateError } = useSWR(
+    "/api/leads/template",
+    fetcher
+  );
   const clientFormData = templateResult?.data || {
     offices: [],
     legalForms: [],
@@ -134,9 +167,30 @@ export function NewLeadForm() {
     activationDate: null,
   };
 
+  // Check if client exists in Fineract by National ID
+  const checkClientExists = async (nationalId: string) => {
+    try {
+      const response = await fetch(
+        `/api/fineract/clients/external-id/${nationalId}`
+      );
+      if (response.ok) {
+        const clientData = await response.json();
+        setClientCreatedInFineract(true);
+        setFormCompletionStatus((prev) => ({ ...prev, client: true }));
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error("Error checking client existence:", error);
+      return false;
+    }
+  };
+
   // Initialize form with default values - MUST BE BEFORE ANY CONDITIONAL RETURNS
   const form = useForm({
     resolver: zodResolver(leadFormSchema),
+    mode: "onBlur", // Validate on blur for better UX
+    reValidateMode: "onChange", // Re-validate on change after first validation
     defaultValues: {
       officeId: "1",
       legalFormId: "1",
@@ -185,15 +239,21 @@ export function NewLeadForm() {
                 <ArrowLeft className="h-4 w-4" />
               </Link>
             </Button>
-            <h1 className="text-2xl font-bold tracking-tight">Create New Lead</h1>
+            <h1 className="text-2xl font-bold tracking-tight">
+              Create New Lead
+            </h1>
           </div>
         </div>
 
         <Card className="border-red-200 bg-red-50">
           <CardContent className="pt-6">
             <div className="text-center">
-              <div className="text-red-600 font-medium">Error loading form data</div>
-              <div className="text-sm text-red-500 mt-1">{templateError.message}</div>
+              <div className="text-red-600 font-medium">
+                Error loading form data
+              </div>
+              <div className="text-sm text-red-500 mt-1">
+                {templateError.message}
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -212,7 +272,9 @@ export function NewLeadForm() {
                 <ArrowLeft className="h-4 w-4" />
               </Link>
             </Button>
-            <h1 className="text-2xl font-bold tracking-tight">Create New Lead</h1>
+            <h1 className="text-2xl font-bold tracking-tight">
+              Create New Lead
+            </h1>
           </div>
         </div>
 
@@ -236,17 +298,29 @@ export function NewLeadForm() {
     );
   }
 
-
   // Handle form submission
   const onSubmit = async (data: LeadFormValues) => {
     setIsSubmitting(true);
 
     try {
+      // Trigger form validation
+      const isValid = await form.trigger();
+
+      if (!isValid) {
+        toast({
+          title: "Validation Error",
+          description: "Please fix the errors in the form before submitting",
+          variant: "destructive",
+        });
+        return;
+      }
+
       // Validate required fields before submission
       if (!data.officeId || !data.legalFormId) {
         toast({
           title: "Validation Error",
-          description: "Please fill in all required fields (Office and Legal Form)",
+          description:
+            "Please fill in all required fields (Office and Legal Form)",
           variant: "destructive",
         });
         return;
@@ -254,79 +328,163 @@ export function NewLeadForm() {
 
       console.log("Form data being submitted:", data);
 
-      // Create lead using the new API
-      const response = await fetch('/api/leads/operations', {
-        method: 'POST',
+      // Determine operation based on whether client was found
+      console.log(
+        "==========> clientCreatedInFineract state:",
+        clientCreatedInFineract
+      );
+      const operation = clientCreatedInFineract
+        ? "updateClient"
+        : "createLeadWithClient";
+      console.log("==========> Selected operation:", operation);
+
+      // Prepare data for the API call
+      const apiData = {
+        ...data,
+        // Convert string IDs to numbers
+        officeId: data.officeId ? Number(data.officeId) : undefined,
+        legalFormId: data.legalFormId ? Number(data.legalFormId) : undefined,
+        clientTypeId: data.clientTypeId ? Number(data.clientTypeId) : undefined,
+        clientClassificationId: data.clientClassificationId
+          ? Number(data.clientClassificationId)
+          : undefined,
+        genderId: data.gender ? Number(data.gender) : undefined,
+        // Convert data types to match the schema expectations
+        dateOfBirth: data.dateOfBirth ? new Date(data.dateOfBirth) : undefined,
+        submittedOnDate: data.submittedOnDate
+          ? new Date(data.submittedOnDate)
+          : new Date(),
+        activationDate: data.activationDate
+          ? new Date(data.activationDate)
+          : undefined,
+        savingsProductId: data.savingsProductId
+          ? Number(data.savingsProductId)
+          : undefined,
+        monthlyDebtPayments: data.monthlyDebtPayments
+          ? Number(data.monthlyDebtPayments)
+          : undefined,
+        // Add affordability and credit score data
+        affordabilityResult,
+        selectedOffer,
+        creditScoreResult,
+      };
+
+      // If updating client, add the Fineract client ID
+      if (operation === "updateClient") {
+        // Get the Fineract client ID from the client lookup
+        const fineractClientId = (window as any).fineractClientId;
+        console.log(
+          "==========> Retrieved fineractClientId from window:",
+          fineractClientId
+        );
+        console.log("==========> Window object keys:", Object.keys(window));
+
+        if (!fineractClientId) {
+          throw new Error("Cannot update client: Fineract client ID not found");
+        }
+        apiData.fineractClientId = fineractClientId;
+        console.log(
+          "==========> Added fineractClientId to apiData:",
+          apiData.fineractClientId
+        );
+      }
+
+      // Call the appropriate API operation
+      console.log("==========> Making API call to /api/leads/operations");
+      console.log("==========> Operation:", operation);
+      console.log("==========> API Data:", apiData);
+
+      const response = await fetch("/api/leads/operations", {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          operation: 'saveDraft',
-          data: {
-            ...data,
-            // Convert string IDs to numbers
-            officeId: data.officeId ? Number(data.officeId) : undefined,
-            legalFormId: data.legalFormId ? Number(data.legalFormId) : undefined,
-            clientTypeId: data.clientTypeId ? Number(data.clientTypeId) : undefined,
-            clientClassificationId: data.clientClassificationId ? Number(data.clientClassificationId) : undefined,
-            genderId: data.gender ? Number(data.gender) : undefined,
-            // Convert data types to match the schema expectations
-            dateOfBirth: data.dateOfBirth ? new Date(data.dateOfBirth) : undefined,
-            submittedOnDate: data.submittedOnDate ? new Date(data.submittedOnDate) : new Date(),
-            activationDate: data.activationDate ? new Date(data.activationDate) : undefined,
-            savingsProductId: data.savingsProductId ? Number(data.savingsProductId) : undefined,
-            monthlyDebtPayments: data.monthlyDebtPayments ? Number(data.monthlyDebtPayments) : undefined,
-            // Add affordability and credit score data
-            affordabilityResult,
-            selectedOffer,
-            creditScoreResult,
-          },
+          operation,
+          data: apiData,
         }),
       });
 
-      console.log("Response status:", response.status);
-      console.log("Response headers:", response.headers);
+      console.log("==========> Response status:", response.status);
+      console.log("==========> Response headers:", response.headers);
 
       if (!response.ok) {
-        const errorData = await response.json();
-        console.error("API Error:", errorData);
-        throw new Error(errorData.error || 'Failed to create lead');
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          console.error(
+            "==========> Failed to parse error response as JSON:",
+            parseError
+          );
+          errorData = {
+            error: `HTTP ${response.status}: ${response.statusText}`,
+          };
+        }
+        console.error("==========> API Error:", errorData);
+        throw new Error(
+          errorData.error ||
+            `Failed to ${
+              operation === "updateClient" ? "update" : "create"
+            } lead and client`
+        );
       }
 
       const result = await response.json();
-      console.log("Lead created successfully:", result);
+      console.log(
+        `${
+          operation === "updateClient"
+            ? "Client updated"
+            : "Lead and client created"
+        } successfully:`,
+        result
+      );
 
-      // Submit the lead
-      const submitResponse = await fetch('/api/leads/operations', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          operation: 'submitLead',
-          leadId: result.leadId,
-        }),
-      });
+      // Store the lead ID for future operations
+      setCurrentLeadId(result.leadId);
 
-      if (!submitResponse.ok) {
-        const errorData = await submitResponse.json();
-        console.error("Submit Error:", errorData);
-        throw new Error(errorData.error || 'Failed to submit lead');
-      }
+      // Update UI state to reflect successful operation
+      setClientCreatedInFineract(true);
+      setFormCompletionStatus((prev) => ({ ...prev, client: true }));
 
-      // Success - redirect
       toast({
         title: "Success",
-        description: "Lead created and submitted successfully",
+        description:
+          operation === "updateClient"
+            ? `Client updated successfully! Fineract Account: ${
+                result.fineractAccountNo || "N/A"
+              }`
+            : `Lead and client created successfully! Fineract Account: ${
+                result.fineractAccountNo || "N/A"
+              }`,
       });
-      // Redirect to leads page after successful submission
-      router.push("/leads");
-    } catch (error) {
+
+      // Clear local storage
+      LeadLocalStorage.clear();
+    } catch (error: any) {
       console.error("Error creating lead:", error);
+
+      // Check if it's a Fineract-specific error
+      const isFineractError =
+        error.message?.includes("Fineract") ||
+        error.message?.includes("client");
+
       toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "An unexpected error occurred",
+        title: isFineractError ? "Fineract Connection Error" : "Error",
+        description:
+          error instanceof Error
+            ? error.message
+            : "An unexpected error occurred",
         variant: "destructive",
+        action: isFineractError
+          ? {
+              label: "Retry",
+              onClick: () => {
+                // Retry the operation
+                onSubmit(data);
+              },
+            }
+          : undefined,
       });
     } finally {
       setIsSubmitting(false);
@@ -379,6 +537,29 @@ export function NewLeadForm() {
     setActiveTab(stepId);
   };
 
+  // Check if next button should be disabled
+  const isNextButtonDisabled = (currentTab: string) => {
+    const tabOrder = [
+      "client",
+      "affordability",
+      "credit-scoring",
+      "loan",
+      "terms",
+      "additional",
+    ];
+    const currentIndex = tabOrder.indexOf(currentTab);
+
+    // Disable if any previous tab is not completed
+    for (let i = 0; i < currentIndex; i++) {
+      if (
+        !formCompletionStatus[tabOrder[i] as keyof typeof formCompletionStatus]
+      ) {
+        return true;
+      }
+    }
+    return false;
+  };
+
   return (
     <div className="min-h-screen flex flex-col">
       {/* Fixed Header */}
@@ -390,7 +571,9 @@ export function NewLeadForm() {
                 <ArrowLeft className="h-4 w-4" />
               </Link>
             </Button>
-            <h1 className="text-lg lg:text-2xl font-bold tracking-tight">Create New Lead</h1>
+            <h1 className="text-lg lg:text-2xl font-bold tracking-tight">
+              Create New Lead
+            </h1>
           </div>
         </div>
       </div>
@@ -398,6 +581,21 @@ export function NewLeadForm() {
       {/* Scrollable Content */}
       <div className="flex-1">
         <div className="px-2 py-2 lg:px-6 lg:py-6 space-y-2 lg:space-y-6">
+          {/* Form Validation Summary */}
+          {Object.keys(form.formState.errors).length > 0 && (
+            <FormValidationSummary
+              errors={Object.entries(form.formState.errors).map(
+                ([field, error]) => ({
+                  field: field.charAt(0).toUpperCase() + field.slice(1),
+                  message: error?.message || "Invalid value",
+                })
+              )}
+              onDismiss={() => {
+                // Clear errors by resetting the form state
+                form.clearErrors();
+              }}
+            />
+          )}
 
           <Tabs
             value={activeTab}
@@ -407,11 +605,20 @@ export function NewLeadForm() {
             <TabsList className="w-full grid grid-cols-6 gap-0 lg:grid lg:grid-cols-6 lg:gap-0">
               <TabsTrigger
                 value="client"
-                className="data-[state=active]:bg-blue-500 flex-1 justify-center"
+                className={`data-[state=active]:bg-blue-500 flex-1 justify-center ${
+                  formCompletionStatus.client
+                    ? "bg-green-100 text-green-700"
+                    : ""
+                }`}
                 title="Client Information"
               >
                 <User className="h-4 w-4" />
                 <span className="hidden sm:inline ml-1 lg:ml-2">Client</span>
+                {formCompletionStatus.client && (
+                  <Badge className="ml-1 bg-green-500 text-white text-xs">
+                    ✓
+                  </Badge>
+                )}
               </TabsTrigger>
               <TabsTrigger
                 value="affordability"
@@ -419,7 +626,9 @@ export function NewLeadForm() {
                 title="Affordability"
               >
                 <Calculator className="h-4 w-4" />
-                <span className="hidden sm:inline ml-1 lg:ml-2">Affordability</span>
+                <span className="hidden sm:inline ml-1 lg:ml-2">
+                  Affordability
+                </span>
               </TabsTrigger>
               <TabsTrigger
                 value="credit-scoring"
@@ -456,7 +665,9 @@ export function NewLeadForm() {
                 title="Additional Information"
               >
                 <Info className="h-4 w-4" />
-                <span className="hidden sm:inline ml-1 lg:ml-2">Additional</span>
+                <span className="hidden sm:inline ml-1 lg:ml-2">
+                  Additional
+                </span>
               </TabsTrigger>
             </TabsList>
 
@@ -474,15 +685,35 @@ export function NewLeadForm() {
                     formData={clientFormData}
                     externalForm={form}
                     onFormSubmit={onSubmit}
+                    clientCreatedInFineract={clientCreatedInFineract}
+                    setFormCompletionStatus={setFormCompletionStatus}
+                    setClientCreatedInFineract={setClientCreatedInFineract}
+                    isSubmitting={isSubmitting}
+                    onClientCreated={() => {
+                      setClientCreatedInFineract(true);
+                      setFormCompletionStatus((prev) => ({
+                        ...prev,
+                        client: true,
+                      }));
+                    }}
                   />
 
                   <div className="flex justify-end">
                     <Button
                       type="button"
-                      className="bg-blue-500 hover:bg-blue-600 w-full sm:w-auto"
+                      className={`w-full sm:w-auto ${
+                        clientCreatedInFineract
+                          ? "bg-green-500 hover:bg-green-600"
+                          : "bg-blue-500 hover:bg-blue-600"
+                      }`}
+                      disabled={!clientCreatedInFineract}
                       onClick={() => setActiveTab("affordability")}
                     >
-                      Next: Affordability
+                      {clientCreatedInFineract ? (
+                        <>✓ Client Created - Next: Affordability</>
+                      ) : (
+                        "Next: Affordability"
+                      )}
                     </Button>
                   </div>
                 </CardContent>
@@ -536,7 +767,8 @@ export function NewLeadForm() {
                 <CardHeader className="px-2 lg:px-6">
                   <CardTitle>Credit Scoring Calculator</CardTitle>
                   <CardDescription>
-                    Evaluate client creditworthiness using comprehensive scoring factors
+                    Evaluate client creditworthiness using comprehensive scoring
+                    factors
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="px-2 lg:px-6">
@@ -573,12 +805,15 @@ export function NewLeadForm() {
                   <LoanDetailsForm
                     clientId={1} // This should come from the client registration
                     onSubmit={(data) => {
-                      console.log('Loan details submitted:', data);
+                      console.log("Loan details submitted:", data);
                       // Handle loan details submission
                     }}
                     onBack={() => setActiveTab("credit-scoring")}
                     onNext={(templateData) => {
-                      console.log('Received template data in main form:', templateData);
+                      console.log(
+                        "Received template data in main form:",
+                        templateData
+                      );
                       setLoanTemplateData(templateData);
                       setActiveTab("terms");
                     }}
@@ -595,7 +830,7 @@ export function NewLeadForm() {
                     <LoanTermsForm
                       loanTemplate={loanTemplateData}
                       onSubmit={(data) => {
-                        console.log('Loan terms submitted:', data);
+                        console.log("Loan terms submitted:", data);
                         // Handle loan terms submission
 
                         form.handleSubmit(onSubmit)();
@@ -605,8 +840,13 @@ export function NewLeadForm() {
                     />
                   ) : (
                     <div className="text-center py-8">
-                      <p className="text-muted-foreground mb-4">No loan template data available</p>
-                      <p className="text-sm text-muted-foreground">Please complete the Loan Details tab first to load the template data.</p>
+                      <p className="text-muted-foreground mb-4">
+                        No loan template data available
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        Please complete the Loan Details tab first to load the
+                        template data.
+                      </p>
                       <Button
                         onClick={() => setActiveTab("loan")}
                         className="mt-2"

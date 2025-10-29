@@ -43,15 +43,20 @@ async function getAccessToken(): Promise<string | undefined> {
 export async function fetchFineractAPI(
   endpoint: string,
   options: RequestInit = {},
-  version: 'v1' | 'v2' = 'v1'
+  version: "v1" | "v2" = "v1"
 ) {
   const accessToken = await getAccessToken();
   const fineractTenantId = await getFineractTenantId();
 
-  console.log("Session debug:", { accessToken: !!accessToken, fineractTenantId });
+  console.log("Session debug:", {
+    accessToken: !!accessToken,
+    fineractTenantId,
+  });
 
   if (!accessToken) {
-    throw new Error("No access token available - user may not be authenticated");
+    throw new Error(
+      "No access token available - user may not be authenticated"
+    );
   }
 
   const url = `${baseUrl}/fineract-provider/api/${version}${
@@ -185,7 +190,7 @@ export async function fetchFineractAPIV2(
   endpoint: string,
   options: RequestInit = {}
 ) {
-  return fetchFineractAPI(endpoint, options, 'v2');
+  return fetchFineractAPI(endpoint, options, "v2");
 }
 
 /**
@@ -194,7 +199,9 @@ export async function fetchFineractAPIV2(
 export function createClientFineractAPI(accessToken: string) {
   return async (endpoint: string, options: RequestInit = {}) => {
     if (!accessToken) {
-      throw new Error("No access token available - user may not be authenticated");
+      throw new Error(
+        "No access token available - user may not be authenticated"
+      );
     }
 
     const url = `${baseUrl}/fineract-provider/api/v1${
@@ -204,7 +211,7 @@ export function createClientFineractAPI(accessToken: string) {
     const headers = {
       ...options.headers,
       Authorization: `Basic ${accessToken}`,
-      "Fineract-Platform-TenantId": "goodfellow",
+      "Fineract-Platform-TenantId": "demo",
       "Content-Type": "application/json",
     };
 
