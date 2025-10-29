@@ -14,6 +14,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -27,6 +28,15 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 import { 
   MoreHorizontal, 
   Phone, 
@@ -38,7 +48,8 @@ import {
   Clock,
   Eye
 } from "lucide-react";
-import { UssdLeadsData, UssdLoanApplication } from "@/app/actions/ussd-leads-actions";
+import { UssdLeadsData } from "@/app/actions/ussd-leads-actions";
+import { UssdLoanApplication } from "@/shared/types/ussd";
 import { format } from "date-fns";
 
 interface UssdLeadsTableProps {
@@ -84,6 +95,10 @@ const fetcher = (url: string) =>
 export function UssdLeadsTable({ initialData }: UssdLeadsTableProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
+  const [rejectApplicationId, setRejectApplicationId] = useState<number | null>(null);
+  const [rejectionReason, setRejectionReason] = useState("");
+  const MAX_REASON_LENGTH = 20;
   
   // Use SWR for real-time updates
   const { data, error, mutate } = useSWR('/api/ussd-leads', fetcher, {
@@ -107,14 +122,14 @@ export function UssdLeadsTable({ initialData }: UssdLeadsTableProps) {
     return matchesSearch && matchesStatus;
   });
 
-  const handleStatusUpdate = async (applicationId: number, newStatus: string) => {
+  const handleStatusUpdate = async (applicationId: number, newStatus: string, notes?: string) => {
     try {
       const response = await fetch(`/api/ussd-leads/${applicationId}/status`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ status: newStatus }),
+        body: JSON.stringify({ status: newStatus, notes }),
       });
 
       if (response.ok) {
@@ -146,6 +161,37 @@ export function UssdLeadsTable({ initialData }: UssdLeadsTableProps) {
       console.error(e);
       alert(e.message || 'Failed to submit loan');
     }
+  };
+
+  const openRejectDialog = (applicationId: number) => {
+    console.log("Opening reject dialog for application:", applicationId);
+    setRejectApplicationId(applicationId);
+    setRejectionReason("");
+    // Use setTimeout to ensure dropdown closes before dialog opens
+    setTimeout(() => {
+      setRejectDialogOpen(true);
+    }, 100);
+  };
+
+  const handleRejectConfirm = async () => {
+    if (!rejectApplicationId) return;
+    
+    const trimmedReason = rejectionReason.trim();
+    
+    if (!trimmedReason) {
+      alert("Rejection reason is required");
+      return;
+    }
+    
+    if (trimmedReason.length > MAX_REASON_LENGTH) {
+      alert(`Rejection reason cannot exceed ${MAX_REASON_LENGTH} characters`);
+      return;
+    }
+    
+    await handleStatusUpdate(rejectApplicationId, "REJECTED", trimmedReason);
+    setRejectDialogOpen(false);
+    setRejectApplicationId(null);
+    setRejectionReason("");
   };
 
   return (
@@ -330,7 +376,12 @@ export function UssdLeadsTable({ initialData }: UssdLeadsTableProps) {
                               <CheckCircle className="mr-2 h-4 w-4" />
                               Approve
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleStatusUpdate(app.loanApplicationUssdId, "REJECTED")}>
+                            <DropdownMenuItem 
+                              onSelect={(e) => {
+                                e.preventDefault();
+                                openRejectDialog(app.loanApplicationUssdId);
+                              }}
+                            >
                               <XCircle className="mr-2 h-4 w-4" />
                               Reject
                             </DropdownMenuItem>
@@ -342,7 +393,12 @@ export function UssdLeadsTable({ initialData }: UssdLeadsTableProps) {
                               <CheckCircle className="mr-2 h-4 w-4" />
                               Approve
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleStatusUpdate(app.loanApplicationUssdId, "REJECTED")}>
+                            <DropdownMenuItem 
+                              onSelect={(e) => {
+                                e.preventDefault();
+                                openRejectDialog(app.loanApplicationUssdId);
+                              }}
+                            >
                               <XCircle className="mr-2 h-4 w-4" />
                               Reject
                             </DropdownMenuItem>
@@ -369,6 +425,58 @@ export function UssdLeadsTable({ initialData }: UssdLeadsTableProps) {
           </TableBody>
         </Table>
       </div>
+
+      {/* Rejection Reason Dialog */}
+      <Dialog open={rejectDialogOpen} onOpenChange={setRejectDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reject Application</DialogTitle>
+            <DialogDescription>
+              Please provide a reason for rejecting this application (maximum {MAX_REASON_LENGTH} characters).
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="rejection-reason">Rejection Reason *</Label>
+              <Textarea
+                id="rejection-reason"
+                placeholder="Enter rejection reason..."
+                value={rejectionReason}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  if (value.length <= MAX_REASON_LENGTH) {
+                    setRejectionReason(value);
+                  }
+                }}
+                maxLength={MAX_REASON_LENGTH}
+                className="min-h-[100px]"
+              />
+              <div className="text-right text-sm text-muted-foreground">
+                {rejectionReason.length}/{MAX_REASON_LENGTH} characters
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setRejectDialogOpen(false);
+                setRejectionReason("");
+                setRejectApplicationId(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleRejectConfirm}
+              disabled={!rejectionReason.trim()}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              Reject Application
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

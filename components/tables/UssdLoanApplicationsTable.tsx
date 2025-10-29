@@ -7,6 +7,16 @@ import { GenericDataTable } from "./generic-data-table"
 import { DataTableColumn, DataTableFilter } from "@/shared/types/data-table"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Textarea } from "@/components/ui/textarea"
+import { Label } from "@/components/ui/label"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -42,6 +52,10 @@ export default function UssdLoanApplicationsTable({ ussdLoanApplications, filter
         { columnId: "status", value: "", type: "select" },
         { columnId: "payoutMethod", value: "", type: "select" },
     ])
+    const [rejectDialogOpen, setRejectDialogOpen] = useState(false)
+    const [rejectApplicationId, setRejectApplicationId] = useState<number | null>(null)
+    const [rejectionReason, setRejectionReason] = useState("")
+    const MAX_REASON_LENGTH = 20
 
     // Use SWR for real-time updates
     const { data, error, mutate } = useSWR('/api/ussd-leads', fetcher, {
@@ -57,23 +71,56 @@ export default function UssdLoanApplicationsTable({ ussdLoanApplications, filter
         : allApplications
 
     // Status update handlers
-    const handleStatusUpdate = async (applicationId: number, newStatus: string) => {
+    const handleStatusUpdate = async (applicationId: number, newStatus: string, notes?: string) => {
         try {
             const response = await fetch(`/api/ussd-leads/${applicationId}/status`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ status: newStatus }),
+                body: JSON.stringify({ status: newStatus, notes }),
             })
 
             if (response.ok) {
                 // Trigger SWR revalidation to get fresh data
                 mutate()
+            } else {
+                const errorData = await response.json()
+                alert(errorData.error || 'Failed to update status')
             }
         } catch (error) {
             console.error('Error updating status:', error)
+            alert('Failed to update status')
         }
+    }
+
+    const openRejectDialog = (applicationId: number) => {
+        setRejectApplicationId(applicationId)
+        setRejectionReason("")
+        setTimeout(() => {
+            setRejectDialogOpen(true)
+        }, 100)
+    }
+
+    const handleRejectConfirm = async () => {
+        if (!rejectApplicationId) return
+        
+        const trimmedReason = rejectionReason.trim()
+        
+        if (!trimmedReason) {
+            alert("Rejection reason is required")
+            return
+        }
+        
+        if (trimmedReason.length > MAX_REASON_LENGTH) {
+            alert(`Rejection reason cannot exceed ${MAX_REASON_LENGTH} characters`)
+            return
+        }
+        
+        await handleStatusUpdate(rejectApplicationId, "REJECTED", trimmedReason)
+        setRejectDialogOpen(false)
+        setRejectApplicationId(null)
+        setRejectionReason("")
     }
 
     const handleMarkAsSubmitted = async (app: UssdLoanApplication) => {
@@ -315,7 +362,12 @@ export default function UssdLoanApplicationsTable({ ussdLoanApplications, filter
                                             <CheckCircle className="mr-2 h-4 w-4" />
                                             Mark as Submitted
                                         </DropdownMenuItem>
-                                        <DropdownMenuItem onClick={() => handleStatusUpdate(app.loanApplicationUssdId, "REJECTED")}>
+                                        <DropdownMenuItem 
+                                            onSelect={(e) => {
+                                                e.preventDefault()
+                                                openRejectDialog(app.loanApplicationUssdId)
+                                            }}
+                                        >
                                             <XCircle className="mr-2 h-4 w-4" />
                                             Reject Application
                                         </DropdownMenuItem>
@@ -331,7 +383,12 @@ export default function UssdLoanApplicationsTable({ ussdLoanApplications, filter
                                             <CheckCircle className="mr-2 h-4 w-4" />
                                             Approve
                                         </DropdownMenuItem>
-                                        <DropdownMenuItem onClick={() => handleStatusUpdate(app.loanApplicationUssdId, "REJECTED")}>
+                                        <DropdownMenuItem 
+                                            onSelect={(e) => {
+                                                e.preventDefault()
+                                                openRejectDialog(app.loanApplicationUssdId)
+                                            }}
+                                        >
                                             <XCircle className="mr-2 h-4 w-4" />
                                             Reject
                                         </DropdownMenuItem>
@@ -343,7 +400,12 @@ export default function UssdLoanApplicationsTable({ ussdLoanApplications, filter
                                             <CheckCircle className="mr-2 h-4 w-4" />
                                             Approve
                                         </DropdownMenuItem>
-                                        <DropdownMenuItem onClick={() => handleStatusUpdate(app.loanApplicationUssdId, "REJECTED")}>
+                                        <DropdownMenuItem 
+                                            onSelect={(e) => {
+                                                e.preventDefault()
+                                                openRejectDialog(app.loanApplicationUssdId)
+                                            }}
+                                        >
                                             <XCircle className="mr-2 h-4 w-4" />
                                             Reject
                                         </DropdownMenuItem>
@@ -367,21 +429,75 @@ export default function UssdLoanApplicationsTable({ ussdLoanApplications, filter
     }
 
     return (
-        <GenericDataTable
-            data={applications}
-            columns={getUssdLoanApplicationsColumns()}
-            searchPlaceholder="Search applications..."
-            enableSelection={true}
-            enablePagination={true}
-            enableColumnVisibility={false}
-            enableExport={true}
-            enableFilters={true}
-            pageSize={20}
-            tableId="ussd-loan-applications"
-            exportFileName="ussd-loan-applications"
-            emptyMessage="No USSD loan applications found."
-            customFilters={customFilters}
-            onFilterChange={setCustomFilters}
-        />
+        <>
+            <GenericDataTable
+                data={applications}
+                columns={getUssdLoanApplicationsColumns()}
+                searchPlaceholder="Search applications..."
+                enableSelection={true}
+                enablePagination={true}
+                enableColumnVisibility={false}
+                enableExport={true}
+                enableFilters={true}
+                pageSize={20}
+                tableId="ussd-loan-applications"
+                exportFileName="ussd-loan-applications"
+                emptyMessage="No USSD loan applications found."
+                customFilters={customFilters}
+                onFilterChange={setCustomFilters}
+            />
+
+            {/* Rejection Reason Dialog */}
+            <Dialog open={rejectDialogOpen} onOpenChange={setRejectDialogOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Reject Application</DialogTitle>
+                        <DialogDescription>
+                            Please provide a reason for rejecting this application (maximum {MAX_REASON_LENGTH} characters).
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                        <div className="space-y-2">
+                            <Label htmlFor="rejection-reason">Rejection Reason *</Label>
+                            <Textarea
+                                id="rejection-reason"
+                                placeholder="Enter rejection reason..."
+                                value={rejectionReason}
+                                onChange={(e) => {
+                                    const value = e.target.value
+                                    if (value.length <= MAX_REASON_LENGTH) {
+                                        setRejectionReason(value)
+                                    }
+                                }}
+                                maxLength={MAX_REASON_LENGTH}
+                                className="min-h-[100px]"
+                            />
+                            <div className="text-right text-sm text-muted-foreground">
+                                {rejectionReason.length}/{MAX_REASON_LENGTH} characters
+                            </div>
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button
+                            variant="outline"
+                            onClick={() => {
+                                setRejectDialogOpen(false)
+                                setRejectionReason("")
+                                setRejectApplicationId(null)
+                            }}
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            onClick={handleRejectConfirm}
+                            disabled={!rejectionReason.trim()}
+                            className="bg-red-600 hover:bg-red-700"
+                        >
+                            Reject Application
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+        </>
     )
 }

@@ -38,6 +38,14 @@ export async function PUT(
       );
     }
 
+    // If rejecting, require a reason
+    if (status === "REJECTED" && (!notes || !String(notes).trim())) {
+      return NextResponse.json(
+        { error: "Rejection reason is required when rejecting an application" },
+        { status: 400 }
+      );
+    }
+
     const result = await updateUssdApplicationStatus(applicationId, status, notes);
 
     if (!result.success) {

@@ -240,18 +240,64 @@ export async function updateUssdApplicationStatus(
       };
     }
 
+    // Prepare update payload
+    const updateData: any = {
+      status,
+      processedAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    if (notes) {
+      updateData.processingNotes = notes;
+      if (status === "REJECTED") {
+        updateData.rejectionReason = notes;
+      } else if (status === "APPROVED") {
+        updateData.approvalNotes = notes;
+      }
+    }
+
     // Update the application status
     await prisma.ussdLoanApplication.update({
       where: { id: application.id },
-      data: {
-        status,
-        processingNotes: notes,
-        processedAt: new Date(),
-        updatedAt: new Date(),
-      }
+      data: updateData,
     });
 
     console.log(`Updated application ${applicationId} to status: ${status}`, notes ? `Notes: ${notes}` : '');
+    
+    // On rejection, send SMS notification (best-effort, non-blocking for update)
+    if (status === "REJECTED") {
+      try {
+        const serviceBaseUrl = process.env.NOTIFICATION_SERVICE_URL;
+        const tenantId = process.env.TENANT_ID || "goodfellow";
+        if (!serviceBaseUrl) {
+          console.warn("NOTIFICATION_SERVICE_URL is not set; skipping SMS notification");
+        } else {
+          // Format amount as number with commas and 2 decimal places, then add ZMW prefix
+          const amountFormatted = application.principalAmount.toLocaleString("en-US", {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          });
+          const reason = notes || application.rejectionReason || "No reason provided";
+          const message = `Sorry ${application.userFullName}, your loan request of ZMW ${amountFormatted} was not approved. Reason: ${reason}. Contact us on +2609558985 /774 or visit our offices.`;
+
+          const payload = {
+            tenantId,
+            phoneNumbers: [application.userPhoneNumber],
+            message,
+            messageId: (global as any).crypto?.randomUUID ? (global as any).crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+            configId: 0,
+          };
+
+          await fetch(`${serviceBaseUrl.replace(/\/$/, "")}/api/v1/notifications/sms`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+        }
+      } catch (notifyError) {
+        console.error("Failed to send rejection SMS notification:", notifyError);
+      }
+    }
     
     return {
       success: true,
