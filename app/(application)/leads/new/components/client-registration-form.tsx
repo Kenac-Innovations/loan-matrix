@@ -311,7 +311,7 @@ export function ClientRegistrationForm({
   );
   const [isSettingLeadIdFromAutoSave, setIsSettingLeadIdFromAutoSave] =
     useState(false);
-  
+
   // Use ref to track if we've already checked for prospect dialog (only check once)
   const hasCheckedProspectDialog = useRef(false);
 
@@ -463,7 +463,9 @@ export function ClientRegistrationForm({
         if (existingData) {
           // Check if this is the SAME lead we're already working on
           if (existingData.leadId === currentLeadId) {
-            console.log("Same lead in localStorage - already working on it, skipping dialog");
+            console.log(
+              "Same lead in localStorage - already working on it, skipping dialog"
+            );
             return;
           }
 
