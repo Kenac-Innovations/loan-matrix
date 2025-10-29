@@ -40,6 +40,8 @@ export interface UssdLoanApplication {
   // Status Information
   status: UssdLoanApplicationStatus;
   paymentStatus?: string | null;
+  rejectionReason?: string;
+  approvalNotes?: string;
   
   // Timestamps
   createdAt: Date;

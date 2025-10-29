@@ -28,7 +28,7 @@ export const metadata: Metadata = {
 };
 
 export default async function UssdLeadsPage() {
-  // Get tenant slug from headers (set by middleware)
+  // Get tenant slug from headers (set by middleware)d
   const headersList = await headers();
   const tenantSlug = headersList.get("x-tenant-slug") || "demo";
 
