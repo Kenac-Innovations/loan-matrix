@@ -11,7 +11,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Phone,
   FileText,
-  BarChart3,
   RefreshCw,
   CheckCircle,
   XCircle,
@@ -21,6 +20,7 @@ import { getUssdLeadsData } from "@/app/actions/ussd-leads-actions";
 import { headers } from "next/headers";
 import { UssdLeadsMetrics } from "./components/ussd-leads-metrics";
 import UssdLoanApplicationsTable from "@/components/tables/UssdLoanApplicationsTable";
+import { UssdLoanApplicationStatus } from "@/shared/types";
 
 export const metadata: Metadata = {
   title: "USSD Leads | KENAC Loan Matrix",
@@ -33,7 +33,7 @@ export default async function UssdLeadsPage() {
   const tenantSlug = headersList.get("x-tenant-slug") || "demo";
 
   // Fetch USSD leads data server-side
-  const ussdLeadsData = await getUssdLeadsData("demo");
+  const ussdLeadsData = await getUssdLeadsData("goodfellow");
 
   return (
     <>
@@ -57,30 +57,47 @@ export default async function UssdLeadsPage() {
 
       <UssdLeadsMetrics className="mt-6" metrics={ussdLeadsData.metrics} />
 
-      <Tabs defaultValue="table" className="mt-6">
+      <Tabs defaultValue="new-leads" className="mt-6">
         <TabsList className="w-full overflow-x-auto">
           <TabsTrigger
-            value="table"
+            value="new-leads"
+            className="w-full data-[state=active]:bg-blue-500"
+          >
+            <Clock className="mr-2 h-4 w-4" />
+            <span className="whitespace-nowrap">New USSD Leads</span>
+          </TabsTrigger>
+          <TabsTrigger
+            value="all-leads"
             className="w-full data-[state=active]:bg-blue-500"
           >
             <FileText className="mr-2 h-4 w-4" />
-            <span className="whitespace-nowrap">Applications</span>
-          </TabsTrigger>
-          <TabsTrigger
-            value="metrics"
-            className="w-full data-[state=active]:bg-blue-500"
-          >
-            <BarChart3 className="mr-2 h-4 w-4" />
-            <span className="whitespace-nowrap">Analytics</span>
+            <span className="whitespace-nowrap">All USSD Leads</span>
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="table" className="mt-4">
+        <TabsContent value="new-leads" className="mt-4">
           <Card>
             <CardHeader>
-              <CardTitle>USSD Loan Applications</CardTitle>
+              <CardTitle>New USSD Loan Applications</CardTitle>
               <CardDescription>
-                Review and process loan applications submitted via USSD
+                Review and process new loan applications (Status: CREATED)
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <UssdLoanApplicationsTable
+                ussdLoanApplications={ussdLeadsData.applications}
+                filterStatus={UssdLoanApplicationStatus.CREATED}
+              />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="all-leads" className="mt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>All USSD Loan Applications</CardTitle>
+              <CardDescription>
+                View all loan applications with full history
               </CardDescription>
             </CardHeader>
             <CardContent>
