@@ -87,7 +87,7 @@ const payoutMethodLabels = {
 const fetcher = (url: string) =>
   fetch(url, {
     headers: {
-      "x-tenant-slug": "demo", // Or get this dynamically
+      "x-tenant-slug": "goodfellow", // Or get this dynamically
     },
   }).then((res) => res.json());
 

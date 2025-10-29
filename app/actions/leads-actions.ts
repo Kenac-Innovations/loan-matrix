@@ -49,7 +49,7 @@ export interface LeadsData {
 }
 
 export async function getLeadsData(
-  tenantSlug: string = "demo",
+  tenantSlug: string = "goodfellow",
   options: {
     stage?: string;
     status?: string;

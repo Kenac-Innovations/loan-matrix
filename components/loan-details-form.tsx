@@ -5,7 +5,7 @@ import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { format } from "date-fns";
-import { CalendarIcon, ChevronDownIcon } from "lucide-react";
+import { CalendarIcon, ChevronDownIcon, Calculator } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -22,8 +22,24 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { Calendar } from "@/components/ui/calender";
 import { cn } from "@/lib/utils";
+import { formatCurrency } from "@/lib/format-currency";
 
 // Form validation schema
 const loanDetailsSchema = z.object({
@@ -81,6 +97,73 @@ interface LoanTemplate {
     mandatory: boolean;
   }>;
   expectedDisbursementDate: number[];
+  principal?: number;
+  interestRatePerPeriod?: number;
+  loanTermFrequency?: number;
+  loanTermFrequencyType?: number;
+  numberOfRepayments?: number;
+  repaymentEvery?: number;
+  repaymentFrequencyType?: number;
+  interestRateFrequencyType?: number;
+  amortizationType?: { id: number };
+  interestType?: { id: number };
+  interestCalculationPeriodType?: { id: number };
+  transactionProcessingStrategyCode?: string;
+  productId?: number;
+  fundId?: number;
+  isEqualAmortization?: boolean;
+  product?: {
+    amortizationType?: { id: number };
+    interestType?: { id: number };
+    interestCalculationPeriodType?: { id: number };
+    interestRateFrequencyType?: { id: number };
+    repaymentFrequencyType?: { id: number };
+    transactionProcessingStrategyCode?: string;
+    isEqualAmortization?: boolean;
+  };
+}
+
+interface RepaymentSchedulePeriod {
+  period?: number;
+  fromDate?: number[];
+  dueDate: number[];
+  daysInPeriod?: number;
+  principalDue?: number;
+  principalOriginalDue?: number;
+  principalOutstanding?: number;
+  principalLoanBalanceOutstanding?: number;
+  interestDue?: number;
+  interestOriginalDue?: number;
+  interestOutstanding?: number;
+  feeChargesDue?: number;
+  feeChargesOutstanding?: number;
+  penaltyChargesDue?: number;
+  penaltyChargesOutstanding?: number;
+  totalOriginalDueForPeriod?: number;
+  totalDueForPeriod?: number;
+  totalOutstandingForPeriod?: number;
+  totalActualCostOfLoanForPeriod?: number;
+  totalInstallmentAmountForPeriod?: number;
+  downPaymentPeriod?: boolean;
+}
+
+interface RepaymentSchedule {
+  currency: {
+    code: string;
+    name: string;
+    decimalPlaces: number;
+    displayLabel: string;
+  };
+  loanTermInDays: number;
+  totalPrincipalDisbursed: number;
+  totalPrincipalExpected: number;
+  totalPrincipalPaid: number;
+  totalInterestCharged: number;
+  totalFeeChargesCharged: number;
+  totalPenaltyChargesCharged: number;
+  totalRepaymentExpected: number;
+  totalOutstanding: number;
+  periods: RepaymentSchedulePeriod[];
 }
 
 interface LoanDetailsFormProps {
@@ -95,6 +178,9 @@ export function LoanDetailsForm({ clientId, onSubmit, onBack, onNext }: LoanDeta
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [hasCompleteTemplate, setHasCompleteTemplate] = useState(false);
+  const [repaymentSchedule, setRepaymentSchedule] = useState<RepaymentSchedule | null>(null);
+  const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
+  const [isGeneratingSchedule, setIsGeneratingSchedule] = useState(false);
 
   const form = useForm<LoanDetailsFormData>({
     resolver: zodResolver(loanDetailsSchema),
@@ -202,6 +288,93 @@ export function LoanDetailsForm({ clientId, onSubmit, onBack, onNext }: LoanDeta
     } catch (err) {
       console.error('Error fetching template for selected product:', err);
       setError(err instanceof Error ? err.message : 'Failed to fetch template for selected product');
+    }
+  };
+
+  const handleGenerateSchedule = async () => {
+    try {
+      setIsGeneratingSchedule(true);
+      setError(null);
+
+      const formData = form.getValues();
+      
+      // Find selected product
+      const selectedProduct = loanTemplate?.productOptions?.find(
+        (p) => p.name === formData.productName
+      );
+
+      if (!selectedProduct || !loanTemplate) {
+        throw new Error('Please select a product first');
+      }
+
+      // Build payload from form and template data
+      // Use product object if available, otherwise fall back to template fields
+      const product = loanTemplate.product;
+      const amortizationTypeId = product?.amortizationType?.id || loanTemplate.amortizationType?.id || 1;
+      const interestTypeId = product?.interestType?.id || loanTemplate.interestType?.id || 1;
+      const interestCalcTypeId = product?.interestCalculationPeriodType?.id || loanTemplate.interestCalculationPeriodType?.id || 1;
+      
+      const payload = {
+        allowPartialPeriodInterestCalcualtion: interestCalcTypeId === 0 || false,
+        amortizationType: amortizationTypeId,
+        charges: [],
+        clientId: loanTemplate.clientId,
+        collateral: [],
+        createStandingInstructionAtDisbursement: formData.createStandingInstructions ? "true" : "",
+        dateFormat: "dd MMMM yyyy",
+        expectedDisbursementDate: format(formData.disbursementOn, "dd MMMM yyyy"),
+        externalId: formData.externalId || "",
+        fundId: formData.fund || loanTemplate.fundId?.toString() || "",
+        interestCalculationPeriodType: interestCalcTypeId,
+        interestChargedFromDate: null,
+        interestRateFrequencyType: (typeof loanTemplate.interestRateFrequencyType === 'number' 
+          ? loanTemplate.interestRateFrequencyType 
+          : (product?.interestRateFrequencyType as any)?.id || 2),
+        interestRatePerPeriod: loanTemplate.interestRatePerPeriod || 10,
+        interestType: interestTypeId,
+        isEqualAmortization: product?.isEqualAmortization !== undefined ? product.isEqualAmortization : (loanTemplate.isEqualAmortization || false),
+        isTopup: "",
+        linkAccountId: formData.linkSavings || "",
+        loanIdToClose: "",
+        loanOfficerId: formData.loanOfficer || "",
+        loanPurposeId: formData.loanPurpose || "",
+        loanTermFrequency: loanTemplate.loanTermFrequency || 1,
+        loanTermFrequencyType: loanTemplate.loanTermFrequencyType || 2,
+        loanType: "individual",
+        locale: "en",
+        numberOfRepayments: loanTemplate.numberOfRepayments || 1,
+        principal: loanTemplate.principal || 100,
+        productId: selectedProduct.id,
+        repaymentEvery: loanTemplate.repaymentEvery || 1,
+        repaymentFrequencyDayOfWeekType: "",
+        repaymentFrequencyNthDayType: "",
+        repaymentFrequencyType: (typeof loanTemplate.repaymentFrequencyType === 'number' 
+          ? loanTemplate.repaymentFrequencyType 
+          : (product?.repaymentFrequencyType as any)?.id || 2),
+        repaymentsStartingFromDate: null,
+        submittedOnDate: format(formData.submittedOn, "dd MMMM yyyy"),
+        transactionProcessingStrategyCode: product?.transactionProcessingStrategyCode || loanTemplate.transactionProcessingStrategyCode || "creocore-strategy",
+      };
+
+      const response = await fetch('/api/fineract/loans/calculate-schedule', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to calculate repayment schedule');
+      }
+
+      const scheduleData = await response.json();
+      setRepaymentSchedule(scheduleData);
+      setIsScheduleModalOpen(true);
+    } catch (err) {
+      console.error('Error generating repayment schedule:', err);
+      setError(err instanceof Error ? err.message : 'Failed to generate repayment schedule');
+    } finally {
+      setIsGeneratingSchedule(false);
     }
   };
 
@@ -561,29 +734,167 @@ export function LoanDetailsForm({ clientId, onSubmit, onBack, onNext }: LoanDeta
             Previous
           </Button>
           
-          <div className="flex flex-col items-end gap-2">
-            {!hasCompleteTemplate && !isLoading && (
-              <p className="text-sm text-muted-foreground">
-                Loading loan template data...
-              </p>
-            )}
-            <Button 
-              type="submit" 
+          <div className="flex items-center gap-4">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleGenerateSchedule}
+              disabled={isLoading || !hasCompleteTemplate || isGeneratingSchedule}
               className="px-6"
-              disabled={isLoading || !hasCompleteTemplate}
             >
-              {isLoading ? (
+              {isGeneratingSchedule ? (
                 <>
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                  Loading...
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-2"></div>
+                  Generating...
                 </>
               ) : (
-                'Next'
+                <>
+                  <Calculator className="mr-2 h-4 w-4" />
+                  Generate Repayment Schedule
+                </>
               )}
             </Button>
+            
+            <div className="flex flex-col items-end gap-2">
+              {!hasCompleteTemplate && !isLoading && (
+                <p className="text-sm text-muted-foreground">
+                  Loading loan template data...
+                </p>
+              )}
+              <Button 
+                type="submit" 
+                className="px-6"
+                disabled={isLoading || !hasCompleteTemplate}
+              >
+                {isLoading ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Loading...
+                  </>
+                ) : (
+                  'Next'
+                )}
+              </Button>
+            </div>
           </div>
         </div>
       </form>
+
+      {/* Repayment Schedule Modal */}
+      <Dialog open={isScheduleModalOpen} onOpenChange={setIsScheduleModalOpen}>
+        <DialogContent className="!max-w-[85vw] !w-[85vw] max-h-[95vh] overflow-y-auto p-6">
+          <DialogHeader>
+            <DialogTitle>Repayment Schedule</DialogTitle>
+            <DialogDescription>
+              Loan repayment schedule based on the current loan details
+            </DialogDescription>
+          </DialogHeader>
+          
+          {repaymentSchedule && (
+            <div className="space-y-6">
+              {/* Summary Information */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-6 p-6 bg-muted rounded-lg">
+                <div className="min-w-0">
+                  <p className="text-sm text-muted-foreground mb-1">Principal</p>
+                  <p className="text-lg font-semibold break-words">
+                    {formatCurrency(repaymentSchedule.totalPrincipalExpected, repaymentSchedule.currency.code)}
+                  </p>
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm text-muted-foreground mb-1">Interest</p>
+                  <p className="text-lg font-semibold break-words">
+                    {formatCurrency(repaymentSchedule.totalInterestCharged, repaymentSchedule.currency.code)}
+                  </p>
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm text-muted-foreground mb-1">Total Repayment</p>
+                  <p className="text-lg font-semibold break-words">
+                    {formatCurrency(repaymentSchedule.totalRepaymentExpected, repaymentSchedule.currency.code)}
+                  </p>
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm text-muted-foreground mb-1">Term</p>
+                  <p className="text-lg font-semibold">{repaymentSchedule.loanTermInDays} days</p>
+                </div>
+              </div>
+
+              {/* Schedule Table */}
+              <div className="rounded-md border w-full">
+                <Table className="w-full">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="whitespace-nowrap">Period</TableHead>
+                      <TableHead className="whitespace-nowrap">Due Date</TableHead>
+                      <TableHead className="text-right whitespace-nowrap">Principal Due</TableHead>
+                      <TableHead className="text-right whitespace-nowrap">Interest Due</TableHead>
+                      <TableHead className="text-right whitespace-nowrap">Fees</TableHead>
+                      <TableHead className="text-right whitespace-nowrap">Penalties</TableHead>
+                      <TableHead className="text-right whitespace-nowrap">Total Due</TableHead>
+                      <TableHead className="text-right whitespace-nowrap">Balance Outstanding</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {repaymentSchedule.periods
+                      .filter((period) => period.period !== undefined && !period.downPaymentPeriod)
+                      .map((period, index) => {
+                        const dueDate = period.dueDate && Array.isArray(period.dueDate)
+                          ? new Date(period.dueDate[0], period.dueDate[1] - 1, period.dueDate[2])
+                          : null;
+
+                        return (
+                          <TableRow key={`period-${period.period || index}`}>
+                            <TableCell className="font-medium whitespace-nowrap">
+                              {period.period ?? '-'}
+                            </TableCell>
+                            <TableCell className="whitespace-nowrap">
+                              {dueDate ? format(dueDate, "MMM dd, yyyy") : '-'}
+                            </TableCell>
+                            <TableCell className="text-right whitespace-nowrap">
+                              {formatCurrency(
+                                period.principalDue || period.principalOriginalDue || 0,
+                                repaymentSchedule.currency.code
+                              )}
+                            </TableCell>
+                            <TableCell className="text-right whitespace-nowrap">
+                              {formatCurrency(
+                                period.interestDue || period.interestOriginalDue || 0,
+                                repaymentSchedule.currency.code
+                              )}
+                            </TableCell>
+                            <TableCell className="text-right whitespace-nowrap">
+                              {formatCurrency(
+                                period.feeChargesDue || 0,
+                                repaymentSchedule.currency.code
+                              )}
+                            </TableCell>
+                            <TableCell className="text-right whitespace-nowrap">
+                              {formatCurrency(
+                                period.penaltyChargesDue || 0,
+                                repaymentSchedule.currency.code
+                              )}
+                            </TableCell>
+                            <TableCell className="text-right font-semibold whitespace-nowrap">
+                              {formatCurrency(
+                                period.totalDueForPeriod || period.totalOriginalDueForPeriod || 0,
+                                repaymentSchedule.currency.code
+                              )}
+                            </TableCell>
+                            <TableCell className="text-right whitespace-nowrap">
+                              {formatCurrency(
+                                period.principalLoanBalanceOutstanding || 0,
+                                repaymentSchedule.currency.code
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

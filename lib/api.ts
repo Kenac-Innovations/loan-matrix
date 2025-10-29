@@ -211,7 +211,7 @@ export function createClientFineractAPI(accessToken: string) {
     const headers = {
       ...options.headers,
       Authorization: `Basic ${accessToken}`,
-      "Fineract-Platform-TenantId": "demo",
+      "Fineract-Platform-TenantId": "goodfellow",
       "Content-Type": "application/json",
     };
 

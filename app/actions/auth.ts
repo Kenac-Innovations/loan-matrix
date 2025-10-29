@@ -91,7 +91,7 @@ export async function loginAction(
           Accept: "application/json, text/plain, */*",
           "Content-Type": "application/json",
 
-          "Fineract-Platform-TenantId": "demo",
+          "Fineract-Platform-TenantId": "goodfellow",
         },
         body: JSON.stringify({ username, password }),
         // Skip SSL verification for local development

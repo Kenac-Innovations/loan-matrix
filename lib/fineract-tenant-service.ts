@@ -16,13 +16,13 @@ export async function getFineractTenantId(): Promise<string> {
     });
 
     if (!tenant) {
-      console.warn("No tenant found, using demo Fineract tenant");
-      return process.env.FINERACT_TENANT_ID || "demo";
+      console.warn("No tenant found, using goodfellow Fineract tenant");
+      return process.env.FINERACT_TENANT_ID || "goodfellow";
     }
 
     // Use tenant slug directly as Fineract tenant ID
     // If no tenant slug, use "demo" as fallback
-    const fineractTenantId = tenant.slug || "demo";
+    const fineractTenantId = tenant.slug || "goodfellow";
 
     console.log(
       `Mapped tenant ${tenant.slug} to Fineract tenant: ${fineractTenantId}`
@@ -31,7 +31,7 @@ export async function getFineractTenantId(): Promise<string> {
     return fineractTenantId;
   } catch (error) {
     console.error("Error getting Fineract tenant ID:", error);
-    return "demo";
+    return "goodfellow";
   }
 }
 

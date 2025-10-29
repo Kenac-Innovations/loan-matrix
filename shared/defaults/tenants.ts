@@ -28,8 +28,8 @@ export const demoTenantConfig = {
 
 export const goodfellowTenantConfig = {
   name: "GoodFellow Organization",
-  slug: "demo",
-  domain: "demo.kenacloanmatrix.com",
+  slug: "goodfellow",
+  domain: "goodfellow.kenacloanmatrix.com",
   settings: {
     theme: "default",
     features: {
