@@ -10,14 +10,14 @@ import { TenantInfo } from "@/shared/types/tenant";
  * - localhost:3000 -> default (fallback)
  */
 export function extractTenantSlug(host: string): string {
-  if (!host) return "demo";
+  if (!host) return "goodfellow";
 
   // Remove port if present
   const hostWithoutPort = host.split(":")[0];
 
   // Handle localhost development
   if (hostWithoutPort === "localhost") {
-    return "demo";
+    return "goodfellow";
   }
 
   // Extract subdomain
@@ -27,7 +27,7 @@ export function extractTenantSlug(host: string): string {
   }
 
   // If no subdomain, use default
-  return "demo";
+  return "goodfellow";
 }
 
 /**

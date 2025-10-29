@@ -249,7 +249,7 @@ export class AmqpQueueService {
 
       // Get default tenant (you might want to make this configurable)
 
-      const tenant = await getTenantBySlug("demo");
+      const tenant = await getTenantBySlug("goodfellow");
 
       if (!tenant) {
         throw new Error("Default tenant not found");
