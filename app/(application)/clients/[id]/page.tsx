@@ -29,10 +29,12 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { headers } from "next/headers";
 import { ClientDetails } from "./components/client-details";
 import { ClientLoans } from "./components/client-loans";
 import { ClientTransactions } from "./components/client-transactions";
 import { ClientDocuments } from "./components/client-documents";
+import { DynamicDatatableContent } from "./components/DynamicDatatableContent";
 
 interface PageProps {
   params: Promise<{
@@ -47,6 +49,17 @@ export default async function ClientDetailPage({ params }: PageProps) {
   if (isNaN(clientId)) {
     notFound();
   }
+
+  // Fetch dynamic datatable list for this client page
+  let dynamicTabs: any[] = [];
+  try {
+    const h = await headers();
+    const host = h.get("x-forwarded-host") || h.get("host") || "localhost:3000";
+    const proto = h.get("x-forwarded-proto") || "http";
+    const origin = `${proto}://${host}`;
+    const res = await fetch(`${origin}/api/fineract/datatables?apptable=m_client`, { cache: 'no-store' });
+    if (res.ok) dynamicTabs = await res.json();
+  } catch {}
 
   return (
     <div className="space-y-6">
@@ -108,6 +121,17 @@ export default async function ClientDetailPage({ params }: PageProps) {
             <span className="hidden sm:inline">Activity</span>
           </TabsTrigger>
         </TabsList>
+
+        {/* Dynamic datatable tabs */}
+        {Array.isArray(dynamicTabs) && dynamicTabs.length > 0 && (
+          <TabsList className="w-full overflow-x-auto">
+            {dynamicTabs.map((dt: any) => (
+              <TabsTrigger key={dt.registeredTableName} value={`dt-${dt.registeredTableName}`} className="px-3">
+                {dt.registeredTableName}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        )}
 
         <TabsContent value="loans" className="space-y-4">
           <Suspense fallback={<div>Loading loans...</div>}>
@@ -185,6 +209,13 @@ export default async function ClientDetailPage({ params }: PageProps) {
             </CardContent>
           </Card>
         </TabsContent>
+
+        {/* Dynamic datatable contents */}
+        {Array.isArray(dynamicTabs) && dynamicTabs.map((dt: any) => (
+          <TabsContent key={`content-${dt.registeredTableName}`} value={`dt-${dt.registeredTableName}`} className="space-y-4">
+            <DynamicDatatableContent datatableName={dt.registeredTableName} clientId={clientId} />
+          </TabsContent>
+        ))}
       </Tabs>
     </div>
   );
