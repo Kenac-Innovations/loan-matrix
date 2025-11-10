@@ -1,6 +1,9 @@
 import { getSession } from "./auth";
 import { getSession as getCustomSession } from "../app/actions/auth";
-import { getFineractTenantId } from "./fineract-tenant-service";
+import { getFineractTenantId as getFineractTenantIdFromService } from "./fineract-tenant-service";
+
+// Re-export for convenience
+export { getFineractTenantIdFromService as getFineractTenantId };
 
 // Get base URL from environment variable with fallback
 // If FINERACT_BASE_URL doesn't include /fineract-provider, we'll add it
@@ -9,7 +12,7 @@ const baseUrl = process.env.FINERACT_BASE_URL || "http://10.10.0.143:8443";
 /**
  * Get access token from either NextAuth session or custom JWT session
  */
-async function getAccessToken(): Promise<string | undefined> {
+export async function getAccessToken(): Promise<string | undefined> {
   try {
     // Try NextAuth session first
     const nextAuthSession = await getSession();
@@ -46,7 +49,7 @@ export async function fetchFineractAPI(
   version: "v1" | "v2" = "v1"
 ) {
   const accessToken = await getAccessToken();
-  const fineractTenantId = await getFineractTenantId();
+  const fineractTenantId = await getFineractTenantIdFromService();
 
   console.log("Session debug:", {
     accessToken: !!accessToken,
@@ -90,6 +93,7 @@ export async function fetchFineractAPI(
       // In production, you should use proper SSL certificates
       const https = require("https");
       const agent = new https.Agent({ rejectUnauthorized: false });
+      console.log("==========> URL:", url);
 
       response = await fetch(url, {
         ...options,
@@ -152,8 +156,9 @@ export async function fetchFineractAPI(
         status: response.status,
         statusText: response.statusText,
         url: url,
-        errorData: errorData,
+        errorData: JSON.stringify(errorData, null, 2),
         specificErrorMessage: specificErrorMessage,
+        fullErrorResponse: errorData,
       });
 
       throw error;
@@ -168,13 +173,62 @@ export async function fetchFineractAPI(
 
 /**
  * Fetches client details by external ID (national ID)
+ * Uses the /clients/search endpoint (v2) to avoid URL encoding issues with special characters
  * @param externalId - The external ID (national ID) of the client
  * @returns Promise with the client details including email address
  */
 export async function fetchClientByExternalId(externalId: string) {
   try {
-    const data = await fetchFineractAPI(`/clients/external-id/${externalId}`);
-    return data;
+    // Use the v2 search endpoint with POST to avoid URL encoding issues
+    // This handles external IDs with special characters like forward slashes
+    const searchPayload = {
+      request: { text: externalId },
+      page: 0,
+      size: 50,
+    };
+
+    const searchData = await fetchFineractAPI(
+      "/clients/search",
+      {
+        method: "POST",
+        body: JSON.stringify(searchPayload),
+      },
+      "v2"
+    );
+
+    // Check if any clients were found
+    if (!searchData.pageItems || searchData.pageItems.length === 0) {
+      throw new Error("Client not found with the provided external ID");
+    }
+
+    // Find the client that matches the external ID exactly
+    // (search might return multiple results)
+    const matchingClient = searchData.pageItems.find(
+      (client: any) => client.externalId === externalId
+    );
+
+    if (!matchingClient) {
+      throw new Error("Client not found with the provided external ID");
+    }
+
+    // If we have a client ID, fetch full client details for consistency
+    if (matchingClient.id) {
+      try {
+        const fullClientData = await fetchFineractAPI(
+          `/clients/${matchingClient.id}`
+        );
+        return fullClientData;
+      } catch (fetchError) {
+        // If fetching full details fails, return the search result
+        console.warn(
+          "Could not fetch full client details, returning search result:",
+          fetchError
+        );
+        return matchingClient;
+      }
+    }
+
+    return matchingClient;
   } catch (error) {
     console.error("Error fetching client by external ID:", error);
     throw error;

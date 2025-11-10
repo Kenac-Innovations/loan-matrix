@@ -50,20 +50,24 @@ export default async function LeadsPage() {
       <LeadMetrics className="mt-6" metrics={leadsData.metrics} />
 
       <Tabs defaultValue="pipeline" className="mt-6 w-full">
-        <TabsList className="w-full overflow-x-auto">
+        <TabsList>
           <TabsTrigger
             value="pipeline"
             className="w-full data-[state=active]:bg-blue-500 flex-1 lg:flex-initial"
           >
             <BarChart3 className="h-4 w-4 lg:mr-2" />
-            <span className="whitespace-nowrap hidden lg:inline">Pipeline View</span>
+            <span className="whitespace-nowrap hidden lg:inline">
+              Pipeline View
+            </span>
           </TabsTrigger>
           <TabsTrigger
             value="table"
             className="w-full data-[state=active]:bg-blue-500 flex-1 lg:flex-initial"
           >
             <FileText className="h-4 w-4 lg:mr-2" />
-            <span className="whitespace-nowrap hidden lg:inline">Table View</span>
+            <span className="whitespace-nowrap hidden lg:inline">
+              Table View
+            </span>
           </TabsTrigger>
         </TabsList>
         <TabsContent value="pipeline" className="mt-4">

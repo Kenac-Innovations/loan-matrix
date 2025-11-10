@@ -278,7 +278,9 @@ export async function isAuthenticated() {
 export async function getCurrentUserDetails(userId: String) {
   try {
     // Use the hardcoded Basic authentication token from the curl command
-    const url = `https://demo.mifos.io/fineract-provider/api/v1/users/${userId}`;
+    const fineractBaseURL =
+      process.env.FINERACT_BASE_URL || "http://41.174.125.165:4032";
+    const url = `${fineractBaseURL}/fineract-provider/api/v1/users/${userId}`;
     const headers = {
       Accept: "application/json, text/plain, */*",
       Authorization: "Basic bWlmb3M6cGFzc3dvcmQ=",
@@ -287,17 +289,28 @@ export async function getCurrentUserDetails(userId: String) {
       Referer: "http://localhost:4200/",
     };
 
-    // Skip SSL verification for local development
-    const httpsAgent = new https.Agent({
-      rejectUnauthorized: false,
-    });
+    let response;
 
-    const response = await fetch(url, {
-      method: "GET",
-      headers,
-      // @ts-ignore
-      agent: httpsAgent,
-    });
+    // Check if it's HTTP and use different approach
+    if (url.startsWith("http://")) {
+      // Use standard fetch for HTTP URLs (no agent needed)
+      response = await fetch(url, {
+        method: "GET",
+        headers,
+      });
+    } else {
+      // Skip SSL verification for local development (HTTPS only)
+      const httpsAgent = new https.Agent({
+        rejectUnauthorized: false,
+      });
+
+      response = await fetch(url, {
+        method: "GET",
+        headers,
+        // @ts-ignore
+        agent: httpsAgent,
+      });
+    }
 
     if (!response.ok) {
       throw new Error(`API error: ${response.status} ${response.statusText}`);

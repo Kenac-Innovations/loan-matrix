@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, ChangeEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm, Controller } from "react-hook-form";
@@ -14,6 +14,19 @@ import {
   UserCheck,
   UserPlus,
   AlertCircle,
+  CheckCircle2,
+  MapPin,
+  Database,
+  Users,
+  Building2,
+  Edit2,
+  Save,
+  Check,
+  FileText,
+  Download,
+  Eye,
+  Trash2,
+  Plus,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -43,12 +56,23 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import {
   saveDraft,
   getLead,
   closeLead,
   addFamilyMember,
+  updateFamilyMember,
   removeFamilyMember,
   getOffices,
   getLegalForms,
@@ -57,6 +81,17 @@ import {
   getClientClassifications,
   getSavingsProducts,
   getActivationDate,
+  addClientType,
+  addClientClassification,
+  addGender,
+  getDocumentTypes,
+  addDocumentType,
+  getClientTemplateData,
+  addAddressType,
+  addCountry,
+  addStateProvince,
+  getRelationships,
+  addRelationship,
 } from "@/app/actions/client-actions";
 import {
   autoSaveField,
@@ -72,6 +107,7 @@ import { Calendar } from "@/components/ui/calender";
 import { SkeletonForm } from "./client-registration-form-skeleton";
 import { AddOfficeDialog } from "./add-office-dialogue";
 import { submitClientForm } from "@/app/actions/submit-client-form";
+import { DynamicDatatableContent } from "@/app/(application)/clients/[id]/components/DynamicDatatableContent";
 import {
   getInputErrorStyling,
   getSelectErrorStyling,
@@ -171,6 +207,12 @@ const genderSchema = z.object({
   name: z.string().min(1, "Gender name is required"),
 });
 
+// New document type schema
+const documentTypeSchema = z.object({
+  name: z.string().min(1, "Document type name is required"),
+  description: z.string().optional(),
+});
+
 // New client type schema
 const clientTypeSchema = z.object({
   name: z.string().min(1, "Client type name is required"),
@@ -183,6 +225,12 @@ const clientClassificationSchema = z.object({
   description: z.string().optional(),
 });
 
+// New relationship schema
+const relationshipSchema = z.object({
+  name: z.string().min(1, "Relationship name is required"),
+  description: z.string().optional(),
+});
+
 // New savings product schema
 const savingsProductSchema = z.object({
   name: z.string().min(1, "Product name is required"),
@@ -192,11 +240,78 @@ const savingsProductSchema = z.object({
 });
 
 type ClientFormValues = z.infer<typeof clientFormSchema>;
+
+// Phone number parsing utility
+const parsePhoneNumber = (
+  phoneNumber: string
+): { countryCode: string; number: string } => {
+  if (!phoneNumber) return { countryCode: "+263", number: "" };
+
+  // Remove all non-digit characters for parsing
+  const digitsOnly = phoneNumber.replace(/\D/g, "");
+
+  // Common country codes in the region (2-3 digits)
+  const countryCodes = [
+    { code: "260", prefix: "+260" }, // Zambia
+    { code: "263", prefix: "+263" }, // Zimbabwe
+    { code: "27", prefix: "+27" }, // South Africa
+    { code: "258", prefix: "+258" }, // Mozambique
+    { code: "265", prefix: "+265" }, // Malawi
+    { code: "266", prefix: "+266" }, // Lesotho
+    { code: "267", prefix: "+267" }, // Botswana
+    { code: "268", prefix: "+268" }, // Eswatini
+    { code: "236", prefix: "+236" }, // Central African Republic
+    { code: "257", prefix: "+257" }, // Burundi
+    { code: "253", prefix: "+253" }, // Djibouti
+    { code: "291", prefix: "+291" }, // Eritrea
+    { code: "251", prefix: "+251" }, // Ethiopia
+    { code: "254", prefix: "+254" }, // Kenya
+    { code: "250", prefix: "+250" }, // Rwanda
+    { code: "248", prefix: "+248" }, // Seychelles
+    { code: "255", prefix: "+255" }, // Tanzania
+    { code: "256", prefix: "+256" }, // Uganda
+  ];
+
+  // Check if number starts with a country code
+  for (const country of countryCodes) {
+    if (digitsOnly.startsWith(country.code)) {
+      const number = digitsOnly.substring(country.code.length);
+      // Validate that we have a reasonable number length after country code
+      if (number.length >= 7 && number.length <= 12) {
+        return { countryCode: country.prefix, number };
+      }
+    }
+  }
+
+  // If no country code detected, return as is with default country code
+  return { countryCode: "+263", number: digitsOnly };
+};
+
+// Format phone number for display (add spaces for readability)
+const formatPhoneNumber = (number: string): string => {
+  if (!number) return "";
+  const digitsOnly = number.replace(/\D/g, "");
+  // Format as XXX XXX XXXX for 9-10 digits, or keep as is for other lengths
+  if (digitsOnly.length === 9) {
+    return `${digitsOnly.slice(0, 3)} ${digitsOnly.slice(
+      3,
+      6
+    )} ${digitsOnly.slice(6)}`;
+  } else if (digitsOnly.length === 10) {
+    return `${digitsOnly.slice(0, 3)} ${digitsOnly.slice(
+      3,
+      6
+    )} ${digitsOnly.slice(6)}`;
+  }
+  return digitsOnly;
+};
 type FamilyMemberValues = z.infer<typeof familyMemberSchema>;
 type LegalFormValues = z.infer<typeof legalFormSchema>;
 type GenderFormValues = z.infer<typeof genderSchema>;
+type DocumentTypeFormValues = z.infer<typeof documentTypeSchema>;
 type ClientTypeValues = z.infer<typeof clientTypeSchema>;
 type ClientClassificationValues = z.infer<typeof clientClassificationSchema>;
+type RelationshipFormValues = z.infer<typeof relationshipSchema>;
 type SavingsProductValues = z.infer<typeof savingsProductSchema>;
 
 // Define the type for the client form data
@@ -252,7 +367,11 @@ export function ClientRegistrationForm({
   const [closeReason, setCloseReason] = useState("");
   const [showCloseDialog, setShowCloseDialog] = useState(false);
   const [familyMembers, setFamilyMembers] = useState<any[]>([]);
-  const [showFamilyMemberDialog, setShowFamilyMemberDialog] = useState(false);
+  const [editingFamilyMemberIndex, setEditingFamilyMemberIndex] = useState<
+    number | null
+  >(null);
+  const [isAddingFamilyMember, setIsAddingFamilyMember] = useState(false);
+  const [editingFamilyMember, setEditingFamilyMember] = useState<any>({});
   const [isLoading, setIsLoading] = useState(true);
   const [isAutoSaving, setIsAutoSaving] = useState(false);
   const [lastSavedField, setLastSavedField] = useState<string | null>(null);
@@ -273,24 +392,1048 @@ export function ClientRegistrationForm({
     }
   }, [clientCreatedInFineract]);
 
+  // Fetch additional details (address, data tables) when we have a Fineract client ID
+  useEffect(() => {
+    const fetchAdditionalDetails = async () => {
+      const clientId = (window as any).fineractClientId;
+
+      if (!clientId || !clientCreatedInFineract) {
+        return;
+      }
+
+      setIsLoadingAdditionalDetails(true);
+      const numericClientId = Number(clientId);
+      setFineractClientId(numericClientId);
+
+      try {
+        // Fetch address field configuration
+        const fieldConfigResponse = await fetch(
+          `/api/fineract/fieldconfiguration/ADDRESS`
+        );
+        if (fieldConfigResponse.ok) {
+          const fieldConfigData = await fieldConfigResponse.json();
+          // Filter to only enabled fields and exclude system fields
+          const enabledFields = (fieldConfigData || []).filter(
+            (field: any) =>
+              field.isEnabled &&
+              !["createdBy", "createdOn", "updatedBy", "updatedOn"].includes(
+                field.field
+              )
+          );
+          setAddressFieldConfig(enabledFields);
+        }
+
+        // Fetch address template for dropdown options
+        const templateResponse = await fetch(
+          `/api/fineract/clients/addresses/template`
+        );
+        let templateData = null;
+        if (templateResponse.ok) {
+          templateData = await templateResponse.json();
+          setAddressTemplate(templateData);
+        }
+
+        // Fetch identifiers template for document types
+        try {
+          console.log(
+            "Fetching identifiers template for client:",
+            numericClientId
+          );
+        const identifiersTemplateResponse = await fetch(
+          `/api/fineract/clients/${numericClientId}/identifiers/template`
+        );
+          console.log(
+            "Identifiers template response status:",
+            identifiersTemplateResponse.status,
+            identifiersTemplateResponse.statusText
+          );
+
+        if (identifiersTemplateResponse.ok) {
+          const identifiersData = await identifiersTemplateResponse.json();
+            console.log("Identifiers template raw data:", identifiersData);
+            console.log(
+              "Has documentTypeOptions:",
+              !!identifiersData?.documentTypeOptions
+            );
+            console.log(
+              "documentTypeOptions length:",
+              identifiersData?.documentTypeOptions?.length
+            );
+
+            // Handle different response structures
+            let templateToSet = null;
+
+            if (identifiersData?.documentTypeOptions) {
+              // Direct structure: { documentTypeOptions: [...] }
+              templateToSet = identifiersData;
+              console.log("Using direct documentTypeOptions structure");
+            } else if (identifiersData?.data?.documentTypeOptions) {
+              // Nested structure: { data: { documentTypeOptions: [...] } }
+              templateToSet = identifiersData.data;
+              console.log("Using nested data.documentTypeOptions structure");
+            } else if (Array.isArray(identifiersData)) {
+              // Array structure: [...]
+              templateToSet = { documentTypeOptions: identifiersData };
+              console.log(
+                "Using array structure, wrapped in documentTypeOptions"
+              );
+            } else if (identifiersData && typeof identifiersData === "object") {
+              // Check for other possible property names
+              const keys = Object.keys(identifiersData);
+              console.log("Template object keys:", keys);
+
+              // Look for any array property that might be document types
+              for (const key of keys) {
+                if (
+                  Array.isArray(identifiersData[key]) &&
+                  identifiersData[key].length > 0
+                ) {
+                  const firstItem = identifiersData[key][0];
+                  // Check if it looks like a document type option (has id and name/value)
+                  if (
+                    firstItem &&
+                    firstItem.id !== undefined &&
+                    (firstItem.name || firstItem.value)
+                  ) {
+                    templateToSet = {
+                      documentTypeOptions: identifiersData[key],
+                    };
+                    console.log(`Using array from key: ${key}`);
+                    break;
+                  }
+                }
+              }
+
+              // If still not found, use the data as-is
+              if (!templateToSet) {
+                templateToSet = identifiersData;
+                console.log("Using data as-is (no documentTypeOptions found)");
+              }
+            } else {
+              console.warn(
+                "Unexpected identifiers template structure:",
+                identifiersData
+              );
+              templateToSet = identifiersData;
+            }
+
+            console.log("Setting identifiers template:", templateToSet);
+            setIdentifiersTemplate(templateToSet);
+          } else {
+            const errorData = await identifiersTemplateResponse
+              .json()
+              .catch(() => ({}));
+            console.error(
+              "Error fetching identifiers template:",
+              identifiersTemplateResponse.status,
+              errorData
+            );
+            // Set to empty object so UI shows "No document types available" instead of "Loading..."
+            setIdentifiersTemplate({ documentTypeOptions: [] });
+          }
+        } catch (templateError) {
+          console.error(
+            "Exception fetching identifiers template:",
+            templateError
+          );
+          // Set to empty object so UI shows "No document types available" instead of "Loading..."
+          setIdentifiersTemplate({ documentTypeOptions: [] });
+        }
+
+        // Fetch existing identifiers
+        setIsLoadingKYC(true);
+        try {
+          const identifiersResponse = await fetch(
+            `/api/fineract/clients/${numericClientId}/identifiers`
+          );
+          console.log(
+            "Identifiers response status:",
+            identifiersResponse.status
+          );
+
+          if (identifiersResponse.ok) {
+            const identifiersData = await identifiersResponse.json();
+            console.log("Identifiers raw data:", identifiersData);
+
+            // Handle both array and object with array property
+            let identifiers = [];
+            if (Array.isArray(identifiersData)) {
+              identifiers = identifiersData;
+            } else if (identifiersData?.pageItems) {
+              identifiers = identifiersData.pageItems;
+            } else if (identifiersData?.identifiers) {
+              identifiers = identifiersData.identifiers;
+            } else if (identifiersData?.data) {
+              identifiers = Array.isArray(identifiersData.data)
+                ? identifiersData.data
+                : [];
+            } else if (identifiersData && typeof identifiersData === "object") {
+              // If it's an object but not an array, try to extract any array property
+              const keys = Object.keys(identifiersData);
+              for (const key of keys) {
+                if (Array.isArray(identifiersData[key])) {
+                  identifiers = identifiersData[key];
+                  break;
+                }
+              }
+            }
+
+            console.log("Processed identifiers:", identifiers);
+            setExistingIdentifiers(identifiers);
+
+            // Fetch documents for each identifier
+            const documentsMap = new Map<number, any[]>();
+            const fetchPromises = identifiers.map(async (identifier: any) => {
+              const identifierId = identifier.id;
+              if (!identifierId) return;
+
+              try {
+                const docsResponse = await fetch(
+                  `/api/fineract/client_identifiers/${identifierId}/documents`
+                );
+                if (docsResponse.ok) {
+                  const docsData = await docsResponse.json();
+                  // Handle different response structures
+                  let docs = [];
+                  if (Array.isArray(docsData)) {
+                    docs = docsData;
+                  } else if (docsData?.pageItems) {
+                    docs = docsData.pageItems;
+                  } else if (docsData?.content) {
+                    docs = docsData.content;
+                  } else if (docsData?.documents) {
+                    docs = docsData.documents;
+                  }
+                  documentsMap.set(identifierId, docs);
+                } else if (docsResponse.status !== 404) {
+                  console.error(
+                    `Error fetching documents for identifier ${identifierId}:`,
+                    docsResponse.status
+                  );
+                  documentsMap.set(identifierId, []);
+                } else {
+                  documentsMap.set(identifierId, []);
+                }
+              } catch (error) {
+                console.error(
+                  `Exception fetching documents for identifier ${identifierId}:`,
+                  error
+                );
+                documentsMap.set(identifierId, []);
+              }
+            });
+
+            await Promise.all(fetchPromises);
+            setIdentifierDocuments(documentsMap);
+          } else if (identifiersResponse.status === 404) {
+            console.log("No identifiers found (404)");
+            setExistingIdentifiers([]);
+            setIdentifierDocuments(new Map());
+          } else {
+            const errorData = await identifiersResponse
+              .json()
+              .catch(() => ({}));
+            console.error(
+              "Error fetching identifiers:",
+              identifiersResponse.status,
+              errorData
+            );
+            setExistingIdentifiers([]);
+            setIdentifierDocuments(new Map());
+          }
+        } catch (error) {
+          console.error("Exception fetching identifiers:", error);
+          setExistingIdentifiers([]);
+          setIdentifierDocuments(new Map());
+        } finally {
+          setIsLoadingKYC(false);
+        }
+
+        // Fetch client documents to link with identifiers
+        try {
+          const documentsResponse = await fetch(
+            `/api/fineract/clients/${numericClientId}/documents`
+          );
+          console.log("Documents response status:", documentsResponse.status);
+
+          if (documentsResponse.ok) {
+            const documentsData = await documentsResponse.json();
+            console.log("Documents raw data:", documentsData);
+
+            // Handle different response structures
+            let documents = [];
+            if (Array.isArray(documentsData)) {
+              documents = documentsData;
+            } else if (documentsData?.pageItems) {
+              documents = documentsData.pageItems;
+            } else if (documentsData?.content) {
+              documents = documentsData.content;
+            } else if (documentsData?.documents) {
+              documents = documentsData.documents;
+            }
+
+            console.log("Processed documents:", documents);
+            setClientDocuments(documents);
+          } else if (documentsResponse.status !== 404) {
+            const errorData = await documentsResponse.json().catch(() => ({}));
+            console.error(
+              "Error fetching documents:",
+              documentsResponse.status,
+              errorData
+            );
+          }
+        } catch (error) {
+          console.error("Exception fetching documents:", error);
+        }
+
+        // Fetch existing client image with maxHeight parameter
+        try {
+        const imageResponse = await fetch(
+            `/api/fineract/clients/${numericClientId}/images?maxHeight=150`
+        );
+
+          console.log("Image fetch response status:", imageResponse.status);
+
+        if (imageResponse.ok) {
+          const imageData = await imageResponse.json();
+
+            console.log("Image data received:", {
+              type: typeof imageData,
+              isNull: imageData === null,
+              isString: typeof imageData === "string",
+              hasImageData: !!imageData?.imageData,
+              hasBase64EncodedImage: !!imageData?.base64EncodedImage,
+              isArray: Array.isArray(imageData),
+              preview:
+                typeof imageData === "string"
+                  ? imageData.substring(0, 50) + "..."
+                  : JSON.stringify(imageData).substring(0, 100),
+            });
+
+            // Handle null response (no image found)
+            if (imageData === null || imageData === undefined) {
+              console.log("No image found for client");
+              setExistingClientImage(null);
+              setSelfieImageLoading(false);
+              return;
+            }
+
+            // Helper function to check if a string looks like base64
+            const isBase64Like = (str: string): boolean => {
+              // Base64 can contain A-Z, a-z, 0-9, +, /, and = for padding
+              const base64Regex = /^[A-Za-z0-9+/=]+$/;
+              return base64Regex.test(str) && str.length > 10;
+            };
+
+            // Fineract may return the image as base64 string or in a specific format
+            // Handle different response formats and convert to data URI if needed
+            let imageUri: string | null = null;
+
+          if (imageData && typeof imageData === "string") {
+              // Remove quotes if JSON-wrapped string
+              let cleanData = imageData.trim();
+              if (
+                (cleanData.startsWith('"') && cleanData.endsWith('"')) ||
+                (cleanData.startsWith("'") && cleanData.endsWith("'"))
+              ) {
+                cleanData = cleanData.slice(1, -1);
+              }
+
+              // Direct base64 string - check if it's already a data URI
+              if (cleanData.startsWith("data:image/")) {
+                imageUri = cleanData;
+              } else if (isBase64Like(cleanData)) {
+                // Plain base64 string, convert to data URI
+                // Remove any whitespace or newlines
+                const cleanBase64 = cleanData.replace(/\s/g, "");
+                imageUri = `data:image/jpeg;base64,${cleanBase64}`;
+              } else {
+                console.warn(
+                  "String doesn't look like base64:",
+                  cleanData.substring(0, 50)
+                );
+              }
+          } else if (imageData?.imageData) {
+            // Object with imageData property
+              const imgData = imageData.imageData;
+              if (typeof imgData === "string") {
+                const cleanData = imgData.trim().replace(/\s/g, "");
+                imageUri = cleanData.startsWith("data:image/")
+                  ? cleanData
+                  : `data:image/jpeg;base64,${cleanData}`;
+              }
+            } else if (
+              Array.isArray(imageData) &&
+              imageData.length > 0 &&
+              imageData[0]?.imageData
+            ) {
+            // Array of images, get the first one
+              const imgData = imageData[0].imageData;
+              if (typeof imgData === "string") {
+                const cleanData = imgData.trim().replace(/\s/g, "");
+                imageUri = cleanData.startsWith("data:image/")
+                  ? cleanData
+                  : `data:image/jpeg;base64,${cleanData}`;
+              }
+          } else if (imageData?.base64EncodedImage) {
+            // Object with base64EncodedImage property
+              const imgData = imageData.base64EncodedImage;
+              if (typeof imgData === "string") {
+                const cleanData = imgData.trim().replace(/\s/g, "");
+                imageUri = cleanData.startsWith("data:image/")
+                  ? cleanData
+                  : `data:image/jpeg;base64,${cleanData}`;
+              }
+            }
+
+            if (imageUri) {
+              console.log(
+                "Setting existing client image, URI length:",
+                imageUri.length,
+                "starts with:",
+                imageUri.substring(0, 30)
+              );
+              setExistingClientImage(imageUri);
+              setSelfieImageLoading(true);
+            } else {
+              console.warn(
+                "Could not parse image data from response. Full data:",
+                imageData
+              );
+              setExistingClientImage(null);
+              setSelfieImageLoading(false);
+            }
+          } else {
+            // Handle error responses
+            if (imageResponse.status === 404) {
+              console.log("No image found (404)");
+              setExistingClientImage(null);
+              setSelfieImageLoading(false);
+            } else {
+              const errorData = await imageResponse.json().catch(() => ({}));
+              console.error(
+                "Error fetching client image:",
+                imageResponse.status,
+                errorData
+              );
+            }
+          }
+        } catch (imageError) {
+          console.error("Exception while fetching client image:", imageError);
+        }
+
+        // Fetch addresses for the client
+        const addressesResponse = await fetch(
+          `/api/fineract/clients/${clientId}/addresses`
+        );
+        if (addressesResponse.ok) {
+          const addressesData = await addressesResponse.json();
+          // Fineract returns an array of addresses, get the first one or null
+          let address = Array.isArray(addressesData)
+            ? addressesData[0] || null
+            : addressesData || null;
+
+          // Convert addressType string to ID if needed (Fineract returns addressType as string like "Home ")
+          if (
+            address &&
+            address.addressType &&
+            typeof address.addressType === "string" &&
+            templateData
+          ) {
+            const addressTypeOptions = templateData?.addressTypeIdOptions || [];
+            const matchingType = addressTypeOptions.find(
+              (opt: any) => opt.name?.trim() === address.addressType?.trim()
+            );
+            if (matchingType && matchingType.id) {
+              address = {
+                ...address,
+                addressType: matchingType.id, // Convert string to numeric ID
+              };
+              console.log(
+                "Converted addressType from string to ID on load:",
+                matchingType.id,
+                "for:",
+                matchingType.name
+              );
+            }
+          }
+
+          setClientAddress(address);
+        }
+
+        // Fetch available data tables for this client
+        const datatablesResponse = await fetch(
+          `/api/fineract/datatables?apptable=m_client`
+        );
+        if (datatablesResponse.ok) {
+          const datatablesData = await datatablesResponse.json();
+          console.log("Fetched data tables:", datatablesData);
+
+          // Handle different response formats - could be array or object with array property
+          const tablesList = Array.isArray(datatablesData)
+            ? datatablesData
+            : datatablesData?.data || datatablesData?.pageItems || [];
+
+          console.log("Data tables list:", tablesList);
+
+          // Filter to only get datatables that have data for this client
+          const tablesWithData = await Promise.all(
+            (tablesList || []).map(async (table: any) => {
+              try {
+                // Use registeredTableName as the table name (this is what Fineract uses in the API)
+                const tableName = table.registeredTableName;
+                if (!tableName) {
+                  console.warn("Table missing registeredTableName:", table);
+                  return { ...table, hasData: false };
+                }
+
+                const tableDataResponse = await fetch(
+                  `/api/fineract/datatables/${encodeURIComponent(
+                    tableName
+                  )}/${clientId}?genericResultSet=true`
+                );
+                if (tableDataResponse.ok) {
+                  const tableData = await tableDataResponse.json();
+                  const hasData = tableData.data && tableData.data.length > 0;
+                  console.log(`Table ${tableName} has data:`, hasData);
+                  return {
+                    ...table,
+                    datatableName: tableName, // Store for use in DynamicDatatableContent
+                    displayName: table.registeredTableName, // Display name
+                    hasData: hasData,
+                  };
+                }
+                return {
+                  ...table,
+                  datatableName: tableName,
+                  displayName: table.registeredTableName,
+                  hasData: false,
+                };
+              } catch (error) {
+                console.error(
+                  `Error checking table ${table.registeredTableName}:`,
+                  error
+                );
+                return { ...table, hasData: false };
+              }
+            })
+          );
+          // Show all tables, not just those with data
+          console.log("All available tables:", tablesWithData);
+          setDataTables(tablesWithData);
+        } else {
+          console.error(
+            "Failed to fetch data tables:",
+            datatablesResponse.status,
+            datatablesResponse.statusText
+          );
+        }
+      } catch (error) {
+        console.error("Error fetching additional details:", error);
+      } finally {
+        setIsLoadingAdditionalDetails(false);
+      }
+    };
+
+    if (clientCreatedInFineract) {
+      fetchAdditionalDetails();
+    }
+  }, [clientCreatedInFineract]);
+
   // State for dropdown options
   const [offices, setOffices] = useState<any[]>([]);
   const [legalForms, setLegalForms] = useState<any[]>([]);
   const [genders, setGenders] = useState<any[]>([]);
+  const [documentTypes, setDocumentTypes] = useState<any[]>([]);
   const [clientTypes, setClientTypes] = useState<any[]>([]);
+  const [isLoadingOptions, setIsLoadingOptions] = useState(true);
   const [clientClassifications, setClientClassifications] = useState<any[]>([]);
   const [savingsProducts, setSavingsProducts] = useState<any[]>([]);
+  const [relationships, setRelationships] = useState<any[]>([]);
+
+  // State for additional details tab
+  const [fineractClientId, setFineractClientId] = useState<number | null>(null);
+  const [clientAddress, setClientAddress] = useState<any>(null);
+  const [dataTables, setDataTables] = useState<any[]>([]);
+  const [isLoadingAdditionalDetails, setIsLoadingAdditionalDetails] =
+    useState(false);
+  const [isEditingAddress, setIsEditingAddress] = useState(false);
+  const [editedAddress, setEditedAddress] = useState<any>({});
+  const [savingAddress, setSavingAddress] = useState(false);
+  const [addressFieldConfig, setAddressFieldConfig] = useState<any[]>([]);
+  const [addressTemplate, setAddressTemplate] = useState<any>(null);
+  const [showAddAddressTypeDialog, setShowAddAddressTypeDialog] =
+    useState(false);
+  const [showAddStateProvinceDialog, setShowAddStateProvinceDialog] =
+    useState(false);
+  const [showAddCountryDialog, setShowAddCountryDialog] = useState(false);
+
+  // State for KYC
+  const [selfieImage, setSelfieImage] = useState<string | null>(null);
+  const [existingClientImage, setExistingClientImage] = useState<string | null>(
+    null
+  );
+  const [uploadingSelfie, setUploadingSelfie] = useState(false);
+  const [selfieImageLoading, setSelfieImageLoading] = useState(true);
+  const [identityDocuments, setIdentityDocuments] = useState<
+    Array<{
+      id?: string;
+      name: string;
+      file: File;
+      preview: string;
+      documentTypeId?: number;
+      documentTypeName?: string;
+    }>
+  >([]);
+  const [existingIdentifiers, setExistingIdentifiers] = useState<any[]>([]);
+  const [clientDocuments, setClientDocuments] = useState<any[]>([]);
+  const [isLoadingKYC, setIsLoadingKYC] = useState(false);
+  // Map of identifierId -> documents array
+  const [identifierDocuments, setIdentifierDocuments] = useState<
+    Map<number, any[]>
+  >(new Map());
+  const [uploadingDocuments, setUploadingDocuments] = useState(false);
+  const [showCameraModal, setShowCameraModal] = useState(false);
+  const [capturedImage, setCapturedImage] = useState<string | null>(null);
+  const [identifiersTemplate, setIdentifiersTemplate] = useState<any>(null);
+  const [showDocumentTypeDialog, setShowDocumentTypeDialog] = useState(false);
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [selectedDocumentType, setSelectedDocumentType] = useState<
+    number | null
+  >(null);
+  const [showAddIdentifierDialog, setShowAddIdentifierDialog] = useState(false);
+  const [addingIdentifier, setAddingIdentifier] = useState(false);
+
+  // Section completion tracking
+  const [sectionCompletion, setSectionCompletion] = useState({
+    administrative: false,
+    personal: false,
+    contact: false,
+    classification: false,
+    additional: false,
+    selfie: false,
+    identityDocuments: false,
+    otherDocuments: false,
+    datatables: false,
+  });
+
+  const [newIdentifier, setNewIdentifier] = useState({
+    documentTypeId: "",
+    documentKey: "",
+    description: "",
+    status: "active" as "active" | "inactive",
+    documentFile: null as File | null,
+    documentFileName: "",
+  });
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  // Helper function to format field names
+  const formatHeaderName = (name: string) => {
+    // Convert camelCase or snake_case to Title Case
+    return name
+      .replace(/([A-Z])/g, " $1")
+      .replace(/_/g, " ")
+      .replace(/^./, (str) => str.toUpperCase())
+      .trim();
+  };
+
+  // Section completion validation functions
+  const checkAdministrativeSection = () => {
+    const values = form.getValues();
+    return !!(values.officeId && values.legalFormId && values.activationDate);
+  };
+
+  const checkPersonalSection = () => {
+    const values = form.getValues();
+    return !!(
+      values.firstname &&
+      values.lastname &&
+      values.dateOfBirth &&
+      values.genderId
+    );
+  };
+
+  const checkContactSection = () => {
+    const values = form.getValues();
+    return !!(values.mobileNo && values.emailAddress);
+  };
+
+  const checkClassificationSection = () => {
+    const values = form.getValues();
+    return !!(values.clientTypeId && values.clientClassificationId);
+  };
+
+  const checkAdditionalSection = () => {
+    const values = form.getValues();
+    return !!values.submittedOn;
+  };
+
+  const checkSelfieSection = () => {
+    return !!(existingClientImage || selfieImage);
+  };
+
+  const checkIdentityDocumentsSection = () => {
+    return existingIdentifiers.length > 0;
+  };
+
+  const checkOtherDocumentsSection = () => {
+    // Optional section - always return true
+    return true;
+  };
+
+  const checkDatatablesSection = () => {
+    // Optional section - always return true for now
+    return true;
+  };
+
+  // Check overall tab completion
+  const checkGeneralTabCompletion = () => {
+    return (
+      sectionCompletion.administrative &&
+      sectionCompletion.personal &&
+      sectionCompletion.contact &&
+      sectionCompletion.classification &&
+      sectionCompletion.additional
+    );
+  };
+
+  const checkKYCTabCompletion = () => {
+    return sectionCompletion.selfie && sectionCompletion.identityDocuments;
+  };
+
+  const checkAdditionalDetailsTabCompletion = () => {
+    return sectionCompletion.datatables;
+  };
+
+  const checkAllSectionsComplete = () => {
+    const generalComplete = checkGeneralTabCompletion();
+    const kycComplete = checkKYCTabCompletion();
+    const additionalComplete = clientCreatedInFineract
+      ? checkAdditionalDetailsTabCompletion()
+      : true; // Skip if not yet created
+
+    return generalComplete && kycComplete && additionalComplete;
+  };
+
+  // Helper function to extract identifier ID from document filename
+  // NOTE: This is kept for backward compatibility with documents uploaded using the old method.
+  // New documents uploaded via /client_identifiers/{id}/documents endpoint are properly linked
+  // and should be fetched using the identifier's documents endpoint instead.
+  // Format: IDENTIFIER_{identifierId}_{documentKey}_{timestamp}_{originalFilename}
+  const extractIdentifierIdFromFilename = (filename: string): number | null => {
+    const match = filename.match(/^IDENTIFIER_(\d+)_/);
+    if (match && match[1]) {
+      return parseInt(match[1], 10);
+    }
+    return null;
+  };
+
+  // Handle document download
+  const handleDownloadDocument = async (
+    documentId: string,
+    fileName: string,
+    identifierId?: number
+  ) => {
+    if (!fineractClientId) {
+      error({
+        title: "Error",
+        description: "Client ID not available",
+      });
+      return;
+    }
+
+    try {
+      // Use identifier documents endpoint if identifierId is provided
+      const url = identifierId
+        ? `/api/fineract/client_identifiers/${identifierId}/documents/${documentId}/attachment`
+        : `/api/fineract/clients/${fineractClientId}/documents/${documentId}/attachment`;
+
+      const response = await fetch(url);
+
+      if (response.ok) {
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = fileName || `document_${documentId}`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+
+        success({
+          title: "Success",
+          description: "Document downloaded successfully!",
+        });
+      } else {
+        const errorData = await response.json().catch(() => ({}));
+        let errorMessage = "Failed to download document";
+        if (errorData?.error) {
+          errorMessage = errorData.error;
+        } else if (errorData?.defaultUserMessage) {
+          errorMessage = errorData.defaultUserMessage;
+        }
+        error({
+          title: "Download Failed",
+          description: errorMessage,
+        });
+      }
+    } catch (err: any) {
+      console.error("Error downloading document:", err);
+      error({
+        title: "Download Failed",
+        description: err?.message || "Failed to download document",
+      });
+    }
+  };
+
+  // State for inline document preview
+  const [previewingDocumentId, setPreviewingDocumentId] = useState<
+    string | null
+  >(null);
+  const [previewingIdentifierId, setPreviewingIdentifierId] = useState<
+    number | null
+  >(null);
+
+  // Handle document view (toggles inline preview)
+  const handleViewDocument = (
+    documentId: string | number,
+    identifierId?: number
+  ) => {
+    const docIdStr = String(documentId);
+    if (
+      previewingDocumentId === docIdStr &&
+      previewingIdentifierId === (identifierId || null)
+    ) {
+      // If already previewing this document, close it
+      setPreviewingDocumentId(null);
+      setPreviewingIdentifierId(null);
+    } else {
+      // Open preview for this document
+      setPreviewingDocumentId(docIdStr);
+      setPreviewingIdentifierId(identifierId || null);
+    }
+  };
+
+  // State for adding documents to existing identifiers
+  const [addingDocumentToIdentifier, setAddingDocumentToIdentifier] = useState<
+    number | null
+  >(null);
+  const [deletingIdentifierId, setDeletingIdentifierId] = useState<
+    number | null
+  >(null);
+  const [showDeleteConfirmDialog, setShowDeleteConfirmDialog] = useState(false);
+  const [identifierToDelete, setIdentifierToDelete] = useState<number | null>(
+    null
+  );
+
+  // Handle opening delete confirmation dialog
+  const handleDeleteIdentifierClick = (identifierId: number) => {
+    setIdentifierToDelete(identifierId);
+    setShowDeleteConfirmDialog(true);
+  };
+
+  // Handle confirming and deleting an identifier
+  const handleConfirmDeleteIdentifier = async () => {
+    if (!fineractClientId || !identifierToDelete) {
+      error({
+        title: "Error",
+        description: "Client ID or identifier not available",
+      });
+      setShowDeleteConfirmDialog(false);
+      setIdentifierToDelete(null);
+      return;
+    }
+
+    const identifierId = identifierToDelete;
+    setDeletingIdentifierId(identifierId);
+    setShowDeleteConfirmDialog(false);
+    try {
+      const response = await fetch(
+        `/api/fineract/clients/${fineractClientId}/identifiers/${identifierId}`,
+        {
+          method: "DELETE",
+        }
+      );
+
+      if (response.ok) {
+        success({
+          title: "Success",
+          description: "Identifier deleted successfully",
+        });
+
+        // Refresh identifiers and their documents
+        const [identifiersResponse] = await Promise.all([
+          fetch(`/api/fineract/clients/${fineractClientId}/identifiers`),
+        ]);
+
+        if (identifiersResponse.ok) {
+          const identifiersData = await identifiersResponse.json();
+          let identifiers = [];
+          if (Array.isArray(identifiersData)) {
+            identifiers = identifiersData;
+          } else if (identifiersData?.pageItems) {
+            identifiers = identifiersData.pageItems;
+          } else if (identifiersData?.identifiers) {
+            identifiers = identifiersData.identifiers;
+          } else if (identifiersData?.data) {
+            identifiers = Array.isArray(identifiersData.data)
+              ? identifiersData.data
+              : [];
+          }
+
+          const documentsMap = new Map<number, any[]>();
+          const fetchPromises = identifiers.map(async (identifier: any) => {
+            const id = identifier.id;
+            if (!id) return;
+
+            try {
+              const docsResponse = await fetch(
+                `/api/fineract/client_identifiers/${id}/documents`
+              );
+              if (docsResponse.ok) {
+                const docsData = await docsResponse.json();
+                let docs = [];
+                if (Array.isArray(docsData)) {
+                  docs = docsData;
+                } else if (docsData?.pageItems) {
+                  docs = docsData.pageItems;
+                } else if (docsData?.content) {
+                  docs = docsData.content;
+                } else if (docsData?.documents) {
+                  docs = docsData.documents;
+                }
+                documentsMap.set(id, docs);
+              } else {
+                documentsMap.set(id, []);
+              }
+            } catch (error) {
+              console.error(
+                `Exception fetching documents for identifier ${id}:`,
+                error
+              );
+              documentsMap.set(id, []);
+            }
+          });
+
+          await Promise.all(fetchPromises);
+          setIdentifierDocuments(documentsMap);
+          setExistingIdentifiers(identifiers);
+        }
+      } else {
+        const errorData = await response.json().catch(() => ({}));
+        error({
+          title: "Delete Failed",
+          description:
+            errorData.error ||
+            errorData.defaultUserMessage ||
+            "Failed to delete identifier",
+        });
+      }
+    } catch (err: any) {
+      console.error("Error deleting identifier:", err);
+      error({
+        title: "Delete Failed",
+        description: err?.message || "Failed to delete identifier",
+      });
+    } finally {
+      setDeletingIdentifierId(null);
+      setIdentifierToDelete(null);
+    }
+  };
+
+  // Handle adding document to existing identifier
+  const handleAddDocumentToIdentifier = async (
+    identifierId: number,
+    file: File,
+    documentName?: string
+  ) => {
+    if (!fineractClientId) {
+      error({
+        title: "Error",
+        description: "Client ID not available",
+      });
+      return;
+    }
+
+    setAddingDocumentToIdentifier(identifierId);
+    try {
+      const formData = new FormData();
+      formData.append("name", documentName || file.name);
+      formData.append("file", file);
+
+      const response = await fetch(
+        `/api/fineract/client_identifiers/${identifierId}/documents`,
+        {
+          method: "POST",
+          body: formData,
+        }
+      );
+
+      if (response.ok) {
+        success({
+          title: "Success",
+          description: "Document added to identifier successfully",
+        });
+
+        // Refresh documents for this identifier
+        const docsResponse = await fetch(
+          `/api/fineract/client_identifiers/${identifierId}/documents`
+        );
+        if (docsResponse.ok) {
+          const docsData = await docsResponse.json();
+          let docs = [];
+          if (Array.isArray(docsData)) {
+            docs = docsData;
+          } else if (docsData?.pageItems) {
+            docs = docsData.pageItems;
+          } else if (docsData?.content) {
+            docs = docsData.content;
+          } else if (docsData?.documents) {
+            docs = docsData.documents;
+          }
+          setIdentifierDocuments((prev) => {
+            const newMap = new Map(prev);
+            newMap.set(identifierId, docs);
+            return newMap;
+          });
+        }
+      } else {
+        const errorData = await response.json().catch(() => ({}));
+        error({
+          title: "Upload Failed",
+          description:
+            errorData.error ||
+            errorData.defaultUserMessage ||
+            "Failed to upload document",
+        });
+      }
+    } catch (err: any) {
+      console.error("Error adding document to identifier:", err);
+      error({
+        title: "Upload Failed",
+        description: err?.message || "Failed to upload document",
+      });
+    } finally {
+      setAddingDocumentToIdentifier(null);
+    }
+  };
 
   // State for add new dialogs
   const [showAddOfficeDialog, setShowAddOfficeDialog] = useState(false);
   const [showAddLegalFormDialog, setShowAddLegalFormDialog] = useState(false);
   const [showAddGenderDialog, setShowAddGenderDialog] = useState(false);
+  const [showAddDocumentTypeDialog, setShowAddDocumentTypeDialog] =
+    useState(false);
   const [showAddClientTypeDialog, setShowAddClientTypeDialog] = useState(false);
   const [
     showAddClientClassificationDialog,
     setShowAddClientClassificationDialog,
   ] = useState(false);
   const [showAddSavingsProductDialog, setShowAddSavingsProductDialog] =
+    useState(false);
+  const [showAddRelationshipDialog, setShowAddRelationshipDialog] =
     useState(false);
   const [isAddingNew, setIsAddingNew] = useState(false);
 
@@ -367,6 +1510,15 @@ export function ClientRegistrationForm({
     },
   });
 
+  // Document type form
+  const documentTypeForm = useForm<DocumentTypeFormValues>({
+    resolver: zodResolver(documentTypeSchema) as any,
+    defaultValues: {
+      name: "",
+      description: "",
+    },
+  });
+
   // Client type form
   const clientTypeForm = useForm<ClientTypeValues>({
     resolver: zodResolver(clientTypeSchema) as any,
@@ -379,6 +1531,57 @@ export function ClientRegistrationForm({
   // Client classification form
   const clientClassificationForm = useForm<ClientClassificationValues>({
     resolver: zodResolver(clientClassificationSchema) as any,
+    defaultValues: {
+      name: "",
+      description: "",
+    },
+  });
+
+  // Relationship form
+  const relationshipForm = useForm<RelationshipFormValues>({
+    resolver: zodResolver(relationshipSchema) as any,
+    defaultValues: {
+      name: "",
+      description: "",
+    },
+  });
+
+  // Address type form
+  const addressTypeForm = useForm<{ name: string; description?: string }>({
+    resolver: zodResolver(
+      z.object({
+        name: z.string().min(1, "Name is required"),
+        description: z.string().optional(),
+      })
+    ) as any,
+    defaultValues: {
+      name: "",
+      description: "",
+    },
+  });
+
+  // Country form
+  const countryForm = useForm<{ name: string; description?: string }>({
+    resolver: zodResolver(
+      z.object({
+        name: z.string().min(1, "Name is required"),
+        description: z.string().optional(),
+      })
+    ) as any,
+    defaultValues: {
+      name: "",
+      description: "",
+    },
+  });
+
+  // State/Province form
+  const stateProvinceForm = useForm<{ name: string; description?: string }>({
+    resolver: zodResolver(
+      z.object({
+        name: z.string().min(1, "Name is required"),
+        description: z.string().optional(),
+      })
+    ) as any,
     defaultValues: {
       name: "",
       description: "",
@@ -412,6 +1615,37 @@ export function ClientRegistrationForm({
     label: gender.name,
   }));
 
+  // Merge document types from module codes and template
+  const templateDocumentTypes = identifiersTemplate?.documentTypeOptions || [];
+  const allDocumentTypes = [
+    ...documentTypes,
+    ...templateDocumentTypes.filter(
+      (templateType: any) =>
+        !documentTypes.some((docType) => docType.id === templateType.id)
+    ),
+  ];
+
+  // Get document type IDs that are already used by existing identifiers
+  const usedDocumentTypeIds = new Set(
+    existingIdentifiers
+      .map(
+        (identifier: any) =>
+          identifier.documentType?.id || identifier.documentTypeId
+      )
+      .filter((id: any) => id != null)
+      .map((id: any) => id.toString())
+  );
+
+  const documentTypeOptions = allDocumentTypes.map((docType: any) => {
+    const docTypeId = docType.id.toString();
+    const isUsed = usedDocumentTypeIds.has(docTypeId);
+    return {
+      value: docTypeId,
+      label: docType.name || docType.value || `Type ${docType.id}`,
+      disabled: isUsed,
+    };
+  });
+
   const clientTypeOptions = clientTypes.map((type) => ({
     value: type.id.toString(),
     label: type.name,
@@ -423,6 +1657,11 @@ export function ClientRegistrationForm({
       label: classification.name,
     })
   );
+
+  const relationshipOptions = relationships.map((relationship) => ({
+    value: relationship.name,
+    label: relationship.name,
+  }));
 
   const savingsProductOptions = savingsProducts.map((product) => ({
     value: product.id.toString(),
@@ -538,17 +1777,21 @@ export function ClientRegistrationForm({
           const officesData = await getOffices();
           const legalFormsData = await getLegalForms();
           const gendersData = await getGenders();
+          const documentTypesData = await getDocumentTypes();
           const clientTypesData = await getClientTypes();
           const clientClassificationsData = await getClientClassifications();
           const savingsProductsData = await getSavingsProducts();
+          const relationshipsData = await getRelationships();
 
           // Set state with fetched data
           setOffices(officesData as any[]);
           setLegalForms(legalFormsData as any[]);
           setGenders(gendersData as any[]);
+          setDocumentTypes(documentTypesData as any[]);
           setClientTypes(clientTypesData as any[]);
           setClientClassifications(clientClassificationsData as any[]);
           setSavingsProducts(savingsProductsData as any[]);
+          setRelationships(relationshipsData as any[]);
 
           // Get activation date from API
           try {
@@ -560,6 +1803,8 @@ export function ClientRegistrationForm({
             console.error("Error fetching activation date:", error);
           }
         }
+
+        setIsLoadingOptions(false);
 
         // If leadId is provided, load the lead data
         if (currentLeadId) {
@@ -617,7 +1862,14 @@ export function ClientRegistrationForm({
                 // Step 1: Try to get client details from Fineract (PRIMARY SOURCE)
                 try {
                   const externalIdResponse = await fetch(
-                    `/api/fineract/clients/external-id/${lead.externalId}`
+                    `/api/fineract/clients/external-id`,
+                    {
+                      method: "POST",
+                      headers: {
+                        "Content-Type": "application/json",
+                      },
+                      body: JSON.stringify({ externalId: lead.externalId }),
+                    }
                   );
 
                   if (externalIdResponse.ok) {
@@ -671,7 +1923,9 @@ export function ClientRegistrationForm({
                 // Step 2: Try to get additional data from local database
                 try {
                   const localResponse = await fetch(
-                    `/api/leads/search-by-external-id?externalId=${lead.externalId}`
+                    `/api/leads/search-by-external-id?externalId=${encodeURIComponent(
+                      lead.externalId
+                    )}`
                   );
                   if (localResponse.ok) {
                     const localResult = await localResponse.json();
@@ -992,6 +2246,37 @@ export function ClientRegistrationForm({
     }
   };
 
+  // Handle phone number changes with automatic country code detection
+  const handlePhoneNumberChange = (value: string) => {
+    // Parse the phone number to detect country code
+    const parsed = parsePhoneNumber(value);
+
+    // Update country code if detected (and different from current)
+    if (parsed.countryCode) {
+      const currentCountryCode = externalForm
+        ? externalForm.getValues("countryCode")
+        : form.getValues("countryCode");
+
+      if (parsed.countryCode !== currentCountryCode) {
+        if (externalForm) {
+          externalForm.setValue("countryCode", parsed.countryCode);
+        } else {
+          form.setValue("countryCode", parsed.countryCode);
+        }
+      }
+    }
+
+    // Format and set the phone number (without country code)
+    const formattedNumber = formatPhoneNumber(parsed.number);
+    if (externalForm) {
+      externalForm.setValue("mobileNo", formattedNumber, {
+        shouldValidate: false,
+      });
+    } else {
+      form.setValue("mobileNo", formattedNumber, { shouldValidate: false });
+    }
+  };
+
   // Handle client lookup by National ID
   const handleClientLookup = async () => {
     if (!nationalIdLookup.trim()) {
@@ -1007,20 +2292,55 @@ export function ClientRegistrationForm({
       let localData: any = null;
 
       // Step 1: Try to get client details from Fineract (PRIMARY SOURCE)
+      console.log("==========> Trying to get client details from Fineract");
       try {
-        const externalIdResponse = await fetch(
-          `/api/fineract/clients/external-id/${nationalIdLookup}`
+        console.log(
+          "==========> Trying to get client details from Fineract by external ID"
         );
+        console.log(
+          "==========> [CLIENT] Making POST request to /api/fineract/clients/external-id"
+        );
+        console.log("==========> [CLIENT] Request body:", {
+          externalId: nationalIdLookup,
+        });
+        console.log(
+          "==========> [CLIENT] Full URL:",
+          `${window.location.origin}/api/fineract/clients/external-id`
+        );
+
+        const externalIdResponse = await fetch(
+          `/api/fineract/clients/external-id`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ externalId: nationalIdLookup }),
+          }
+        );
+
+        console.log(
+          "==========> [CLIENT] Response status:",
+          externalIdResponse.status
+        );
+        console.log("==========> [CLIENT] Response ok:", externalIdResponse.ok);
 
         if (externalIdResponse.ok) {
           // Client found by external ID - this gives us the email address
           const clientData = await externalIdResponse.json();
+
+          console.log(
+            "==========> Client data found by external ID from Fineract:",
+            clientData
+          );
 
           // Now we need to get the FULL client details using the client ID
           // This will give us gender, client type, classification, etc.
           const fullClientResponse = await fetch(
             `/api/fineract/clients/${clientData.id}`
           );
+
+          console.log("==========> Full client response:", fullClientResponse);
 
           if (fullClientResponse.ok) {
             const fullClientData = await fullClientResponse.json();
@@ -1128,7 +2448,9 @@ export function ClientRegistrationForm({
       // Step 2: Try to get additional data from local database (SECONDARY SOURCE)
       try {
         const localResponse = await fetch(
-          `/api/leads/search-by-external-id?externalId=${nationalIdLookup}`
+          `/api/leads/search-by-external-id?externalId=${encodeURIComponent(
+            nationalIdLookup
+          )}`
         );
 
         if (localResponse.ok) {
@@ -1209,13 +2531,38 @@ export function ClientRegistrationForm({
               : localData?.isStaff !== undefined
               ? localData.isStaff
               : false,
-          // Phone number from Fineract, but country code from local if Fineract doesn't have it
-          mobileNo: getBestValue(fineractData?.mobileNo, localData?.mobileNo),
-          countryCode: getBestValue(
-            fineractData?.countryCode,
-            localData?.countryCode,
-            "+263"
-          ),
+          // Phone number from Fineract - parse if it includes country code
+          ...(() => {
+            const phoneNumber = getBestValue(
+              fineractData?.mobileNo,
+              localData?.mobileNo
+            );
+            const existingCountryCode = getBestValue(
+              fineractData?.countryCode,
+              localData?.countryCode,
+              "+263"
+            );
+
+            // If we have a phone number, try to parse it
+            if (phoneNumber) {
+              const parsed = parsePhoneNumber(phoneNumber);
+              // If parsing detected a country code, use it; otherwise use existing
+              const finalCountryCode =
+                parsed.countryCode !== "+263" || !existingCountryCode
+                  ? parsed.countryCode
+                  : existingCountryCode;
+
+              return {
+                mobileNo: formatPhoneNumber(parsed.number),
+                countryCode: finalCountryCode,
+              };
+            }
+
+            return {
+              mobileNo: phoneNumber || "",
+              countryCode: existingCountryCode,
+            };
+          })(),
           emailAddress: getBestValue(
             fineractData?.emailAddress,
             localData?.emailAddress
@@ -1228,11 +2575,19 @@ export function ClientRegistrationForm({
             fineractData?.clientClassification?.id?.toString(),
             localData?.clientClassificationId?.toString()
           ),
-          submittedOnDate: fineractData?.submittedOnDate
+          submittedOnDate: fineractData?.timeline?.submittedOnDate
+            ? Array.isArray(fineractData.timeline.submittedOnDate)
+              ? (() => {
+                  const [year, month, day] =
+                    fineractData.timeline.submittedOnDate;
+                  // Create date at midnight to avoid timezone issues
+                  return new Date(Date.UTC(year, month - 1, day));
+                })()
+              : new Date(fineractData.timeline.submittedOnDate)
+            : fineractData?.submittedOnDate
             ? Array.isArray(fineractData.submittedOnDate)
               ? (() => {
                   const [year, month, day] = fineractData.submittedOnDate;
-                  // Create date at midnight to avoid timezone issues
                   return new Date(Date.UTC(year, month - 1, day));
                 })()
               : new Date(fineractData.submittedOnDate)
@@ -1253,6 +2608,14 @@ export function ClientRegistrationForm({
                   return new Date(Date.UTC(year, month - 1, day));
                 })()
               : new Date(fineractData.activationDate)
+            : fineractData?.timeline?.activatedOnDate
+            ? Array.isArray(fineractData.timeline.activatedOnDate)
+              ? (() => {
+                  const [year, month, day] =
+                    fineractData.timeline.activatedOnDate;
+                  return new Date(Date.UTC(year, month - 1, day));
+                })()
+              : new Date(fineractData.timeline.activatedOnDate)
             : localData?.activationDate
             ? new Date(localData.activationDate)
             : undefined,
@@ -1561,8 +2924,11 @@ export function ClientRegistrationForm({
       setShowCloseDialog(false);
     }
   };
-  // Handle adding family member
-  const handleAddFamilyMember = async (data: FamilyMemberValues) => {
+  // Handle adding/updating family member
+  const handleAddFamilyMember = async (
+    data: FamilyMemberValues,
+    memberId?: string
+  ) => {
     let effectiveLeadId = currentLeadId;
 
     if (!effectiveLeadId) {
@@ -1583,17 +2949,25 @@ export function ClientRegistrationForm({
     }
 
     try {
-      const result = await addFamilyMember(effectiveLeadId!, data);
+      let result;
+      if (memberId) {
+        // Update existing member
+        result = await updateFamilyMember(memberId, data);
+      } else {
+        // Add new member
+        result = await addFamilyMember(effectiveLeadId!, data);
+      }
 
       if (result.success) {
         success({
           title: "Success",
-          description: "Family member added",
+          description: memberId
+            ? "Family member updated"
+            : "Family member added",
         });
 
-        // Reset form and close dialog
+        // Reset form
         familyMemberForm.reset();
-        setShowFamilyMemberDialog(false);
 
         // Refresh family members
         const lead = await getLead(effectiveLeadId!);
@@ -1603,15 +2977,599 @@ export function ClientRegistrationForm({
       } else {
         error({
           title: "Error",
-          description: result.error || "Failed to add family member",
+          description:
+            result.error ||
+            (memberId
+              ? "Failed to update family member"
+              : "Failed to add family member"),
         });
       }
     } catch (err) {
-      console.error("Error adding family member:", err);
+      console.error("Error saving family member:", err);
       error({
         title: "Error",
         description: "An unexpected error occurred",
       });
+    }
+  };
+
+  // KYC Handlers
+  // Check section completion whenever form values or related state changes
+  useEffect(() => {
+    const checkSections = () => {
+      const newCompletion = {
+        administrative: checkAdministrativeSection(),
+        personal: checkPersonalSection(),
+        contact: checkContactSection(),
+        classification: checkClassificationSection(),
+        additional: checkAdditionalSection(),
+        selfie: checkSelfieSection(),
+        identityDocuments: checkIdentityDocumentsSection(),
+        otherDocuments: checkOtherDocumentsSection(),
+        datatables: checkDatatablesSection(),
+      };
+
+      setSectionCompletion(newCompletion);
+
+      // Update parent form completion status
+      if (setFormCompletionStatus) {
+        const allComplete = checkAllSectionsComplete();
+        setFormCompletionStatus((prev: any) => ({
+          ...prev,
+          client: allComplete,
+        }));
+      }
+    };
+
+    checkSections();
+  }, [
+    form.watch(),
+    existingClientImage,
+    selfieImage,
+    existingIdentifiers,
+    clientCreatedInFineract,
+  ]);
+
+  const handleSelfieFileSelect = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file && file.type.startsWith("image/")) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setSelfieImage(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleCaptureSelfie = async () => {
+    if (!videoRef.current || !canvasRef.current) return;
+
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    const context = canvas.getContext("2d");
+
+    if (!context) return;
+
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    context.drawImage(video, 0, 0);
+
+    const dataUrl = canvas.toDataURL("image/png");
+    setCapturedImage(dataUrl);
+
+    // Stop camera
+    const stream = video.srcObject as MediaStream;
+    stream.getTracks().forEach((track) => track.stop());
+  };
+
+  const handleStartCamera = async () => {
+    setShowCameraModal(true);
+    setCapturedImage(null);
+
+    // Wait for modal to open before accessing camera
+    setTimeout(async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "user" },
+        });
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+        }
+      } catch (err) {
+        console.error("Error accessing camera:", err);
+        error({
+          title: "Camera Error",
+          description: "Could not access camera. Please check permissions.",
+        });
+        setShowCameraModal(false);
+      }
+    }, 100);
+  };
+
+  const handleStopCamera = () => {
+    if (videoRef.current) {
+      const stream = videoRef.current.srcObject as MediaStream;
+      stream?.getTracks().forEach((track) => track.stop());
+    }
+    setShowCameraModal(false);
+    setCapturedImage(null);
+  };
+
+  const handleConfirmCapture = () => {
+    if (capturedImage) {
+      setSelfieImage(capturedImage);
+      setShowCameraModal(false);
+      setCapturedImage(null);
+    }
+  };
+
+  const handleRetakePhoto = async () => {
+    setCapturedImage(null);
+    // Restart camera
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "user" },
+      });
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+    } catch (err) {
+      console.error("Error accessing camera:", err);
+      error({
+        title: "Camera Error",
+        description: "Could not access camera. Please check permissions.",
+      });
+    }
+  };
+
+  const handleUploadSelfie = async () => {
+    if (!selfieImage || !fineractClientId) {
+      error({
+        title: "Error",
+        description: "Please capture or select a selfie first",
+      });
+      return;
+    }
+
+    setUploadingSelfie(true);
+    try {
+      const response = await fetch(
+        `/api/fineract/clients/${fineractClientId}/images`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "text/plain",
+          },
+          body: selfieImage,
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to upload selfie");
+      }
+
+      success({
+        title: "Success",
+        description: "Selfie uploaded successfully",
+      });
+
+      // Update existing image state after successful upload
+      setExistingClientImage(selfieImage);
+      setSelfieImageLoading(true);
+      setSelfieImage(null);
+    } catch (err: any) {
+      console.error("Error uploading selfie:", err);
+      error({
+        title: "Error",
+        description: err.message || "Failed to upload selfie",
+      });
+    } finally {
+      setUploadingSelfie(false);
+    }
+  };
+
+  const handleAddIdentityDocument = async (
+    e: ChangeEvent<HTMLInputElement>
+  ) => {
+    const files = e.target.files;
+    if (!files || !fineractClientId) {
+      if (!fineractClientId) {
+        error({
+          title: "Error",
+          description:
+            "Client ID not available. Please create the client first.",
+        });
+      }
+      e.target.value = "";
+      return;
+    }
+
+    const validFiles = Array.from(files).filter(
+      (file) =>
+        file.type.startsWith("image/") || file.type === "application/pdf"
+    );
+
+    if (validFiles.length === 0) {
+      error({
+        title: "Invalid File",
+        description: "Please select image or PDF files only.",
+      });
+      e.target.value = "";
+      return;
+    }
+
+    setUploadingDocuments(true);
+    try {
+      // Upload each file directly to client documents endpoint
+      const uploadPromises = validFiles.map(async (file) => {
+        const formData = new FormData();
+        formData.append("name", file.name);
+        formData.append("file", file);
+
+        const response = await fetch(
+          `/api/fineract/clients/${fineractClientId}/documents`,
+          {
+            method: "POST",
+            body: formData,
+          }
+        );
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(
+            errorData.error ||
+              errorData.defaultUserMessage ||
+              `Failed to upload ${file.name}`
+          );
+        }
+
+        return response.json();
+      });
+
+      await Promise.all(uploadPromises);
+
+      success({
+        title: "Success",
+        description: `${validFiles.length} document(s) uploaded successfully`,
+      });
+
+      // Refresh client documents
+      try {
+        const documentsResponse = await fetch(
+          `/api/fineract/clients/${fineractClientId}/documents`
+        );
+        if (documentsResponse.ok) {
+          const documentsData = await documentsResponse.json();
+          let documents = [];
+          if (Array.isArray(documentsData)) {
+            documents = documentsData;
+          } else if (documentsData?.pageItems) {
+            documents = documentsData.pageItems;
+          } else if (documentsData?.content) {
+            documents = documentsData.content;
+          } else if (documentsData?.documents) {
+            documents = documentsData.documents;
+          }
+          setClientDocuments(documents);
+        }
+      } catch (refreshError) {
+        console.error("Error refreshing documents:", refreshError);
+      }
+    } catch (uploadError: any) {
+      console.error("Error uploading documents:", uploadError);
+      error({
+        title: "Upload Failed",
+        description: uploadError?.message || "Failed to upload documents",
+      });
+    } finally {
+      setUploadingDocuments(false);
+      e.target.value = "";
+    }
+  };
+
+  const handleConfirmDocumentType = () => {
+    if (!selectedDocumentType || pendingFiles.length === 0) return;
+
+    // Find the document type name
+    const documentType = identifiersTemplate?.documentTypeOptions?.find(
+      (opt: any) => opt.id === selectedDocumentType
+    );
+
+    // Add all pending files with the selected document type
+    pendingFiles.forEach((file) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setIdentityDocuments((prev) => [
+          ...prev,
+          {
+            name: file.name,
+            file,
+            preview: reader.result as string,
+            documentTypeId: selectedDocumentType,
+            documentTypeName: documentType?.name || "Unknown",
+          },
+        ]);
+      };
+      reader.readAsDataURL(file);
+    });
+
+    // Reset state
+    setPendingFiles([]);
+    setSelectedDocumentType(null);
+    setShowDocumentTypeDialog(false);
+  };
+
+  const handleRemoveIdentityDocument = (index: number) => {
+    setIdentityDocuments((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  // Handle adding a new identifier
+  const handleAddIdentifier = async () => {
+    if (
+      !fineractClientId ||
+      !newIdentifier.documentTypeId ||
+      !newIdentifier.documentKey.trim()
+    ) {
+      error({
+        title: "Validation Error",
+        description: "Document type and document key are required",
+      });
+      return;
+    }
+
+    setAddingIdentifier(true);
+    try {
+      const payload = {
+        documentTypeId: Number(newIdentifier.documentTypeId),
+        documentKey: newIdentifier.documentKey.trim(),
+        description: newIdentifier.description.trim() || undefined,
+        status: newIdentifier.status === "active" ? "Active" : "Inactive",
+      };
+
+      const response = await fetch(
+        `/api/fineract/clients/${fineractClientId}/identifiers`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(payload),
+        }
+      );
+
+      if (response.ok) {
+        const identifierData = await response.json();
+        const identifierId = identifierData?.resourceId || identifierData?.id;
+
+        // If a document file was provided, upload it to the identifier
+        if (newIdentifier.documentFile) {
+          try {
+            const documentFormData = new FormData();
+
+            // Use the document name from the form, or fallback to the file name
+            const documentName =
+              newIdentifier.documentFileName.trim() ||
+              newIdentifier.documentFile.name;
+            documentFormData.append("name", documentName);
+            documentFormData.append("file", newIdentifier.documentFile);
+
+            const documentResponse = await fetch(
+              `/api/fineract/client_identifiers/${identifierId}/documents`,
+              {
+                method: "POST",
+                body: documentFormData,
+              }
+            );
+
+            if (documentResponse.ok) {
+              success({
+                title: "Success",
+                description: "Identifier and document added successfully",
+              });
+            } else {
+              // Identifier was created but document upload failed
+              const docErrorData = await documentResponse
+                .json()
+                .catch(() => ({}));
+
+              // Extract specific error message
+              let docErrorMessage = "Unknown error";
+              if (docErrorData?.error) {
+                docErrorMessage = docErrorData.error;
+              } else if (
+                docErrorData?.details?.errors &&
+                Array.isArray(docErrorData.details.errors) &&
+                docErrorData.details.errors.length > 0
+              ) {
+                docErrorMessage =
+                  docErrorData.details.errors[0].defaultUserMessage ||
+                  docErrorData.details.errors[0].developerMessage ||
+                  docErrorMessage;
+              } else if (docErrorData?.details?.defaultUserMessage) {
+                docErrorMessage = docErrorData.details.defaultUserMessage;
+              } else if (docErrorData?.defaultUserMessage) {
+                docErrorMessage = docErrorData.defaultUserMessage;
+              }
+
+              error({
+                title: "Partial Success",
+                description: `Identifier added but document upload failed: ${docErrorMessage}`,
+              });
+            }
+          } catch (docError: any) {
+            console.error("Error uploading document:", docError);
+
+            // Extract error message from exception
+            let docErrorMessage = "Unknown error";
+            if (docError?.message) {
+              docErrorMessage = docError.message;
+            } else if (
+              docError?.errorData?.errors &&
+              Array.isArray(docError.errorData.errors) &&
+              docError.errorData.errors.length > 0
+            ) {
+              docErrorMessage =
+                docError.errorData.errors[0].defaultUserMessage ||
+                docError.errorData.errors[0].developerMessage ||
+                docErrorMessage;
+            } else if (docError?.errorData?.defaultUserMessage) {
+              docErrorMessage = docError.errorData.defaultUserMessage;
+            }
+
+            error({
+              title: "Partial Success",
+              description: `Identifier added but document upload failed: ${docErrorMessage}`,
+            });
+          }
+        } else {
+          success({
+            title: "Success",
+            description: "Identifier added successfully",
+          });
+        }
+
+        // Reset form
+        setNewIdentifier({
+          documentTypeId: "",
+          documentKey: "",
+          description: "",
+          status: "active",
+          documentFile: null,
+          documentFileName: "",
+        });
+        setShowAddIdentifierDialog(false);
+
+        // Refresh existing identifiers and documents
+        const [identifiersResponse, documentsResponse] = await Promise.all([
+          fetch(`/api/fineract/clients/${fineractClientId}/identifiers`),
+          fetch(`/api/fineract/clients/${fineractClientId}/documents`),
+        ]);
+
+        // Fetch documents for all identifiers (including the newly added one)
+        if (identifiersResponse.ok) {
+          const identifiersData = await identifiersResponse.json();
+          let identifiers = [];
+          if (Array.isArray(identifiersData)) {
+            identifiers = identifiersData;
+          } else if (identifiersData?.pageItems) {
+            identifiers = identifiersData.pageItems;
+          } else if (identifiersData?.identifiers) {
+            identifiers = identifiersData.identifiers;
+          } else if (identifiersData?.data) {
+            identifiers = Array.isArray(identifiersData.data)
+              ? identifiersData.data
+              : [];
+          }
+
+          const documentsMap = new Map<number, any[]>();
+          const fetchPromises = identifiers.map(async (identifier: any) => {
+            const identifierId = identifier.id;
+            if (!identifierId) return;
+
+            try {
+              const docsResponse = await fetch(
+                `/api/fineract/client_identifiers/${identifierId}/documents`
+              );
+              if (docsResponse.ok) {
+                const docsData = await docsResponse.json();
+                let docs = [];
+                if (Array.isArray(docsData)) {
+                  docs = docsData;
+                } else if (docsData?.pageItems) {
+                  docs = docsData.pageItems;
+                } else if (docsData?.content) {
+                  docs = docsData.content;
+                } else if (docsData?.documents) {
+                  docs = docsData.documents;
+                }
+                documentsMap.set(identifierId, docs);
+              } else {
+                documentsMap.set(identifierId, []);
+              }
+            } catch (error) {
+              console.error(
+                `Exception fetching documents for identifier ${identifierId}:`,
+                error
+              );
+              documentsMap.set(identifierId, []);
+            }
+          });
+
+          await Promise.all(fetchPromises);
+          setIdentifierDocuments(documentsMap);
+          setExistingIdentifiers(identifiers);
+        }
+
+        if (documentsResponse.ok) {
+          const documentsData = await documentsResponse.json();
+          let documents = [];
+          if (Array.isArray(documentsData)) {
+            documents = documentsData;
+          } else if (documentsData?.pageItems) {
+            documents = documentsData.pageItems;
+          } else if (documentsData?.content) {
+            documents = documentsData.content;
+          } else if (documentsData?.documents) {
+            documents = documentsData.documents;
+          }
+          setClientDocuments(documents);
+        }
+      } else {
+        const errorData = await response.json().catch(() => ({}));
+
+        // Extract specific error message
+        let errorMessage = "Failed to add identifier";
+
+        if (errorData?.error) {
+          errorMessage = errorData.error;
+        } else if (
+          errorData?.details?.errors &&
+          Array.isArray(errorData.details.errors) &&
+          errorData.details.errors.length > 0
+        ) {
+          // Extract from errors array
+          errorMessage =
+            errorData.details.errors[0].defaultUserMessage ||
+            errorData.details.errors[0].developerMessage ||
+            errorMessage;
+        } else if (errorData?.details?.defaultUserMessage) {
+          errorMessage = errorData.details.defaultUserMessage;
+        } else if (errorData?.defaultUserMessage) {
+          errorMessage = errorData.defaultUserMessage;
+        }
+
+        error({
+          title: "Error Adding Identifier",
+          description: errorMessage,
+        });
+      }
+    } catch (err: any) {
+      console.error("Error adding identifier:", err);
+
+      // Extract error message from exception
+      let errorMessage = "Failed to add identifier";
+      if (err?.message) {
+        errorMessage = err.message;
+      } else if (
+        err?.errorData?.errors &&
+        Array.isArray(err.errorData.errors) &&
+        err.errorData.errors.length > 0
+      ) {
+        errorMessage =
+          err.errorData.errors[0].defaultUserMessage ||
+          err.errorData.errors[0].developerMessage ||
+          errorMessage;
+      } else if (err?.errorData?.defaultUserMessage) {
+        errorMessage = err.errorData.defaultUserMessage;
+      }
+
+      error({
+        title: "Error Adding Identifier",
+        description: errorMessage,
+      });
+    } finally {
+      setAddingIdentifier(false);
     }
   };
 
@@ -1689,33 +3647,130 @@ export function ClientRegistrationForm({
   const handleAddGender = async (data: GenderFormValues) => {
     setIsAddingNew(true);
     try {
-      // Simulate a successful response
-      const mockResult = {
-        success: true,
-        id: Math.floor(Math.random() * 1000) + 100, // Generate a random ID
+      // Create the gender in Fineract module codes
+      const result = await addGender({
+        id: 0, // Will be set by Fineract
         name: data.name,
         description: null,
-      };
+      });
 
       success({
         title: "Success",
-        description: "Gender added successfully",
+        description: "Gender added successfully to Fineract",
       });
 
-      // Add the new gender to the local state
-      setGenders([...genders, mockResult]);
+      // Refetch the full template to get the updated genders from Fineract
+      const templateData = await getClientTemplateData();
+      let refreshedGenders: any[] = [];
 
-      // Select the new gender
-      form.setValue("genderId", mockResult.id.toString());
+      if (templateData.success && templateData.data) {
+        refreshedGenders = templateData.data.genders as any[];
+        setGenders(refreshedGenders);
+      } else {
+        // Fallback to just refreshing genders
+        refreshedGenders = await getGenders();
+        setGenders(refreshedGenders);
+      }
+
+      // Find the newly created gender in the refreshed list by name or ID
+      const newlyCreatedGender = refreshedGenders.find(
+        (gender: any) =>
+          gender.id === result.id ||
+          gender.id === (result as any).resourceId ||
+          gender.name?.toLowerCase() === data.name.toLowerCase()
+      );
+
+      // Select the newly created gender
+      if (newlyCreatedGender) {
+        form.setValue("genderId", newlyCreatedGender.id.toString(), {
+          shouldValidate: true,
+        });
+        console.log(
+          "Selected gender:",
+          newlyCreatedGender.id,
+          newlyCreatedGender.name
+        );
+      } else {
+        // Fallback to using the result ID
+        form.setValue("genderId", result.id.toString(), {
+          shouldValidate: true,
+        });
+        console.log("Selected gender using result ID:", result.id);
+      }
 
       // Close dialog and reset form
       setShowAddGenderDialog(false);
       genderForm.reset();
-    } catch (err) {
+    } catch (err: any) {
       console.error("Error adding gender:", err);
       error({
         title: "Error",
-        description: "An unexpected error occurred",
+        description: err.message || "Failed to add gender to Fineract",
+      });
+    } finally {
+      setIsAddingNew(false);
+    }
+  };
+
+  // Handle adding new document type
+  const handleAddDocumentType = async (data: DocumentTypeFormValues) => {
+    setIsAddingNew(true);
+    try {
+      // Create the document type in Fineract module codes
+      const result = await addDocumentType({
+        id: 0, // Will be set by Fineract
+        name: data.name,
+        description: data.description || null,
+      });
+
+      success({
+        title: "Success",
+        description: "Document type added successfully to Fineract",
+      });
+
+      // Refetch document types
+      const refreshedDocumentTypes = await getDocumentTypes();
+      setDocumentTypes(refreshedDocumentTypes);
+
+      // Find the newly created document type in the refreshed list
+      const newlyCreatedDocType = refreshedDocumentTypes.find(
+        (docType: any) =>
+          docType.id === result.id ||
+          docType.id === (result as any).resourceId ||
+          docType.name?.toLowerCase() === data.name.toLowerCase()
+      );
+
+      // Select the newly created document type
+      if (newlyCreatedDocType) {
+        setNewIdentifier((prev) => ({
+          ...prev,
+          documentTypeId: newlyCreatedDocType.id.toString(),
+        }));
+        console.log(
+          "Selected document type:",
+          newlyCreatedDocType.id,
+          newlyCreatedDocType.name
+        );
+      } else {
+        // Fallback to using the result ID
+        setNewIdentifier((prev) => ({
+          ...prev,
+          documentTypeId: result.id.toString(),
+        }));
+        console.log("Selected document type using result ID:", result.id);
+      }
+
+      // Close dialog and reset form
+      setShowAddDocumentTypeDialog(false);
+      documentTypeForm.reset();
+
+      // Reopen the Add Identifier dialog so user can continue
+      setShowAddIdentifierDialog(true);
+    } catch (err: any) {
+      console.error("Error adding document type:", err);
+      error({
+        title: "Error",
+        description: err.message || "Failed to add document type to Fineract",
       });
     } finally {
       setIsAddingNew(false);
@@ -1726,33 +3781,125 @@ export function ClientRegistrationForm({
   const handleAddClientType = async (data: ClientTypeValues) => {
     setIsAddingNew(true);
     try {
-      // Simulate a successful response
-      const mockResult = {
-        success: true,
-        id: Math.floor(Math.random() * 1000) + 100, // Generate a random ID
+      // Create the client type in Fineract module codes
+      const result = await addClientType({
+        id: 0, // Will be set by Fineract
         name: data.name,
         description: data.description || null,
-      };
+      });
 
       success({
         title: "Success",
-        description: "Client type added successfully",
+        description: "Client type added successfully to Fineract",
       });
 
-      // Add the new client type to the local state
-      setClientTypes([...clientTypes, mockResult]);
+      // Refetch the full template to get the updated client types from Fineract
+      const templateData = await getClientTemplateData();
+      let refreshedClientTypes: any[] = [];
 
-      // Select the new client type
-      form.setValue("clientTypeId", mockResult.id.toString());
+      if (templateData.success && templateData.data) {
+        refreshedClientTypes = templateData.data.clientTypes as any[];
+        setClientTypes(refreshedClientTypes);
+      } else {
+        // Fallback to just refreshing client types
+        refreshedClientTypes = await getClientTypes();
+        setClientTypes(refreshedClientTypes);
+      }
+
+      // Find the newly created client type in the refreshed list by name or ID
+      const newlyCreatedClientType = refreshedClientTypes.find(
+        (type: any) =>
+          type.id === result.id ||
+          type.id === (result as any).resourceId ||
+          type.name?.toLowerCase() === data.name.toLowerCase()
+      );
+
+      // Select the newly created client type
+      if (newlyCreatedClientType) {
+        form.setValue("clientTypeId", newlyCreatedClientType.id.toString(), {
+          shouldValidate: true,
+        });
+        console.log(
+          "Selected client type:",
+          newlyCreatedClientType.id,
+          newlyCreatedClientType.name
+        );
+      } else {
+        // Fallback to using the result ID
+        form.setValue("clientTypeId", result.id.toString(), {
+          shouldValidate: true,
+        });
+        console.log("Selected client type using result ID:", result.id);
+      }
 
       // Close dialog and reset form
       setShowAddClientTypeDialog(false);
       clientTypeForm.reset();
-    } catch (err) {
+    } catch (err: any) {
       console.error("Error adding client type:", err);
       error({
         title: "Error",
-        description: "An unexpected error occurred",
+        description: err.message || "Failed to add client type to Fineract",
+      });
+    } finally {
+      setIsAddingNew(false);
+    }
+  };
+
+  // Handle adding new relationship
+  const handleAddRelationship = async (data: RelationshipFormValues) => {
+    setIsAddingNew(true);
+    try {
+      // Create the relationship in Fineract module codes
+      const result = await addRelationship({
+        id: 0, // Will be set by Fineract
+        name: data.name,
+        description: data.description || null,
+      });
+
+      if (!result.success) {
+        error({
+          title: "Error",
+          description: result.error || "Failed to add relationship",
+        });
+        setIsAddingNew(false);
+        return;
+      }
+
+      success({
+        title: "Success",
+        description: "Relationship added successfully to Fineract",
+      });
+
+      // Refetch relationships
+      const refreshedRelationships = await getRelationships();
+      setRelationships(refreshedRelationships);
+
+      // Find the newly created relationship in the refreshed list by name or ID
+      const newlyCreatedRelationship = refreshedRelationships.find(
+        (relationship: any) =>
+          relationship.id === (result.data as any)?.id ||
+          relationship.id === (result.data as any)?.resourceId ||
+          relationship.name?.toLowerCase() === data.name.toLowerCase()
+      );
+
+      // Auto-select the newly created relationship in the editing form
+      if (newlyCreatedRelationship && editingFamilyMember) {
+        setEditingFamilyMember({
+          ...editingFamilyMember,
+          relationship: newlyCreatedRelationship.name,
+        });
+        console.log("Selected relationship:", newlyCreatedRelationship.name);
+      }
+
+      // Close dialog and reset form
+      setShowAddRelationshipDialog(false);
+      relationshipForm.reset();
+    } catch (err: any) {
+      console.error("Error adding relationship:", err);
+      error({
+        title: "Error",
+        description: err.message || "Failed to add relationship",
       });
     } finally {
       setIsAddingNew(false);
@@ -1765,33 +3912,285 @@ export function ClientRegistrationForm({
   ) => {
     setIsAddingNew(true);
     try {
-      // Simulate a successful response
-      const mockResult = {
-        success: true,
-        id: Math.floor(Math.random() * 1000) + 100, // Generate a random ID
+      // Create the client classification in Fineract module codes
+      const result = await addClientClassification({
+        id: 0, // Will be set by Fineract
         name: data.name,
         description: data.description || null,
-      };
+      });
 
       success({
         title: "Success",
-        description: "Client classification added successfully",
+        description: "Client classification added successfully to Fineract",
       });
 
-      // Add the new client classification to the local state
-      setClientClassifications([...clientClassifications, mockResult]);
+      // Refetch the full template to get the updated client classifications from Fineract
+      const templateData = await getClientTemplateData();
+      let refreshedClientClassifications: any[] = [];
 
-      // Select the new client classification
-      form.setValue("clientClassificationId", mockResult.id.toString());
+      if (templateData.success && templateData.data) {
+        refreshedClientClassifications = templateData.data
+          .clientClassifications as any[];
+        setClientClassifications(refreshedClientClassifications);
+      } else {
+        // Fallback to just refreshing client classifications
+        refreshedClientClassifications = await getClientClassifications();
+        setClientClassifications(refreshedClientClassifications);
+      }
+
+      // Find the newly created client classification in the refreshed list by name or ID
+      const newlyCreatedClientClassification =
+        refreshedClientClassifications.find(
+          (classification: any) =>
+            classification.id === result.id ||
+            classification.id === (result as any).resourceId ||
+            classification.name?.toLowerCase() === data.name.toLowerCase()
+        );
+
+      // Select the newly created client classification
+      if (newlyCreatedClientClassification) {
+        form.setValue(
+          "clientClassificationId",
+          newlyCreatedClientClassification.id.toString(),
+          {
+            shouldValidate: true,
+          }
+        );
+        console.log(
+          "Selected client classification:",
+          newlyCreatedClientClassification.id,
+          newlyCreatedClientClassification.name
+        );
+      } else {
+        // Fallback to using the result ID
+        form.setValue("clientClassificationId", result.id.toString(), {
+          shouldValidate: true,
+        });
+        console.log(
+          "Selected client classification using result ID:",
+          result.id
+        );
+      }
 
       // Close dialog and reset form
       setShowAddClientClassificationDialog(false);
       clientClassificationForm.reset();
-    } catch (err) {
+    } catch (err: any) {
       console.error("Error adding client classification:", err);
       error({
         title: "Error",
-        description: "An unexpected error occurred",
+        description:
+          err.message || "Failed to add client classification to Fineract",
+      });
+    } finally {
+      setIsAddingNew(false);
+    }
+  };
+
+  // Handle adding new address type
+  const handleAddAddressType = async (data: {
+    name: string;
+    description?: string;
+  }) => {
+    setIsAddingNew(true);
+    try {
+      const result = await addAddressType({
+        id: 0,
+        name: data.name,
+        description: data.description || null,
+      });
+
+      success({
+        title: "Success",
+        description: "Address type added successfully to Fineract",
+      });
+
+      // Refetch address template to get updated options with correct IDs
+      const templateResponse = await fetch(
+        `/api/fineract/clients/addresses/template`
+      );
+      if (templateResponse.ok) {
+        const templateData = await templateResponse.json();
+        setAddressTemplate(templateData);
+
+        // Find the newly created address type in the refreshed template
+        const addressTypeOptions = templateData?.addressTypeIdOptions || [];
+        const newlyCreated = addressTypeOptions.find(
+          (opt: any) =>
+            opt.id === result.id ||
+            opt.id === (result as any).resourceId ||
+            opt.name?.toLowerCase() === data.name.toLowerCase()
+        );
+
+        // Update editedAddress with the correct ID from the template
+        if (newlyCreated && newlyCreated.id) {
+          setEditedAddress({
+            ...editedAddress,
+            addressType: newlyCreated.id, // Use the ID from the template
+          });
+          console.log(
+            "Set addressType to:",
+            newlyCreated.id,
+            "for:",
+            newlyCreated.name
+          );
+        } else if (result.id) {
+          // Fallback to result ID if not found in template
+          setEditedAddress({
+            ...editedAddress,
+            addressType: result.id,
+          });
+          console.log("Set addressType to result ID:", result.id);
+        }
+      }
+
+      setShowAddAddressTypeDialog(false);
+      addressTypeForm.reset();
+    } catch (err: any) {
+      console.error("Error adding address type:", err);
+      error({
+        title: "Error",
+        description: err.message || "Failed to add address type to Fineract",
+      });
+    } finally {
+      setIsAddingNew(false);
+    }
+  };
+
+  // Handle adding new country
+  const handleAddCountry = async (data: {
+    name: string;
+    description?: string;
+  }) => {
+    setIsAddingNew(true);
+    try {
+      const result = await addCountry({
+        id: 0,
+        name: data.name,
+        description: data.description || null,
+      });
+
+      success({
+        title: "Success",
+        description: "Country added successfully to Fineract",
+      });
+
+      // Refetch address template to get updated options with correct IDs
+      const templateResponse = await fetch(
+        `/api/fineract/clients/addresses/template`
+      );
+      if (templateResponse.ok) {
+        const templateData = await templateResponse.json();
+        setAddressTemplate(templateData);
+
+        // Find the newly created country in the refreshed template
+        const countryOptions = templateData?.countryIdOptions || [];
+        const newlyCreated = countryOptions.find(
+          (opt: any) =>
+            opt.id === result.id ||
+            opt.id === (result as any).resourceId ||
+            opt.name?.toLowerCase() === data.name.toLowerCase()
+        );
+
+        // Update editedAddress with the correct ID from the template
+        if (newlyCreated && newlyCreated.id) {
+          setEditedAddress({
+            ...editedAddress,
+            countryId: newlyCreated.id, // Use the ID from the template
+          });
+          console.log(
+            "Set countryId to:",
+            newlyCreated.id,
+            "for:",
+            newlyCreated.name
+          );
+        } else if (result.id) {
+          // Fallback to result ID if not found in template
+          setEditedAddress({
+            ...editedAddress,
+            countryId: result.id,
+          });
+          console.log("Set countryId to result ID:", result.id);
+        }
+      }
+
+      setShowAddCountryDialog(false);
+      countryForm.reset();
+    } catch (err: any) {
+      console.error("Error adding country:", err);
+      error({
+        title: "Error",
+        description: err.message || "Failed to add country to Fineract",
+      });
+    } finally {
+      setIsAddingNew(false);
+    }
+  };
+
+  // Handle adding new state/province
+  const handleAddStateProvince = async (data: {
+    name: string;
+    description?: string;
+  }) => {
+    setIsAddingNew(true);
+    try {
+      const result = await addStateProvince({
+        id: 0,
+        name: data.name,
+        description: data.description || null,
+      });
+
+      success({
+        title: "Success",
+        description: "State/Province added successfully to Fineract",
+      });
+
+      // Refetch address template to get updated options with correct IDs
+      const templateResponse = await fetch(
+        `/api/fineract/clients/addresses/template`
+      );
+      if (templateResponse.ok) {
+        const templateData = await templateResponse.json();
+        setAddressTemplate(templateData);
+
+        // Find the newly created state/province in the refreshed template
+        const stateProvinceOptions = templateData?.stateProvinceIdOptions || [];
+        const newlyCreated = stateProvinceOptions.find(
+          (opt: any) =>
+            opt.id === result.id ||
+            opt.id === (result as any).resourceId ||
+            opt.name?.toLowerCase() === data.name.toLowerCase()
+        );
+
+        // Update editedAddress with the correct ID from the template
+        if (newlyCreated && newlyCreated.id) {
+          setEditedAddress({
+            ...editedAddress,
+            stateProvinceId: newlyCreated.id, // Use the ID from the template
+          });
+          console.log(
+            "Set stateProvinceId to:",
+            newlyCreated.id,
+            "for:",
+            newlyCreated.name
+          );
+        } else if (result.id) {
+          // Fallback to result ID if not found in template
+          setEditedAddress({
+            ...editedAddress,
+            stateProvinceId: result.id,
+          });
+          console.log("Set stateProvinceId to result ID:", result.id);
+        }
+      }
+
+      setShowAddStateProvinceDialog(false);
+      stateProvinceForm.reset();
+    } catch (err: any) {
+      console.error("Error adding state/province:", err);
+      error({
+        title: "Error",
+        description: err.message || "Failed to add state/province to Fineract",
       });
     } finally {
       setIsAddingNew(false);
@@ -2078,1891 +4477,5252 @@ export function ClientRegistrationForm({
 
                   {/* Only show client information sections after National ID is checked */}
                   {clientLookupStatus !== "idle" && (
-                    <Card
-                      className={`border-${colors.borderColor} ${
-                        colors.cardBg
-                      } ${
-                        clientCreatedInFineract
-                          ? "border-green-500 bg-green-50 dark:bg-green-950"
-                          : ""
-                      }`}
-                    >
-                      <CardHeader>
-                        <CardTitle className={colors.textColor}>
-                          Client Information
-                        </CardTitle>
-                        <CardDescription className={colors.textColorMuted}>
-                          {clientCreatedInFineract ? (
-                            <div className="flex items-center text-green-600 dark:text-green-400">
-                              <UserCheck className="h-4 w-4 mr-2" />
-                              Client successfully created in Fineract! Form is
-                              ready for next step.
-                            </div>
-                          ) : clientLookupStatus === "found" ? (
-                            "Review and update the client's information as needed."
-                          ) : (
-                            "Enter the client's information to register them."
+                    <Tabs defaultValue="general" className="w-full">
+                      <TabsList
+                        className={`grid${
+                          clientCreatedInFineract
+                            ? "grid-cols-3"
+                            : "grid-cols-2"
+                        }`}
+                      >
+                        <TabsTrigger value="general" className="relative">
+                          General Information
+                          {checkGeneralTabCompletion() && (
+                            <CheckCircle2 className="ml-2 h-4 w-4 text-green-600" />
                           )}
-                        </CardDescription>
-                      </CardHeader>
-                      <CardContent className="space-y-8">
-                        {/* Administrative Information Section */}
-                        <div className="space-y-6 mb-8">
-                          <div className="border-b border-gray-200 dark:border-gray-700 pb-3 mb-6">
-                            <h3
-                              className={`text-lg font-medium ${colors.textColor}`}
-                            >
-                              Administrative Information
-                            </h3>
-                            <p className={`text-sm ${colors.textColorMuted}`}>
-                              Office and legal classification details
-                            </p>
-                          </div>
+                        </TabsTrigger>
+                        <TabsTrigger value="account" className="relative">
+                          KYC
+                          {checkKYCTabCompletion() && (
+                            <CheckCircle2 className="ml-2 h-4 w-4 text-green-600" />
+                          )}
+                        </TabsTrigger>
+                        {clientCreatedInFineract && (
+                          <TabsTrigger value="additional" className="relative">
+                            Additional Details
+                            {checkAdditionalDetailsTabCompletion() && (
+                              <CheckCircle2 className="ml-2 h-4 w-4 text-green-600" />
+                            )}
+                          </TabsTrigger>
+                        )}
+                      </TabsList>
 
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            {/* Office */}
-                            <div className="space-y-3">
-                              <Label
-                                htmlFor="officeId"
-                                className={colors.textColor}
-                              >
-                                Office <span className="text-red-500">*</span>
-                              </Label>
-                              <div className="relative">
-                                <Controller
-                                  control={
-                                    externalForm
-                                      ? externalForm.control
-                                      : form.control
-                                  }
-                                  name="officeId"
-                                  render={({ field }) => (
-                                    <SearchableSelect
-                                      options={officeOptions}
-                                      value={field.value?.toString()}
-                                      onValueChange={(value) => {
-                                        field.onChange(value);
-                                        handleFieldBlur("officeId", value);
-                                      }}
-                                      placeholder="Select office"
-                                      className={getSelectErrorStyling(
-                                        hasFieldError(
-                                          form,
-                                          "officeId",
-                                          externalForm
-                                        ),
-                                        `border-${colors.borderColor} ${colors.inputBg}`
-                                      )}
-                                      onAddNew={() =>
-                                        setShowAddOfficeDialog(true)
-                                      }
-                                      addNewLabel="Add new office"
-                                      disabled={isFormDisabled}
-                                    />
-                                  )}
-                                />
-                                {lastSavedField === "officeId" &&
-                                  isAutoSaving && (
-                                    <div className="absolute right-2 top-1/2 -translate-y-1/2">
-                                      <div className="w-3 h-3 border border-gray-300 border-t-gray-600 rounded-full animate-spin"></div>
-                                    </div>
-                                  )}
-                              </div>
-                              <p className={`text-xs ${colors.textColorMuted}`}>
-                                Select the branch office managing this client
-                              </p>
-                              {(externalForm
-                                ? externalForm.formState.errors.officeId
-                                : form.formState.errors.officeId) && (
-                                <p className="text-sm text-red-500">
-                                  {
-                                    (externalForm
-                                      ? externalForm.formState.errors.officeId
-                                      : form.formState.errors.officeId
-                                    )?.message
-                                  }
-                                </p>
+                      <TabsContent value="general" className="mt-4">
+                        <Card
+                          className={`border-${colors.borderColor} ${
+                            colors.cardBg
+                          } ${
+                            clientCreatedInFineract
+                              ? "border-green-500 bg-green-50 dark:bg-green-950"
+                              : ""
+                          }`}
+                        >
+                          <CardHeader>
+                            <CardTitle className={colors.textColor}>
+                              Client Information
+                            </CardTitle>
+                            <CardDescription className={colors.textColorMuted}>
+                              {clientCreatedInFineract ? (
+                                <div className="flex items-center text-green-600 dark:text-green-400">
+                                  <UserCheck className="h-4 w-4 mr-2" />
+                                  Client successfully recognized! Form is ready
+                                  for next step.
+                                </div>
+                              ) : clientLookupStatus === "found" ? (
+                                "Review and update the client's information as needed."
+                              ) : (
+                                "Enter the client's information to register them."
                               )}
-                            </div>
-
-                            {/* Legal Form */}
-                            <div className="space-y-3">
-                              <Label
-                                htmlFor="legalFormId"
-                                className={colors.textColor}
-                              >
-                                Legal Form{" "}
-                                <span className="text-red-500">*</span>
-                              </Label>
-                              <div className="relative">
-                                <Controller
-                                  control={
-                                    externalForm
-                                      ? externalForm.control
-                                      : form.control
-                                  }
-                                  name="legalFormId"
-                                  render={({ field }) => (
-                                    <SearchableSelect
-                                      options={legalFormOptions}
-                                      value={field.value?.toString()}
-                                      onValueChange={(value) => {
-                                        field.onChange(value);
-                                        handleFieldBlur("legalFormId", value);
-                                      }}
-                                      placeholder="Select legal form"
-                                      className={getSelectErrorStyling(
-                                        hasFieldError(
-                                          form,
-                                          "legalFormId",
-                                          externalForm
-                                        ),
-                                        `border-${colors.borderColor} ${colors.inputBg}`
-                                      )}
-                                      onAddNew={() =>
-                                        setShowAddLegalFormDialog(true)
-                                      }
-                                      addNewLabel="Add new legal form"
-                                      disabled={isFormDisabled}
-                                    />
+                            </CardDescription>
+                          </CardHeader>
+                          <CardContent className="space-y-8">
+                            {/* Administrative Information Section */}
+                            <div
+                              className={`space-y-6 mb-8 ${
+                                sectionCompletion.administrative
+                                  ? "bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 rounded-lg p-6"
+                                  : ""
+                              }`}
+                            >
+                              <div className="border-b border-gray-200 dark:border-gray-700 pb-3 mb-6">
+                                <div className="flex items-center gap-2 mb-2">
+                                  {sectionCompletion.administrative ? (
+                                    <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400" />
+                                  ) : (
+                                    <Building2 className="h-5 w-5 text-blue-500" />
                                   )}
-                                />
+                                  <h3
+                                    className={`text-lg font-semibold ${colors.textColor}`}
+                                >
+                                  Administrative Information
+                                </h3>
+                                  {sectionCompletion.administrative && (
+                                    <Badge className="ml-2 bg-green-500 text-white">
+                                      Complete
+                                    </Badge>
+                                  )}
+                                </div>
+                                <p
+                                  className={`text-sm ${colors.textColorMuted} ml-7`}
+                                >
+                                  Office and legal classification details
+                                </p>
                               </div>
-                              <p className={`text-xs ${colors.textColorMuted}`}>
-                                Legal classification of the client
-                              </p>
-                              {(externalForm
-                                ? externalForm.formState.errors.legalFormId
-                                : form.formState.errors.legalFormId) && (
-                                <p className="text-sm text-red-500">
-                                  {
-                                    (externalForm
+
+                              {isLoadingOptions ? (
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                  <div className="space-y-3">
+                                    <Skeleton className="h-4 w-20" />
+                                    <Skeleton className="h-10 w-full" />
+                                    <Skeleton className="h-3 w-48" />
+                                  </div>
+                                  <div className="space-y-3">
+                                    <Skeleton className="h-4 w-24" />
+                                    <Skeleton className="h-10 w-full" />
+                                    <Skeleton className="h-3 w-48" />
+                                  </div>
+                                </div>
+                              ) : (
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                {/* Office */}
+                                <div className="space-y-3">
+                                  <Label
+                                    htmlFor="officeId"
+                                    className={colors.textColor}
+                                  >
+                                    Office{" "}
+                                    <span className="text-red-500">*</span>
+                                  </Label>
+                                  <div className="relative">
+                                    <Controller
+                                      control={
+                                        externalForm
+                                          ? externalForm.control
+                                          : form.control
+                                      }
+                                      name="officeId"
+                                      render={({ field }) => (
+                                        <SearchableSelect
+                                          options={officeOptions}
+                                          value={field.value?.toString()}
+                                          onValueChange={(value) => {
+                                            field.onChange(value);
+                                              handleFieldBlur(
+                                                "officeId",
+                                                value
+                                              );
+                                          }}
+                                          placeholder="Select office"
+                                          className={getSelectErrorStyling(
+                                            hasFieldError(
+                                              form,
+                                              "officeId",
+                                              externalForm
+                                            ),
+                                            `border-${colors.borderColor} ${colors.inputBg}`
+                                          )}
+                                          onAddNew={() =>
+                                            setShowAddOfficeDialog(true)
+                                          }
+                                          addNewLabel="Add new office"
+                                          disabled={isFormDisabled}
+                                        />
+                                      )}
+                                    />
+                                    {lastSavedField === "officeId" &&
+                                      isAutoSaving && (
+                                        <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                                          <div className="w-3 h-3 border border-gray-300 border-t-gray-600 rounded-full animate-spin"></div>
+                                        </div>
+                                      )}
+                                  </div>
+                                  <p
+                                    className={`text-xs ${colors.textColorMuted}`}
+                                  >
+                                    Select the branch office managing this
+                                    client
+                                  </p>
+                                  {(externalForm
+                                    ? externalForm.formState.errors.officeId
+                                    : form.formState.errors.officeId) && (
+                                    <p className="text-sm text-red-500">
+                                      {
+                                        (externalForm
+                                          ? externalForm.formState.errors
+                                              .officeId
+                                          : form.formState.errors.officeId
+                                        )?.message
+                                      }
+                                    </p>
+                                  )}
+                                </div>
+
+                                {/* Legal Form */}
+                                <div className="space-y-3">
+                                  <Label
+                                    htmlFor="legalFormId"
+                                    className={colors.textColor}
+                                  >
+                                    Legal Form{" "}
+                                    <span className="text-red-500">*</span>
+                                  </Label>
+                                  <div className="relative">
+                                    <Controller
+                                      control={
+                                        externalForm
+                                          ? externalForm.control
+                                          : form.control
+                                      }
+                                      name="legalFormId"
+                                      render={({ field }) => (
+                                        <SearchableSelect
+                                          options={legalFormOptions}
+                                          value={field.value?.toString()}
+                                          onValueChange={(value) => {
+                                            field.onChange(value);
+                                            handleFieldBlur(
+                                              "legalFormId",
+                                              value
+                                            );
+                                          }}
+                                          placeholder="Select legal form"
+                                          className={getSelectErrorStyling(
+                                            hasFieldError(
+                                              form,
+                                              "legalFormId",
+                                              externalForm
+                                            ),
+                                            `border-${colors.borderColor} ${colors.inputBg}`
+                                          )}
+                                          onAddNew={() =>
+                                            setShowAddLegalFormDialog(true)
+                                          }
+                                          addNewLabel="Add new legal form"
+                                          disabled={isFormDisabled}
+                                        />
+                                      )}
+                                    />
+                                  </div>
+                                  <p
+                                    className={`text-xs ${colors.textColorMuted}`}
+                                  >
+                                    Legal classification of the client
+                                  </p>
+                                  {(externalForm
                                       ? externalForm.formState.errors
                                           .legalFormId
-                                      : form.formState.errors.legalFormId
-                                    )?.message
-                                  }
-                                </p>
+                                    : form.formState.errors.legalFormId) && (
+                                    <p className="text-sm text-red-500">
+                                      {
+                                        (externalForm
+                                          ? externalForm.formState.errors
+                                              .legalFormId
+                                          : form.formState.errors.legalFormId
+                                        )?.message
+                                      }
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
                               )}
                             </div>
-                          </div>
-                        </div>
 
-                        {/* Personal Information Section */}
-                        <div className="space-y-6 mb-8">
-                          <div className="border-b border-gray-200 dark:border-gray-700 pb-3 mb-6">
-                            <h3
-                              className={`text-lg font-medium ${colors.textColor}`}
+                            {/* Divider */}
+                            <div className="my-8 border-t border-gray-300 dark:border-gray-700"></div>
+
+                            {/* Personal Information Section */}
+                            <div
+                              className={`space-y-6 mb-8 ${
+                                sectionCompletion.personal
+                                  ? "bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 rounded-lg p-6"
+                                  : ""
+                              }`}
                             >
-                              Personal Information
-                            </h3>
-                            <p className={`text-sm ${colors.textColorMuted}`}>
-                              Client's personal identification details
-                            </p>
-                          </div>
-
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                            {/* First Name */}
-                            <div className="space-y-3">
-                              <Label
-                                htmlFor="firstname"
-                                className={colors.textColor}
-                              >
-                                First Name{" "}
-                                <span className="text-red-500">*</span>
-                              </Label>
-                              <div className="relative">
-                                <Input
-                                  id="firstname"
-                                  name="firstname"
-                                  placeholder="Enter first name"
-                                  className={getInputErrorStyling(
-                                    hasFieldError(
-                                      form,
-                                      "firstname",
-                                      externalForm
-                                    ),
-                                    `h-10 w-full border-${colors.borderColor} ${colors.inputBg}`
+                              <div className="border-b border-gray-200 dark:border-gray-700 pb-3 mb-6">
+                                <div className="flex items-center gap-2 mb-2">
+                                  {sectionCompletion.personal ? (
+                                    <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400" />
+                                  ) : (
+                                    <UserCheck className="h-5 w-5 text-blue-500" />
                                   )}
-                                  {...(externalForm
-                                    ? externalForm.register("firstname", {
-                                        onBlur: (e: {
-                                          target: { value: any };
-                                        }) =>
-                                          handleFieldBlur(
-                                            "firstname",
-                                            e.target.value
-                                          ),
-                                      })
-                                    : form.register("firstname", {
-                                        onBlur: (e: {
-                                          target: { value: any };
-                                        }) =>
-                                          handleFieldBlur(
-                                            "firstname",
-                                            e.target.value
-                                          ),
-                                      }))}
-                                  disabled={isFormDisabled}
-                                />
-                                {lastSavedField === "firstname" &&
-                                  isAutoSaving && (
-                                    <div className="absolute right-2 top-1/2 -translate-y-1/2">
-                                      <div className="w-3 h-3 border border-gray-300 border-t-gray-600 rounded-full animate-spin"></div>
-                                    </div>
+                                <h3
+                                  className={`text-lg font-medium ${colors.textColor}`}
+                                >
+                                  Personal Information
+                                </h3>
+                                  {sectionCompletion.personal && (
+                                    <Badge className="ml-2 bg-green-500 text-white">
+                                      Complete
+                                    </Badge>
                                   )}
-                              </div>
-                              <p className={`text-xs ${colors.textColorMuted}`}>
-                                Client's legal first name
-                              </p>
-                              {hasFieldError(
-                                form,
-                                "firstname",
-                                externalForm
-                              ) && (
-                                <div className="flex items-center gap-1 text-sm text-red-600">
-                                  <svg
-                                    className="h-3 w-3 flex-shrink-0"
-                                    fill="currentColor"
-                                    viewBox="0 0 20 20"
-                                  >
-                                    <path
-                                      fillRule="evenodd"
-                                      d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
-                                      clipRule="evenodd"
-                                    />
-                                  </svg>
-                                  <span>
-                                    {getFieldError(
-                                      form,
-                                      "firstname",
-                                      externalForm
-                                    )}
-                                  </span>
                                 </div>
-                              )}
-                            </div>
-
-                            {/* Middle Name */}
-                            <div className="space-y-3">
-                              <Label
-                                htmlFor="middlename"
-                                className={colors.textColor}
-                              >
-                                Middle Name
-                              </Label>
-                              <div className="relative">
-                                <Input
-                                  id="middlename"
-                                  name="middlename"
-                                  placeholder="Enter middle name"
-                                  className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
-                                  {...(externalForm
-                                    ? externalForm.register("middlename", {
-                                        onBlur: (e: {
-                                          target: { value: any };
-                                        }) =>
-                                          handleFieldBlur(
-                                            "middlename",
-                                            e.target.value
-                                          ),
-                                      })
-                                    : form.register("middlename", {
-                                        onBlur: (e: {
-                                          target: { value: any };
-                                        }) =>
-                                          handleFieldBlur(
-                                            "middlename",
-                                            e.target.value
-                                          ),
-                                      }))}
-                                  disabled={isFormDisabled}
-                                />
-                                {lastSavedField === "middlename" &&
-                                  isAutoSaving && (
-                                    <div className="absolute right-2 top-1/2 -translate-y-1/2">
-                                      <div className="w-3 h-3 border border-gray-300 border-t-gray-600 rounded-full animate-spin"></div>
-                                    </div>
-                                  )}
-                              </div>
-                              <p className={`text-xs ${colors.textColorMuted}`}>
-                                Client's middle name (if applicable)
-                              </p>
-                            </div>
-
-                            {/* Last Name */}
-                            <div className="space-y-3">
-                              <Label
-                                htmlFor="lastname"
-                                className={colors.textColor}
-                              >
-                                Last Name{" "}
-                                <span className="text-red-500">*</span>
-                              </Label>
-                              <div className="relative">
-                                <Input
-                                  id="lastname"
-                                  name="lastname"
-                                  placeholder="Enter last name"
-                                  className={getInputErrorStyling(
-                                    hasFieldError(
-                                      form,
-                                      "lastname",
-                                      externalForm
-                                    ),
-                                    `h-10 w-full border-${colors.borderColor} ${colors.inputBg}`
-                                  )}
-                                  {...(externalForm
-                                    ? externalForm.register("lastname", {
-                                        onBlur: (e: {
-                                          target: { value: any };
-                                        }) =>
-                                          handleFieldBlur(
-                                            "lastname",
-                                            e.target.value
-                                          ),
-                                      })
-                                    : form.register("lastname", {
-                                        onBlur: (e: {
-                                          target: { value: any };
-                                        }) =>
-                                          handleFieldBlur(
-                                            "lastname",
-                                            e.target.value
-                                          ),
-                                      }))}
-                                  disabled={isFormDisabled}
-                                />
-                                {lastSavedField === "lastname" &&
-                                  isAutoSaving && (
-                                    <div className="absolute right-2 top-1/2 -translate-y-1/2">
-                                      <div className="w-3 h-3 border border-gray-300 border-t-gray-600 rounded-full animate-spin"></div>
-                                    </div>
-                                  )}
-                              </div>
-                              <p className={`text-xs ${colors.textColorMuted}`}>
-                                Client's legal last name/surname
-                              </p>
-                              {hasFieldError(
-                                form,
-                                "lastname",
-                                externalForm
-                              ) && (
-                                <div className="flex items-center gap-1 text-sm text-red-600">
-                                  <svg
-                                    className="h-3 w-3 flex-shrink-0"
-                                    fill="currentColor"
-                                    viewBox="0 0 20 20"
-                                  >
-                                    <path
-                                      fillRule="evenodd"
-                                      d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
-                                      clipRule="evenodd"
-                                    />
-                                  </svg>
-                                  <span>
-                                    {getFieldError(
-                                      form,
-                                      "lastname",
-                                      externalForm
-                                    )}
-                                  </span>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                            {/* Date of Birth */}
-                            <div className="space-y-3">
-                              <Label
-                                htmlFor="dateOfBirth"
-                                className={colors.textColor}
-                              >
-                                Date of Birth{" "}
-                                <span className="text-red-500">*</span>
-                              </Label>
-
-                              <Controller
-                                control={form.control}
-                                name="dateOfBirth"
-                                render={({ field }) => (
-                                  <Popover>
-                                    <PopoverTrigger asChild>
-                                      <Button
-                                        variant="outline"
-                                        className={cn(
-                                          "h-10 w-full justify-start text-left font-normal",
-                                          !field.value &&
-                                            "text-muted-foreground",
-                                          `border-${colors.borderColor} ${colors.inputBg}`
-                                        )}
-                                        disabled={isFormDisabled}
-                                      >
-                                        <CalendarIcon className="mr-2 h-4 w-4" />
-                                        {field.value ? (
-                                          format(field.value, "PPP")
-                                        ) : (
-                                          <span>Pick a date</span>
-                                        )}
-                                      </Button>
-                                    </PopoverTrigger>
-                                    <PopoverContent
-                                      className="w-auto p-0"
-                                      align="start"
-                                    >
-                                      <Calendar
-                                        mode="single"
-                                        selected={field.value}
-                                        onSelect={(date) => {
-                                          field.onChange(date);
-                                          if (date) {
-                                            handleFieldBlur(
-                                              "dateOfBirth",
-                                              date
-                                            );
-                                          }
-                                        }}
-                                        disabled={(date) =>
-                                          date > new Date() ||
-                                          date < new Date("1900-01-01")
-                                        }
-                                        captionLayout="dropdown"
-                                      />
-                                    </PopoverContent>
-                                  </Popover>
-                                )}
-                              />
-                              <p className={`text-xs ${colors.textColorMuted}`}>
-                                Client's date of birth for verification
-                              </p>
-                              {form.formState.errors.dateOfBirth && (
-                                <p className="text-sm text-red-500">
-                                  {form.formState.errors.dateOfBirth.message}
+                                <p
+                                  className={`text-sm ${colors.textColorMuted}`}
+                                >
+                                  Client's personal identification details
                                 </p>
-                              )}
-                            </div>
-
-                            {/* Gender */}
-                            <div className="space-y-3">
-                              <Label
-                                htmlFor="genderId"
-                                className={colors.textColor}
-                              >
-                                Gender <span className="text-red-500">*</span>
-                              </Label>
-
-                              <Controller
-                                control={form.control}
-                                name="genderId"
-                                render={({ field }) => (
-                                  <SearchableSelect
-                                    options={genderOptions}
-                                    value={field.value?.toString()}
-                                    onValueChange={(value) => {
-                                      field.onChange(value);
-                                      handleFieldBlur("genderId", value);
-                                    }}
-                                    placeholder="Select gender"
-                                    className={`border-${colors.borderColor} ${colors.inputBg}`}
-                                    onAddNew={() =>
-                                      setShowAddGenderDialog(true)
-                                    }
-                                    addNewLabel="Add new gender"
-                                    disabled={isFormDisabled}
-                                  />
-                                )}
-                              />
-                              <p className={`text-xs ${colors.textColorMuted}`}>
-                                Client's gender for demographic purposes
-                              </p>
-                              {form.formState.errors.genderId && (
-                                <p className="text-sm text-red-500">
-                                  {form.formState.errors.genderId.message}
-                                </p>
-                              )}
-                            </div>
-
-                            {/* External ID (National ID) */}
-                            <div className="space-y-3">
-                              <Label
-                                htmlFor="externalId"
-                                className={colors.textColor}
-                              >
-                                National ID{" "}
-                                <span className="text-red-500">*</span>
-                              </Label>
-                              <div className="relative">
-                                <Input
-                                  id="externalId"
-                                  placeholder="Enter national ID (e.g. 48-147220J12)"
-                                  className={getInputErrorStyling(
-                                    hasFieldError(
-                                      form,
-                                      "externalId",
-                                      externalForm
-                                    ),
-                                    `h-10 w-full border-${colors.borderColor} ${colors.inputBg}`
-                                  )}
-                                  {...(externalForm
-                                    ? externalForm.register("externalId", {
-                                        onBlur: (e: {
-                                          target: { value: any };
-                                        }) =>
-                                          handleFieldBlur(
-                                            "externalId",
-                                            e.target.value
-                                          ),
-                                        pattern: {
-                                          value:
-                                            /^[0-9]{2}-[0-9]{6}[A-Za-z][0-9]{2}$/,
-                                          message:
-                                            "National ID must be in format 48-147220J12",
-                                        },
-                                      })
-                                    : form.register("externalId", {
-                                        onBlur: (e: {
-                                          target: { value: any };
-                                        }) =>
-                                          handleFieldBlur(
-                                            "externalId",
-                                            e.target.value
-                                          ),
-                                        pattern: {
-                                          value:
-                                            /^[0-9]{2}-[0-9]{6}[A-Za-z][0-9]{2}$/,
-                                          message:
-                                            "National ID must be in format 48-147220J12",
-                                        },
-                                      }))}
-                                  disabled={isFormDisabled}
-                                />
-                                {lastSavedField === "externalId" &&
-                                  isAutoSaving && (
-                                    <div className="absolute right-2 top-1/2 -translate-y-1/2">
-                                      <div className="w-3 h-3 border border-gray-300 border-t-gray-600 rounded-full animate-spin"></div>
-                                    </div>
-                                  )}
                               </div>
-                              <p className={`text-xs ${colors.textColorMuted}`}>
-                                Government-issued identification number
-                              </p>
-                              {hasFieldError(
-                                form,
-                                "externalId",
-                                externalForm
-                              ) && (
-                                <div className="flex items-center gap-1 text-sm text-red-600">
-                                  <svg
-                                    className="h-3 w-3 flex-shrink-0"
-                                    fill="currentColor"
-                                    viewBox="0 0 20 20"
+
+                              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                {/* First Name */}
+                                <div className="space-y-3">
+                                  <Label
+                                    htmlFor="firstname"
+                                    className={colors.textColor}
                                   >
-                                    <path
-                                      fillRule="evenodd"
-                                      d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
-                                      clipRule="evenodd"
-                                    />
-                                  </svg>
-                                  <span>
-                                    {getFieldError(
-                                      form,
-                                      "externalId",
-                                      externalForm
-                                    )}
-                                  </span>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Contact Information Section */}
-                        <div className="space-y-6 mb-8">
-                          <div className="border-b border-gray-200 dark:border-gray-700 pb-3 mb-6">
-                            <h3
-                              className={`text-lg font-medium ${colors.textColor}`}
-                            >
-                              Contact Information
-                            </h3>
-                            <p className={`text-sm ${colors.textColorMuted}`}>
-                              Client's contact details for communication
-                            </p>
-                          </div>
-
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            {/* Mobile Number */}
-                            <div className="space-y-3">
-                              <Label
-                                htmlFor="mobileNo"
-                                className={colors.textColor}
-                              >
-                                Mobile Number{" "}
-                                <span className="text-red-500">*</span>
-                              </Label>
-                              <div className="flex space-x-2">
-                                <Controller
-                                  control={form.control}
-                                  name="countryCode"
-                                  render={({ field }) => (
-                                    <Select
-                                      onValueChange={field.onChange}
-                                      defaultValue={field.value}
+                                    First Name{" "}
+                                    <span className="text-red-500">*</span>
+                                  </Label>
+                                  <div className="relative">
+                                    <Input
+                                      id="firstname"
+                                      name="firstname"
+                                      placeholder="Enter first name"
+                                      className={getInputErrorStyling(
+                                        hasFieldError(
+                                          form,
+                                          "firstname",
+                                          externalForm
+                                        ),
+                                        `h-10 w-full border-${colors.borderColor} ${colors.inputBg}`
+                                      )}
+                                      {...(externalForm
+                                        ? externalForm.register("firstname", {
+                                            onBlur: (e: {
+                                              target: { value: any };
+                                            }) =>
+                                              handleFieldBlur(
+                                                "firstname",
+                                                e.target.value
+                                              ),
+                                          })
+                                        : form.register("firstname", {
+                                            onBlur: (e: {
+                                              target: { value: any };
+                                            }) =>
+                                              handleFieldBlur(
+                                                "firstname",
+                                                e.target.value
+                                              ),
+                                          }))}
                                       disabled={isFormDisabled}
-                                    >
-                                      <SelectTrigger
-                                        className={`h-10 w-24 sm:w-28 lg:w-32 border-${colors.borderColor} ${colors.inputBg} flex-shrink-0`}
-                                      >
-                                        <SelectValue placeholder="+263" />
-                                      </SelectTrigger>
-                                      <SelectContent
-                                        className={`border-${colors.borderColor} ${colors.dropdownBg} ${colors.textColor}`}
-                                      >
-                                        <SelectItem value="+263">
-                                          🇿🇼 +263
-                                        </SelectItem>
-                                        <SelectItem value="+27">
-                                          🇿🇦 +27
-                                        </SelectItem>
-                                        <SelectItem value="+260">
-                                          🇿🇲 +260
-                                        </SelectItem>
-                                        <SelectItem value="+258">
-                                          🇲🇿 +258
-                                        </SelectItem>
-                                        <SelectItem value="+265">
-                                          🇲🇼 +265
-                                        </SelectItem>
-                                        <SelectItem value="+266">
-                                          🇱🇸 +266
-                                        </SelectItem>
-                                        <SelectItem value="+267">
-                                          🇧🇼 +267
-                                        </SelectItem>
-                                        <SelectItem value="+268">
-                                          🇸🇿 +268
-                                        </SelectItem>
-                                        <SelectItem value="+236">
-                                          🇨🇫 +236
-                                        </SelectItem>
-                                        <SelectItem value="+257">
-                                          🇧🇮 +257
-                                        </SelectItem>
-                                        <SelectItem value="+253">
-                                          🇩🇯 +253
-                                        </SelectItem>
-                                        <SelectItem value="+291">
-                                          🇪🇷 +291
-                                        </SelectItem>
-                                        <SelectItem value="+251">
-                                          🇪🇹 +251
-                                        </SelectItem>
-                                        <SelectItem value="+254">
-                                          🇰🇪 +254
-                                        </SelectItem>
-                                        <SelectItem value="+250">
-                                          🇷🇼 +250
-                                        </SelectItem>
-                                        <SelectItem value="+248">
-                                          🇸🇨 +248
-                                        </SelectItem>
-                                        <SelectItem value="+255">
-                                          🇹🇿 +255
-                                        </SelectItem>
-                                        <SelectItem value="+256">
-                                          🇺🇬 +256
-                                        </SelectItem>
-                                      </SelectContent>
-                                    </Select>
-                                  )}
-                                />
-                                <div className="relative">
-                                  <Input
-                                    id="mobileNo"
-                                    placeholder="Enter mobile number"
-                                    className={getInputErrorStyling(
-                                      hasFieldError(
-                                        form,
-                                        "mobileNo",
-                                        externalForm
-                                      ),
-                                      `h-10 flex-1 border-${colors.borderColor} ${colors.inputBg}`
-                                    )}
-                                    {...(externalForm
-                                      ? externalForm.register("mobileNo", {
-                                          onBlur: (e: {
-                                            target: { value: any };
-                                          }) =>
-                                            handleFieldBlur(
-                                              "mobileNo",
-                                              e.target.value
-                                            ),
-                                        })
-                                      : form.register("mobileNo", {
-                                          onBlur: (e: {
-                                            target: { value: any };
-                                          }) =>
-                                            handleFieldBlur(
-                                              "mobileNo",
-                                              e.target.value
-                                            ),
-                                        }))}
-                                    disabled={isFormDisabled}
-                                  />
-                                  {lastSavedField === "mobileNo" &&
-                                    isAutoSaving && (
-                                      <div className="absolute right-2 top-1/2 -translate-y-1/2">
-                                        <div className="w-3 h-3 border border-gray-300 border-t-gray-600 rounded-full animate-spin"></div>
-                                      </div>
-                                    )}
-                                </div>
-                              </div>
-                              <p className={`text-xs ${colors.textColorMuted}`}>
-                                Primary contact number for notifications
-                              </p>
-                              {hasFieldError(
-                                form,
-                                "mobileNo",
-                                externalForm
-                              ) && (
-                                <div className="flex items-center gap-1 text-sm text-red-600">
-                                  <svg
-                                    className="h-3 w-3 flex-shrink-0"
-                                    fill="currentColor"
-                                    viewBox="0 0 20 20"
-                                  >
-                                    <path
-                                      fillRule="evenodd"
-                                      d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
-                                      clipRule="evenodd"
                                     />
-                                  </svg>
-                                  <span>
-                                    {getFieldError(
-                                      form,
-                                      "mobileNo",
-                                      externalForm
-                                    )}
-                                  </span>
-                                </div>
-                              )}
-                            </div>
-
-                            {/* Email Address */}
-                            <div className="space-y-3">
-                              <Label
-                                htmlFor="emailAddress"
-                                className={colors.textColor}
-                              >
-                                Email Address{" "}
-                                <span className="text-red-500">*</span>
-                              </Label>
-                              <div className="relative">
-                                <Input
-                                  id="emailAddress"
-                                  type="email"
-                                  placeholder="Enter email address"
-                                  className={getInputErrorStyling(
-                                    hasFieldError(
-                                      form,
-                                      "emailAddress",
-                                      externalForm
-                                    ),
-                                    `h-10 w-full border-${colors.borderColor} ${colors.inputBg}`
-                                  )}
-                                  {...(externalForm
-                                    ? externalForm.register("emailAddress", {
-                                        onBlur: (e: {
-                                          target: { value: any };
-                                        }) =>
-                                          handleFieldBlur(
-                                            "emailAddress",
-                                            e.target.value
-                                          ),
-                                      })
-                                    : form.register("emailAddress", {
-                                        onBlur: (e: {
-                                          target: { value: any };
-                                        }) =>
-                                          handleFieldBlur(
-                                            "emailAddress",
-                                            e.target.value
-                                          ),
-                                      }))}
-                                  disabled={isFormDisabled}
-                                />
-                                {lastSavedField === "emailAddress" &&
-                                  isAutoSaving && (
-                                    <div className="absolute right-2 top-1/2 -translate-y-1/2">
-                                      <div className="w-3 h-3 border border-gray-300 border-t-gray-600 rounded-full animate-spin"></div>
+                                    {lastSavedField === "firstname" &&
+                                      isAutoSaving && (
+                                        <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                                          <div className="w-3 h-3 border border-gray-300 border-t-gray-600 rounded-full animate-spin"></div>
+                                        </div>
+                                      )}
+                                  </div>
+                                  <p
+                                    className={`text-xs ${colors.textColorMuted}`}
+                                  >
+                                    Client's legal first name
+                                  </p>
+                                  {hasFieldError(
+                                    form,
+                                    "firstname",
+                                    externalForm
+                                  ) && (
+                                    <div className="flex items-center gap-1 text-sm text-red-600">
+                                      <svg
+                                        className="h-3 w-3 flex-shrink-0"
+                                        fill="currentColor"
+                                        viewBox="0 0 20 20"
+                                      >
+                                        <path
+                                          fillRule="evenodd"
+                                          d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
+                                          clipRule="evenodd"
+                                        />
+                                      </svg>
+                                      <span>
+                                        {getFieldError(
+                                          form,
+                                          "firstname",
+                                          externalForm
+                                        )}
+                                      </span>
                                     </div>
                                   )}
-                              </div>
-                              <p className={`text-xs ${colors.textColorMuted}`}>
-                                Email for statements and notifications
-                              </p>
-                              {hasFieldError(
-                                form,
-                                "emailAddress",
-                                externalForm
-                              ) && (
-                                <div className="flex items-center gap-1 text-sm text-red-600">
-                                  <svg
-                                    className="h-3 w-3 flex-shrink-0"
-                                    fill="currentColor"
-                                    viewBox="0 0 20 20"
-                                  >
-                                    <path
-                                      fillRule="evenodd"
-                                      d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
-                                      clipRule="evenodd"
-                                    />
-                                  </svg>
-                                  <span>
-                                    {getFieldError(
-                                      form,
-                                      "emailAddress",
-                                      externalForm
-                                    )}
-                                  </span>
                                 </div>
-                              )}
-                            </div>
-                          </div>
-                        </div>
 
-                        {/* Financial Information Section */}
-                        <div className="space-y-6 mb-8">
-                          <div className="border-b border-gray-200 dark:border-gray-700 pb-3 mb-6">
-                            <h3
-                              className={`text-lg font-medium ${colors.textColor}`}
-                            >
-                              Financial Information
-                            </h3>
-                            <p className={`text-sm ${colors.textColorMuted}`}>
-                              Client's financial profile for loan assessment
-                            </p>
-                          </div>
-
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            {/* Monthly Income Range */}
-                            <div className="space-y-3">
-                              <Label
-                                htmlFor="monthlyIncomeRange"
-                                className={colors.textColor}
-                              >
-                                Monthly Income Range
-                              </Label>
-                              <Controller
-                                control={form.control}
-                                name="monthlyIncomeRange"
-                                render={({ field }) => (
-                                  <Select
-                                    onValueChange={(value) => {
-                                      field.onChange(value);
-                                      handleFieldBlur(
-                                        "monthlyIncomeRange",
-                                        value
-                                      );
-                                    }}
-                                    defaultValue={field.value}
-                                    disabled={isFormDisabled}
-                                  >
-                                    <SelectTrigger
-                                      className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
-                                    >
-                                      <SelectValue placeholder="Select income range" />
-                                    </SelectTrigger>
-                                    <SelectContent
-                                      className={`border-${colors.borderColor} ${colors.dropdownBg} ${colors.textColor}`}
-                                    >
-                                      <SelectItem value="under_500">
-                                        Under $500
-                                      </SelectItem>
-                                      <SelectItem value="500_1000">
-                                        $500 - $1,000
-                                      </SelectItem>
-                                      <SelectItem value="1000_2500">
-                                        $1,000 - $2,500
-                                      </SelectItem>
-                                      <SelectItem value="2500_5000">
-                                        $2,500 - $5,000
-                                      </SelectItem>
-                                      <SelectItem value="5000_10000">
-                                        $5,000 - $10,000
-                                      </SelectItem>
-                                      <SelectItem value="over_10000">
-                                        Over $10,000
-                                      </SelectItem>
-                                    </SelectContent>
-                                  </Select>
-                                )}
-                              />
-                              <p className={`text-xs ${colors.textColorMuted}`}>
-                                Approximate monthly income range
-                              </p>
-                            </div>
-
-                            {/* Employment Status */}
-                            <div className="space-y-3">
-                              <Label
-                                htmlFor="employmentStatus"
-                                className={colors.textColor}
-                              >
-                                Employment Status
-                              </Label>
-                              <Controller
-                                control={form.control}
-                                name="employmentStatus"
-                                render={({ field }) => (
-                                  <Select
-                                    onValueChange={(value) => {
-                                      field.onChange(value);
-                                      handleFieldBlur(
-                                        "employmentStatus",
-                                        value
-                                      );
-                                    }}
-                                    defaultValue={field.value}
-                                    disabled={isFormDisabled}
-                                  >
-                                    <SelectTrigger
-                                      className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
-                                    >
-                                      <SelectValue placeholder="Select employment status" />
-                                    </SelectTrigger>
-                                    <SelectContent
-                                      className={`border-${colors.borderColor} ${colors.dropdownBg} ${colors.textColor}`}
-                                    >
-                                      <SelectItem value="EMPLOYED">
-                                        Employed
-                                      </SelectItem>
-                                      <SelectItem value="SELF_EMPLOYED">
-                                        Self-Employed
-                                      </SelectItem>
-                                      <SelectItem value="UNEMPLOYED">
-                                        Unemployed
-                                      </SelectItem>
-                                      <SelectItem value="RETIRED">
-                                        Retired
-                                      </SelectItem>
-                                      <SelectItem value="STUDENT">
-                                        Student
-                                      </SelectItem>
-                                    </SelectContent>
-                                  </Select>
-                                )}
-                              />
-                              <p className={`text-xs ${colors.textColorMuted}`}>
-                                Current employment situation
-                              </p>
-                            </div>
-
-                            {/* Employer Name */}
-                            <div className="space-y-3">
-                              <Label
-                                htmlFor="employerName"
-                                className={colors.textColor}
-                              >
-                                Employer Name
-                              </Label>
-                              <div className="relative">
-                                <Input
-                                  id="employerName"
-                                  placeholder="Enter employer name"
-                                  className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
-                                  {...form.register("employerName", {
-                                    onBlur: (e: { target: { value: any } }) =>
-                                      handleFieldBlur(
-                                        "employerName",
-                                        e.target.value
-                                      ),
-                                  })}
-                                  disabled={isFormDisabled}
-                                />
-                                {lastSavedField === "employerName" &&
-                                  isAutoSaving && (
-                                    <div className="absolute right-2 top-1/2 -translate-y-1/2">
-                                      <div className="w-3 h-3 border border-gray-300 border-t-gray-600 rounded-full animate-spin"></div>
-                                    </div>
-                                  )}
-                              </div>
-                              <p className={`text-xs ${colors.textColorMuted}`}>
-                                Name of current employer (if employed)
-                              </p>
-                            </div>
-
-                            {/* Years at Current Job */}
-                            <div className="space-y-3">
-                              <Label
-                                htmlFor="yearsAtCurrentJob"
-                                className={colors.textColor}
-                              >
-                                Years at Current Job
-                              </Label>
-                              <Controller
-                                control={form.control}
-                                name="yearsAtCurrentJob"
-                                render={({ field }) => (
-                                  <Select
-                                    onValueChange={(value) => {
-                                      field.onChange(value);
-                                      handleFieldBlur(
-                                        "yearsAtCurrentJob",
-                                        value
-                                      );
-                                    }}
-                                    defaultValue={field.value}
-                                    disabled={isFormDisabled}
-                                  >
-                                    <SelectTrigger
-                                      className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
-                                    >
-                                      <SelectValue placeholder="Select years at job" />
-                                    </SelectTrigger>
-                                    <SelectContent
-                                      className={`border-${colors.borderColor} ${colors.dropdownBg} ${colors.textColor}`}
-                                    >
-                                      <SelectItem value="less_than_1">
-                                        Less than 1 year
-                                      </SelectItem>
-                                      <SelectItem value="1_2">
-                                        1-2 years
-                                      </SelectItem>
-                                      <SelectItem value="2_5">
-                                        2-5 years
-                                      </SelectItem>
-                                      <SelectItem value="5_10">
-                                        5-10 years
-                                      </SelectItem>
-                                      <SelectItem value="over_10">
-                                        Over 10 years
-                                      </SelectItem>
-                                    </SelectContent>
-                                  </Select>
-                                )}
-                              />
-                              <p className={`text-xs ${colors.textColorMuted}`}>
-                                Employment stability indicator
-                              </p>
-                            </div>
-
-                            {/* Existing Loans */}
-                            <div className="space-y-3">
-                              <Label
-                                htmlFor="hasExistingLoans"
-                                className={colors.textColor}
-                              >
-                                Existing Loans
-                              </Label>
-                              <Card
-                                className={`border-${colors.borderColor} ${colors.cardBg} flex flex-col sm:flex-row sm:items-center sm:justify-between p-4 space-y-2 sm:space-y-0`}
-                              >
-                                <div className="flex items-center space-x-2">
-                                  <Controller
-                                    control={form.control}
-                                    name="hasExistingLoans"
-                                    render={({ field }) => (
-                                      <Checkbox
-                                        id="hasExistingLoans"
-                                        checked={field.value}
-                                        onCheckedChange={field.onChange}
-                                        disabled={isFormDisabled}
-                                      />
-                                    )}
-                                  />
+                                {/* Middle Name */}
+                                <div className="space-y-3">
                                   <Label
-                                    htmlFor="hasExistingLoans"
+                                    htmlFor="middlename"
                                     className={colors.textColor}
                                   >
-                                    Has existing loans
+                                    Middle Name
                                   </Label>
-                                </div>
-                                <p
-                                  className={`text-xs ${colors.textColorMuted}`}
-                                >
-                                  Check if client has other loans
-                                </p>
-                              </Card>
-                            </div>
-
-                            {/* Monthly Debt Payments */}
-                            <div className="space-y-3">
-                              <Label
-                                htmlFor="monthlyDebtPayments"
-                                className={colors.textColor}
-                              >
-                                Monthly Debt Payments
-                              </Label>
-                              <div className="relative">
-                                <Input
-                                  id="monthlyDebtPayments"
-                                  type="number"
-                                  placeholder="Enter monthly debt payments"
-                                  className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
-                                  {...form.register("monthlyDebtPayments", {
-                                    onBlur: (e: { target: { value: any } }) =>
-                                      handleFieldBlur(
-                                        "monthlyDebtPayments",
-                                        parseFloat(e.target.value) || 0
-                                      ),
-                                  })}
-                                  disabled={isFormDisabled}
-                                />
-                                {lastSavedField === "monthlyDebtPayments" &&
-                                  isAutoSaving && (
-                                    <div className="absolute right-2 top-1/2 -translate-y-1/2">
-                                      <div className="w-3 h-3 border border-gray-300 border-t-gray-600 rounded-full animate-spin"></div>
-                                    </div>
-                                  )}
-                              </div>
-                              <p className={`text-xs ${colors.textColorMuted}`}>
-                                Approximate monthly debt obligations
-                              </p>
-                            </div>
-
-                            {/* Property Ownership */}
-                            <div className="space-y-3">
-                              <Label
-                                htmlFor="propertyOwnership"
-                                className={colors.textColor}
-                              >
-                                Property Ownership
-                              </Label>
-                              <Controller
-                                control={form.control}
-                                name="propertyOwnership"
-                                render={({ field }) => (
-                                  <Select
-                                    onValueChange={(value) => {
-                                      field.onChange(value);
-                                      handleFieldBlur(
-                                        "propertyOwnership",
-                                        value
-                                      );
-                                    }}
-                                    defaultValue={field.value}
-                                    disabled={isFormDisabled}
-                                  >
-                                    <SelectTrigger
+                                  <div className="relative">
+                                    <Input
+                                      id="middlename"
+                                      name="middlename"
+                                      placeholder="Enter middle name"
                                       className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
-                                    >
-                                      <SelectValue placeholder="Select property status" />
-                                    </SelectTrigger>
-                                    <SelectContent
-                                      className={`border-${colors.borderColor} ${colors.dropdownBg} ${colors.textColor}`}
-                                    >
-                                      <SelectItem value="OWN">
-                                        Own Property
-                                      </SelectItem>
-                                      <SelectItem value="RENT">Rent</SelectItem>
-                                      <SelectItem value="FAMILY">
-                                        Live with Family
-                                      </SelectItem>
-                                      <SelectItem value="OTHER">
-                                        Other
-                                      </SelectItem>
-                                    </SelectContent>
-                                  </Select>
-                                )}
-                              />
-                              <p className={`text-xs ${colors.textColorMuted}`}>
-                                Housing situation
-                              </p>
-                            </div>
+                                      {...(externalForm
+                                        ? externalForm.register("middlename", {
+                                            onBlur: (e: {
+                                              target: { value: any };
+                                            }) =>
+                                              handleFieldBlur(
+                                                "middlename",
+                                                e.target.value
+                                              ),
+                                          })
+                                        : form.register("middlename", {
+                                            onBlur: (e: {
+                                              target: { value: any };
+                                            }) =>
+                                              handleFieldBlur(
+                                                "middlename",
+                                                e.target.value
+                                              ),
+                                          }))}
+                                      disabled={isFormDisabled}
+                                    />
+                                    {lastSavedField === "middlename" &&
+                                      isAutoSaving && (
+                                        <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                                          <div className="w-3 h-3 border border-gray-300 border-t-gray-600 rounded-full animate-spin"></div>
+                                        </div>
+                                      )}
+                                  </div>
+                                  <p
+                                    className={`text-xs ${colors.textColorMuted}`}
+                                  >
+                                    Client's middle name (if applicable)
+                                  </p>
+                                </div>
 
-                            {/* Business Ownership */}
-                            <div className="space-y-3">
-                              <Label
-                                htmlFor="businessOwnership"
-                                className={colors.textColor}
-                              >
-                                Business Ownership
-                              </Label>
-                              <Card
-                                className={`border-${colors.borderColor} ${colors.cardBg} flex flex-col sm:flex-row sm:items-center sm:justify-between p-4 space-y-2 sm:space-y-0`}
-                              >
-                                <div className="flex items-center space-x-2">
-                                  <Controller
-                                    control={form.control}
-                                    name="businessOwnership"
-                                    render={({ field }) => (
-                                      <Checkbox
-                                        id="businessOwnership"
-                                        checked={field.value}
-                                        onCheckedChange={field.onChange}
-                                        disabled={isFormDisabled}
-                                      />
-                                    )}
-                                  />
+                                {/* Last Name */}
+                                <div className="space-y-3">
                                   <Label
-                                    htmlFor="businessOwnership"
+                                    htmlFor="lastname"
                                     className={colors.textColor}
                                   >
-                                    Owns a business
+                                    Last Name{" "}
+                                    <span className="text-red-500">*</span>
                                   </Label>
-                                </div>
-                                <p
-                                  className={`text-xs ${colors.textColorMuted}`}
-                                >
-                                  Check if client owns a business
-                                </p>
-                              </Card>
-                            </div>
-                          </div>
-
-                          {/* Business Type - Only shown when businessOwnership is true */}
-                          {form.watch("businessOwnership") && (
-                            <div className="space-y-3">
-                              <Label
-                                htmlFor="businessType"
-                                className={colors.textColor}
-                              >
-                                Business Type
-                              </Label>
-                              <div className="relative">
-                                <Input
-                                  id="businessType"
-                                  placeholder="Enter type of business"
-                                  className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
-                                  {...form.register("businessType", {
-                                    onBlur: (e: { target: { value: any } }) =>
-                                      handleFieldBlur(
-                                        "businessType",
-                                        e.target.value
-                                      ),
-                                  })}
-                                  disabled={isFormDisabled}
-                                />
-                                {lastSavedField === "businessType" &&
-                                  isAutoSaving && (
-                                    <div className="absolute right-2 top-1/2 -translate-y-1/2">
-                                      <div className="w-3 h-3 border border-gray-300 border-t-gray-600 rounded-full animate-spin"></div>
+                                  <div className="relative">
+                                    <Input
+                                      id="lastname"
+                                      name="lastname"
+                                      placeholder="Enter last name"
+                                      className={getInputErrorStyling(
+                                        hasFieldError(
+                                          form,
+                                          "lastname",
+                                          externalForm
+                                        ),
+                                        `h-10 w-full border-${colors.borderColor} ${colors.inputBg}`
+                                      )}
+                                      {...(externalForm
+                                        ? externalForm.register("lastname", {
+                                            onBlur: (e: {
+                                              target: { value: any };
+                                            }) =>
+                                              handleFieldBlur(
+                                                "lastname",
+                                                e.target.value
+                                              ),
+                                          })
+                                        : form.register("lastname", {
+                                            onBlur: (e: {
+                                              target: { value: any };
+                                            }) =>
+                                              handleFieldBlur(
+                                                "lastname",
+                                                e.target.value
+                                              ),
+                                          }))}
+                                      disabled={isFormDisabled}
+                                    />
+                                    {lastSavedField === "lastname" &&
+                                      isAutoSaving && (
+                                        <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                                          <div className="w-3 h-3 border border-gray-300 border-t-gray-600 rounded-full animate-spin"></div>
+                                        </div>
+                                      )}
+                                  </div>
+                                  <p
+                                    className={`text-xs ${colors.textColorMuted}`}
+                                  >
+                                    Client's legal last name/surname
+                                  </p>
+                                  {hasFieldError(
+                                    form,
+                                    "lastname",
+                                    externalForm
+                                  ) && (
+                                    <div className="flex items-center gap-1 text-sm text-red-600">
+                                      <svg
+                                        className="h-3 w-3 flex-shrink-0"
+                                        fill="currentColor"
+                                        viewBox="0 0 20 20"
+                                      >
+                                        <path
+                                          fillRule="evenodd"
+                                          d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
+                                          clipRule="evenodd"
+                                        />
+                                      </svg>
+                                      <span>
+                                        {getFieldError(
+                                          form,
+                                          "lastname",
+                                          externalForm
+                                        )}
+                                      </span>
                                     </div>
                                   )}
+                                </div>
                               </div>
-                              <p className={`text-xs ${colors.textColorMuted}`}>
-                                Type or nature of business owned
-                              </p>
-                            </div>
-                          )}
-                        </div>
 
-                        {/* Classification Information Section */}
-                        <div className="space-y-6 mb-8">
-                          <div className="border-b border-gray-200 dark:border-gray-700 pb-3 mb-6">
-                            <h3
-                              className={`text-lg font-medium ${colors.textColor}`}
-                            >
-                              Client Classification
-                            </h3>
-                            <p className={`text-sm ${colors.textColorMuted}`}>
-                              Client categorization for service offerings
-                            </p>
-                          </div>
+                              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                {/* Date of Birth */}
+                                <div className="space-y-3">
+                                  <Label
+                                    htmlFor="dateOfBirth"
+                                    className={colors.textColor}
+                                  >
+                                    Date of Birth{" "}
+                                    <span className="text-red-500">*</span>
+                                  </Label>
 
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            {/* Client Type */}
-                            <div className="space-y-3">
-                              <Label
-                                htmlFor="clientTypeId"
-                                className={colors.textColor}
-                              >
-                                Client Type{" "}
-                                <span className="text-red-500">*</span>
-                              </Label>
-
-                              <Controller
-                                control={form.control}
-                                name="clientTypeId"
-                                render={({ field }) => (
-                                  <SearchableSelect
-                                    options={clientTypeOptions}
-                                    value={field.value?.toString()}
-                                    onValueChange={(value) => {
-                                      field.onChange(value);
-                                      handleFieldBlur("clientTypeId", value);
-                                    }}
-                                    placeholder="Select client type"
-                                    className={`border-${colors.borderColor} ${colors.inputBg}`}
-                                    onAddNew={() =>
-                                      setShowAddClientTypeDialog(true)
-                                    }
-                                    addNewLabel="Add new client type"
-                                    disabled={isFormDisabled}
-                                  />
-                                )}
-                              />
-                              <p className={`text-xs ${colors.textColorMuted}`}>
-                                Type of client for service eligibility
-                              </p>
-                              {form.formState.errors.clientTypeId && (
-                                <p className="text-sm text-red-500">
-                                  {form.formState.errors.clientTypeId.message}
-                                </p>
-                              )}
-                            </div>
-
-                            {/* Client Classification */}
-                            <div className="space-y-3">
-                              <Label
-                                htmlFor="clientClassificationId"
-                                className={colors.textColor}
-                              >
-                                Client Classification{" "}
-                                <span className="text-red-500">*</span>
-                              </Label>
-
-                              <Controller
-                                control={form.control}
-                                name="clientClassificationId"
-                                render={({ field }) => (
-                                  <SearchableSelect
-                                    options={clientClassificationOptions}
-                                    value={field.value?.toString()}
-                                    onValueChange={(value) => {
-                                      field.onChange(value);
-                                      handleFieldBlur(
-                                        "clientClassificationId",
-                                        value
-                                      );
-                                    }}
-                                    placeholder="Select client classification"
-                                    className={`border-${colors.borderColor} ${colors.inputBg}`}
-                                    onAddNew={() =>
-                                      setShowAddClientClassificationDialog(true)
-                                    }
-                                    addNewLabel="Add new classification"
-                                    disabled={isFormDisabled}
-                                  />
-                                )}
-                              />
-                              <p className={`text-xs ${colors.textColorMuted}`}>
-                                Classification for risk assessment
-                              </p>
-                              {form.formState.errors.clientClassificationId && (
-                                <p className="text-sm text-red-500">
-                                  {
-                                    form.formState.errors.clientClassificationId
-                                      .message
-                                  }
-                                </p>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Additional Information Section */}
-                        <div className="space-y-6 mb-8">
-                          <div className="border-b border-gray-200 dark:border-gray-700 pb-3 mb-6">
-                            <h3
-                              className={`text-lg font-medium ${colors.textColor}`}
-                            >
-                              Additional Information
-                            </h3>
-                            <p className={`text-sm ${colors.textColorMuted}`}>
-                              Submission details and special status
-                            </p>
-                          </div>
-
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            {/* Submitted On Date */}
-                            <div className="space-y-3">
-                              <Label
-                                htmlFor="submittedOnDate"
-                                className={colors.textColor}
-                              >
-                                Submitted On{" "}
-                                <span className="text-red-500">*</span>
-                              </Label>
-
-                              <Controller
-                                control={form.control}
-                                name="submittedOnDate"
-                                render={({ field }) => (
-                                  <Popover>
-                                    <PopoverTrigger asChild>
-                                      <Button
-                                        variant="outline"
-                                        className={cn(
-                                          "h-10 w-full justify-start text-left font-normal",
-                                          !field.value &&
-                                            "text-muted-foreground",
-                                          `border-${colors.borderColor} ${colors.inputBg}`
-                                        )}
-                                        disabled={isFormDisabled}
-                                      >
-                                        <CalendarIcon className="mr-2 h-4 w-4" />
-                                        {field.value ? (
-                                          format(field.value, "PPP")
-                                        ) : (
-                                          <span>Pick a date</span>
-                                        )}
-                                      </Button>
-                                    </PopoverTrigger>
-                                    <PopoverContent
-                                      className="w-auto p-0"
-                                      align="start"
-                                    >
-                                      <Calendar
-                                        mode="single"
-                                        selected={field.value}
-                                        onSelect={field.onChange}
-                                        disabled={(date) => date < new Date()}
-                                        captionLayout="dropdown"
-                                        initialFocus
-                                      />
-                                    </PopoverContent>
-                                  </Popover>
-                                )}
-                              />
-                              <p className={`text-xs ${colors.textColorMuted}`}>
-                                Date when application was submitted
-                              </p>
-                              {form.formState.errors.submittedOnDate && (
-                                <p className="text-sm text-red-500">
-                                  {
-                                    form.formState.errors.submittedOnDate
-                                      .message
-                                  }
-                                </p>
-                              )}
-                            </div>
-
-                            {/* Is Staff */}
-                            <div className="space-y-3">
-                              <Label
-                                htmlFor="isStaff"
-                                className={colors.textColor}
-                              >
-                                Staff Status
-                              </Label>
-                              <Card
-                                className={`border-${colors.borderColor} ${colors.cardBg} flex flex-col sm:flex-row sm:items-center sm:justify-between p-4 space-y-2 sm:space-y-0`}
-                              >
-                                <div className="flex items-center space-x-2">
                                   <Controller
                                     control={form.control}
-                                    name="isStaff"
+                                    name="dateOfBirth"
                                     render={({ field }) => (
-                                      <Checkbox
-                                        id="isStaff"
-                                        checked={field.value}
-                                        onCheckedChange={field.onChange}
+                                      <Popover>
+                                        <PopoverTrigger asChild>
+                                          <Button
+                                            variant="outline"
+                                            className={cn(
+                                              "h-10 w-full justify-start text-left font-normal",
+                                              !field.value &&
+                                                "text-muted-foreground",
+                                              `border-${colors.borderColor} ${colors.inputBg}`
+                                            )}
+                                            disabled={isFormDisabled}
+                                          >
+                                            <CalendarIcon className="mr-2 h-4 w-4" />
+                                            {field.value ? (
+                                              format(field.value, "PPP")
+                                            ) : (
+                                              <span>Pick a date</span>
+                                            )}
+                                          </Button>
+                                        </PopoverTrigger>
+                                        <PopoverContent
+                                          className="w-auto p-0"
+                                          align="start"
+                                        >
+                                          <Calendar
+                                            mode="single"
+                                            selected={field.value}
+                                            onSelect={(date) => {
+                                              field.onChange(date);
+                                              if (date) {
+                                                handleFieldBlur(
+                                                  "dateOfBirth",
+                                                  date
+                                                );
+                                              }
+                                            }}
+                                            disabled={(date) =>
+                                              date > new Date() ||
+                                              date < new Date("1900-01-01")
+                                            }
+                                            captionLayout="dropdown"
+                                          />
+                                        </PopoverContent>
+                                      </Popover>
+                                    )}
+                                  />
+                                  <p
+                                    className={`text-xs ${colors.textColorMuted}`}
+                                  >
+                                    Client's date of birth for verification
+                                  </p>
+                                  {form.formState.errors.dateOfBirth && (
+                                    <p className="text-sm text-red-500">
+                                      {
+                                        form.formState.errors.dateOfBirth
+                                          .message
+                                      }
+                                    </p>
+                                  )}
+                                </div>
+
+                                {/* Gender */}
+                                <div className="space-y-3">
+                                  <Label
+                                    htmlFor="genderId"
+                                    className={colors.textColor}
+                                  >
+                                    Gender{" "}
+                                    <span className="text-red-500">*</span>
+                                  </Label>
+
+                                  <Controller
+                                    control={form.control}
+                                    name="genderId"
+                                    render={({ field }) => (
+                                      <SearchableSelect
+                                        options={genderOptions}
+                                        value={field.value?.toString()}
+                                        onValueChange={(value) => {
+                                          field.onChange(value);
+                                          handleFieldBlur("genderId", value);
+                                        }}
+                                        placeholder="Select gender"
+                                        className={`border-${colors.borderColor} ${colors.inputBg}`}
+                                        onAddNew={() =>
+                                          setShowAddGenderDialog(true)
+                                        }
+                                        addNewLabel="Add new gender"
                                         disabled={isFormDisabled}
                                       />
                                     )}
                                   />
+                                  <p
+                                    className={`text-xs ${colors.textColorMuted}`}
+                                  >
+                                    Client's gender for demographic purposes
+                                  </p>
+                                  {form.formState.errors.genderId && (
+                                    <p className="text-sm text-red-500">
+                                      {form.formState.errors.genderId.message}
+                                    </p>
+                                  )}
+                                </div>
+
+                                {/* External ID (National ID) */}
+                                <div className="space-y-3">
+                                  <Label
+                                    htmlFor="externalId"
+                                    className={colors.textColor}
+                                  >
+                                    National ID{" "}
+                                    <span className="text-red-500">*</span>
+                                  </Label>
+                                  <div className="relative">
+                                    <Input
+                                      id="externalId"
+                                      placeholder="Enter national ID (e.g. 48-147220J12)"
+                                      className={getInputErrorStyling(
+                                        hasFieldError(
+                                          form,
+                                          "externalId",
+                                          externalForm
+                                        ),
+                                        `h-10 w-full border-${colors.borderColor} ${colors.inputBg}`
+                                      )}
+                                      {...(externalForm
+                                        ? externalForm.register("externalId", {
+                                            onBlur: (e: {
+                                              target: { value: any };
+                                            }) =>
+                                              handleFieldBlur(
+                                                "externalId",
+                                                e.target.value
+                                              ),
+                                            pattern: {
+                                              value:
+                                                /^[0-9]{2}-[0-9]{6}[A-Za-z][0-9]{2}$/,
+                                              message:
+                                                "National ID must be in format 48-147220J12",
+                                            },
+                                          })
+                                        : form.register("externalId", {
+                                            onBlur: (e: {
+                                              target: { value: any };
+                                            }) =>
+                                              handleFieldBlur(
+                                                "externalId",
+                                                e.target.value
+                                              ),
+                                            pattern: {
+                                              value:
+                                                /^[0-9]{2}-[0-9]{6}[A-Za-z][0-9]{2}$/,
+                                              message:
+                                                "National ID must be in format 48-147220J12",
+                                            },
+                                          }))}
+                                      disabled={true}
+                                    />
+                                    {lastSavedField === "externalId" &&
+                                      isAutoSaving && (
+                                        <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                                          <div className="w-3 h-3 border border-gray-300 border-t-gray-600 rounded-full animate-spin"></div>
+                                        </div>
+                                      )}
+                                  </div>
+                                  <p
+                                    className={`text-xs ${colors.textColorMuted}`}
+                                  >
+                                    Government-issued identification number
+                                  </p>
+                                  {hasFieldError(
+                                    form,
+                                    "externalId",
+                                    externalForm
+                                  ) && (
+                                    <div className="flex items-center gap-1 text-sm text-red-600">
+                                      <svg
+                                        className="h-3 w-3 flex-shrink-0"
+                                        fill="currentColor"
+                                        viewBox="0 0 20 20"
+                                      >
+                                        <path
+                                          fillRule="evenodd"
+                                          d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
+                                          clipRule="evenodd"
+                                        />
+                                      </svg>
+                                      <span>
+                                        {getFieldError(
+                                          form,
+                                          "externalId",
+                                          externalForm
+                                        )}
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Divider */}
+                            <div className="my-8 border-t border-gray-300 dark:border-gray-700"></div>
+
+                            {/* Contact Information Section */}
+                            <div
+                              className={`space-y-6 mb-8 ${
+                                sectionCompletion.contact
+                                  ? "bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 rounded-lg p-6"
+                                  : ""
+                              }`}
+                            >
+                              <div className="border-b border-gray-200 dark:border-gray-700 pb-3 mb-6">
+                                <div className="flex items-center gap-2 mb-2">
+                                  {sectionCompletion.contact ? (
+                                    <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400" />
+                                  ) : (
+                                    <MapPin className="h-5 w-5 text-blue-500" />
+                                  )}
+                                <h3
+                                  className={`text-lg font-medium ${colors.textColor}`}
+                                >
+                                  Contact Information
+                                </h3>
+                                  {sectionCompletion.contact && (
+                                    <Badge className="ml-2 bg-green-500 text-white">
+                                      Complete
+                                    </Badge>
+                                  )}
+                                </div>
+                                <p
+                                  className={`text-sm ${colors.textColorMuted}`}
+                                >
+                                  Client's contact details for communication
+                                </p>
+                              </div>
+
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                {/* Mobile Number */}
+                                <div className="space-y-3">
+                                  <Label
+                                    htmlFor="mobileNo"
+                                    className={colors.textColor}
+                                  >
+                                    Mobile Number{" "}
+                                    <span className="text-red-500">*</span>
+                                  </Label>
+                                  <div className="flex space-x-2">
+                                    <Controller
+                                      control={form.control}
+                                      name="countryCode"
+                                      render={({ field }) => (
+                                        <Select
+                                          onValueChange={field.onChange}
+                                          defaultValue={field.value}
+                                          disabled={isFormDisabled}
+                                        >
+                                          <SelectTrigger
+                                            className={`h-10 w-24 sm:w-28 lg:w-32 border-${colors.borderColor} ${colors.inputBg} flex-shrink-0`}
+                                          >
+                                            <SelectValue placeholder="+263" />
+                                          </SelectTrigger>
+                                          <SelectContent
+                                            className={`border-${colors.borderColor} ${colors.dropdownBg} ${colors.textColor}`}
+                                          >
+                                            <SelectItem value="+263">
+                                              🇿🇼 +263
+                                            </SelectItem>
+                                            <SelectItem value="+27">
+                                              🇿🇦 +27
+                                            </SelectItem>
+                                            <SelectItem value="+260">
+                                              🇿🇲 +260
+                                            </SelectItem>
+                                            <SelectItem value="+258">
+                                              🇲🇿 +258
+                                            </SelectItem>
+                                            <SelectItem value="+265">
+                                              🇲🇼 +265
+                                            </SelectItem>
+                                            <SelectItem value="+266">
+                                              🇱🇸 +266
+                                            </SelectItem>
+                                            <SelectItem value="+267">
+                                              🇧🇼 +267
+                                            </SelectItem>
+                                            <SelectItem value="+268">
+                                              🇸🇿 +268
+                                            </SelectItem>
+                                            <SelectItem value="+236">
+                                              🇨🇫 +236
+                                            </SelectItem>
+                                            <SelectItem value="+257">
+                                              🇧🇮 +257
+                                            </SelectItem>
+                                            <SelectItem value="+253">
+                                              🇩🇯 +253
+                                            </SelectItem>
+                                            <SelectItem value="+291">
+                                              🇪🇷 +291
+                                            </SelectItem>
+                                            <SelectItem value="+251">
+                                              🇪🇹 +251
+                                            </SelectItem>
+                                            <SelectItem value="+254">
+                                              🇰🇪 +254
+                                            </SelectItem>
+                                            <SelectItem value="+250">
+                                              🇷🇼 +250
+                                            </SelectItem>
+                                            <SelectItem value="+248">
+                                              🇸🇨 +248
+                                            </SelectItem>
+                                            <SelectItem value="+255">
+                                              🇹🇿 +255
+                                            </SelectItem>
+                                            <SelectItem value="+256">
+                                              🇺🇬 +256
+                                            </SelectItem>
+                                          </SelectContent>
+                                        </Select>
+                                      )}
+                                    />
+                                    <div className="relative">
+                                      <Input
+                                        id="mobileNo"
+                                        placeholder="Enter mobile number"
+                                        className={getInputErrorStyling(
+                                          hasFieldError(
+                                            form,
+                                            "mobileNo",
+                                            externalForm
+                                          ),
+                                          `h-10 flex-1 border-${colors.borderColor} ${colors.inputBg}`
+                                        )}
+                                        {...(externalForm
+                                          ? externalForm.register("mobileNo", {
+                                              onChange: (
+                                                e: ChangeEvent<HTMLInputElement>
+                                              ) => {
+                                                handlePhoneNumberChange(
+                                                  e.target.value
+                                                );
+                                              },
+                                              onBlur: (e: {
+                                                target: { value: any };
+                                              }) =>
+                                                handleFieldBlur(
+                                                  "mobileNo",
+                                                  e.target.value
+                                                ),
+                                            })
+                                          : form.register("mobileNo", {
+                                              onChange: (
+                                                e: ChangeEvent<HTMLInputElement>
+                                              ) => {
+                                                handlePhoneNumberChange(
+                                                  e.target.value
+                                                );
+                                              },
+                                              onBlur: (e: {
+                                                target: { value: any };
+                                              }) =>
+                                                handleFieldBlur(
+                                                  "mobileNo",
+                                                  e.target.value
+                                                ),
+                                            }))}
+                                        disabled={isFormDisabled}
+                                      />
+                                      {lastSavedField === "mobileNo" &&
+                                        isAutoSaving && (
+                                          <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                                            <div className="w-3 h-3 border border-gray-300 border-t-gray-600 rounded-full animate-spin"></div>
+                                          </div>
+                                        )}
+                                    </div>
+                                  </div>
+                                  <p
+                                    className={`text-xs ${colors.textColorMuted}`}
+                                  >
+                                    Primary contact number for notifications
+                                  </p>
+                                  {hasFieldError(
+                                    form,
+                                    "mobileNo",
+                                    externalForm
+                                  ) && (
+                                    <div className="flex items-center gap-1 text-sm text-red-600">
+                                      <svg
+                                        className="h-3 w-3 flex-shrink-0"
+                                        fill="currentColor"
+                                        viewBox="0 0 20 20"
+                                      >
+                                        <path
+                                          fillRule="evenodd"
+                                          d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
+                                          clipRule="evenodd"
+                                        />
+                                      </svg>
+                                      <span>
+                                        {getFieldError(
+                                          form,
+                                          "mobileNo",
+                                          externalForm
+                                        )}
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
+
+                                {/* Email Address */}
+                                <div className="space-y-3">
+                                  <Label
+                                    htmlFor="emailAddress"
+                                    className={colors.textColor}
+                                  >
+                                    Email Address{" "}
+                                    <span className="text-red-500">*</span>
+                                  </Label>
+                                  <div className="relative">
+                                    <Input
+                                      id="emailAddress"
+                                      type="email"
+                                      placeholder="Enter email address"
+                                      className={getInputErrorStyling(
+                                        hasFieldError(
+                                          form,
+                                          "emailAddress",
+                                          externalForm
+                                        ),
+                                        `h-10 w-full border-${colors.borderColor} ${colors.inputBg}`
+                                      )}
+                                      {...(externalForm
+                                        ? externalForm.register(
+                                            "emailAddress",
+                                            {
+                                              onBlur: (e: {
+                                                target: { value: any };
+                                              }) =>
+                                                handleFieldBlur(
+                                                  "emailAddress",
+                                                  e.target.value
+                                                ),
+                                            }
+                                          )
+                                        : form.register("emailAddress", {
+                                            onBlur: (e: {
+                                              target: { value: any };
+                                            }) =>
+                                              handleFieldBlur(
+                                                "emailAddress",
+                                                e.target.value
+                                              ),
+                                          }))}
+                                      disabled={isFormDisabled}
+                                    />
+                                    {lastSavedField === "emailAddress" &&
+                                      isAutoSaving && (
+                                        <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                                          <div className="w-3 h-3 border border-gray-300 border-t-gray-600 rounded-full animate-spin"></div>
+                                        </div>
+                                      )}
+                                  </div>
+                                  <p
+                                    className={`text-xs ${colors.textColorMuted}`}
+                                  >
+                                    Email for statements and notifications
+                                  </p>
+                                  {hasFieldError(
+                                    form,
+                                    "emailAddress",
+                                    externalForm
+                                  ) && (
+                                    <div className="flex items-center gap-1 text-sm text-red-600">
+                                      <svg
+                                        className="h-3 w-3 flex-shrink-0"
+                                        fill="currentColor"
+                                        viewBox="0 0 20 20"
+                                      >
+                                        <path
+                                          fillRule="evenodd"
+                                          d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
+                                          clipRule="evenodd"
+                                        />
+                                      </svg>
+                                      <span>
+                                        {getFieldError(
+                                          form,
+                                          "emailAddress",
+                                          externalForm
+                                        )}
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Divider */}
+                            <div className="my-8 border-t border-gray-300 dark:border-gray-700"></div>
+
+                            {/* Classification Information Section */}
+                            <div className="space-y-6 mb-8">
+                              <div className="border-b border-gray-200 dark:border-gray-700 pb-3 mb-6">
+                                <h3
+                                  className={`text-lg font-medium ${colors.textColor}`}
+                                >
+                                  Client Classification
+                                </h3>
+                                <p
+                                  className={`text-sm ${colors.textColorMuted}`}
+                                >
+                                  Client categorization for service offerings
+                                </p>
+                              </div>
+
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                {/* Client Type */}
+                                <div className="space-y-3">
+                                  <Label
+                                    htmlFor="clientTypeId"
+                                    className={colors.textColor}
+                                  >
+                                    Client Type{" "}
+                                    <span className="text-red-500">*</span>
+                                  </Label>
+
+                                  <Controller
+                                    control={form.control}
+                                    name="clientTypeId"
+                                    render={({ field }) => (
+                                      <SearchableSelect
+                                        options={clientTypeOptions}
+                                        value={field.value?.toString()}
+                                        onValueChange={(value) => {
+                                          field.onChange(value);
+                                          handleFieldBlur(
+                                            "clientTypeId",
+                                            value
+                                          );
+                                        }}
+                                        placeholder="Select client type"
+                                        className={`border-${colors.borderColor} ${colors.inputBg}`}
+                                        onAddNew={() =>
+                                          setShowAddClientTypeDialog(true)
+                                        }
+                                        addNewLabel="Add new client type"
+                                        disabled={isFormDisabled}
+                                      />
+                                    )}
+                                  />
+                                  <p
+                                    className={`text-xs ${colors.textColorMuted}`}
+                                  >
+                                    Type of client for service eligibility
+                                  </p>
+                                  {form.formState.errors.clientTypeId && (
+                                    <p className="text-sm text-red-500">
+                                      {
+                                        form.formState.errors.clientTypeId
+                                          .message
+                                      }
+                                    </p>
+                                  )}
+                                </div>
+
+                                {/* Client Classification */}
+                                <div className="space-y-3">
+                                  <Label
+                                    htmlFor="clientClassificationId"
+                                    className={colors.textColor}
+                                  >
+                                    Client Classification{" "}
+                                    <span className="text-red-500">*</span>
+                                  </Label>
+
+                                  <Controller
+                                    control={form.control}
+                                    name="clientClassificationId"
+                                    render={({ field }) => (
+                                      <SearchableSelect
+                                        options={clientClassificationOptions}
+                                        value={field.value?.toString()}
+                                        onValueChange={(value) => {
+                                          field.onChange(value);
+                                          handleFieldBlur(
+                                            "clientClassificationId",
+                                            value
+                                          );
+                                        }}
+                                        placeholder="Select client classification"
+                                        className={`border-${colors.borderColor} ${colors.inputBg}`}
+                                        onAddNew={() =>
+                                          setShowAddClientClassificationDialog(
+                                            true
+                                          )
+                                        }
+                                        addNewLabel="Add new classification"
+                                        disabled={isFormDisabled}
+                                      />
+                                    )}
+                                  />
+                                  <p
+                                    className={`text-xs ${colors.textColorMuted}`}
+                                  >
+                                    Classification for risk assessment
+                                  </p>
+                                  {form.formState.errors
+                                    .clientClassificationId && (
+                                    <p className="text-sm text-red-500">
+                                      {
+                                        form.formState.errors
+                                          .clientClassificationId.message
+                                      }
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Divider */}
+                            <div className="my-8 border-t border-gray-300 dark:border-gray-700"></div>
+
+                            {/* Additional Information Section */}
+                            <div
+                              className={`space-y-6 mb-8 ${
+                                sectionCompletion.additional
+                                  ? "bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 rounded-lg p-6"
+                                  : ""
+                              }`}
+                            >
+                              <div className="border-b border-gray-200 dark:border-gray-700 pb-3 mb-6">
+                                <div className="flex items-center gap-2 mb-2">
+                                  {sectionCompletion.additional ? (
+                                    <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400" />
+                                  ) : (
+                                    <FileText className="h-5 w-5 text-blue-500" />
+                                  )}
+                                <h3
+                                  className={`text-lg font-medium ${colors.textColor}`}
+                                >
+                                  Additional Information
+                                </h3>
+                                  {sectionCompletion.additional && (
+                                    <Badge className="ml-2 bg-green-500 text-white">
+                                      Complete
+                                    </Badge>
+                                  )}
+                                </div>
+                                <p
+                                  className={`text-sm ${colors.textColorMuted}`}
+                                >
+                                  Submission details and special status
+                                </p>
+                              </div>
+
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                {/* Submitted On Date */}
+                                <div className="space-y-3">
+                                  <Label
+                                    htmlFor="submittedOnDate"
+                                    className={colors.textColor}
+                                  >
+                                    Submitted On{" "}
+                                    <span className="text-red-500">*</span>
+                                  </Label>
+
+                                  <Controller
+                                    control={form.control}
+                                    name="submittedOnDate"
+                                    render={({ field }) => (
+                                      <Popover>
+                                        <PopoverTrigger asChild>
+                                          <Button
+                                            variant="outline"
+                                            className={cn(
+                                              "h-10 w-full justify-start text-left font-normal",
+                                              !field.value &&
+                                                "text-muted-foreground",
+                                              `border-${colors.borderColor} ${colors.inputBg}`
+                                            )}
+                                            disabled={isFormDisabled}
+                                          >
+                                            <CalendarIcon className="mr-2 h-4 w-4" />
+                                            {field.value ? (
+                                              format(field.value, "PPP")
+                                            ) : (
+                                              <span>Pick a date</span>
+                                            )}
+                                          </Button>
+                                        </PopoverTrigger>
+                                        <PopoverContent
+                                          className="w-auto p-0"
+                                          align="start"
+                                        >
+                                          <Calendar
+                                            mode="single"
+                                            selected={field.value}
+                                            onSelect={field.onChange}
+                                            disabled={(date) =>
+                                              date < new Date()
+                                            }
+                                            captionLayout="dropdown"
+                                            initialFocus
+                                          />
+                                        </PopoverContent>
+                                      </Popover>
+                                    )}
+                                  />
+                                  <p
+                                    className={`text-xs ${colors.textColorMuted}`}
+                                  >
+                                    Date when application was submitted
+                                  </p>
+                                  {form.formState.errors.submittedOnDate && (
+                                    <p className="text-sm text-red-500">
+                                      {
+                                        form.formState.errors.submittedOnDate
+                                          .message
+                                      }
+                                    </p>
+                                  )}
+                                </div>
+
+                                {/* Is Staff */}
+                                <div className="space-y-3">
                                   <Label
                                     htmlFor="isStaff"
                                     className={colors.textColor}
                                   >
-                                    Is staff member
+                                    Staff Status
                                   </Label>
+                                  <Card
+                                    className={`border-${colors.borderColor} ${colors.cardBg} flex flex-col sm:flex-row sm:items-center sm:justify-between p-4 space-y-2 sm:space-y-0`}
+                                  >
+                                    <div className="flex items-center space-x-2">
+                                      <Controller
+                                        control={form.control}
+                                        name="isStaff"
+                                        render={({ field }) => (
+                                          <Checkbox
+                                            id="isStaff"
+                                            checked={field.value}
+                                            onCheckedChange={field.onChange}
+                                            disabled={isFormDisabled}
+                                          />
+                                        )}
+                                      />
+                                      <Label
+                                        htmlFor="isStaff"
+                                        className={colors.textColor}
+                                      >
+                                        Is staff member
+                                      </Label>
+                                    </div>
+                                    <p
+                                      className={`text-xs ${colors.textColorMuted}`}
+                                    >
+                                      Indicate if client is a staff member
+                                    </p>
+                                  </Card>
                                 </div>
-                                <p
-                                  className={`text-xs ${colors.textColorMuted}`}
-                                >
-                                  Indicate if client is a staff member
-                                </p>
-                              </Card>
+                              </div>
                             </div>
-                          </div>
-                        </div>
-
-                        {/* Next of Kin (Family Members) Section */}
-                        <div className="space-y-6 mb-8">
-                          <div className="border-b border-gray-200 dark:border-gray-700 pb-3 mb-6 flex justify-between items-center">
-                            <div>
-                              <h3
-                                className={`text-lg font-medium ${colors.textColor}`}
-                              >
-                                Next of Kin
-                              </h3>
-                              <p className={`text-sm ${colors.textColorMuted}`}>
-                                Add next of kin details
-                              </p>
-                            </div>
-
+                          </CardContent>
+                          <CardFooter className="flex justify-between border-t border-gray-200 dark:border-gray-800 pt-4">
                             <Button
                               type="button"
-                              onClick={() => setShowFamilyMemberDialog(true)}
-                              className="bg-blue-500 hover:bg-blue-600"
-                              disabled={isFormDisabled}
+                              variant="outline"
+                              onClick={() => router.push("/leads")}
+                              className={`border-${colors.borderColor} hover:bg-${colors.hoverBgColor}`}
                             >
-                              Add Next of Kin
+                              Cancel
                             </Button>
-                          </div>
 
-                          {familyMembers.length === 0 ? (
-                            <div
-                              className={`text-center py-8 ${colors.textColorMuted}`}
+                            <Button
+                              type={externalForm ? "button" : "submit"}
+                              className={`transition-all duration-300 ease-in-out ${
+                                isSubmitting
+                                  ? "bg-blue-600 cursor-not-allowed opacity-75"
+                                  : clientLookupStatus === "found"
+                                  ? "bg-green-600 hover:bg-green-700"
+                                  : "bg-blue-500 hover:bg-blue-600"
+                              }`}
+                              disabled={isSubmitting || isFormDisabled}
+                              onClick={
+                                externalForm && onFormSubmit
+                                  ? () => onFormSubmit(form.getValues())
+                                  : undefined
+                              }
                             >
-                              No next of kin added yet. Click the button above
-                              to add one.
-                            </div>
-                          ) : (
-                            <div className="space-y-6">
-                              {familyMembers.map((member) => (
-                                <Card
-                                  key={member.id}
-                                  className={`border-${colors.borderColor} ${colors.cardBg}`}
-                                >
-                                  <CardContent className="p-4">
-                                    <div className="flex justify-between items-start">
-                                      <div>
-                                        <h4
-                                          className={`font-medium ${colors.textColor}`}
-                                        >
-                                          {member.firstname}{" "}
-                                          {member.middlename
-                                            ? `${member.middlename} `
-                                            : ""}
-                                          {member.lastname}
-                                        </h4>
-                                        <p
-                                          className={`text-sm ${colors.textColorMuted}`}
-                                        >
-                                          Relationship: {member.relationship}
-                                        </p>
-                                        {member.mobileNo && (
-                                          <p
-                                            className={`text-sm ${colors.textColorMuted}`}
-                                          >
-                                            Phone: {member.mobileNo}
-                                          </p>
-                                        )}
-                                        {member.emailAddress && (
-                                          <p
-                                            className={`text-sm ${colors.textColorMuted}`}
-                                          >
-                                            Email: {member.emailAddress}
-                                          </p>
-                                        )}
-                                        {member.isDependent && (
-                                          <Badge className="mt-2 bg-blue-500">
-                                            Dependent
-                                          </Badge>
-                                        )}
-                                      </div>
-                                      <Button
-                                        type="button"
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={() =>
-                                          handleRemoveFamilyMember(member.id)
-                                        }
-                                        className="text-red-500 hover:text-red-700 hover:bg-red-100"
-                                      >
-                                        <X className="h-4 w-4" />
-                                      </Button>
-                                    </div>
-                                  </CardContent>
-                                </Card>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Account Settings Section */}
-                        <div className="space-y-6 mb-8">
-                          <div className="border-b border-gray-200 dark:border-gray-700 pb-3 mb-6">
-                            <h3
-                              className={`text-lg font-medium ${colors.textColor}`}
-                            >
-                              Account Settings
-                            </h3>
-                            <p className={`text-sm ${colors.textColorMuted}`}>
-                              Configure account activation settings
-                            </p>
-                          </div>
-
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            {/* Active */}
-                            <div className="space-y-3">
-                              <Label
-                                htmlFor="active"
-                                className={colors.textColor}
-                              >
-                                Account Status
-                              </Label>
-                              <Card
-                                className={`border-${colors.borderColor} ${colors.cardBg} flex flex-col sm:flex-row sm:items-center sm:justify-between p-4 space-y-2 sm:space-y-0`}
-                              >
-                                <div className="flex items-center space-x-2">
-                                  <Controller
-                                    control={form.control}
-                                    name="active"
-                                    render={({ field }) => (
-                                      <Checkbox
-                                        id="active"
-                                        checked={field.value}
-                                        onCheckedChange={field.onChange}
-                                        disabled={isFormDisabled}
-                                      />
-                                    )}
-                                  />
-                                  <Label
-                                    htmlFor="active"
-                                    className={colors.textColor}
-                                  >
-                                    Active account
-                                  </Label>
-                                </div>
-                                <p
-                                  className={`text-xs ${colors.textColorMuted}`}
-                                >
-                                  Set whether the account is active upon
-                                  creation
-                                </p>
-                              </Card>
-                            </div>
-
-                            {/* Open Savings Account */}
-                            <div className="space-y-3">
-                              <Label
-                                htmlFor="openSavingsAccount"
-                                className={colors.textColor}
-                              >
-                                Savings Account
-                              </Label>
-                              <Card
-                                className={`border-${colors.borderColor} ${colors.cardBg} flex flex-col sm:flex-row sm:items-center sm:justify-between p-4 space-y-2 sm:space-y-0`}
-                              >
-                                <div className="flex items-center space-x-2">
-                                  <Controller
-                                    control={form.control}
-                                    name="openSavingsAccount"
-                                    render={({ field }) => (
-                                      <Checkbox
-                                        id="openSavingsAccount"
-                                        checked={field.value}
-                                        onCheckedChange={field.onChange}
-                                        disabled={isFormDisabled}
-                                      />
-                                    )}
-                                  />
-                                  <Label
-                                    htmlFor="openSavingsAccount"
-                                    className={colors.textColor}
-                                  >
-                                    Open savings account
-                                  </Label>
-                                </div>
-                                <p
-                                  className={`text-xs ${colors.textColorMuted}`}
-                                >
-                                  Create a savings account for this client
-                                </p>
-                              </Card>
-                            </div>
-                          </div>
-
-                          {/* Conditional Fields */}
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
-                            {/* Activation Date - Only shown when active is true */}
-                            {form.watch("active") && (
-                              <div className="space-y-3">
-                                <Label
-                                  htmlFor="activationDate"
-                                  className={colors.textColor}
-                                >
-                                  Activation Date{" "}
-                                  <span className="text-red-500">*</span>
-                                </Label>
-
-                                <Controller
-                                  control={form.control}
-                                  name="activationDate"
-                                  render={({ field }) => (
-                                    <Popover>
-                                      <PopoverTrigger asChild>
-                                        <Button
-                                          variant="outline"
-                                          className={cn(
-                                            "h-10 w-full justify-start text-left font-normal",
-                                            !field.value &&
-                                              "text-muted-foreground",
-                                            `border-${colors.borderColor} ${colors.inputBg}`
-                                          )}
-                                          disabled={isFormDisabled}
-                                        >
-                                          <CalendarIcon className="mr-2 h-4 w-4" />
-                                          {field.value ? (
-                                            format(field.value, "PPP")
-                                          ) : (
-                                            <span>Pick a date</span>
-                                          )}
-                                        </Button>
-                                      </PopoverTrigger>
-                                      <PopoverContent
-                                        className="w-auto p-0"
-                                        align="start"
-                                      >
-                                        <Calendar
-                                          mode="single"
-                                          selected={field.value}
-                                          onSelect={field.onChange}
-                                          disabled={(date) => date < new Date()}
-                                          captionLayout="dropdown"
-                                          initialFocus
-                                        />
-                                      </PopoverContent>
-                                    </Popover>
-                                  )}
-                                />
-                                <p
-                                  className={`text-xs ${colors.textColorMuted}`}
-                                >
-                                  Date when the account becomes active
-                                </p>
-                                {form.formState.errors.activationDate && (
-                                  <p className="text-sm text-red-500">
-                                    {
-                                      form.formState.errors.activationDate
-                                        .message
-                                    }
-                                  </p>
-                                )}
-                              </div>
-                            )}
-
-                            {/* Savings Product - Only shown when openSavingsAccount is true */}
-                            {form.watch("openSavingsAccount") && (
-                              <div className="space-y-3">
-                                <Label
-                                  htmlFor="savingsProductId"
-                                  className={colors.textColor}
-                                >
-                                  Savings Product{" "}
-                                  <span className="text-red-500">*</span>
-                                </Label>
-
-                                <Controller
-                                  control={form.control}
-                                  name="savingsProductId"
-                                  render={({ field }) => (
-                                    <SearchableSelect
-                                      options={savingsProductOptions}
-                                      value={field.value?.toString()}
-                                      onValueChange={(value) => {
-                                        field.onChange(value);
-                                        handleFieldBlur(
-                                          "savingsProductId",
-                                          value
-                                        );
-                                      }}
-                                      placeholder="Select savings product"
-                                      className={`border-${colors.borderColor} ${colors.inputBg}`}
-                                      onAddNew={() =>
-                                        setShowAddSavingsProductDialog(true)
-                                      }
-                                      addNewLabel="Add new savings product"
-                                      disabled={isFormDisabled}
-                                    />
-                                  )}
-                                />
-                                <p
-                                  className={`text-xs ${colors.textColorMuted}`}
-                                >
-                                  Type of savings account to open
-                                </p>
-                                {form.formState.errors.savingsProductId && (
-                                  <p className="text-sm text-red-500">
-                                    {
-                                      form.formState.errors.savingsProductId
-                                        .message
-                                    }
-                                  </p>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </CardContent>
-                      <CardFooter className="flex justify-between border-t border-gray-200 dark:border-gray-800 pt-4">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={() => router.push("/leads")}
-                          className={`border-${colors.borderColor} hover:bg-${colors.hoverBgColor}`}
-                        >
-                          Cancel
-                        </Button>
-
-                        <Button
-                          type={externalForm ? "button" : "submit"}
-                          className={`transition-all duration-300 ease-in-out ${
-                            isSubmitting
-                              ? "bg-blue-600 cursor-not-allowed opacity-75"
-                              : clientLookupStatus === "found"
-                              ? "bg-green-600 hover:bg-green-700"
-                              : "bg-blue-500 hover:bg-blue-600"
-                          }`}
-                          disabled={isSubmitting || isFormDisabled}
-                          onClick={
-                            externalForm && onFormSubmit
-                              ? () => onFormSubmit(form.getValues())
-                              : undefined
-                          }
-                        >
-                          <div className="flex items-center justify-center transition-all duration-300">
-                            {isSubmitting ? (
-                              <>
-                                <Loader2 className="mr-2 h-4 w-4 animate-spin transition-opacity duration-300" />
-                                <span className="transition-opacity duration-300">
-                                  {clientLookupStatus === "found"
-                                    ? "Updating Client..."
-                                    : "Creating Client..."}
-                                </span>
-                              </>
-                            ) : (
-                              <>
-                                {clientLookupStatus === "found" ? (
+                              <div className="flex items-center justify-center transition-all duration-300">
+                                {isSubmitting ? (
                                   <>
-                                    <svg
-                                      className="mr-2 h-4 w-4 transition-transform duration-300"
-                                      fill="none"
-                                      stroke="currentColor"
-                                      viewBox="0 0 24 24"
-                                    >
-                                      <path
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                        strokeWidth={2}
-                                        d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
-                                      />
-                                    </svg>
-                                    <span className="transition-all duration-300">
-                                      Update Client
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin transition-opacity duration-300" />
+                                    <span className="transition-opacity duration-300">
+                                      {clientLookupStatus === "found"
+                                        ? "Updating Client..."
+                                        : "Creating Client..."}
                                     </span>
                                   </>
                                 ) : (
                                   <>
-                                    <svg
-                                      className="mr-2 h-4 w-4 transition-transform duration-300"
-                                      fill="none"
-                                      stroke="currentColor"
-                                      viewBox="0 0 24 24"
-                                    >
-                                      <path
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                        strokeWidth={2}
-                                        d="M12 6v6m0 0v6m0-6h6m-6 0H6"
-                                      />
-                                    </svg>
-                                    <span className="transition-all duration-300">
-                                      Create Client
-                                    </span>
+                                    {clientLookupStatus === "found" ? (
+                                      <>
+                                        <svg
+                                          className="mr-2 h-4 w-4 transition-transform duration-300"
+                                          fill="none"
+                                          stroke="currentColor"
+                                          viewBox="0 0 24 24"
+                                        >
+                                          <path
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                            strokeWidth={2}
+                                            d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                                          />
+                                        </svg>
+                                        <span className="transition-all duration-300">
+                                          Update Client
+                                        </span>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <svg
+                                          className="mr-2 h-4 w-4 transition-transform duration-300"
+                                          fill="none"
+                                          stroke="currentColor"
+                                          viewBox="0 0 24 24"
+                                        >
+                                          <path
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                            strokeWidth={2}
+                                            d="M12 6v6m0 0v6m0-6h6m-6 0H6"
+                                          />
+                                        </svg>
+                                        <span className="transition-all duration-300">
+                                          Create Client
+                                        </span>
+                                      </>
+                                    )}
                                   </>
                                 )}
+                              </div>
+                            </Button>
+                          </CardFooter>
+                        </Card>
+                      </TabsContent>
+
+                      {/* KYC Tab */}
+                      <TabsContent value="account" className="mt-4">
+                        <Card
+                          className={`border-${colors.borderColor} ${colors.cardBg}`}
+                        >
+                          <CardHeader>
+                            <CardTitle className={colors.textColor}>
+                              KYC (Know Your Customer)
+                            </CardTitle>
+                            <CardDescription className={colors.textColorMuted}>
+                              Capture client selfie and identity documents
+                            </CardDescription>
+                          </CardHeader>
+                          <CardContent className="space-y-8">
+                            {isLoadingKYC ? (
+                              <>
+                                {/* Selfie Section Skeleton */}
+                            <div className="space-y-4">
+                                  <Skeleton className="h-5 w-32" />
+                                  <div className="space-y-4">
+                                    <Skeleton className="h-48 w-full max-w-md rounded-lg" />
+                                    <div className="flex gap-4">
+                                      <Skeleton className="h-10 w-40" />
+                                      <Skeleton className="h-10 w-40" />
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {/* Divider Skeleton */}
+                                <div className="my-8 border-t border-gray-300 dark:border-gray-700" />
+
+                                {/* Identity Documents Section Skeleton */}
+                                <div className="space-y-4">
+                                  <div className="space-y-2">
+                                    <Skeleton className="h-5 w-48" />
+                                    <Skeleton className="h-4 w-64" />
+                                  </div>
+                                  <div className="flex gap-2">
+                                    <Skeleton className="h-10 w-32" />
+                                  </div>
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    {[1, 2].map((i) => (
+                                      <Card
+                                        key={i}
+                                        className={`border-${colors.borderColor} ${colors.cardBg}`}
+                                      >
+                                        <CardContent className="p-4">
+                                          <div className="space-y-3">
+                                            <div className="flex items-start justify-between">
+                                              <div className="space-y-2 flex-1">
+                                                <Skeleton className="h-5 w-20" />
+                                                <Skeleton className="h-4 w-32" />
+                                                <Skeleton className="h-3 w-24" />
+                                              </div>
+                                              <div className="flex items-center gap-2">
+                                                <Skeleton className="h-8 w-24" />
+                                                <Skeleton className="h-8 w-8" />
+                                              </div>
+                                            </div>
+                                            <div className="pt-2 border-t space-y-2">
+                                              <Skeleton className="h-3 w-28" />
+                                              <Skeleton className="h-4 w-full" />
+                                            </div>
+                                          </div>
+                                        </CardContent>
+                                      </Card>
+                                    ))}
+                                  </div>
+                                </div>
+
+                                {/* Divider Skeleton */}
+                                <div className="my-8 border-t border-gray-300 dark:border-gray-700" />
+
+                                {/* Other Documents Section Skeleton */}
+                                <div className="space-y-4">
+                                  <div className="space-y-2">
+                                    <Skeleton className="h-5 w-40" />
+                                    <Skeleton className="h-4 w-64" />
+                                  </div>
+                                  <div className="flex gap-2">
+                                    <Skeleton className="h-10 w-36" />
+                                  </div>
+                                  <div className="space-y-2">
+                                    {[1, 2].map((i) => (
+                                      <div
+                                        key={i}
+                                        className="flex items-center justify-between p-3 border rounded-lg"
+                                      >
+                                        <Skeleton className="h-4 w-48" />
+                                        <div className="flex gap-2">
+                                          <Skeleton className="h-8 w-8" />
+                                          <Skeleton className="h-8 w-8" />
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              </>
+                            ) : (
+                              <>
+                                {/* Selfie Section */}
+                                <div
+                                  className={`space-y-4 ${
+                                    sectionCompletion.selfie
+                                      ? "bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 rounded-lg p-6"
+                                      : ""
+                                  }`}
+                                >
+                                  <div className="flex items-center gap-2 mb-2">
+                                    {sectionCompletion.selfie ? (
+                                      <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400" />
+                                    ) : (
+                                      <UserCheck className="h-5 w-5 text-blue-500" />
+                                    )}
+                              <Label className={colors.textColor}>
+                                Client Selfie{" "}
+                                <span className="text-red-500">*</span>
+                              </Label>
+                                    {sectionCompletion.selfie && (
+                                      <Badge className="ml-2 bg-green-500 text-white">
+                                        Complete
+                                      </Badge>
+                                    )}
+                                  </div>
+                              <div className="space-y-4">
+                                {/* Show existing image if available and no new image selected */}
+                                {existingClientImage && !selfieImage && (
+                                  <div className="space-y-4">
+                                    <div className="relative w-full max-w-md">
+                                          {selfieImageLoading && (
+                                            <Skeleton className="h-48 w-full max-w-md rounded-lg absolute inset-0" />
+                                          )}
+                                      <img
+                                        src={existingClientImage}
+                                        alt="Existing client image"
+                                            className={`w-full rounded-lg border ${
+                                              selfieImageLoading
+                                                ? "opacity-0"
+                                                : "opacity-100"
+                                            } transition-opacity duration-300`}
+                                        onError={(e) => {
+                                          console.error(
+                                            "Image failed to load:",
+                                            existingClientImage.substring(
+                                              0,
+                                              100
+                                            )
+                                          );
+                                          console.error(
+                                            "Image error event:",
+                                            e
+                                          );
+                                          // Try to reload or show error
+                                          const target =
+                                            e.target as HTMLImageElement;
+                                          target.style.display = "none";
+                                              setSelfieImageLoading(false);
+                                        }}
+                                        onLoad={() => {
+                                          console.log(
+                                            "Image loaded successfully"
+                                          );
+                                              setSelfieImageLoading(false);
+                                        }}
+                                      />
+                                          {!selfieImageLoading && (
+                                      <Badge
+                                        variant="secondary"
+                                        className="absolute top-2 left-2"
+                                      >
+                                        Current Image
+                                      </Badge>
+                                          )}
+                                    </div>
+                                    <p
+                                      className={`text-sm ${colors.textColorMuted}`}
+                                    >
+                                          This is the current client image. You
+                                          can replace it by capturing a new
+                                          photo or uploading a new file.
+                                    </p>
+                                    <div className="flex gap-4">
+                                      <Button
+                                        type="button"
+                                        variant="outline"
+                                        onClick={handleStartCamera}
+                                        disabled={!fineractClientId}
+                                        className="flex items-center gap-2"
+                                      >
+                                        <UserCheck className="h-4 w-4" />
+                                        Capture New Photo
+                                      </Button>
+                                      <label>
+                                        <Button
+                                          type="button"
+                                          variant="outline"
+                                          asChild
+                                          disabled={!fineractClientId}
+                                          className="flex items-center gap-2 cursor-pointer"
+                                        >
+                                          <span>
+                                            <UserPlus className="h-4 w-4" />
+                                            Upload New Photo
+                                          </span>
+                                        </Button>
+                                        <input
+                                          type="file"
+                                          accept="image/*"
+                                          onChange={handleSelfieFileSelect}
+                                          className="hidden"
+                                        />
+                                      </label>
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* Show upload options if no existing image and no new image */}
+                                {!existingClientImage && !selfieImage && (
+                                  <div className="flex gap-4">
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      onClick={handleStartCamera}
+                                      disabled={!fineractClientId}
+                                      className="flex items-center gap-2"
+                                    >
+                                      <UserCheck className="h-4 w-4" />
+                                      Capture from Camera
+                                    </Button>
+                                    <label>
+                                      <Button
+                                        type="button"
+                                        variant="outline"
+                                        asChild
+                                        disabled={!fineractClientId}
+                                        className="flex items-center gap-2 cursor-pointer"
+                                      >
+                                        <span>
+                                          <UserPlus className="h-4 w-4" />
+                                          Upload from File
+                                        </span>
+                                      </Button>
+                                      <input
+                                        type="file"
+                                        accept="image/*"
+                                        onChange={handleSelfieFileSelect}
+                                        className="hidden"
+                                      />
+                                    </label>
+                                  </div>
+                                )}
+
+                                {selfieImage && (
+                                  <div className="space-y-4">
+                                    <div className="relative w-full max-w-md">
+                                      <img
+                                        src={selfieImage}
+                                        alt="Selfie preview"
+                                        className="w-full rounded-lg border"
+                                      />
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => setSelfieImage(null)}
+                                        className="absolute top-2 right-2"
+                                      >
+                                        <X className="h-4 w-4" />
+                                      </Button>
+                                    </div>
+                                    <div className="flex gap-4">
+                                      <Button
+                                        type="button"
+                                        onClick={handleUploadSelfie}
+                                        disabled={
+                                              uploadingSelfie ||
+                                              !fineractClientId
+                                        }
+                                        className="bg-blue-500 hover:bg-blue-600"
+                                      >
+                                        {uploadingSelfie ? (
+                                          <>
+                                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                            Uploading...
+                                          </>
+                                        ) : (
+                                          <>
+                                            <Save className="h-4 w-4 mr-2" />
+                                            Upload Selfie
+                                          </>
+                                        )}
+                                      </Button>
+                                      <Button
+                                        type="button"
+                                        variant="outline"
+                                        onClick={() => setSelfieImage(null)}
+                                      >
+                                        Remove
+                                      </Button>
+                                    </div>
+                                  </div>
+                                )}
+
+                                    <canvas
+                                      ref={canvasRef}
+                                      className="hidden"
+                                    />
+                              </div>
+                            </div>
+
+                            {/* Camera Modal */}
+                            <Dialog
+                              open={showCameraModal}
+                              onOpenChange={(open) => {
+                                setShowCameraModal(open);
+                                if (!open) {
+                                  // Stop camera when modal closes
+                                  if (videoRef.current) {
+                                    const stream = videoRef.current
+                                      .srcObject as MediaStream;
+                                    stream
+                                      ?.getTracks()
+                                      .forEach((track) => track.stop());
+                                  }
+                                  setCapturedImage(null);
+                                }
+                              }}
+                            >
+                              <DialogContent className="max-w-2xl">
+                                <DialogHeader>
+                                  <DialogTitle className={colors.textColor}>
+                                    Capture Selfie
+                                  </DialogTitle>
+                                  <DialogDescription
+                                    className={colors.textColorMuted}
+                                  >
+                                    {capturedImage
+                                      ? "Review your photo. You can retake or confirm."
+                                      : "Position your face in the frame and click capture."}
+                                  </DialogDescription>
+                                </DialogHeader>
+                                <div className="space-y-4">
+                                  {!capturedImage ? (
+                                    <div className="relative w-full aspect-video bg-black rounded-lg overflow-hidden">
+                                      <video
+                                        ref={videoRef}
+                                        autoPlay
+                                        playsInline
+                                        className="w-full h-full object-cover"
+                                      />
+                                    </div>
+                                  ) : (
+                                    <div className="relative w-full aspect-video bg-black rounded-lg overflow-hidden">
+                                      <img
+                                        src={capturedImage}
+                                        alt="Captured selfie"
+                                        className="w-full h-full object-cover"
+                                      />
+                                    </div>
+                                  )}
+                                </div>
+                                <DialogFooter>
+                                  {!capturedImage ? (
+                                    <>
+                                      <Button
+                                        type="button"
+                                        variant="outline"
+                                        onClick={handleStopCamera}
+                                      >
+                                        Cancel
+                                      </Button>
+                                      <Button
+                                        type="button"
+                                        onClick={handleCaptureSelfie}
+                                        className="bg-blue-500 hover:bg-blue-600"
+                                      >
+                                        Capture Photo
+                                      </Button>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Button
+                                        type="button"
+                                        variant="outline"
+                                        onClick={handleRetakePhoto}
+                                      >
+                                        Retake
+                                      </Button>
+                                      <Button
+                                        type="button"
+                                        onClick={handleConfirmCapture}
+                                        className="bg-blue-500 hover:bg-blue-600"
+                                      >
+                                        Use This Photo
+                                      </Button>
+                                    </>
+                                  )}
+                                </DialogFooter>
+                              </DialogContent>
+                            </Dialog>
+
+                            {/* Document Type Selection Dialog */}
+                            <Dialog
+                              open={showDocumentTypeDialog}
+                              onOpenChange={(open) => {
+                                setShowDocumentTypeDialog(open);
+                                if (!open) {
+                                  setPendingFiles([]);
+                                  setSelectedDocumentType(null);
+                                }
+                              }}
+                            >
+                              <DialogContent>
+                                <DialogHeader>
+                                  <DialogTitle className={colors.textColor}>
+                                    Select Document Type
+                                  </DialogTitle>
+                                  <DialogDescription
+                                    className={colors.textColorMuted}
+                                  >
+                                        Choose the type of identity document
+                                        you're uploading
+                                  </DialogDescription>
+                                </DialogHeader>
+                                <div className="space-y-4">
+                                  <div className="space-y-2">
+                                    <Label className={colors.textColor}>
+                                      Document Type{" "}
+                                          <span className="text-red-500">
+                                            *
+                                          </span>
+                                    </Label>
+                                    <Select
+                                      value={
+                                            selectedDocumentType?.toString() ||
+                                            ""
+                                      }
+                                      onValueChange={(value) =>
+                                            setSelectedDocumentType(
+                                              Number(value)
+                                            )
+                                      }
+                                    >
+                                      <SelectTrigger>
+                                        <SelectValue placeholder="Select document type" />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        {identifiersTemplate
+                                              ?.documentTypeOptions?.length >
+                                            0 ? (
+                                          identifiersTemplate.documentTypeOptions.map(
+                                          (option: any) => (
+                                            <SelectItem
+                                              key={option.id}
+                                              value={option.id.toString()}
+                                            >
+                                                {option.name ||
+                                                  option.value ||
+                                                  `Type ${option.id}`}
+                                            </SelectItem>
+                                          )
+                                          )
+                                        ) : (
+                                          <div className="px-2 py-1.5 text-sm text-muted-foreground">
+                                            {identifiersTemplate === null
+                                              ? "Loading document types..."
+                                              : "No document types available"}
+                                          </div>
+                                        )}
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
+                                  {pendingFiles.length > 0 && (
+                                    <div className="space-y-2">
+                                      <Label className={colors.textColor}>
+                                            Files to upload (
+                                            {pendingFiles.length})
+                                      </Label>
+                                      <div className="space-y-1">
+                                        {pendingFiles.map((file, index) => (
+                                          <p
+                                            key={index}
+                                            className={`text-sm ${colors.textColorMuted}`}
+                                          >
+                                            • {file.name}
+                                          </p>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                                <DialogFooter>
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    onClick={() => {
+                                      setShowDocumentTypeDialog(false);
+                                      setPendingFiles([]);
+                                      setSelectedDocumentType(null);
+                                    }}
+                                  >
+                                    Cancel
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    onClick={handleConfirmDocumentType}
+                                    disabled={!selectedDocumentType}
+                                    className="bg-blue-500 hover:bg-blue-600"
+                                  >
+                                    Confirm
+                                  </Button>
+                                </DialogFooter>
+                              </DialogContent>
+                            </Dialog>
+
+                            {/* Add Identifier Dialog */}
+                            <Dialog
+                              open={showAddIdentifierDialog}
+                              onOpenChange={(open) => {
+                                setShowAddIdentifierDialog(open);
+                                if (!open) {
+                                  setNewIdentifier({
+                                    documentTypeId: "",
+                                    documentKey: "",
+                                    description: "",
+                                    status: "active",
+                                    documentFile: null,
+                                    documentFileName: "",
+                                  });
+                                }
+                              }}
+                            >
+                              <DialogContent className="max-w-md">
+                                <DialogHeader>
+                                  <DialogTitle className={colors.textColor}>
+                                    Add Identifier
+                                  </DialogTitle>
+                                  <DialogDescription
+                                    className={colors.textColorMuted}
+                                  >
+                                    Add a new identifier (e.g., National ID,
+                                    Passport Number, etc.)
+                                  </DialogDescription>
+                                </DialogHeader>
+                                <div className="space-y-4">
+                                  <div className="space-y-2">
+                                    <Label className={colors.textColor}>
+                                      Document Type{" "}
+                                          <span className="text-red-500">
+                                            *
+                                          </span>
+                                    </Label>
+                                        <SearchableSelect
+                                          options={documentTypeOptions}
+                                      value={newIdentifier.documentTypeId}
+                                      onValueChange={(value) =>
+                                        setNewIdentifier((prev) => ({
+                                          ...prev,
+                                          documentTypeId: value,
+                                        }))
+                                      }
+                                          placeholder="Select document type"
+                                          className={`border-${colors.borderColor} ${colors.inputBg}`}
+                                          onAddNew={() => {
+                                            documentTypeForm.reset();
+                                            setShowAddIdentifierDialog(false);
+                                            setShowAddDocumentTypeDialog(true);
+                                          }}
+                                          addNewLabel="Add new document type"
+                                          emptyMessage={
+                                            allDocumentTypes.length === 0
+                                              ? "No document types available"
+                                              : "No results found."
+                                          }
+                                        />
+                                  </div>
+
+                                  <div className="space-y-2">
+                                    <Label className={colors.textColor}>
+                                      Document Key/Number{" "}
+                                          <span className="text-red-500">
+                                            *
+                                          </span>
+                                    </Label>
+                                    <Input
+                                      value={newIdentifier.documentKey}
+                                      onChange={(e) =>
+                                        setNewIdentifier((prev) => ({
+                                          ...prev,
+                                          documentKey: e.target.value,
+                                        }))
+                                      }
+                                      placeholder="e.g., 123456789"
+                                      className={colors.textColor}
+                                    />
+                                  </div>
+
+                                  <div className="space-y-2">
+                                    <Label className={colors.textColor}>
+                                      Description (Optional)
+                                    </Label>
+                                    <Input
+                                      value={newIdentifier.description}
+                                      onChange={(e) =>
+                                        setNewIdentifier((prev) => ({
+                                          ...prev,
+                                          description: e.target.value,
+                                        }))
+                                      }
+                                      placeholder="Additional notes or description"
+                                      className={colors.textColor}
+                                    />
+                                  </div>
+
+                                  <div className="space-y-2">
+                                    <Label className={colors.textColor}>
+                                      Status
+                                    </Label>
+                                    <Select
+                                      value={newIdentifier.status}
+                                      onValueChange={(
+                                        value: "active" | "inactive"
+                                      ) =>
+                                        setNewIdentifier((prev) => ({
+                                          ...prev,
+                                          status: value,
+                                        }))
+                                      }
+                                    >
+                                      <SelectTrigger>
+                                        <SelectValue />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value="active">
+                                          Active
+                                        </SelectItem>
+                                        <SelectItem value="inactive">
+                                          Inactive
+                                        </SelectItem>
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
+
+                                  <div className="space-y-2">
+                                    <Label className={colors.textColor}>
+                                      Upload Document (Optional)
+                                    </Label>
+                                    <div className="space-y-2">
+                                      <Input
+                                        type="text"
+                                            value={
+                                              newIdentifier.documentFileName
+                                            }
+                                        onChange={(e) =>
+                                          setNewIdentifier((prev) => ({
+                                            ...prev,
+                                                documentFileName:
+                                                  e.target.value,
+                                          }))
+                                        }
+                                        placeholder="Document name (optional)"
+                                        className={colors.textColor}
+                                      />
+                                      <label>
+                                        <Button
+                                          type="button"
+                                          variant="outline"
+                                          asChild
+                                          className="w-full flex items-center gap-2 cursor-pointer"
+                                        >
+                                          <span>
+                                            <UserPlus className="h-4 w-4" />
+                                            {newIdentifier.documentFile
+                                                  ? newIdentifier.documentFile
+                                                      .name
+                                              : "Select File"}
+                                          </span>
+                                        </Button>
+                                        <input
+                                          type="file"
+                                          accept="image/*,application/pdf"
+                                          onChange={(e) => {
+                                                const file =
+                                                  e.target.files?.[0];
+                                            if (file) {
+                                              setNewIdentifier((prev) => ({
+                                                ...prev,
+                                                documentFile: file,
+                                                documentFileName:
+                                                  prev.documentFileName ||
+                                                  file.name,
+                                              }));
+                                            }
+                                          }}
+                                          className="hidden"
+                                        />
+                                      </label>
+                                      {newIdentifier.documentFile && (
+                                        <div className="flex items-center gap-2">
+                                          <p
+                                            className={`text-sm ${colors.textColorMuted} flex-1`}
+                                          >
+                                                {
+                                                  newIdentifier.documentFile
+                                                    .name
+                                                }{" "}
+                                                (
+                                                {(
+                                                  newIdentifier.documentFile
+                                                    .size / 1024
+                                            ).toFixed(2)}{" "}
+                                            KB)
+                                          </p>
+                                          <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() =>
+                                              setNewIdentifier((prev) => ({
+                                                ...prev,
+                                                documentFile: null,
+                                                documentFileName: "",
+                                              }))
+                                            }
+                                          >
+                                            <X className="h-4 w-4" />
+                                          </Button>
+                                        </div>
+                                      )}
+                                    </div>
+                                    <p
+                                      className={`text-xs ${colors.textColorMuted} italic`}
+                                    >
+                                          Upload a document file to link with
+                                          this identifier
+                                    </p>
+                                  </div>
+                                </div>
+                                <DialogFooter>
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    onClick={() => {
+                                      setShowAddIdentifierDialog(false);
+                                      setNewIdentifier({
+                                        documentTypeId: "",
+                                        documentKey: "",
+                                        description: "",
+                                        status: "active",
+                                        documentFile: null,
+                                        documentFileName: "",
+                                      });
+                                    }}
+                                  >
+                                    Cancel
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    onClick={handleAddIdentifier}
+                                    disabled={
+                                      addingIdentifier ||
+                                      !newIdentifier.documentTypeId ||
+                                      !newIdentifier.documentKey.trim()
+                                    }
+                                    className="bg-blue-500 hover:bg-blue-600"
+                                  >
+                                    {addingIdentifier ? (
+                                      <>
+                                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                        Adding...
+                                      </>
+                                    ) : (
+                                      "Add Identifier"
+                                    )}
+                                  </Button>
+                                </DialogFooter>
+                              </DialogContent>
+                            </Dialog>
+
+                                {/* Divider */}
+                                <div className="my-8 border-t border-gray-300 dark:border-gray-700"></div>
+
+                            {/* Identity Documents Section */}
+                            <div className="space-y-4">
+                              <div className="space-y-2">
+                              <Label className={colors.textColor}>
+                                Identity Documents
+                              </Label>
+                                {identifiersTemplate?.documentTypeOptions
+                                  ?.length > 0 ? (
+                                  <div className="flex flex-wrap gap-2 items-center">
+                                    <span
+                                      className={`text-xs ${colors.textColorMuted}`}
+                                    >
+                                      Available document types:
+                                    </span>
+                                    {identifiersTemplate.documentTypeOptions.map(
+                                      (option: any) => {
+                                        // Check if this document type has an active identifier
+                                        const hasIdentifier =
+                                          existingIdentifiers.some(
+                                            (identifier: any) =>
+                                                  (identifier.documentType
+                                                    ?.id === option.id ||
+                                                identifier.documentTypeId ===
+                                                  option.id) &&
+                                              identifier.status?.active !==
+                                                false &&
+                                                  identifier.status !==
+                                                    "Inactive"
+                                          );
+                                        return (
+                                          <Badge
+                                            key={option.id}
+                                            variant={
+                                              hasIdentifier
+                                                ? "default"
+                                                : "outline"
+                                            }
+                                            className={`text-xs ${
+                                              hasIdentifier
+                                                ? "bg-green-500 hover:bg-green-600 text-white border-0"
+                                                : ""
+                                            }`}
+                                          >
+                                            {hasIdentifier && (
+                                              <Check className="h-3 w-3 mr-1" />
+                                            )}
+                                            {option.name}
+                                          </Badge>
+                                        );
+                                      }
+                                    )}
+                                  </div>
+                                ) : (
+                                  <p
+                                    className={`text-xs ${colors.textColorMuted} italic`}
+                                  >
+                                    Loading document types...
+                                  </p>
+                                )}
+                              </div>
+                              <div className="space-y-4">
+                                {/* Existing Identifiers from Fineract */}
+                                <div className="space-y-2">
+                                  <Label
+                                    className={`text-sm font-medium ${colors.textColor}`}
+                                  >
+                                    Existing Identifiers
+                                    {existingIdentifiers.length > 0 && (
+                                      <span className="ml-2 text-xs font-normal">
+                                        ({existingIdentifiers.length})
+                                      </span>
+                                    )}
+                                  </Label>
+
+                                  {existingIdentifiers.length > 0 ? (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                      {existingIdentifiers.map(
+                                            (
+                                              identifier: any,
+                                              index: number
+                                            ) => {
+                                          const documentType =
+                                            identifiersTemplate?.documentTypeOptions?.find(
+                                              (opt: any) =>
+                                                opt.id ===
+                                                      identifier.documentType
+                                                        ?.id ||
+                                                opt.id ===
+                                                  identifier.documentTypeId
+                                            );
+
+                                              // Get linked documents for this identifier
+                                              const identifierId =
+                                                identifier.id;
+                                              // First try to get documents from the identifier documents map (new method)
+                                              let linkedDocuments =
+                                                identifierDocuments.get(
+                                                  identifierId
+                                                ) || [];
+
+                                              // Fallback: if no documents found via API, try filtering clientDocuments (backward compatibility)
+                                              if (
+                                                linkedDocuments.length === 0
+                                              ) {
+                                                linkedDocuments =
+                                            clientDocuments.filter(
+                                              (doc: any) => {
+                                                      if (!doc.name)
+                                                        return false;
+                                                // Check if document name starts with IDENTIFIER_{identifierId}_
+                                                const extractedId =
+                                                  extractIdentifierIdFromFilename(
+                                                    doc.name
+                                                  );
+                                                return (
+                                                        extractedId ===
+                                                        identifierId
+                                                );
+                                              }
+                                            );
+                                              }
+
+                                          return (
+                                            <Card
+                                              key={identifier.id || index}
+                                              className={`border-${colors.borderColor} ${colors.cardBg}`}
+                                            >
+                                              <CardContent className="p-4">
+                                                <div className="space-y-3">
+                                                  <div className="flex items-start justify-between">
+                                                    <div className="space-y-2 flex-1">
+                                                      {documentType && (
+                                                        <Badge
+                                                          variant="secondary"
+                                                          className="text-xs"
+                                                        >
+                                                              {
+                                                                documentType.name
+                                                              }
+                                                        </Badge>
+                                                      )}
+                                                          {identifier
+                                                            .documentType
+                                                        ?.name &&
+                                                        !documentType && (
+                                                          <Badge
+                                                            variant="secondary"
+                                                            className="text-xs"
+                                                          >
+                                                            {
+                                                              identifier
+                                                                .documentType
+                                                                .name
+                                                            }
+                                                          </Badge>
+                                                        )}
+                                                      <p
+                                                        className={`text-sm font-medium ${colors.textColor}`}
+                                                      >
+                                                        {identifier.documentKey ||
+                                                          identifier.description ||
+                                                          identifier.documentNumber ||
+                                                          `Identifier ${
+                                                            index + 1
+                                                          }`}
+                                                      </p>
+                                                          {identifier
+                                                            .documentType
+                                                        ?.name && (
+                                                        <p
+                                                          className={`text-xs ${colors.textColorMuted}`}
+                                                        >
+                                                          Type:{" "}
+                                                          {
+                                                            identifier
+                                                                  .documentType
+                                                                  .name
+                                                          }
+                                                        </p>
+                                                      )}
+                                                      {identifier.status && (
+                                                        <Badge
+                                                          variant={
+                                                                identifier
+                                                                  .status.active
+                                                              ? "default"
+                                                              : "secondary"
+                                                          }
+                                                          className="text-xs"
+                                                        >
+                                                          {identifier.status
+                                                            .active
+                                                            ? "Active"
+                                                            : "Inactive"}
+                                                        </Badge>
+                                                      )}
+                                                    </div>
+                                                        <div className="flex items-center gap-2">
+                                                          <label>
+                                                            <Button
+                                                              type="button"
+                                                              variant="outline"
+                                                              size="sm"
+                                                              asChild
+                                                              disabled={
+                                                                !fineractClientId ||
+                                                                addingDocumentToIdentifier ===
+                                                                  identifierId
+                                                              }
+                                                              className="flex items-center gap-1 cursor-pointer"
+                                                            >
+                                                              <span>
+                                                                <Plus className="h-3 w-3" />
+                                                                {addingDocumentToIdentifier ===
+                                                                identifierId
+                                                                  ? "Adding..."
+                                                                  : "Add Document"}
+                                                              </span>
+                                                            </Button>
+                                                            <input
+                                                              type="file"
+                                                              accept="image/*,application/pdf"
+                                                              className="hidden"
+                                                              disabled={
+                                                                addingDocumentToIdentifier ===
+                                                                identifierId
+                                                              }
+                                                              onChange={(e) => {
+                                                                const file =
+                                                                  e.target
+                                                                    .files?.[0];
+                                                                if (file) {
+                                                                  handleAddDocumentToIdentifier(
+                                                                    identifierId,
+                                                                    file
+                                                                  );
+                                                                  e.target.value =
+                                                                    ""; // Reset input
+                                                                }
+                                                              }}
+                                                            />
+                                                          </label>
+                                                          <Button
+                                                            type="button"
+                                                            variant="outline"
+                                                            size="sm"
+                                                            disabled={
+                                                              !fineractClientId ||
+                                                              deletingIdentifierId ===
+                                                                identifierId
+                                                            }
+                                                            onClick={() =>
+                                                              handleDeleteIdentifierClick(
+                                                                identifierId
+                                                              )
+                                                            }
+                                                            className="flex items-center gap-1 text-red-500 hover:text-red-700 hover:bg-red-50"
+                                                            title="Delete identifier"
+                                                          >
+                                                            {deletingIdentifierId ===
+                                                            identifierId ? (
+                                                              <Loader2 className="h-3 w-3 animate-spin" />
+                                                            ) : (
+                                                              <Trash2 className="h-3 w-3" />
+                                                            )}
+                                                          </Button>
+                                                        </div>
+                                                  </div>
+
+                                                  {/* Linked Documents */}
+                                                  {linkedDocuments.length >
+                                                    0 && (
+                                                    <div className="space-y-2 pt-2 border-t">
+                                                      <p
+                                                        className={`text-xs font-medium ${colors.textColor}`}
+                                                      >
+                                                        Linked Documents:
+                                                      </p>
+                                                      <div className="space-y-1">
+                                                        {linkedDocuments.map(
+                                                          (
+                                                            doc: any,
+                                                            docIndex: number
+                                                              ) => {
+                                                                const isPreviewing =
+                                                                  previewingDocumentId ===
+                                                                    String(
+                                                                      doc.id
+                                                                    ) &&
+                                                                  previewingIdentifierId ===
+                                                                    identifierId;
+                                                                const isImage =
+                                                                  doc.type?.includes(
+                                                                    "image"
+                                                                  ) ||
+                                                                  doc.name?.match(
+                                                                    /\.(jpg|jpeg|png|gif|webp|bmp)$/i
+                                                                  ) ||
+                                                                  doc.fileName?.match(
+                                                                    /\.(jpg|jpeg|png|gif|webp|bmp)$/i
+                                                                  );
+                                                                const isPdf =
+                                                                  doc.type?.includes(
+                                                                    "pdf"
+                                                                  ) ||
+                                                                  doc.name?.match(
+                                                                    /\.pdf$/i
+                                                                  ) ||
+                                                                  doc.fileName?.match(
+                                                                    /\.pdf$/i
+                                                                  );
+                                                                // Use identifier documents endpoint for documents linked to identifiers
+                                                                const previewUrl =
+                                                                  fineractClientId &&
+                                                                  identifierId
+                                                                    ? `/api/fineract/client_identifiers/${identifierId}/documents/${doc.id}/attachment`
+                                                                    : fineractClientId
+                                                                    ? `/api/fineract/clients/${fineractClientId}/documents/${doc.id}/attachment`
+                                                                    : null;
+
+                                                                return (
+                                                            <div
+                                                              key={
+                                                                doc.id ||
+                                                                docIndex
+                                                              }
+                                                                    className="space-y-2"
+                                                            >
+                                                                    <div className="flex items-center gap-2 p-2 bg-gray-50 dark:bg-gray-800 rounded text-xs">
+                                                              <FileText className="h-3 w-3 text-blue-500 flex-shrink-0" />
+                                                              <span
+                                                                        className={`flex-1 ${colors.textColor} truncate cursor-pointer`}
+                                                                        onClick={() =>
+                                                                          handleViewDocument(
+                                                                            doc.id,
+                                                                            identifierId
+                                                                          )
+                                                                        }
+                                                                        title={
+                                                                          doc.name ||
+                                                                          doc.fileName ||
+                                                                          `Document ${
+                                                                            docIndex +
+                                                                            1
+                                                                          }`
+                                                                        }
+                                                              >
+                                                                {doc.name ||
+                                                                  doc.fileName ||
+                                                                  `Document ${
+                                                                            docIndex +
+                                                                            1
+                                                                  }`}
+                                                              </span>
+                                                              {doc.size && (
+                                                                <span
+                                                                          className={`${colors.textColorMuted} flex-shrink-0`}
+                                                                >
+                                                                  {(
+                                                                    doc.size /
+                                                                    1024
+                                                                  ).toFixed(
+                                                                    1
+                                                                  )}{" "}
+                                                                  KB
+                                                                </span>
+                                                              )}
+                                                              <div className="flex items-center gap-1 flex-shrink-0">
+                                                                <Button
+                                                                  type="button"
+                                                                  variant="ghost"
+                                                                  size="sm"
+                                                                          className={`h-6 w-6 p-0 ${
+                                                                            isPreviewing
+                                                                              ? "bg-blue-100 dark:bg-blue-900"
+                                                                              : ""
+                                                                          }`}
+                                                                  onClick={() =>
+                                                                    handleViewDocument(
+                                                                              doc.id,
+                                                                              identifierId
+                                                                            )
+                                                                          }
+                                                                          title={
+                                                                            isPreviewing
+                                                                              ? "Hide preview"
+                                                                              : "View document"
+                                                                          }
+                                                                >
+                                                                  <Eye className="h-3 w-3" />
+                                                                </Button>
+                                                                <Button
+                                                                  type="button"
+                                                                  variant="ghost"
+                                                                  size="sm"
+                                                                  className="h-6 w-6 p-0"
+                                                                  onClick={() =>
+                                                                    handleDownloadDocument(
+                                                                      doc.id,
+                                                                      doc.name ||
+                                                                        doc.fileName ||
+                                                                                `document_${doc.id}`,
+                                                                              identifierId
+                                                                    )
+                                                                  }
+                                                                  title="Download document"
+                                                                >
+                                                                  <Download className="h-3 w-3" />
+                                                                </Button>
+                                                              </div>
+                                                            </div>
+
+                                                                    {/* Inline Preview */}
+                                                                    {isPreviewing &&
+                                                                      previewUrl && (
+                                                                        <div className="p-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg">
+                                                                          {isImage ? (
+                                                                            <div className="flex items-center justify-center">
+                                                                              <img
+                                                                                src={
+                                                                                  previewUrl
+                                                                                }
+                                                                                alt={
+                                                                                  doc.name ||
+                                                                                  doc.fileName ||
+                                                                                  "Document preview"
+                                                                                }
+                                                                                className="max-w-full max-h-96 object-contain rounded-lg shadow-sm"
+                                                                                onError={(
+                                                                                  e
+                                                                                ) => {
+                                                                                  console.error(
+                                                                                    "Error loading image"
+                                                                                  );
+                                                                                  e.currentTarget.style.display =
+                                                                                    "none";
+                                                                                  const errorDiv =
+                                                                                    document.createElement(
+                                                                                      "div"
+                                                                                    );
+                                                                                  errorDiv.className =
+                                                                                    "text-center text-gray-500 p-4 text-sm";
+                                                                                  errorDiv.textContent =
+                                                                                    "Failed to load image. Please try downloading the document.";
+                                                                                  e.currentTarget.parentElement?.appendChild(
+                                                                                    errorDiv
+                                                                                  );
+                                                                                }}
+                                                                              />
+                                                                            </div>
+                                                                          ) : isPdf ? (
+                                                                            <div className="w-full h-96">
+                                                                              <iframe
+                                                                                src={
+                                                                                  previewUrl
+                                                                                }
+                                                                                className="w-full h-full border-0 rounded-lg"
+                                                                                title={
+                                                                                  doc.name ||
+                                                                                  doc.fileName ||
+                                                                                  "Document preview"
+                                                                                }
+                                                                              />
+                                                                            </div>
+                                                                          ) : (
+                                                                            <div className="flex flex-col items-center justify-center h-32 space-y-2">
+                                                                              <FileText className="h-8 w-8 text-gray-400" />
+                                                                              <p className="text-gray-500 text-sm text-center">
+                                                                                Preview
+                                                                                not
+                                                                                available
+                                                                                for
+                                                                                this
+                                                                                file
+                                                                                type.
+                                                                              </p>
+                                                                              <Button
+                                                                                size="sm"
+                                                                                variant="outline"
+                                                                                onClick={() =>
+                                                                                  handleDownloadDocument(
+                                                                                    doc.id,
+                                                                                    doc.name ||
+                                                                                      doc.fileName ||
+                                                                                      `document_${doc.id}`
+                                                                                  )
+                                                                                }
+                                                                              >
+                                                                                <Download className="h-3 w-3 mr-2" />
+                                                                                Download
+                                                                                to
+                                                                                View
+                                                                              </Button>
+                                                                            </div>
+                                                        )}
+                                                      </div>
+                                                                      )}
+                                                                  </div>
+                                                                );
+                                                              }
+                                                            )}
+                                                          </div>
+                                                    </div>
+                                                  )}
+                                                </div>
+                                              </CardContent>
+                                            </Card>
+                                          );
+                                        }
+                                      )}
+                                    </div>
+                                  ) : (
+                                    <p
+                                      className={`text-sm ${colors.textColorMuted} italic`}
+                                    >
+                                      No existing identifiers found. Add new
+                                      identity documents below.
+                                    </p>
+                                  )}
+                                </div>
+
+                                {/* Add New Identifier or Document */}
+                                <div className="space-y-2">
+                                  <Label
+                                    className={`text-sm font-medium ${colors.textColor}`}
+                                  >
+                                        Add Identifier
+                                  </Label>
+                                  <div className="flex gap-2 flex-wrap">
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      onClick={() =>
+                                        setShowAddIdentifierDialog(true)
+                                      }
+                                      disabled={!fineractClientId}
+                                      className="flex items-center gap-2"
+                                    >
+                                      <Database className="h-4 w-4" />
+                                      Add Identifier
+                                    </Button>
+                                  </div>
+                                  <p
+                                    className={`text-xs ${colors.textColorMuted} italic`}
+                                  >
+                                        Add identifiers for IDs, passport
+                                        numbers, etc.
+                                  </p>
+                                </div>
+
+                                    {/* Pending Documents to Upload - Removed since documents now upload directly */}
+                                {identityDocuments.length > 0 && (
+                                  <div className="space-y-2">
+                                    <Label
+                                      className={`text-sm font-medium ${colors.textColor}`}
+                                    >
+                                      Documents to Upload (
+                                      {identityDocuments.length})
+                                    </Label>
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                          {identityDocuments.map(
+                                            (doc, index) => (
+                                      <Card
+                                        key={index}
+                                        className={`border-${colors.borderColor} ${colors.cardBg}`}
+                                      >
+                                        <CardContent className="p-4">
+                                          <div className="space-y-2">
+                                            {doc.documentTypeName && (
+                                              <Badge
+                                                variant="secondary"
+                                                className="text-xs"
+                                              >
+                                                {doc.documentTypeName}
+                                              </Badge>
+                                            )}
+                                            <p
+                                              className={`text-sm font-medium ${colors.textColor}`}
+                                            >
+                                              {doc.name}
+                                            </p>
+                                            {doc.file.type.startsWith(
+                                              "image/"
+                                            ) && (
+                                              <img
+                                                src={doc.preview}
+                                                alt={doc.name}
+                                                className="w-full h-32 object-cover rounded"
+                                              />
+                                            )}
+                                            {doc.file.type ===
+                                              "application/pdf" && (
+                                              <div className="w-full h-32 bg-gray-100 dark:bg-gray-800 rounded flex items-center justify-center">
+                                                <p className="text-sm text-gray-500">
+                                                  PDF Document
+                                                </p>
+                                              </div>
+                                            )}
+                                            <Button
+                                              type="button"
+                                              variant="ghost"
+                                              size="sm"
+                                              onClick={() =>
+                                                handleRemoveIdentityDocument(
+                                                  index
+                                                )
+                                              }
+                                              className="w-full text-red-500 hover:text-red-700"
+                                            >
+                                              <X className="h-4 w-4 mr-2" />
+                                              Remove
+                                            </Button>
+                                          </div>
+                                        </CardContent>
+                                      </Card>
+                                            )
+                                          )}
+                                    </div>
+                                  </div>
+                                )}
+
+                                {existingIdentifiers.length === 0 &&
+                                  identityDocuments.length === 0 && (
+                                  <p
+                                    className={`text-sm ${colors.textColorMuted} italic`}
+                                  >
+                                          No identity documents added yet. Use
+                                          the template above to see available
+                                          document types.
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+
+                                {/* Divider */}
+                                <div className="my-8 border-t border-gray-300 dark:border-gray-700"></div>
+
+                                {/* Other Documents Section */}
+                                <div className="space-y-4">
+                                  <div className="space-y-2">
+                                    <Label
+                                      className={`text-sm font-medium ${colors.textColor}`}
+                                    >
+                                      Other Documents
+                                      {(() => {
+                                        // Filter documents that are not linked to any identifier
+                                        const otherDocuments =
+                                          clientDocuments.filter((doc: any) => {
+                                            if (!doc.name) return false;
+                                            const extractedId =
+                                              extractIdentifierIdFromFilename(
+                                                doc.name
+                                              );
+                                            // If document name doesn't start with IDENTIFIER_ or doesn't match any identifier ID, it's an "other" document
+                                            return !extractedId;
+                                          });
+                                        return otherDocuments.length > 0 ? (
+                                          <span className="ml-2 text-xs font-normal">
+                                            ({otherDocuments.length})
+                                          </span>
+                                        ) : null;
+                                      })()}
+                                    </Label>
+                                    <p
+                                      className={`text-xs ${colors.textColorMuted}`}
+                                    >
+                                      Documents that are not linked to any
+                                      identifier
+                                    </p>
+                                  </div>
+
+                                  {/* Upload Document Button */}
+                                  <div className="flex items-center gap-2">
+                                    <label>
+                                      <Button
+                                        type="button"
+                                        variant="outline"
+                                        asChild
+                                        disabled={
+                                          !fineractClientId ||
+                                          uploadingDocuments
+                                        }
+                                        className="flex items-center gap-2 cursor-pointer"
+                                      >
+                                        <span>
+                                          <UserPlus className="h-4 w-4" />
+                                          {uploadingDocuments
+                                            ? "Uploading..."
+                                            : "Upload Document"}
+                                        </span>
+                                      </Button>
+                                      <input
+                                        type="file"
+                                        accept="image/*,application/pdf"
+                                        multiple
+                                        onChange={handleAddIdentityDocument}
+                                        className="hidden"
+                                        disabled={uploadingDocuments}
+                                      />
+                                    </label>
+                                    {uploadingDocuments && (
+                                      <div className="flex items-center gap-2 text-xs text-blue-500">
+                                        <Loader2 className="h-3 w-3 animate-spin" />
+                                        Uploading documents...
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  {(() => {
+                                    // Filter documents that are not linked to any identifier
+                                    const otherDocuments =
+                                      clientDocuments.filter((doc: any) => {
+                                        if (!doc.name) return false;
+                                        const extractedId =
+                                          extractIdentifierIdFromFilename(
+                                            doc.name
+                                          );
+                                        // If document name doesn't start with IDENTIFIER_ or doesn't match any identifier ID, it's an "other" document
+                                        return !extractedId;
+                                      });
+
+                                    return otherDocuments.length > 0 ? (
+                                      <div className="space-y-2">
+                                        {otherDocuments.map(
+                                          (doc: any, docIndex: number) => {
+                                            const isPreviewing =
+                                              previewingDocumentId ===
+                                                String(doc.id) &&
+                                              previewingIdentifierId === null;
+                                            const isImage =
+                                              doc.type?.includes("image") ||
+                                              doc.name?.match(
+                                                /\.(jpg|jpeg|png|gif|webp|bmp)$/i
+                                              ) ||
+                                              doc.fileName?.match(
+                                                /\.(jpg|jpeg|png|gif|webp|bmp)$/i
+                                              );
+                                            const isPdf =
+                                              doc.type?.includes("pdf") ||
+                                              doc.name?.match(/\.pdf$/i) ||
+                                              doc.fileName?.match(/\.pdf$/i);
+                                            const previewUrl = fineractClientId
+                                              ? `/api/fineract/clients/${fineractClientId}/documents/${doc.id}/attachment`
+                                              : null;
+
+                                            return (
+                                              <div
+                                                key={doc.id || docIndex}
+                                                className="space-y-2"
+                                              >
+                                                <div className="flex items-center gap-2 p-2 bg-gray-50 dark:bg-gray-800 rounded text-xs">
+                                                  <FileText className="h-3 w-3 text-blue-500 flex-shrink-0" />
+                                                  <span
+                                                    className={`flex-1 ${colors.textColor} truncate cursor-pointer`}
+                                                    onClick={() =>
+                                                      handleViewDocument(doc.id)
+                                                    }
+                                                    title={
+                                                      doc.name ||
+                                                      doc.fileName ||
+                                                      `Document ${docIndex + 1}`
+                                                    }
+                                                  >
+                                                    {doc.name ||
+                                                      doc.fileName ||
+                                                      `Document ${
+                                                        docIndex + 1
+                                                      }`}
+                                                  </span>
+                                                  {doc.size && (
+                                                    <span
+                                                      className={`${colors.textColorMuted} flex-shrink-0`}
+                                                    >
+                                                      {(
+                                                        doc.size / 1024
+                                                      ).toFixed(1)}{" "}
+                                                      KB
+                                                    </span>
+                                                  )}
+                                                  <div className="flex items-center gap-1 flex-shrink-0">
+                                                    <Button
+                                                      type="button"
+                                                      variant="ghost"
+                                                      size="sm"
+                                                      className={`h-6 w-6 p-0 ${
+                                                        isPreviewing
+                                                          ? "bg-blue-100 dark:bg-blue-900"
+                                                          : ""
+                                                      }`}
+                                                      onClick={() =>
+                                                        handleViewDocument(
+                                                          doc.id
+                                                        )
+                                                      }
+                                                      title={
+                                                        isPreviewing
+                                                          ? "Hide preview"
+                                                          : "View document"
+                                                      }
+                                                    >
+                                                      <Eye className="h-3 w-3" />
+                                                    </Button>
+                                                    <Button
+                                                      type="button"
+                                                      variant="ghost"
+                                                      size="sm"
+                                                      className="h-6 w-6 p-0"
+                                                      onClick={() =>
+                                                        handleDownloadDocument(
+                                                          doc.id,
+                                                          doc.name ||
+                                                            doc.fileName ||
+                                                            `document_${doc.id}`
+                                                        )
+                                                      }
+                                                      title="Download document"
+                                                    >
+                                                      <Download className="h-3 w-3" />
+                                                    </Button>
+                                                  </div>
+                                                </div>
+
+                                                {/* Inline Preview */}
+                                                {isPreviewing && previewUrl && (
+                                                  <div className="p-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg">
+                                                    {isImage ? (
+                                                      <div className="flex items-center justify-center">
+                                                        <img
+                                                          src={previewUrl}
+                                                          alt={
+                                                            doc.name ||
+                                                            doc.fileName ||
+                                                            "Document preview"
+                                                          }
+                                                          className="max-w-full max-h-96 object-contain rounded-lg shadow-sm"
+                                                          onError={(e) => {
+                                                            console.error(
+                                                              "Error loading image"
+                                                            );
+                                                            e.currentTarget.style.display =
+                                                              "none";
+                                                            const errorDiv =
+                                                              document.createElement(
+                                                                "div"
+                                                              );
+                                                            errorDiv.className =
+                                                              "text-center text-gray-500 p-4 text-sm";
+                                                            errorDiv.textContent =
+                                                              "Failed to load image. Please try downloading the document.";
+                                                            e.currentTarget.parentElement?.appendChild(
+                                                              errorDiv
+                                                            );
+                                                          }}
+                                                        />
+                                                      </div>
+                                                    ) : isPdf ? (
+                                                      <div className="w-full h-96">
+                                                        <iframe
+                                                          src={previewUrl}
+                                                          className="w-full h-full border-0 rounded-lg"
+                                                          title={
+                                                            doc.name ||
+                                                            doc.fileName ||
+                                                            "Document preview"
+                                                          }
+                                                        />
+                                                      </div>
+                                                    ) : (
+                                                      <div className="flex flex-col items-center justify-center h-32 space-y-2">
+                                                        <FileText className="h-8 w-8 text-gray-400" />
+                                                        <p className="text-gray-500 text-sm text-center">
+                                                          Preview not available
+                                                          for this file type.
+                                                        </p>
+                                                        <Button
+                                                          size="sm"
+                                                          variant="outline"
+                                                          onClick={() =>
+                                                            handleDownloadDocument(
+                                                              doc.id,
+                                                              doc.name ||
+                                                                doc.fileName ||
+                                                                `document_${doc.id}`
+                                                            )
+                                                          }
+                                                        >
+                                                          <Download className="h-3 w-3 mr-2" />
+                                                          Download to View
+                                                        </Button>
+                                                      </div>
+                                                    )}
+                                                  </div>
+                                                )}
+                                              </div>
+                                            );
+                                          }
+                                        )}
+                                      </div>
+                                    ) : (
+                                      <p
+                                        className={`text-sm ${colors.textColorMuted} italic`}
+                                      >
+                                        No other documents found.
+                                      </p>
+                                    );
+                                  })()}
+                                </div>
                               </>
                             )}
-                          </div>
-                        </Button>
-                      </CardFooter>
-                    </Card>
+                          </CardContent>
+                        </Card>
+                      </TabsContent>
+
+                      {/* Additional Details Tab */}
+                      {clientCreatedInFineract && fineractClientId && (
+                        <TabsContent value="additional" className="mt-4">
+                          <Card
+                            className={`border-${colors.borderColor} ${colors.cardBg}`}
+                          >
+                            <CardHeader>
+                              <CardTitle className={colors.textColor}>
+                                Additional Details
+                              </CardTitle>
+                              <CardDescription
+                                className={colors.textColorMuted}
+                              >
+                                Address, data tables, and family members/next of
+                                kin information
+                              </CardDescription>
+                            </CardHeader>
+                            <CardContent className="space-y-8">
+                              {isLoadingAdditionalDetails ? (
+                                <div className="space-y-8">
+                                  {/* Address Details Skeleton */}
+                                  <div className="space-y-4">
+                                    <div className="flex items-center justify-between pb-2 border-b border-gray-200 dark:border-gray-700">
+                                      <div className="flex items-center gap-2">
+                                        <Skeleton className="h-5 w-5" />
+                                        <Skeleton className="h-6 w-32" />
+                                      </div>
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                      <Skeleton className="h-20 w-full" />
+                                      <Skeleton className="h-20 w-full" />
+                                      <Skeleton className="h-20 w-full" />
+                                      <Skeleton className="h-20 w-full" />
+                                    </div>
+                                  </div>
+
+                                  {/* Data Tables Skeleton */}
+                                  <div className="space-y-4">
+                                    <div className="flex items-center gap-2 pb-2 border-b border-gray-200 dark:border-gray-700">
+                                      <Skeleton className="h-5 w-5" />
+                                      <Skeleton className="h-6 w-48" />
+                                    </div>
+                                    <div className="space-y-4">
+                                      <Skeleton className="h-32 w-full" />
+                                      <Skeleton className="h-32 w-full" />
+                                    </div>
+                                  </div>
+
+                                  {/* Family Members Skeleton */}
+                                  <div className="space-y-4">
+                                    <div className="flex items-center justify-between pb-2 border-b border-gray-200 dark:border-gray-700">
+                                      <div className="flex items-center gap-2">
+                                        <Skeleton className="h-5 w-5" />
+                                        <Skeleton className="h-6 w-40" />
+                                      </div>
+                                      <Skeleton className="h-9 w-32" />
+                                    </div>
+                                    <div className="space-y-4">
+                                      <Skeleton className="h-24 w-full" />
+                                      <Skeleton className="h-24 w-full" />
+                                    </div>
+                                  </div>
+                                </div>
+                              ) : (
+                                <>
+                                  {/* Address Details */}
+                                  <div className="space-y-4">
+                                    <div className="flex items-center justify-between pb-2 border-b border-gray-200 dark:border-gray-700">
+                                      <div className="flex items-center gap-2">
+                                        <MapPin className="h-5 w-5 text-blue-500" />
+                                        <h3
+                                          className={`text-lg font-semibold ${colors.textColor}`}
+                                        >
+                                          Address Details
+                                        </h3>
+                                      </div>
+                                      {!isEditingAddress &&
+                                        fineractClientId && (
+                                          <Button
+                                            type="button"
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => {
+                                              // Convert addressType string to ID if needed when initializing edit
+                                              let addressToEdit =
+                                                clientAddress || {};
+                                              if (
+                                                addressToEdit.addressType &&
+                                                typeof addressToEdit.addressType ===
+                                                  "string" &&
+                                                addressTemplate
+                                              ) {
+                                                const addressTypeOptions =
+                                                  addressTemplate?.addressTypeIdOptions ||
+                                                  [];
+                                                const matchingType =
+                                                  addressTypeOptions.find(
+                                                    (opt: any) =>
+                                                      opt.name?.trim() ===
+                                                      addressToEdit.addressType?.trim()
+                                                  );
+                                                if (
+                                                  matchingType &&
+                                                  matchingType.id
+                                                ) {
+                                                  addressToEdit = {
+                                                    ...addressToEdit,
+                                                    addressType:
+                                                      matchingType.id, // Convert string to numeric ID
+                                                  };
+                                                  console.log(
+                                                    "Converted addressType to ID when editing:",
+                                                    matchingType.id,
+                                                    "for:",
+                                                    matchingType.name
+                                                  );
+                                                }
+                                              }
+                                              setEditedAddress(addressToEdit);
+                                              setIsEditingAddress(true);
+                                            }}
+                                            className="gap-2"
+                                          >
+                                            <Edit2 className="h-4 w-4" />
+                                            {clientAddress
+                                              ? "Edit"
+                                              : "Add"}{" "}
+                                            Address
+                                          </Button>
+                                        )}
+                                    </div>
+                                    {isEditingAddress ? (
+                                      <div
+                                        className={`rounded-lg border border-${colors.borderColor} ${colors.cardBg} shadow-sm p-6`}
+                                      >
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                                          {addressFieldConfig.length > 0 ? (
+                                            addressFieldConfig.map(
+                                              (fieldConfig: any) => {
+                                                const fieldName =
+                                                  fieldConfig.field;
+                                                const fieldValue =
+                                                  editedAddress[fieldName] ||
+                                                  "";
+                                                const isRequired =
+                                                  fieldConfig.isMandatory;
+                                                const label =
+                                                  formatHeaderName(fieldName);
+
+                                                // Handle special field types
+                                                if (
+                                                  fieldName === "addressType"
+                                                ) {
+                                                  // Address type dropdown from template
+                                                  const addressTypeOptions = (
+                                                    addressTemplate?.addressTypeIdOptions ||
+                                                    []
+                                                  )
+                                                    .filter(
+                                                      (opt: any) => opt.active
+                                                    )
+                                                    .map((option: any) => ({
+                                                      value:
+                                                        option.id.toString(),
+                                                      label: option.name,
+                                                    }));
+                                                  return (
+                                                    <div
+                                                      key={fieldName}
+                                                      className="space-y-2"
+                                                    >
+                                                      <Label
+                                                        className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
+                                                      >
+                                                        {label}
+                                                        {isRequired && (
+                                                          <span className="text-red-500 ml-1">
+                                                            *
+                                                          </span>
+                                                        )}
+                                                      </Label>
+                                                      <SearchableSelect
+                                                        options={
+                                                          addressTypeOptions
+                                                        }
+                                                        value={
+                                                          fieldValue?.toString() ||
+                                                          ""
+                                                        }
+                                                        onValueChange={(
+                                                          value
+                                                        ) =>
+                                                          setEditedAddress({
+                                                            ...editedAddress,
+                                                            [fieldName]:
+                                                              parseInt(value) ||
+                                                              0,
+                                                          })
+                                                        }
+                                                        placeholder={`Select ${label}`}
+                                                        className={`border-${colors.borderColor} ${colors.inputBg}`}
+                                                        onAddNew={() =>
+                                                          setShowAddAddressTypeDialog(
+                                                            true
+                                                          )
+                                                        }
+                                                        addNewLabel="Add new address type"
+                                                      />
+                                                    </div>
+                                                  );
+                                                }
+
+                                                if (
+                                                  fieldName ===
+                                                  "stateProvinceId"
+                                                ) {
+                                                  // State/Province dropdown from template
+                                                  const stateProvinceOptions = (
+                                                    addressTemplate?.stateProvinceIdOptions ||
+                                                    []
+                                                  ).map((option: any) => ({
+                                                    value:
+                                                      option.id?.toString() ||
+                                                      option.toString(),
+                                                    label:
+                                                      option.name ||
+                                                      option.toString(),
+                                                  }));
+                                                  return (
+                                                    <div
+                                                      key={fieldName}
+                                                      className="space-y-2"
+                                                    >
+                                                      <Label
+                                                        className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
+                                                      >
+                                                        {label}
+                                                        {isRequired && (
+                                                          <span className="text-red-500 ml-1">
+                                                            *
+                                                          </span>
+                                                        )}
+                                                      </Label>
+                                                      <SearchableSelect
+                                                        options={
+                                                          stateProvinceOptions
+                                                        }
+                                                        value={
+                                                          fieldValue?.toString() ||
+                                                          ""
+                                                        }
+                                                        onValueChange={(
+                                                          value
+                                                        ) =>
+                                                          setEditedAddress({
+                                                            ...editedAddress,
+                                                            [fieldName]:
+                                                              parseInt(value) ||
+                                                              0,
+                                                          })
+                                                        }
+                                                        placeholder={`Select ${label}`}
+                                                        className={`border-${colors.borderColor} ${colors.inputBg}`}
+                                                        onAddNew={() =>
+                                                          setShowAddStateProvinceDialog(
+                                                            true
+                                                          )
+                                                        }
+                                                        addNewLabel="Add new state/province"
+                                                        emptyMessage="No states/provinces available"
+                                                      />
+                                                    </div>
+                                                  );
+                                                }
+
+                                                if (fieldName === "countryId") {
+                                                  // Country dropdown from template
+                                                  const countryOptions = (
+                                                    addressTemplate?.countryIdOptions ||
+                                                    []
+                                                  ).map((option: any) => ({
+                                                    value:
+                                                      option.id?.toString() ||
+                                                      option.toString(),
+                                                    label:
+                                                      option.name ||
+                                                      option.toString(),
+                                                  }));
+                                                  return (
+                                                    <div
+                                                      key={fieldName}
+                                                      className="space-y-2"
+                                                    >
+                                                      <Label
+                                                        className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
+                                                      >
+                                                        {label}
+                                                        {isRequired && (
+                                                          <span className="text-red-500 ml-1">
+                                                            *
+                                                          </span>
+                                                        )}
+                                                      </Label>
+                                                      <SearchableSelect
+                                                        options={countryOptions}
+                                                        value={
+                                                          fieldValue?.toString() ||
+                                                          ""
+                                                        }
+                                                        onValueChange={(
+                                                          value
+                                                        ) =>
+                                                          setEditedAddress({
+                                                            ...editedAddress,
+                                                            [fieldName]:
+                                                              parseInt(value) ||
+                                                              0,
+                                                          })
+                                                        }
+                                                        placeholder={`Select ${label}`}
+                                                        className={`border-${colors.borderColor} ${colors.inputBg}`}
+                                                        onAddNew={() =>
+                                                          setShowAddCountryDialog(
+                                                            true
+                                                          )
+                                                        }
+                                                        addNewLabel="Add new country"
+                                                        emptyMessage="No countries available"
+                                                      />
+                                                    </div>
+                                                  );
+                                                }
+
+                                                if (
+                                                  fieldName === "latitude" ||
+                                                  fieldName === "longitude"
+                                                ) {
+                                                  // These are decimal numbers
+                                                  return (
+                                                    <div
+                                                      key={fieldName}
+                                                      className="space-y-2"
+                                                    >
+                                                      <Label
+                                                        className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
+                                                      >
+                                                        {label}
+                                                        {isRequired && (
+                                                          <span className="text-red-500 ml-1">
+                                                            *
+                                                          </span>
+                                                        )}
+                                                      </Label>
+                                                      <Input
+                                                        type="number"
+                                                        step="0.00000001"
+                                                        value={fieldValue}
+                                                        onChange={(e) =>
+                                                          setEditedAddress({
+                                                            ...editedAddress,
+                                                            [fieldName]:
+                                                              parseFloat(
+                                                                e.target.value
+                                                              ) || 0,
+                                                          })
+                                                        }
+                                                        placeholder={label}
+                                                        className={
+                                                          colors.textColor
+                                                        }
+                                                        required={isRequired}
+                                                      />
+                                                    </div>
+                                                  );
+                                                }
+
+                                                if (fieldName === "isActive") {
+                                                  // Boolean field
+                                                  return (
+                                                    <div
+                                                      key={fieldName}
+                                                      className="space-y-2"
+                                                    >
+                                                      <div className="flex items-center space-x-2">
+                                                        <Checkbox
+                                                          checked={Boolean(
+                                                            fieldValue
+                                                          )}
+                                                          onCheckedChange={(
+                                                            checked
+                                                          ) =>
+                                                            setEditedAddress({
+                                                              ...editedAddress,
+                                                              [fieldName]:
+                                                                checked,
+                                                            })
+                                                          }
+                                                        />
+                                                        <Label
+                                                          className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
+                                                        >
+                                                          {label}
+                                                          {isRequired && (
+                                                            <span className="text-red-500 ml-1">
+                                                              *
+                                                            </span>
+                                                          )}
+                                                        </Label>
+                                                      </div>
+                                                    </div>
+                                                  );
+                                                }
+
+                                                // Default: text input
+                                                return (
+                                                  <div
+                                                    key={fieldName}
+                                                    className="space-y-2"
+                                                  >
+                                                    <Label
+                                                      className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
+                                                    >
+                                                      {label}
+                                                      {isRequired && (
+                                                        <span className="text-red-500 ml-1">
+                                                          *
+                                                        </span>
+                                                      )}
+                                                    </Label>
+                                                    <Input
+                                                      value={fieldValue}
+                                                      onChange={(e) =>
+                                                        setEditedAddress({
+                                                          ...editedAddress,
+                                                          [fieldName]:
+                                                            e.target.value,
+                                                        })
+                                                      }
+                                                      placeholder={label}
+                                                      className={
+                                                        colors.textColor
+                                                      }
+                                                      required={isRequired}
+                                                    />
+                                                  </div>
+                                                );
+                                              }
+                                            )
+                                          ) : (
+                                            // Fallback: show common address fields if config not loaded yet
+                                            <>
+                                              <div className="space-y-2">
+                                                <Label
+                                                  className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
+                                                >
+                                                  Address Type
+                                                </Label>
+                                                <SearchableSelect
+                                                  options={(
+                                                    addressTemplate?.addressTypeIdOptions ||
+                                                    []
+                                                  )
+                                                    .filter(
+                                                      (opt: any) => opt.active
+                                                    )
+                                                    .map((option: any) => ({
+                                                      value:
+                                                        option.id.toString(),
+                                                      label: option.name,
+                                                    }))}
+                                                  value={
+                                                    editedAddress.addressType?.toString() ||
+                                                    ""
+                                                  }
+                                                  onValueChange={(value) =>
+                                                    setEditedAddress({
+                                                      ...editedAddress,
+                                                      addressType:
+                                                        parseInt(value) || 0,
+                                                    })
+                                                  }
+                                                  placeholder="Select Address Type"
+                                                  className={`border-${colors.borderColor} ${colors.inputBg}`}
+                                                  onAddNew={() =>
+                                                    setShowAddAddressTypeDialog(
+                                                      true
+                                                    )
+                                                  }
+                                                  addNewLabel="Add new address type"
+                                                />
+                                              </div>
+                                              <div className="space-y-2">
+                                                <Label
+                                                  className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
+                                                >
+                                                  Address Line 1
+                                                </Label>
+                                                <Input
+                                                  value={
+                                                    editedAddress.addressLine1 ||
+                                                    ""
+                                                  }
+                                                  onChange={(e) =>
+                                                    setEditedAddress({
+                                                      ...editedAddress,
+                                                      addressLine1:
+                                                        e.target.value,
+                                                    })
+                                                  }
+                                                  placeholder="Address Line 1"
+                                                  className={colors.textColor}
+                                                />
+                                              </div>
+                                              <div className="space-y-2">
+                                                <Label
+                                                  className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
+                                                >
+                                                  Address Line 2
+                                                </Label>
+                                                <Input
+                                                  value={
+                                                    editedAddress.addressLine2 ||
+                                                    ""
+                                                  }
+                                                  onChange={(e) =>
+                                                    setEditedAddress({
+                                                      ...editedAddress,
+                                                      addressLine2:
+                                                        e.target.value,
+                                                    })
+                                                  }
+                                                  placeholder="Address Line 2"
+                                                  className={colors.textColor}
+                                                />
+                                              </div>
+                                              <div className="space-y-2">
+                                                <Label
+                                                  className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
+                                                >
+                                                  Address Line 3
+                                                </Label>
+                                                <Input
+                                                  value={
+                                                    editedAddress.addressLine3 ||
+                                                    ""
+                                                  }
+                                                  onChange={(e) =>
+                                                    setEditedAddress({
+                                                      ...editedAddress,
+                                                      addressLine3:
+                                                        e.target.value,
+                                                    })
+                                                  }
+                                                  placeholder="Address Line 3"
+                                                  className={colors.textColor}
+                                                />
+                                              </div>
+                                              <div className="space-y-2">
+                                                <Label
+                                                  className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
+                                                >
+                                                  City
+                                                </Label>
+                                                <Input
+                                                  value={
+                                                    editedAddress.city || ""
+                                                  }
+                                                  onChange={(e) =>
+                                                    setEditedAddress({
+                                                      ...editedAddress,
+                                                      city: e.target.value,
+                                                    })
+                                                  }
+                                                  placeholder="City"
+                                                  className={colors.textColor}
+                                                />
+                                              </div>
+                                              <div className="space-y-2">
+                                                <Label
+                                                  className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
+                                                >
+                                                  Town/Village
+                                                </Label>
+                                                <Input
+                                                  value={
+                                                    editedAddress.townVillage ||
+                                                    ""
+                                                  }
+                                                  onChange={(e) =>
+                                                    setEditedAddress({
+                                                      ...editedAddress,
+                                                      townVillage:
+                                                        e.target.value,
+                                                    })
+                                                  }
+                                                  placeholder="Town/Village"
+                                                  className={colors.textColor}
+                                                />
+                                              </div>
+                                              <div className="space-y-2">
+                                                <Label
+                                                  className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
+                                                >
+                                                  Postal Code
+                                                </Label>
+                                                <Input
+                                                  value={
+                                                    editedAddress.postalCode ||
+                                                    ""
+                                                  }
+                                                  onChange={(e) =>
+                                                    setEditedAddress({
+                                                      ...editedAddress,
+                                                      postalCode:
+                                                        e.target.value,
+                                                    })
+                                                  }
+                                                  placeholder="Postal Code"
+                                                  className={colors.textColor}
+                                                />
+                                              </div>
+                                              <div className="space-y-2">
+                                                <Label
+                                                  className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
+                                                >
+                                                  State/Province
+                                                </Label>
+                                                <SearchableSelect
+                                                  options={(
+                                                    addressTemplate?.stateProvinceIdOptions ||
+                                                    []
+                                                  ).map((option: any) => ({
+                                                    value:
+                                                      option.id?.toString() ||
+                                                      option.toString(),
+                                                    label:
+                                                      option.name ||
+                                                      option.toString(),
+                                                  }))}
+                                                  value={
+                                                    editedAddress.stateProvinceId?.toString() ||
+                                                    ""
+                                                  }
+                                                  onValueChange={(value) =>
+                                                    setEditedAddress({
+                                                      ...editedAddress,
+                                                      stateProvinceId:
+                                                        parseInt(value) || 0,
+                                                    })
+                                                  }
+                                                  placeholder="Select State/Province"
+                                                  className={`border-${colors.borderColor} ${colors.inputBg}`}
+                                                  onAddNew={() =>
+                                                    setShowAddStateProvinceDialog(
+                                                      true
+                                                    )
+                                                  }
+                                                  addNewLabel="Add new state/province"
+                                                  emptyMessage="No states/provinces available"
+                                                />
+                                              </div>
+                                              <div className="space-y-2">
+                                                <Label
+                                                  className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
+                                                >
+                                                  Country
+                                                </Label>
+                                                <SearchableSelect
+                                                  options={(
+                                                    addressTemplate?.countryIdOptions ||
+                                                    []
+                                                  ).map((option: any) => ({
+                                                    value:
+                                                      option.id?.toString() ||
+                                                      option.toString(),
+                                                    label:
+                                                      option.name ||
+                                                      option.toString(),
+                                                  }))}
+                                                  value={
+                                                    editedAddress.countryId?.toString() ||
+                                                    ""
+                                                  }
+                                                  onValueChange={(value) =>
+                                                    setEditedAddress({
+                                                      ...editedAddress,
+                                                      countryId:
+                                                        parseInt(value) || 0,
+                                                    })
+                                                  }
+                                                  placeholder="Select Country"
+                                                  className={`border-${colors.borderColor} ${colors.inputBg}`}
+                                                  onAddNew={() =>
+                                                    setShowAddCountryDialog(
+                                                      true
+                                                    )
+                                                  }
+                                                  addNewLabel="Add new country"
+                                                  emptyMessage="No countries available"
+                                                />
+                                              </div>
+                                              <div className="flex items-center space-x-2">
+                                                <Checkbox
+                                                  checked={Boolean(
+                                                    editedAddress.isActive
+                                                  )}
+                                                  onCheckedChange={(checked) =>
+                                                    setEditedAddress({
+                                                      ...editedAddress,
+                                                      isActive: checked,
+                                                    })
+                                                  }
+                                                />
+                                                <Label
+                                                  className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
+                                                >
+                                                  Is Active
+                                                </Label>
+                                              </div>
+                                            </>
+                                          )}
+                                        </div>
+                                        <div className="flex gap-2 justify-end">
+                                          <Button
+                                            type="button"
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => {
+                                              setIsEditingAddress(false);
+                                              setEditedAddress({});
+                                            }}
+                                            disabled={savingAddress}
+                                            className="gap-2"
+                                          >
+                                            <X className="h-4 w-4" />
+                                            Cancel
+                                          </Button>
+                                          <Button
+                                            type="button"
+                                            size="sm"
+                                            onClick={async () => {
+                                              if (!fineractClientId) return;
+                                              setSavingAddress(true);
+                                              try {
+                                                // If we have an existing address with an addressType, update it
+                                                // Otherwise, create a new one
+                                                // Fineract uses addressType as query parameter for updates, not addressId
+                                                // Ensure addressType is a number (ID), not a string name
+                                                let addressType =
+                                                  editedAddress.addressType ||
+                                                  clientAddress?.addressType ||
+                                                  clientAddress?.addressTypeId;
+
+                                                // If addressType is a string, look it up in the template to get the ID
+                                                if (
+                                                  typeof addressType ===
+                                                    "string" &&
+                                                  addressTemplate
+                                                ) {
+                                                  const addressTypeOptions =
+                                                    addressTemplate?.addressTypeIdOptions ||
+                                                    [];
+                                                  const matchingType =
+                                                    addressTypeOptions.find(
+                                                      (opt: any) =>
+                                                        opt.name?.trim() ===
+                                                        addressType?.trim()
+                                                    );
+                                                  if (
+                                                    matchingType &&
+                                                    matchingType.id
+                                                  ) {
+                                                    addressType =
+                                                      matchingType.id;
+                                                    console.log(
+                                                      "Converted addressType string to ID:",
+                                                      addressType,
+                                                      "for:",
+                                                      matchingType.name
+                                                    );
+                                                  } else {
+                                                    // If not found, try to parse as number
+                                                    addressType =
+                                                      parseInt(addressType);
+                                                  }
+                                                } else if (
+                                                  typeof addressType ===
+                                                  "string"
+                                                ) {
+                                                  // If template not loaded, try to parse as number
+                                                  addressType =
+                                                    parseInt(addressType);
+                                                }
+
+                                                // Ensure it's a valid number and not 0
+                                                if (
+                                                  addressType &&
+                                                  (isNaN(addressType) ||
+                                                    addressType === 0)
+                                                ) {
+                                                  addressType = undefined;
+                                                }
+
+                                                // Validate that addressType is set for both create and update
+                                                if (
+                                                  !addressType ||
+                                                  addressType === 0
+                                                ) {
+                                                  error({
+                                                    title: "Validation Error",
+                                                    description:
+                                                      "Please select an address type before saving",
+                                                  });
+                                                  setSavingAddress(false);
+                                                  return;
+                                                }
+
+                                                const hasExistingAddress =
+                                                  clientAddress &&
+                                                  addressType &&
+                                                  !isNaN(addressType) &&
+                                                  addressType !== 0;
+
+                                                const endpoint =
+                                                  hasExistingAddress
+                                                    ? `/api/fineract/clients/${fineractClientId}/addresses/${addressType}`
+                                                    : `/api/fineract/clients/${fineractClientId}/addresses`;
+                                                const method =
+                                                  hasExistingAddress
+                                                    ? "PUT"
+                                                    : "POST";
+
+                                                // Ensure editedAddress has the correct addressType
+                                                const addressPayload = {
+                                                  ...editedAddress,
+                                                  addressType: addressType, // Ensure we use the validated addressType
+                                                  dateFormat: "yyyy-MM-dd",
+                                                  locale: "en",
+                                                };
+
+                                                const response = await fetch(
+                                                  endpoint,
+                                                  {
+                                                    method,
+                                                    headers: {
+                                                      "Content-Type":
+                                                        "application/json",
+                                                    },
+                                                    body: JSON.stringify(
+                                                      addressPayload
+                                                    ),
+                                                  }
+                                                );
+
+                                                if (!response.ok) {
+                                                  const error =
+                                                    await response.json();
+                                                  throw new Error(
+                                                    error.error ||
+                                                      error.details
+                                                        ?.defaultUserMessage ||
+                                                      "Failed to save address"
+                                                  );
+                                                }
+
+                                                const savedAddress =
+                                                  await response.json();
+
+                                                // Refresh addresses list
+                                                const addressesResponse =
+                                                  await fetch(
+                                                    `/api/fineract/clients/${fineractClientId}/addresses`
+                                                  );
+                                                if (addressesResponse.ok) {
+                                                  const addressesData =
+                                                    await addressesResponse.json();
+                                                  const address = Array.isArray(
+                                                    addressesData
+                                                  )
+                                                    ? addressesData[0] || null
+                                                    : addressesData || null;
+                                                  setClientAddress(address);
+                                                }
+
+                                                setIsEditingAddress(false);
+                                                setEditedAddress({});
+
+                                                success({
+                                                  title: "Success",
+                                                  description:
+                                                    hasExistingAddress
+                                                      ? "Address updated successfully"
+                                                      : "Address created successfully",
+                                                });
+                                              } catch (err: any) {
+                                                console.error(
+                                                  "Error saving address:",
+                                                  err
+                                                );
+                                                error({
+                                                  title: "Error",
+                                                  description:
+                                                    err.message ||
+                                                    "Failed to save address",
+                                                });
+                                              } finally {
+                                                setSavingAddress(false);
+                                              }
+                                            }}
+                                            disabled={savingAddress}
+                                            className="gap-2 bg-blue-500 hover:bg-blue-600"
+                                          >
+                                            {savingAddress ? (
+                                              <>
+                                                <Loader2 className="h-4 w-4 animate-spin" />
+                                                Saving...
+                                              </>
+                                            ) : (
+                                              <>
+                                                <Save className="h-4 w-4" />
+                                                Save
+                                              </>
+                                            )}
+                                          </Button>
+                                        </div>
+                                      </div>
+                                    ) : clientAddress ? (
+                                      <div
+                                        className={`rounded-lg border border-${colors.borderColor} ${colors.cardBg} shadow-sm p-6`}
+                                      >
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                          {addressFieldConfig.length > 0 ? (
+                                            // Use field configuration if available
+                                            addressFieldConfig.map(
+                                              (fieldConfig: any) => {
+                                                const fieldName =
+                                                  fieldConfig.field;
+                                                let fieldValue =
+                                                  clientAddress[fieldName];
+
+                                                // Only show fields that have values and are enabled
+                                                if (
+                                                  !fieldValue &&
+                                                  fieldValue !== 0 &&
+                                                  fieldValue !== false
+                                                ) {
+                                                  return null;
+                                                }
+
+                                                const label =
+                                                  formatHeaderName(fieldName);
+
+                                                // Convert IDs to names for display FIRST (before number formatting)
+                                                // This must happen before the number formatting check
+                                                if (
+                                                  fieldName === "addressType"
+                                                ) {
+                                                  // Handle both number and string IDs
+                                                  const idValue =
+                                                    typeof fieldValue ===
+                                                    "string"
+                                                      ? parseInt(fieldValue)
+                                                      : fieldValue;
+
+                                                  if (
+                                                    idValue === 0 ||
+                                                    !idValue ||
+                                                    isNaN(idValue)
+                                                  ) {
+                                                    fieldValue = "Unknown";
+                                                  } else if (addressTemplate) {
+                                                    const addressTypeOptions =
+                                                      addressTemplate?.addressTypeIdOptions ||
+                                                      [];
+                                                    const matchingType =
+                                                      addressTypeOptions.find(
+                                                        (opt: any) =>
+                                                          opt.id === idValue
+                                                      );
+                                                    fieldValue =
+                                                      matchingType?.name?.trim() ||
+                                                      `Unknown (ID: ${idValue})`;
+                                                  } else if (
+                                                    typeof fieldValue ===
+                                                    "string"
+                                                  ) {
+                                                    fieldValue =
+                                                      fieldValue.trim();
+                                                  }
+                                                } else if (
+                                                  fieldName ===
+                                                  "stateProvinceId"
+                                                ) {
+                                                  // Handle both number and string IDs
+                                                  const idValue =
+                                                    typeof fieldValue ===
+                                                    "string"
+                                                      ? parseInt(fieldValue)
+                                                      : fieldValue;
+
+                                                  if (
+                                                    idValue === 0 ||
+                                                    !idValue ||
+                                                    isNaN(idValue)
+                                                  ) {
+                                                    fieldValue = "Unknown";
+                                                  } else if (addressTemplate) {
+                                                    const stateProvinceOptions =
+                                                      addressTemplate?.stateProvinceIdOptions ||
+                                                      [];
+                                                    const matchingState =
+                                                      stateProvinceOptions.find(
+                                                        (opt: any) =>
+                                                          opt.id === idValue
+                                                      );
+                                                    fieldValue =
+                                                      matchingState?.name?.trim() ||
+                                                      `Unknown (ID: ${idValue})`;
+                                                  }
+                                                } else if (
+                                                  fieldName === "countryId"
+                                                ) {
+                                                  // Handle both number and string IDs
+                                                  const idValue =
+                                                    typeof fieldValue ===
+                                                    "string"
+                                                      ? parseInt(fieldValue)
+                                                      : fieldValue;
+
+                                                  if (
+                                                    idValue === 0 ||
+                                                    !idValue ||
+                                                    isNaN(idValue)
+                                                  ) {
+                                                    fieldValue = "Unknown";
+                                                  } else if (addressTemplate) {
+                                                    const countryOptions =
+                                                      addressTemplate?.countryIdOptions ||
+                                                      [];
+                                                    const matchingCountry =
+                                                      countryOptions.find(
+                                                        (opt: any) =>
+                                                          opt.id === idValue
+                                                      );
+                                                    fieldValue =
+                                                      matchingCountry?.name?.trim() ||
+                                                      `Unknown (ID: ${idValue})`;
+                                                  }
+                                                }
+
+                                                // Format boolean values
+                                                if (fieldName === "isActive") {
+                                                  return (
+                                                    <div
+                                                      key={fieldName}
+                                                      className="space-y-1"
+                                                    >
+                                                      <p
+                                                        className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
+                                                      >
+                                                        {label}
+                                                      </p>
+                                                      <Badge
+                                                        variant={
+                                                          fieldValue
+                                                            ? "default"
+                                                            : "outline"
+                                                        }
+                                                        className={
+                                                          fieldValue
+                                                            ? "bg-green-500 hover:bg-green-600"
+                                                            : ""
+                                                        }
+                                                      >
+                                                        {fieldValue
+                                                          ? "Yes"
+                                                          : "No"}
+                                                      </Badge>
+                                                    </div>
+                                                  );
+                                                }
+
+                                                // Format number values (but skip ID fields that were already converted)
+                                                if (
+                                                  typeof fieldValue ===
+                                                    "number" &&
+                                                  fieldName !== "addressType" &&
+                                                  fieldName !==
+                                                    "stateProvinceId" &&
+                                                  fieldName !== "countryId"
+                                                ) {
+                                                  return (
+                                                    <div
+                                                      key={fieldName}
+                                                      className="space-y-1"
+                                                    >
+                                                      <p
+                                                        className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
+                                                      >
+                                                        {label}
+                                                      </p>
+                                                      <p
+                                                        className={`text-sm ${colors.textColor} font-medium`}
+                                                      >
+                                                        {fieldValue.toLocaleString()}
+                                                      </p>
+                                                    </div>
+                                                  );
+                                                }
+
+                                                // Default: text value
+                                                return (
+                                                  <div
+                                                    key={fieldName}
+                                                    className="space-y-1"
+                                                  >
+                                                    <p
+                                                      className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
+                                                    >
+                                                      {label}
+                                                    </p>
+                                                    <p
+                                                      className={`text-sm ${colors.textColor} font-medium`}
+                                                    >
+                                                      {String(fieldValue)}
+                                                    </p>
+                                                  </div>
+                                                );
+                                              }
+                                            )
+                                          ) : (
+                                            // Fallback: show common address fields if config not loaded yet
+                                            <>
+                                              {clientAddress.addressLine1 && (
+                                                <div className="space-y-1">
+                                                  <p
+                                                    className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
+                                                  >
+                                                    Address Line 1
+                                                  </p>
+                                                  <p
+                                                    className={`text-sm ${colors.textColor} font-medium`}
+                                                  >
+                                                    {clientAddress.addressLine1}
+                                                  </p>
+                                                </div>
+                                              )}
+                                              {clientAddress.addressLine2 && (
+                                                <div className="space-y-1">
+                                                  <p
+                                                    className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
+                                                  >
+                                                    Address Line 2
+                                                  </p>
+                                                  <p
+                                                    className={`text-sm ${colors.textColor} font-medium`}
+                                                  >
+                                                    {clientAddress.addressLine2}
+                                                  </p>
+                                                </div>
+                                              )}
+                                              {clientAddress.addressLine3 && (
+                                                <div className="space-y-1">
+                                                  <p
+                                                    className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
+                                                  >
+                                                    Address Line 3
+                                                  </p>
+                                                  <p
+                                                    className={`text-sm ${colors.textColor} font-medium`}
+                                                  >
+                                                    {clientAddress.addressLine3}
+                                                  </p>
+                                                </div>
+                                              )}
+                                              {clientAddress.city && (
+                                                <div className="space-y-1">
+                                                  <p
+                                                    className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
+                                                  >
+                                                    City
+                                                  </p>
+                                                  <p
+                                                    className={`text-sm ${colors.textColor} font-medium`}
+                                                  >
+                                                    {clientAddress.city}
+                                                  </p>
+                                                </div>
+                                              )}
+                                              {clientAddress.townVillage && (
+                                                <div className="space-y-1">
+                                                  <p
+                                                    className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
+                                                  >
+                                                    Town/Village
+                                                  </p>
+                                                  <p
+                                                    className={`text-sm ${colors.textColor} font-medium`}
+                                                  >
+                                                    {clientAddress.townVillage}
+                                                  </p>
+                                                </div>
+                                              )}
+                                              {clientAddress.postalCode && (
+                                                <div className="space-y-1">
+                                                  <p
+                                                    className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
+                                                  >
+                                                    Postal Code
+                                                  </p>
+                                                  <p
+                                                    className={`text-sm ${colors.textColor} font-medium`}
+                                                  >
+                                                    {clientAddress.postalCode}
+                                                  </p>
+                                                </div>
+                                              )}
+                                              {/* Show address type, state, and country with name conversion */}
+                                              {clientAddress.addressType !==
+                                                undefined && (
+                                                <div className="space-y-1">
+                                                  <p
+                                                    className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
+                                                  >
+                                                    Address Type
+                                                  </p>
+                                                  <p
+                                                    className={`text-sm ${colors.textColor} font-medium`}
+                                                  >
+                                                    {(() => {
+                                                      const addressTypeValue =
+                                                        clientAddress.addressType;
+                                                      if (
+                                                        addressTypeValue ===
+                                                          0 ||
+                                                        !addressTypeValue
+                                                      ) {
+                                                        return "Unknown";
+                                                      } else if (
+                                                        typeof addressTypeValue ===
+                                                          "number" &&
+                                                        addressTemplate
+                                                      ) {
+                                                        const addressTypeOptions =
+                                                          addressTemplate?.addressTypeIdOptions ||
+                                                          [];
+                                                        const matchingType =
+                                                          addressTypeOptions.find(
+                                                            (opt: any) =>
+                                                              opt.id ===
+                                                              addressTypeValue
+                                                          );
+                                                        return (
+                                                          matchingType?.name?.trim() ||
+                                                          `Unknown (ID: ${addressTypeValue})`
+                                                        );
+                                                      } else if (
+                                                        typeof addressTypeValue ===
+                                                        "string"
+                                                      ) {
+                                                        return addressTypeValue.trim();
+                                                      }
+                                                      return String(
+                                                        addressTypeValue
+                                                      );
+                                                    })()}
+                                                  </p>
+                                                </div>
+                                              )}
+                                              {clientAddress.stateProvinceId !==
+                                                undefined && (
+                                                <div className="space-y-1">
+                                                  <p
+                                                    className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
+                                                  >
+                                                    State/Province
+                                                  </p>
+                                                  <p
+                                                    className={`text-sm ${colors.textColor} font-medium`}
+                                                  >
+                                                    {(() => {
+                                                      const stateValue =
+                                                        clientAddress.stateProvinceId;
+                                                      if (
+                                                        stateValue === 0 ||
+                                                        !stateValue
+                                                      ) {
+                                                        return "Unknown";
+                                                      } else if (
+                                                        typeof stateValue ===
+                                                          "number" &&
+                                                        addressTemplate
+                                                      ) {
+                                                        const stateProvinceOptions =
+                                                          addressTemplate?.stateProvinceIdOptions ||
+                                                          [];
+                                                        const matchingState =
+                                                          stateProvinceOptions.find(
+                                                            (opt: any) =>
+                                                              opt.id ===
+                                                              stateValue
+                                                          );
+                                                        return (
+                                                          matchingState?.name?.trim() ||
+                                                          `Unknown (ID: ${stateValue})`
+                                                        );
+                                                      }
+                                                      return String(stateValue);
+                                                    })()}
+                                                  </p>
+                                                </div>
+                                              )}
+                                              {clientAddress.countryId !==
+                                                undefined && (
+                                                <div className="space-y-1">
+                                                  <p
+                                                    className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
+                                                  >
+                                                    Country
+                                                  </p>
+                                                  <p
+                                                    className={`text-sm ${colors.textColor} font-medium`}
+                                                  >
+                                                    {(() => {
+                                                      const countryValue =
+                                                        clientAddress.countryId;
+                                                      if (
+                                                        countryValue === 0 ||
+                                                        !countryValue
+                                                      ) {
+                                                        return "Unknown";
+                                                      } else if (
+                                                        typeof countryValue ===
+                                                          "number" &&
+                                                        addressTemplate
+                                                      ) {
+                                                        const countryOptions =
+                                                          addressTemplate?.countryIdOptions ||
+                                                          [];
+                                                        const matchingCountry =
+                                                          countryOptions.find(
+                                                            (opt: any) =>
+                                                              opt.id ===
+                                                              countryValue
+                                                          );
+                                                        return (
+                                                          matchingCountry?.name?.trim() ||
+                                                          `Unknown (ID: ${countryValue})`
+                                                        );
+                                                      }
+                                                      return String(
+                                                        countryValue
+                                                      );
+                                                    })()}
+                                                  </p>
+                                                </div>
+                                              )}
+                                            </>
+                                          )}
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <div
+                                        className={`rounded-lg border border-dashed border-${colors.borderColor} ${colors.cardBg} p-6 text-center`}
+                                      >
+                                        <MapPin className="h-8 w-8 mx-auto mb-2 text-gray-400" />
+                                        <p
+                                          className={`text-sm ${colors.textColorMuted}`}
+                                        >
+                                          No address information available
+                                        </p>
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  {/* Data Tables */}
+                                  <div className="space-y-4">
+                                    <div className="flex items-center gap-2 pb-2 border-b border-gray-200 dark:border-gray-700">
+                                      <Database className="h-5 w-5 text-blue-500" />
+                                      <h3
+                                        className={`text-lg font-semibold ${colors.textColor}`}
+                                      >
+                                        Associated Data Tables
+                                      </h3>
+                                    </div>
+                                    {dataTables.length > 0 ? (
+                                      <div className="space-y-6">
+                                        {dataTables.map((table: any) => (
+                                          <div
+                                            key={
+                                              table.registeredTableName ||
+                                              table.datatableName
+                                            }
+                                            className={`rounded-lg border border-${colors.borderColor} ${colors.cardBg} shadow-sm`}
+                                          >
+                                            <div className="px-6 pt-6 pb-4 border-b border-gray-200 dark:border-gray-700">
+                                              <h4
+                                                className={`text-base font-semibold ${colors.textColor} flex items-center gap-2`}
+                                              >
+                                                <Building2 className="h-4 w-4 text-blue-500" />
+                                                {table.registeredTableName ||
+                                                  table.displayName ||
+                                                  table.datatableName}
+                                              </h4>
+                                            </div>
+                                            <div className="p-6">
+                                              {fineractClientId && (
+                                                <DynamicDatatableContent
+                                                  datatableName={
+                                                    table.registeredTableName ||
+                                                    table.datatableName
+                                                  }
+                                                  clientId={fineractClientId}
+                                                />
+                                              )}
+                                            </div>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    ) : (
+                                      <Card
+                                        className={`border-${colors.borderColor} ${colors.cardBg} border-dashed`}
+                                      >
+                                        <CardContent className="p-6 text-center">
+                                          <Database className="h-8 w-8 mx-auto mb-2 text-gray-400" />
+                                          <p
+                                            className={`text-sm ${colors.textColorMuted}`}
+                                          >
+                                            No data tables configured
+                                          </p>
+                                        </CardContent>
+                                      </Card>
+                                    )}
+                                  </div>
+
+                                  {/* Family Members / Next of Kin */}
+                                  <div className="space-y-4">
+                                    <div className="flex items-center justify-between pb-2 border-b border-gray-200 dark:border-gray-700">
+                                      <div className="flex items-center gap-2">
+                                        <Users className="h-5 w-5 text-blue-500" />
+                                        <h3
+                                          className={`text-lg font-semibold ${colors.textColor}`}
+                                        >
+                                          Family Members / Next of Kin
+                                        </h3>
+                                      </div>
+                                      {!isAddingFamilyMember && (
+                                        <Button
+                                          type="button"
+                                          onClick={() => {
+                                            setIsAddingFamilyMember(true);
+                                            setEditingFamilyMember({});
+                                          }}
+                                          className="bg-blue-500 hover:bg-blue-600 text-white"
+                                          size="sm"
+                                        >
+                                          <UserPlus className="h-4 w-4 mr-2" />
+                                          Add Next of Kin
+                                        </Button>
+                                      )}
+                                    </div>
+
+                                    {/* Inline Add Form */}
+                                    {isAddingFamilyMember && (
+                                      <Card
+                                        className={`border-${colors.borderColor} ${colors.cardBg} border-2 border-blue-500`}
+                                      >
+                                        <CardContent className="p-6">
+                                          <h4
+                                            className={`font-semibold mb-4 ${colors.textColor}`}
+                                          >
+                                            Add Next of Kin
+                                          </h4>
+                                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div className="space-y-2">
+                                              <Label
+                                                className={colors.textColor}
+                                              >
+                                                First Name{" "}
+                                                <span className="text-red-500">
+                                                  *
+                                                </span>
+                                              </Label>
+                                              <Input
+                                                value={
+                                                  editingFamilyMember.firstname ||
+                                                  ""
+                                                }
+                                                onChange={(e) =>
+                                                  setEditingFamilyMember({
+                                                    ...editingFamilyMember,
+                                                    firstname: e.target.value,
+                                                  })
+                                                }
+                                                placeholder="First name"
+                                                className={colors.inputBg}
+                                              />
+                                            </div>
+                                            <div className="space-y-2">
+                                              <Label
+                                                className={colors.textColor}
+                                              >
+                                                Middle Name
+                                              </Label>
+                                              <Input
+                                                value={
+                                                  editingFamilyMember.middlename ||
+                                                  ""
+                                                }
+                                                onChange={(e) =>
+                                                  setEditingFamilyMember({
+                                                    ...editingFamilyMember,
+                                                    middlename: e.target.value,
+                                                  })
+                                                }
+                                                placeholder="Middle name"
+                                                className={colors.inputBg}
+                                              />
+                                            </div>
+                                            <div className="space-y-2">
+                                              <Label
+                                                className={colors.textColor}
+                                              >
+                                                Last Name{" "}
+                                                <span className="text-red-500">
+                                                  *
+                                                </span>
+                                              </Label>
+                                              <Input
+                                                value={
+                                                  editingFamilyMember.lastname ||
+                                                  ""
+                                                }
+                                                onChange={(e) =>
+                                                  setEditingFamilyMember({
+                                                    ...editingFamilyMember,
+                                                    lastname: e.target.value,
+                                                  })
+                                                }
+                                                placeholder="Last name"
+                                                className={colors.inputBg}
+                                              />
+                                            </div>
+                                            <div className="space-y-2">
+                                              <Label
+                                                className={colors.textColor}
+                                              >
+                                                Relationship{" "}
+                                                <span className="text-red-500">
+                                                  *
+                                                </span>
+                                              </Label>
+                                              <SearchableSelect
+                                                options={relationshipOptions}
+                                                value={
+                                                  editingFamilyMember.relationship ||
+                                                  ""
+                                                }
+                                                onValueChange={(value) =>
+                                                  setEditingFamilyMember({
+                                                    ...editingFamilyMember,
+                                                    relationship: value,
+                                                  })
+                                                }
+                                                placeholder="Select relationship"
+                                                className={`border-${colors.borderColor} ${colors.inputBg}`}
+                                                onAddNew={() =>
+                                                  setShowAddRelationshipDialog(
+                                                    true
+                                                  )
+                                                }
+                                                addNewLabel="Add new relationship"
+                                              />
+                                            </div>
+                                            <div className="space-y-2">
+                                              <Label
+                                                className={colors.textColor}
+                                              >
+                                                Mobile Number
+                                              </Label>
+                                              <Input
+                                                value={
+                                                  editingFamilyMember.mobileNo ||
+                                                  ""
+                                                }
+                                                onChange={(e) =>
+                                                  setEditingFamilyMember({
+                                                    ...editingFamilyMember,
+                                                    mobileNo: e.target.value,
+                                                  })
+                                                }
+                                                placeholder="Mobile number"
+                                                className={colors.inputBg}
+                                              />
+                                            </div>
+                                            <div className="space-y-2">
+                                              <Label
+                                                className={colors.textColor}
+                                              >
+                                                Email Address
+                                              </Label>
+                                              <Input
+                                                type="email"
+                                                value={
+                                                  editingFamilyMember.emailAddress ||
+                                                  ""
+                                                }
+                                                onChange={(e) =>
+                                                  setEditingFamilyMember({
+                                                    ...editingFamilyMember,
+                                                    emailAddress:
+                                                      e.target.value,
+                                                  })
+                                                }
+                                                placeholder="Email address"
+                                                className={colors.inputBg}
+                                              />
+                                            </div>
+                                            <div className="space-y-2">
+                                              <Label
+                                                className={colors.textColor}
+                                              >
+                                                Date of Birth
+                                              </Label>
+                                              <Input
+                                                type="date"
+                                                value={
+                                                  editingFamilyMember.dateOfBirth
+                                                    ? new Date(
+                                                        editingFamilyMember.dateOfBirth
+                                                      )
+                                                        .toISOString()
+                                                        .split("T")[0]
+                                                    : ""
+                                                }
+                                                onChange={(e) =>
+                                                  setEditingFamilyMember({
+                                                    ...editingFamilyMember,
+                                                    dateOfBirth: e.target.value
+                                                      ? new Date(e.target.value)
+                                                      : undefined,
+                                                  })
+                                                }
+                                                className={colors.inputBg}
+                                              />
+                                            </div>
+                                            <div className="space-y-2 flex items-center">
+                                              <Checkbox
+                                                id="isDependent"
+                                                checked={
+                                                  editingFamilyMember.isDependent ||
+                                                  false
+                                                }
+                                                onCheckedChange={(checked) =>
+                                                  setEditingFamilyMember({
+                                                    ...editingFamilyMember,
+                                                    isDependent: checked,
+                                                  })
+                                                }
+                                              />
+                                              <Label
+                                                htmlFor="isDependent"
+                                                className={`ml-2 ${colors.textColor}`}
+                                              >
+                                                Is Dependent
+                                              </Label>
+                                            </div>
+                                          </div>
+                                          <div className="flex gap-2 justify-end mt-4">
+                                            <Button
+                                              type="button"
+                                              variant="outline"
+                                              size="sm"
+                                              onClick={() => {
+                                                setIsAddingFamilyMember(false);
+                                                setEditingFamilyMember({});
+                                              }}
+                                            >
+                                              Cancel
+                                            </Button>
+                                            <Button
+                                              type="button"
+                                              size="sm"
+                                              onClick={async () => {
+                                                if (
+                                                  !editingFamilyMember.firstname ||
+                                                  !editingFamilyMember.lastname ||
+                                                  !editingFamilyMember.relationship
+                                                ) {
+                                                  error({
+                                                    title: "Validation Error",
+                                                    description:
+                                                      "Please fill in all required fields",
+                                                  });
+                                                  return;
+                                                }
+                                                await handleAddFamilyMember(
+                                                  editingFamilyMember as FamilyMemberValues
+                                                );
+                                                setIsAddingFamilyMember(false);
+                                                setEditingFamilyMember({});
+                                              }}
+                                              className="bg-blue-500 hover:bg-blue-600"
+                                            >
+                                              Save
+                                            </Button>
+                                          </div>
+                                        </CardContent>
+                                      </Card>
+                                    )}
+
+                                    {/* Existing Family Members */}
+                                    {familyMembers.length > 0 && (
+                                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        {familyMembers.map(
+                                          (member: any, index: number) => (
+                                            <Card
+                                              key={member.id || index}
+                                              className={`border-${colors.borderColor} ${colors.cardBg} shadow-sm hover:shadow-md transition-shadow`}
+                                            >
+                                              <CardContent className="p-5">
+                                                {editingFamilyMemberIndex ===
+                                                index ? (
+                                                  // Edit Mode
+                                                  <div className="space-y-4">
+                                                    <h4
+                                                      className={`font-semibold mb-4 ${colors.textColor}`}
+                                                    >
+                                                      Edit Next of Kin
+                                                    </h4>
+                                                    <div className="grid grid-cols-1 gap-3">
+                                                      <div className="space-y-2">
+                                                        <Label
+                                                          className={
+                                                            colors.textColor
+                                                          }
+                                                        >
+                                                          First Name{" "}
+                                                          <span className="text-red-500">
+                                                            *
+                                                          </span>
+                                                        </Label>
+                                                        <Input
+                                                          value={
+                                                            editingFamilyMember.firstname ||
+                                                            ""
+                                                          }
+                                                          onChange={(e) =>
+                                                            setEditingFamilyMember(
+                                                              {
+                                                                ...editingFamilyMember,
+                                                                firstname:
+                                                                  e.target
+                                                                    .value,
+                                                              }
+                                                            )
+                                                          }
+                                                          className={
+                                                            colors.inputBg
+                                                          }
+                                                        />
+                                                      </div>
+                                                      <div className="space-y-2">
+                                                        <Label
+                                                          className={
+                                                            colors.textColor
+                                                          }
+                                                        >
+                                                          Middle Name
+                                                        </Label>
+                                                        <Input
+                                                          value={
+                                                            editingFamilyMember.middlename ||
+                                                            ""
+                                                          }
+                                                          onChange={(e) =>
+                                                            setEditingFamilyMember(
+                                                              {
+                                                                ...editingFamilyMember,
+                                                                middlename:
+                                                                  e.target
+                                                                    .value,
+                                                              }
+                                                            )
+                                                          }
+                                                          className={
+                                                            colors.inputBg
+                                                          }
+                                                        />
+                                                      </div>
+                                                      <div className="space-y-2">
+                                                        <Label
+                                                          className={
+                                                            colors.textColor
+                                                          }
+                                                        >
+                                                          Last Name{" "}
+                                                          <span className="text-red-500">
+                                                            *
+                                                          </span>
+                                                        </Label>
+                                                        <Input
+                                                          value={
+                                                            editingFamilyMember.lastname ||
+                                                            ""
+                                                          }
+                                                          onChange={(e) =>
+                                                            setEditingFamilyMember(
+                                                              {
+                                                                ...editingFamilyMember,
+                                                                lastname:
+                                                                  e.target
+                                                                    .value,
+                                                              }
+                                                            )
+                                                          }
+                                                          className={
+                                                            colors.inputBg
+                                                          }
+                                                        />
+                                                      </div>
+                                                      <div className="space-y-2">
+                                                        <Label
+                                                          className={
+                                                            colors.textColor
+                                                          }
+                                                        >
+                                                          Relationship{" "}
+                                                          <span className="text-red-500">
+                                                            *
+                                                          </span>
+                                                        </Label>
+                                                        <SearchableSelect
+                                                          options={
+                                                            relationshipOptions
+                                                          }
+                                                          value={
+                                                            editingFamilyMember.relationship ||
+                                                            ""
+                                                          }
+                                                          onValueChange={(
+                                                            value
+                                                          ) =>
+                                                            setEditingFamilyMember(
+                                                              {
+                                                                ...editingFamilyMember,
+                                                                relationship:
+                                                                  value,
+                                                              }
+                                                            )
+                                                          }
+                                                          placeholder="Select relationship"
+                                                          className={`border-${colors.borderColor} ${colors.inputBg}`}
+                                                          onAddNew={() =>
+                                                            setShowAddRelationshipDialog(
+                                                              true
+                                                            )
+                                                          }
+                                                          addNewLabel="Add new relationship"
+                                                        />
+                                                      </div>
+                                                      <div className="space-y-2">
+                                                        <Label
+                                                          className={
+                                                            colors.textColor
+                                                          }
+                                                        >
+                                                          Mobile Number
+                                                        </Label>
+                                                        <Input
+                                                          value={
+                                                            editingFamilyMember.mobileNo ||
+                                                            ""
+                                                          }
+                                                          onChange={(e) =>
+                                                            setEditingFamilyMember(
+                                                              {
+                                                                ...editingFamilyMember,
+                                                                mobileNo:
+                                                                  e.target
+                                                                    .value,
+                                                              }
+                                                            )
+                                                          }
+                                                          className={
+                                                            colors.inputBg
+                                                          }
+                                                        />
+                                                      </div>
+                                                      <div className="space-y-2">
+                                                        <Label
+                                                          className={
+                                                            colors.textColor
+                                                          }
+                                                        >
+                                                          Email Address
+                                                        </Label>
+                                                        <Input
+                                                          type="email"
+                                                          value={
+                                                            editingFamilyMember.emailAddress ||
+                                                            ""
+                                                          }
+                                                          onChange={(e) =>
+                                                            setEditingFamilyMember(
+                                                              {
+                                                                ...editingFamilyMember,
+                                                                emailAddress:
+                                                                  e.target
+                                                                    .value,
+                                                              }
+                                                            )
+                                                          }
+                                                          className={
+                                                            colors.inputBg
+                                                          }
+                                                        />
+                                                      </div>
+                                                      <div className="space-y-2">
+                                                        <Label
+                                                          className={
+                                                            colors.textColor
+                                                          }
+                                                        >
+                                                          Date of Birth
+                                                        </Label>
+                                                        <Input
+                                                          type="date"
+                                                          value={
+                                                            editingFamilyMember.dateOfBirth
+                                                              ? new Date(
+                                                                  editingFamilyMember.dateOfBirth
+                                                                )
+                                                                  .toISOString()
+                                                                  .split("T")[0]
+                                                              : ""
+                                                          }
+                                                          onChange={(e) =>
+                                                            setEditingFamilyMember(
+                                                              {
+                                                                ...editingFamilyMember,
+                                                                dateOfBirth: e
+                                                                  .target.value
+                                                                  ? new Date(
+                                                                      e.target.value
+                                                                    )
+                                                                  : undefined,
+                                                              }
+                                                            )
+                                                          }
+                                                          className={
+                                                            colors.inputBg
+                                                          }
+                                                        />
+                                                      </div>
+                                                      <div className="flex items-center space-x-2">
+                                                        <Checkbox
+                                                          id={`isDependent-${index}`}
+                                                          checked={
+                                                            editingFamilyMember.isDependent ||
+                                                            false
+                                                          }
+                                                          onCheckedChange={(
+                                                            checked
+                                                          ) =>
+                                                            setEditingFamilyMember(
+                                                              {
+                                                                ...editingFamilyMember,
+                                                                isDependent:
+                                                                  checked,
+                                                              }
+                                                            )
+                                                          }
+                                                        />
+                                                        <Label
+                                                          htmlFor={`isDependent-${index}`}
+                                                          className={
+                                                            colors.textColor
+                                                          }
+                                                        >
+                                                          Is Dependent
+                                                        </Label>
+                                                      </div>
+                                                    </div>
+                                                    <div className="flex gap-2 justify-end mt-4">
+                                                      <Button
+                                                        type="button"
+                                                        variant="outline"
+                                                        size="sm"
+                                                        onClick={() => {
+                                                          setEditingFamilyMemberIndex(
+                                                            null
+                                                          );
+                                                          setEditingFamilyMember(
+                                                            {}
+                                                          );
+                                                        }}
+                                                      >
+                                                        Cancel
+                                                      </Button>
+                                                      <Button
+                                                        type="button"
+                                                        size="sm"
+                                                        onClick={async () => {
+                                                          if (
+                                                            !editingFamilyMember.firstname ||
+                                                            !editingFamilyMember.lastname ||
+                                                            !editingFamilyMember.relationship
+                                                          ) {
+                                                            error({
+                                                              title:
+                                                                "Validation Error",
+                                                              description:
+                                                                "Please fill in all required fields",
+                                                            });
+                                                            return;
+                                                          }
+                                                          // Update existing member
+                                                          await handleAddFamilyMember(
+                                                            editingFamilyMember as FamilyMemberValues
+                                                          );
+                                                          setEditingFamilyMemberIndex(
+                                                            null
+                                                          );
+                                                          setEditingFamilyMember(
+                                                            {}
+                                                          );
+                                                        }}
+                                                        className="bg-blue-500 hover:bg-blue-600"
+                                                      >
+                                                        Save
+                                                      </Button>
+                                                    </div>
+                                                  </div>
+                                                ) : (
+                                                  // View Mode
+                                                  <div className="space-y-3">
+                                                    <div className="flex items-start justify-between">
+                                                      <div className="flex-1">
+                                                        <h4
+                                                          className={`font-semibold text-base ${colors.textColor} mb-1`}
+                                                        >
+                                                          {member.firstname}{" "}
+                                                          {member.middlename ||
+                                                            ""}{" "}
+                                                          {member.lastname}
+                                                        </h4>
+                                                        {member.relationship && (
+                                                          <Badge
+                                                            variant="outline"
+                                                            className="mt-1"
+                                                          >
+                                                            {
+                                                              member.relationship
+                                                            }
+                                                          </Badge>
+                                                        )}
+                                                      </div>
+                                                      <div className="flex gap-2">
+                                                        {member.isDependent && (
+                                                          <Badge className="bg-blue-500">
+                                                            Dependent
+                                                          </Badge>
+                                                        )}
+                                                        <Button
+                                                          type="button"
+                                                          variant="ghost"
+                                                          size="sm"
+                                                          onClick={() => {
+                                                            setEditingFamilyMemberIndex(
+                                                              index
+                                                            );
+                                                            setEditingFamilyMember(
+                                                              {
+                                                                ...member,
+                                                                dateOfBirth:
+                                                                  member.dateOfBirth
+                                                                    ? new Date(
+                                                                        member.dateOfBirth
+                                                                      )
+                                                                    : undefined,
+                                                              }
+                                                            );
+                                                          }}
+                                                        >
+                                                          <Edit2 className="h-4 w-4" />
+                                                        </Button>
+                                                        <Button
+                                                          type="button"
+                                                          variant="ghost"
+                                                          size="sm"
+                                                          onClick={() =>
+                                                            handleRemoveFamilyMember(
+                                                              member.id
+                                                            )
+                                                          }
+                                                          className="text-red-500 hover:text-red-700"
+                                                        >
+                                                          <X className="h-4 w-4" />
+                                                        </Button>
+                                                      </div>
+                                                    </div>
+                                                    <div className="space-y-2 pt-2 border-t border-gray-200 dark:border-gray-700">
+                                                      {member.mobileNo && (
+                                                        <div className="flex items-center gap-2">
+                                                          <p
+                                                            className={`text-xs font-medium ${colors.textColorMuted} w-20`}
+                                                          >
+                                                            Mobile:
+                                                          </p>
+                                                          <p
+                                                            className={`text-sm ${colors.textColor}`}
+                                                          >
+                                                            {member.mobileNo}
+                                                          </p>
+                                                        </div>
+                                                      )}
+                                                      {member.emailAddress && (
+                                                        <div className="flex items-center gap-2">
+                                                          <p
+                                                            className={`text-xs font-medium ${colors.textColorMuted} w-20`}
+                                                          >
+                                                            Email:
+                                                          </p>
+                                                          <p
+                                                            className={`text-sm ${colors.textColor}`}
+                                                          >
+                                                            {
+                                                              member.emailAddress
+                                                            }
+                                                          </p>
+                                                        </div>
+                                                      )}
+                                                      {member.dateOfBirth && (
+                                                        <div className="flex items-center gap-2">
+                                                          <p
+                                                            className={`text-xs font-medium ${colors.textColorMuted} w-20`}
+                                                          >
+                                                            DOB:
+                                                          </p>
+                                                          <p
+                                                            className={`text-sm ${colors.textColor}`}
+                                                          >
+                                                            {new Date(
+                                                              member.dateOfBirth
+                                                            ).toLocaleDateString()}
+                                                          </p>
+                                                        </div>
+                                                      )}
+                                                    </div>
+                                                  </div>
+                                                )}
+                                              </CardContent>
+                                            </Card>
+                                          )
+                                        )}
+                                      </div>
+                                    )}
+
+                                    {familyMembers.length === 0 &&
+                                      !isAddingFamilyMember && (
+                                        <Card
+                                          className={`border-${colors.borderColor} ${colors.cardBg} border-dashed`}
+                                        >
+                                          <CardContent className="p-6 text-center">
+                                            <Users className="h-8 w-8 mx-auto mb-2 text-gray-400" />
+                                            <p
+                                              className={`text-sm ${colors.textColorMuted} mb-4`}
+                                            >
+                                              No family members or next of kin
+                                              added yet
+                                            </p>
+                                          </CardContent>
+                                        </Card>
+                                      )}
+                                  </div>
+                                </>
+                              )}
+                            </CardContent>
+                          </Card>
+                        </TabsContent>
+                      )}
+                    </Tabs>
                   )}
                 </FormWrapper>
               );
@@ -4095,7 +9855,7 @@ export function ClientRegistrationForm({
                     </div>
                   </div>
                 </CardContent>
-                <CardFooter className="flex justify-between">
+                <CardFooter className="flex justify-between pt-4">
                   <Button
                     type="button"
                     variant="outline"
@@ -4116,6 +9876,94 @@ export function ClientRegistrationForm({
                       </>
                     ) : (
                       "Add Gender"
+                    )}
+                  </Button>
+                </CardFooter>
+              </form>
+            </Card>
+          </div>
+        )}
+
+        {/* Add Document Type Dialog */}
+        {showAddDocumentTypeDialog && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <Card
+              className={`w-full max-w-md border-${colors.borderColor} ${colors.cardBg}`}
+            >
+              <CardHeader>
+                <CardTitle className={colors.textColor}>
+                  Add New Document Type
+                </CardTitle>
+                <CardDescription className={colors.textColorMuted}>
+                  Enter the details of the new document type.
+                </CardDescription>
+              </CardHeader>
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  documentTypeForm.handleSubmit(handleAddDocumentType)(e);
+                }}
+              >
+                <CardContent>
+                  <div className="space-y-6">
+                    <div className="space-y-3">
+                      <Label htmlFor="docTypeName" className={colors.textColor}>
+                        Document Type Name{" "}
+                        <span className="text-red-500">*</span>
+                      </Label>
+                      <Input
+                        id="docTypeName"
+                        placeholder="Enter document type name"
+                        className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
+                        {...documentTypeForm.register("name")}
+                      />
+                      {documentTypeForm.formState.errors.name && (
+                        <p className="text-sm text-red-500">
+                          {documentTypeForm.formState.errors.name.message}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="space-y-3">
+                      <Label
+                        htmlFor="docTypeDescription"
+                        className={colors.textColor}
+                      >
+                        Description
+                      </Label>
+                      <Input
+                        id="docTypeDescription"
+                        placeholder="Enter description"
+                        className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
+                        {...documentTypeForm.register("description")}
+                      />
+                    </div>
+                  </div>
+                </CardContent>
+                <CardFooter className="flex justify-between pt-4">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setShowAddDocumentTypeDialog(false);
+                      documentTypeForm.reset();
+                    }}
+                    className={`border-${colors.borderColor} hover:bg-${colors.hoverBgColor}`}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    className="bg-blue-500 hover:bg-blue-600"
+                    disabled={isAddingNew}
+                  >
+                    {isAddingNew ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Adding...
+                      </>
+                    ) : (
+                      "Add Document Type"
                     )}
                   </Button>
                 </CardFooter>
@@ -4171,7 +10019,7 @@ export function ClientRegistrationForm({
                     </div>
                   </div>
                 </CardContent>
-                <CardFooter className="flex justify-between">
+                <CardFooter className="flex justify-between pt-4">
                   <Button
                     type="button"
                     variant="outline"
@@ -4255,7 +10103,7 @@ export function ClientRegistrationForm({
                     </div>
                   </div>
                 </CardContent>
-                <CardFooter className="flex justify-between">
+                <CardFooter className="flex justify-between pt-4">
                   <Button
                     type="button"
                     variant="outline"
@@ -4276,6 +10124,85 @@ export function ClientRegistrationForm({
                       </>
                     ) : (
                       "Add Classification"
+                    )}
+                  </Button>
+                </CardFooter>
+              </form>
+            </Card>
+          </div>
+        )}
+
+        {/* Add Relationship Dialog */}
+        {showAddRelationshipDialog && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <Card
+              className={`w-full max-w-md border-${colors.borderColor} ${colors.cardBg}`}
+            >
+              <CardHeader>
+                <CardTitle className={colors.textColor}>
+                  Add New Relationship
+                </CardTitle>
+                <CardDescription className={colors.textColorMuted}>
+                  Enter the details of the new relationship type.
+                </CardDescription>
+              </CardHeader>
+              <form
+                onSubmit={relationshipForm.handleSubmit(handleAddRelationship)}
+              >
+                <CardContent>
+                  <div className="space-y-6">
+                    <div className="space-y-3">
+                      <Label htmlFor="name" className={colors.textColor}>
+                        Relationship Name{" "}
+                        <span className="text-red-500">*</span>
+                      </Label>
+                      <Input
+                        id="name"
+                        placeholder="Enter relationship name"
+                        className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
+                        {...relationshipForm.register("name")}
+                      />
+                      {relationshipForm.formState.errors.name && (
+                        <p className="text-sm text-red-500">
+                          {relationshipForm.formState.errors.name.message}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="space-y-3">
+                      <Label htmlFor="description" className={colors.textColor}>
+                        Description
+                      </Label>
+                      <Input
+                        id="description"
+                        placeholder="Enter description"
+                        className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
+                        {...relationshipForm.register("description")}
+                      />
+                    </div>
+                  </div>
+                </CardContent>
+                <CardFooter className="flex justify-between pt-4">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setShowAddRelationshipDialog(false)}
+                    className={`border-${colors.borderColor} hover:bg-${colors.hoverBgColor}`}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    className="bg-blue-500 hover:bg-blue-600"
+                    disabled={isAddingNew}
+                  >
+                    {isAddingNew ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Adding...
+                      </>
+                    ) : (
+                      "Add Relationship"
                     )}
                   </Button>
                 </CardFooter>
@@ -4405,6 +10332,239 @@ export function ClientRegistrationForm({
           </div>
         )}
 
+        {/* Add Address Type Dialog */}
+        {showAddAddressTypeDialog && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <Card
+              className={`w-full max-w-md border-${colors.borderColor} ${colors.cardBg}`}
+            >
+              <CardHeader>
+                <CardTitle className={colors.textColor}>
+                  Add New Address Type
+                </CardTitle>
+                <CardDescription className={colors.textColorMuted}>
+                  Enter the details of the new address type.
+                </CardDescription>
+              </CardHeader>
+              <form
+                onSubmit={addressTypeForm.handleSubmit(handleAddAddressType)}
+              >
+                <CardContent>
+                  <div className="space-y-6">
+                    <div className="space-y-3">
+                      <Label htmlFor="name" className={colors.textColor}>
+                        Address Type Name{" "}
+                        <span className="text-red-500">*</span>
+                      </Label>
+                      <Input
+                        id="name"
+                        placeholder="Enter address type name"
+                        className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
+                        {...addressTypeForm.register("name")}
+                      />
+                      {addressTypeForm.formState.errors.name && (
+                        <p className="text-sm text-red-500">
+                          {addressTypeForm.formState.errors.name.message}
+                        </p>
+                      )}
+                    </div>
+                    <div className="space-y-3">
+                      <Label htmlFor="description" className={colors.textColor}>
+                        Description
+                      </Label>
+                      <Input
+                        id="description"
+                        placeholder="Enter description"
+                        className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
+                        {...addressTypeForm.register("description")}
+                      />
+                    </div>
+                  </div>
+                </CardContent>
+                <CardFooter className="flex justify-between pt-4">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setShowAddAddressTypeDialog(false)}
+                    className={`border-${colors.borderColor} hover:bg-${colors.hoverBgColor}`}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    className="bg-blue-500 hover:bg-blue-600"
+                    disabled={isAddingNew}
+                  >
+                    {isAddingNew ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Adding...
+                      </>
+                    ) : (
+                      "Add Address Type"
+                    )}
+                  </Button>
+                </CardFooter>
+              </form>
+            </Card>
+          </div>
+        )}
+
+        {/* Add Country Dialog */}
+        {showAddCountryDialog && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <Card
+              className={`w-full max-w-md border-${colors.borderColor} ${colors.cardBg}`}
+            >
+              <CardHeader>
+                <CardTitle className={colors.textColor}>
+                  Add New Country
+                </CardTitle>
+                <CardDescription className={colors.textColorMuted}>
+                  Enter the details of the new country.
+                </CardDescription>
+              </CardHeader>
+              <form onSubmit={countryForm.handleSubmit(handleAddCountry)}>
+                <CardContent>
+                  <div className="space-y-6">
+                    <div className="space-y-3">
+                      <Label htmlFor="name" className={colors.textColor}>
+                        Country Name <span className="text-red-500">*</span>
+                      </Label>
+                      <Input
+                        id="name"
+                        placeholder="Enter country name"
+                        className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
+                        {...countryForm.register("name")}
+                      />
+                      {countryForm.formState.errors.name && (
+                        <p className="text-sm text-red-500">
+                          {countryForm.formState.errors.name.message}
+                        </p>
+                      )}
+                    </div>
+                    <div className="space-y-3">
+                      <Label htmlFor="description" className={colors.textColor}>
+                        Description
+                      </Label>
+                      <Input
+                        id="description"
+                        placeholder="Enter description"
+                        className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
+                        {...countryForm.register("description")}
+                      />
+                    </div>
+                  </div>
+                </CardContent>
+                <CardFooter className="flex justify-between pt-4">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setShowAddCountryDialog(false)}
+                    className={`border-${colors.borderColor} hover:bg-${colors.hoverBgColor}`}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    className="bg-blue-500 hover:bg-blue-600"
+                    disabled={isAddingNew}
+                  >
+                    {isAddingNew ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Adding...
+                      </>
+                    ) : (
+                      "Add Country"
+                    )}
+                  </Button>
+                </CardFooter>
+              </form>
+            </Card>
+          </div>
+        )}
+
+        {/* Add State/Province Dialog */}
+        {showAddStateProvinceDialog && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <Card
+              className={`w-full max-w-md border-${colors.borderColor} ${colors.cardBg}`}
+            >
+              <CardHeader>
+                <CardTitle className={colors.textColor}>
+                  Add New State/Province
+                </CardTitle>
+                <CardDescription className={colors.textColorMuted}>
+                  Enter the details of the new state/province.
+                </CardDescription>
+              </CardHeader>
+              <form
+                onSubmit={stateProvinceForm.handleSubmit(
+                  handleAddStateProvince
+                )}
+              >
+                <CardContent>
+                  <div className="space-y-6">
+                    <div className="space-y-3">
+                      <Label htmlFor="name" className={colors.textColor}>
+                        State/Province Name{" "}
+                        <span className="text-red-500">*</span>
+                      </Label>
+                      <Input
+                        id="name"
+                        placeholder="Enter state/province name"
+                        className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
+                        {...stateProvinceForm.register("name")}
+                      />
+                      {stateProvinceForm.formState.errors.name && (
+                        <p className="text-sm text-red-500">
+                          {stateProvinceForm.formState.errors.name.message}
+                        </p>
+                      )}
+                    </div>
+                    <div className="space-y-3">
+                      <Label htmlFor="description" className={colors.textColor}>
+                        Description
+                      </Label>
+                      <Input
+                        id="description"
+                        placeholder="Enter description"
+                        className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
+                        {...stateProvinceForm.register("description")}
+                      />
+                    </div>
+                  </div>
+                </CardContent>
+                <CardFooter className="flex justify-between pt-4">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setShowAddStateProvinceDialog(false)}
+                    className={`border-${colors.borderColor} hover:bg-${colors.hoverBgColor}`}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    className="bg-blue-500 hover:bg-blue-600"
+                    disabled={isAddingNew}
+                  >
+                    {isAddingNew ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Adding...
+                      </>
+                    ) : (
+                      "Add State/Province"
+                    )}
+                  </Button>
+                </CardFooter>
+              </form>
+            </Card>
+          </div>
+        )}
+
         {/* Close Lead Dialog */}
         {showCloseDialog && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -4463,320 +10623,51 @@ export function ClientRegistrationForm({
           </div>
         )}
 
-        {/* Add Family Member Dialog */}
-        {showFamilyMemberDialog && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <Card
-              className={`w-full max-w-md border-${colors.borderColor} ${colors.cardBg}`}
-            >
-              <CardHeader>
-                <CardTitle className={colors.textColor}>
-                  Add Next of Kin
-                </CardTitle>
-                <CardDescription className={colors.textColorMuted}>
-                  Enter the details of the client's next of kin.
-                </CardDescription>
-              </CardHeader>
-              <div>
-                <CardContent>
-                  <div className="space-y-6">
-                    <div className="grid grid-cols-2 gap-6">
-                      {/* First Name */}
-                      <div className="space-y-3">
-                        <Label htmlFor="firstname" className={colors.textColor}>
-                          First Name <span className="text-red-500">*</span>
-                        </Label>
-                        <p className={`text-xs ${colors.textColorMuted}`}>
-                          First name of next of kin
-                        </p>
-                        <Input
-                          id="firstname"
-                          placeholder="Enter first name"
-                          className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
-                          {...familyMemberForm.register("firstname")}
-                        />
-                        {familyMemberForm.formState.errors.firstname && (
-                          <p className="text-sm text-red-500">
-                            {
-                              familyMemberForm.formState.errors.firstname
-                                .message
-                            }
-                          </p>
-                        )}
-                      </div>
-
-                      {/* Last Name */}
-                      <div className="space-y-3">
-                        <Label htmlFor="lastname" className={colors.textColor}>
-                          Last Name <span className="text-red-500">*</span>
-                        </Label>
-                        <p className={`text-xs ${colors.textColorMuted}`}>
-                          Last name of next of kin
-                        </p>
-                        <Input
-                          id="lastname"
-                          placeholder="Enter last name"
-                          className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
-                          {...familyMemberForm.register("lastname")}
-                        />
-                        {familyMemberForm.formState.errors.lastname && (
-                          <p className="text-sm text-red-500">
-                            {familyMemberForm.formState.errors.lastname.message}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Middle Name */}
-                    <div className="space-y-3">
-                      <Label htmlFor="middlename" className={colors.textColor}>
-                        Middle Name
-                      </Label>
-                      <p className={`text-xs ${colors.textColorMuted}`}>
-                        Middle name of next of kin (if applicable)
-                      </p>
-                      <Input
-                        id="middlename"
-                        placeholder="Enter middle name"
-                        className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
-                        {...familyMemberForm.register("middlename")}
-                      />
-                    </div>
-
-                    {/* Relationship */}
-                    <div className="space-y-3">
-                      <Label
-                        htmlFor="relationship"
-                        className={colors.textColor}
-                      >
-                        Relationship <span className="text-red-500">*</span>
-                      </Label>
-                      <p className={`text-xs ${colors.textColorMuted}`}>
-                        Relationship to the client
-                      </p>
-                      <Controller
-                        control={familyMemberForm.control}
-                        name="relationship"
-                        render={({ field }) => (
-                          <Select
-                            onValueChange={field.onChange}
-                            defaultValue={field.value}
-                          >
-                            <SelectTrigger
-                              className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
-                            >
-                              <SelectValue placeholder="Select relationship" />
-                            </SelectTrigger>
-                            <SelectContent
-                              className={`border-${colors.borderColor} ${colors.dropdownBg} ${colors.textColor}`}
-                            >
-                              <SelectItem value="Spouse">Spouse</SelectItem>
-                              <SelectItem value="Child">Child</SelectItem>
-                              <SelectItem value="Parent">Parent</SelectItem>
-                              <SelectItem value="Sibling">Sibling</SelectItem>
-                              <SelectItem value="Other">Other</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        )}
-                      />
-                      {familyMemberForm.formState.errors.relationship && (
-                        <p className="text-sm text-red-500">
-                          {
-                            familyMemberForm.formState.errors.relationship
-                              .message
-                          }
-                        </p>
-                      )}
-                    </div>
-
-                    {/* Date of Birth */}
-                    <div className="space-y-3">
-                      <Label htmlFor="dateOfBirth" className={colors.textColor}>
-                        Date of Birth
-                      </Label>
-                      <p className={`text-xs ${colors.textColorMuted}`}>
-                        Date of birth of next of kin
-                      </p>
-                      <Controller
-                        control={familyMemberForm.control}
-                        name="dateOfBirth"
-                        render={({ field }) => (
-                          <Popover>
-                            <PopoverTrigger asChild>
-                              <Button
-                                variant="outline"
-                                className={cn(
-                                  "h-10 w-full justify-start text-left font-normal",
-                                  !field.value && "text-muted-foreground",
-                                  `border-${colors.borderColor} ${colors.inputBg}`
-                                )}
-                              >
-                                <CalendarIcon className="mr-2 h-4 w-4" />
-                                {field.value ? (
-                                  format(field.value, "PPP")
-                                ) : (
-                                  <span>Pick a date</span>
-                                )}
-                              </Button>
-                            </PopoverTrigger>
-                            <PopoverContent
-                              className="w-auto p-0"
-                              align="start"
-                            >
-                              <Calendar
-                                mode="single"
-                                selected={field.value}
-                                onSelect={field.onChange}
-                                disabled={(date) =>
-                                  date > new Date() ||
-                                  date < new Date("1900-01-01")
-                                }
-                                captionLayout="dropdown"
-                                initialFocus
-                              />
-                            </PopoverContent>
-                          </Popover>
-                        )}
-                      />
-                    </div>
-
-                    {/* Mobile Number */}
-                    <div className="space-y-3">
-                      <Label htmlFor="mobileNo" className={colors.textColor}>
-                        Mobile Number
-                      </Label>
-                      <p className={`text-xs ${colors.textColorMuted}`}>
-                        Contact number for next of kin
-                      </p>
-                      <div className="flex space-x-2">
-                        <Select defaultValue="+263">
-                          <SelectTrigger
-                            className={`h-10 w-24 sm:w-28 lg:w-32 border-${colors.borderColor} ${colors.inputBg} flex-shrink-0`}
-                          >
-                            <SelectValue placeholder="+263" />
-                          </SelectTrigger>
-                          <SelectContent
-                            className={`border-${colors.borderColor} ${colors.dropdownBg} ${colors.textColor}`}
-                          >
-                            <SelectItem value="+263">🇿🇼 +263</SelectItem>
-                            <SelectItem value="+27">🇿🇦 +27</SelectItem>
-                            <SelectItem value="+260">🇿🇲 +260</SelectItem>
-                            <SelectItem value="+258">🇲🇿 +258</SelectItem>
-                            <SelectItem value="+265">🇲🇼 +265</SelectItem>
-                            <SelectItem value="+266">🇱🇸 +266</SelectItem>
-                            <SelectItem value="+267">🇧🇼 +267</SelectItem>
-                            <SelectItem value="+268">🇸🇿 +268</SelectItem>
-                            <SelectItem value="+236">🇨🇫 +236</SelectItem>
-                            <SelectItem value="+257">🇧🇮 +257</SelectItem>
-                            <SelectItem value="+253">🇩🇯 +253</SelectItem>
-                            <SelectItem value="+291">🇪🇷 +291</SelectItem>
-                            <SelectItem value="+251">🇪🇹 +251</SelectItem>
-                            <SelectItem value="+254">🇰🇪 +254</SelectItem>
-                            <SelectItem value="+250">🇷🇼 +250</SelectItem>
-                            <SelectItem value="+248">🇸🇨 +248</SelectItem>
-                            <SelectItem value="+255">🇹🇿 +255</SelectItem>
-                            <SelectItem value="+256">🇺🇬 +256</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <Input
-                          id="mobileNo"
-                          placeholder="Enter mobile number"
-                          className={`h-10 flex-1 border-${colors.borderColor} ${colors.inputBg}`}
-                          {...familyMemberForm.register("mobileNo")}
-                        />
-                      </div>
-                    </div>
-
-                    {/* Email Address */}
-                    <div className="space-y-3">
-                      <Label
-                        htmlFor="emailAddress"
-                        className={colors.textColor}
-                      >
-                        Email Address
-                      </Label>
-                      <p className={`text-xs ${colors.textColorMuted}`}>
-                        Email address for next of kin
-                      </p>
-                      <Input
-                        id="emailAddress"
-                        type="email"
-                        placeholder="Enter email address"
-                        className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
-                        {...familyMemberForm.register("emailAddress")}
-                      />
-                      {familyMemberForm.formState.errors.emailAddress && (
-                        <p className="text-sm text-red-500">
-                          {
-                            familyMemberForm.formState.errors.emailAddress
-                              .message
-                          }
-                        </p>
-                      )}
-                    </div>
-
-                    {/* Is Dependent */}
-                    <div className="space-y-3">
-                      <Label htmlFor="isDependent" className={colors.textColor}>
-                        Dependency Status
-                      </Label>
-                      <Card
-                        className={`border-${colors.borderColor} ${colors.cardBg} flex flex-row items-center justify-between p-4`}
-                      >
-                        <div className="flex items-center space-x-2">
-                          <Controller
-                            control={familyMemberForm.control}
-                            name="isDependent"
-                            render={({ field }) => (
-                              <Checkbox
-                                id="isDependent"
-                                checked={field.value}
-                                onCheckedChange={field.onChange}
-                              />
-                            )}
-                          />
-                          <Label
-                            htmlFor="isDependent"
-                            className={colors.textColor}
-                          >
-                            Is dependent
-                          </Label>
-                        </div>
-                        <p className={`text-xs ${colors.textColorMuted}`}>
-                          Indicate if this person is financially dependent on
-                          the client
-                        </p>
-                      </Card>
-                    </div>
-                  </div>
-                </CardContent>
-                <CardFooter className="flex justify-between">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setShowFamilyMemberDialog(false)}
-                    className={`border-${colors.borderColor} hover:bg-${colors.hoverBgColor}`}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    type="button"
-                    onClick={async () => {
-                      const data = familyMemberForm.getValues();
-                      const isValid = await familyMemberForm.trigger();
-                      if (isValid) {
-                        handleAddFamilyMember(data);
-                      }
-                    }}
-                    className="bg-blue-500 hover:bg-blue-600"
-                  >
-                    Add
-                  </Button>
-                </CardFooter>
-              </div>
-            </Card>
-          </div>
-        )}
+        {/* Delete Identifier Confirmation Dialog */}
+        <Dialog
+          open={showDeleteConfirmDialog}
+          onOpenChange={setShowDeleteConfirmDialog}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Trash2 className="h-5 w-5 text-red-500" />
+                Delete Identifier
+              </DialogTitle>
+              <DialogDescription>
+                Are you sure you want to delete this identifier? This action
+                cannot be undone.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setShowDeleteConfirmDialog(false);
+                  setIdentifierToDelete(null);
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                onClick={handleConfirmDeleteIdentifier}
+                disabled={deletingIdentifierId !== null}
+              >
+                {deletingIdentifierId ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Deleting...
+                  </>
+                ) : (
+                  "Delete"
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </>
   );

@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Check, ChevronsUpDown, Plus, Search, X } from "lucide-react";
+import { Check, ChevronsUpDown, Plus, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
@@ -22,6 +22,7 @@ import {
 export type Option = {
   value: string;
   label: string;
+  disabled?: boolean;
 };
 
 interface SearchableSelectProps {
@@ -90,7 +91,6 @@ export function SearchableSelect({
       <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0">
         <Command>
           <div className="flex items-center border-b px-3">
-            <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
             <CommandInput
               placeholder="Search..."
               className="h-9 flex-1"
@@ -116,10 +116,16 @@ export function SearchableSelect({
                   key={option.value}
                   value={option.value}
                   onSelect={(currentValue) => {
-                    onValueChange(currentValue);
-                    setOpen(false);
-                    setSearchQuery("");
+                    if (!option.disabled) {
+                      onValueChange(currentValue);
+                      setOpen(false);
+                      setSearchQuery("");
+                    }
                   }}
+                  disabled={option.disabled}
+                  className={cn(
+                    option.disabled && "opacity-50 cursor-not-allowed"
+                  )}
                 >
                   <Check
                     className={cn(

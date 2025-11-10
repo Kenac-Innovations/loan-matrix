@@ -170,9 +170,13 @@ export function NewLeadForm() {
   // Check if client exists in Fineract by National ID
   const checkClientExists = async (nationalId: string) => {
     try {
-      const response = await fetch(
-        `/api/fineract/clients/external-id/${nationalId}`
-      );
+      const response = await fetch(`/api/fineract/clients/external-id`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ externalId: nationalId }),
+      });
       if (response.ok) {
         const clientData = await response.json();
         setClientCreatedInFineract(true);
