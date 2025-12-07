@@ -41,6 +41,9 @@ RUN pnpm prisma generate
 # Uncomment the following line in case you want to disable telemetry during the build.
 # ENV NEXT_TELEMETRY_DISABLED=1
 
+# Provide dummy DATABASE_URL for build time (Prisma needs it to initialize, but won't connect)
+ENV DATABASE_URL="postgresql://dummy:dummy@localhost:5432/dummy"
+
 RUN pnpm run build
 
 # Production image, copy all the files and run next
