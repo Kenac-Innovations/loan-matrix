@@ -49,14 +49,14 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // If the user is authenticated and trying to access login page, redirect to dashboard
+  // If the user is authenticated and trying to access login page, redirect to leads
   if (pathname === "/auth/login" && token) {
-    return NextResponse.redirect(new URL("/dashboard", request.url));
+    return NextResponse.redirect(new URL("/leads", request.url));
   }
 
-  // If the user is authenticated and accessing the root, redirect to dashboard
+  // If the user is authenticated and accessing the root, redirect to leads
   if (pathname === "/" && token) {
-    return NextResponse.redirect(new URL("/dashboard", request.url));
+    return NextResponse.redirect(new URL("/leads", request.url));
   }
 
   return tenantResponse || NextResponse.next();

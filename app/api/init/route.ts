@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
   try {
     // Check if default tenant exists
     const { getTenantBySlug } = await import("@/lib/tenant-service");
-    const tenant = await getTenantBySlug("default");
+    const tenant = await getTenantBySlug("goodfellow");
 
     return NextResponse.json({
       initialized: !!tenant,

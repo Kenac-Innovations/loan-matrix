@@ -154,6 +154,7 @@ interface LeadData {
 
 export function LeadDetails({ leadId }: LeadDetailsProps) {
   const [leadData, setLeadData] = useState<LeadData | null>(null);
+  const [loanInfo, setLoanInfo] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { colors, getOptions } = useChartTheme();
@@ -162,12 +163,21 @@ export function LeadDetails({ leadId }: LeadDetailsProps) {
     const fetchLeadData = async () => {
       try {
         setLoading(true);
-        const response = await fetch(`/api/leads/${leadId}`);
-        if (!response.ok) {
+
+        // Fetch lead data
+        const leadResponse = await fetch(`/api/leads/${leadId}`);
+        if (!leadResponse.ok) {
           throw new Error("Failed to fetch lead data");
         }
-        const data = await response.json();
-        setLeadData(data);
+        const leadData = await leadResponse.json();
+        setLeadData(leadData);
+
+        // Fetch loan information
+        const loanInfoResponse = await fetch(`/api/leads/${leadId}/loan-info`);
+        if (loanInfoResponse.ok) {
+          const loanInfoData = await loanInfoResponse.json();
+          setLoanInfo(loanInfoData);
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : "An error occurred");
       } finally {
@@ -373,66 +383,468 @@ export function LeadDetails({ leadId }: LeadDetailsProps) {
           </TabsTrigger>
         </TabsList>
         <TabsContent value="loan" className="mt-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Loan Information</CardTitle>
-              <CardDescription>
-                Details about the requested loan
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
-                <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground">Status</p>
-                  <p className="text-sm font-medium">{leadData.status}</p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground">External ID</p>
-                  <p className="text-sm font-medium">
-                    {leadData.externalId || "Not provided"}
-                  </p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground">Gender</p>
-                  <p className="text-sm font-medium">
-                    {leadData.gender || "Not specified"}
-                  </p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground">Date of Birth</p>
-                  <p className="text-sm font-medium">
-                    {leadData.dateOfBirth
-                      ? new Date(leadData.dateOfBirth).toLocaleDateString()
-                      : "Not provided"}
-                  </p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground">
-                    Application Date
-                  </p>
-                  <p className="text-sm font-medium">
-                    {new Date(leadData.createdAt).toLocaleDateString()}
-                  </p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground">Last Updated</p>
-                  <p className="text-sm font-medium">
-                    {new Date(leadData.updatedAt).toLocaleDateString()}
-                  </p>
-                </div>
-                <div className="col-span-full space-y-1">
-                  <p className="text-xs text-muted-foreground">
-                    Family Members
-                  </p>
-                  <p className="text-sm font-medium">
-                    {leadData.familyMembers.length > 0
-                      ? `${leadData.familyMembers.length} family member(s) registered`
-                      : "No family members registered"}
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+          <div className="space-y-6">
+            {/* Fineract Loan Info */}
+            {loanInfo &&
+              (loanInfo.fineractClientId || loanInfo.fineractLoanId) && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Fineract Integration</CardTitle>
+                    <CardDescription>
+                      Client and Loan IDs in Fineract system
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                      <div className="space-y-1">
+                        <p className="text-xs text-muted-foreground">
+                          Fineract Client ID
+                        </p>
+                        <p className="text-sm font-medium">
+                          {loanInfo.fineractClientId || "Not created"}
+                        </p>
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-xs text-muted-foreground">
+                          Fineract Loan ID
+                        </p>
+                        <p className="text-sm font-medium">
+                          {loanInfo.fineractLoanId ? (
+                            <Badge className="bg-green-500 text-white border-0">
+                              {loanInfo.fineractLoanId}
+                            </Badge>
+                          ) : (
+                            "Not created"
+                          )}
+                        </p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+            {/* Loan Details */}
+            {loanInfo?.loanDetails && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Loan Details</CardTitle>
+                  <CardDescription>
+                    Product and disbursement information
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground">
+                        Loan Product
+                      </p>
+                      <p className="text-sm font-medium">
+                        {loanInfo.loanDetails.productName || "Not specified"}
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground">
+                        Loan Officer
+                      </p>
+                      <p className="text-sm font-medium">
+                        {loanInfo.loanDetails.loanOfficerName || "Not assigned"}
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground">
+                        Loan Purpose
+                      </p>
+                      <p className="text-sm font-medium">
+                        {loanInfo.loanDetails.loanPurposeName ||
+                          "Not specified"}
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground">
+                        Submitted On
+                      </p>
+                      <p className="text-sm font-medium">
+                        {loanInfo.loanDetails.submittedOn
+                          ? new Date(
+                              loanInfo.loanDetails.submittedOn
+                            ).toLocaleDateString()
+                          : "Not submitted"}
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground">
+                        Expected Disbursement
+                      </p>
+                      <p className="text-sm font-medium">
+                        {loanInfo.loanDetails.disbursementOn
+                          ? new Date(
+                              loanInfo.loanDetails.disbursementOn
+                            ).toLocaleDateString()
+                          : "Not specified"}
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground">Fund</p>
+                      <p className="text-sm font-medium">
+                        {loanInfo.loanDetails.fundName || "No fund specified"}
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Loan Terms */}
+            {loanInfo?.loanTerms && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Loan Terms & Conditions</CardTitle>
+                  <CardDescription>
+                    Interest rates, repayment schedule, and charges
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-6">
+                    {/* Principal and Interest */}
+                    <div>
+                      <h4 className="text-sm font-medium mb-3">
+                        Principal & Interest
+                      </h4>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                        <div className="text-center p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                          <p className="text-2xl font-bold text-blue-600">
+                            $
+                            {loanInfo.loanTerms.principal?.toLocaleString() ||
+                              0}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            Principal
+                          </p>
+                        </div>
+                        <div className="text-center p-3 bg-green-50 dark:bg-green-900/20 rounded-lg">
+                          <p className="text-2xl font-bold text-green-600">
+                            {loanInfo.loanTerms.nominalInterestRate || 0}%
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            Interest Rate
+                          </p>
+                        </div>
+                        <div className="text-center p-3 bg-purple-50 dark:bg-purple-900/20 rounded-lg">
+                          <p className="text-2xl font-bold text-purple-600">
+                            {loanInfo.loanTerms.numberOfRepayments || 0}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            # of Repayments
+                          </p>
+                        </div>
+                        <div className="text-center p-3 bg-orange-50 dark:bg-orange-900/20 rounded-lg">
+                          <p className="text-2xl font-bold text-orange-600">
+                            {loanInfo.loanTerms.loanTerm || 0} months
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            Loan Term
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Charges */}
+                    {loanInfo.loanTerms.charges &&
+                      loanInfo.loanTerms.charges.length > 0 && (
+                        <div>
+                          <h4 className="text-sm font-medium mb-3">
+                            Loan Charges
+                          </h4>
+                          <div className="border rounded-lg overflow-hidden">
+                            <div className="bg-muted/50 px-4 py-2 grid grid-cols-3 gap-4 text-xs font-medium">
+                              <div>Charge Name</div>
+                              <div>Amount</div>
+                              <div>Due Date</div>
+                            </div>
+                            {loanInfo.loanTerms.charges.map(
+                              (charge: any, index: number) => (
+                                <div
+                                  key={index}
+                                  className="px-4 py-3 grid grid-cols-3 gap-4 text-sm border-t"
+                                >
+                                  <div>{charge.chargeName || "N/A"}</div>
+                                  <div className="font-medium">
+                                    ${charge.amount?.toLocaleString() || 0}
+                                  </div>
+                                  <div className="text-muted-foreground">
+                                    {charge.dueDate || "N/A"}
+                                  </div>
+                                </div>
+                              )
+                            )}
+                          </div>
+                        </div>
+                      )}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Repayment Schedule */}
+            {loanInfo?.repaymentSchedule && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Repayment Schedule</CardTitle>
+                  <CardDescription>
+                    Detailed payment schedule and totals
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {loanInfo.repaymentSchedule.periods &&
+                  loanInfo.repaymentSchedule.periods.length > 0 ? (
+                    <div className="space-y-4">
+                      {/* Summary */}
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-muted/50 rounded-lg">
+                        <div className="text-center">
+                          <p className="text-lg font-bold">
+                            $
+                            {loanInfo.repaymentSchedule.totalPrincipalExpected?.toLocaleString() ||
+                              0}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            Total Principal
+                          </p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-lg font-bold text-green-600">
+                            $
+                            {loanInfo.repaymentSchedule.totalInterestCharged?.toLocaleString() ||
+                              0}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            Total Interest
+                          </p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-lg font-bold text-orange-600">
+                            $
+                            {loanInfo.repaymentSchedule.totalFeeChargesCharged?.toLocaleString() ||
+                              0}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            Total Fees
+                          </p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-lg font-bold text-blue-600">
+                            $
+                            {loanInfo.repaymentSchedule.totalRepaymentExpected?.toLocaleString() ||
+                              0}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            Total Repayment
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Schedule Table */}
+                      <div className="border rounded-lg overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead className="bg-muted/50">
+                            <tr>
+                              <th className="px-4 py-2 text-left">#</th>
+                              <th className="px-4 py-2 text-left">Due Date</th>
+                              <th className="px-4 py-2 text-right">
+                                Principal
+                              </th>
+                              <th className="px-4 py-2 text-right">Interest</th>
+                              <th className="px-4 py-2 text-right">Fees</th>
+                              <th className="px-4 py-2 text-right">
+                                Total Due
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {loanInfo.repaymentSchedule.periods
+                              .filter((period: any) => period.period > 0)
+                              .map((period: any) => (
+                                <tr key={period.period} className="border-t">
+                                  <td className="px-4 py-2">{period.period}</td>
+                                  <td className="px-4 py-2">
+                                    {period.dueDate?.join("-") || "N/A"}
+                                  </td>
+                                  <td className="px-4 py-2 text-right">
+                                    $
+                                    {period.principalDue?.toLocaleString() || 0}
+                                  </td>
+                                  <td className="px-4 py-2 text-right">
+                                    ${period.interestDue?.toLocaleString() || 0}
+                                  </td>
+                                  <td className="px-4 py-2 text-right">
+                                    $
+                                    {period.feeChargesDue?.toLocaleString() ||
+                                      0}
+                                  </td>
+                                  <td className="px-4 py-2 text-right font-medium">
+                                    $
+                                    {period.totalDueForPeriod?.toLocaleString() ||
+                                      0}
+                                  </td>
+                                </tr>
+                              ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      No repayment schedule available
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Signatures */}
+            {loanInfo?.signatures && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Contract Signatures</CardTitle>
+                  <CardDescription>
+                    Signatures collected during contract signing
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div className="p-4 border rounded-lg">
+                      <p className="text-xs text-muted-foreground mb-2">
+                        Borrower Signature
+                      </p>
+                      <div className="flex items-center gap-2">
+                        {loanInfo.signatures.borrowerSignature ? (
+                          <CheckCircle className="h-5 w-5 text-green-600" />
+                        ) : (
+                          <Clock className="h-5 w-5 text-yellow-600" />
+                        )}
+                        <p className="text-sm font-medium">
+                          {loanInfo.signatures.borrowerSignature
+                            ? "Signed"
+                            : "Pending"}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="p-4 border rounded-lg">
+                      <p className="text-xs text-muted-foreground mb-2">
+                        Guarantor Signature
+                      </p>
+                      <div className="flex items-center gap-2">
+                        {loanInfo.signatures.guarantorSignature ? (
+                          <CheckCircle className="h-5 w-5 text-green-600" />
+                        ) : (
+                          <Clock className="h-5 w-5 text-gray-400" />
+                        )}
+                        <p className="text-sm font-medium">
+                          {loanInfo.signatures.guarantorSignature
+                            ? "Signed"
+                            : "N/A"}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="p-4 border rounded-lg">
+                      <p className="text-xs text-muted-foreground mb-2">
+                        Loan Officer Signature
+                      </p>
+                      <div className="flex items-center gap-2">
+                        {loanInfo.signatures.loanOfficerSignature ? (
+                          <CheckCircle className="h-5 w-5 text-green-600" />
+                        ) : (
+                          <Clock className="h-5 w-5 text-yellow-600" />
+                        )}
+                        <p className="text-sm font-medium">
+                          {loanInfo.signatures.loanOfficerSignature
+                            ? "Signed"
+                            : "Pending"}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                  {loanInfo.signatures.completedAt && (
+                    <div className="mt-4 p-4 bg-green-50 dark:bg-green-900/20 rounded-lg">
+                      <p className="text-sm">
+                        <strong>Completed:</strong>{" "}
+                        {new Date(
+                          loanInfo.signatures.completedAt
+                        ).toLocaleString()}
+                      </p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Basic Info (when no loan info available) */}
+            {!loanInfo?.loanDetails && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Basic Information</CardTitle>
+                  <CardDescription>Lead details</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground">Status</p>
+                      <p className="text-sm font-medium">{leadData.status}</p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground">
+                        External ID
+                      </p>
+                      <p className="text-sm font-medium">
+                        {leadData.externalId || "Not provided"}
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground">Gender</p>
+                      <p className="text-sm font-medium">
+                        {leadData.gender || "Not specified"}
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground">
+                        Date of Birth
+                      </p>
+                      <p className="text-sm font-medium">
+                        {leadData.dateOfBirth
+                          ? new Date(leadData.dateOfBirth).toLocaleDateString()
+                          : "Not provided"}
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground">
+                        Application Date
+                      </p>
+                      <p className="text-sm font-medium">
+                        {new Date(leadData.createdAt).toLocaleDateString()}
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground">
+                        Last Updated
+                      </p>
+                      <p className="text-sm font-medium">
+                        {new Date(leadData.updatedAt).toLocaleDateString()}
+                      </p>
+                    </div>
+                    <div className="col-span-full space-y-1">
+                      <p className="text-xs text-muted-foreground">
+                        Family Members
+                      </p>
+                      <p className="text-sm font-medium">
+                        {leadData.familyMembers.length > 0
+                          ? `${leadData.familyMembers.length} family member(s) registered`
+                          : "No family members registered"}
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </div>
         </TabsContent>
         <TabsContent value="financials" className="mt-4">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

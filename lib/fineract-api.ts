@@ -855,6 +855,388 @@ export class FineractAPIService {
       throw error;
     }
   }
+
+  // Teller operations
+  async getTellers(officeId?: number): Promise<any[]> {
+    try {
+      let url = "/tellers";
+      if (officeId) {
+        url += `?officeId=${officeId}`;
+      }
+      const response: AxiosResponse<any> = await this.client.get(url);
+
+      // Handle different response structures
+      if (Array.isArray(response.data)) {
+        return response.data;
+      } else if (
+        response.data?.pageItems &&
+        Array.isArray(response.data.pageItems)
+      ) {
+        return response.data.pageItems;
+      } else if (
+        response.data?.content &&
+        Array.isArray(response.data.content)
+      ) {
+        return response.data.content;
+      }
+      return [];
+    } catch (error) {
+      console.error("Fineract API Error:", error);
+      throw error;
+    }
+  }
+
+  async getTeller(tellerId: number): Promise<any> {
+    try {
+      const response: AxiosResponse<any> = await this.client.get(
+        `/tellers/${tellerId}`
+      );
+      return response.data;
+    } catch (error: any) {
+      console.error("Fineract API Error getting teller:", {
+        message: error.message,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data,
+      });
+      throw error;
+    }
+  }
+
+  async createTeller(tellerData: any): Promise<any> {
+    try {
+      console.log(
+        "Creating teller with data:",
+        JSON.stringify(tellerData, null, 2)
+      );
+      const response: AxiosResponse<any> = await this.client.post(
+        "/tellers",
+        tellerData
+      );
+      return response.data;
+    } catch (error: any) {
+      console.error("Fineract API Error creating teller:", {
+        message: error.message,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data,
+      });
+      throw error;
+    }
+  }
+
+  async updateTeller(tellerId: number, tellerData: any): Promise<any> {
+    try {
+      const response: AxiosResponse<any> = await this.client.put(
+        `/tellers/${tellerId}`,
+        tellerData
+      );
+      return response.data;
+    } catch (error) {
+      console.error("Fineract API Error:", error);
+      throw error;
+    }
+  }
+
+  async deleteTeller(tellerId: number): Promise<any> {
+    try {
+      const response: AxiosResponse<any> = await this.client.delete(
+        `/tellers/${tellerId}`
+      );
+      return response.data;
+    } catch (error) {
+      console.error("Fineract API Error:", error);
+      throw error;
+    }
+  }
+
+  // Cashier operations
+  async getCashiers(tellerId: number): Promise<any[]> {
+    try {
+      const response: AxiosResponse<any> = await this.client.get(
+        `/tellers/${tellerId}/cashiers`
+      );
+
+      // Handle different response structures
+      // Fineract returns: { tellerId, tellerName, officeId, officeName, cashiers: [...] }
+      if (response.data?.cashiers && Array.isArray(response.data.cashiers)) {
+        return response.data.cashiers;
+      } else if (Array.isArray(response.data)) {
+        return response.data;
+      } else if (
+        response.data?.pageItems &&
+        Array.isArray(response.data.pageItems)
+      ) {
+        return response.data.pageItems;
+      } else if (
+        response.data?.content &&
+        Array.isArray(response.data.content)
+      ) {
+        return response.data.content;
+      }
+      return [];
+    } catch (error: any) {
+      console.error("Fineract API Error getting cashiers:", {
+        message: error.message,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data,
+      });
+      throw error;
+    }
+  }
+
+  async getCashier(tellerId: number, cashierId: number): Promise<any> {
+    try {
+      const response: AxiosResponse<any> = await this.client.get(
+        `/tellers/${tellerId}/cashiers/${cashierId}`
+      );
+      return response.data;
+    } catch (error) {
+      console.error("Fineract API Error:", error);
+      throw error;
+    }
+  }
+
+  async createCashier(
+    tellerId: number,
+    cashierData: {
+      staffId: number;
+      description?: string;
+      startDate: string;
+      endDate?: string;
+      isFullDay: boolean;
+      dateFormat?: string;
+      locale?: string;
+    }
+  ): Promise<any> {
+    try {
+      const payload = {
+        staffId: cashierData.staffId,
+        description: cashierData.description || "",
+        startDate: cashierData.startDate,
+        endDate: cashierData.endDate || "",
+        isFullDay: cashierData.isFullDay,
+        dateFormat: cashierData.dateFormat || "dd MMMM yyyy",
+        locale: cashierData.locale || "en",
+      };
+      console.log(
+        "Creating cashier with data:",
+        JSON.stringify(payload, null, 2)
+      );
+      const response: AxiosResponse<any> = await this.client.post(
+        `/tellers/${tellerId}/cashiers`,
+        payload
+      );
+      return response.data;
+    } catch (error: any) {
+      const errorDetails = {
+        message: error.message,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data,
+        errors: error.response?.data?.errors,
+      };
+      console.error(
+        "Fineract API Error creating cashier:",
+        JSON.stringify(errorDetails, null, 2)
+      );
+      throw error;
+    }
+  }
+
+  async allocateCashToTeller(
+    tellerId: number,
+    allocationData: {
+      amount: number;
+      currency?: string;
+      date?: string;
+      notes?: string;
+    }
+  ): Promise<any> {
+    try {
+      const response: AxiosResponse<any> = await this.client.post(
+        `/tellers/${tellerId}/cashiers/allocate`,
+        allocationData
+      );
+      return response.data;
+    } catch (error) {
+      console.error("Fineract API Error:", error);
+      throw error;
+    }
+  }
+
+  async allocateCashToCashier(
+    tellerId: number,
+    cashierId: number,
+    allocationData: {
+      txnDate: string;
+      currencyCode: string;
+      txnAmount: string;
+      txnNote?: string;
+      dateFormat?: string;
+      locale?: string;
+    }
+  ): Promise<any> {
+    try {
+      const response: AxiosResponse<any> = await this.client.post(
+        `/tellers/${tellerId}/cashiers/${cashierId}/allocate?command=allocate`,
+        {
+          ...allocationData,
+          dateFormat: allocationData.dateFormat || "dd MMMM yyyy",
+          locale: allocationData.locale || "en",
+        }
+      );
+      return response.data;
+    } catch (error: any) {
+      console.error("Fineract API Error allocating cash to cashier:", {
+        message: error.message,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data,
+      });
+      throw error;
+    }
+  }
+
+  async settleCashForCashier(
+    tellerId: number,
+    cashierId: number,
+    settlementData: {
+      closingBalance: number;
+      notes?: string;
+    }
+  ): Promise<any> {
+    try {
+      const response: AxiosResponse<any> = await this.client.post(
+        `/tellers/${tellerId}/cashiers/${cashierId}/settle`,
+        settlementData
+      );
+      return response.data;
+    } catch (error) {
+      console.error("Fineract API Error:", error);
+      throw error;
+    }
+  }
+
+  async getCashierTransactions(
+    tellerId: number,
+    cashierId: number,
+    fromDate?: string,
+    toDate?: string
+  ): Promise<any[]> {
+    try {
+      let url = `/tellers/${tellerId}/cashiers/${cashierId}/transactions`;
+      const params = new URLSearchParams();
+      if (fromDate) params.append("fromDate", fromDate);
+      if (toDate) params.append("toDate", toDate);
+      if (params.toString()) {
+        url += `?${params.toString()}`;
+      }
+      const response: AxiosResponse<any> = await this.client.get(url);
+      return Array.isArray(response.data) ? response.data : [];
+    } catch (error) {
+      console.error("Fineract API Error:", error);
+      throw error;
+    }
+  }
+
+  async getTellerSummary(tellerId: number): Promise<any> {
+    try {
+      const response: AxiosResponse<any> = await this.client.get(
+        `/tellers/${tellerId}/summary`
+      );
+      return response.data;
+    } catch (error) {
+      console.error("Fineract API Error:", error);
+      throw error;
+    }
+  }
+
+  async getCurrencies(): Promise<any> {
+    try {
+      const response: AxiosResponse<any> = await this.client.get("/currencies");
+      return response.data;
+    } catch (error) {
+      console.error("Fineract API Error getting currencies:", error);
+      throw error;
+    }
+  }
+
+  // Session management
+  async startCashierSession(
+    tellerId: number,
+    cashierId: number,
+    sessionData?: {
+      dateFormat?: string;
+      locale?: string;
+    }
+  ): Promise<any> {
+    try {
+      const response: AxiosResponse<any> = await this.client.post(
+        `/tellers/${tellerId}/cashiers/${cashierId}?command=activate`,
+        {
+          dateFormat: sessionData?.dateFormat || "dd MMMM yyyy",
+          locale: sessionData?.locale || "en",
+        }
+      );
+      return response.data;
+    } catch (error: any) {
+      console.error("Fineract API Error starting session:", {
+        message: error.message,
+        status: error.response?.status,
+        data: error.response?.data,
+      });
+      throw error;
+    }
+  }
+
+  async closeCashierSession(
+    tellerId: number,
+    cashierId: number,
+    closeData: {
+      txnDate: string;
+      txnAmount: string;
+      txnNote?: string;
+      dateFormat?: string;
+      locale?: string;
+    }
+  ): Promise<any> {
+    try {
+      const response: AxiosResponse<any> = await this.client.post(
+        `/tellers/${tellerId}/cashiers/${cashierId}?command=settle`,
+        {
+          ...closeData,
+          dateFormat: closeData.dateFormat || "dd MMMM yyyy",
+          locale: closeData.locale || "en",
+        }
+      );
+      return response.data;
+    } catch (error: any) {
+      console.error("Fineract API Error closing session:", {
+        message: error.message,
+        status: error.response?.status,
+        data: error.response?.data,
+      });
+      throw error;
+    }
+  }
+
+  async getCashierSession(tellerId: number, cashierId: number): Promise<any> {
+    try {
+      const response: AxiosResponse<any> = await this.client.get(
+        `/tellers/${tellerId}/cashiers/${cashierId}`
+      );
+      return response.data;
+    } catch (error: any) {
+      console.error("Fineract API Error getting session:", {
+        message: error.message,
+        status: error.response?.status,
+        data: error.response?.data,
+      });
+      throw error;
+    }
+  }
 }
 
 // Singleton instance for fallback

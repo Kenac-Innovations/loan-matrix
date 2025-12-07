@@ -74,7 +74,10 @@ export function PipelineView({ initialData }: PipelineViewProps) {
       }
 
       const response = await fetch(`/api/leads/paginated?${params}`);
-      console.log("==========> log on client side fetchLeads response ::", response);
+      console.log(
+        "==========> log on client side fetchLeads response ::",
+        response
+      );
       if (!response.ok) {
         throw new Error("Failed to fetch leads");
       }
@@ -323,10 +326,8 @@ export function PipelineView({ initialData }: PipelineViewProps) {
                                 ?.color || "#6B7280",
                           }}
                         >
-                          {
-                            pipelineStages.find((s) => s.id === lead.stage)
-                              ?.name
-                          }
+                          {pipelineStages.find((s) => s.id === lead.stage)
+                            ?.name || "Draft"}
                         </Badge>
                         <Button
                           variant="ghost"
@@ -334,7 +335,14 @@ export function PipelineView({ initialData }: PipelineViewProps) {
                           asChild
                           className="h-8 w-8"
                         >
-                          <Link href={`/leads/${lead.id}`}>
+                          <Link
+                            href={
+                              !lead.stage ||
+                              !pipelineStages.find((s) => s.id === lead.stage)
+                                ? `/leads/new?leadId=${lead.id}`
+                                : `/leads/${lead.id}`
+                            }
+                          >
                             <ChevronRight className="h-4 w-4" />
                           </Link>
                         </Button>

@@ -35,11 +35,11 @@ export function LeadsTable({ initialData }: LeadsTableProps) {
               alt={getValue()}
             />
             <AvatarFallback>
-              {getValue() ?
-                (getValue() as string)
-                  .split(" ")
-                  .map((n) => n[0])
-                  .join("")
+              {getValue()
+                ? (getValue() as string)
+                    .split(" ")
+                    .map((n) => n[0])
+                    .join("")
                 : "UN"}
             </AvatarFallback>
           </Avatar>
@@ -61,10 +61,12 @@ export function LeadsTable({ initialData }: LeadsTableProps) {
           {getValue()}
         </Badge>
       ),
-      filterOptions: Array.from(new Set(leads.map(lead => lead.type))).map(type => ({
-        label: type,
-        value: type,
-      })),
+      filterOptions: Array.from(new Set(leads.map((lead) => lead.type))).map(
+        (type) => ({
+          label: type,
+          value: type,
+        })
+      ),
     },
     {
       id: "stage",
@@ -82,7 +84,7 @@ export function LeadsTable({ initialData }: LeadsTableProps) {
           </Badge>
         );
       },
-      filterOptions: pipelineStages.map(stage => ({
+      filterOptions: pipelineStages.map((stage) => ({
         label: stage.name,
         value: stage.id,
       })),
@@ -95,12 +97,13 @@ export function LeadsTable({ initialData }: LeadsTableProps) {
         const lead = row.original;
         return (
           <span
-            className={`text-xs ${lead.status === "overdue"
-              ? "text-red-400"
-              : lead.status === "warning"
+            className={`text-xs ${
+              lead.status === "overdue"
+                ? "text-red-400"
+                : lead.status === "warning"
                 ? "text-yellow-400"
                 : "text-muted-foreground"
-              }`}
+            }`}
           >
             {lead.timeInStage} / {lead.sla}
           </span>
@@ -147,9 +150,19 @@ export function LeadsTable({ initialData }: LeadsTableProps) {
       id: "actions",
       header: "Actions",
       cell: ({ row }) => {
+        const lead = row.original;
+        const isDraft =
+          !lead.stage ||
+          !initialData.pipelineStages.find((s) => s.id === lead.stage);
         return (
           <Button variant="ghost" size="sm" asChild>
-            <Link href={`/leads/${row.original.id}`}>View</Link>
+            <Link
+              href={
+                isDraft ? `/leads/new?leadId=${lead.id}` : `/leads/${lead.id}`
+              }
+            >
+              View
+            </Link>
           </Button>
         );
       },
@@ -159,7 +172,11 @@ export function LeadsTable({ initialData }: LeadsTableProps) {
 
   // Handle row click to navigate to lead details
   const handleRowClick = (lead: Lead) => {
-    window.location.href = `/leads/${lead.id}`;
+    const isDraft =
+      !lead.stage || !pipelineStages.find((s) => s.id === lead.stage);
+    window.location.href = isDraft
+      ? `/leads/new?leadId=${lead.id}`
+      : `/leads/${lead.id}`;
   };
 
   return (

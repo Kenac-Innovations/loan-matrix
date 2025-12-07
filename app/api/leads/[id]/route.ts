@@ -9,8 +9,8 @@ export async function GET(
   try {
     const { id } = await params;
 
-    // Get tenant from x-tenant-slug header or default to "default"
-    const tenantSlug = request.headers.get("x-tenant-slug") || "default";
+    // Get tenant from x-tenant-slug header or default to "goodfellow"
+    const tenantSlug = request.headers.get("x-tenant-slug") || "goodfellow";
     let tenant = await getTenantBySlug(tenantSlug);
 
     // If tenant not found, try to create default tenant
@@ -99,8 +99,8 @@ export async function PUT(
   try {
     const { id } = await params;
 
-    // Get tenant from x-tenant-slug header or default to "default"
-    const tenantSlug = request.headers.get("x-tenant-slug") || "default";
+    // Get tenant from x-tenant-slug header or default to "goodfellow"
+    const tenantSlug = request.headers.get("x-tenant-slug") || "goodfellow";
     let tenant = await getTenantBySlug(tenantSlug);
 
     // If tenant not found, try to create default tenant
@@ -136,6 +136,73 @@ export async function PUT(
     console.error("Error updating lead:", error);
     return NextResponse.json(
       { error: "Internal server error" },
+      { status: 500 }
+    );
+  }
+}
+
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const paramsResolved = await params;
+    const { id: leadId } = paramsResolved;
+
+    console.log("=== PATCH LEAD ===");
+    console.log("Lead ID:", leadId);
+
+    const body = await request.json();
+    console.log("Update data:", body);
+
+    // Find the lead first (without tenant filter to avoid issues)
+    const lead = await prisma.lead.findUnique({
+      where: { id: leadId },
+      select: { id: true, tenantId: true },
+    });
+
+    if (!lead) {
+      console.error("Lead not found:", leadId);
+      return NextResponse.json({ error: "Lead not found" }, { status: 404 });
+    }
+
+    console.log("Lead found, updating...");
+
+    // Update lead (without tenant filter)
+    const updatedLead = await prisma.lead.update({
+      where: {
+        id: leadId,
+      },
+      data: {
+        ...body,
+        updatedAt: new Date(),
+      },
+    });
+
+    console.log("Lead updated successfully:", {
+      id: updatedLead.id,
+      fineractLoanId: (updatedLead as any).fineractLoanId,
+      fineractClientId: (updatedLead as any).fineractClientId,
+    });
+
+    return NextResponse.json(updatedLead);
+  } catch (error) {
+    console.error("=== ERROR UPDATING LEAD ===");
+    console.error(
+      "Error type:",
+      error instanceof Error ? error.constructor.name : typeof error
+    );
+    console.error(
+      "Error message:",
+      error instanceof Error ? error.message : String(error)
+    );
+    console.error("Full error:", error);
+
+    return NextResponse.json(
+      {
+        error: "Internal server error",
+        details: error instanceof Error ? error.message : String(error),
+      },
       { status: 500 }
     );
   }

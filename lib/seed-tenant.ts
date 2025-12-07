@@ -29,46 +29,39 @@ export async function seedDefaultTenant() {
     const defaultStages = [
       {
         name: "New Lead",
-        description: "Initial contact with potential client",
+        description: "Initial lead entry point",
         order: 1,
         color: "#3b82f6",
         isInitialState: true,
         allowedTransitions: [], // Will be updated after all stages are created
       },
       {
-        name: "Qualification",
-        description: "Assessing lead requirements and fit",
+        name: "Approved",
+        description: "Lead has been approved",
         order: 2,
-        color: "#8b5cf6",
+        color: "#10b981",
         allowedTransitions: [],
       },
       {
-        name: "Proposal",
-        description: "Preparing and sending proposal",
+        name: "Rejected",
+        description: "Lead has been rejected",
         order: 3,
-        color: "#ec4899",
+        color: "#ef4444",
+        isFinalState: true,
         allowedTransitions: [],
       },
       {
-        name: "Negotiation",
-        description: "Discussing terms and conditions",
+        name: "Pending Disbursement",
+        description: "Waiting for loan disbursement",
         order: 4,
         color: "#f59e0b",
         allowedTransitions: [],
       },
       {
-        name: "Closed Won",
-        description: "Successfully converted lead to customer",
+        name: "Disbursed",
+        description: "Loan has been disbursed",
         order: 5,
         color: "#10b981",
-        isFinalState: true,
-        allowedTransitions: [],
-      },
-      {
-        name: "Closed Lost",
-        description: "Lead did not convert to customer",
-        order: 6,
-        color: "#ef4444",
         isFinalState: true,
         allowedTransitions: [],
       },
@@ -94,12 +87,11 @@ export async function seedDefaultTenant() {
     );
 
     const transitions = {
-      "New Lead": ["Qualification", "Closed Lost"],
-      Qualification: ["Proposal", "Closed Lost"],
-      Proposal: ["Negotiation", "Closed Lost"],
-      Negotiation: ["Closed Won", "Closed Lost"],
-      "Closed Won": [],
-      "Closed Lost": [],
+      "New Lead": ["Approved", "Rejected"],
+      Approved: ["Pending Disbursement", "Rejected"],
+      Rejected: [],
+      "Pending Disbursement": ["Disbursed", "Rejected"],
+      Disbursed: [],
     };
 
     // Update each stage with its allowed transitions

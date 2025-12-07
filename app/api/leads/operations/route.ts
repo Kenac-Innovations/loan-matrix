@@ -94,7 +94,7 @@ export async function POST(request: Request) {
       case "createLeadWithClient":
         return await handleCreateLeadWithClient(data);
       case "updateClient":
-        return await handleUpdateClient(data);
+        return await handleUpdateClient(data, data.leadId);
       case "createClientInFineract":
         return await handleCreateClientInFineract(leadId);
       case "submitLead":
@@ -170,7 +170,7 @@ async function handleSaveDraft(data: any, leadId?: string) {
 
     // Get the default tenant ID
     const defaultTenant = await prisma.tenant.findUnique({
-      where: { slug: "default" },
+      where: { slug: "goodfellow" },
     });
 
     if (!defaultTenant) {
@@ -288,7 +288,7 @@ async function handleSubmitLead(leadId: string) {
   try {
     await prisma.lead.update({
       where: { id: leadId },
-      data: { 
+      data: {
         status: "ACTIVE",
         currentStep: 2,
       },
@@ -308,7 +308,7 @@ async function handleCloseLead(leadId: string, reason: string) {
   try {
     await prisma.lead.update({
       where: { id: leadId },
-      data: { 
+      data: {
         status: "CLOSED",
         closedReason: reason,
       },
@@ -483,7 +483,7 @@ async function handleCreateLeadWithClient(data: any) {
 
       // Get the default tenant ID
       const defaultTenant = await tx.tenant.findUnique({
-        where: { slug: "default" },
+        where: { slug: "goodfellow" },
       });
 
       if (!defaultTenant) {
@@ -753,10 +753,11 @@ async function handleCreateClientInFineract(leadId: string) {
 }
 
 // Handle updating an existing client in both Fineract and local database
-async function handleUpdateClient(data: any) {
+async function handleUpdateClient(data: any, leadId?: string) {
   try {
     console.log("==========> Starting transactional client update");
     console.log("Update data:", data);
+    console.log("Lead ID:", leadId);
     console.log("==========> Data type:", typeof data);
     console.log("==========> Data keys:", Object.keys(data || {}));
 
@@ -888,111 +889,176 @@ async function handleUpdateClient(data: any) {
       throw fineractError;
     }
 
-    // Step 2: Create new lead record for this client update (maintains audit trail)
+    // Step 2: Update existing lead or create new one
     let result;
     try {
-      console.log(
-        "==========> Starting Prisma transaction to create new lead..."
-      );
-      result = await prisma.$transaction(async (tx) => {
-        // Get the default tenant for the lead
-        const defaultTenant = await tx.tenant.findUnique({
-          where: { slug: "default" },
+      if (leadId) {
+        // UPDATE existing lead
+        console.log("==========> Updating existing lead with ID:", leadId);
+        result = await prisma.$transaction(async (tx) => {
+          // Update the existing lead record
+          const updatedLead = await tx.lead.update({
+            where: { id: leadId },
+            data: {
+              // Client identification
+              externalId: data.externalId,
+              fineractClientId: data.fineractClientId,
+              fineractAccountNo: updatedFineractClient.accountNo,
+
+              // Office information
+              officeId: data.officeId,
+              officeName: data.officeName,
+
+              // Legal form information
+              legalFormId: data.legalFormId,
+              legalFormName: data.legalFormName,
+
+              // Personal information
+              firstname: data.firstname,
+              middlename: data.middlename,
+              lastname: data.lastname,
+              dateOfBirth: data.dateOfBirth
+                ? new Date(data.dateOfBirth)
+                : undefined,
+              gender: data.gender,
+              genderId: data.genderId,
+              isStaff: data.isStaff || false,
+
+              // Contact information
+              mobileNo: data.mobileNo,
+              countryCode: data.countryCode || "+263",
+              emailAddress: data.emailAddress,
+
+              // Client classification
+              clientTypeId: data.clientTypeId,
+              clientTypeName: data.clientTypeName,
+              clientClassificationId: data.clientClassificationId,
+              clientClassificationName: data.clientClassificationName,
+
+              // Dates
+              submittedOnDate: data.submittedOnDate
+                ? new Date(data.submittedOnDate)
+                : undefined,
+              activationDate: data.activationDate
+                ? new Date(data.activationDate)
+                : undefined,
+
+              // Status and flags
+              active: data.active !== false,
+              openSavingsAccount: data.openSavingsAccount || false,
+              status: "ACTIVE",
+
+              // Timestamps
+              lastModified: new Date(),
+              updatedAt: new Date(),
+            },
+          });
+
+          console.log("==========> Lead updated successfully:", updatedLead.id);
+          return updatedLead;
         });
+        console.log("==========> Existing lead updated successfully");
+      } else {
+        // CREATE new lead (fallback for backward compatibility)
+        console.log("==========> No leadId provided, creating new lead...");
+        result = await prisma.$transaction(async (tx) => {
+          // Get the default tenant for the lead
+          const defaultTenant = await tx.tenant.findUnique({
+            where: { slug: "goodfellow" },
+          });
 
-        if (!defaultTenant) {
-          throw new Error(
-            "Default tenant not found. Please run database seed."
-          );
-        }
+          if (!defaultTenant) {
+            throw new Error(
+              "Default tenant not found. Please run database seed."
+            );
+          }
 
-        // Get current user ID from session
-        const session = await getSession();
-        if (!session?.user?.id) {
-          throw new Error("User not authenticated");
-        }
-        const userId = session.user.id;
+          // Get current user ID from session
+          const session = await getSession();
+          if (!session?.user?.id) {
+            throw new Error("User not authenticated");
+          }
+          const userId = session.user.id;
 
-        // Create a new lead record for this client update
-        // This maintains the audit trail of all client interactions
-        const newLead = await tx.lead.create({
-          data: {
-            // User and tenant identification
-            userId: userId,
-            tenantId: defaultTenant.id,
+          // Create a new lead record
+          const newLead = await tx.lead.create({
+            data: {
+              // User and tenant identification
+              userId: userId,
+              tenantId: defaultTenant.id,
 
-            // Client identification
-            externalId: data.externalId,
-            fineractClientId: data.fineractClientId,
-            fineractAccountNo: updatedFineractClient.accountNo,
+              // Client identification
+              externalId: data.externalId,
+              fineractClientId: data.fineractClientId,
+              fineractAccountNo: updatedFineractClient.accountNo,
 
-            // Office information
-            officeId: data.officeId,
-            officeName: data.officeName,
+              // Office information
+              officeId: data.officeId,
+              officeName: data.officeName,
 
-            // Legal form information
-            legalFormId: data.legalFormId,
-            legalFormName: data.legalFormName,
+              // Legal form information
+              legalFormId: data.legalFormId,
+              legalFormName: data.legalFormName,
 
-            // Personal information
-            firstname: data.firstname,
-            middlename: data.middlename,
-            lastname: data.lastname,
-            dateOfBirth: data.dateOfBirth
-              ? new Date(data.dateOfBirth)
-              : undefined,
-            gender: data.gender,
-            genderId: data.genderId,
-            isStaff: data.isStaff || false,
+              // Personal information
+              firstname: data.firstname,
+              middlename: data.middlename,
+              lastname: data.lastname,
+              dateOfBirth: data.dateOfBirth
+                ? new Date(data.dateOfBirth)
+                : undefined,
+              gender: data.gender,
+              genderId: data.genderId,
+              isStaff: data.isStaff || false,
 
-            // Contact information
-            mobileNo: data.mobileNo,
-            countryCode: data.countryCode || "+263",
-            emailAddress: data.emailAddress,
+              // Contact information
+              mobileNo: data.mobileNo,
+              countryCode: data.countryCode || "+263",
+              emailAddress: data.emailAddress,
 
-            // Client classification
-            clientTypeId: data.clientTypeId,
-            clientTypeName: data.clientTypeName,
-            clientClassificationId: data.clientClassificationId,
-            clientClassificationName: data.clientClassificationName,
+              // Client classification
+              clientTypeId: data.clientTypeId,
+              clientTypeName: data.clientTypeName,
+              clientClassificationId: data.clientClassificationId,
+              clientClassificationName: data.clientClassificationName,
 
-            // Dates
-            submittedOnDate: data.submittedOnDate
-              ? new Date(data.submittedOnDate)
-              : new Date(),
-            activationDate: data.activationDate
-              ? new Date(data.activationDate)
-              : new Date(),
+              // Dates
+              submittedOnDate: data.submittedOnDate
+                ? new Date(data.submittedOnDate)
+                : new Date(),
+              activationDate: data.activationDate
+                ? new Date(data.activationDate)
+                : new Date(),
 
-            // Status and flags
-            active: data.active !== false,
-            openSavingsAccount: data.openSavingsAccount || false,
-            status: "ACTIVE",
-            currentStep: 1,
+              // Status and flags
+              active: data.active !== false,
+              openSavingsAccount: data.openSavingsAccount || false,
+              status: "ACTIVE",
+              currentStep: 1,
 
-            // Timestamps
-            lastModified: new Date(),
-            createdAt: new Date(),
-            updatedAt: new Date(),
-          },
+              // Timestamps
+              lastModified: new Date(),
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            },
+          });
+
+          console.log("==========> New lead created successfully:", newLead.id);
+          return newLead;
         });
-
-        console.log("==========> New lead created successfully:", newLead.id);
-        return newLead;
-      });
-      console.log("==========> Prisma transaction completed successfully");
+        console.log("==========> New lead created successfully");
+      }
     } catch (prismaError: any) {
       console.error("==========> Prisma transaction error:", prismaError);
       console.error("==========> Prisma error details:", prismaError.message);
       throw prismaError;
     }
 
-    console.log("==========> New lead created successfully in local database");
-
     return NextResponse.json({
       success: true,
-      message:
-        "Client updated in Fineract and new lead created in local database",
+      message: leadId
+        ? "Client and lead updated successfully"
+        : "Client updated in Fineract and new lead created in local database",
       fineractClientId: data.fineractClientId,
       fineractAccountNo: formatAccountNumber(data.fineractAccountNo),
       leadId: result.id,

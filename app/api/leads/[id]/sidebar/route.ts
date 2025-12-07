@@ -9,8 +9,8 @@ export async function GET(
   try {
     const { id: leadId } = await params;
 
-    // Get tenant from x-tenant-slug header or default to "default"
-    const tenantSlug = request.headers.get("x-tenant-slug") || "default";
+    // Get tenant from x-tenant-slug header or default to "goodfellow"
+    const tenantSlug = request.headers.get("x-tenant-slug") || "goodfellow";
     let tenant = await getTenantBySlug(tenantSlug);
 
     // If tenant not found, try to create default tenant

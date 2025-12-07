@@ -4,7 +4,7 @@ import { getLeadsData } from "@/app/actions/leads-actions";
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const tenantSlug = request.headers.get("x-tenant-slug") || "default";
+    const tenantSlug = request.headers.get("x-tenant-slug") || "goodfellow";
 
     const stage = searchParams.get("stage") || undefined;
     const status = searchParams.get("status") || undefined;

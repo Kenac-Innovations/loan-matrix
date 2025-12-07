@@ -4,8 +4,8 @@ import { getTenantBySlug } from "@/lib/tenant-service";
 
 export async function GET(request: NextRequest) {
   try {
-    // Get tenant from x-tenant-slug header or default to "default"
-    const tenantSlug = request.headers.get("x-tenant-slug") || "default";
+    // Get tenant from x-tenant-slug header or default to "goodfellow"
+    const tenantSlug = request.headers.get("x-tenant-slug") || "goodfellow";
     let tenant = await getTenantBySlug(tenantSlug);
 
     // If tenant not found, try to create default tenant
@@ -143,19 +143,36 @@ export async function GET(request: NextRequest) {
             color: "#6B7280",
           };
 
-      // Calculate loan amount (for now using a placeholder)
-      const amount = `$${(Math.random() * 300000 + 50000)
-        .toFixed(0)
-        .replace(/\B(?=(\d{3})+(?!\d))/g, ",")}`;
+      // Get loan amount from actual lead data
+      const stateMetadata = (lead.stateMetadata as any) || {};
+      const loanTerms = stateMetadata.loanTerms || {};
 
-      // Determine loan type based on amount
-      const amountNum = parseInt(amount.replace(/[$,]/g, ""));
+      // Try to get amount from: loanTerms.principal > requestedAmount > 0
+      let amountNum = 0;
+      if (loanTerms.principal && loanTerms.principal > 0) {
+        amountNum = loanTerms.principal;
+      } else if (lead.requestedAmount && lead.requestedAmount > 0) {
+        amountNum = lead.requestedAmount;
+      }
+
+      // Format amount with currency (default to ZMK)
+      const currency = stateMetadata.currency || "ZMK";
+      const amount =
+        amountNum > 0
+          ? `${currency} ${amountNum
+              .toFixed(2)
+              .replace(/\B(?=(\d{3})+(?!\d))/g, ",")}`
+          : "Not specified";
+
+      // Determine loan type based on amount (if available)
       const loanType =
         amountNum > 200000
           ? "Mortgage"
           : amountNum > 100000
           ? "Business Loan"
-          : "Personal Loan";
+          : amountNum > 0
+          ? "Personal Loan"
+          : "Not specified";
 
       return {
         id: lead.id,
@@ -173,6 +190,7 @@ export async function GET(request: NextRequest) {
         assigneeColor: assignee.color,
         createdAt: lead.createdAt,
         updatedAt: lead.updatedAt,
+        userId: lead.userId, // Include created by user ID
       };
     });
 

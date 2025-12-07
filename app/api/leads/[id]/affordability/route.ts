@@ -1,52 +1,226 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getTenantBySlug } from "@/lib/tenant-service";
+import { buildCDEPayload, fetchFineractLoanForLead } from "@/lib/cde-utils";
+
+export async function POST(
+  request: NextRequest,
+  context: { params: Promise<{ id: string }> }
+) {
+  try {
+    const params = await context.params;
+    const { id: leadId } = params;
+    console.log("Received POST request for leadId:", leadId);
+
+    const data = await request.json();
+    console.log("Received data:", data);
+
+    // Get tenant from x-tenant-slug header or default to "goodfellow"
+    const tenantSlug = request.headers.get("x-tenant-slug") || "goodfellow";
+    console.log("Tenant slug:", tenantSlug);
+
+    const tenant = await getTenantBySlug(tenantSlug);
+    console.log("Found tenant:", tenant?.id, tenant?.slug);
+
+    if (!tenant) {
+      console.error("Tenant not found for slug:", tenantSlug);
+      return NextResponse.json({ error: "Tenant not found" }, { status: 404 });
+    }
+
+    // First, try to find the lead without tenant restriction to debug
+    const leadDebug = await prisma.lead.findUnique({
+      where: { id: leadId },
+    });
+    console.log(
+      "Lead exists (without tenant filter):",
+      leadDebug ? "Yes" : "No"
+    );
+    console.log("Lead tenantId:", leadDebug?.tenantId);
+    console.log("Expected tenantId:", tenant.id);
+
+    // Get the lead first to access tenantId and current stage
+    const lead = await prisma.lead.findUnique({
+      where: {
+        id: leadId,
+      },
+      include: { currentStage: true },
+    });
+
+    console.log("Found lead:", lead?.id);
+
+    if (!lead) {
+      console.error("Lead not found:", leadId);
+      return NextResponse.json(
+        { success: false, error: "Lead not found" },
+        { status: 404 }
+      );
+    }
+
+    // Verify tenant match (but don't fail if it doesn't match for now)
+    if (lead.tenantId !== tenant.id) {
+      console.warn(
+        `Tenant mismatch: Lead tenant=${lead.tenantId}, Request tenant=${tenant.id}`
+      );
+    }
+
+    // Get current stateMetadata
+    const currentMetadata = (lead.stateMetadata as any) || {};
+
+    // Update the lead with affordability data
+    const updatedLead = await prisma.lead.update({
+      where: { id: leadId },
+      data: {
+        grossMonthlyIncome: data.grossMonthlyIncome,
+        monthlyIncome: data.netMonthlyIncome,
+        nationality: data.nationality || null,
+        mobileInOwnName: data.mobileInOwnName || false,
+        hasProofOfIncome: data.hasProofOfIncome || false,
+        hasValidNationalId: data.hasValidNationalId || false,
+        identityVerified: data.identityVerified || false,
+        employmentVerified: data.employmentVerified || false,
+        incomeVerified: data.incomeVerified || false,
+        lastModified: new Date(),
+      },
+    });
+
+    console.log("Successfully updated lead:", updatedLead.id);
+
+    // ============================================================================
+    // CDE (Credit Decision Engine) API CALL
+    // ============================================================================
+    // This is where the CDE evaluation happens automatically when affordability
+    // data is saved. The CDE service evaluates the loan application and returns
+    // decision, scoring, affordability, pricing, and fraud check results.
+    // The result is stored in lead.stateMetadata.cdeResult for later display.
+    // ============================================================================
+    let cdeResult = null;
+    try {
+      // Fetch Fineract loan details if available
+      const fineractLoan = await fetchFineractLoanForLead(updatedLead);
+      const cdePayload = buildCDEPayload(updatedLead, data, fineractLoan);
+      console.log("=== CALLING CDE API ===");
+      console.log("CDE Payload:", JSON.stringify(cdePayload, null, 2));
+      console.log(
+        "CDE Endpoint:",
+        `${request.nextUrl.origin}/api/cde/evaluate`
+      );
+
+      const cdeResponse = await fetch(
+        `${request.nextUrl.origin}/api/cde/evaluate`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(cdePayload),
+        }
+      );
+
+      if (cdeResponse.ok) {
+        cdeResult = await cdeResponse.json();
+        console.log("CDE evaluation successful:", cdeResult.decision);
+
+        // Store CDE result in stateMetadata
+        await prisma.lead.update({
+          where: { id: leadId },
+          data: {
+            stateMetadata: {
+              ...currentMetadata,
+              cdeResult: cdeResult,
+              cdeEvaluatedAt: new Date().toISOString(),
+            },
+          },
+        });
+      } else {
+        const errorText = await cdeResponse.text();
+        console.error("CDE evaluation failed:", cdeResponse.status, errorText);
+      }
+    } catch (cdeError) {
+      console.error("Error calling CDE:", cdeError);
+      // Don't fail the request if CDE call fails
+    }
+
+    return NextResponse.json({
+      success: true,
+      lead: updatedLead,
+      cdeResult: cdeResult,
+      message: "Affordability data saved successfully. Stage completed.",
+    });
+  } catch (error) {
+    console.error("Error saving affordability data:", error);
+    const errorMessage =
+      error instanceof Error ? error.message : "Unknown error";
+    console.error("Error details:", errorMessage);
+    return NextResponse.json(
+      {
+        success: false,
+        error: `Failed to save affordability data: ${errorMessage}`,
+      },
+      { status: 500 }
+    );
+  }
+}
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id: leadId } = await params;
-
-    // Get tenant from x-tenant-slug header or default to "default"
-    const tenantSlug = request.headers.get("x-tenant-slug") || "default";
-    const tenant = await getTenantBySlug(tenantSlug);
-
-    if (!tenant) {
-      return NextResponse.json({ error: "Tenant not found" }, { status: 404 });
-    }
+    const params = await context.params;
+    const { id: leadId } = params;
+    console.log("GET affordability data for leadId:", leadId);
 
     // Fetch lead data with financial information
     const lead = await prisma.lead.findUnique({
       where: {
         id: leadId,
-        tenantId: tenant.id,
+      },
+      select: {
+        grossMonthlyIncome: true,
+        monthlyIncome: true,
+        nationality: true,
+        mobileInOwnName: true,
+        hasProofOfIncome: true,
+        hasValidNationalId: true,
+        identityVerified: true,
+        employmentVerified: true,
+        incomeVerified: true,
       },
     });
 
     if (!lead) {
-      return NextResponse.json({ error: "Lead not found" }, { status: 404 });
+      console.error("Lead not found:", leadId);
+      return NextResponse.json(
+        { success: false, error: "Lead not found" },
+        { status: 404 }
+      );
     }
 
-    // Debug: Log the lead data to see what fields are available
-    console.log("Lead data for affordability:", {
-      id: lead.id,
-      monthlyIncome: lead.monthlyIncome,
-      monthlyExpenses: lead.monthlyExpenses,
-      creditScore: lead.creditScore,
-      requestedAmount: lead.requestedAmount,
-      // Add other financial fields to debug
+    console.log("Found lead affordability data:", lead);
+
+    return NextResponse.json({
+      success: true,
+      data: {
+        grossMonthlyIncome: lead.grossMonthlyIncome || 0,
+        netMonthlyIncome: lead.monthlyIncome || 0,
+        nationality: lead.nationality || "",
+        mobileInOwnName: lead.mobileInOwnName || false,
+        hasProofOfIncome: lead.hasProofOfIncome || false,
+        hasValidNationalId: lead.hasValidNationalId || false,
+        identityVerified: lead.identityVerified || false,
+        employmentVerified: lead.employmentVerified || false,
+        incomeVerified: lead.incomeVerified || false,
+      },
     });
-
-    // Calculate affordability models based on real data
-    const affordabilityData = calculateAffordabilityModels(lead);
-
-    return NextResponse.json(affordabilityData);
   } catch (error) {
     console.error("Error fetching affordability data:", error);
+    const errorMessage =
+      error instanceof Error ? error.message : "Unknown error";
     return NextResponse.json(
-      { error: "Internal server error" },
+      {
+        success: false,
+        error: `Failed to fetch affordability data: ${errorMessage}`,
+      },
       { status: 500 }
     );
   }

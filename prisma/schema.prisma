@@ -57,83 +57,99 @@ model PipelineStage {
 }
 
 model Lead {
-  id                       String              @id @default(cuid())
-  createdAt                DateTime            @default(now())
-  updatedAt                DateTime            @updatedAt
-  status                   String              @default("DRAFT")
-  closedReason             String?
-  officeId                 Int?
-  officeName               String?
-  legalFormId              Int?
-  legalFormName            String?
-  externalId               String?
-  firstname                String?
-  middlename               String?
-  lastname                 String?
-  dateOfBirth              DateTime?
-  gender                   String?
-  genderId                 Int?
-  isStaff                  Boolean             @default(false)
-  mobileNo                 String?
-  countryCode              String?             @default("+1")
-  emailAddress             String?
-  clientTypeId             Int?
-  clientTypeName           String?
-  clientClassificationId   Int?
-  clientClassificationName String?
-  submittedOnDate          DateTime?
-  active                   Boolean             @default(true)
-  activationDate           DateTime?
-  openSavingsAccount       Boolean             @default(false)
-  savingsProductId         Int?
-  savingsProductName       String?
-  clientId                 Int?
-  resourceId               Int?
-  userId                   String
-  currentStep              Int                 @default(1)
-  lastModified             DateTime            @default(now())
-  currentStageId           String?
-  stateContext             Json?
-  stateMetadata            Json?
-  tenantId                 String
-  accountNumber            String?
-  annualIncome             Float?
-  bankName                 String?
-  collateralType           String?
-  collateralValue          Float?
-  creditScore              Int?
-  employerName             String?
-  employmentStatus         String?
-  existingLoans            Int?                @default(0)
-  loanPurpose              String?
-  loanTerm                 Int?
-  monthlyExpenses          Float?
-  monthlyIncome            Float?
-  requestedAmount          Float?
-  riskAssessedBy           String?
-  riskAssessmentDate       DateTime?
-  riskCategory             String?
-  riskFactors              String[]            @default([])
-  riskScore                Int?
-  totalDebt                Float?              @default(0)
-  yearsEmployed            Float?
-  businessOwnership        Boolean?            @default(false)
-  businessType             String?
-  hasExistingLoans         Boolean?            @default(false)
-  monthlyDebtPayments      Float?
-  monthlyIncomeRange       String?
-  propertyOwnership        String?
-  yearsAtCurrentJob        String?
-  clientCreatedInFineract  Boolean             @default(false)
-  clientCreationDate       DateTime?
-  fineractAccountNo        String?
-  fineractClientId         Int?
-  familyMembers            FamilyMember[]
-  currentStage             PipelineStage?      @relation("LeadCurrentStage", fields: [currentStageId], references: [id])
-  tenant                   Tenant              @relation(fields: [tenantId], references: [id])
-  communications           LeadCommunication[]
-  documents                LeadDocument[]
-  stateTransitions         StateTransition[]
+  id                         String              @id @default(cuid())
+  createdAt                  DateTime            @default(now())
+  updatedAt                  DateTime            @updatedAt
+  status                     String              @default("DRAFT")
+  closedReason               String?
+  officeId                   Int?
+  officeName                 String?
+  legalFormId                Int?
+  legalFormName              String?
+  externalId                 String?
+  firstname                  String?
+  middlename                 String?
+  lastname                   String?
+  dateOfBirth                DateTime?
+  gender                     String?
+  genderId                   Int?
+  isStaff                    Boolean             @default(false)
+  mobileNo                   String?
+  countryCode                String?             @default("+1")
+  emailAddress               String?
+  clientTypeId               Int?
+  clientTypeName             String?
+  clientClassificationId     Int?
+  clientClassificationName   String?
+  submittedOnDate            DateTime?
+  active                     Boolean             @default(true)
+  activationDate             DateTime?
+  openSavingsAccount         Boolean             @default(false)
+  savingsProductId           Int?
+  savingsProductName         String?
+  clientId                   Int?
+  resourceId                 Int?
+  userId                     String
+  currentStep                Int                 @default(1)
+  lastModified               DateTime            @default(now())
+  currentStageId             String?
+  stateContext               Json?
+  stateMetadata              Json?
+  tenantId                   String
+  accountNumber              String?
+  annualIncome               Float?
+  bankName                   String?
+  collateralType             String?
+  collateralValue            Float?
+  creditScore                Int?
+  employerName               String?
+  employmentStatus           String?
+  existingLoans              Int?                @default(0)
+  loanPurpose                String?
+  loanPurposeId              Int?
+  loanTerm                   Int?
+  loanProductName            String?
+  loanProductId              Int?
+  loanOfficerId              Int?
+  fundId                     Int?
+  expectedDisbursementDate   DateTime?
+  linkSavingsAccount         String?
+  createStandingInstructions Boolean?            @default(false)
+  monthlyExpenses            Float?
+  monthlyIncome              Float?
+  grossMonthlyIncome         Float?
+  requestedAmount            Float?
+  riskAssessedBy             String?
+  riskAssessmentDate         DateTime?
+  riskCategory               String?
+  riskFactors                String[]            @default([])
+  riskScore                  Int?
+  totalDebt                  Float?              @default(0)
+  yearsEmployed              Float?
+  businessOwnership          Boolean?            @default(false)
+  businessType               String?
+  hasExistingLoans           Boolean?            @default(false)
+  monthlyDebtPayments        Float?
+  monthlyIncomeRange         String?
+  propertyOwnership          String?
+  yearsAtCurrentJob          String?
+  nationality                String?
+  mobileInOwnName            Boolean?            @default(false)
+  hasProofOfIncome           Boolean?            @default(false)
+  hasValidNationalId         Boolean?            @default(false)
+  identityVerified           Boolean?            @default(false)
+  employmentVerified         Boolean?            @default(false)
+  incomeVerified             Boolean?            @default(false)
+  clientCreatedInFineract    Boolean             @default(false)
+  clientCreationDate         DateTime?
+  fineractAccountNo          String?
+  fineractClientId           Int?
+  familyMembers              FamilyMember[]
+  currentStage               PipelineStage?      @relation("LeadCurrentStage", fields: [currentStageId], references: [id])
+  tenant                     Tenant              @relation(fields: [tenantId], references: [id])
+  communications             LeadCommunication[]
+  documents                  LeadDocument[]
+  stateTransitions           StateTransition[]
 
   @@index([tenantId, userId])
   @@index([tenantId, status])
@@ -498,4 +514,148 @@ model UssdLoanApplication {
   @@index([referenceNumber])
   @@index([userPhoneNumber])
   @@index([status, createdAt])
+}
+
+model Teller {
+  id               String           @id @default(cuid())
+  tenantId         String
+  fineractTellerId Int?             @unique
+  officeId         Int
+  officeName       String
+  name             String
+  description      String?
+  status           String           @default("PENDING") // PENDING, ACTIVE, CLOSED
+  startDate        DateTime
+  endDate          DateTime?
+  isActive         Boolean          @default(true)
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  cashAllocations  CashAllocation[]
+  cashiers         Cashier[]
+  settlements      CashSettlement[]
+  sessions         CashierSession[]
+
+  @@unique([tenantId, fineractTellerId])
+  @@index([tenantId, officeId])
+  @@index([tenantId, status])
+  @@index([tenantId, isActive])
+}
+
+model Cashier {
+  id                String           @id @default(cuid())
+  tenantId          String
+  tellerId          String
+  fineractCashierId Int?             @unique
+  staffId           Int
+  staffName         String
+  startDate         DateTime
+  endDate           DateTime?
+  isFullDay         Boolean          @default(true)
+  startTime         String? // HH:mm format
+  endTime           String? // HH:mm format
+  status            String           @default("PENDING") // PENDING, ACTIVE, CLOSED
+  isActive          Boolean          @default(true)
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  teller            Teller           @relation(fields: [tellerId], references: [id], onDelete: Cascade)
+  settlements       CashSettlement[]
+  sessions          CashierSession[]
+  cashAllocations   CashAllocation[]
+
+  @@index([tenantId, tellerId])
+  @@index([tenantId, staffId])
+  @@index([tenantId, status])
+  @@index([tenantId, isActive])
+}
+
+model CashAllocation {
+  id                   String   @id @default(cuid())
+  tenantId             String
+  tellerId             String
+  cashierId             String? // null for teller vault allocations, set for cashier allocations
+  fineractAllocationId Int?     @unique
+  amount               Float
+  currency             String   @default("USD")
+  allocatedDate        DateTime @default(now())
+  allocatedBy          String
+  notes                String?
+  status               String   @default("ACTIVE") // ACTIVE, REVERSED
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  teller               Teller   @relation(fields: [tellerId], references: [id], onDelete: Cascade)
+  cashier              Cashier? @relation(fields: [cashierId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, tellerId])
+  @@index([tenantId, cashierId])
+  @@index([tenantId, status])
+  @@index([allocatedDate])
+}
+
+model CashSettlement {
+  id                   String    @id @default(cuid())
+  tenantId             String
+  tellerId             String
+  cashierId            String
+  fineractSettlementId Int?       @unique
+  settlementDate       DateTime   @default(now())
+  openingBalance       Float
+  closingBalance       Float
+  cashIn               Float      @default(0)
+  cashOut              Float      @default(0)
+  expectedBalance      Float
+  actualBalance        Float
+  difference           Float // actualBalance - expectedBalance
+  notes                String?
+  status               String     @default("PENDING") // PENDING, RECONCILED, REVERSED
+  settledBy            String
+  reconciledAt         DateTime?
+  reconciledBy         String?
+  reconciliationNotes  String?
+  returnedAmount       Float? // Actual amount returned to vault
+  varianceResolved     Boolean    @default(false) // Whether variance has been resolved
+  varianceResolvedAt   DateTime?
+  varianceResolvedBy   String?
+  varianceResolutionNotes String? // Explanation of variance resolution
+  createdAt            DateTime   @default(now())
+  updatedAt            DateTime   @updatedAt
+  teller               Teller     @relation(fields: [tellerId], references: [id], onDelete: Cascade)
+  cashier              Cashier    @relation(fields: [cashierId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, tellerId])
+  @@index([tenantId, cashierId])
+  @@index([tenantId, settlementDate])
+  @@index([tenantId, status])
+}
+
+model CashierSession {
+  id                String    @id @default(cuid())
+  tenantId          String
+  tellerId          String
+  cashierId         String
+  fineractSessionId Int?      @unique
+  sessionStatus     String    @default("NOT_STARTED") // NOT_STARTED, ACTIVE, CLOSED, CLOSED_VERIFIED
+  sessionStartTime  DateTime?
+  sessionEndTime    DateTime?
+  allocatedBalance  Float     @default(0) // Opening float
+  availableBalance  Float     @default(0) // Current available cash
+  openingFloat      Float     @default(0) // Same as allocatedBalance
+  cashIn            Float     @default(0) // Total cash received
+  cashOut           Float     @default(0) // Total cash paid out
+  netCash           Float     @default(0) // cashIn - cashOut
+  closingBalance    Float? // Counted cash at end of day
+  expectedBalance   Float? // System calculated balance
+  difference        Float? // closingBalance - expectedBalance
+  countedCashAmount Float? // Physical cash count
+  comments          String?
+  verifiedBy        String? // Supervisor who verified
+  verifiedAt        DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  teller            Teller    @relation(fields: [tellerId], references: [id], onDelete: Cascade)
+  cashier           Cashier   @relation(fields: [cashierId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, tellerId])
+  @@index([tenantId, cashierId])
+  @@index([tenantId, sessionStatus])
+  @@index([sessionStartTime])
 }

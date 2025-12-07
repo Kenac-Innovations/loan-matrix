@@ -16,6 +16,7 @@ export interface Lead {
   lastname?: string;
   emailAddress?: string;
   currentStageId?: string;
+  userId?: string; // Created by user ID
 }
 
 export interface PipelineStage {

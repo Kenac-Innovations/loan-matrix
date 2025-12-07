@@ -18,6 +18,7 @@ import {
   Shield,
   Users,
   TrendingUp,
+  Wallet,
 } from "lucide-react";
 import AIAssistant from "@/components/ai-assistant";
 import { Suspense } from "react";
@@ -43,32 +44,32 @@ export default async function DashboardLayout({
     <ChatProvider>
       <MobileMenuProvider>
         <div className="flex h-screen overflow-hidden bg-background">
-        {/* Desktop Sidebar */}
-        <div className="hidden lg:block lg:w-64 bg-background border-border border-r h-screen sticky top-0 z-30 overflow-y-auto">
-          <div className="flex h-16 items-center justify-center border-border border-b px-4 sticky top-0 bg-background z-10">
-            <div className="flex items-center">
-              <Image
-                src="/kenac_logo_light.png"
-                alt="Kenac Logo"
-                width={120}
-                height={40}
-                className="dark:hidden"
-                priority
-              />
-              <Image
-                src="/kenac_logo.png"
-                alt="Kenac Logo"
-                width={120}
-                height={40}
-                className="hidden dark:block"
-                priority
-              />
+          {/* Desktop Sidebar */}
+          <div className="hidden lg:block lg:w-64 bg-background border-border border-r h-screen sticky top-0 z-30 overflow-y-auto">
+            <div className="flex h-16 items-center justify-center border-border border-b px-4 sticky top-0 bg-background z-10">
+              <div className="flex items-center">
+                <Image
+                  src="/kenac_logo_light.png"
+                  alt="Kenac Logo"
+                  width={120}
+                  height={40}
+                  className="dark:hidden"
+                  priority
+                />
+                <Image
+                  src="/kenac_logo.png"
+                  alt="Kenac Logo"
+                  width={120}
+                  height={40}
+                  className="hidden dark:block"
+                  priority
+                />
+              </div>
             </div>
-          </div>
-          <TenantDisplay />
-          <div className="py-4 h-[calc(100vh-7rem)] overflow-y-auto">
-            <nav className="space-y-1 px-2">
-              {/* <Link
+            <TenantDisplay />
+            <div className="py-4 h-[calc(100vh-7rem)] overflow-y-auto">
+              <nav className="space-y-1 px-2">
+                {/* <Link
                 href="/leads/new"
                 className="flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
               >
@@ -83,69 +84,77 @@ export default async function DashboardLayout({
                 Dashboard
               </Link> */}
 
-              <div className="space-y-1">
+                <div className="space-y-1">
+                  <MenuItemWithSubmenu
+                    icon={<TrendingUp />}
+                    label="Leads"
+                    href="/ussd-leads"
+                    subMenuItems={[
+                      { label: "Pipeline", href: "/leads" },
+                      { label: "USSD Leads", href: "/ussd-leads" },
+                      { label: "Configuration", href: "/leads/config" },
+                    ]}
+                  />
+                </div>
+
+                <Link
+                  href="/loans"
+                  className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                >
+                  <CreditCard className="h-4 w-4" />
+                  Loans
+                </Link>
+
+                <div className="space-y-1">
+                  <MenuItemWithSubmenu
+                    icon={<Users />}
+                    label="Clients"
+                    href="/clients"
+                    subMenuItems={[
+                      { label: "All Clients", href: "/clients" },
+                      { label: "Add Client", href: "/clients/new" },
+                    ]}
+                  />
+                </div>
+
+                <Link
+                  href="/tellers"
+                  className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                >
+                  <Wallet className="h-4 w-4" />
+                  Tellers
+                </Link>
+
                 <MenuItemWithSubmenu
-                  icon={<TrendingUp />}
-                  label="Leads"
-                  href="/ussd-leads"
+                  icon={<BarChart3 />}
+                  label="Accounting"
+                  href="/accounting"
                   subMenuItems={[
-                    { label: "Pipeline", href: "/leads" },
-                    { label: "USSD Leads", href: "/ussd-leads" },
-                    { label: "Configuration", href: "/leads/config" },
+                    { label: "Home", href: "/accounting" },
+                    {
+                      label: "Chart of Accounts",
+                      href: "/accounting/chart-of-accounts",
+                    },
+                    {
+                      label: "Journal Entries",
+                      href: "/accounting/search-journal",
+                    },
+                    {
+                      label: "Frequent Postings",
+                      href: "/accounting/frequent-postings",
+                    },
                   ]}
                 />
-              </div>
 
-              <Link
-                href="/loans"
-                className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-              >
-                <CreditCard className="h-4 w-4" />
-                Loans
-              </Link>
+                <Link
+                  href="/reports"
+                  className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                >
+                  <FileText className="h-4 w-4" />
+                  Reports
+                </Link>
 
-              <div className="space-y-1">
-                <MenuItemWithSubmenu
-                  icon={<Users />}
-                  label="Clients"
-                  href="/clients"
-                  subMenuItems={[
-                    { label: "All Clients", href: "/clients" },
-                    { label: "Add Client", href: "/clients/new" },
-                  ]}
-                />
-              </div>
-
-              <MenuItemWithSubmenu
-                icon={<BarChart3 />}
-                label="Accounting"
-                href="/accounting"
-                subMenuItems={[
-                  { label: "Home", href: "/accounting" },
-                  {
-                    label: "Chart of Accounts",
-                    href: "/accounting/chart-of-accounts",
-                  },
-                  {
-                    label: "Journal Entries",
-                    href: "/accounting/search-journal",
-                  },
-                  {
-                    label: "Frequent Postings",
-                    href: "/accounting/frequent-postings",
-                  },
-                ]}
-              />
-
-              <Link
-                href="/reports"
-                className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-              >
-                <FileText className="h-4 w-4" />
-                Reports
-              </Link>
-
-              {/* <Link
+                {/* <Link
                 href="#"
                 className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
               >
@@ -177,45 +186,45 @@ export default async function DashboardLayout({
                 Security
               </Link> */}
 
-              <div className="space-y-1">
-                <MenuItemWithSubmenu
-                  icon={<Bot />}
-                  label="AI Assistant"
-                  href="/ai-assistant"
-                  subMenuItems={[
-                    { label: "Chat", href: "/ai-assistant" },
-                    { label: "Admin", href: "/rag-admin" },
-                  ]}
-                />
-              </div>
+                <div className="space-y-1">
+                  <MenuItemWithSubmenu
+                    icon={<Bot />}
+                    label="AI Assistant"
+                    href="/ai-assistant"
+                    subMenuItems={[
+                      { label: "Chat", href: "/ai-assistant" },
+                      { label: "Admin", href: "/rag-admin" },
+                    ]}
+                  />
+                </div>
 
-              {/* <Link
+                {/* <Link
                 href="#"
                 className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
               >
                 <Settings className="h-4 w-4" />
                 Settings
               </Link> */}
-            </nav>
+              </nav>
+            </div>
           </div>
-        </div>
 
-        {/* Mobile Sidebar */}
-        <MobileSidebar userProfileData={userProfileData} />
-
-        {/* Main Content */}
-        <div className="flex flex-1 flex-col h-screen overflow-hidden">
-          {/* Pass user profile data to the client component */}
-          <UserProfileClient userProfileData={userProfileData} />
+          {/* Mobile Sidebar */}
+          <MobileSidebar userProfileData={userProfileData} />
 
           {/* Main Content */}
-          <main className="flex-1 overflow-y-auto p-8 bg-background">
-            <Suspense fallback={<div>Loading...</div>}>{children}</Suspense>
-          </main>
-        </div>
+          <div className="flex flex-1 flex-col h-screen overflow-hidden">
+            {/* Pass user profile data to the client component */}
+            <UserProfileClient userProfileData={userProfileData} />
 
-        {/* AI Assistant */}
-        <AIAssistant />
+            {/* Main Content */}
+            <main className="flex-1 overflow-y-auto p-8 bg-background">
+              <Suspense fallback={<div>Loading...</div>}>{children}</Suspense>
+            </main>
+          </div>
+
+          {/* AI Assistant */}
+          <AIAssistant />
         </div>
       </MobileMenuProvider>
     </ChatProvider>

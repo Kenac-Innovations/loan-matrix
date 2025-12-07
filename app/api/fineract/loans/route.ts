@@ -1,54 +1,29 @@
-import { NextResponse } from "next/server";
-import { getFineractServiceWithSession } from "@/lib/fineract-api";
-import { fetchFineractAPI } from "@/lib/api";
+import { NextRequest, NextResponse } from "next/server";
+import { getSession } from "@/lib/auth";
+import { getSession as getCustomSession } from "@/app/actions/auth";
+import { getFineractTenantId } from "@/lib/fineract-tenant-service";
+
+const baseUrl = process.env.FINERACT_BASE_URL || "http://10.10.0.143:8443";
 
 /**
- * GET /api/fineract/loans
- * Returns paginated loans from Fineract
+ * Get access token from either NextAuth session or custom JWT session
  */
-export async function GET(request: Request) {
+async function getAccessToken(): Promise<string | undefined> {
   try {
-    const { searchParams } = new URL(request.url);
+    const nextAuthSession = await getSession();
+    if (nextAuthSession?.accessToken) {
+      return nextAuthSession.accessToken;
+    }
 
-    const offset = searchParams.get("offset") || "0";
-    const limit = searchParams.get("limit") || "50";
+    const customSession = await getCustomSession();
+    if (customSession?.accessToken) {
+      return customSession.accessToken;
+    }
 
-    console.log("Loans API Debug:", {
-      offset,
-      limit,
-      url: request.url,
-    });
-
-    const fineractService = await getFineractServiceWithSession();
-    const data = await fineractService.getLoans(
-      parseInt(offset),
-      parseInt(limit)
-    );
-
-    console.log("Loans API Response:", {
-      dataType: typeof data,
-      isArray: Array.isArray(data),
-      length: Array.isArray(data) ? data.length : "N/A",
-      firstItem: Array.isArray(data) && data.length > 0 ? data[0] : "No items",
-      fullData: data,
-    });
-
-    return NextResponse.json(data);
-  } catch (error: any) {
-    console.error("Error fetching loans:", error);
-
-    // Better error handling for different error types
-    const errorMessage =
-      error?.message || error?.errorData?.defaultUserMessage || "Unknown error";
-    const statusCode = error?.status || 500;
-
-    return NextResponse.json(
-      {
-        error: errorMessage,
-        details: error?.errorData || null,
-      },
-      { status: statusCode }
-    );
+    return undefined;
+  } catch (error) {
+    console.error("Error getting access token:", error);
+    return undefined;
   }
 }
 
@@ -56,55 +31,57 @@ export async function GET(request: Request) {
  * POST /api/fineract/loans
  * Creates a new loan in Fineract
  */
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
-    const payload = await request.json();
+    const accessToken = await getAccessToken();
+    const fineractTenantId = await getFineractTenantId();
 
-    // POST to Fineract /loans
-    const result = await fetchFineractAPI('/loans', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-
-    // Set external ID to loan ID for future reference
-    if (result && result.resourceId) {
-      const loanId = result.resourceId;
-      
-      // Update the loan with the external ID set to the loan ID
-      try {
-        await fetchFineractAPI(`/loans/${loanId}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            externalId: String(loanId),
-            locale: 'en',
-            dateFormat: 'yyyy-MM-dd',
-          }),
-        });
-        
-        console.log(`Updated loan ${loanId} with external ID set to loan ID`);
-      } catch (updateError) {
-        console.error('Failed to update loan external ID:', updateError);
-        // Don't fail the entire operation if external ID update fails
-      }
+    if (!accessToken) {
+      return NextResponse.json(
+        { success: false, error: "Unauthorized" },
+        { status: 401 }
+      );
     }
 
-    return NextResponse.json(result, { status: 201 });
-  } catch (error: any) {
-    console.error("Error creating loan:", error);
+    const body = await request.json();
 
-    // Better error handling for different error types
-    const errorMessage =
-      error?.message || error?.errorData?.defaultUserMessage || "Unknown error";
-    const statusCode = error?.status || 500;
+    console.log("Creating loan in Fineract with data:", body);
 
-    return NextResponse.json(
-      {
-        error: errorMessage,
-        details: error?.errorData || null,
+    const response = await fetch(`${baseUrl}/fineract-provider/api/v1/loans`, {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${accessToken}`,
+        "Fineract-Platform-TenantId": fineractTenantId,
+        "Content-Type": "application/json",
+        Accept: "application/json",
       },
-      { status: statusCode }
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error("Fineract loan creation failed:", errorData);
+      return NextResponse.json(
+        {
+          success: false,
+          error: errorData.developerMessage || "Failed to create loan",
+          details: errorData,
+        },
+        { status: response.status }
+      );
+    }
+
+    const result = await response.json();
+    console.log("Loan created successfully:", result);
+
+    return NextResponse.json({ success: true, data: result });
+  } catch (error) {
+    console.error("Error creating loan:", error);
+    const errorMessage =
+      error instanceof Error ? error.message : "Unknown error";
+    return NextResponse.json(
+      { success: false, error: `Failed to create loan: ${errorMessage}` },
+      { status: 500 }
     );
   }
 }

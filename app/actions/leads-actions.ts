@@ -189,20 +189,36 @@ export async function getLeadsData(
             color: "#6B7280",
           };
 
-      // Calculate loan amount (for now using a placeholder based on lead ID for consistency)
-      const leadIdNum = parseInt(lead.id.slice(-4), 16) || 1;
-      const amount = `$${((leadIdNum % 300000) + 50000)
-        .toFixed(0)
-        .replace(/\B(?=(\d{3})+(?!\d))/g, ",")}`;
+      // Get loan amount from actual lead data
+      const stateMetadata = (lead.stateMetadata as any) || {};
+      const loanTerms = stateMetadata.loanTerms || {};
 
-      // Determine loan type based on amount
-      const amountNum = parseInt(amount.replace(/[$,]/g, ""));
+      // Try to get amount from: loanTerms.principal > requestedAmount > 0
+      let amountNum = 0;
+      if (loanTerms.principal && loanTerms.principal > 0) {
+        amountNum = loanTerms.principal;
+      } else if (lead.requestedAmount && lead.requestedAmount > 0) {
+        amountNum = lead.requestedAmount;
+      }
+
+      // Format amount with currency (default to ZMK)
+      const currency = stateMetadata.currency || "ZMK";
+      const amount =
+        amountNum > 0
+          ? `${currency} ${amountNum
+              .toFixed(2)
+              .replace(/\B(?=(\d{3})+(?!\d))/g, ",")}`
+          : "Not specified";
+
+      // Determine loan type based on amount (if available)
       const loanType =
         amountNum > 200000
           ? "Mortgage"
           : amountNum > 100000
           ? "Business Loan"
-          : "Personal Loan";
+          : amountNum > 0
+          ? "Personal Loan"
+          : "Not specified";
 
       return {
         id: lead.id,
@@ -220,6 +236,7 @@ export async function getLeadsData(
         assigneeColor: assignee.color,
         createdAt: lead.createdAt,
         updatedAt: lead.updatedAt,
+        userId: lead.userId, // Include created by user ID
       };
     });
 

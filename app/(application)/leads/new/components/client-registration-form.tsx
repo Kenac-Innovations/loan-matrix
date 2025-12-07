@@ -148,6 +148,24 @@ const clientFormSchema = z
     businessOwnership: z.boolean().default(false),
     businessType: z.string().optional(),
 
+    // Affordability Information
+    requestedAmount: z.number().optional(),
+    loanTerm: z.number().optional(),
+    incomeType: z.string().optional(),
+    grossMonthlyIncome: z.number().optional(),
+    netMonthlyIncome: z.number().optional(),
+    monthlyExpenses: z.number().optional(),
+    creditScore: z.number().optional(),
+    employmentLengthMonths: z.number().optional(),
+    nationality: z.string().optional(),
+    idType: z.string().optional(),
+    mobileInOwnName: z.boolean().default(false),
+    hasProofOfIncome: z.boolean().default(false),
+    hasValidNationalId: z.boolean().default(false),
+    identityVerified: z.boolean().default(false),
+    employmentVerified: z.boolean().default(false),
+    incomeVerified: z.boolean().default(false),
+
     // Step 2: Account Settings
     active: z.boolean().default(true),
     activationDate: z.date().optional(),
@@ -335,6 +353,7 @@ interface ClientRegistrationFormProps {
   setFormCompletionStatus?: (updater: (prev: any) => any) => void;
   setClientCreatedInFineract?: (value: boolean) => void;
   isSubmitting?: boolean;
+  onAllSectionsComplete?: (isComplete: boolean) => void;
 }
 
 export function ClientRegistrationForm({
@@ -347,6 +366,7 @@ export function ClientRegistrationForm({
   setFormCompletionStatus,
   setClientCreatedInFineract,
   isSubmitting = false,
+  onAllSectionsComplete,
 }: ClientRegistrationFormProps) {
   const {
     success,
@@ -383,12 +403,29 @@ export function ClientRegistrationForm({
     "idle" | "not_found" | "found" | "error"
   >(clientCreatedInFineract ? "found" : "idle");
   const [isFormDisabled, setIsFormDisabled] = useState(false);
+  const [activeClientTab, setActiveClientTab] = useState("general");
 
   // Update clientLookupStatus when clientCreatedInFineract changes
   useEffect(() => {
     if (clientCreatedInFineract) {
       setClientLookupStatus("found");
       setIsFormDisabled(false);
+
+      // Mark all completed sections as saved when client is created/updated in Fineract
+      setSectionCompletion((prevCompletion) => {
+        setSectionSaved({
+          administrative: prevCompletion.administrative,
+          personal: prevCompletion.personal,
+          contact: prevCompletion.contact,
+          classification: prevCompletion.classification,
+          additional: prevCompletion.additional,
+          selfie: prevCompletion.selfie,
+          identityDocuments: prevCompletion.identityDocuments,
+          otherDocuments: prevCompletion.otherDocuments,
+          datatables: prevCompletion.datatables,
+        });
+        return prevCompletion;
+      });
     }
   }, [clientCreatedInFineract]);
 
@@ -439,17 +476,17 @@ export function ClientRegistrationForm({
             "Fetching identifiers template for client:",
             numericClientId
           );
-        const identifiersTemplateResponse = await fetch(
-          `/api/fineract/clients/${numericClientId}/identifiers/template`
-        );
+          const identifiersTemplateResponse = await fetch(
+            `/api/fineract/clients/${numericClientId}/identifiers/template`
+          );
           console.log(
             "Identifiers template response status:",
             identifiersTemplateResponse.status,
             identifiersTemplateResponse.statusText
           );
 
-        if (identifiersTemplateResponse.ok) {
-          const identifiersData = await identifiersTemplateResponse.json();
+          if (identifiersTemplateResponse.ok) {
+            const identifiersData = await identifiersTemplateResponse.json();
             console.log("Identifiers template raw data:", identifiersData);
             console.log(
               "Has documentTypeOptions:",
@@ -583,47 +620,59 @@ export function ClientRegistrationForm({
 
             // Fetch documents for each identifier
             const documentsMap = new Map<number, any[]>();
-            const fetchPromises = identifiers.map(async (identifier: any) => {
-              const identifierId = identifier.id;
-              if (!identifierId) return;
 
-              try {
-                const docsResponse = await fetch(
-                  `/api/fineract/client_identifiers/${identifierId}/documents`
-                );
-                if (docsResponse.ok) {
-                  const docsData = await docsResponse.json();
-                  // Handle different response structures
-                  let docs = [];
-                  if (Array.isArray(docsData)) {
-                    docs = docsData;
-                  } else if (docsData?.pageItems) {
-                    docs = docsData.pageItems;
-                  } else if (docsData?.content) {
-                    docs = docsData.content;
-                  } else if (docsData?.documents) {
-                    docs = docsData.documents;
+            // Safety check: ensure identifiers is an array
+            if (Array.isArray(identifiers) && identifiers.length > 0) {
+              const fetchPromises = identifiers.map(async (identifier: any) => {
+                const identifierId = identifier.id;
+                if (!identifierId) return;
+
+                try {
+                  const docsResponse = await fetch(
+                    `/api/fineract/client_identifiers/${identifierId}/documents`
+                  );
+                  if (docsResponse.ok) {
+                    const docsData = await docsResponse.json();
+                    // Handle different response structures
+                    let docs = [];
+                    if (Array.isArray(docsData)) {
+                      docs = docsData;
+                    } else if (docsData?.pageItems) {
+                      docs = docsData.pageItems;
+                    } else if (docsData?.content) {
+                      docs = docsData.content;
+                    } else if (docsData?.documents) {
+                      docs = docsData.documents;
+                    }
+                    documentsMap.set(identifierId, docs);
+                  } else if (docsResponse.status !== 404) {
+                    console.error(
+                      `Error fetching documents for identifier ${identifierId}:`,
+                      docsResponse.status
+                    );
+                    documentsMap.set(identifierId, []);
+                  } else {
+                    documentsMap.set(identifierId, []);
                   }
-                  documentsMap.set(identifierId, docs);
-                } else if (docsResponse.status !== 404) {
+                } catch (error) {
                   console.error(
-                    `Error fetching documents for identifier ${identifierId}:`,
-                    docsResponse.status
+                    `Exception fetching documents for identifier ${identifierId}:`,
+                    error
                   );
                   documentsMap.set(identifierId, []);
-                } else {
-                  documentsMap.set(identifierId, []);
                 }
-              } catch (error) {
-                console.error(
-                  `Exception fetching documents for identifier ${identifierId}:`,
-                  error
-                );
-                documentsMap.set(identifierId, []);
-              }
-            });
+              });
 
-            await Promise.all(fetchPromises);
+              try {
+                await Promise.all(fetchPromises);
+              } catch (promiseError) {
+                console.error(
+                  "Error in Promise.all for document fetching:",
+                  promiseError
+                );
+              }
+            }
+
             setIdentifierDocuments(documentsMap);
           } else if (identifiersResponse.status === 404) {
             console.log("No identifiers found (404)");
@@ -688,14 +737,14 @@ export function ClientRegistrationForm({
 
         // Fetch existing client image with maxHeight parameter
         try {
-        const imageResponse = await fetch(
+          const imageResponse = await fetch(
             `/api/fineract/clients/${numericClientId}/images?maxHeight=150`
-        );
+          );
 
           console.log("Image fetch response status:", imageResponse.status);
 
-        if (imageResponse.ok) {
-          const imageData = await imageResponse.json();
+          if (imageResponse.ok) {
+            const imageData = await imageResponse.json();
 
             console.log("Image data received:", {
               type: typeof imageData,
@@ -729,7 +778,7 @@ export function ClientRegistrationForm({
             // Handle different response formats and convert to data URI if needed
             let imageUri: string | null = null;
 
-          if (imageData && typeof imageData === "string") {
+            if (imageData && typeof imageData === "string") {
               // Remove quotes if JSON-wrapped string
               let cleanData = imageData.trim();
               if (
@@ -753,8 +802,8 @@ export function ClientRegistrationForm({
                   cleanData.substring(0, 50)
                 );
               }
-          } else if (imageData?.imageData) {
-            // Object with imageData property
+            } else if (imageData?.imageData) {
+              // Object with imageData property
               const imgData = imageData.imageData;
               if (typeof imgData === "string") {
                 const cleanData = imgData.trim().replace(/\s/g, "");
@@ -767,7 +816,7 @@ export function ClientRegistrationForm({
               imageData.length > 0 &&
               imageData[0]?.imageData
             ) {
-            // Array of images, get the first one
+              // Array of images, get the first one
               const imgData = imageData[0].imageData;
               if (typeof imgData === "string") {
                 const cleanData = imgData.trim().replace(/\s/g, "");
@@ -775,8 +824,8 @@ export function ClientRegistrationForm({
                   ? cleanData
                   : `data:image/jpeg;base64,${cleanData}`;
               }
-          } else if (imageData?.base64EncodedImage) {
-            // Object with base64EncodedImage property
+            } else if (imageData?.base64EncodedImage) {
+              // Object with base64EncodedImage property
               const imgData = imageData.base64EncodedImage;
               if (typeof imgData === "string") {
                 const cleanData = imgData.trim().replace(/\s/g, "");
@@ -930,13 +979,22 @@ export function ClientRegistrationForm({
         }
       } catch (error) {
         console.error("Error fetching additional details:", error);
+        // Don't let this error break the page - set sensible defaults
+        setExistingIdentifiers([]);
+        setIdentifierDocuments(new Map());
+        setClientDocuments([]);
+        setDataTables([]);
       } finally {
         setIsLoadingAdditionalDetails(false);
       }
     };
 
     if (clientCreatedInFineract) {
-      fetchAdditionalDetails();
+      // Wrap in try-catch to prevent unhandled promise rejections
+      fetchAdditionalDetails().catch((error) => {
+        console.error("Unhandled error in fetchAdditionalDetails:", error);
+        setIsLoadingAdditionalDetails(false);
+      });
     }
   }, [clientCreatedInFineract]);
 
@@ -1017,6 +1075,19 @@ export function ClientRegistrationForm({
     datatables: false,
   });
 
+  // Track which sections have been saved (not just completed)
+  const [sectionSaved, setSectionSaved] = useState({
+    administrative: false,
+    personal: false,
+    contact: false,
+    classification: false,
+    additional: false,
+    selfie: false,
+    identityDocuments: false,
+    otherDocuments: false,
+    datatables: false,
+  });
+
   const [newIdentifier, setNewIdentifier] = useState({
     documentTypeId: "",
     documentKey: "",
@@ -1061,12 +1132,13 @@ export function ClientRegistrationForm({
 
   const checkClassificationSection = () => {
     const values = form.getValues();
-    return !!(values.clientTypeId && values.clientClassificationId);
+    // Only clientTypeId is required, clientClassificationId is optional
+    return !!values.clientTypeId;
   };
 
   const checkAdditionalSection = () => {
     const values = form.getValues();
-    return !!values.submittedOn;
+    return !!values.submittedOnDate;
   };
 
   const checkSelfieSection = () => {
@@ -1085,6 +1157,35 @@ export function ClientRegistrationForm({
   const checkDatatablesSection = () => {
     // Optional section - always return true for now
     return true;
+  };
+
+  // Helper function to get section status: 'incomplete', 'pending', or 'saved'
+  const getSectionStatus = (
+    sectionName: keyof typeof sectionCompletion
+  ): "incomplete" | "pending" | "saved" => {
+    const isComplete = sectionCompletion[sectionName];
+    const isSaved = sectionSaved[sectionName];
+
+    if (!isComplete) return "incomplete";
+    if (isComplete && !isSaved) return "pending";
+    return "saved";
+  };
+
+  // Helper function to get section styling classes
+  const getSectionClasses = (
+    sectionName: keyof typeof sectionCompletion
+  ): string => {
+    const status = getSectionStatus(sectionName);
+    const baseClasses = "space-y-6 mb-8 rounded-lg p-6";
+
+    switch (status) {
+      case "incomplete":
+        return `${baseClasses} bg-red-50 dark:bg-red-950 border-2 border-red-500 dark:border-red-600`;
+      case "pending":
+        return `${baseClasses} bg-amber-50 dark:bg-amber-950 border-2 border-amber-500 dark:border-amber-600`;
+      case "saved":
+        return `${baseClasses} bg-green-50 dark:bg-green-950 border-2 border-green-500 dark:border-green-600`;
+    }
   };
 
   // Check overall tab completion
@@ -1115,6 +1216,14 @@ export function ClientRegistrationForm({
 
     return generalComplete && kycComplete && additionalComplete;
   };
+
+  // Notify parent when all sections are complete
+  useEffect(() => {
+    if (onAllSectionsComplete) {
+      const isComplete = checkAllSectionsComplete();
+      onAllSectionsComplete(isComplete);
+    }
+  }, [sectionCompletion, clientCreatedInFineract, onAllSectionsComplete]);
 
   // Helper function to extract identifier ID from document filename
   // NOTE: This is kept for backward compatibility with documents uploaded using the old method.
@@ -1399,6 +1508,17 @@ export function ClientRegistrationForm({
             return newMap;
           });
         }
+
+        // Mark identity documents section as saved if it's complete
+        setSectionCompletion((prevCompletion) => {
+          if (prevCompletion.identityDocuments) {
+            setSectionSaved((prevSaved) => ({
+              ...prevSaved,
+              identityDocuments: true,
+            }));
+          }
+          return prevCompletion;
+        });
       } else {
         const errorData = await response.json().catch(() => ({}));
         error({
@@ -1838,6 +1958,39 @@ export function ClientRegistrationForm({
             // Set family members
             setFamilyMembers(lead.familyMembers || []);
 
+            // Mark sections as saved if they are complete (data is coming from server)
+            // Wait a bit for form state to update, then check completion
+            setTimeout(() => {
+              const adminComplete = checkAdministrativeSection();
+              const personalComplete = checkPersonalSection();
+              const contactComplete = checkContactSection();
+              const classificationComplete = checkClassificationSection();
+              const additionalComplete = checkAdditionalSection();
+
+              setSectionCompletion((prevCompletion) => {
+                const newCompletion = {
+                  ...prevCompletion,
+                  administrative: adminComplete,
+                  personal: personalComplete,
+                  contact: contactComplete,
+                  classification: classificationComplete,
+                  additional: additionalComplete,
+                };
+
+                // Mark sections as saved if they are complete
+                setSectionSaved((prevSaved) => ({
+                  ...prevSaved,
+                  administrative: adminComplete,
+                  personal: personalComplete,
+                  contact: contactComplete,
+                  classification: classificationComplete,
+                  additional: additionalComplete,
+                }));
+
+                return newCompletion;
+              });
+            }, 100);
+
             // Trigger actual lookup if externalId exists
             if (lead.externalId) {
               console.log(
@@ -2201,6 +2354,35 @@ export function ClientRegistrationForm({
   };
 
   // Handle field blur for auto-save
+  // Helper function to determine which section a field belongs to
+  const getSectionForField = (
+    fieldName: string
+  ): keyof typeof sectionSaved | null => {
+    const administrativeFields = ["officeId", "legalFormId", "activationDate"];
+    const personalFields = [
+      "firstname",
+      "lastname",
+      "middlename",
+      "dateOfBirth",
+      "genderId",
+    ];
+    const contactFields = ["mobileNo", "emailAddress", "countryCode"];
+    const classificationFields = ["clientTypeId", "clientClassificationId"];
+    const additionalFields = [
+      "submittedOnDate",
+      "isStaff",
+      "openSavingsAccount",
+      "savingsProductId",
+    ];
+
+    if (administrativeFields.includes(fieldName)) return "administrative";
+    if (personalFields.includes(fieldName)) return "personal";
+    if (contactFields.includes(fieldName)) return "contact";
+    if (classificationFields.includes(fieldName)) return "classification";
+    if (additionalFields.includes(fieldName)) return "additional";
+    return null;
+  };
+
   const handleFieldBlur = async (fieldName: string, value: any) => {
     setIsAutoSaving(true);
     setLastSavedField(fieldName);
@@ -2236,6 +2418,20 @@ export function ClientRegistrationForm({
           timestamp: Date.now(),
           step: "lead",
         });
+
+        // Mark the relevant section as saved if it's complete
+        const section = getSectionForField(fieldName);
+        if (section) {
+          setSectionCompletion((prevCompletion) => {
+            if (prevCompletion[section]) {
+              setSectionSaved((prevSaved) => ({
+                ...prevSaved,
+                [section]: true,
+              }));
+            }
+            return prevCompletion;
+          });
+        }
       }
     } catch (error) {
       console.error("Error auto-saving field:", error);
@@ -2283,6 +2479,36 @@ export function ClientRegistrationForm({
       validationError("Please enter a national ID number");
       return;
     }
+
+    // Clear all internal storage when ID number search is initiated
+    setFamilyMembers([]);
+    setExistingClientImage(null);
+    setSelfieImage(null);
+    setExistingIdentifiers([]);
+    setClientDocuments([]);
+    setIdentifierDocuments(new Map());
+    setSectionSaved({
+      administrative: false,
+      personal: false,
+      contact: false,
+      classification: false,
+      additional: false,
+      selfie: false,
+      identityDocuments: false,
+      otherDocuments: false,
+      datatables: false,
+    });
+    setSectionCompletion({
+      administrative: false,
+      personal: false,
+      contact: false,
+      classification: false,
+      additional: false,
+      selfie: false,
+      identityDocuments: false,
+      otherDocuments: false,
+      datatables: false,
+    });
 
     setIsSearchingClient(true);
     setClientLookupStatus("idle");
@@ -2648,6 +2874,39 @@ export function ClientRegistrationForm({
           setFamilyMembers(familyMembers);
         }
 
+        // Mark sections as saved if they are complete (data is coming from server)
+        // Wait a bit for form state to update, then check completion
+        setTimeout(() => {
+          const adminComplete = checkAdministrativeSection();
+          const personalComplete = checkPersonalSection();
+          const contactComplete = checkContactSection();
+          const classificationComplete = checkClassificationSection();
+          const additionalComplete = checkAdditionalSection();
+
+          setSectionCompletion((prevCompletion) => {
+            const newCompletion = {
+              ...prevCompletion,
+              administrative: adminComplete,
+              personal: personalComplete,
+              contact: contactComplete,
+              classification: classificationComplete,
+              additional: additionalComplete,
+            };
+
+            // Mark sections as saved if they are complete
+            setSectionSaved((prevSaved) => ({
+              ...prevSaved,
+              administrative: adminComplete,
+              personal: personalComplete,
+              contact: contactComplete,
+              classification: classificationComplete,
+              additional: additionalComplete,
+            }));
+
+            return newCompletion;
+          });
+        }, 100);
+
         console.log("==========> Setting client lookup status to found");
         setClientLookupStatus("found");
         setIsFormDisabled(false);
@@ -2995,6 +3254,19 @@ export function ClientRegistrationForm({
 
   // KYC Handlers
   // Check section completion whenever form values or related state changes
+  // Watch specific fields individually to avoid infinite loops
+  const officeId = form.watch("officeId");
+  const legalFormId = form.watch("legalFormId");
+  const activationDate = form.watch("activationDate");
+  const firstname = form.watch("firstname");
+  const lastname = form.watch("lastname");
+  const dateOfBirth = form.watch("dateOfBirth");
+  const genderId = form.watch("genderId");
+  const mobileNo = form.watch("mobileNo");
+  const emailAddress = form.watch("emailAddress");
+  const clientTypeId = form.watch("clientTypeId");
+  const submittedOnDate = form.watch("submittedOnDate");
+
   useEffect(() => {
     const checkSections = () => {
       const newCompletion = {
@@ -3009,11 +3281,43 @@ export function ClientRegistrationForm({
         datatables: checkDatatablesSection(),
       };
 
-      setSectionCompletion(newCompletion);
+      // Reset saved status for sections whose completion status changed
+      setSectionCompletion((prevCompletion) => {
+        setSectionSaved((prevSaved) => {
+          const newSaved = { ...prevSaved };
+          // If a section's completion status changed, mark it as not saved
+          Object.keys(newCompletion).forEach((key) => {
+            const sectionKey = key as keyof typeof newCompletion;
+            if (newCompletion[sectionKey] !== prevCompletion[sectionKey]) {
+              // Completion status changed, reset saved status
+              newSaved[sectionKey] = false;
+            }
+          });
+          return newSaved;
+        });
+        return newCompletion;
+      });
 
       // Update parent form completion status
+      // Calculate completion using newCompletion directly instead of reading from state
       if (setFormCompletionStatus) {
-        const allComplete = checkAllSectionsComplete();
+        const generalComplete =
+          newCompletion.administrative &&
+          newCompletion.personal &&
+          newCompletion.contact &&
+          newCompletion.classification &&
+          newCompletion.additional;
+
+        const kycComplete =
+          newCompletion.selfie && newCompletion.identityDocuments;
+
+        const additionalComplete = clientCreatedInFineract
+          ? newCompletion.datatables
+          : true;
+
+        const allComplete =
+          generalComplete && kycComplete && additionalComplete;
+
         setFormCompletionStatus((prev: any) => ({
           ...prev,
           client: allComplete,
@@ -3023,7 +3327,17 @@ export function ClientRegistrationForm({
 
     checkSections();
   }, [
-    form.watch(),
+    officeId,
+    legalFormId,
+    activationDate,
+    firstname,
+    lastname,
+    dateOfBirth,
+    genderId,
+    mobileNo,
+    emailAddress,
+    clientTypeId,
+    submittedOnDate,
     existingClientImage,
     selfieImage,
     existingIdentifiers,
@@ -3158,6 +3472,17 @@ export function ClientRegistrationForm({
       setExistingClientImage(selfieImage);
       setSelfieImageLoading(true);
       setSelfieImage(null);
+
+      // Mark selfie section as saved if it's complete
+      setSectionCompletion((prevCompletion) => {
+        if (prevCompletion.selfie) {
+          setSectionSaved((prevSaved) => ({
+            ...prevSaved,
+            selfie: true,
+          }));
+        }
+        return prevCompletion;
+      });
     } catch (err: any) {
       console.error("Error uploading selfie:", err);
       error({
@@ -3428,6 +3753,17 @@ export function ClientRegistrationForm({
             description: "Identifier added successfully",
           });
         }
+
+        // Mark identity documents section as saved if it's complete
+        setSectionCompletion((prevCompletion) => {
+          if (prevCompletion.identityDocuments) {
+            setSectionSaved((prevSaved) => ({
+              ...prevSaved,
+              identityDocuments: true,
+            }));
+          }
+          return prevCompletion;
+        });
 
         // Reset form
         setNewIdentifier({
@@ -4477,7 +4813,77 @@ export function ClientRegistrationForm({
 
                   {/* Only show client information sections after National ID is checked */}
                   {clientLookupStatus !== "idle" && (
-                    <Tabs defaultValue="general" className="w-full">
+                    <Tabs
+                      value={activeClientTab}
+                      onValueChange={async (newTab) => {
+                        // Prevent navigation if there are form errors
+                        if (newTab !== activeClientTab) {
+                          // If moving forward (general -> account -> additional), validate
+                          const tabOrder = ["general", "account", "additional"];
+                          const currentIndex =
+                            tabOrder.indexOf(activeClientTab);
+                          const newIndex = tabOrder.indexOf(newTab);
+
+                          if (newIndex > currentIndex) {
+                            // Moving forward - validate
+                            if (activeClientTab === "general") {
+                              // Validate general tab form
+                              const formToValidate = externalForm || form;
+                              const isValid = await formToValidate.trigger();
+
+                              if (!isValid) {
+                                const formErrors =
+                                  formToValidate.formState.errors;
+                                console.error(
+                                  "Form validation errors:",
+                                  formErrors
+                                );
+                                console.error(
+                                  "Form values:",
+                                  formToValidate.getValues()
+                                );
+
+                                // Log each error field
+                                Object.keys(formErrors).forEach((fieldName) => {
+                                  const fieldError =
+                                    formErrors[
+                                      fieldName as keyof typeof formErrors
+                                    ];
+                                  console.error(
+                                    `Field "${fieldName}" error:`,
+                                    fieldError
+                                  );
+                                });
+
+                                error({
+                                  title: "Validation Error",
+                                  description:
+                                    "Please fix all errors in the form before proceeding to the next step. Check the console for details.",
+                                });
+                                return;
+                              }
+                            } else if (activeClientTab === "account") {
+                              // Validate KYC sections
+                              const selfieComplete = checkSelfieSection();
+                              const identityComplete =
+                                checkIdentityDocumentsSection();
+
+                              if (!selfieComplete || !identityComplete) {
+                                error({
+                                  title: "Incomplete KYC",
+                                  description:
+                                    "Please complete the selfie and identity documents sections before proceeding.",
+                                });
+                                return;
+                              }
+                            }
+                          }
+                        }
+
+                        setActiveClientTab(newTab);
+                      }}
+                      className="w-full"
+                    >
                       <TabsList
                         className={`grid${
                           clientCreatedInFineract
@@ -4538,27 +4944,34 @@ export function ClientRegistrationForm({
                           <CardContent className="space-y-8">
                             {/* Administrative Information Section */}
                             <div
-                              className={`space-y-6 mb-8 ${
-                                sectionCompletion.administrative
-                                  ? "bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 rounded-lg p-6"
-                                  : ""
-                              }`}
+                              className={getSectionClasses("administrative")}
                             >
                               <div className="border-b border-gray-200 dark:border-gray-700 pb-3 mb-6">
                                 <div className="flex items-center gap-2 mb-2">
-                                  {sectionCompletion.administrative ? (
+                                  {getSectionStatus("administrative") ===
+                                  "saved" ? (
                                     <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400" />
+                                  ) : getSectionStatus("administrative") ===
+                                    "pending" ? (
+                                    <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400" />
                                   ) : (
-                                    <Building2 className="h-5 w-5 text-blue-500" />
+                                    <Building2 className="h-5 w-5 text-red-500" />
                                   )}
                                   <h3
                                     className={`text-lg font-semibold ${colors.textColor}`}
-                                >
-                                  Administrative Information
-                                </h3>
-                                  {sectionCompletion.administrative && (
+                                  >
+                                    Administrative Information
+                                  </h3>
+                                  {getSectionStatus("administrative") ===
+                                    "saved" && (
                                     <Badge className="ml-2 bg-green-500 text-white">
                                       Complete
+                                    </Badge>
+                                  )}
+                                  {getSectionStatus("administrative") ===
+                                    "pending" && (
+                                    <Badge className="ml-2 bg-amber-500 text-white">
+                                      Pending Save
                                     </Badge>
                                   )}
                                 </div>
@@ -4583,147 +4996,246 @@ export function ClientRegistrationForm({
                                   </div>
                                 </div>
                               ) : (
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                {/* Office */}
-                                <div className="space-y-3">
-                                  <Label
-                                    htmlFor="officeId"
-                                    className={colors.textColor}
-                                  >
-                                    Office{" "}
-                                    <span className="text-red-500">*</span>
-                                  </Label>
-                                  <div className="relative">
-                                    <Controller
-                                      control={
-                                        externalForm
-                                          ? externalForm.control
-                                          : form.control
-                                      }
-                                      name="officeId"
-                                      render={({ field }) => (
-                                        <SearchableSelect
-                                          options={officeOptions}
-                                          value={field.value?.toString()}
-                                          onValueChange={(value) => {
-                                            field.onChange(value);
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                  {/* Office */}
+                                  <div className="space-y-3">
+                                    <Label
+                                      htmlFor="officeId"
+                                      className={colors.textColor}
+                                    >
+                                      Office{" "}
+                                      <span className="text-red-500">*</span>
+                                    </Label>
+                                    <div className="relative">
+                                      <Controller
+                                        control={
+                                          externalForm
+                                            ? externalForm.control
+                                            : form.control
+                                        }
+                                        name="officeId"
+                                        render={({ field }) => (
+                                          <SearchableSelect
+                                            options={officeOptions}
+                                            value={field.value?.toString()}
+                                            onValueChange={(value) => {
+                                              field.onChange(value);
                                               handleFieldBlur(
                                                 "officeId",
                                                 value
                                               );
-                                          }}
-                                          placeholder="Select office"
-                                          className={getSelectErrorStyling(
-                                            hasFieldError(
-                                              form,
-                                              "officeId",
-                                              externalForm
-                                            ),
-                                            `border-${colors.borderColor} ${colors.inputBg}`
-                                          )}
-                                          onAddNew={() =>
-                                            setShowAddOfficeDialog(true)
-                                          }
-                                          addNewLabel="Add new office"
-                                          disabled={isFormDisabled}
-                                        />
-                                      )}
-                                    />
-                                    {lastSavedField === "officeId" &&
-                                      isAutoSaving && (
-                                        <div className="absolute right-2 top-1/2 -translate-y-1/2">
-                                          <div className="w-3 h-3 border border-gray-300 border-t-gray-600 rounded-full animate-spin"></div>
-                                        </div>
-                                      )}
-                                  </div>
-                                  <p
-                                    className={`text-xs ${colors.textColorMuted}`}
-                                  >
-                                    Select the branch office managing this
-                                    client
-                                  </p>
-                                  {(externalForm
-                                    ? externalForm.formState.errors.officeId
-                                    : form.formState.errors.officeId) && (
-                                    <p className="text-sm text-red-500">
-                                      {
-                                        (externalForm
-                                          ? externalForm.formState.errors
-                                              .officeId
-                                          : form.formState.errors.officeId
-                                        )?.message
-                                      }
+                                            }}
+                                            placeholder="Select office"
+                                            className={getSelectErrorStyling(
+                                              hasFieldError(
+                                                form,
+                                                "officeId",
+                                                externalForm
+                                              ),
+                                              `border-${colors.borderColor} ${colors.inputBg}`
+                                            )}
+                                            onAddNew={() =>
+                                              setShowAddOfficeDialog(true)
+                                            }
+                                            addNewLabel="Add new office"
+                                            disabled={isFormDisabled}
+                                          />
+                                        )}
+                                      />
+                                      {lastSavedField === "officeId" &&
+                                        isAutoSaving && (
+                                          <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                                            <div className="w-3 h-3 border border-gray-300 border-t-gray-600 rounded-full animate-spin"></div>
+                                          </div>
+                                        )}
+                                    </div>
+                                    <p
+                                      className={`text-xs ${colors.textColorMuted}`}
+                                    >
+                                      Select the branch office managing this
+                                      client
                                     </p>
-                                  )}
-                                </div>
+                                    {(externalForm
+                                      ? externalForm.formState.errors.officeId
+                                      : form.formState.errors.officeId) && (
+                                      <p className="text-sm text-red-500">
+                                        {
+                                          (externalForm
+                                            ? externalForm.formState.errors
+                                                .officeId
+                                            : form.formState.errors.officeId
+                                          )?.message
+                                        }
+                                      </p>
+                                    )}
+                                  </div>
 
-                                {/* Legal Form */}
-                                <div className="space-y-3">
-                                  <Label
-                                    htmlFor="legalFormId"
-                                    className={colors.textColor}
-                                  >
-                                    Legal Form{" "}
-                                    <span className="text-red-500">*</span>
-                                  </Label>
-                                  <div className="relative">
+                                  {/* Legal Form */}
+                                  <div className="space-y-3">
+                                    <Label
+                                      htmlFor="legalFormId"
+                                      className={colors.textColor}
+                                    >
+                                      Legal Form{" "}
+                                      <span className="text-red-500">*</span>
+                                    </Label>
+                                    <div className="relative">
+                                      <Controller
+                                        control={
+                                          externalForm
+                                            ? externalForm.control
+                                            : form.control
+                                        }
+                                        name="legalFormId"
+                                        render={({ field }) => (
+                                          <SearchableSelect
+                                            options={legalFormOptions}
+                                            value={field.value?.toString()}
+                                            onValueChange={(value) => {
+                                              field.onChange(value);
+                                              handleFieldBlur(
+                                                "legalFormId",
+                                                value
+                                              );
+                                            }}
+                                            placeholder="Select legal form"
+                                            className={getSelectErrorStyling(
+                                              hasFieldError(
+                                                form,
+                                                "legalFormId",
+                                                externalForm
+                                              ),
+                                              `border-${colors.borderColor} ${colors.inputBg}`
+                                            )}
+                                            onAddNew={() =>
+                                              setShowAddLegalFormDialog(true)
+                                            }
+                                            addNewLabel="Add new legal form"
+                                            disabled={isFormDisabled}
+                                          />
+                                        )}
+                                      />
+                                    </div>
+                                    <p
+                                      className={`text-xs ${colors.textColorMuted}`}
+                                    >
+                                      Legal classification of the client
+                                    </p>
+                                    {(externalForm
+                                      ? externalForm.formState.errors
+                                          .legalFormId
+                                      : form.formState.errors.legalFormId) && (
+                                      <p className="text-sm text-red-500">
+                                        {
+                                          (externalForm
+                                            ? externalForm.formState.errors
+                                                .legalFormId
+                                            : form.formState.errors.legalFormId
+                                          )?.message
+                                        }
+                                      </p>
+                                    )}
+                                  </div>
+
+                                  {/* Activation Date */}
+                                  <div className="space-y-3">
+                                    <Label
+                                      htmlFor="activationDate"
+                                      className={colors.textColor}
+                                    >
+                                      Activation Date{" "}
+                                      <span className="text-red-500">*</span>
+                                    </Label>
                                     <Controller
                                       control={
                                         externalForm
                                           ? externalForm.control
                                           : form.control
                                       }
-                                      name="legalFormId"
+                                      name="activationDate"
                                       render={({ field }) => (
-                                        <SearchableSelect
-                                          options={legalFormOptions}
-                                          value={field.value?.toString()}
-                                          onValueChange={(value) => {
-                                            field.onChange(value);
-                                            handleFieldBlur(
-                                              "legalFormId",
-                                              value
-                                            );
-                                          }}
-                                          placeholder="Select legal form"
-                                          className={getSelectErrorStyling(
-                                            hasFieldError(
-                                              form,
-                                              "legalFormId",
-                                              externalForm
-                                            ),
-                                            `border-${colors.borderColor} ${colors.inputBg}`
-                                          )}
-                                          onAddNew={() =>
-                                            setShowAddLegalFormDialog(true)
-                                          }
-                                          addNewLabel="Add new legal form"
-                                          disabled={isFormDisabled}
-                                        />
+                                        <Popover>
+                                          <PopoverTrigger asChild>
+                                            <Button
+                                              variant="outline"
+                                              className={cn(
+                                                "h-10 w-full justify-start text-left font-normal",
+                                                !field.value &&
+                                                  "text-muted-foreground",
+                                                getInputErrorStyling(
+                                                  hasFieldError(
+                                                    form,
+                                                    "activationDate",
+                                                    externalForm
+                                                  ),
+                                                  `border-${colors.borderColor} ${colors.inputBg}`
+                                                )
+                                              )}
+                                            >
+                                              <CalendarIcon className="mr-2 h-4 w-4" />
+                                              {field.value ? (
+                                                format(field.value, "PPP")
+                                              ) : (
+                                                <span>Pick a date</span>
+                                              )}
+                                            </Button>
+                                          </PopoverTrigger>
+                                          <PopoverContent
+                                            className="w-auto p-0"
+                                            align="start"
+                                          >
+                                            <Calendar
+                                              mode="single"
+                                              selected={field.value}
+                                              onSelect={(date) => {
+                                                field.onChange(date);
+                                                if (date) {
+                                                  handleFieldBlur(
+                                                    "activationDate",
+                                                    date
+                                                  );
+                                                }
+                                              }}
+                                              disabled={(date) =>
+                                                date < new Date("1900-01-01")
+                                              }
+                                              initialFocus
+                                            />
+                                          </PopoverContent>
+                                        </Popover>
                                       )}
                                     />
-                                  </div>
-                                  <p
-                                    className={`text-xs ${colors.textColorMuted}`}
-                                  >
-                                    Legal classification of the client
-                                  </p>
-                                  {(externalForm
-                                      ? externalForm.formState.errors
-                                          .legalFormId
-                                    : form.formState.errors.legalFormId) && (
-                                    <p className="text-sm text-red-500">
-                                      {
-                                        (externalForm
-                                          ? externalForm.formState.errors
-                                              .legalFormId
-                                          : form.formState.errors.legalFormId
-                                        )?.message
-                                      }
+                                    {lastSavedField === "activationDate" &&
+                                      isAutoSaving && (
+                                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                          <div className="w-3 h-3 border border-gray-300 border-t-gray-600 rounded-full animate-spin"></div>
+                                          <span>Saving...</span>
+                                        </div>
+                                      )}
+                                    <p
+                                      className={`text-xs ${colors.textColorMuted}`}
+                                    >
+                                      Date when the client account will be
+                                      activated
                                     </p>
-                                  )}
+                                    {(externalForm
+                                      ? externalForm.formState.errors
+                                          .activationDate
+                                      : form.formState.errors
+                                          .activationDate) && (
+                                      <p className="text-sm text-red-500">
+                                        {
+                                          (externalForm
+                                            ? externalForm.formState.errors
+                                                .activationDate
+                                            : form.formState.errors
+                                                .activationDate
+                                          )?.message
+                                        }
+                                      </p>
+                                    )}
+                                  </div>
                                 </div>
-                              </div>
                               )}
                             </div>
 
@@ -4731,28 +5243,31 @@ export function ClientRegistrationForm({
                             <div className="my-8 border-t border-gray-300 dark:border-gray-700"></div>
 
                             {/* Personal Information Section */}
-                            <div
-                              className={`space-y-6 mb-8 ${
-                                sectionCompletion.personal
-                                  ? "bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 rounded-lg p-6"
-                                  : ""
-                              }`}
-                            >
+                            <div className={getSectionClasses("personal")}>
                               <div className="border-b border-gray-200 dark:border-gray-700 pb-3 mb-6">
                                 <div className="flex items-center gap-2 mb-2">
-                                  {sectionCompletion.personal ? (
+                                  {getSectionStatus("personal") === "saved" ? (
                                     <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400" />
+                                  ) : getSectionStatus("personal") ===
+                                    "pending" ? (
+                                    <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400" />
                                   ) : (
-                                    <UserCheck className="h-5 w-5 text-blue-500" />
+                                    <UserCheck className="h-5 w-5 text-red-500" />
                                   )}
-                                <h3
-                                  className={`text-lg font-medium ${colors.textColor}`}
-                                >
-                                  Personal Information
-                                </h3>
-                                  {sectionCompletion.personal && (
+                                  <h3
+                                    className={`text-lg font-medium ${colors.textColor}`}
+                                  >
+                                    Personal Information
+                                  </h3>
+                                  {getSectionStatus("personal") === "saved" && (
                                     <Badge className="ml-2 bg-green-500 text-white">
                                       Complete
+                                    </Badge>
+                                  )}
+                                  {getSectionStatus("personal") ===
+                                    "pending" && (
+                                    <Badge className="ml-2 bg-amber-500 text-white">
+                                      Pending Save
                                     </Badge>
                                   )}
                                 </div>
@@ -5199,28 +5714,31 @@ export function ClientRegistrationForm({
                             <div className="my-8 border-t border-gray-300 dark:border-gray-700"></div>
 
                             {/* Contact Information Section */}
-                            <div
-                              className={`space-y-6 mb-8 ${
-                                sectionCompletion.contact
-                                  ? "bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 rounded-lg p-6"
-                                  : ""
-                              }`}
-                            >
+                            <div className={getSectionClasses("contact")}>
                               <div className="border-b border-gray-200 dark:border-gray-700 pb-3 mb-6">
                                 <div className="flex items-center gap-2 mb-2">
-                                  {sectionCompletion.contact ? (
+                                  {getSectionStatus("contact") === "saved" ? (
                                     <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400" />
+                                  ) : getSectionStatus("contact") ===
+                                    "pending" ? (
+                                    <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400" />
                                   ) : (
-                                    <MapPin className="h-5 w-5 text-blue-500" />
+                                    <MapPin className="h-5 w-5 text-red-500" />
                                   )}
-                                <h3
-                                  className={`text-lg font-medium ${colors.textColor}`}
-                                >
-                                  Contact Information
-                                </h3>
-                                  {sectionCompletion.contact && (
+                                  <h3
+                                    className={`text-lg font-medium ${colors.textColor}`}
+                                  >
+                                    Contact Information
+                                  </h3>
+                                  {getSectionStatus("contact") === "saved" && (
                                     <Badge className="ml-2 bg-green-500 text-white">
                                       Complete
+                                    </Badge>
+                                  )}
+                                  {getSectionStatus("contact") ===
+                                    "pending" && (
+                                    <Badge className="ml-2 bg-amber-500 text-white">
+                                      Pending Save
                                     </Badge>
                                   )}
                                 </div>
@@ -5497,13 +6015,38 @@ export function ClientRegistrationForm({
                             <div className="my-8 border-t border-gray-300 dark:border-gray-700"></div>
 
                             {/* Classification Information Section */}
-                            <div className="space-y-6 mb-8">
+                            <div
+                              className={getSectionClasses("classification")}
+                            >
                               <div className="border-b border-gray-200 dark:border-gray-700 pb-3 mb-6">
-                                <h3
-                                  className={`text-lg font-medium ${colors.textColor}`}
-                                >
-                                  Client Classification
-                                </h3>
+                                <div className="flex items-center gap-2 mb-2">
+                                  {getSectionStatus("classification") ===
+                                  "saved" ? (
+                                    <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400" />
+                                  ) : getSectionStatus("classification") ===
+                                    "pending" ? (
+                                    <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                                  ) : (
+                                    <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
+                                  )}
+                                  <h3
+                                    className={`text-lg font-medium ${colors.textColor}`}
+                                  >
+                                    Client Classification
+                                  </h3>
+                                  {getSectionStatus("classification") ===
+                                    "saved" && (
+                                    <Badge className="ml-2 bg-green-500 text-white">
+                                      Complete
+                                    </Badge>
+                                  )}
+                                  {getSectionStatus("classification") ===
+                                    "pending" && (
+                                    <Badge className="ml-2 bg-amber-500 text-white">
+                                      Pending Save
+                                    </Badge>
+                                  )}
+                                </div>
                                 <p
                                   className={`text-sm ${colors.textColorMuted}`}
                                 >
@@ -5619,28 +6162,33 @@ export function ClientRegistrationForm({
                             <div className="my-8 border-t border-gray-300 dark:border-gray-700"></div>
 
                             {/* Additional Information Section */}
-                            <div
-                              className={`space-y-6 mb-8 ${
-                                sectionCompletion.additional
-                                  ? "bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 rounded-lg p-6"
-                                  : ""
-                              }`}
-                            >
+                            <div className={getSectionClasses("additional")}>
                               <div className="border-b border-gray-200 dark:border-gray-700 pb-3 mb-6">
                                 <div className="flex items-center gap-2 mb-2">
-                                  {sectionCompletion.additional ? (
+                                  {getSectionStatus("additional") ===
+                                  "saved" ? (
                                     <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400" />
+                                  ) : getSectionStatus("additional") ===
+                                    "pending" ? (
+                                    <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400" />
                                   ) : (
                                     <FileText className="h-5 w-5 text-blue-500" />
                                   )}
-                                <h3
-                                  className={`text-lg font-medium ${colors.textColor}`}
-                                >
-                                  Additional Information
-                                </h3>
-                                  {sectionCompletion.additional && (
+                                  <h3
+                                    className={`text-lg font-medium ${colors.textColor}`}
+                                  >
+                                    Additional Information
+                                  </h3>
+                                  {getSectionStatus("additional") ===
+                                    "saved" && (
                                     <Badge className="ml-2 bg-green-500 text-white">
                                       Complete
+                                    </Badge>
+                                  )}
+                                  {getSectionStatus("additional") ===
+                                    "pending" && (
+                                    <Badge className="ml-2 bg-amber-500 text-white">
+                                      Pending Save
                                     </Badge>
                                   )}
                                 </div>
@@ -5771,7 +6319,7 @@ export function ClientRegistrationForm({
                             </Button>
 
                             <Button
-                              type={externalForm ? "button" : "submit"}
+                              type="button"
                               className={`transition-all duration-300 ease-in-out ${
                                 isSubmitting
                                   ? "bg-blue-600 cursor-not-allowed opacity-75"
@@ -5779,12 +6327,177 @@ export function ClientRegistrationForm({
                                   ? "bg-green-600 hover:bg-green-700"
                                   : "bg-blue-500 hover:bg-blue-600"
                               }`}
-                              disabled={isSubmitting || isFormDisabled}
-                              onClick={
-                                externalForm && onFormSubmit
-                                  ? () => onFormSubmit(form.getValues())
-                                  : undefined
+                              disabled={
+                                isSubmitting || isFormDisabled || isSaving
                               }
+                              onClick={async (e) => {
+                                e.preventDefault();
+
+                                // Validate form before proceeding
+                                const formToValidate = externalForm || form;
+                                const isValid = await formToValidate.trigger();
+
+                                if (!isValid) {
+                                  const formErrors =
+                                    formToValidate.formState.errors;
+                                  console.error(
+                                    "Form validation errors:",
+                                    formErrors
+                                  );
+                                  console.error(
+                                    "Form values:",
+                                    formToValidate.getValues()
+                                  );
+
+                                  // Log each error field
+                                  Object.keys(formErrors).forEach(
+                                    (fieldName) => {
+                                      const fieldError =
+                                        formErrors[
+                                          fieldName as keyof typeof formErrors
+                                        ];
+                                      console.error(
+                                        `Field "${fieldName}" error:`,
+                                        fieldError
+                                      );
+                                    }
+                                  );
+
+                                  error({
+                                    title: "Validation Error",
+                                    description:
+                                      "Please fix all errors in the form before proceeding to the next step. Check the console for details.",
+                                  });
+                                  return;
+                                }
+
+                                try {
+                                  const formValues = form.getValues();
+
+                                  // Always save any pending changes first
+                                  if (
+                                    clientLookupStatus === "found" &&
+                                    currentLeadId
+                                  ) {
+                                    // Client exists, save as draft using autoSaveField
+                                    setIsSaving(true);
+                                    try {
+                                      const saveResult = await autoSaveField(
+                                        {
+                                          ...formValues,
+                                          fieldName: "all", // Indicate saving all fields
+                                        },
+                                        currentLeadId
+                                      );
+
+                                      if (saveResult.success) {
+                                        // Mark all completed sections as saved after successful save
+                                        setSectionCompletion(
+                                          (prevCompletion) => {
+                                            setSectionSaved({
+                                              administrative:
+                                                prevCompletion.administrative,
+                                              personal: prevCompletion.personal,
+                                              contact: prevCompletion.contact,
+                                              classification:
+                                                prevCompletion.classification,
+                                              additional:
+                                                prevCompletion.additional,
+                                              selfie: prevCompletion.selfie,
+                                              identityDocuments:
+                                                prevCompletion.identityDocuments,
+                                              otherDocuments:
+                                                prevCompletion.otherDocuments,
+                                              datatables:
+                                                prevCompletion.datatables,
+                                            });
+                                            return prevCompletion;
+                                          }
+                                        );
+                                      }
+                                    } catch (saveError) {
+                                      console.error(
+                                        "Error saving changes:",
+                                        saveError
+                                      );
+                                      error({
+                                        title: "Save Error",
+                                        description:
+                                          "Failed to save changes. Please try again.",
+                                      });
+                                      return; // Don't navigate if save fails
+                                    } finally {
+                                      setIsSaving(false);
+                                    }
+                                  } else if (externalForm && onFormSubmit) {
+                                    // Client doesn't exist yet, submit the form to create it
+                                    await onFormSubmit(formValues);
+                                    // Mark all completed sections as saved after successful submission
+                                    setSectionCompletion((prevCompletion) => {
+                                      setSectionSaved({
+                                        administrative:
+                                          prevCompletion.administrative,
+                                        personal: prevCompletion.personal,
+                                        contact: prevCompletion.contact,
+                                        classification:
+                                          prevCompletion.classification,
+                                        additional: prevCompletion.additional,
+                                        selfie: prevCompletion.selfie,
+                                        identityDocuments:
+                                          prevCompletion.identityDocuments,
+                                        otherDocuments:
+                                          prevCompletion.otherDocuments,
+                                        datatables: prevCompletion.datatables,
+                                      });
+                                      return prevCompletion;
+                                    });
+                                  } else {
+                                    // For non-external form, trigger form submission
+                                    const formElement =
+                                      e.currentTarget.closest("form");
+                                    if (formElement) {
+                                      formElement.requestSubmit();
+                                      // Mark all completed sections as saved
+                                      setSectionCompletion((prevCompletion) => {
+                                        setSectionSaved({
+                                          administrative:
+                                            prevCompletion.administrative,
+                                          personal: prevCompletion.personal,
+                                          contact: prevCompletion.contact,
+                                          classification:
+                                            prevCompletion.classification,
+                                          additional: prevCompletion.additional,
+                                          selfie: prevCompletion.selfie,
+                                          identityDocuments:
+                                            prevCompletion.identityDocuments,
+                                          otherDocuments:
+                                            prevCompletion.otherDocuments,
+                                          datatables: prevCompletion.datatables,
+                                        });
+                                        return prevCompletion;
+                                      });
+                                      // Wait a bit for submission to process
+                                      await new Promise((resolve) =>
+                                        setTimeout(resolve, 500)
+                                      );
+                                    }
+                                  }
+
+                                  // Navigate to KYC tab after saving
+                                  setActiveClientTab("account");
+                                } catch (err) {
+                                  // If save/submission fails, don't navigate
+                                  console.error(
+                                    "Error saving or submitting form:",
+                                    err
+                                  );
+                                  error({
+                                    title: "Error",
+                                    description:
+                                      "Failed to save changes. Please try again.",
+                                  });
+                                }
+                              }}
                             >
                               <div className="flex items-center justify-center transition-all duration-300">
                                 {isSubmitting ? (
@@ -5814,7 +6527,7 @@ export function ClientRegistrationForm({
                                           />
                                         </svg>
                                         <span className="transition-all duration-300">
-                                          Update Client
+                                          Next
                                         </span>
                                       </>
                                     ) : (
@@ -5862,7 +6575,7 @@ export function ClientRegistrationForm({
                             {isLoadingKYC ? (
                               <>
                                 {/* Selfie Section Skeleton */}
-                            <div className="space-y-4">
+                                <div className="space-y-4">
                                   <Skeleton className="h-5 w-32" />
                                   <div className="space-y-4">
                                     <Skeleton className="h-48 w-full max-w-md rounded-lg" />
@@ -5946,466 +6659,469 @@ export function ClientRegistrationForm({
                             ) : (
                               <>
                                 {/* Selfie Section */}
-                                <div
-                                  className={`space-y-4 ${
-                                    sectionCompletion.selfie
-                                      ? "bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 rounded-lg p-6"
-                                      : ""
-                                  }`}
-                                >
+                                <div className={getSectionClasses("selfie")}>
                                   <div className="flex items-center gap-2 mb-2">
-                                    {sectionCompletion.selfie ? (
+                                    {getSectionStatus("selfie") === "saved" ? (
                                       <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400" />
+                                    ) : getSectionStatus("selfie") ===
+                                      "pending" ? (
+                                      <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400" />
                                     ) : (
-                                      <UserCheck className="h-5 w-5 text-blue-500" />
+                                      <UserCheck className="h-5 w-5 text-red-500" />
                                     )}
-                              <Label className={colors.textColor}>
-                                Client Selfie{" "}
-                                <span className="text-red-500">*</span>
-                              </Label>
-                                    {sectionCompletion.selfie && (
+                                    <Label className={colors.textColor}>
+                                      Client Selfie{" "}
+                                      <span className="text-red-500">*</span>
+                                    </Label>
+                                    {getSectionStatus("selfie") === "saved" && (
                                       <Badge className="ml-2 bg-green-500 text-white">
                                         Complete
                                       </Badge>
                                     )}
+                                    {getSectionStatus("selfie") ===
+                                      "pending" && (
+                                      <Badge className="ml-2 bg-amber-500 text-white">
+                                        Pending Save
+                                      </Badge>
+                                    )}
                                   </div>
-                              <div className="space-y-4">
-                                {/* Show existing image if available and no new image selected */}
-                                {existingClientImage && !selfieImage && (
                                   <div className="space-y-4">
-                                    <div className="relative w-full max-w-md">
+                                    {/* Show existing image if available and no new image selected */}
+                                    {existingClientImage && !selfieImage && (
+                                      <div className="space-y-4">
+                                        <div className="relative w-full max-w-md">
                                           {selfieImageLoading && (
                                             <Skeleton className="h-48 w-full max-w-md rounded-lg absolute inset-0" />
                                           )}
-                                      <img
-                                        src={existingClientImage}
-                                        alt="Existing client image"
+                                          <img
+                                            src={existingClientImage}
+                                            alt="Existing client image"
                                             className={`w-full rounded-lg border ${
                                               selfieImageLoading
                                                 ? "opacity-0"
                                                 : "opacity-100"
                                             } transition-opacity duration-300`}
-                                        onError={(e) => {
-                                          console.error(
-                                            "Image failed to load:",
-                                            existingClientImage.substring(
-                                              0,
-                                              100
-                                            )
-                                          );
-                                          console.error(
-                                            "Image error event:",
-                                            e
-                                          );
-                                          // Try to reload or show error
-                                          const target =
-                                            e.target as HTMLImageElement;
-                                          target.style.display = "none";
+                                            onError={(e) => {
+                                              console.error(
+                                                "Image failed to load:",
+                                                existingClientImage.substring(
+                                                  0,
+                                                  100
+                                                )
+                                              );
+                                              console.error(
+                                                "Image error event:",
+                                                e
+                                              );
+                                              // Try to reload or show error
+                                              const target =
+                                                e.target as HTMLImageElement;
+                                              target.style.display = "none";
                                               setSelfieImageLoading(false);
-                                        }}
-                                        onLoad={() => {
-                                          console.log(
-                                            "Image loaded successfully"
-                                          );
+                                            }}
+                                            onLoad={() => {
+                                              console.log(
+                                                "Image loaded successfully"
+                                              );
                                               setSelfieImageLoading(false);
-                                        }}
-                                      />
+                                            }}
+                                          />
                                           {!selfieImageLoading && (
-                                      <Badge
-                                        variant="secondary"
-                                        className="absolute top-2 left-2"
-                                      >
-                                        Current Image
-                                      </Badge>
+                                            <Badge
+                                              variant="secondary"
+                                              className="absolute top-2 left-2"
+                                            >
+                                              Current Image
+                                            </Badge>
                                           )}
-                                    </div>
-                                    <p
-                                      className={`text-sm ${colors.textColorMuted}`}
-                                    >
+                                        </div>
+                                        <p
+                                          className={`text-sm ${colors.textColorMuted}`}
+                                        >
                                           This is the current client image. You
                                           can replace it by capturing a new
                                           photo or uploading a new file.
-                                    </p>
-                                    <div className="flex gap-4">
-                                      <Button
-                                        type="button"
-                                        variant="outline"
-                                        onClick={handleStartCamera}
-                                        disabled={!fineractClientId}
-                                        className="flex items-center gap-2"
-                                      >
-                                        <UserCheck className="h-4 w-4" />
-                                        Capture New Photo
-                                      </Button>
-                                      <label>
+                                        </p>
+                                        <div className="flex gap-4">
+                                          <Button
+                                            type="button"
+                                            variant="outline"
+                                            onClick={handleStartCamera}
+                                            disabled={!fineractClientId}
+                                            className="flex items-center gap-2"
+                                          >
+                                            <UserCheck className="h-4 w-4" />
+                                            Capture New Photo
+                                          </Button>
+                                          <label>
+                                            <Button
+                                              type="button"
+                                              variant="outline"
+                                              asChild
+                                              disabled={!fineractClientId}
+                                              className="flex items-center gap-2 cursor-pointer"
+                                            >
+                                              <span>
+                                                <UserPlus className="h-4 w-4" />
+                                                Upload New Photo
+                                              </span>
+                                            </Button>
+                                            <input
+                                              type="file"
+                                              accept="image/*"
+                                              onChange={handleSelfieFileSelect}
+                                              className="hidden"
+                                            />
+                                          </label>
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    {/* Show upload options if no existing image and no new image */}
+                                    {!existingClientImage && !selfieImage && (
+                                      <div className="flex gap-4">
                                         <Button
                                           type="button"
                                           variant="outline"
-                                          asChild
+                                          onClick={handleStartCamera}
                                           disabled={!fineractClientId}
-                                          className="flex items-center gap-2 cursor-pointer"
+                                          className="flex items-center gap-2"
                                         >
-                                          <span>
-                                            <UserPlus className="h-4 w-4" />
-                                            Upload New Photo
-                                          </span>
+                                          <UserCheck className="h-4 w-4" />
+                                          Capture from Camera
                                         </Button>
-                                        <input
-                                          type="file"
-                                          accept="image/*"
-                                          onChange={handleSelfieFileSelect}
-                                          className="hidden"
-                                        />
-                                      </label>
-                                    </div>
-                                  </div>
-                                )}
+                                        <label>
+                                          <Button
+                                            type="button"
+                                            variant="outline"
+                                            asChild
+                                            disabled={!fineractClientId}
+                                            className="flex items-center gap-2 cursor-pointer"
+                                          >
+                                            <span>
+                                              <UserPlus className="h-4 w-4" />
+                                              Upload from File
+                                            </span>
+                                          </Button>
+                                          <input
+                                            type="file"
+                                            accept="image/*"
+                                            onChange={handleSelfieFileSelect}
+                                            className="hidden"
+                                          />
+                                        </label>
+                                      </div>
+                                    )}
 
-                                {/* Show upload options if no existing image and no new image */}
-                                {!existingClientImage && !selfieImage && (
-                                  <div className="flex gap-4">
-                                    <Button
-                                      type="button"
-                                      variant="outline"
-                                      onClick={handleStartCamera}
-                                      disabled={!fineractClientId}
-                                      className="flex items-center gap-2"
-                                    >
-                                      <UserCheck className="h-4 w-4" />
-                                      Capture from Camera
-                                    </Button>
-                                    <label>
-                                      <Button
-                                        type="button"
-                                        variant="outline"
-                                        asChild
-                                        disabled={!fineractClientId}
-                                        className="flex items-center gap-2 cursor-pointer"
-                                      >
-                                        <span>
-                                          <UserPlus className="h-4 w-4" />
-                                          Upload from File
-                                        </span>
-                                      </Button>
-                                      <input
-                                        type="file"
-                                        accept="image/*"
-                                        onChange={handleSelfieFileSelect}
-                                        className="hidden"
-                                      />
-                                    </label>
-                                  </div>
-                                )}
-
-                                {selfieImage && (
-                                  <div className="space-y-4">
-                                    <div className="relative w-full max-w-md">
-                                      <img
-                                        src={selfieImage}
-                                        alt="Selfie preview"
-                                        className="w-full rounded-lg border"
-                                      />
-                                      <Button
-                                        type="button"
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={() => setSelfieImage(null)}
-                                        className="absolute top-2 right-2"
-                                      >
-                                        <X className="h-4 w-4" />
-                                      </Button>
-                                    </div>
-                                    <div className="flex gap-4">
-                                      <Button
-                                        type="button"
-                                        onClick={handleUploadSelfie}
-                                        disabled={
+                                    {selfieImage && (
+                                      <div className="space-y-4">
+                                        <div className="relative w-full max-w-md">
+                                          <img
+                                            src={selfieImage}
+                                            alt="Selfie preview"
+                                            className="w-full rounded-lg border"
+                                          />
+                                          <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() => setSelfieImage(null)}
+                                            className="absolute top-2 right-2"
+                                          >
+                                            <X className="h-4 w-4" />
+                                          </Button>
+                                        </div>
+                                        <div className="flex gap-4">
+                                          <Button
+                                            type="button"
+                                            onClick={handleUploadSelfie}
+                                            disabled={
                                               uploadingSelfie ||
                                               !fineractClientId
-                                        }
-                                        className="bg-blue-500 hover:bg-blue-600"
-                                      >
-                                        {uploadingSelfie ? (
-                                          <>
-                                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                            Uploading...
-                                          </>
-                                        ) : (
-                                          <>
-                                            <Save className="h-4 w-4 mr-2" />
-                                            Upload Selfie
-                                          </>
-                                        )}
-                                      </Button>
-                                      <Button
-                                        type="button"
-                                        variant="outline"
-                                        onClick={() => setSelfieImage(null)}
-                                      >
-                                        Remove
-                                      </Button>
-                                    </div>
-                                  </div>
-                                )}
+                                            }
+                                            className="bg-blue-500 hover:bg-blue-600"
+                                          >
+                                            {uploadingSelfie ? (
+                                              <>
+                                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                                Uploading...
+                                              </>
+                                            ) : (
+                                              <>
+                                                <Save className="h-4 w-4 mr-2" />
+                                                Upload Selfie
+                                              </>
+                                            )}
+                                          </Button>
+                                          <Button
+                                            type="button"
+                                            variant="outline"
+                                            onClick={() => setSelfieImage(null)}
+                                          >
+                                            Remove
+                                          </Button>
+                                        </div>
+                                      </div>
+                                    )}
 
                                     <canvas
                                       ref={canvasRef}
                                       className="hidden"
                                     />
-                              </div>
-                            </div>
-
-                            {/* Camera Modal */}
-                            <Dialog
-                              open={showCameraModal}
-                              onOpenChange={(open) => {
-                                setShowCameraModal(open);
-                                if (!open) {
-                                  // Stop camera when modal closes
-                                  if (videoRef.current) {
-                                    const stream = videoRef.current
-                                      .srcObject as MediaStream;
-                                    stream
-                                      ?.getTracks()
-                                      .forEach((track) => track.stop());
-                                  }
-                                  setCapturedImage(null);
-                                }
-                              }}
-                            >
-                              <DialogContent className="max-w-2xl">
-                                <DialogHeader>
-                                  <DialogTitle className={colors.textColor}>
-                                    Capture Selfie
-                                  </DialogTitle>
-                                  <DialogDescription
-                                    className={colors.textColorMuted}
-                                  >
-                                    {capturedImage
-                                      ? "Review your photo. You can retake or confirm."
-                                      : "Position your face in the frame and click capture."}
-                                  </DialogDescription>
-                                </DialogHeader>
-                                <div className="space-y-4">
-                                  {!capturedImage ? (
-                                    <div className="relative w-full aspect-video bg-black rounded-lg overflow-hidden">
-                                      <video
-                                        ref={videoRef}
-                                        autoPlay
-                                        playsInline
-                                        className="w-full h-full object-cover"
-                                      />
-                                    </div>
-                                  ) : (
-                                    <div className="relative w-full aspect-video bg-black rounded-lg overflow-hidden">
-                                      <img
-                                        src={capturedImage}
-                                        alt="Captured selfie"
-                                        className="w-full h-full object-cover"
-                                      />
-                                    </div>
-                                  )}
+                                  </div>
                                 </div>
-                                <DialogFooter>
-                                  {!capturedImage ? (
-                                    <>
+
+                                {/* Camera Modal */}
+                                <Dialog
+                                  open={showCameraModal}
+                                  onOpenChange={(open) => {
+                                    setShowCameraModal(open);
+                                    if (!open) {
+                                      // Stop camera when modal closes
+                                      if (videoRef.current) {
+                                        const stream = videoRef.current
+                                          .srcObject as MediaStream;
+                                        stream
+                                          ?.getTracks()
+                                          .forEach((track) => track.stop());
+                                      }
+                                      setCapturedImage(null);
+                                    }
+                                  }}
+                                >
+                                  <DialogContent className="max-w-2xl">
+                                    <DialogHeader>
+                                      <DialogTitle className={colors.textColor}>
+                                        Capture Selfie
+                                      </DialogTitle>
+                                      <DialogDescription
+                                        className={colors.textColorMuted}
+                                      >
+                                        {capturedImage
+                                          ? "Review your photo. You can retake or confirm."
+                                          : "Position your face in the frame and click capture."}
+                                      </DialogDescription>
+                                    </DialogHeader>
+                                    <div className="space-y-4">
+                                      {!capturedImage ? (
+                                        <div className="relative w-full aspect-video bg-black rounded-lg overflow-hidden">
+                                          <video
+                                            ref={videoRef}
+                                            autoPlay
+                                            playsInline
+                                            className="w-full h-full object-cover"
+                                          />
+                                        </div>
+                                      ) : (
+                                        <div className="relative w-full aspect-video bg-black rounded-lg overflow-hidden">
+                                          <img
+                                            src={capturedImage}
+                                            alt="Captured selfie"
+                                            className="w-full h-full object-cover"
+                                          />
+                                        </div>
+                                      )}
+                                    </div>
+                                    <DialogFooter>
+                                      {!capturedImage ? (
+                                        <>
+                                          <Button
+                                            type="button"
+                                            variant="outline"
+                                            onClick={handleStopCamera}
+                                          >
+                                            Cancel
+                                          </Button>
+                                          <Button
+                                            type="button"
+                                            onClick={handleCaptureSelfie}
+                                            className="bg-blue-500 hover:bg-blue-600"
+                                          >
+                                            Capture Photo
+                                          </Button>
+                                        </>
+                                      ) : (
+                                        <>
+                                          <Button
+                                            type="button"
+                                            variant="outline"
+                                            onClick={handleRetakePhoto}
+                                          >
+                                            Retake
+                                          </Button>
+                                          <Button
+                                            type="button"
+                                            onClick={handleConfirmCapture}
+                                            className="bg-blue-500 hover:bg-blue-600"
+                                          >
+                                            Use This Photo
+                                          </Button>
+                                        </>
+                                      )}
+                                    </DialogFooter>
+                                  </DialogContent>
+                                </Dialog>
+
+                                {/* Document Type Selection Dialog */}
+                                <Dialog
+                                  open={showDocumentTypeDialog}
+                                  onOpenChange={(open) => {
+                                    setShowDocumentTypeDialog(open);
+                                    if (!open) {
+                                      setPendingFiles([]);
+                                      setSelectedDocumentType(null);
+                                    }
+                                  }}
+                                >
+                                  <DialogContent>
+                                    <DialogHeader>
+                                      <DialogTitle className={colors.textColor}>
+                                        Select Document Type
+                                      </DialogTitle>
+                                      <DialogDescription
+                                        className={colors.textColorMuted}
+                                      >
+                                        Choose the type of identity document
+                                        you're uploading
+                                      </DialogDescription>
+                                    </DialogHeader>
+                                    <div className="space-y-4">
+                                      <div className="space-y-2">
+                                        <Label className={colors.textColor}>
+                                          Document Type{" "}
+                                          <span className="text-red-500">
+                                            *
+                                          </span>
+                                        </Label>
+                                        <Select
+                                          value={
+                                            selectedDocumentType?.toString() ||
+                                            ""
+                                          }
+                                          onValueChange={(value) =>
+                                            setSelectedDocumentType(
+                                              Number(value)
+                                            )
+                                          }
+                                        >
+                                          <SelectTrigger>
+                                            <SelectValue placeholder="Select document type" />
+                                          </SelectTrigger>
+                                          <SelectContent>
+                                            {identifiersTemplate
+                                              ?.documentTypeOptions?.length >
+                                            0 ? (
+                                              identifiersTemplate.documentTypeOptions.map(
+                                                (option: any) => (
+                                                  <SelectItem
+                                                    key={option.id}
+                                                    value={option.id.toString()}
+                                                  >
+                                                    {option.name ||
+                                                      option.value ||
+                                                      `Type ${option.id}`}
+                                                  </SelectItem>
+                                                )
+                                              )
+                                            ) : (
+                                              <div className="px-2 py-1.5 text-sm text-muted-foreground">
+                                                {identifiersTemplate === null
+                                                  ? "Loading document types..."
+                                                  : "No document types available"}
+                                              </div>
+                                            )}
+                                          </SelectContent>
+                                        </Select>
+                                      </div>
+                                      {pendingFiles.length > 0 && (
+                                        <div className="space-y-2">
+                                          <Label className={colors.textColor}>
+                                            Files to upload (
+                                            {pendingFiles.length})
+                                          </Label>
+                                          <div className="space-y-1">
+                                            {pendingFiles.map((file, index) => (
+                                              <p
+                                                key={index}
+                                                className={`text-sm ${colors.textColorMuted}`}
+                                              >
+                                                • {file.name}
+                                              </p>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                    <DialogFooter>
                                       <Button
                                         type="button"
                                         variant="outline"
-                                        onClick={handleStopCamera}
+                                        onClick={() => {
+                                          setShowDocumentTypeDialog(false);
+                                          setPendingFiles([]);
+                                          setSelectedDocumentType(null);
+                                        }}
                                       >
                                         Cancel
                                       </Button>
                                       <Button
                                         type="button"
-                                        onClick={handleCaptureSelfie}
+                                        onClick={handleConfirmDocumentType}
+                                        disabled={!selectedDocumentType}
                                         className="bg-blue-500 hover:bg-blue-600"
                                       >
-                                        Capture Photo
+                                        Confirm
                                       </Button>
-                                    </>
-                                  ) : (
-                                    <>
-                                      <Button
-                                        type="button"
-                                        variant="outline"
-                                        onClick={handleRetakePhoto}
-                                      >
-                                        Retake
-                                      </Button>
-                                      <Button
-                                        type="button"
-                                        onClick={handleConfirmCapture}
-                                        className="bg-blue-500 hover:bg-blue-600"
-                                      >
-                                        Use This Photo
-                                      </Button>
-                                    </>
-                                  )}
-                                </DialogFooter>
-                              </DialogContent>
-                            </Dialog>
+                                    </DialogFooter>
+                                  </DialogContent>
+                                </Dialog>
 
-                            {/* Document Type Selection Dialog */}
-                            <Dialog
-                              open={showDocumentTypeDialog}
-                              onOpenChange={(open) => {
-                                setShowDocumentTypeDialog(open);
-                                if (!open) {
-                                  setPendingFiles([]);
-                                  setSelectedDocumentType(null);
-                                }
-                              }}
-                            >
-                              <DialogContent>
-                                <DialogHeader>
-                                  <DialogTitle className={colors.textColor}>
-                                    Select Document Type
-                                  </DialogTitle>
-                                  <DialogDescription
-                                    className={colors.textColorMuted}
-                                  >
-                                        Choose the type of identity document
-                                        you're uploading
-                                  </DialogDescription>
-                                </DialogHeader>
-                                <div className="space-y-4">
-                                  <div className="space-y-2">
-                                    <Label className={colors.textColor}>
-                                      Document Type{" "}
+                                {/* Add Identifier Dialog */}
+                                <Dialog
+                                  open={showAddIdentifierDialog}
+                                  onOpenChange={(open) => {
+                                    setShowAddIdentifierDialog(open);
+                                    if (!open) {
+                                      setNewIdentifier({
+                                        documentTypeId: "",
+                                        documentKey: "",
+                                        description: "",
+                                        status: "active",
+                                        documentFile: null,
+                                        documentFileName: "",
+                                      });
+                                    }
+                                  }}
+                                >
+                                  <DialogContent className="max-w-md">
+                                    <DialogHeader>
+                                      <DialogTitle className={colors.textColor}>
+                                        Add Identifier
+                                      </DialogTitle>
+                                      <DialogDescription
+                                        className={colors.textColorMuted}
+                                      >
+                                        Add a new identifier (e.g., National ID,
+                                        Passport Number, etc.)
+                                      </DialogDescription>
+                                    </DialogHeader>
+                                    <div className="space-y-4">
+                                      <div className="space-y-2">
+                                        <Label className={colors.textColor}>
+                                          Document Type{" "}
                                           <span className="text-red-500">
                                             *
                                           </span>
-                                    </Label>
-                                    <Select
-                                      value={
-                                            selectedDocumentType?.toString() ||
-                                            ""
-                                      }
-                                      onValueChange={(value) =>
-                                            setSelectedDocumentType(
-                                              Number(value)
-                                            )
-                                      }
-                                    >
-                                      <SelectTrigger>
-                                        <SelectValue placeholder="Select document type" />
-                                      </SelectTrigger>
-                                      <SelectContent>
-                                        {identifiersTemplate
-                                              ?.documentTypeOptions?.length >
-                                            0 ? (
-                                          identifiersTemplate.documentTypeOptions.map(
-                                          (option: any) => (
-                                            <SelectItem
-                                              key={option.id}
-                                              value={option.id.toString()}
-                                            >
-                                                {option.name ||
-                                                  option.value ||
-                                                  `Type ${option.id}`}
-                                            </SelectItem>
-                                          )
-                                          )
-                                        ) : (
-                                          <div className="px-2 py-1.5 text-sm text-muted-foreground">
-                                            {identifiersTemplate === null
-                                              ? "Loading document types..."
-                                              : "No document types available"}
-                                          </div>
-                                        )}
-                                      </SelectContent>
-                                    </Select>
-                                  </div>
-                                  {pendingFiles.length > 0 && (
-                                    <div className="space-y-2">
-                                      <Label className={colors.textColor}>
-                                            Files to upload (
-                                            {pendingFiles.length})
-                                      </Label>
-                                      <div className="space-y-1">
-                                        {pendingFiles.map((file, index) => (
-                                          <p
-                                            key={index}
-                                            className={`text-sm ${colors.textColorMuted}`}
-                                          >
-                                            • {file.name}
-                                          </p>
-                                        ))}
-                                      </div>
-                                    </div>
-                                  )}
-                                </div>
-                                <DialogFooter>
-                                  <Button
-                                    type="button"
-                                    variant="outline"
-                                    onClick={() => {
-                                      setShowDocumentTypeDialog(false);
-                                      setPendingFiles([]);
-                                      setSelectedDocumentType(null);
-                                    }}
-                                  >
-                                    Cancel
-                                  </Button>
-                                  <Button
-                                    type="button"
-                                    onClick={handleConfirmDocumentType}
-                                    disabled={!selectedDocumentType}
-                                    className="bg-blue-500 hover:bg-blue-600"
-                                  >
-                                    Confirm
-                                  </Button>
-                                </DialogFooter>
-                              </DialogContent>
-                            </Dialog>
-
-                            {/* Add Identifier Dialog */}
-                            <Dialog
-                              open={showAddIdentifierDialog}
-                              onOpenChange={(open) => {
-                                setShowAddIdentifierDialog(open);
-                                if (!open) {
-                                  setNewIdentifier({
-                                    documentTypeId: "",
-                                    documentKey: "",
-                                    description: "",
-                                    status: "active",
-                                    documentFile: null,
-                                    documentFileName: "",
-                                  });
-                                }
-                              }}
-                            >
-                              <DialogContent className="max-w-md">
-                                <DialogHeader>
-                                  <DialogTitle className={colors.textColor}>
-                                    Add Identifier
-                                  </DialogTitle>
-                                  <DialogDescription
-                                    className={colors.textColorMuted}
-                                  >
-                                    Add a new identifier (e.g., National ID,
-                                    Passport Number, etc.)
-                                  </DialogDescription>
-                                </DialogHeader>
-                                <div className="space-y-4">
-                                  <div className="space-y-2">
-                                    <Label className={colors.textColor}>
-                                      Document Type{" "}
-                                          <span className="text-red-500">
-                                            *
-                                          </span>
-                                    </Label>
+                                        </Label>
                                         <SearchableSelect
                                           options={documentTypeOptions}
-                                      value={newIdentifier.documentTypeId}
-                                      onValueChange={(value) =>
-                                        setNewIdentifier((prev) => ({
-                                          ...prev,
-                                          documentTypeId: value,
-                                        }))
-                                      }
+                                          value={newIdentifier.documentTypeId}
+                                          onValueChange={(value) =>
+                                            setNewIdentifier((prev) => ({
+                                              ...prev,
+                                              documentTypeId: value,
+                                            }))
+                                          }
                                           placeholder="Select document type"
                                           className={`border-${colors.borderColor} ${colors.inputBg}`}
                                           onAddNew={() => {
@@ -6420,133 +7136,133 @@ export function ClientRegistrationForm({
                                               : "No results found."
                                           }
                                         />
-                                  </div>
+                                      </div>
 
-                                  <div className="space-y-2">
-                                    <Label className={colors.textColor}>
-                                      Document Key/Number{" "}
+                                      <div className="space-y-2">
+                                        <Label className={colors.textColor}>
+                                          Document Key/Number{" "}
                                           <span className="text-red-500">
                                             *
                                           </span>
-                                    </Label>
-                                    <Input
-                                      value={newIdentifier.documentKey}
-                                      onChange={(e) =>
-                                        setNewIdentifier((prev) => ({
-                                          ...prev,
-                                          documentKey: e.target.value,
-                                        }))
-                                      }
-                                      placeholder="e.g., 123456789"
-                                      className={colors.textColor}
-                                    />
-                                  </div>
+                                        </Label>
+                                        <Input
+                                          value={newIdentifier.documentKey}
+                                          onChange={(e) =>
+                                            setNewIdentifier((prev) => ({
+                                              ...prev,
+                                              documentKey: e.target.value,
+                                            }))
+                                          }
+                                          placeholder="e.g., 123456789"
+                                          className={colors.textColor}
+                                        />
+                                      </div>
 
-                                  <div className="space-y-2">
-                                    <Label className={colors.textColor}>
-                                      Description (Optional)
-                                    </Label>
-                                    <Input
-                                      value={newIdentifier.description}
-                                      onChange={(e) =>
-                                        setNewIdentifier((prev) => ({
-                                          ...prev,
-                                          description: e.target.value,
-                                        }))
-                                      }
-                                      placeholder="Additional notes or description"
-                                      className={colors.textColor}
-                                    />
-                                  </div>
+                                      <div className="space-y-2">
+                                        <Label className={colors.textColor}>
+                                          Description (Optional)
+                                        </Label>
+                                        <Input
+                                          value={newIdentifier.description}
+                                          onChange={(e) =>
+                                            setNewIdentifier((prev) => ({
+                                              ...prev,
+                                              description: e.target.value,
+                                            }))
+                                          }
+                                          placeholder="Additional notes or description"
+                                          className={colors.textColor}
+                                        />
+                                      </div>
 
-                                  <div className="space-y-2">
-                                    <Label className={colors.textColor}>
-                                      Status
-                                    </Label>
-                                    <Select
-                                      value={newIdentifier.status}
-                                      onValueChange={(
-                                        value: "active" | "inactive"
-                                      ) =>
-                                        setNewIdentifier((prev) => ({
-                                          ...prev,
-                                          status: value,
-                                        }))
-                                      }
-                                    >
-                                      <SelectTrigger>
-                                        <SelectValue />
-                                      </SelectTrigger>
-                                      <SelectContent>
-                                        <SelectItem value="active">
-                                          Active
-                                        </SelectItem>
-                                        <SelectItem value="inactive">
-                                          Inactive
-                                        </SelectItem>
-                                      </SelectContent>
-                                    </Select>
-                                  </div>
+                                      <div className="space-y-2">
+                                        <Label className={colors.textColor}>
+                                          Status
+                                        </Label>
+                                        <Select
+                                          value={newIdentifier.status}
+                                          onValueChange={(
+                                            value: "active" | "inactive"
+                                          ) =>
+                                            setNewIdentifier((prev) => ({
+                                              ...prev,
+                                              status: value,
+                                            }))
+                                          }
+                                        >
+                                          <SelectTrigger>
+                                            <SelectValue />
+                                          </SelectTrigger>
+                                          <SelectContent>
+                                            <SelectItem value="active">
+                                              Active
+                                            </SelectItem>
+                                            <SelectItem value="inactive">
+                                              Inactive
+                                            </SelectItem>
+                                          </SelectContent>
+                                        </Select>
+                                      </div>
 
-                                  <div className="space-y-2">
-                                    <Label className={colors.textColor}>
-                                      Upload Document (Optional)
-                                    </Label>
-                                    <div className="space-y-2">
-                                      <Input
-                                        type="text"
+                                      <div className="space-y-2">
+                                        <Label className={colors.textColor}>
+                                          Upload Document (Optional)
+                                        </Label>
+                                        <div className="space-y-2">
+                                          <Input
+                                            type="text"
                                             value={
                                               newIdentifier.documentFileName
                                             }
-                                        onChange={(e) =>
-                                          setNewIdentifier((prev) => ({
-                                            ...prev,
-                                                documentFileName:
-                                                  e.target.value,
-                                          }))
-                                        }
-                                        placeholder="Document name (optional)"
-                                        className={colors.textColor}
-                                      />
-                                      <label>
-                                        <Button
-                                          type="button"
-                                          variant="outline"
-                                          asChild
-                                          className="w-full flex items-center gap-2 cursor-pointer"
-                                        >
-                                          <span>
-                                            <UserPlus className="h-4 w-4" />
-                                            {newIdentifier.documentFile
-                                                  ? newIdentifier.documentFile
-                                                      .name
-                                              : "Select File"}
-                                          </span>
-                                        </Button>
-                                        <input
-                                          type="file"
-                                          accept="image/*,application/pdf"
-                                          onChange={(e) => {
-                                                const file =
-                                                  e.target.files?.[0];
-                                            if (file) {
+                                            onChange={(e) =>
                                               setNewIdentifier((prev) => ({
                                                 ...prev,
-                                                documentFile: file,
                                                 documentFileName:
-                                                  prev.documentFileName ||
-                                                  file.name,
-                                              }));
+                                                  e.target.value,
+                                              }))
                                             }
-                                          }}
-                                          className="hidden"
-                                        />
-                                      </label>
-                                      {newIdentifier.documentFile && (
-                                        <div className="flex items-center gap-2">
-                                          <p
-                                            className={`text-sm ${colors.textColorMuted} flex-1`}
-                                          >
+                                            placeholder="Document name (optional)"
+                                            className={colors.textColor}
+                                          />
+                                          <label>
+                                            <Button
+                                              type="button"
+                                              variant="outline"
+                                              asChild
+                                              className="w-full flex items-center gap-2 cursor-pointer"
+                                            >
+                                              <span>
+                                                <UserPlus className="h-4 w-4" />
+                                                {newIdentifier.documentFile
+                                                  ? newIdentifier.documentFile
+                                                      .name
+                                                  : "Select File"}
+                                              </span>
+                                            </Button>
+                                            <input
+                                              type="file"
+                                              accept="image/*,application/pdf"
+                                              onChange={(e) => {
+                                                const file =
+                                                  e.target.files?.[0];
+                                                if (file) {
+                                                  setNewIdentifier((prev) => ({
+                                                    ...prev,
+                                                    documentFile: file,
+                                                    documentFileName:
+                                                      prev.documentFileName ||
+                                                      file.name,
+                                                  }));
+                                                }
+                                              }}
+                                              className="hidden"
+                                            />
+                                          </label>
+                                          {newIdentifier.documentFile && (
+                                            <div className="flex items-center gap-2">
+                                              <p
+                                                className={`text-sm ${colors.textColorMuted} flex-1`}
+                                              >
                                                 {
                                                   newIdentifier.documentFile
                                                     .name
@@ -6555,711 +7271,751 @@ export function ClientRegistrationForm({
                                                 {(
                                                   newIdentifier.documentFile
                                                     .size / 1024
-                                            ).toFixed(2)}{" "}
-                                            KB)
-                                          </p>
-                                          <Button
-                                            type="button"
-                                            variant="ghost"
-                                            size="sm"
-                                            onClick={() =>
-                                              setNewIdentifier((prev) => ({
-                                                ...prev,
-                                                documentFile: null,
-                                                documentFileName: "",
-                                              }))
-                                            }
-                                          >
-                                            <X className="h-4 w-4" />
-                                          </Button>
+                                                ).toFixed(2)}{" "}
+                                                KB)
+                                              </p>
+                                              <Button
+                                                type="button"
+                                                variant="ghost"
+                                                size="sm"
+                                                onClick={() =>
+                                                  setNewIdentifier((prev) => ({
+                                                    ...prev,
+                                                    documentFile: null,
+                                                    documentFileName: "",
+                                                  }))
+                                                }
+                                              >
+                                                <X className="h-4 w-4" />
+                                              </Button>
+                                            </div>
+                                          )}
                                         </div>
-                                      )}
-                                    </div>
-                                    <p
-                                      className={`text-xs ${colors.textColorMuted} italic`}
-                                    >
+                                        <p
+                                          className={`text-xs ${colors.textColorMuted} italic`}
+                                        >
                                           Upload a document file to link with
                                           this identifier
-                                    </p>
-                                  </div>
-                                </div>
-                                <DialogFooter>
-                                  <Button
-                                    type="button"
-                                    variant="outline"
-                                    onClick={() => {
-                                      setShowAddIdentifierDialog(false);
-                                      setNewIdentifier({
-                                        documentTypeId: "",
-                                        documentKey: "",
-                                        description: "",
-                                        status: "active",
-                                        documentFile: null,
-                                        documentFileName: "",
-                                      });
-                                    }}
-                                  >
-                                    Cancel
-                                  </Button>
-                                  <Button
-                                    type="button"
-                                    onClick={handleAddIdentifier}
-                                    disabled={
-                                      addingIdentifier ||
-                                      !newIdentifier.documentTypeId ||
-                                      !newIdentifier.documentKey.trim()
-                                    }
-                                    className="bg-blue-500 hover:bg-blue-600"
-                                  >
-                                    {addingIdentifier ? (
-                                      <>
-                                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                        Adding...
-                                      </>
-                                    ) : (
-                                      "Add Identifier"
-                                    )}
-                                  </Button>
-                                </DialogFooter>
-                              </DialogContent>
-                            </Dialog>
+                                        </p>
+                                      </div>
+                                    </div>
+                                    <DialogFooter>
+                                      <Button
+                                        type="button"
+                                        variant="outline"
+                                        onClick={() => {
+                                          setShowAddIdentifierDialog(false);
+                                          setNewIdentifier({
+                                            documentTypeId: "",
+                                            documentKey: "",
+                                            description: "",
+                                            status: "active",
+                                            documentFile: null,
+                                            documentFileName: "",
+                                          });
+                                        }}
+                                      >
+                                        Cancel
+                                      </Button>
+                                      <Button
+                                        type="button"
+                                        onClick={handleAddIdentifier}
+                                        disabled={
+                                          addingIdentifier ||
+                                          !newIdentifier.documentTypeId ||
+                                          !newIdentifier.documentKey.trim()
+                                        }
+                                        className="bg-blue-500 hover:bg-blue-600"
+                                      >
+                                        {addingIdentifier ? (
+                                          <>
+                                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                            Adding...
+                                          </>
+                                        ) : (
+                                          "Add Identifier"
+                                        )}
+                                      </Button>
+                                    </DialogFooter>
+                                  </DialogContent>
+                                </Dialog>
 
                                 {/* Divider */}
                                 <div className="my-8 border-t border-gray-300 dark:border-gray-700"></div>
 
-                            {/* Identity Documents Section */}
-                            <div className="space-y-4">
-                              <div className="space-y-2">
-                              <Label className={colors.textColor}>
-                                Identity Documents
-                              </Label>
-                                {identifiersTemplate?.documentTypeOptions
-                                  ?.length > 0 ? (
-                                  <div className="flex flex-wrap gap-2 items-center">
-                                    <span
-                                      className={`text-xs ${colors.textColorMuted}`}
-                                    >
-                                      Available document types:
-                                    </span>
-                                    {identifiersTemplate.documentTypeOptions.map(
-                                      (option: any) => {
-                                        // Check if this document type has an active identifier
-                                        const hasIdentifier =
-                                          existingIdentifiers.some(
-                                            (identifier: any) =>
-                                                  (identifier.documentType
-                                                    ?.id === option.id ||
-                                                identifier.documentTypeId ===
-                                                  option.id) &&
-                                              identifier.status?.active !==
-                                                false &&
-                                                  identifier.status !==
-                                                    "Inactive"
-                                          );
-                                        return (
-                                          <Badge
-                                            key={option.id}
-                                            variant={
-                                              hasIdentifier
-                                                ? "default"
-                                                : "outline"
-                                            }
-                                            className={`text-xs ${
-                                              hasIdentifier
-                                                ? "bg-green-500 hover:bg-green-600 text-white border-0"
-                                                : ""
-                                            }`}
-                                          >
-                                            {hasIdentifier && (
-                                              <Check className="h-3 w-3 mr-1" />
-                                            )}
-                                            {option.name}
-                                          </Badge>
-                                        );
-                                      }
-                                    )}
-                                  </div>
-                                ) : (
-                                  <p
-                                    className={`text-xs ${colors.textColorMuted} italic`}
-                                  >
-                                    Loading document types...
-                                  </p>
-                                )}
-                              </div>
-                              <div className="space-y-4">
-                                {/* Existing Identifiers from Fineract */}
-                                <div className="space-y-2">
-                                  <Label
-                                    className={`text-sm font-medium ${colors.textColor}`}
-                                  >
-                                    Existing Identifiers
-                                    {existingIdentifiers.length > 0 && (
-                                      <span className="ml-2 text-xs font-normal">
-                                        ({existingIdentifiers.length})
-                                      </span>
-                                    )}
-                                  </Label>
-
-                                  {existingIdentifiers.length > 0 ? (
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                      {existingIdentifiers.map(
-                                            (
-                                              identifier: any,
-                                              index: number
-                                            ) => {
-                                          const documentType =
-                                            identifiersTemplate?.documentTypeOptions?.find(
-                                              (opt: any) =>
-                                                opt.id ===
-                                                      identifier.documentType
-                                                        ?.id ||
-                                                opt.id ===
-                                                  identifier.documentTypeId
-                                            );
-
-                                              // Get linked documents for this identifier
-                                              const identifierId =
-                                                identifier.id;
-                                              // First try to get documents from the identifier documents map (new method)
-                                              let linkedDocuments =
-                                                identifierDocuments.get(
-                                                  identifierId
-                                                ) || [];
-
-                                              // Fallback: if no documents found via API, try filtering clientDocuments (backward compatibility)
-                                              if (
-                                                linkedDocuments.length === 0
-                                              ) {
-                                                linkedDocuments =
-                                            clientDocuments.filter(
-                                              (doc: any) => {
-                                                      if (!doc.name)
-                                                        return false;
-                                                // Check if document name starts with IDENTIFIER_{identifierId}_
-                                                const extractedId =
-                                                  extractIdentifierIdFromFilename(
-                                                    doc.name
+                                {/* Identity Documents Section */}
+                                <Card
+                                  className={
+                                    getSectionStatus("identityDocuments") ===
+                                    "saved"
+                                      ? "border-2 border-green-500 dark:border-green-600 bg-green-50 dark:bg-green-950"
+                                      : getSectionStatus(
+                                          "identityDocuments"
+                                        ) === "pending"
+                                      ? "border-2 border-amber-500 dark:border-amber-600 bg-amber-50 dark:bg-amber-950"
+                                      : "border-2 border-red-500 dark:border-red-600 bg-red-50 dark:bg-red-950"
+                                  }
+                                >
+                                  <CardContent className="pt-6">
+                                    <div className="space-y-4">
+                                      <div className="space-y-2">
+                                        <div className="flex items-center gap-2">
+                                          <Label className={colors.textColor}>
+                                            Identity Documents
+                                          </Label>
+                                          {getSectionStatus(
+                                            "identityDocuments"
+                                          ) === "saved" && (
+                                            <Badge className="bg-green-500 text-white">
+                                              Complete
+                                            </Badge>
+                                          )}
+                                          {getSectionStatus(
+                                            "identityDocuments"
+                                          ) === "pending" && (
+                                            <Badge className="bg-amber-500 text-white">
+                                              Pending Save
+                                            </Badge>
+                                          )}
+                                        </div>
+                                        {identifiersTemplate
+                                          ?.documentTypeOptions?.length > 0 ? (
+                                          <div className="flex flex-wrap gap-2 items-center">
+                                            <span
+                                              className={`text-xs ${colors.textColorMuted}`}
+                                            >
+                                              Available document types:
+                                            </span>
+                                            {identifiersTemplate.documentTypeOptions.map(
+                                              (option: any) => {
+                                                // Check if this document type has an active identifier
+                                                const hasIdentifier =
+                                                  existingIdentifiers.some(
+                                                    (identifier: any) =>
+                                                      (identifier.documentType
+                                                        ?.id === option.id ||
+                                                        identifier.documentTypeId ===
+                                                          option.id) &&
+                                                      identifier.status
+                                                        ?.active !== false &&
+                                                      identifier.status !==
+                                                        "Inactive"
                                                   );
                                                 return (
-                                                        extractedId ===
-                                                        identifierId
+                                                  <Badge
+                                                    key={option.id}
+                                                    variant={
+                                                      hasIdentifier
+                                                        ? "default"
+                                                        : "outline"
+                                                    }
+                                                    className={`text-xs ${
+                                                      hasIdentifier
+                                                        ? "bg-green-500 hover:bg-green-600 text-white border-0"
+                                                        : ""
+                                                    }`}
+                                                  >
+                                                    {hasIdentifier && (
+                                                      <Check className="h-3 w-3 mr-1" />
+                                                    )}
+                                                    {option.name}
+                                                  </Badge>
                                                 );
                                               }
-                                            );
-                                              }
+                                            )}
+                                          </div>
+                                        ) : (
+                                          <p
+                                            className={`text-xs ${colors.textColorMuted} italic`}
+                                          >
+                                            Loading document types...
+                                          </p>
+                                        )}
+                                      </div>
+                                      <div className="space-y-4">
+                                        {/* Existing Identifiers from Fineract */}
+                                        <div className="space-y-2">
+                                          <Label
+                                            className={`text-sm font-medium ${colors.textColor}`}
+                                          >
+                                            Existing Identifiers
+                                            {existingIdentifiers.length > 0 && (
+                                              <span className="ml-2 text-xs font-normal">
+                                                ({existingIdentifiers.length})
+                                              </span>
+                                            )}
+                                          </Label>
 
-                                          return (
-                                            <Card
-                                              key={identifier.id || index}
-                                              className={`border-${colors.borderColor} ${colors.cardBg}`}
+                                          {existingIdentifiers.length > 0 ? (
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                              {existingIdentifiers.map(
+                                                (
+                                                  identifier: any,
+                                                  index: number
+                                                ) => {
+                                                  const documentType =
+                                                    identifiersTemplate?.documentTypeOptions?.find(
+                                                      (opt: any) =>
+                                                        opt.id ===
+                                                          identifier
+                                                            .documentType?.id ||
+                                                        opt.id ===
+                                                          identifier.documentTypeId
+                                                    );
+
+                                                  // Get linked documents for this identifier
+                                                  const identifierId =
+                                                    identifier.id;
+                                                  // First try to get documents from the identifier documents map (new method)
+                                                  let linkedDocuments =
+                                                    identifierDocuments.get(
+                                                      identifierId
+                                                    ) || [];
+
+                                                  // Fallback: if no documents found via API, try filtering clientDocuments (backward compatibility)
+                                                  if (
+                                                    linkedDocuments.length === 0
+                                                  ) {
+                                                    linkedDocuments =
+                                                      clientDocuments.filter(
+                                                        (doc: any) => {
+                                                          if (!doc.name)
+                                                            return false;
+                                                          // Check if document name starts with IDENTIFIER_{identifierId}_
+                                                          const extractedId =
+                                                            extractIdentifierIdFromFilename(
+                                                              doc.name
+                                                            );
+                                                          return (
+                                                            extractedId ===
+                                                            identifierId
+                                                          );
+                                                        }
+                                                      );
+                                                  }
+
+                                                  return (
+                                                    <Card
+                                                      key={
+                                                        identifier.id || index
+                                                      }
+                                                      className={`border-${colors.borderColor} ${colors.cardBg}`}
+                                                    >
+                                                      <CardContent className="p-4">
+                                                        <div className="space-y-3">
+                                                          <div className="flex items-start justify-between">
+                                                            <div className="space-y-2 flex-1">
+                                                              {documentType && (
+                                                                <Badge
+                                                                  variant="secondary"
+                                                                  className="text-xs"
+                                                                >
+                                                                  {
+                                                                    documentType.name
+                                                                  }
+                                                                </Badge>
+                                                              )}
+                                                              {identifier
+                                                                .documentType
+                                                                ?.name &&
+                                                                !documentType && (
+                                                                  <Badge
+                                                                    variant="secondary"
+                                                                    className="text-xs"
+                                                                  >
+                                                                    {
+                                                                      identifier
+                                                                        .documentType
+                                                                        .name
+                                                                    }
+                                                                  </Badge>
+                                                                )}
+                                                              <p
+                                                                className={`text-sm font-medium ${colors.textColor}`}
+                                                              >
+                                                                {identifier.documentKey ||
+                                                                  identifier.description ||
+                                                                  identifier.documentNumber ||
+                                                                  `Identifier ${
+                                                                    index + 1
+                                                                  }`}
+                                                              </p>
+                                                              {identifier
+                                                                .documentType
+                                                                ?.name && (
+                                                                <p
+                                                                  className={`text-xs ${colors.textColorMuted}`}
+                                                                >
+                                                                  Type:{" "}
+                                                                  {
+                                                                    identifier
+                                                                      .documentType
+                                                                      .name
+                                                                  }
+                                                                </p>
+                                                              )}
+                                                              {identifier.status && (
+                                                                <Badge
+                                                                  variant={
+                                                                    identifier
+                                                                      .status
+                                                                      .active
+                                                                      ? "default"
+                                                                      : "secondary"
+                                                                  }
+                                                                  className="text-xs"
+                                                                >
+                                                                  {identifier
+                                                                    .status
+                                                                    .active
+                                                                    ? "Active"
+                                                                    : "Inactive"}
+                                                                </Badge>
+                                                              )}
+                                                            </div>
+                                                            <div className="flex items-center gap-2">
+                                                              <label>
+                                                                <Button
+                                                                  type="button"
+                                                                  variant="outline"
+                                                                  size="sm"
+                                                                  asChild
+                                                                  disabled={
+                                                                    !fineractClientId ||
+                                                                    addingDocumentToIdentifier ===
+                                                                      identifierId
+                                                                  }
+                                                                  className="flex items-center gap-1 cursor-pointer"
+                                                                >
+                                                                  <span>
+                                                                    <Plus className="h-3 w-3" />
+                                                                    {addingDocumentToIdentifier ===
+                                                                    identifierId
+                                                                      ? "Adding..."
+                                                                      : "Add Document"}
+                                                                  </span>
+                                                                </Button>
+                                                                <input
+                                                                  type="file"
+                                                                  accept="image/*,application/pdf"
+                                                                  className="hidden"
+                                                                  disabled={
+                                                                    addingDocumentToIdentifier ===
+                                                                    identifierId
+                                                                  }
+                                                                  onChange={(
+                                                                    e
+                                                                  ) => {
+                                                                    const file =
+                                                                      e.target
+                                                                        .files?.[0];
+                                                                    if (file) {
+                                                                      handleAddDocumentToIdentifier(
+                                                                        identifierId,
+                                                                        file
+                                                                      );
+                                                                      e.target.value =
+                                                                        ""; // Reset input
+                                                                    }
+                                                                  }}
+                                                                />
+                                                              </label>
+                                                              <Button
+                                                                type="button"
+                                                                variant="outline"
+                                                                size="sm"
+                                                                disabled={
+                                                                  !fineractClientId ||
+                                                                  deletingIdentifierId ===
+                                                                    identifierId
+                                                                }
+                                                                onClick={() =>
+                                                                  handleDeleteIdentifierClick(
+                                                                    identifierId
+                                                                  )
+                                                                }
+                                                                className="flex items-center gap-1 text-red-500 hover:text-red-700 hover:bg-red-50"
+                                                                title="Delete identifier"
+                                                              >
+                                                                {deletingIdentifierId ===
+                                                                identifierId ? (
+                                                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                                                ) : (
+                                                                  <Trash2 className="h-3 w-3" />
+                                                                )}
+                                                              </Button>
+                                                            </div>
+                                                          </div>
+
+                                                          {/* Linked Documents */}
+                                                          {linkedDocuments.length >
+                                                            0 && (
+                                                            <div className="space-y-2 pt-2 border-t">
+                                                              <p
+                                                                className={`text-xs font-medium ${colors.textColor}`}
+                                                              >
+                                                                Linked
+                                                                Documents:
+                                                              </p>
+                                                              <div className="space-y-1">
+                                                                {linkedDocuments.map(
+                                                                  (
+                                                                    doc: any,
+                                                                    docIndex: number
+                                                                  ) => {
+                                                                    const isPreviewing =
+                                                                      previewingDocumentId ===
+                                                                        String(
+                                                                          doc.id
+                                                                        ) &&
+                                                                      previewingIdentifierId ===
+                                                                        identifierId;
+                                                                    const isImage =
+                                                                      doc.type?.includes(
+                                                                        "image"
+                                                                      ) ||
+                                                                      doc.name?.match(
+                                                                        /\.(jpg|jpeg|png|gif|webp|bmp)$/i
+                                                                      ) ||
+                                                                      doc.fileName?.match(
+                                                                        /\.(jpg|jpeg|png|gif|webp|bmp)$/i
+                                                                      );
+                                                                    const isPdf =
+                                                                      doc.type?.includes(
+                                                                        "pdf"
+                                                                      ) ||
+                                                                      doc.name?.match(
+                                                                        /\.pdf$/i
+                                                                      ) ||
+                                                                      doc.fileName?.match(
+                                                                        /\.pdf$/i
+                                                                      );
+                                                                    // Use identifier documents endpoint for documents linked to identifiers
+                                                                    const previewUrl =
+                                                                      fineractClientId &&
+                                                                      identifierId
+                                                                        ? `/api/fineract/client_identifiers/${identifierId}/documents/${doc.id}/attachment`
+                                                                        : fineractClientId
+                                                                        ? `/api/fineract/clients/${fineractClientId}/documents/${doc.id}/attachment`
+                                                                        : null;
+
+                                                                    return (
+                                                                      <div
+                                                                        key={
+                                                                          doc.id ||
+                                                                          docIndex
+                                                                        }
+                                                                        className="space-y-2"
+                                                                      >
+                                                                        <div className="flex items-center gap-2 p-2 bg-gray-50 dark:bg-gray-800 rounded text-xs">
+                                                                          <FileText className="h-3 w-3 text-blue-500 flex-shrink-0" />
+                                                                          <span
+                                                                            className={`flex-1 ${colors.textColor} truncate cursor-pointer`}
+                                                                            onClick={() =>
+                                                                              handleViewDocument(
+                                                                                doc.id,
+                                                                                identifierId
+                                                                              )
+                                                                            }
+                                                                            title={
+                                                                              doc.name ||
+                                                                              doc.fileName ||
+                                                                              `Document ${
+                                                                                docIndex +
+                                                                                1
+                                                                              }`
+                                                                            }
+                                                                          >
+                                                                            {doc.name ||
+                                                                              doc.fileName ||
+                                                                              `Document ${
+                                                                                docIndex +
+                                                                                1
+                                                                              }`}
+                                                                          </span>
+                                                                          {doc.size && (
+                                                                            <span
+                                                                              className={`${colors.textColorMuted} flex-shrink-0`}
+                                                                            >
+                                                                              {(
+                                                                                doc.size /
+                                                                                1024
+                                                                              ).toFixed(
+                                                                                1
+                                                                              )}{" "}
+                                                                              KB
+                                                                            </span>
+                                                                          )}
+                                                                          <div className="flex items-center gap-1 flex-shrink-0">
+                                                                            <Button
+                                                                              type="button"
+                                                                              variant="ghost"
+                                                                              size="sm"
+                                                                              className={`h-6 w-6 p-0 ${
+                                                                                isPreviewing
+                                                                                  ? "bg-blue-100 dark:bg-blue-900"
+                                                                                  : ""
+                                                                              }`}
+                                                                              onClick={() =>
+                                                                                handleViewDocument(
+                                                                                  doc.id,
+                                                                                  identifierId
+                                                                                )
+                                                                              }
+                                                                              title={
+                                                                                isPreviewing
+                                                                                  ? "Hide preview"
+                                                                                  : "View document"
+                                                                              }
+                                                                            >
+                                                                              <Eye className="h-3 w-3" />
+                                                                            </Button>
+                                                                            <Button
+                                                                              type="button"
+                                                                              variant="ghost"
+                                                                              size="sm"
+                                                                              className="h-6 w-6 p-0"
+                                                                              onClick={() =>
+                                                                                handleDownloadDocument(
+                                                                                  doc.id,
+                                                                                  doc.name ||
+                                                                                    doc.fileName ||
+                                                                                    `document_${doc.id}`,
+                                                                                  identifierId
+                                                                                )
+                                                                              }
+                                                                              title="Download document"
+                                                                            >
+                                                                              <Download className="h-3 w-3" />
+                                                                            </Button>
+                                                                          </div>
+                                                                        </div>
+
+                                                                        {/* Inline Preview */}
+                                                                        {isPreviewing &&
+                                                                          previewUrl && (
+                                                                            <div className="p-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg">
+                                                                              {isImage ? (
+                                                                                <div className="flex items-center justify-center">
+                                                                                  <img
+                                                                                    src={
+                                                                                      previewUrl
+                                                                                    }
+                                                                                    alt={
+                                                                                      doc.name ||
+                                                                                      doc.fileName ||
+                                                                                      "Document preview"
+                                                                                    }
+                                                                                    className="max-w-full max-h-96 object-contain rounded-lg shadow-sm"
+                                                                                    onError={(
+                                                                                      e
+                                                                                    ) => {
+                                                                                      console.error(
+                                                                                        "Error loading image"
+                                                                                      );
+                                                                                      e.currentTarget.style.display =
+                                                                                        "none";
+                                                                                      const errorDiv =
+                                                                                        document.createElement(
+                                                                                          "div"
+                                                                                        );
+                                                                                      errorDiv.className =
+                                                                                        "text-center text-gray-500 p-4 text-sm";
+                                                                                      errorDiv.textContent =
+                                                                                        "Failed to load image. Please try downloading the document.";
+                                                                                      e.currentTarget.parentElement?.appendChild(
+                                                                                        errorDiv
+                                                                                      );
+                                                                                    }}
+                                                                                  />
+                                                                                </div>
+                                                                              ) : isPdf ? (
+                                                                                <div className="w-full h-96">
+                                                                                  <iframe
+                                                                                    src={
+                                                                                      previewUrl
+                                                                                    }
+                                                                                    className="w-full h-full border-0 rounded-lg"
+                                                                                    title={
+                                                                                      doc.name ||
+                                                                                      doc.fileName ||
+                                                                                      "Document preview"
+                                                                                    }
+                                                                                  />
+                                                                                </div>
+                                                                              ) : (
+                                                                                <div className="flex flex-col items-center justify-center h-32 space-y-2">
+                                                                                  <FileText className="h-8 w-8 text-gray-400" />
+                                                                                  <p className="text-gray-500 text-sm text-center">
+                                                                                    Preview
+                                                                                    not
+                                                                                    available
+                                                                                    for
+                                                                                    this
+                                                                                    file
+                                                                                    type.
+                                                                                  </p>
+                                                                                  <Button
+                                                                                    size="sm"
+                                                                                    variant="outline"
+                                                                                    onClick={() =>
+                                                                                      handleDownloadDocument(
+                                                                                        doc.id,
+                                                                                        doc.name ||
+                                                                                          doc.fileName ||
+                                                                                          `document_${doc.id}`
+                                                                                      )
+                                                                                    }
+                                                                                  >
+                                                                                    <Download className="h-3 w-3 mr-2" />
+                                                                                    Download
+                                                                                    to
+                                                                                    View
+                                                                                  </Button>
+                                                                                </div>
+                                                                              )}
+                                                                            </div>
+                                                                          )}
+                                                                      </div>
+                                                                    );
+                                                                  }
+                                                                )}
+                                                              </div>
+                                                            </div>
+                                                          )}
+                                                        </div>
+                                                      </CardContent>
+                                                    </Card>
+                                                  );
+                                                }
+                                              )}
+                                            </div>
+                                          ) : (
+                                            <p
+                                              className={`text-sm ${colors.textColorMuted} italic`}
                                             >
-                                              <CardContent className="p-4">
-                                                <div className="space-y-3">
-                                                  <div className="flex items-start justify-between">
-                                                    <div className="space-y-2 flex-1">
-                                                      {documentType && (
-                                                        <Badge
-                                                          variant="secondary"
-                                                          className="text-xs"
-                                                        >
-                                                              {
-                                                                documentType.name
-                                                              }
-                                                        </Badge>
-                                                      )}
-                                                          {identifier
-                                                            .documentType
-                                                        ?.name &&
-                                                        !documentType && (
+                                              No existing identifiers found. Add
+                                              new identity documents below.
+                                            </p>
+                                          )}
+                                        </div>
+
+                                        {/* Add New Identifier or Document */}
+                                        <div className="space-y-2">
+                                          <Label
+                                            className={`text-sm font-medium ${colors.textColor}`}
+                                          >
+                                            Add Identifier
+                                          </Label>
+                                          <div className="flex gap-2 flex-wrap">
+                                            <Button
+                                              type="button"
+                                              variant="outline"
+                                              onClick={() =>
+                                                setShowAddIdentifierDialog(true)
+                                              }
+                                              disabled={!fineractClientId}
+                                              className="flex items-center gap-2"
+                                            >
+                                              <Database className="h-4 w-4" />
+                                              Add Identifier
+                                            </Button>
+                                          </div>
+                                          <p
+                                            className={`text-xs ${colors.textColorMuted} italic`}
+                                          >
+                                            Add identifiers for IDs, passport
+                                            numbers, etc.
+                                          </p>
+                                        </div>
+
+                                        {/* Pending Documents to Upload - Removed since documents now upload directly */}
+                                        {identityDocuments.length > 0 && (
+                                          <div className="space-y-2">
+                                            <Label
+                                              className={`text-sm font-medium ${colors.textColor}`}
+                                            >
+                                              Documents to Upload (
+                                              {identityDocuments.length})
+                                            </Label>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                              {identityDocuments.map(
+                                                (doc, index) => (
+                                                  <Card
+                                                    key={index}
+                                                    className={`border-${colors.borderColor} ${colors.cardBg}`}
+                                                  >
+                                                    <CardContent className="p-4">
+                                                      <div className="space-y-2">
+                                                        {doc.documentTypeName && (
                                                           <Badge
                                                             variant="secondary"
                                                             className="text-xs"
                                                           >
                                                             {
-                                                              identifier
-                                                                .documentType
-                                                                .name
+                                                              doc.documentTypeName
                                                             }
                                                           </Badge>
                                                         )}
-                                                      <p
-                                                        className={`text-sm font-medium ${colors.textColor}`}
-                                                      >
-                                                        {identifier.documentKey ||
-                                                          identifier.description ||
-                                                          identifier.documentNumber ||
-                                                          `Identifier ${
-                                                            index + 1
-                                                          }`}
-                                                      </p>
-                                                          {identifier
-                                                            .documentType
-                                                        ?.name && (
                                                         <p
-                                                          className={`text-xs ${colors.textColorMuted}`}
+                                                          className={`text-sm font-medium ${colors.textColor}`}
                                                         >
-                                                          Type:{" "}
-                                                          {
-                                                            identifier
-                                                                  .documentType
-                                                                  .name
-                                                          }
+                                                          {doc.name}
                                                         </p>
-                                                      )}
-                                                      {identifier.status && (
-                                                        <Badge
-                                                          variant={
-                                                                identifier
-                                                                  .status.active
-                                                              ? "default"
-                                                              : "secondary"
-                                                          }
-                                                          className="text-xs"
-                                                        >
-                                                          {identifier.status
-                                                            .active
-                                                            ? "Active"
-                                                            : "Inactive"}
-                                                        </Badge>
-                                                      )}
-                                                    </div>
-                                                        <div className="flex items-center gap-2">
-                                                          <label>
-                                                            <Button
-                                                              type="button"
-                                                              variant="outline"
-                                                              size="sm"
-                                                              asChild
-                                                              disabled={
-                                                                !fineractClientId ||
-                                                                addingDocumentToIdentifier ===
-                                                                  identifierId
-                                                              }
-                                                              className="flex items-center gap-1 cursor-pointer"
-                                                            >
-                                                              <span>
-                                                                <Plus className="h-3 w-3" />
-                                                                {addingDocumentToIdentifier ===
-                                                                identifierId
-                                                                  ? "Adding..."
-                                                                  : "Add Document"}
-                                                              </span>
-                                                            </Button>
-                                                            <input
-                                                              type="file"
-                                                              accept="image/*,application/pdf"
-                                                              className="hidden"
-                                                              disabled={
-                                                                addingDocumentToIdentifier ===
-                                                                identifierId
-                                                              }
-                                                              onChange={(e) => {
-                                                                const file =
-                                                                  e.target
-                                                                    .files?.[0];
-                                                                if (file) {
-                                                                  handleAddDocumentToIdentifier(
-                                                                    identifierId,
-                                                                    file
-                                                                  );
-                                                                  e.target.value =
-                                                                    ""; // Reset input
-                                                                }
-                                                              }}
-                                                            />
-                                                          </label>
-                                                          <Button
-                                                            type="button"
-                                                            variant="outline"
-                                                            size="sm"
-                                                            disabled={
-                                                              !fineractClientId ||
-                                                              deletingIdentifierId ===
-                                                                identifierId
-                                                            }
-                                                            onClick={() =>
-                                                              handleDeleteIdentifierClick(
-                                                                identifierId
-                                                              )
-                                                            }
-                                                            className="flex items-center gap-1 text-red-500 hover:text-red-700 hover:bg-red-50"
-                                                            title="Delete identifier"
-                                                          >
-                                                            {deletingIdentifierId ===
-                                                            identifierId ? (
-                                                              <Loader2 className="h-3 w-3 animate-spin" />
-                                                            ) : (
-                                                              <Trash2 className="h-3 w-3" />
-                                                            )}
-                                                          </Button>
-                                                        </div>
-                                                  </div>
-
-                                                  {/* Linked Documents */}
-                                                  {linkedDocuments.length >
-                                                    0 && (
-                                                    <div className="space-y-2 pt-2 border-t">
-                                                      <p
-                                                        className={`text-xs font-medium ${colors.textColor}`}
-                                                      >
-                                                        Linked Documents:
-                                                      </p>
-                                                      <div className="space-y-1">
-                                                        {linkedDocuments.map(
-                                                          (
-                                                            doc: any,
-                                                            docIndex: number
-                                                              ) => {
-                                                                const isPreviewing =
-                                                                  previewingDocumentId ===
-                                                                    String(
-                                                                      doc.id
-                                                                    ) &&
-                                                                  previewingIdentifierId ===
-                                                                    identifierId;
-                                                                const isImage =
-                                                                  doc.type?.includes(
-                                                                    "image"
-                                                                  ) ||
-                                                                  doc.name?.match(
-                                                                    /\.(jpg|jpeg|png|gif|webp|bmp)$/i
-                                                                  ) ||
-                                                                  doc.fileName?.match(
-                                                                    /\.(jpg|jpeg|png|gif|webp|bmp)$/i
-                                                                  );
-                                                                const isPdf =
-                                                                  doc.type?.includes(
-                                                                    "pdf"
-                                                                  ) ||
-                                                                  doc.name?.match(
-                                                                    /\.pdf$/i
-                                                                  ) ||
-                                                                  doc.fileName?.match(
-                                                                    /\.pdf$/i
-                                                                  );
-                                                                // Use identifier documents endpoint for documents linked to identifiers
-                                                                const previewUrl =
-                                                                  fineractClientId &&
-                                                                  identifierId
-                                                                    ? `/api/fineract/client_identifiers/${identifierId}/documents/${doc.id}/attachment`
-                                                                    : fineractClientId
-                                                                    ? `/api/fineract/clients/${fineractClientId}/documents/${doc.id}/attachment`
-                                                                    : null;
-
-                                                                return (
-                                                            <div
-                                                              key={
-                                                                doc.id ||
-                                                                docIndex
-                                                              }
-                                                                    className="space-y-2"
-                                                            >
-                                                                    <div className="flex items-center gap-2 p-2 bg-gray-50 dark:bg-gray-800 rounded text-xs">
-                                                              <FileText className="h-3 w-3 text-blue-500 flex-shrink-0" />
-                                                              <span
-                                                                        className={`flex-1 ${colors.textColor} truncate cursor-pointer`}
-                                                                        onClick={() =>
-                                                                          handleViewDocument(
-                                                                            doc.id,
-                                                                            identifierId
-                                                                          )
-                                                                        }
-                                                                        title={
-                                                                          doc.name ||
-                                                                          doc.fileName ||
-                                                                          `Document ${
-                                                                            docIndex +
-                                                                            1
-                                                                          }`
-                                                                        }
-                                                              >
-                                                                {doc.name ||
-                                                                  doc.fileName ||
-                                                                  `Document ${
-                                                                            docIndex +
-                                                                            1
-                                                                  }`}
-                                                              </span>
-                                                              {doc.size && (
-                                                                <span
-                                                                          className={`${colors.textColorMuted} flex-shrink-0`}
-                                                                >
-                                                                  {(
-                                                                    doc.size /
-                                                                    1024
-                                                                  ).toFixed(
-                                                                    1
-                                                                  )}{" "}
-                                                                  KB
-                                                                </span>
-                                                              )}
-                                                              <div className="flex items-center gap-1 flex-shrink-0">
-                                                                <Button
-                                                                  type="button"
-                                                                  variant="ghost"
-                                                                  size="sm"
-                                                                          className={`h-6 w-6 p-0 ${
-                                                                            isPreviewing
-                                                                              ? "bg-blue-100 dark:bg-blue-900"
-                                                                              : ""
-                                                                          }`}
-                                                                  onClick={() =>
-                                                                    handleViewDocument(
-                                                                              doc.id,
-                                                                              identifierId
-                                                                            )
-                                                                          }
-                                                                          title={
-                                                                            isPreviewing
-                                                                              ? "Hide preview"
-                                                                              : "View document"
-                                                                          }
-                                                                >
-                                                                  <Eye className="h-3 w-3" />
-                                                                </Button>
-                                                                <Button
-                                                                  type="button"
-                                                                  variant="ghost"
-                                                                  size="sm"
-                                                                  className="h-6 w-6 p-0"
-                                                                  onClick={() =>
-                                                                    handleDownloadDocument(
-                                                                      doc.id,
-                                                                      doc.name ||
-                                                                        doc.fileName ||
-                                                                                `document_${doc.id}`,
-                                                                              identifierId
-                                                                    )
-                                                                  }
-                                                                  title="Download document"
-                                                                >
-                                                                  <Download className="h-3 w-3" />
-                                                                </Button>
-                                                              </div>
-                                                            </div>
-
-                                                                    {/* Inline Preview */}
-                                                                    {isPreviewing &&
-                                                                      previewUrl && (
-                                                                        <div className="p-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg">
-                                                                          {isImage ? (
-                                                                            <div className="flex items-center justify-center">
-                                                                              <img
-                                                                                src={
-                                                                                  previewUrl
-                                                                                }
-                                                                                alt={
-                                                                                  doc.name ||
-                                                                                  doc.fileName ||
-                                                                                  "Document preview"
-                                                                                }
-                                                                                className="max-w-full max-h-96 object-contain rounded-lg shadow-sm"
-                                                                                onError={(
-                                                                                  e
-                                                                                ) => {
-                                                                                  console.error(
-                                                                                    "Error loading image"
-                                                                                  );
-                                                                                  e.currentTarget.style.display =
-                                                                                    "none";
-                                                                                  const errorDiv =
-                                                                                    document.createElement(
-                                                                                      "div"
-                                                                                    );
-                                                                                  errorDiv.className =
-                                                                                    "text-center text-gray-500 p-4 text-sm";
-                                                                                  errorDiv.textContent =
-                                                                                    "Failed to load image. Please try downloading the document.";
-                                                                                  e.currentTarget.parentElement?.appendChild(
-                                                                                    errorDiv
-                                                                                  );
-                                                                                }}
-                                                                              />
-                                                                            </div>
-                                                                          ) : isPdf ? (
-                                                                            <div className="w-full h-96">
-                                                                              <iframe
-                                                                                src={
-                                                                                  previewUrl
-                                                                                }
-                                                                                className="w-full h-full border-0 rounded-lg"
-                                                                                title={
-                                                                                  doc.name ||
-                                                                                  doc.fileName ||
-                                                                                  "Document preview"
-                                                                                }
-                                                                              />
-                                                                            </div>
-                                                                          ) : (
-                                                                            <div className="flex flex-col items-center justify-center h-32 space-y-2">
-                                                                              <FileText className="h-8 w-8 text-gray-400" />
-                                                                              <p className="text-gray-500 text-sm text-center">
-                                                                                Preview
-                                                                                not
-                                                                                available
-                                                                                for
-                                                                                this
-                                                                                file
-                                                                                type.
-                                                                              </p>
-                                                                              <Button
-                                                                                size="sm"
-                                                                                variant="outline"
-                                                                                onClick={() =>
-                                                                                  handleDownloadDocument(
-                                                                                    doc.id,
-                                                                                    doc.name ||
-                                                                                      doc.fileName ||
-                                                                                      `document_${doc.id}`
-                                                                                  )
-                                                                                }
-                                                                              >
-                                                                                <Download className="h-3 w-3 mr-2" />
-                                                                                Download
-                                                                                to
-                                                                                View
-                                                                              </Button>
-                                                                            </div>
+                                                        {doc.file.type.startsWith(
+                                                          "image/"
+                                                        ) && (
+                                                          <img
+                                                            src={doc.preview}
+                                                            alt={doc.name}
+                                                            className="w-full h-32 object-cover rounded"
+                                                          />
                                                         )}
-                                                      </div>
-                                                                      )}
-                                                                  </div>
-                                                                );
-                                                              }
-                                                            )}
+                                                        {doc.file.type ===
+                                                          "application/pdf" && (
+                                                          <div className="w-full h-32 bg-gray-100 dark:bg-gray-800 rounded flex items-center justify-center">
+                                                            <p className="text-sm text-gray-500">
+                                                              PDF Document
+                                                            </p>
                                                           </div>
-                                                    </div>
-                                                  )}
-                                                </div>
-                                              </CardContent>
-                                            </Card>
-                                          );
-                                        }
-                                      )}
-                                    </div>
-                                  ) : (
-                                    <p
-                                      className={`text-sm ${colors.textColorMuted} italic`}
-                                    >
-                                      No existing identifiers found. Add new
-                                      identity documents below.
-                                    </p>
-                                  )}
-                                </div>
-
-                                {/* Add New Identifier or Document */}
-                                <div className="space-y-2">
-                                  <Label
-                                    className={`text-sm font-medium ${colors.textColor}`}
-                                  >
-                                        Add Identifier
-                                  </Label>
-                                  <div className="flex gap-2 flex-wrap">
-                                    <Button
-                                      type="button"
-                                      variant="outline"
-                                      onClick={() =>
-                                        setShowAddIdentifierDialog(true)
-                                      }
-                                      disabled={!fineractClientId}
-                                      className="flex items-center gap-2"
-                                    >
-                                      <Database className="h-4 w-4" />
-                                      Add Identifier
-                                    </Button>
-                                  </div>
-                                  <p
-                                    className={`text-xs ${colors.textColorMuted} italic`}
-                                  >
-                                        Add identifiers for IDs, passport
-                                        numbers, etc.
-                                  </p>
-                                </div>
-
-                                    {/* Pending Documents to Upload - Removed since documents now upload directly */}
-                                {identityDocuments.length > 0 && (
-                                  <div className="space-y-2">
-                                    <Label
-                                      className={`text-sm font-medium ${colors.textColor}`}
-                                    >
-                                      Documents to Upload (
-                                      {identityDocuments.length})
-                                    </Label>
-                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                          {identityDocuments.map(
-                                            (doc, index) => (
-                                      <Card
-                                        key={index}
-                                        className={`border-${colors.borderColor} ${colors.cardBg}`}
-                                      >
-                                        <CardContent className="p-4">
-                                          <div className="space-y-2">
-                                            {doc.documentTypeName && (
-                                              <Badge
-                                                variant="secondary"
-                                                className="text-xs"
-                                              >
-                                                {doc.documentTypeName}
-                                              </Badge>
-                                            )}
-                                            <p
-                                              className={`text-sm font-medium ${colors.textColor}`}
-                                            >
-                                              {doc.name}
-                                            </p>
-                                            {doc.file.type.startsWith(
-                                              "image/"
-                                            ) && (
-                                              <img
-                                                src={doc.preview}
-                                                alt={doc.name}
-                                                className="w-full h-32 object-cover rounded"
-                                              />
-                                            )}
-                                            {doc.file.type ===
-                                              "application/pdf" && (
-                                              <div className="w-full h-32 bg-gray-100 dark:bg-gray-800 rounded flex items-center justify-center">
-                                                <p className="text-sm text-gray-500">
-                                                  PDF Document
-                                                </p>
-                                              </div>
-                                            )}
-                                            <Button
-                                              type="button"
-                                              variant="ghost"
-                                              size="sm"
-                                              onClick={() =>
-                                                handleRemoveIdentityDocument(
-                                                  index
+                                                        )}
+                                                        <Button
+                                                          type="button"
+                                                          variant="ghost"
+                                                          size="sm"
+                                                          onClick={() =>
+                                                            handleRemoveIdentityDocument(
+                                                              index
+                                                            )
+                                                          }
+                                                          className="w-full text-red-500 hover:text-red-700"
+                                                        >
+                                                          <X className="h-4 w-4 mr-2" />
+                                                          Remove
+                                                        </Button>
+                                                      </div>
+                                                    </CardContent>
+                                                  </Card>
                                                 )
-                                              }
-                                              className="w-full text-red-500 hover:text-red-700"
-                                            >
-                                              <X className="h-4 w-4 mr-2" />
-                                              Remove
-                                            </Button>
+                                              )}
+                                            </div>
                                           </div>
-                                        </CardContent>
-                                      </Card>
-                                            )
-                                          )}
-                                    </div>
-                                  </div>
-                                )}
+                                        )}
 
-                                {existingIdentifiers.length === 0 &&
-                                  identityDocuments.length === 0 && (
-                                  <p
-                                    className={`text-sm ${colors.textColorMuted} italic`}
-                                  >
-                                          No identity documents added yet. Use
-                                          the template above to see available
-                                          document types.
-                                  </p>
-                                )}
-                              </div>
-                            </div>
+                                        {existingIdentifiers.length === 0 &&
+                                          identityDocuments.length === 0 && (
+                                            <p
+                                              className={`text-sm ${colors.textColorMuted} italic`}
+                                            >
+                                              No identity documents added yet.
+                                              Use the template above to see
+                                              available document types.
+                                            </p>
+                                          )}
+                                      </div>
+                                    </div>
+                                  </CardContent>
+                                </Card>
 
                                 {/* Divider */}
                                 <div className="my-8 border-t border-gray-300 dark:border-gray-700"></div>
@@ -7537,6 +8293,44 @@ export function ClientRegistrationForm({
                               </>
                             )}
                           </CardContent>
+                          {clientCreatedInFineract && (
+                            <CardFooter className="flex justify-between border-t border-gray-200 dark:border-gray-800 pt-4">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                className={`border-${colors.borderColor} hover:bg-${colors.hoverBgColor}`}
+                                onClick={() => setActiveClientTab("general")}
+                              >
+                                Previous
+                              </Button>
+                              <Button
+                                type="button"
+                                className="bg-blue-500 hover:bg-blue-600"
+                                onClick={async () => {
+                                  // Validate KYC sections before proceeding
+                                  // Check if selfie and identity documents are complete
+                                  const selfieComplete = checkSelfieSection();
+                                  const identityComplete =
+                                    checkIdentityDocumentsSection();
+
+                                  if (!selfieComplete || !identityComplete) {
+                                    error({
+                                      title: "Incomplete KYC",
+                                      description:
+                                        "Please complete the selfie and identity documents sections before proceeding.",
+                                    });
+                                    return;
+                                  }
+
+                                  setActiveClientTab("additional");
+                                }}
+                              >
+                                <span className="transition-all duration-300">
+                                  Next: Additional Details
+                                </span>
+                              </Button>
+                            </CardFooter>
+                          )}
                         </Card>
                       </TabsContent>
 
@@ -7606,338 +8400,390 @@ export function ClientRegistrationForm({
                               ) : (
                                 <>
                                   {/* Address Details */}
-                                  <div className="space-y-4">
-                                    <div className="flex items-center justify-between pb-2 border-b border-gray-200 dark:border-gray-700">
-                                      <div className="flex items-center gap-2">
-                                        <MapPin className="h-5 w-5 text-blue-500" />
-                                        <h3
-                                          className={`text-lg font-semibold ${colors.textColor}`}
-                                        >
-                                          Address Details
-                                        </h3>
-                                      </div>
-                                      {!isEditingAddress &&
-                                        fineractClientId && (
-                                          <Button
-                                            type="button"
-                                            variant="outline"
-                                            size="sm"
-                                            onClick={() => {
-                                              // Convert addressType string to ID if needed when initializing edit
-                                              let addressToEdit =
-                                                clientAddress || {};
-                                              if (
-                                                addressToEdit.addressType &&
-                                                typeof addressToEdit.addressType ===
-                                                  "string" &&
-                                                addressTemplate
-                                              ) {
-                                                const addressTypeOptions =
-                                                  addressTemplate?.addressTypeIdOptions ||
-                                                  [];
-                                                const matchingType =
-                                                  addressTypeOptions.find(
-                                                    (opt: any) =>
-                                                      opt.name?.trim() ===
-                                                      addressToEdit.addressType?.trim()
+                                  <Card className="border-green-500 bg-green-50 dark:bg-green-950">
+                                    <CardContent className="pt-6">
+                                      <div className="space-y-4">
+                                        <div className="flex items-center justify-between pb-2 border-b border-gray-200 dark:border-gray-700">
+                                          <div className="flex items-center gap-2">
+                                            <MapPin className="h-5 w-5 text-blue-500" />
+                                            <h3
+                                              className={`text-lg font-semibold ${colors.textColor}`}
+                                            >
+                                              Address Details
+                                            </h3>
+                                          </div>
+                                          {!isEditingAddress &&
+                                            fineractClientId && (
+                                              <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={() => {
+                                                  // Convert addressType string to ID if needed when initializing edit
+                                                  let addressToEdit =
+                                                    clientAddress || {};
+                                                  if (
+                                                    addressToEdit.addressType &&
+                                                    typeof addressToEdit.addressType ===
+                                                      "string" &&
+                                                    addressTemplate
+                                                  ) {
+                                                    const addressTypeOptions =
+                                                      addressTemplate?.addressTypeIdOptions ||
+                                                      [];
+                                                    const matchingType =
+                                                      addressTypeOptions.find(
+                                                        (opt: any) =>
+                                                          opt.name?.trim() ===
+                                                          addressToEdit.addressType?.trim()
+                                                      );
+                                                    if (
+                                                      matchingType &&
+                                                      matchingType.id
+                                                    ) {
+                                                      addressToEdit = {
+                                                        ...addressToEdit,
+                                                        addressType:
+                                                          matchingType.id, // Convert string to numeric ID
+                                                      };
+                                                      console.log(
+                                                        "Converted addressType to ID when editing:",
+                                                        matchingType.id,
+                                                        "for:",
+                                                        matchingType.name
+                                                      );
+                                                    }
+                                                  }
+                                                  setEditedAddress(
+                                                    addressToEdit
                                                   );
-                                                if (
-                                                  matchingType &&
-                                                  matchingType.id
-                                                ) {
-                                                  addressToEdit = {
-                                                    ...addressToEdit,
-                                                    addressType:
-                                                      matchingType.id, // Convert string to numeric ID
-                                                  };
-                                                  console.log(
-                                                    "Converted addressType to ID when editing:",
-                                                    matchingType.id,
-                                                    "for:",
-                                                    matchingType.name
-                                                  );
-                                                }
-                                              }
-                                              setEditedAddress(addressToEdit);
-                                              setIsEditingAddress(true);
-                                            }}
-                                            className="gap-2"
+                                                  setIsEditingAddress(true);
+                                                }}
+                                                className="gap-2"
+                                              >
+                                                <Edit2 className="h-4 w-4" />
+                                                {clientAddress
+                                                  ? "Edit"
+                                                  : "Add"}{" "}
+                                                Address
+                                              </Button>
+                                            )}
+                                        </div>
+                                        {isEditingAddress ? (
+                                          <div
+                                            className={`rounded-lg border border-${colors.borderColor} ${colors.cardBg} shadow-sm p-6`}
                                           >
-                                            <Edit2 className="h-4 w-4" />
-                                            {clientAddress
-                                              ? "Edit"
-                                              : "Add"}{" "}
-                                            Address
-                                          </Button>
-                                        )}
-                                    </div>
-                                    {isEditingAddress ? (
-                                      <div
-                                        className={`rounded-lg border border-${colors.borderColor} ${colors.cardBg} shadow-sm p-6`}
-                                      >
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                                          {addressFieldConfig.length > 0 ? (
-                                            addressFieldConfig.map(
-                                              (fieldConfig: any) => {
-                                                const fieldName =
-                                                  fieldConfig.field;
-                                                const fieldValue =
-                                                  editedAddress[fieldName] ||
-                                                  "";
-                                                const isRequired =
-                                                  fieldConfig.isMandatory;
-                                                const label =
-                                                  formatHeaderName(fieldName);
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                                              {addressFieldConfig.length > 0 ? (
+                                                addressFieldConfig.map(
+                                                  (fieldConfig: any) => {
+                                                    const fieldName =
+                                                      fieldConfig.field;
+                                                    const fieldValue =
+                                                      editedAddress[
+                                                        fieldName
+                                                      ] || "";
+                                                    const isRequired =
+                                                      fieldConfig.isMandatory;
+                                                    const label =
+                                                      formatHeaderName(
+                                                        fieldName
+                                                      );
 
-                                                // Handle special field types
-                                                if (
-                                                  fieldName === "addressType"
-                                                ) {
-                                                  // Address type dropdown from template
-                                                  const addressTypeOptions = (
-                                                    addressTemplate?.addressTypeIdOptions ||
-                                                    []
-                                                  )
-                                                    .filter(
-                                                      (opt: any) => opt.active
-                                                    )
-                                                    .map((option: any) => ({
-                                                      value:
-                                                        option.id.toString(),
-                                                      label: option.name,
-                                                    }));
-                                                  return (
-                                                    <div
-                                                      key={fieldName}
-                                                      className="space-y-2"
-                                                    >
-                                                      <Label
-                                                        className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
-                                                      >
-                                                        {label}
-                                                        {isRequired && (
-                                                          <span className="text-red-500 ml-1">
-                                                            *
-                                                          </span>
-                                                        )}
-                                                      </Label>
-                                                      <SearchableSelect
-                                                        options={
-                                                          addressTypeOptions
-                                                        }
-                                                        value={
-                                                          fieldValue?.toString() ||
-                                                          ""
-                                                        }
-                                                        onValueChange={(
-                                                          value
-                                                        ) =>
-                                                          setEditedAddress({
-                                                            ...editedAddress,
-                                                            [fieldName]:
-                                                              parseInt(value) ||
-                                                              0,
-                                                          })
-                                                        }
-                                                        placeholder={`Select ${label}`}
-                                                        className={`border-${colors.borderColor} ${colors.inputBg}`}
-                                                        onAddNew={() =>
-                                                          setShowAddAddressTypeDialog(
-                                                            true
+                                                    // Handle special field types
+                                                    if (
+                                                      fieldName ===
+                                                      "addressType"
+                                                    ) {
+                                                      // Address type dropdown from template
+                                                      const addressTypeOptions =
+                                                        (
+                                                          addressTemplate?.addressTypeIdOptions ||
+                                                          []
+                                                        )
+                                                          .filter(
+                                                            (opt: any) =>
+                                                              opt.active
                                                           )
-                                                        }
-                                                        addNewLabel="Add new address type"
-                                                      />
-                                                    </div>
-                                                  );
-                                                }
-
-                                                if (
-                                                  fieldName ===
-                                                  "stateProvinceId"
-                                                ) {
-                                                  // State/Province dropdown from template
-                                                  const stateProvinceOptions = (
-                                                    addressTemplate?.stateProvinceIdOptions ||
-                                                    []
-                                                  ).map((option: any) => ({
-                                                    value:
-                                                      option.id?.toString() ||
-                                                      option.toString(),
-                                                    label:
-                                                      option.name ||
-                                                      option.toString(),
-                                                  }));
-                                                  return (
-                                                    <div
-                                                      key={fieldName}
-                                                      className="space-y-2"
-                                                    >
-                                                      <Label
-                                                        className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
-                                                      >
-                                                        {label}
-                                                        {isRequired && (
-                                                          <span className="text-red-500 ml-1">
-                                                            *
-                                                          </span>
-                                                        )}
-                                                      </Label>
-                                                      <SearchableSelect
-                                                        options={
-                                                          stateProvinceOptions
-                                                        }
-                                                        value={
-                                                          fieldValue?.toString() ||
-                                                          ""
-                                                        }
-                                                        onValueChange={(
-                                                          value
-                                                        ) =>
-                                                          setEditedAddress({
-                                                            ...editedAddress,
-                                                            [fieldName]:
-                                                              parseInt(value) ||
-                                                              0,
-                                                          })
-                                                        }
-                                                        placeholder={`Select ${label}`}
-                                                        className={`border-${colors.borderColor} ${colors.inputBg}`}
-                                                        onAddNew={() =>
-                                                          setShowAddStateProvinceDialog(
-                                                            true
-                                                          )
-                                                        }
-                                                        addNewLabel="Add new state/province"
-                                                        emptyMessage="No states/provinces available"
-                                                      />
-                                                    </div>
-                                                  );
-                                                }
-
-                                                if (fieldName === "countryId") {
-                                                  // Country dropdown from template
-                                                  const countryOptions = (
-                                                    addressTemplate?.countryIdOptions ||
-                                                    []
-                                                  ).map((option: any) => ({
-                                                    value:
-                                                      option.id?.toString() ||
-                                                      option.toString(),
-                                                    label:
-                                                      option.name ||
-                                                      option.toString(),
-                                                  }));
-                                                  return (
-                                                    <div
-                                                      key={fieldName}
-                                                      className="space-y-2"
-                                                    >
-                                                      <Label
-                                                        className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
-                                                      >
-                                                        {label}
-                                                        {isRequired && (
-                                                          <span className="text-red-500 ml-1">
-                                                            *
-                                                          </span>
-                                                        )}
-                                                      </Label>
-                                                      <SearchableSelect
-                                                        options={countryOptions}
-                                                        value={
-                                                          fieldValue?.toString() ||
-                                                          ""
-                                                        }
-                                                        onValueChange={(
-                                                          value
-                                                        ) =>
-                                                          setEditedAddress({
-                                                            ...editedAddress,
-                                                            [fieldName]:
-                                                              parseInt(value) ||
-                                                              0,
-                                                          })
-                                                        }
-                                                        placeholder={`Select ${label}`}
-                                                        className={`border-${colors.borderColor} ${colors.inputBg}`}
-                                                        onAddNew={() =>
-                                                          setShowAddCountryDialog(
-                                                            true
-                                                          )
-                                                        }
-                                                        addNewLabel="Add new country"
-                                                        emptyMessage="No countries available"
-                                                      />
-                                                    </div>
-                                                  );
-                                                }
-
-                                                if (
-                                                  fieldName === "latitude" ||
-                                                  fieldName === "longitude"
-                                                ) {
-                                                  // These are decimal numbers
-                                                  return (
-                                                    <div
-                                                      key={fieldName}
-                                                      className="space-y-2"
-                                                    >
-                                                      <Label
-                                                        className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
-                                                      >
-                                                        {label}
-                                                        {isRequired && (
-                                                          <span className="text-red-500 ml-1">
-                                                            *
-                                                          </span>
-                                                        )}
-                                                      </Label>
-                                                      <Input
-                                                        type="number"
-                                                        step="0.00000001"
-                                                        value={fieldValue}
-                                                        onChange={(e) =>
-                                                          setEditedAddress({
-                                                            ...editedAddress,
-                                                            [fieldName]:
-                                                              parseFloat(
-                                                                e.target.value
-                                                              ) || 0,
-                                                          })
-                                                        }
-                                                        placeholder={label}
-                                                        className={
-                                                          colors.textColor
-                                                        }
-                                                        required={isRequired}
-                                                      />
-                                                    </div>
-                                                  );
-                                                }
-
-                                                if (fieldName === "isActive") {
-                                                  // Boolean field
-                                                  return (
-                                                    <div
-                                                      key={fieldName}
-                                                      className="space-y-2"
-                                                    >
-                                                      <div className="flex items-center space-x-2">
-                                                        <Checkbox
-                                                          checked={Boolean(
-                                                            fieldValue
-                                                          )}
-                                                          onCheckedChange={(
-                                                            checked
-                                                          ) =>
-                                                            setEditedAddress({
-                                                              ...editedAddress,
-                                                              [fieldName]:
-                                                                checked,
+                                                          .map(
+                                                            (option: any) => ({
+                                                              value:
+                                                                option.id.toString(),
+                                                              label:
+                                                                option.name,
                                                             })
-                                                          }
-                                                        />
+                                                          );
+                                                      return (
+                                                        <div
+                                                          key={fieldName}
+                                                          className="space-y-2"
+                                                        >
+                                                          <Label
+                                                            className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
+                                                          >
+                                                            {label}
+                                                            {isRequired && (
+                                                              <span className="text-red-500 ml-1">
+                                                                *
+                                                              </span>
+                                                            )}
+                                                          </Label>
+                                                          <SearchableSelect
+                                                            options={
+                                                              addressTypeOptions
+                                                            }
+                                                            value={
+                                                              fieldValue?.toString() ||
+                                                              ""
+                                                            }
+                                                            onValueChange={(
+                                                              value
+                                                            ) =>
+                                                              setEditedAddress({
+                                                                ...editedAddress,
+                                                                [fieldName]:
+                                                                  parseInt(
+                                                                    value
+                                                                  ) || 0,
+                                                              })
+                                                            }
+                                                            placeholder={`Select ${label}`}
+                                                            className={`border-${colors.borderColor} ${colors.inputBg}`}
+                                                            onAddNew={() =>
+                                                              setShowAddAddressTypeDialog(
+                                                                true
+                                                              )
+                                                            }
+                                                            addNewLabel="Add new address type"
+                                                          />
+                                                        </div>
+                                                      );
+                                                    }
+
+                                                    if (
+                                                      fieldName ===
+                                                      "stateProvinceId"
+                                                    ) {
+                                                      // State/Province dropdown from template
+                                                      const stateProvinceOptions =
+                                                        (
+                                                          addressTemplate?.stateProvinceIdOptions ||
+                                                          []
+                                                        ).map(
+                                                          (option: any) => ({
+                                                            value:
+                                                              option.id?.toString() ||
+                                                              option.toString(),
+                                                            label:
+                                                              option.name ||
+                                                              option.toString(),
+                                                          })
+                                                        );
+                                                      return (
+                                                        <div
+                                                          key={fieldName}
+                                                          className="space-y-2"
+                                                        >
+                                                          <Label
+                                                            className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
+                                                          >
+                                                            {label}
+                                                            {isRequired && (
+                                                              <span className="text-red-500 ml-1">
+                                                                *
+                                                              </span>
+                                                            )}
+                                                          </Label>
+                                                          <SearchableSelect
+                                                            options={
+                                                              stateProvinceOptions
+                                                            }
+                                                            value={
+                                                              fieldValue?.toString() ||
+                                                              ""
+                                                            }
+                                                            onValueChange={(
+                                                              value
+                                                            ) =>
+                                                              setEditedAddress({
+                                                                ...editedAddress,
+                                                                [fieldName]:
+                                                                  parseInt(
+                                                                    value
+                                                                  ) || 0,
+                                                              })
+                                                            }
+                                                            placeholder={`Select ${label}`}
+                                                            className={`border-${colors.borderColor} ${colors.inputBg}`}
+                                                            onAddNew={() =>
+                                                              setShowAddStateProvinceDialog(
+                                                                true
+                                                              )
+                                                            }
+                                                            addNewLabel="Add new state/province"
+                                                            emptyMessage="No states/provinces available"
+                                                          />
+                                                        </div>
+                                                      );
+                                                    }
+
+                                                    if (
+                                                      fieldName === "countryId"
+                                                    ) {
+                                                      // Country dropdown from template
+                                                      const countryOptions = (
+                                                        addressTemplate?.countryIdOptions ||
+                                                        []
+                                                      ).map((option: any) => ({
+                                                        value:
+                                                          option.id?.toString() ||
+                                                          option.toString(),
+                                                        label:
+                                                          option.name ||
+                                                          option.toString(),
+                                                      }));
+                                                      return (
+                                                        <div
+                                                          key={fieldName}
+                                                          className="space-y-2"
+                                                        >
+                                                          <Label
+                                                            className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
+                                                          >
+                                                            {label}
+                                                            {isRequired && (
+                                                              <span className="text-red-500 ml-1">
+                                                                *
+                                                              </span>
+                                                            )}
+                                                          </Label>
+                                                          <SearchableSelect
+                                                            options={
+                                                              countryOptions
+                                                            }
+                                                            value={
+                                                              fieldValue?.toString() ||
+                                                              ""
+                                                            }
+                                                            onValueChange={(
+                                                              value
+                                                            ) =>
+                                                              setEditedAddress({
+                                                                ...editedAddress,
+                                                                [fieldName]:
+                                                                  parseInt(
+                                                                    value
+                                                                  ) || 0,
+                                                              })
+                                                            }
+                                                            placeholder={`Select ${label}`}
+                                                            className={`border-${colors.borderColor} ${colors.inputBg}`}
+                                                            onAddNew={() =>
+                                                              setShowAddCountryDialog(
+                                                                true
+                                                              )
+                                                            }
+                                                            addNewLabel="Add new country"
+                                                            emptyMessage="No countries available"
+                                                          />
+                                                        </div>
+                                                      );
+                                                    }
+
+                                                    if (
+                                                      fieldName ===
+                                                        "latitude" ||
+                                                      fieldName === "longitude"
+                                                    ) {
+                                                      // These are decimal numbers
+                                                      return (
+                                                        <div
+                                                          key={fieldName}
+                                                          className="space-y-2"
+                                                        >
+                                                          <Label
+                                                            className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
+                                                          >
+                                                            {label}
+                                                            {isRequired && (
+                                                              <span className="text-red-500 ml-1">
+                                                                *
+                                                              </span>
+                                                            )}
+                                                          </Label>
+                                                          <Input
+                                                            type="number"
+                                                            step="0.00000001"
+                                                            value={fieldValue}
+                                                            onChange={(e) =>
+                                                              setEditedAddress({
+                                                                ...editedAddress,
+                                                                [fieldName]:
+                                                                  parseFloat(
+                                                                    e.target
+                                                                      .value
+                                                                  ) || 0,
+                                                              })
+                                                            }
+                                                            placeholder={label}
+                                                            className={
+                                                              colors.textColor
+                                                            }
+                                                            required={
+                                                              isRequired
+                                                            }
+                                                          />
+                                                        </div>
+                                                      );
+                                                    }
+
+                                                    if (
+                                                      fieldName === "isActive"
+                                                    ) {
+                                                      // Boolean field
+                                                      return (
+                                                        <div
+                                                          key={fieldName}
+                                                          className="space-y-2"
+                                                        >
+                                                          <div className="flex items-center space-x-2">
+                                                            <Checkbox
+                                                              checked={Boolean(
+                                                                fieldValue
+                                                              )}
+                                                              onCheckedChange={(
+                                                                checked
+                                                              ) =>
+                                                                setEditedAddress(
+                                                                  {
+                                                                    ...editedAddress,
+                                                                    [fieldName]:
+                                                                      checked,
+                                                                  }
+                                                                )
+                                                              }
+                                                            />
+                                                            <Label
+                                                              className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
+                                                            >
+                                                              {label}
+                                                              {isRequired && (
+                                                                <span className="text-red-500 ml-1">
+                                                                  *
+                                                                </span>
+                                                              )}
+                                                            </Label>
+                                                          </div>
+                                                        </div>
+                                                      );
+                                                    }
+
+                                                    // Default: text input
+                                                    return (
+                                                      <div
+                                                        key={fieldName}
+                                                        className="space-y-2"
+                                                      >
                                                         <Label
                                                           className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
                                                         >
@@ -7948,839 +8794,571 @@ export function ClientRegistrationForm({
                                                             </span>
                                                           )}
                                                         </Label>
+                                                        <Input
+                                                          value={fieldValue}
+                                                          onChange={(e) =>
+                                                            setEditedAddress({
+                                                              ...editedAddress,
+                                                              [fieldName]:
+                                                                e.target.value,
+                                                            })
+                                                          }
+                                                          placeholder={label}
+                                                          className={
+                                                            colors.textColor
+                                                          }
+                                                          required={isRequired}
+                                                        />
                                                       </div>
-                                                    </div>
-                                                  );
-                                                }
-
-                                                // Default: text input
-                                                return (
-                                                  <div
-                                                    key={fieldName}
-                                                    className="space-y-2"
-                                                  >
+                                                    );
+                                                  }
+                                                )
+                                              ) : (
+                                                // Fallback: show common address fields if config not loaded yet
+                                                <>
+                                                  <div className="space-y-2">
                                                     <Label
                                                       className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
                                                     >
-                                                      {label}
-                                                      {isRequired && (
-                                                        <span className="text-red-500 ml-1">
-                                                          *
-                                                        </span>
-                                                      )}
+                                                      Address Type
+                                                    </Label>
+                                                    <SearchableSelect
+                                                      options={(
+                                                        addressTemplate?.addressTypeIdOptions ||
+                                                        []
+                                                      )
+                                                        .filter(
+                                                          (opt: any) =>
+                                                            opt.active
+                                                        )
+                                                        .map((option: any) => ({
+                                                          value:
+                                                            option.id.toString(),
+                                                          label: option.name,
+                                                        }))}
+                                                      value={
+                                                        editedAddress.addressType?.toString() ||
+                                                        ""
+                                                      }
+                                                      onValueChange={(value) =>
+                                                        setEditedAddress({
+                                                          ...editedAddress,
+                                                          addressType:
+                                                            parseInt(value) ||
+                                                            0,
+                                                        })
+                                                      }
+                                                      placeholder="Select Address Type"
+                                                      className={`border-${colors.borderColor} ${colors.inputBg}`}
+                                                      onAddNew={() =>
+                                                        setShowAddAddressTypeDialog(
+                                                          true
+                                                        )
+                                                      }
+                                                      addNewLabel="Add new address type"
+                                                    />
+                                                  </div>
+                                                  <div className="space-y-2">
+                                                    <Label
+                                                      className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
+                                                    >
+                                                      Address Line 1
                                                     </Label>
                                                     <Input
-                                                      value={fieldValue}
+                                                      value={
+                                                        editedAddress.addressLine1 ||
+                                                        ""
+                                                      }
                                                       onChange={(e) =>
                                                         setEditedAddress({
                                                           ...editedAddress,
-                                                          [fieldName]:
+                                                          addressLine1:
                                                             e.target.value,
                                                         })
                                                       }
-                                                      placeholder={label}
+                                                      placeholder="Address Line 1"
                                                       className={
                                                         colors.textColor
                                                       }
-                                                      required={isRequired}
                                                     />
                                                   </div>
-                                                );
-                                              }
-                                            )
-                                          ) : (
-                                            // Fallback: show common address fields if config not loaded yet
-                                            <>
-                                              <div className="space-y-2">
-                                                <Label
-                                                  className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
-                                                >
-                                                  Address Type
-                                                </Label>
-                                                <SearchableSelect
-                                                  options={(
-                                                    addressTemplate?.addressTypeIdOptions ||
-                                                    []
-                                                  )
-                                                    .filter(
-                                                      (opt: any) => opt.active
-                                                    )
-                                                    .map((option: any) => ({
-                                                      value:
-                                                        option.id.toString(),
-                                                      label: option.name,
-                                                    }))}
-                                                  value={
-                                                    editedAddress.addressType?.toString() ||
-                                                    ""
-                                                  }
-                                                  onValueChange={(value) =>
-                                                    setEditedAddress({
-                                                      ...editedAddress,
-                                                      addressType:
-                                                        parseInt(value) || 0,
-                                                    })
-                                                  }
-                                                  placeholder="Select Address Type"
-                                                  className={`border-${colors.borderColor} ${colors.inputBg}`}
-                                                  onAddNew={() =>
-                                                    setShowAddAddressTypeDialog(
-                                                      true
-                                                    )
-                                                  }
-                                                  addNewLabel="Add new address type"
-                                                />
-                                              </div>
-                                              <div className="space-y-2">
-                                                <Label
-                                                  className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
-                                                >
-                                                  Address Line 1
-                                                </Label>
-                                                <Input
-                                                  value={
-                                                    editedAddress.addressLine1 ||
-                                                    ""
-                                                  }
-                                                  onChange={(e) =>
-                                                    setEditedAddress({
-                                                      ...editedAddress,
-                                                      addressLine1:
-                                                        e.target.value,
-                                                    })
-                                                  }
-                                                  placeholder="Address Line 1"
-                                                  className={colors.textColor}
-                                                />
-                                              </div>
-                                              <div className="space-y-2">
-                                                <Label
-                                                  className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
-                                                >
-                                                  Address Line 2
-                                                </Label>
-                                                <Input
-                                                  value={
-                                                    editedAddress.addressLine2 ||
-                                                    ""
-                                                  }
-                                                  onChange={(e) =>
-                                                    setEditedAddress({
-                                                      ...editedAddress,
-                                                      addressLine2:
-                                                        e.target.value,
-                                                    })
-                                                  }
-                                                  placeholder="Address Line 2"
-                                                  className={colors.textColor}
-                                                />
-                                              </div>
-                                              <div className="space-y-2">
-                                                <Label
-                                                  className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
-                                                >
-                                                  Address Line 3
-                                                </Label>
-                                                <Input
-                                                  value={
-                                                    editedAddress.addressLine3 ||
-                                                    ""
-                                                  }
-                                                  onChange={(e) =>
-                                                    setEditedAddress({
-                                                      ...editedAddress,
-                                                      addressLine3:
-                                                        e.target.value,
-                                                    })
-                                                  }
-                                                  placeholder="Address Line 3"
-                                                  className={colors.textColor}
-                                                />
-                                              </div>
-                                              <div className="space-y-2">
-                                                <Label
-                                                  className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
-                                                >
-                                                  City
-                                                </Label>
-                                                <Input
-                                                  value={
-                                                    editedAddress.city || ""
-                                                  }
-                                                  onChange={(e) =>
-                                                    setEditedAddress({
-                                                      ...editedAddress,
-                                                      city: e.target.value,
-                                                    })
-                                                  }
-                                                  placeholder="City"
-                                                  className={colors.textColor}
-                                                />
-                                              </div>
-                                              <div className="space-y-2">
-                                                <Label
-                                                  className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
-                                                >
-                                                  Town/Village
-                                                </Label>
-                                                <Input
-                                                  value={
-                                                    editedAddress.townVillage ||
-                                                    ""
-                                                  }
-                                                  onChange={(e) =>
-                                                    setEditedAddress({
-                                                      ...editedAddress,
-                                                      townVillage:
-                                                        e.target.value,
-                                                    })
-                                                  }
-                                                  placeholder="Town/Village"
-                                                  className={colors.textColor}
-                                                />
-                                              </div>
-                                              <div className="space-y-2">
-                                                <Label
-                                                  className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
-                                                >
-                                                  Postal Code
-                                                </Label>
-                                                <Input
-                                                  value={
-                                                    editedAddress.postalCode ||
-                                                    ""
-                                                  }
-                                                  onChange={(e) =>
-                                                    setEditedAddress({
-                                                      ...editedAddress,
-                                                      postalCode:
-                                                        e.target.value,
-                                                    })
-                                                  }
-                                                  placeholder="Postal Code"
-                                                  className={colors.textColor}
-                                                />
-                                              </div>
-                                              <div className="space-y-2">
-                                                <Label
-                                                  className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
-                                                >
-                                                  State/Province
-                                                </Label>
-                                                <SearchableSelect
-                                                  options={(
-                                                    addressTemplate?.stateProvinceIdOptions ||
-                                                    []
-                                                  ).map((option: any) => ({
-                                                    value:
-                                                      option.id?.toString() ||
-                                                      option.toString(),
-                                                    label:
-                                                      option.name ||
-                                                      option.toString(),
-                                                  }))}
-                                                  value={
-                                                    editedAddress.stateProvinceId?.toString() ||
-                                                    ""
-                                                  }
-                                                  onValueChange={(value) =>
-                                                    setEditedAddress({
-                                                      ...editedAddress,
-                                                      stateProvinceId:
-                                                        parseInt(value) || 0,
-                                                    })
-                                                  }
-                                                  placeholder="Select State/Province"
-                                                  className={`border-${colors.borderColor} ${colors.inputBg}`}
-                                                  onAddNew={() =>
-                                                    setShowAddStateProvinceDialog(
-                                                      true
-                                                    )
-                                                  }
-                                                  addNewLabel="Add new state/province"
-                                                  emptyMessage="No states/provinces available"
-                                                />
-                                              </div>
-                                              <div className="space-y-2">
-                                                <Label
-                                                  className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
-                                                >
-                                                  Country
-                                                </Label>
-                                                <SearchableSelect
-                                                  options={(
-                                                    addressTemplate?.countryIdOptions ||
-                                                    []
-                                                  ).map((option: any) => ({
-                                                    value:
-                                                      option.id?.toString() ||
-                                                      option.toString(),
-                                                    label:
-                                                      option.name ||
-                                                      option.toString(),
-                                                  }))}
-                                                  value={
-                                                    editedAddress.countryId?.toString() ||
-                                                    ""
-                                                  }
-                                                  onValueChange={(value) =>
-                                                    setEditedAddress({
-                                                      ...editedAddress,
-                                                      countryId:
-                                                        parseInt(value) || 0,
-                                                    })
-                                                  }
-                                                  placeholder="Select Country"
-                                                  className={`border-${colors.borderColor} ${colors.inputBg}`}
-                                                  onAddNew={() =>
-                                                    setShowAddCountryDialog(
-                                                      true
-                                                    )
-                                                  }
-                                                  addNewLabel="Add new country"
-                                                  emptyMessage="No countries available"
-                                                />
-                                              </div>
-                                              <div className="flex items-center space-x-2">
-                                                <Checkbox
-                                                  checked={Boolean(
-                                                    editedAddress.isActive
-                                                  )}
-                                                  onCheckedChange={(checked) =>
-                                                    setEditedAddress({
-                                                      ...editedAddress,
-                                                      isActive: checked,
-                                                    })
-                                                  }
-                                                />
-                                                <Label
-                                                  className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
-                                                >
-                                                  Is Active
-                                                </Label>
-                                              </div>
-                                            </>
-                                          )}
-                                        </div>
-                                        <div className="flex gap-2 justify-end">
-                                          <Button
-                                            type="button"
-                                            variant="outline"
-                                            size="sm"
-                                            onClick={() => {
-                                              setIsEditingAddress(false);
-                                              setEditedAddress({});
-                                            }}
-                                            disabled={savingAddress}
-                                            className="gap-2"
-                                          >
-                                            <X className="h-4 w-4" />
-                                            Cancel
-                                          </Button>
-                                          <Button
-                                            type="button"
-                                            size="sm"
-                                            onClick={async () => {
-                                              if (!fineractClientId) return;
-                                              setSavingAddress(true);
-                                              try {
-                                                // If we have an existing address with an addressType, update it
-                                                // Otherwise, create a new one
-                                                // Fineract uses addressType as query parameter for updates, not addressId
-                                                // Ensure addressType is a number (ID), not a string name
-                                                let addressType =
-                                                  editedAddress.addressType ||
-                                                  clientAddress?.addressType ||
-                                                  clientAddress?.addressTypeId;
-
-                                                // If addressType is a string, look it up in the template to get the ID
-                                                if (
-                                                  typeof addressType ===
-                                                    "string" &&
-                                                  addressTemplate
-                                                ) {
-                                                  const addressTypeOptions =
-                                                    addressTemplate?.addressTypeIdOptions ||
-                                                    [];
-                                                  const matchingType =
-                                                    addressTypeOptions.find(
-                                                      (opt: any) =>
-                                                        opt.name?.trim() ===
-                                                        addressType?.trim()
-                                                    );
-                                                  if (
-                                                    matchingType &&
-                                                    matchingType.id
-                                                  ) {
-                                                    addressType =
-                                                      matchingType.id;
-                                                    console.log(
-                                                      "Converted addressType string to ID:",
-                                                      addressType,
-                                                      "for:",
-                                                      matchingType.name
-                                                    );
-                                                  } else {
-                                                    // If not found, try to parse as number
-                                                    addressType =
-                                                      parseInt(addressType);
-                                                  }
-                                                } else if (
-                                                  typeof addressType ===
-                                                  "string"
-                                                ) {
-                                                  // If template not loaded, try to parse as number
-                                                  addressType =
-                                                    parseInt(addressType);
-                                                }
-
-                                                // Ensure it's a valid number and not 0
-                                                if (
-                                                  addressType &&
-                                                  (isNaN(addressType) ||
-                                                    addressType === 0)
-                                                ) {
-                                                  addressType = undefined;
-                                                }
-
-                                                // Validate that addressType is set for both create and update
-                                                if (
-                                                  !addressType ||
-                                                  addressType === 0
-                                                ) {
-                                                  error({
-                                                    title: "Validation Error",
-                                                    description:
-                                                      "Please select an address type before saving",
-                                                  });
-                                                  setSavingAddress(false);
-                                                  return;
-                                                }
-
-                                                const hasExistingAddress =
-                                                  clientAddress &&
-                                                  addressType &&
-                                                  !isNaN(addressType) &&
-                                                  addressType !== 0;
-
-                                                const endpoint =
-                                                  hasExistingAddress
-                                                    ? `/api/fineract/clients/${fineractClientId}/addresses/${addressType}`
-                                                    : `/api/fineract/clients/${fineractClientId}/addresses`;
-                                                const method =
-                                                  hasExistingAddress
-                                                    ? "PUT"
-                                                    : "POST";
-
-                                                // Ensure editedAddress has the correct addressType
-                                                const addressPayload = {
-                                                  ...editedAddress,
-                                                  addressType: addressType, // Ensure we use the validated addressType
-                                                  dateFormat: "yyyy-MM-dd",
-                                                  locale: "en",
-                                                };
-
-                                                const response = await fetch(
-                                                  endpoint,
-                                                  {
-                                                    method,
-                                                    headers: {
-                                                      "Content-Type":
-                                                        "application/json",
-                                                    },
-                                                    body: JSON.stringify(
-                                                      addressPayload
-                                                    ),
-                                                  }
-                                                );
-
-                                                if (!response.ok) {
-                                                  const error =
-                                                    await response.json();
-                                                  throw new Error(
-                                                    error.error ||
-                                                      error.details
-                                                        ?.defaultUserMessage ||
-                                                      "Failed to save address"
-                                                  );
-                                                }
-
-                                                const savedAddress =
-                                                  await response.json();
-
-                                                // Refresh addresses list
-                                                const addressesResponse =
-                                                  await fetch(
-                                                    `/api/fineract/clients/${fineractClientId}/addresses`
-                                                  );
-                                                if (addressesResponse.ok) {
-                                                  const addressesData =
-                                                    await addressesResponse.json();
-                                                  const address = Array.isArray(
-                                                    addressesData
-                                                  )
-                                                    ? addressesData[0] || null
-                                                    : addressesData || null;
-                                                  setClientAddress(address);
-                                                }
-
-                                                setIsEditingAddress(false);
-                                                setEditedAddress({});
-
-                                                success({
-                                                  title: "Success",
-                                                  description:
-                                                    hasExistingAddress
-                                                      ? "Address updated successfully"
-                                                      : "Address created successfully",
-                                                });
-                                              } catch (err: any) {
-                                                console.error(
-                                                  "Error saving address:",
-                                                  err
-                                                );
-                                                error({
-                                                  title: "Error",
-                                                  description:
-                                                    err.message ||
-                                                    "Failed to save address",
-                                                });
-                                              } finally {
-                                                setSavingAddress(false);
-                                              }
-                                            }}
-                                            disabled={savingAddress}
-                                            className="gap-2 bg-blue-500 hover:bg-blue-600"
-                                          >
-                                            {savingAddress ? (
-                                              <>
-                                                <Loader2 className="h-4 w-4 animate-spin" />
-                                                Saving...
-                                              </>
-                                            ) : (
-                                              <>
-                                                <Save className="h-4 w-4" />
-                                                Save
-                                              </>
-                                            )}
-                                          </Button>
-                                        </div>
-                                      </div>
-                                    ) : clientAddress ? (
-                                      <div
-                                        className={`rounded-lg border border-${colors.borderColor} ${colors.cardBg} shadow-sm p-6`}
-                                      >
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                          {addressFieldConfig.length > 0 ? (
-                                            // Use field configuration if available
-                                            addressFieldConfig.map(
-                                              (fieldConfig: any) => {
-                                                const fieldName =
-                                                  fieldConfig.field;
-                                                let fieldValue =
-                                                  clientAddress[fieldName];
-
-                                                // Only show fields that have values and are enabled
-                                                if (
-                                                  !fieldValue &&
-                                                  fieldValue !== 0 &&
-                                                  fieldValue !== false
-                                                ) {
-                                                  return null;
-                                                }
-
-                                                const label =
-                                                  formatHeaderName(fieldName);
-
-                                                // Convert IDs to names for display FIRST (before number formatting)
-                                                // This must happen before the number formatting check
-                                                if (
-                                                  fieldName === "addressType"
-                                                ) {
-                                                  // Handle both number and string IDs
-                                                  const idValue =
-                                                    typeof fieldValue ===
-                                                    "string"
-                                                      ? parseInt(fieldValue)
-                                                      : fieldValue;
-
-                                                  if (
-                                                    idValue === 0 ||
-                                                    !idValue ||
-                                                    isNaN(idValue)
-                                                  ) {
-                                                    fieldValue = "Unknown";
-                                                  } else if (addressTemplate) {
-                                                    const addressTypeOptions =
-                                                      addressTemplate?.addressTypeIdOptions ||
-                                                      [];
-                                                    const matchingType =
-                                                      addressTypeOptions.find(
-                                                        (opt: any) =>
-                                                          opt.id === idValue
-                                                      );
-                                                    fieldValue =
-                                                      matchingType?.name?.trim() ||
-                                                      `Unknown (ID: ${idValue})`;
-                                                  } else if (
-                                                    typeof fieldValue ===
-                                                    "string"
-                                                  ) {
-                                                    fieldValue =
-                                                      fieldValue.trim();
-                                                  }
-                                                } else if (
-                                                  fieldName ===
-                                                  "stateProvinceId"
-                                                ) {
-                                                  // Handle both number and string IDs
-                                                  const idValue =
-                                                    typeof fieldValue ===
-                                                    "string"
-                                                      ? parseInt(fieldValue)
-                                                      : fieldValue;
-
-                                                  if (
-                                                    idValue === 0 ||
-                                                    !idValue ||
-                                                    isNaN(idValue)
-                                                  ) {
-                                                    fieldValue = "Unknown";
-                                                  } else if (addressTemplate) {
-                                                    const stateProvinceOptions =
-                                                      addressTemplate?.stateProvinceIdOptions ||
-                                                      [];
-                                                    const matchingState =
-                                                      stateProvinceOptions.find(
-                                                        (opt: any) =>
-                                                          opt.id === idValue
-                                                      );
-                                                    fieldValue =
-                                                      matchingState?.name?.trim() ||
-                                                      `Unknown (ID: ${idValue})`;
-                                                  }
-                                                } else if (
-                                                  fieldName === "countryId"
-                                                ) {
-                                                  // Handle both number and string IDs
-                                                  const idValue =
-                                                    typeof fieldValue ===
-                                                    "string"
-                                                      ? parseInt(fieldValue)
-                                                      : fieldValue;
-
-                                                  if (
-                                                    idValue === 0 ||
-                                                    !idValue ||
-                                                    isNaN(idValue)
-                                                  ) {
-                                                    fieldValue = "Unknown";
-                                                  } else if (addressTemplate) {
-                                                    const countryOptions =
-                                                      addressTemplate?.countryIdOptions ||
-                                                      [];
-                                                    const matchingCountry =
-                                                      countryOptions.find(
-                                                        (opt: any) =>
-                                                          opt.id === idValue
-                                                      );
-                                                    fieldValue =
-                                                      matchingCountry?.name?.trim() ||
-                                                      `Unknown (ID: ${idValue})`;
-                                                  }
-                                                }
-
-                                                // Format boolean values
-                                                if (fieldName === "isActive") {
-                                                  return (
-                                                    <div
-                                                      key={fieldName}
-                                                      className="space-y-1"
-                                                    >
-                                                      <p
-                                                        className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
-                                                      >
-                                                        {label}
-                                                      </p>
-                                                      <Badge
-                                                        variant={
-                                                          fieldValue
-                                                            ? "default"
-                                                            : "outline"
-                                                        }
-                                                        className={
-                                                          fieldValue
-                                                            ? "bg-green-500 hover:bg-green-600"
-                                                            : ""
-                                                        }
-                                                      >
-                                                        {fieldValue
-                                                          ? "Yes"
-                                                          : "No"}
-                                                      </Badge>
-                                                    </div>
-                                                  );
-                                                }
-
-                                                // Format number values (but skip ID fields that were already converted)
-                                                if (
-                                                  typeof fieldValue ===
-                                                    "number" &&
-                                                  fieldName !== "addressType" &&
-                                                  fieldName !==
-                                                    "stateProvinceId" &&
-                                                  fieldName !== "countryId"
-                                                ) {
-                                                  return (
-                                                    <div
-                                                      key={fieldName}
-                                                      className="space-y-1"
-                                                    >
-                                                      <p
-                                                        className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
-                                                      >
-                                                        {label}
-                                                      </p>
-                                                      <p
-                                                        className={`text-sm ${colors.textColor} font-medium`}
-                                                      >
-                                                        {fieldValue.toLocaleString()}
-                                                      </p>
-                                                    </div>
-                                                  );
-                                                }
-
-                                                // Default: text value
-                                                return (
-                                                  <div
-                                                    key={fieldName}
-                                                    className="space-y-1"
-                                                  >
-                                                    <p
+                                                  <div className="space-y-2">
+                                                    <Label
                                                       className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
                                                     >
-                                                      {label}
-                                                    </p>
-                                                    <p
-                                                      className={`text-sm ${colors.textColor} font-medium`}
-                                                    >
-                                                      {String(fieldValue)}
-                                                    </p>
+                                                      Address Line 2
+                                                    </Label>
+                                                    <Input
+                                                      value={
+                                                        editedAddress.addressLine2 ||
+                                                        ""
+                                                      }
+                                                      onChange={(e) =>
+                                                        setEditedAddress({
+                                                          ...editedAddress,
+                                                          addressLine2:
+                                                            e.target.value,
+                                                        })
+                                                      }
+                                                      placeholder="Address Line 2"
+                                                      className={
+                                                        colors.textColor
+                                                      }
+                                                    />
                                                   </div>
-                                                );
-                                              }
-                                            )
-                                          ) : (
-                                            // Fallback: show common address fields if config not loaded yet
-                                            <>
-                                              {clientAddress.addressLine1 && (
-                                                <div className="space-y-1">
-                                                  <p
-                                                    className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
-                                                  >
-                                                    Address Line 1
-                                                  </p>
-                                                  <p
-                                                    className={`text-sm ${colors.textColor} font-medium`}
-                                                  >
-                                                    {clientAddress.addressLine1}
-                                                  </p>
-                                                </div>
+                                                  <div className="space-y-2">
+                                                    <Label
+                                                      className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
+                                                    >
+                                                      Address Line 3
+                                                    </Label>
+                                                    <Input
+                                                      value={
+                                                        editedAddress.addressLine3 ||
+                                                        ""
+                                                      }
+                                                      onChange={(e) =>
+                                                        setEditedAddress({
+                                                          ...editedAddress,
+                                                          addressLine3:
+                                                            e.target.value,
+                                                        })
+                                                      }
+                                                      placeholder="Address Line 3"
+                                                      className={
+                                                        colors.textColor
+                                                      }
+                                                    />
+                                                  </div>
+                                                  <div className="space-y-2">
+                                                    <Label
+                                                      className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
+                                                    >
+                                                      City
+                                                    </Label>
+                                                    <Input
+                                                      value={
+                                                        editedAddress.city || ""
+                                                      }
+                                                      onChange={(e) =>
+                                                        setEditedAddress({
+                                                          ...editedAddress,
+                                                          city: e.target.value,
+                                                        })
+                                                      }
+                                                      placeholder="City"
+                                                      className={
+                                                        colors.textColor
+                                                      }
+                                                    />
+                                                  </div>
+                                                  <div className="space-y-2">
+                                                    <Label
+                                                      className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
+                                                    >
+                                                      Town/Village
+                                                    </Label>
+                                                    <Input
+                                                      value={
+                                                        editedAddress.townVillage ||
+                                                        ""
+                                                      }
+                                                      onChange={(e) =>
+                                                        setEditedAddress({
+                                                          ...editedAddress,
+                                                          townVillage:
+                                                            e.target.value,
+                                                        })
+                                                      }
+                                                      placeholder="Town/Village"
+                                                      className={
+                                                        colors.textColor
+                                                      }
+                                                    />
+                                                  </div>
+                                                  <div className="space-y-2">
+                                                    <Label
+                                                      className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
+                                                    >
+                                                      Postal Code
+                                                    </Label>
+                                                    <Input
+                                                      value={
+                                                        editedAddress.postalCode ||
+                                                        ""
+                                                      }
+                                                      onChange={(e) =>
+                                                        setEditedAddress({
+                                                          ...editedAddress,
+                                                          postalCode:
+                                                            e.target.value,
+                                                        })
+                                                      }
+                                                      placeholder="Postal Code"
+                                                      className={
+                                                        colors.textColor
+                                                      }
+                                                    />
+                                                  </div>
+                                                  <div className="space-y-2">
+                                                    <Label
+                                                      className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
+                                                    >
+                                                      State/Province
+                                                    </Label>
+                                                    <SearchableSelect
+                                                      options={(
+                                                        addressTemplate?.stateProvinceIdOptions ||
+                                                        []
+                                                      ).map((option: any) => ({
+                                                        value:
+                                                          option.id?.toString() ||
+                                                          option.toString(),
+                                                        label:
+                                                          option.name ||
+                                                          option.toString(),
+                                                      }))}
+                                                      value={
+                                                        editedAddress.stateProvinceId?.toString() ||
+                                                        ""
+                                                      }
+                                                      onValueChange={(value) =>
+                                                        setEditedAddress({
+                                                          ...editedAddress,
+                                                          stateProvinceId:
+                                                            parseInt(value) ||
+                                                            0,
+                                                        })
+                                                      }
+                                                      placeholder="Select State/Province"
+                                                      className={`border-${colors.borderColor} ${colors.inputBg}`}
+                                                      onAddNew={() =>
+                                                        setShowAddStateProvinceDialog(
+                                                          true
+                                                        )
+                                                      }
+                                                      addNewLabel="Add new state/province"
+                                                      emptyMessage="No states/provinces available"
+                                                    />
+                                                  </div>
+                                                  <div className="space-y-2">
+                                                    <Label
+                                                      className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
+                                                    >
+                                                      Country
+                                                    </Label>
+                                                    <SearchableSelect
+                                                      options={(
+                                                        addressTemplate?.countryIdOptions ||
+                                                        []
+                                                      ).map((option: any) => ({
+                                                        value:
+                                                          option.id?.toString() ||
+                                                          option.toString(),
+                                                        label:
+                                                          option.name ||
+                                                          option.toString(),
+                                                      }))}
+                                                      value={
+                                                        editedAddress.countryId?.toString() ||
+                                                        ""
+                                                      }
+                                                      onValueChange={(value) =>
+                                                        setEditedAddress({
+                                                          ...editedAddress,
+                                                          countryId:
+                                                            parseInt(value) ||
+                                                            0,
+                                                        })
+                                                      }
+                                                      placeholder="Select Country"
+                                                      className={`border-${colors.borderColor} ${colors.inputBg}`}
+                                                      onAddNew={() =>
+                                                        setShowAddCountryDialog(
+                                                          true
+                                                        )
+                                                      }
+                                                      addNewLabel="Add new country"
+                                                      emptyMessage="No countries available"
+                                                    />
+                                                  </div>
+                                                  <div className="flex items-center space-x-2">
+                                                    <Checkbox
+                                                      checked={Boolean(
+                                                        editedAddress.isActive
+                                                      )}
+                                                      onCheckedChange={(
+                                                        checked
+                                                      ) =>
+                                                        setEditedAddress({
+                                                          ...editedAddress,
+                                                          isActive: checked,
+                                                        })
+                                                      }
+                                                    />
+                                                    <Label
+                                                      className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
+                                                    >
+                                                      Is Active
+                                                    </Label>
+                                                  </div>
+                                                </>
                                               )}
-                                              {clientAddress.addressLine2 && (
-                                                <div className="space-y-1">
-                                                  <p
-                                                    className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
-                                                  >
-                                                    Address Line 2
-                                                  </p>
-                                                  <p
-                                                    className={`text-sm ${colors.textColor} font-medium`}
-                                                  >
-                                                    {clientAddress.addressLine2}
-                                                  </p>
-                                                </div>
-                                              )}
-                                              {clientAddress.addressLine3 && (
-                                                <div className="space-y-1">
-                                                  <p
-                                                    className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
-                                                  >
-                                                    Address Line 3
-                                                  </p>
-                                                  <p
-                                                    className={`text-sm ${colors.textColor} font-medium`}
-                                                  >
-                                                    {clientAddress.addressLine3}
-                                                  </p>
-                                                </div>
-                                              )}
-                                              {clientAddress.city && (
-                                                <div className="space-y-1">
-                                                  <p
-                                                    className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
-                                                  >
-                                                    City
-                                                  </p>
-                                                  <p
-                                                    className={`text-sm ${colors.textColor} font-medium`}
-                                                  >
-                                                    {clientAddress.city}
-                                                  </p>
-                                                </div>
-                                              )}
-                                              {clientAddress.townVillage && (
-                                                <div className="space-y-1">
-                                                  <p
-                                                    className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
-                                                  >
-                                                    Town/Village
-                                                  </p>
-                                                  <p
-                                                    className={`text-sm ${colors.textColor} font-medium`}
-                                                  >
-                                                    {clientAddress.townVillage}
-                                                  </p>
-                                                </div>
-                                              )}
-                                              {clientAddress.postalCode && (
-                                                <div className="space-y-1">
-                                                  <p
-                                                    className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
-                                                  >
-                                                    Postal Code
-                                                  </p>
-                                                  <p
-                                                    className={`text-sm ${colors.textColor} font-medium`}
-                                                  >
-                                                    {clientAddress.postalCode}
-                                                  </p>
-                                                </div>
-                                              )}
-                                              {/* Show address type, state, and country with name conversion */}
-                                              {clientAddress.addressType !==
-                                                undefined && (
-                                                <div className="space-y-1">
-                                                  <p
-                                                    className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
-                                                  >
-                                                    Address Type
-                                                  </p>
-                                                  <p
-                                                    className={`text-sm ${colors.textColor} font-medium`}
-                                                  >
-                                                    {(() => {
-                                                      const addressTypeValue =
-                                                        clientAddress.addressType;
+                                            </div>
+                                            <div className="flex gap-2 justify-end">
+                                              <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={() => {
+                                                  setIsEditingAddress(false);
+                                                  setEditedAddress({});
+                                                }}
+                                                disabled={savingAddress}
+                                                className="gap-2"
+                                              >
+                                                <X className="h-4 w-4" />
+                                                Cancel
+                                              </Button>
+                                              <Button
+                                                type="button"
+                                                size="sm"
+                                                onClick={async () => {
+                                                  if (!fineractClientId) return;
+                                                  setSavingAddress(true);
+                                                  try {
+                                                    // If we have an existing address with an addressType, update it
+                                                    // Otherwise, create a new one
+                                                    // Fineract uses addressType as query parameter for updates, not addressId
+                                                    // Ensure addressType is a number (ID), not a string name
+                                                    let addressType =
+                                                      editedAddress.addressType ||
+                                                      clientAddress?.addressType ||
+                                                      clientAddress?.addressTypeId;
+
+                                                    // If addressType is a string, look it up in the template to get the ID
+                                                    if (
+                                                      typeof addressType ===
+                                                        "string" &&
+                                                      addressTemplate
+                                                    ) {
+                                                      const addressTypeOptions =
+                                                        addressTemplate?.addressTypeIdOptions ||
+                                                        [];
+                                                      const matchingType =
+                                                        addressTypeOptions.find(
+                                                          (opt: any) =>
+                                                            opt.name?.trim() ===
+                                                            addressType?.trim()
+                                                        );
                                                       if (
-                                                        addressTypeValue ===
-                                                          0 ||
-                                                        !addressTypeValue
+                                                        matchingType &&
+                                                        matchingType.id
                                                       ) {
-                                                        return "Unknown";
+                                                        addressType =
+                                                          matchingType.id;
+                                                        console.log(
+                                                          "Converted addressType string to ID:",
+                                                          addressType,
+                                                          "for:",
+                                                          matchingType.name
+                                                        );
+                                                      } else {
+                                                        // If not found, try to parse as number
+                                                        addressType =
+                                                          parseInt(addressType);
+                                                      }
+                                                    } else if (
+                                                      typeof addressType ===
+                                                      "string"
+                                                    ) {
+                                                      // If template not loaded, try to parse as number
+                                                      addressType =
+                                                        parseInt(addressType);
+                                                    }
+
+                                                    // Ensure it's a valid number and not 0
+                                                    if (
+                                                      addressType &&
+                                                      (isNaN(addressType) ||
+                                                        addressType === 0)
+                                                    ) {
+                                                      addressType = undefined;
+                                                    }
+
+                                                    // Validate that addressType is set for both create and update
+                                                    if (
+                                                      !addressType ||
+                                                      addressType === 0
+                                                    ) {
+                                                      error({
+                                                        title:
+                                                          "Validation Error",
+                                                        description:
+                                                          "Please select an address type before saving",
+                                                      });
+                                                      setSavingAddress(false);
+                                                      return;
+                                                    }
+
+                                                    const hasExistingAddress =
+                                                      clientAddress &&
+                                                      addressType &&
+                                                      !isNaN(addressType) &&
+                                                      addressType !== 0;
+
+                                                    const endpoint =
+                                                      hasExistingAddress
+                                                        ? `/api/fineract/clients/${fineractClientId}/addresses/${addressType}`
+                                                        : `/api/fineract/clients/${fineractClientId}/addresses`;
+                                                    const method =
+                                                      hasExistingAddress
+                                                        ? "PUT"
+                                                        : "POST";
+
+                                                    // Ensure editedAddress has the correct addressType
+                                                    const addressPayload = {
+                                                      ...editedAddress,
+                                                      addressType: addressType, // Ensure we use the validated addressType
+                                                      dateFormat: "yyyy-MM-dd",
+                                                      locale: "en",
+                                                    };
+
+                                                    const response =
+                                                      await fetch(endpoint, {
+                                                        method,
+                                                        headers: {
+                                                          "Content-Type":
+                                                            "application/json",
+                                                        },
+                                                        body: JSON.stringify(
+                                                          addressPayload
+                                                        ),
+                                                      });
+
+                                                    if (!response.ok) {
+                                                      const error =
+                                                        await response.json();
+                                                      throw new Error(
+                                                        error.error ||
+                                                          error.details
+                                                            ?.defaultUserMessage ||
+                                                          "Failed to save address"
+                                                      );
+                                                    }
+
+                                                    const savedAddress =
+                                                      await response.json();
+
+                                                    // Refresh addresses list
+                                                    const addressesResponse =
+                                                      await fetch(
+                                                        `/api/fineract/clients/${fineractClientId}/addresses`
+                                                      );
+                                                    if (addressesResponse.ok) {
+                                                      const addressesData =
+                                                        await addressesResponse.json();
+                                                      const address =
+                                                        Array.isArray(
+                                                          addressesData
+                                                        )
+                                                          ? addressesData[0] ||
+                                                            null
+                                                          : addressesData ||
+                                                            null;
+                                                      setClientAddress(address);
+                                                    }
+
+                                                    setIsEditingAddress(false);
+                                                    setEditedAddress({});
+
+                                                    success({
+                                                      title: "Success",
+                                                      description:
+                                                        hasExistingAddress
+                                                          ? "Address updated successfully"
+                                                          : "Address created successfully",
+                                                    });
+                                                  } catch (err: any) {
+                                                    console.error(
+                                                      "Error saving address:",
+                                                      err
+                                                    );
+                                                    error({
+                                                      title: "Error",
+                                                      description:
+                                                        err.message ||
+                                                        "Failed to save address",
+                                                    });
+                                                  } finally {
+                                                    setSavingAddress(false);
+                                                  }
+                                                }}
+                                                disabled={savingAddress}
+                                                className="gap-2 bg-blue-500 hover:bg-blue-600"
+                                              >
+                                                {savingAddress ? (
+                                                  <>
+                                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                                    Saving...
+                                                  </>
+                                                ) : (
+                                                  <>
+                                                    <Save className="h-4 w-4" />
+                                                    Save
+                                                  </>
+                                                )}
+                                              </Button>
+                                            </div>
+                                          </div>
+                                        ) : clientAddress ? (
+                                          <div
+                                            className={`rounded-lg border border-${colors.borderColor} ${colors.cardBg} shadow-sm p-6`}
+                                          >
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                              {addressFieldConfig.length > 0 ? (
+                                                // Use field configuration if available
+                                                addressFieldConfig.map(
+                                                  (fieldConfig: any) => {
+                                                    const fieldName =
+                                                      fieldConfig.field;
+                                                    let fieldValue =
+                                                      clientAddress[fieldName];
+
+                                                    // Only show fields that have values and are enabled
+                                                    if (
+                                                      !fieldValue &&
+                                                      fieldValue !== 0 &&
+                                                      fieldValue !== false
+                                                    ) {
+                                                      return null;
+                                                    }
+
+                                                    const label =
+                                                      formatHeaderName(
+                                                        fieldName
+                                                      );
+
+                                                    // Convert IDs to names for display FIRST (before number formatting)
+                                                    // This must happen before the number formatting check
+                                                    if (
+                                                      fieldName ===
+                                                      "addressType"
+                                                    ) {
+                                                      // Handle both number and string IDs
+                                                      const idValue =
+                                                        typeof fieldValue ===
+                                                        "string"
+                                                          ? parseInt(fieldValue)
+                                                          : fieldValue;
+
+                                                      if (
+                                                        idValue === 0 ||
+                                                        !idValue ||
+                                                        isNaN(idValue)
+                                                      ) {
+                                                        fieldValue = "Unknown";
                                                       } else if (
-                                                        typeof addressTypeValue ===
-                                                          "number" &&
                                                         addressTemplate
                                                       ) {
                                                         const addressTypeOptions =
@@ -8789,48 +9367,36 @@ export function ClientRegistrationForm({
                                                         const matchingType =
                                                           addressTypeOptions.find(
                                                             (opt: any) =>
-                                                              opt.id ===
-                                                              addressTypeValue
+                                                              opt.id === idValue
                                                           );
-                                                        return (
+                                                        fieldValue =
                                                           matchingType?.name?.trim() ||
-                                                          `Unknown (ID: ${addressTypeValue})`
-                                                        );
+                                                          `Unknown (ID: ${idValue})`;
                                                       } else if (
-                                                        typeof addressTypeValue ===
+                                                        typeof fieldValue ===
                                                         "string"
                                                       ) {
-                                                        return addressTypeValue.trim();
+                                                        fieldValue =
+                                                          fieldValue.trim();
                                                       }
-                                                      return String(
-                                                        addressTypeValue
-                                                      );
-                                                    })()}
-                                                  </p>
-                                                </div>
-                                              )}
-                                              {clientAddress.stateProvinceId !==
-                                                undefined && (
-                                                <div className="space-y-1">
-                                                  <p
-                                                    className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
-                                                  >
-                                                    State/Province
-                                                  </p>
-                                                  <p
-                                                    className={`text-sm ${colors.textColor} font-medium`}
-                                                  >
-                                                    {(() => {
-                                                      const stateValue =
-                                                        clientAddress.stateProvinceId;
+                                                    } else if (
+                                                      fieldName ===
+                                                      "stateProvinceId"
+                                                    ) {
+                                                      // Handle both number and string IDs
+                                                      const idValue =
+                                                        typeof fieldValue ===
+                                                        "string"
+                                                          ? parseInt(fieldValue)
+                                                          : fieldValue;
+
                                                       if (
-                                                        stateValue === 0 ||
-                                                        !stateValue
+                                                        idValue === 0 ||
+                                                        !idValue ||
+                                                        isNaN(idValue)
                                                       ) {
-                                                        return "Unknown";
+                                                        fieldValue = "Unknown";
                                                       } else if (
-                                                        typeof stateValue ===
-                                                          "number" &&
                                                         addressTemplate
                                                       ) {
                                                         const stateProvinceOptions =
@@ -8839,41 +9405,29 @@ export function ClientRegistrationForm({
                                                         const matchingState =
                                                           stateProvinceOptions.find(
                                                             (opt: any) =>
-                                                              opt.id ===
-                                                              stateValue
+                                                              opt.id === idValue
                                                           );
-                                                        return (
+                                                        fieldValue =
                                                           matchingState?.name?.trim() ||
-                                                          `Unknown (ID: ${stateValue})`
-                                                        );
+                                                          `Unknown (ID: ${idValue})`;
                                                       }
-                                                      return String(stateValue);
-                                                    })()}
-                                                  </p>
-                                                </div>
-                                              )}
-                                              {clientAddress.countryId !==
-                                                undefined && (
-                                                <div className="space-y-1">
-                                                  <p
-                                                    className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
-                                                  >
-                                                    Country
-                                                  </p>
-                                                  <p
-                                                    className={`text-sm ${colors.textColor} font-medium`}
-                                                  >
-                                                    {(() => {
-                                                      const countryValue =
-                                                        clientAddress.countryId;
+                                                    } else if (
+                                                      fieldName === "countryId"
+                                                    ) {
+                                                      // Handle both number and string IDs
+                                                      const idValue =
+                                                        typeof fieldValue ===
+                                                        "string"
+                                                          ? parseInt(fieldValue)
+                                                          : fieldValue;
+
                                                       if (
-                                                        countryValue === 0 ||
-                                                        !countryValue
+                                                        idValue === 0 ||
+                                                        !idValue ||
+                                                        isNaN(idValue)
                                                       ) {
-                                                        return "Unknown";
+                                                        fieldValue = "Unknown";
                                                       } else if (
-                                                        typeof countryValue ===
-                                                          "number" &&
                                                         addressTemplate
                                                       ) {
                                                         const countryOptions =
@@ -8882,843 +9436,1202 @@ export function ClientRegistrationForm({
                                                         const matchingCountry =
                                                           countryOptions.find(
                                                             (opt: any) =>
-                                                              opt.id ===
-                                                              countryValue
+                                                              opt.id === idValue
                                                           );
-                                                        return (
+                                                        fieldValue =
                                                           matchingCountry?.name?.trim() ||
-                                                          `Unknown (ID: ${countryValue})`
-                                                        );
+                                                          `Unknown (ID: ${idValue})`;
                                                       }
-                                                      return String(
-                                                        countryValue
-                                                      );
-                                                    })()}
-                                                  </p>
-                                                </div>
-                                              )}
-                                            </>
-                                          )}
-                                        </div>
-                                      </div>
-                                    ) : (
-                                      <div
-                                        className={`rounded-lg border border-dashed border-${colors.borderColor} ${colors.cardBg} p-6 text-center`}
-                                      >
-                                        <MapPin className="h-8 w-8 mx-auto mb-2 text-gray-400" />
-                                        <p
-                                          className={`text-sm ${colors.textColorMuted}`}
-                                        >
-                                          No address information available
-                                        </p>
-                                      </div>
-                                    )}
-                                  </div>
+                                                    }
 
-                                  {/* Data Tables */}
-                                  <div className="space-y-4">
-                                    <div className="flex items-center gap-2 pb-2 border-b border-gray-200 dark:border-gray-700">
-                                      <Database className="h-5 w-5 text-blue-500" />
-                                      <h3
-                                        className={`text-lg font-semibold ${colors.textColor}`}
-                                      >
-                                        Associated Data Tables
-                                      </h3>
-                                    </div>
-                                    {dataTables.length > 0 ? (
-                                      <div className="space-y-6">
-                                        {dataTables.map((table: any) => (
-                                          <div
-                                            key={
-                                              table.registeredTableName ||
-                                              table.datatableName
-                                            }
-                                            className={`rounded-lg border border-${colors.borderColor} ${colors.cardBg} shadow-sm`}
-                                          >
-                                            <div className="px-6 pt-6 pb-4 border-b border-gray-200 dark:border-gray-700">
-                                              <h4
-                                                className={`text-base font-semibold ${colors.textColor} flex items-center gap-2`}
-                                              >
-                                                <Building2 className="h-4 w-4 text-blue-500" />
-                                                {table.registeredTableName ||
-                                                  table.displayName ||
-                                                  table.datatableName}
-                                              </h4>
-                                            </div>
-                                            <div className="p-6">
-                                              {fineractClientId && (
-                                                <DynamicDatatableContent
-                                                  datatableName={
-                                                    table.registeredTableName ||
-                                                    table.datatableName
-                                                  }
-                                                  clientId={fineractClientId}
-                                                />
-                                              )}
-                                            </div>
-                                          </div>
-                                        ))}
-                                      </div>
-                                    ) : (
-                                      <Card
-                                        className={`border-${colors.borderColor} ${colors.cardBg} border-dashed`}
-                                      >
-                                        <CardContent className="p-6 text-center">
-                                          <Database className="h-8 w-8 mx-auto mb-2 text-gray-400" />
-                                          <p
-                                            className={`text-sm ${colors.textColorMuted}`}
-                                          >
-                                            No data tables configured
-                                          </p>
-                                        </CardContent>
-                                      </Card>
-                                    )}
-                                  </div>
-
-                                  {/* Family Members / Next of Kin */}
-                                  <div className="space-y-4">
-                                    <div className="flex items-center justify-between pb-2 border-b border-gray-200 dark:border-gray-700">
-                                      <div className="flex items-center gap-2">
-                                        <Users className="h-5 w-5 text-blue-500" />
-                                        <h3
-                                          className={`text-lg font-semibold ${colors.textColor}`}
-                                        >
-                                          Family Members / Next of Kin
-                                        </h3>
-                                      </div>
-                                      {!isAddingFamilyMember && (
-                                        <Button
-                                          type="button"
-                                          onClick={() => {
-                                            setIsAddingFamilyMember(true);
-                                            setEditingFamilyMember({});
-                                          }}
-                                          className="bg-blue-500 hover:bg-blue-600 text-white"
-                                          size="sm"
-                                        >
-                                          <UserPlus className="h-4 w-4 mr-2" />
-                                          Add Next of Kin
-                                        </Button>
-                                      )}
-                                    </div>
-
-                                    {/* Inline Add Form */}
-                                    {isAddingFamilyMember && (
-                                      <Card
-                                        className={`border-${colors.borderColor} ${colors.cardBg} border-2 border-blue-500`}
-                                      >
-                                        <CardContent className="p-6">
-                                          <h4
-                                            className={`font-semibold mb-4 ${colors.textColor}`}
-                                          >
-                                            Add Next of Kin
-                                          </h4>
-                                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                            <div className="space-y-2">
-                                              <Label
-                                                className={colors.textColor}
-                                              >
-                                                First Name{" "}
-                                                <span className="text-red-500">
-                                                  *
-                                                </span>
-                                              </Label>
-                                              <Input
-                                                value={
-                                                  editingFamilyMember.firstname ||
-                                                  ""
-                                                }
-                                                onChange={(e) =>
-                                                  setEditingFamilyMember({
-                                                    ...editingFamilyMember,
-                                                    firstname: e.target.value,
-                                                  })
-                                                }
-                                                placeholder="First name"
-                                                className={colors.inputBg}
-                                              />
-                                            </div>
-                                            <div className="space-y-2">
-                                              <Label
-                                                className={colors.textColor}
-                                              >
-                                                Middle Name
-                                              </Label>
-                                              <Input
-                                                value={
-                                                  editingFamilyMember.middlename ||
-                                                  ""
-                                                }
-                                                onChange={(e) =>
-                                                  setEditingFamilyMember({
-                                                    ...editingFamilyMember,
-                                                    middlename: e.target.value,
-                                                  })
-                                                }
-                                                placeholder="Middle name"
-                                                className={colors.inputBg}
-                                              />
-                                            </div>
-                                            <div className="space-y-2">
-                                              <Label
-                                                className={colors.textColor}
-                                              >
-                                                Last Name{" "}
-                                                <span className="text-red-500">
-                                                  *
-                                                </span>
-                                              </Label>
-                                              <Input
-                                                value={
-                                                  editingFamilyMember.lastname ||
-                                                  ""
-                                                }
-                                                onChange={(e) =>
-                                                  setEditingFamilyMember({
-                                                    ...editingFamilyMember,
-                                                    lastname: e.target.value,
-                                                  })
-                                                }
-                                                placeholder="Last name"
-                                                className={colors.inputBg}
-                                              />
-                                            </div>
-                                            <div className="space-y-2">
-                                              <Label
-                                                className={colors.textColor}
-                                              >
-                                                Relationship{" "}
-                                                <span className="text-red-500">
-                                                  *
-                                                </span>
-                                              </Label>
-                                              <SearchableSelect
-                                                options={relationshipOptions}
-                                                value={
-                                                  editingFamilyMember.relationship ||
-                                                  ""
-                                                }
-                                                onValueChange={(value) =>
-                                                  setEditingFamilyMember({
-                                                    ...editingFamilyMember,
-                                                    relationship: value,
-                                                  })
-                                                }
-                                                placeholder="Select relationship"
-                                                className={`border-${colors.borderColor} ${colors.inputBg}`}
-                                                onAddNew={() =>
-                                                  setShowAddRelationshipDialog(
-                                                    true
-                                                  )
-                                                }
-                                                addNewLabel="Add new relationship"
-                                              />
-                                            </div>
-                                            <div className="space-y-2">
-                                              <Label
-                                                className={colors.textColor}
-                                              >
-                                                Mobile Number
-                                              </Label>
-                                              <Input
-                                                value={
-                                                  editingFamilyMember.mobileNo ||
-                                                  ""
-                                                }
-                                                onChange={(e) =>
-                                                  setEditingFamilyMember({
-                                                    ...editingFamilyMember,
-                                                    mobileNo: e.target.value,
-                                                  })
-                                                }
-                                                placeholder="Mobile number"
-                                                className={colors.inputBg}
-                                              />
-                                            </div>
-                                            <div className="space-y-2">
-                                              <Label
-                                                className={colors.textColor}
-                                              >
-                                                Email Address
-                                              </Label>
-                                              <Input
-                                                type="email"
-                                                value={
-                                                  editingFamilyMember.emailAddress ||
-                                                  ""
-                                                }
-                                                onChange={(e) =>
-                                                  setEditingFamilyMember({
-                                                    ...editingFamilyMember,
-                                                    emailAddress:
-                                                      e.target.value,
-                                                  })
-                                                }
-                                                placeholder="Email address"
-                                                className={colors.inputBg}
-                                              />
-                                            </div>
-                                            <div className="space-y-2">
-                                              <Label
-                                                className={colors.textColor}
-                                              >
-                                                Date of Birth
-                                              </Label>
-                                              <Input
-                                                type="date"
-                                                value={
-                                                  editingFamilyMember.dateOfBirth
-                                                    ? new Date(
-                                                        editingFamilyMember.dateOfBirth
-                                                      )
-                                                        .toISOString()
-                                                        .split("T")[0]
-                                                    : ""
-                                                }
-                                                onChange={(e) =>
-                                                  setEditingFamilyMember({
-                                                    ...editingFamilyMember,
-                                                    dateOfBirth: e.target.value
-                                                      ? new Date(e.target.value)
-                                                      : undefined,
-                                                  })
-                                                }
-                                                className={colors.inputBg}
-                                              />
-                                            </div>
-                                            <div className="space-y-2 flex items-center">
-                                              <Checkbox
-                                                id="isDependent"
-                                                checked={
-                                                  editingFamilyMember.isDependent ||
-                                                  false
-                                                }
-                                                onCheckedChange={(checked) =>
-                                                  setEditingFamilyMember({
-                                                    ...editingFamilyMember,
-                                                    isDependent: checked,
-                                                  })
-                                                }
-                                              />
-                                              <Label
-                                                htmlFor="isDependent"
-                                                className={`ml-2 ${colors.textColor}`}
-                                              >
-                                                Is Dependent
-                                              </Label>
-                                            </div>
-                                          </div>
-                                          <div className="flex gap-2 justify-end mt-4">
-                                            <Button
-                                              type="button"
-                                              variant="outline"
-                                              size="sm"
-                                              onClick={() => {
-                                                setIsAddingFamilyMember(false);
-                                                setEditingFamilyMember({});
-                                              }}
-                                            >
-                                              Cancel
-                                            </Button>
-                                            <Button
-                                              type="button"
-                                              size="sm"
-                                              onClick={async () => {
-                                                if (
-                                                  !editingFamilyMember.firstname ||
-                                                  !editingFamilyMember.lastname ||
-                                                  !editingFamilyMember.relationship
-                                                ) {
-                                                  error({
-                                                    title: "Validation Error",
-                                                    description:
-                                                      "Please fill in all required fields",
-                                                  });
-                                                  return;
-                                                }
-                                                await handleAddFamilyMember(
-                                                  editingFamilyMember as FamilyMemberValues
-                                                );
-                                                setIsAddingFamilyMember(false);
-                                                setEditingFamilyMember({});
-                                              }}
-                                              className="bg-blue-500 hover:bg-blue-600"
-                                            >
-                                              Save
-                                            </Button>
-                                          </div>
-                                        </CardContent>
-                                      </Card>
-                                    )}
-
-                                    {/* Existing Family Members */}
-                                    {familyMembers.length > 0 && (
-                                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        {familyMembers.map(
-                                          (member: any, index: number) => (
-                                            <Card
-                                              key={member.id || index}
-                                              className={`border-${colors.borderColor} ${colors.cardBg} shadow-sm hover:shadow-md transition-shadow`}
-                                            >
-                                              <CardContent className="p-5">
-                                                {editingFamilyMemberIndex ===
-                                                index ? (
-                                                  // Edit Mode
-                                                  <div className="space-y-4">
-                                                    <h4
-                                                      className={`font-semibold mb-4 ${colors.textColor}`}
-                                                    >
-                                                      Edit Next of Kin
-                                                    </h4>
-                                                    <div className="grid grid-cols-1 gap-3">
-                                                      <div className="space-y-2">
-                                                        <Label
-                                                          className={
-                                                            colors.textColor
-                                                          }
+                                                    // Format boolean values
+                                                    if (
+                                                      fieldName === "isActive"
+                                                    ) {
+                                                      return (
+                                                        <div
+                                                          key={fieldName}
+                                                          className="space-y-1"
                                                         >
-                                                          First Name{" "}
-                                                          <span className="text-red-500">
-                                                            *
-                                                          </span>
-                                                        </Label>
-                                                        <Input
-                                                          value={
-                                                            editingFamilyMember.firstname ||
-                                                            ""
-                                                          }
-                                                          onChange={(e) =>
-                                                            setEditingFamilyMember(
-                                                              {
-                                                                ...editingFamilyMember,
-                                                                firstname:
-                                                                  e.target
-                                                                    .value,
-                                                              }
-                                                            )
-                                                          }
-                                                          className={
-                                                            colors.inputBg
-                                                          }
-                                                        />
-                                                      </div>
-                                                      <div className="space-y-2">
-                                                        <Label
-                                                          className={
-                                                            colors.textColor
-                                                          }
-                                                        >
-                                                          Middle Name
-                                                        </Label>
-                                                        <Input
-                                                          value={
-                                                            editingFamilyMember.middlename ||
-                                                            ""
-                                                          }
-                                                          onChange={(e) =>
-                                                            setEditingFamilyMember(
-                                                              {
-                                                                ...editingFamilyMember,
-                                                                middlename:
-                                                                  e.target
-                                                                    .value,
-                                                              }
-                                                            )
-                                                          }
-                                                          className={
-                                                            colors.inputBg
-                                                          }
-                                                        />
-                                                      </div>
-                                                      <div className="space-y-2">
-                                                        <Label
-                                                          className={
-                                                            colors.textColor
-                                                          }
-                                                        >
-                                                          Last Name{" "}
-                                                          <span className="text-red-500">
-                                                            *
-                                                          </span>
-                                                        </Label>
-                                                        <Input
-                                                          value={
-                                                            editingFamilyMember.lastname ||
-                                                            ""
-                                                          }
-                                                          onChange={(e) =>
-                                                            setEditingFamilyMember(
-                                                              {
-                                                                ...editingFamilyMember,
-                                                                lastname:
-                                                                  e.target
-                                                                    .value,
-                                                              }
-                                                            )
-                                                          }
-                                                          className={
-                                                            colors.inputBg
-                                                          }
-                                                        />
-                                                      </div>
-                                                      <div className="space-y-2">
-                                                        <Label
-                                                          className={
-                                                            colors.textColor
-                                                          }
-                                                        >
-                                                          Relationship{" "}
-                                                          <span className="text-red-500">
-                                                            *
-                                                          </span>
-                                                        </Label>
-                                                        <SearchableSelect
-                                                          options={
-                                                            relationshipOptions
-                                                          }
-                                                          value={
-                                                            editingFamilyMember.relationship ||
-                                                            ""
-                                                          }
-                                                          onValueChange={(
-                                                            value
-                                                          ) =>
-                                                            setEditingFamilyMember(
-                                                              {
-                                                                ...editingFamilyMember,
-                                                                relationship:
-                                                                  value,
-                                                              }
-                                                            )
-                                                          }
-                                                          placeholder="Select relationship"
-                                                          className={`border-${colors.borderColor} ${colors.inputBg}`}
-                                                          onAddNew={() =>
-                                                            setShowAddRelationshipDialog(
-                                                              true
-                                                            )
-                                                          }
-                                                          addNewLabel="Add new relationship"
-                                                        />
-                                                      </div>
-                                                      <div className="space-y-2">
-                                                        <Label
-                                                          className={
-                                                            colors.textColor
-                                                          }
-                                                        >
-                                                          Mobile Number
-                                                        </Label>
-                                                        <Input
-                                                          value={
-                                                            editingFamilyMember.mobileNo ||
-                                                            ""
-                                                          }
-                                                          onChange={(e) =>
-                                                            setEditingFamilyMember(
-                                                              {
-                                                                ...editingFamilyMember,
-                                                                mobileNo:
-                                                                  e.target
-                                                                    .value,
-                                                              }
-                                                            )
-                                                          }
-                                                          className={
-                                                            colors.inputBg
-                                                          }
-                                                        />
-                                                      </div>
-                                                      <div className="space-y-2">
-                                                        <Label
-                                                          className={
-                                                            colors.textColor
-                                                          }
-                                                        >
-                                                          Email Address
-                                                        </Label>
-                                                        <Input
-                                                          type="email"
-                                                          value={
-                                                            editingFamilyMember.emailAddress ||
-                                                            ""
-                                                          }
-                                                          onChange={(e) =>
-                                                            setEditingFamilyMember(
-                                                              {
-                                                                ...editingFamilyMember,
-                                                                emailAddress:
-                                                                  e.target
-                                                                    .value,
-                                                              }
-                                                            )
-                                                          }
-                                                          className={
-                                                            colors.inputBg
-                                                          }
-                                                        />
-                                                      </div>
-                                                      <div className="space-y-2">
-                                                        <Label
-                                                          className={
-                                                            colors.textColor
-                                                          }
-                                                        >
-                                                          Date of Birth
-                                                        </Label>
-                                                        <Input
-                                                          type="date"
-                                                          value={
-                                                            editingFamilyMember.dateOfBirth
-                                                              ? new Date(
-                                                                  editingFamilyMember.dateOfBirth
-                                                                )
-                                                                  .toISOString()
-                                                                  .split("T")[0]
-                                                              : ""
-                                                          }
-                                                          onChange={(e) =>
-                                                            setEditingFamilyMember(
-                                                              {
-                                                                ...editingFamilyMember,
-                                                                dateOfBirth: e
-                                                                  .target.value
-                                                                  ? new Date(
-                                                                      e.target.value
-                                                                    )
-                                                                  : undefined,
-                                                              }
-                                                            )
-                                                          }
-                                                          className={
-                                                            colors.inputBg
-                                                          }
-                                                        />
-                                                      </div>
-                                                      <div className="flex items-center space-x-2">
-                                                        <Checkbox
-                                                          id={`isDependent-${index}`}
-                                                          checked={
-                                                            editingFamilyMember.isDependent ||
-                                                            false
-                                                          }
-                                                          onCheckedChange={(
-                                                            checked
-                                                          ) =>
-                                                            setEditingFamilyMember(
-                                                              {
-                                                                ...editingFamilyMember,
-                                                                isDependent:
-                                                                  checked,
-                                                              }
-                                                            )
-                                                          }
-                                                        />
-                                                        <Label
-                                                          htmlFor={`isDependent-${index}`}
-                                                          className={
-                                                            colors.textColor
-                                                          }
-                                                        >
-                                                          Is Dependent
-                                                        </Label>
-                                                      </div>
-                                                    </div>
-                                                    <div className="flex gap-2 justify-end mt-4">
-                                                      <Button
-                                                        type="button"
-                                                        variant="outline"
-                                                        size="sm"
-                                                        onClick={() => {
-                                                          setEditingFamilyMemberIndex(
-                                                            null
-                                                          );
-                                                          setEditingFamilyMember(
-                                                            {}
-                                                          );
-                                                        }}
-                                                      >
-                                                        Cancel
-                                                      </Button>
-                                                      <Button
-                                                        type="button"
-                                                        size="sm"
-                                                        onClick={async () => {
-                                                          if (
-                                                            !editingFamilyMember.firstname ||
-                                                            !editingFamilyMember.lastname ||
-                                                            !editingFamilyMember.relationship
-                                                          ) {
-                                                            error({
-                                                              title:
-                                                                "Validation Error",
-                                                              description:
-                                                                "Please fill in all required fields",
-                                                            });
-                                                            return;
-                                                          }
-                                                          // Update existing member
-                                                          await handleAddFamilyMember(
-                                                            editingFamilyMember as FamilyMemberValues
-                                                          );
-                                                          setEditingFamilyMemberIndex(
-                                                            null
-                                                          );
-                                                          setEditingFamilyMember(
-                                                            {}
-                                                          );
-                                                        }}
-                                                        className="bg-blue-500 hover:bg-blue-600"
-                                                      >
-                                                        Save
-                                                      </Button>
-                                                    </div>
-                                                  </div>
-                                                ) : (
-                                                  // View Mode
-                                                  <div className="space-y-3">
-                                                    <div className="flex items-start justify-between">
-                                                      <div className="flex-1">
-                                                        <h4
-                                                          className={`font-semibold text-base ${colors.textColor} mb-1`}
-                                                        >
-                                                          {member.firstname}{" "}
-                                                          {member.middlename ||
-                                                            ""}{" "}
-                                                          {member.lastname}
-                                                        </h4>
-                                                        {member.relationship && (
+                                                          <p
+                                                            className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
+                                                          >
+                                                            {label}
+                                                          </p>
                                                           <Badge
-                                                            variant="outline"
-                                                            className="mt-1"
-                                                          >
-                                                            {
-                                                              member.relationship
+                                                            variant={
+                                                              fieldValue
+                                                                ? "default"
+                                                                : "outline"
                                                             }
+                                                            className={
+                                                              fieldValue
+                                                                ? "bg-green-500 hover:bg-green-600"
+                                                                : ""
+                                                            }
+                                                          >
+                                                            {fieldValue
+                                                              ? "Yes"
+                                                              : "No"}
                                                           </Badge>
-                                                        )}
-                                                      </div>
-                                                      <div className="flex gap-2">
-                                                        {member.isDependent && (
-                                                          <Badge className="bg-blue-500">
-                                                            Dependent
-                                                          </Badge>
-                                                        )}
-                                                        <Button
-                                                          type="button"
-                                                          variant="ghost"
-                                                          size="sm"
-                                                          onClick={() => {
-                                                            setEditingFamilyMemberIndex(
-                                                              index
-                                                            );
-                                                            setEditingFamilyMember(
-                                                              {
-                                                                ...member,
-                                                                dateOfBirth:
-                                                                  member.dateOfBirth
-                                                                    ? new Date(
-                                                                        member.dateOfBirth
-                                                                      )
-                                                                    : undefined,
-                                                              }
-                                                            );
-                                                          }}
+                                                        </div>
+                                                      );
+                                                    }
+
+                                                    // Format number values (but skip ID fields that were already converted)
+                                                    if (
+                                                      typeof fieldValue ===
+                                                        "number" &&
+                                                      fieldName !==
+                                                        "addressType" &&
+                                                      fieldName !==
+                                                        "stateProvinceId" &&
+                                                      fieldName !== "countryId"
+                                                    ) {
+                                                      return (
+                                                        <div
+                                                          key={fieldName}
+                                                          className="space-y-1"
                                                         >
-                                                          <Edit2 className="h-4 w-4" />
-                                                        </Button>
-                                                        <Button
-                                                          type="button"
-                                                          variant="ghost"
-                                                          size="sm"
-                                                          onClick={() =>
-                                                            handleRemoveFamilyMember(
-                                                              member.id
-                                                            )
+                                                          <p
+                                                            className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
+                                                          >
+                                                            {label}
+                                                          </p>
+                                                          <p
+                                                            className={`text-sm ${colors.textColor} font-medium`}
+                                                          >
+                                                            {fieldValue.toLocaleString()}
+                                                          </p>
+                                                        </div>
+                                                      );
+                                                    }
+
+                                                    // Default: text value
+                                                    return (
+                                                      <div
+                                                        key={fieldName}
+                                                        className="space-y-1"
+                                                      >
+                                                        <p
+                                                          className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
+                                                        >
+                                                          {label}
+                                                        </p>
+                                                        <p
+                                                          className={`text-sm ${colors.textColor} font-medium`}
+                                                        >
+                                                          {String(fieldValue)}
+                                                        </p>
+                                                      </div>
+                                                    );
+                                                  }
+                                                )
+                                              ) : (
+                                                // Fallback: show common address fields if config not loaded yet
+                                                <>
+                                                  {clientAddress.addressLine1 && (
+                                                    <div className="space-y-1">
+                                                      <p
+                                                        className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
+                                                      >
+                                                        Address Line 1
+                                                      </p>
+                                                      <p
+                                                        className={`text-sm ${colors.textColor} font-medium`}
+                                                      >
+                                                        {
+                                                          clientAddress.addressLine1
+                                                        }
+                                                      </p>
+                                                    </div>
+                                                  )}
+                                                  {clientAddress.addressLine2 && (
+                                                    <div className="space-y-1">
+                                                      <p
+                                                        className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
+                                                      >
+                                                        Address Line 2
+                                                      </p>
+                                                      <p
+                                                        className={`text-sm ${colors.textColor} font-medium`}
+                                                      >
+                                                        {
+                                                          clientAddress.addressLine2
+                                                        }
+                                                      </p>
+                                                    </div>
+                                                  )}
+                                                  {clientAddress.addressLine3 && (
+                                                    <div className="space-y-1">
+                                                      <p
+                                                        className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
+                                                      >
+                                                        Address Line 3
+                                                      </p>
+                                                      <p
+                                                        className={`text-sm ${colors.textColor} font-medium`}
+                                                      >
+                                                        {
+                                                          clientAddress.addressLine3
+                                                        }
+                                                      </p>
+                                                    </div>
+                                                  )}
+                                                  {clientAddress.city && (
+                                                    <div className="space-y-1">
+                                                      <p
+                                                        className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
+                                                      >
+                                                        City
+                                                      </p>
+                                                      <p
+                                                        className={`text-sm ${colors.textColor} font-medium`}
+                                                      >
+                                                        {clientAddress.city}
+                                                      </p>
+                                                    </div>
+                                                  )}
+                                                  {clientAddress.townVillage && (
+                                                    <div className="space-y-1">
+                                                      <p
+                                                        className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
+                                                      >
+                                                        Town/Village
+                                                      </p>
+                                                      <p
+                                                        className={`text-sm ${colors.textColor} font-medium`}
+                                                      >
+                                                        {
+                                                          clientAddress.townVillage
+                                                        }
+                                                      </p>
+                                                    </div>
+                                                  )}
+                                                  {clientAddress.postalCode && (
+                                                    <div className="space-y-1">
+                                                      <p
+                                                        className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
+                                                      >
+                                                        Postal Code
+                                                      </p>
+                                                      <p
+                                                        className={`text-sm ${colors.textColor} font-medium`}
+                                                      >
+                                                        {
+                                                          clientAddress.postalCode
+                                                        }
+                                                      </p>
+                                                    </div>
+                                                  )}
+                                                  {/* Show address type, state, and country with name conversion */}
+                                                  {clientAddress.addressType !==
+                                                    undefined && (
+                                                    <div className="space-y-1">
+                                                      <p
+                                                        className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
+                                                      >
+                                                        Address Type
+                                                      </p>
+                                                      <p
+                                                        className={`text-sm ${colors.textColor} font-medium`}
+                                                      >
+                                                        {(() => {
+                                                          const addressTypeValue =
+                                                            clientAddress.addressType;
+                                                          if (
+                                                            addressTypeValue ===
+                                                              0 ||
+                                                            !addressTypeValue
+                                                          ) {
+                                                            return "Unknown";
+                                                          } else if (
+                                                            typeof addressTypeValue ===
+                                                              "number" &&
+                                                            addressTemplate
+                                                          ) {
+                                                            const addressTypeOptions =
+                                                              addressTemplate?.addressTypeIdOptions ||
+                                                              [];
+                                                            const matchingType =
+                                                              addressTypeOptions.find(
+                                                                (opt: any) =>
+                                                                  opt.id ===
+                                                                  addressTypeValue
+                                                              );
+                                                            return (
+                                                              matchingType?.name?.trim() ||
+                                                              `Unknown (ID: ${addressTypeValue})`
+                                                            );
+                                                          } else if (
+                                                            typeof addressTypeValue ===
+                                                            "string"
+                                                          ) {
+                                                            return addressTypeValue.trim();
                                                           }
-                                                          className="text-red-500 hover:text-red-700"
-                                                        >
-                                                          <X className="h-4 w-4" />
-                                                        </Button>
-                                                      </div>
+                                                          return String(
+                                                            addressTypeValue
+                                                          );
+                                                        })()}
+                                                      </p>
                                                     </div>
-                                                    <div className="space-y-2 pt-2 border-t border-gray-200 dark:border-gray-700">
-                                                      {member.mobileNo && (
-                                                        <div className="flex items-center gap-2">
-                                                          <p
-                                                            className={`text-xs font-medium ${colors.textColorMuted} w-20`}
-                                                          >
-                                                            Mobile:
-                                                          </p>
-                                                          <p
-                                                            className={`text-sm ${colors.textColor}`}
-                                                          >
-                                                            {member.mobileNo}
-                                                          </p>
-                                                        </div>
-                                                      )}
-                                                      {member.emailAddress && (
-                                                        <div className="flex items-center gap-2">
-                                                          <p
-                                                            className={`text-xs font-medium ${colors.textColorMuted} w-20`}
-                                                          >
-                                                            Email:
-                                                          </p>
-                                                          <p
-                                                            className={`text-sm ${colors.textColor}`}
-                                                          >
-                                                            {
-                                                              member.emailAddress
-                                                            }
-                                                          </p>
-                                                        </div>
-                                                      )}
-                                                      {member.dateOfBirth && (
-                                                        <div className="flex items-center gap-2">
-                                                          <p
-                                                            className={`text-xs font-medium ${colors.textColorMuted} w-20`}
-                                                          >
-                                                            DOB:
-                                                          </p>
-                                                          <p
-                                                            className={`text-sm ${colors.textColor}`}
-                                                          >
-                                                            {new Date(
-                                                              member.dateOfBirth
-                                                            ).toLocaleDateString()}
-                                                          </p>
-                                                        </div>
-                                                      )}
+                                                  )}
+                                                  {clientAddress.stateProvinceId !==
+                                                    undefined && (
+                                                    <div className="space-y-1">
+                                                      <p
+                                                        className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
+                                                      >
+                                                        State/Province
+                                                      </p>
+                                                      <p
+                                                        className={`text-sm ${colors.textColor} font-medium`}
+                                                      >
+                                                        {(() => {
+                                                          const stateValue =
+                                                            clientAddress.stateProvinceId;
+                                                          if (
+                                                            stateValue === 0 ||
+                                                            !stateValue
+                                                          ) {
+                                                            return "Unknown";
+                                                          } else if (
+                                                            typeof stateValue ===
+                                                              "number" &&
+                                                            addressTemplate
+                                                          ) {
+                                                            const stateProvinceOptions =
+                                                              addressTemplate?.stateProvinceIdOptions ||
+                                                              [];
+                                                            const matchingState =
+                                                              stateProvinceOptions.find(
+                                                                (opt: any) =>
+                                                                  opt.id ===
+                                                                  stateValue
+                                                              );
+                                                            return (
+                                                              matchingState?.name?.trim() ||
+                                                              `Unknown (ID: ${stateValue})`
+                                                            );
+                                                          }
+                                                          return String(
+                                                            stateValue
+                                                          );
+                                                        })()}
+                                                      </p>
                                                     </div>
-                                                  </div>
-                                                )}
-                                              </CardContent>
-                                            </Card>
-                                          )
+                                                  )}
+                                                  {clientAddress.countryId !==
+                                                    undefined && (
+                                                    <div className="space-y-1">
+                                                      <p
+                                                        className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
+                                                      >
+                                                        Country
+                                                      </p>
+                                                      <p
+                                                        className={`text-sm ${colors.textColor} font-medium`}
+                                                      >
+                                                        {(() => {
+                                                          const countryValue =
+                                                            clientAddress.countryId;
+                                                          if (
+                                                            countryValue ===
+                                                              0 ||
+                                                            !countryValue
+                                                          ) {
+                                                            return "Unknown";
+                                                          } else if (
+                                                            typeof countryValue ===
+                                                              "number" &&
+                                                            addressTemplate
+                                                          ) {
+                                                            const countryOptions =
+                                                              addressTemplate?.countryIdOptions ||
+                                                              [];
+                                                            const matchingCountry =
+                                                              countryOptions.find(
+                                                                (opt: any) =>
+                                                                  opt.id ===
+                                                                  countryValue
+                                                              );
+                                                            return (
+                                                              matchingCountry?.name?.trim() ||
+                                                              `Unknown (ID: ${countryValue})`
+                                                            );
+                                                          }
+                                                          return String(
+                                                            countryValue
+                                                          );
+                                                        })()}
+                                                      </p>
+                                                    </div>
+                                                  )}
+                                                </>
+                                              )}
+                                            </div>
+                                          </div>
+                                        ) : (
+                                          <div
+                                            className={`rounded-lg border border-dashed border-${colors.borderColor} ${colors.cardBg} p-6 text-center`}
+                                          >
+                                            <MapPin className="h-8 w-8 mx-auto mb-2 text-gray-400" />
+                                            <p
+                                              className={`text-sm ${colors.textColorMuted}`}
+                                            >
+                                              No address information available
+                                            </p>
+                                          </div>
                                         )}
                                       </div>
-                                    )}
+                                    </CardContent>
+                                  </Card>
 
-                                    {familyMembers.length === 0 &&
-                                      !isAddingFamilyMember && (
-                                        <Card
-                                          className={`border-${colors.borderColor} ${colors.cardBg} border-dashed`}
-                                        >
-                                          <CardContent className="p-6 text-center">
-                                            <Users className="h-8 w-8 mx-auto mb-2 text-gray-400" />
-                                            <p
-                                              className={`text-sm ${colors.textColorMuted} mb-4`}
+                                  {/* Data Tables */}
+                                  <Card className="border-green-500 bg-green-50 dark:bg-green-950">
+                                    <CardContent className="pt-6">
+                                      <div className="space-y-4">
+                                        <div className="flex items-center gap-2 pb-2 border-b border-gray-200 dark:border-gray-700">
+                                          <Database className="h-5 w-5 text-blue-500" />
+                                          <h3
+                                            className={`text-lg font-semibold ${colors.textColor}`}
+                                          >
+                                            Associated Data Tables
+                                          </h3>
+                                        </div>
+                                        {dataTables.length > 0 ? (
+                                          <div className="space-y-6">
+                                            {dataTables.map((table: any) => (
+                                              <div
+                                                key={
+                                                  table.registeredTableName ||
+                                                  table.datatableName
+                                                }
+                                                className={`rounded-lg border border-${colors.borderColor} ${colors.cardBg} shadow-sm`}
+                                              >
+                                                <div className="px-6 pt-6 pb-4 border-b border-gray-200 dark:border-gray-700">
+                                                  <h4
+                                                    className={`text-base font-semibold ${colors.textColor} flex items-center gap-2`}
+                                                  >
+                                                    <Building2 className="h-4 w-4 text-blue-500" />
+                                                    {table.registeredTableName ||
+                                                      table.displayName ||
+                                                      table.datatableName}
+                                                  </h4>
+                                                </div>
+                                                <div className="p-6">
+                                                  {fineractClientId && (
+                                                    <DynamicDatatableContent
+                                                      datatableName={
+                                                        table.registeredTableName ||
+                                                        table.datatableName
+                                                      }
+                                                      clientId={
+                                                        fineractClientId
+                                                      }
+                                                    />
+                                                  )}
+                                                </div>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        ) : (
+                                          <Card
+                                            className={`border-${colors.borderColor} ${colors.cardBg} border-dashed`}
+                                          >
+                                            <CardContent className="p-6 text-center">
+                                              <Database className="h-8 w-8 mx-auto mb-2 text-gray-400" />
+                                              <p
+                                                className={`text-sm ${colors.textColorMuted}`}
+                                              >
+                                                No data tables configured
+                                              </p>
+                                            </CardContent>
+                                          </Card>
+                                        )}
+                                      </div>
+                                    </CardContent>
+                                  </Card>
+
+                                  {/* Family Members / Next of Kin */}
+                                  <Card className="border-green-500 bg-green-50 dark:bg-green-950">
+                                    <CardContent className="pt-6">
+                                      <div className="space-y-4">
+                                        <div className="flex items-center justify-between pb-2 border-b border-gray-200 dark:border-gray-700">
+                                          <div className="flex items-center gap-2">
+                                            <Users className="h-5 w-5 text-blue-500" />
+                                            <h3
+                                              className={`text-lg font-semibold ${colors.textColor}`}
                                             >
-                                              No family members or next of kin
-                                              added yet
-                                            </p>
-                                          </CardContent>
-                                        </Card>
-                                      )}
-                                  </div>
+                                              Family Members / Next of Kin
+                                            </h3>
+                                          </div>
+                                          {!isAddingFamilyMember && (
+                                            <Button
+                                              type="button"
+                                              onClick={() => {
+                                                setIsAddingFamilyMember(true);
+                                                setEditingFamilyMember({});
+                                              }}
+                                              className="bg-blue-500 hover:bg-blue-600 text-white"
+                                              size="sm"
+                                            >
+                                              <UserPlus className="h-4 w-4 mr-2" />
+                                              Add Next of Kin
+                                            </Button>
+                                          )}
+                                        </div>
+
+                                        {/* Inline Add Form */}
+                                        {isAddingFamilyMember && (
+                                          <Card
+                                            className={`border-${colors.borderColor} ${colors.cardBg} border-2 border-blue-500`}
+                                          >
+                                            <CardContent className="p-6">
+                                              <h4
+                                                className={`font-semibold mb-4 ${colors.textColor}`}
+                                              >
+                                                Add Next of Kin
+                                              </h4>
+                                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                <div className="space-y-2">
+                                                  <Label
+                                                    className={colors.textColor}
+                                                  >
+                                                    First Name{" "}
+                                                    <span className="text-red-500">
+                                                      *
+                                                    </span>
+                                                  </Label>
+                                                  <Input
+                                                    value={
+                                                      editingFamilyMember.firstname ||
+                                                      ""
+                                                    }
+                                                    onChange={(e) =>
+                                                      setEditingFamilyMember({
+                                                        ...editingFamilyMember,
+                                                        firstname:
+                                                          e.target.value,
+                                                      })
+                                                    }
+                                                    placeholder="First name"
+                                                    className={colors.inputBg}
+                                                  />
+                                                </div>
+                                                <div className="space-y-2">
+                                                  <Label
+                                                    className={colors.textColor}
+                                                  >
+                                                    Middle Name
+                                                  </Label>
+                                                  <Input
+                                                    value={
+                                                      editingFamilyMember.middlename ||
+                                                      ""
+                                                    }
+                                                    onChange={(e) =>
+                                                      setEditingFamilyMember({
+                                                        ...editingFamilyMember,
+                                                        middlename:
+                                                          e.target.value,
+                                                      })
+                                                    }
+                                                    placeholder="Middle name"
+                                                    className={colors.inputBg}
+                                                  />
+                                                </div>
+                                                <div className="space-y-2">
+                                                  <Label
+                                                    className={colors.textColor}
+                                                  >
+                                                    Last Name{" "}
+                                                    <span className="text-red-500">
+                                                      *
+                                                    </span>
+                                                  </Label>
+                                                  <Input
+                                                    value={
+                                                      editingFamilyMember.lastname ||
+                                                      ""
+                                                    }
+                                                    onChange={(e) =>
+                                                      setEditingFamilyMember({
+                                                        ...editingFamilyMember,
+                                                        lastname:
+                                                          e.target.value,
+                                                      })
+                                                    }
+                                                    placeholder="Last name"
+                                                    className={colors.inputBg}
+                                                  />
+                                                </div>
+                                                <div className="space-y-2">
+                                                  <Label
+                                                    className={colors.textColor}
+                                                  >
+                                                    Relationship{" "}
+                                                    <span className="text-red-500">
+                                                      *
+                                                    </span>
+                                                  </Label>
+                                                  <SearchableSelect
+                                                    options={
+                                                      relationshipOptions
+                                                    }
+                                                    value={
+                                                      editingFamilyMember.relationship ||
+                                                      ""
+                                                    }
+                                                    onValueChange={(value) =>
+                                                      setEditingFamilyMember({
+                                                        ...editingFamilyMember,
+                                                        relationship: value,
+                                                      })
+                                                    }
+                                                    placeholder="Select relationship"
+                                                    className={`border-${colors.borderColor} ${colors.inputBg}`}
+                                                    onAddNew={() =>
+                                                      setShowAddRelationshipDialog(
+                                                        true
+                                                      )
+                                                    }
+                                                    addNewLabel="Add new relationship"
+                                                  />
+                                                </div>
+                                                <div className="space-y-2">
+                                                  <Label
+                                                    className={colors.textColor}
+                                                  >
+                                                    Mobile Number
+                                                  </Label>
+                                                  <Input
+                                                    value={
+                                                      editingFamilyMember.mobileNo ||
+                                                      ""
+                                                    }
+                                                    onChange={(e) =>
+                                                      setEditingFamilyMember({
+                                                        ...editingFamilyMember,
+                                                        mobileNo:
+                                                          e.target.value,
+                                                      })
+                                                    }
+                                                    placeholder="Mobile number"
+                                                    className={colors.inputBg}
+                                                  />
+                                                </div>
+                                                <div className="space-y-2">
+                                                  <Label
+                                                    className={colors.textColor}
+                                                  >
+                                                    Email Address
+                                                  </Label>
+                                                  <Input
+                                                    type="email"
+                                                    value={
+                                                      editingFamilyMember.emailAddress ||
+                                                      ""
+                                                    }
+                                                    onChange={(e) =>
+                                                      setEditingFamilyMember({
+                                                        ...editingFamilyMember,
+                                                        emailAddress:
+                                                          e.target.value,
+                                                      })
+                                                    }
+                                                    placeholder="Email address"
+                                                    className={colors.inputBg}
+                                                  />
+                                                </div>
+                                                <div className="space-y-2">
+                                                  <Label
+                                                    className={colors.textColor}
+                                                  >
+                                                    Date of Birth
+                                                  </Label>
+                                                  <Input
+                                                    type="date"
+                                                    value={
+                                                      editingFamilyMember.dateOfBirth
+                                                        ? new Date(
+                                                            editingFamilyMember.dateOfBirth
+                                                          )
+                                                            .toISOString()
+                                                            .split("T")[0]
+                                                        : ""
+                                                    }
+                                                    onChange={(e) =>
+                                                      setEditingFamilyMember({
+                                                        ...editingFamilyMember,
+                                                        dateOfBirth: e.target
+                                                          .value
+                                                          ? new Date(
+                                                              e.target.value
+                                                            )
+                                                          : undefined,
+                                                      })
+                                                    }
+                                                    className={colors.inputBg}
+                                                  />
+                                                </div>
+                                                <div className="space-y-2 flex items-center">
+                                                  <Checkbox
+                                                    id="isDependent"
+                                                    checked={
+                                                      editingFamilyMember.isDependent ||
+                                                      false
+                                                    }
+                                                    onCheckedChange={(
+                                                      checked
+                                                    ) =>
+                                                      setEditingFamilyMember({
+                                                        ...editingFamilyMember,
+                                                        isDependent: checked,
+                                                      })
+                                                    }
+                                                  />
+                                                  <Label
+                                                    htmlFor="isDependent"
+                                                    className={`ml-2 ${colors.textColor}`}
+                                                  >
+                                                    Is Dependent
+                                                  </Label>
+                                                </div>
+                                              </div>
+                                              <div className="flex gap-2 justify-end mt-4">
+                                                <Button
+                                                  type="button"
+                                                  variant="outline"
+                                                  size="sm"
+                                                  onClick={() => {
+                                                    setIsAddingFamilyMember(
+                                                      false
+                                                    );
+                                                    setEditingFamilyMember({});
+                                                  }}
+                                                >
+                                                  Cancel
+                                                </Button>
+                                                <Button
+                                                  type="button"
+                                                  size="sm"
+                                                  onClick={async () => {
+                                                    if (
+                                                      !editingFamilyMember.firstname ||
+                                                      !editingFamilyMember.lastname ||
+                                                      !editingFamilyMember.relationship
+                                                    ) {
+                                                      error({
+                                                        title:
+                                                          "Validation Error",
+                                                        description:
+                                                          "Please fill in all required fields",
+                                                      });
+                                                      return;
+                                                    }
+                                                    await handleAddFamilyMember(
+                                                      editingFamilyMember as FamilyMemberValues
+                                                    );
+                                                    setIsAddingFamilyMember(
+                                                      false
+                                                    );
+                                                    setEditingFamilyMember({});
+                                                  }}
+                                                  className="bg-blue-500 hover:bg-blue-600"
+                                                >
+                                                  Save
+                                                </Button>
+                                              </div>
+                                            </CardContent>
+                                          </Card>
+                                        )}
+
+                                        {/* Existing Family Members */}
+                                        {familyMembers.length > 0 && (
+                                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            {familyMembers.map(
+                                              (member: any, index: number) => (
+                                                <Card
+                                                  key={member.id || index}
+                                                  className={`border-${colors.borderColor} ${colors.cardBg} shadow-sm hover:shadow-md transition-shadow`}
+                                                >
+                                                  <CardContent className="p-5">
+                                                    {editingFamilyMemberIndex ===
+                                                    index ? (
+                                                      // Edit Mode
+                                                      <div className="space-y-4">
+                                                        <h4
+                                                          className={`font-semibold mb-4 ${colors.textColor}`}
+                                                        >
+                                                          Edit Next of Kin
+                                                        </h4>
+                                                        <div className="grid grid-cols-1 gap-3">
+                                                          <div className="space-y-2">
+                                                            <Label
+                                                              className={
+                                                                colors.textColor
+                                                              }
+                                                            >
+                                                              First Name{" "}
+                                                              <span className="text-red-500">
+                                                                *
+                                                              </span>
+                                                            </Label>
+                                                            <Input
+                                                              value={
+                                                                editingFamilyMember.firstname ||
+                                                                ""
+                                                              }
+                                                              onChange={(e) =>
+                                                                setEditingFamilyMember(
+                                                                  {
+                                                                    ...editingFamilyMember,
+                                                                    firstname:
+                                                                      e.target
+                                                                        .value,
+                                                                  }
+                                                                )
+                                                              }
+                                                              className={
+                                                                colors.inputBg
+                                                              }
+                                                            />
+                                                          </div>
+                                                          <div className="space-y-2">
+                                                            <Label
+                                                              className={
+                                                                colors.textColor
+                                                              }
+                                                            >
+                                                              Middle Name
+                                                            </Label>
+                                                            <Input
+                                                              value={
+                                                                editingFamilyMember.middlename ||
+                                                                ""
+                                                              }
+                                                              onChange={(e) =>
+                                                                setEditingFamilyMember(
+                                                                  {
+                                                                    ...editingFamilyMember,
+                                                                    middlename:
+                                                                      e.target
+                                                                        .value,
+                                                                  }
+                                                                )
+                                                              }
+                                                              className={
+                                                                colors.inputBg
+                                                              }
+                                                            />
+                                                          </div>
+                                                          <div className="space-y-2">
+                                                            <Label
+                                                              className={
+                                                                colors.textColor
+                                                              }
+                                                            >
+                                                              Last Name{" "}
+                                                              <span className="text-red-500">
+                                                                *
+                                                              </span>
+                                                            </Label>
+                                                            <Input
+                                                              value={
+                                                                editingFamilyMember.lastname ||
+                                                                ""
+                                                              }
+                                                              onChange={(e) =>
+                                                                setEditingFamilyMember(
+                                                                  {
+                                                                    ...editingFamilyMember,
+                                                                    lastname:
+                                                                      e.target
+                                                                        .value,
+                                                                  }
+                                                                )
+                                                              }
+                                                              className={
+                                                                colors.inputBg
+                                                              }
+                                                            />
+                                                          </div>
+                                                          <div className="space-y-2">
+                                                            <Label
+                                                              className={
+                                                                colors.textColor
+                                                              }
+                                                            >
+                                                              Relationship{" "}
+                                                              <span className="text-red-500">
+                                                                *
+                                                              </span>
+                                                            </Label>
+                                                            <SearchableSelect
+                                                              options={
+                                                                relationshipOptions
+                                                              }
+                                                              value={
+                                                                editingFamilyMember.relationship ||
+                                                                ""
+                                                              }
+                                                              onValueChange={(
+                                                                value
+                                                              ) =>
+                                                                setEditingFamilyMember(
+                                                                  {
+                                                                    ...editingFamilyMember,
+                                                                    relationship:
+                                                                      value,
+                                                                  }
+                                                                )
+                                                              }
+                                                              placeholder="Select relationship"
+                                                              className={`border-${colors.borderColor} ${colors.inputBg}`}
+                                                              onAddNew={() =>
+                                                                setShowAddRelationshipDialog(
+                                                                  true
+                                                                )
+                                                              }
+                                                              addNewLabel="Add new relationship"
+                                                            />
+                                                          </div>
+                                                          <div className="space-y-2">
+                                                            <Label
+                                                              className={
+                                                                colors.textColor
+                                                              }
+                                                            >
+                                                              Mobile Number
+                                                            </Label>
+                                                            <Input
+                                                              value={
+                                                                editingFamilyMember.mobileNo ||
+                                                                ""
+                                                              }
+                                                              onChange={(e) =>
+                                                                setEditingFamilyMember(
+                                                                  {
+                                                                    ...editingFamilyMember,
+                                                                    mobileNo:
+                                                                      e.target
+                                                                        .value,
+                                                                  }
+                                                                )
+                                                              }
+                                                              className={
+                                                                colors.inputBg
+                                                              }
+                                                            />
+                                                          </div>
+                                                          <div className="space-y-2">
+                                                            <Label
+                                                              className={
+                                                                colors.textColor
+                                                              }
+                                                            >
+                                                              Email Address
+                                                            </Label>
+                                                            <Input
+                                                              type="email"
+                                                              value={
+                                                                editingFamilyMember.emailAddress ||
+                                                                ""
+                                                              }
+                                                              onChange={(e) =>
+                                                                setEditingFamilyMember(
+                                                                  {
+                                                                    ...editingFamilyMember,
+                                                                    emailAddress:
+                                                                      e.target
+                                                                        .value,
+                                                                  }
+                                                                )
+                                                              }
+                                                              className={
+                                                                colors.inputBg
+                                                              }
+                                                            />
+                                                          </div>
+                                                          <div className="space-y-2">
+                                                            <Label
+                                                              className={
+                                                                colors.textColor
+                                                              }
+                                                            >
+                                                              Date of Birth
+                                                            </Label>
+                                                            <Input
+                                                              type="date"
+                                                              value={
+                                                                editingFamilyMember.dateOfBirth
+                                                                  ? new Date(
+                                                                      editingFamilyMember.dateOfBirth
+                                                                    )
+                                                                      .toISOString()
+                                                                      .split(
+                                                                        "T"
+                                                                      )[0]
+                                                                  : ""
+                                                              }
+                                                              onChange={(e) =>
+                                                                setEditingFamilyMember(
+                                                                  {
+                                                                    ...editingFamilyMember,
+                                                                    dateOfBirth:
+                                                                      e.target
+                                                                        .value
+                                                                        ? new Date(
+                                                                            e.target.value
+                                                                          )
+                                                                        : undefined,
+                                                                  }
+                                                                )
+                                                              }
+                                                              className={
+                                                                colors.inputBg
+                                                              }
+                                                            />
+                                                          </div>
+                                                          <div className="flex items-center space-x-2">
+                                                            <Checkbox
+                                                              id={`isDependent-${index}`}
+                                                              checked={
+                                                                editingFamilyMember.isDependent ||
+                                                                false
+                                                              }
+                                                              onCheckedChange={(
+                                                                checked
+                                                              ) =>
+                                                                setEditingFamilyMember(
+                                                                  {
+                                                                    ...editingFamilyMember,
+                                                                    isDependent:
+                                                                      checked,
+                                                                  }
+                                                                )
+                                                              }
+                                                            />
+                                                            <Label
+                                                              htmlFor={`isDependent-${index}`}
+                                                              className={
+                                                                colors.textColor
+                                                              }
+                                                            >
+                                                              Is Dependent
+                                                            </Label>
+                                                          </div>
+                                                        </div>
+                                                        <div className="flex gap-2 justify-end mt-4">
+                                                          <Button
+                                                            type="button"
+                                                            variant="outline"
+                                                            size="sm"
+                                                            onClick={() => {
+                                                              setEditingFamilyMemberIndex(
+                                                                null
+                                                              );
+                                                              setEditingFamilyMember(
+                                                                {}
+                                                              );
+                                                            }}
+                                                          >
+                                                            Cancel
+                                                          </Button>
+                                                          <Button
+                                                            type="button"
+                                                            size="sm"
+                                                            onClick={async () => {
+                                                              if (
+                                                                !editingFamilyMember.firstname ||
+                                                                !editingFamilyMember.lastname ||
+                                                                !editingFamilyMember.relationship
+                                                              ) {
+                                                                error({
+                                                                  title:
+                                                                    "Validation Error",
+                                                                  description:
+                                                                    "Please fill in all required fields",
+                                                                });
+                                                                return;
+                                                              }
+                                                              // Update existing member
+                                                              await handleAddFamilyMember(
+                                                                editingFamilyMember as FamilyMemberValues
+                                                              );
+                                                              setEditingFamilyMemberIndex(
+                                                                null
+                                                              );
+                                                              setEditingFamilyMember(
+                                                                {}
+                                                              );
+                                                            }}
+                                                            className="bg-blue-500 hover:bg-blue-600"
+                                                          >
+                                                            Save
+                                                          </Button>
+                                                        </div>
+                                                      </div>
+                                                    ) : (
+                                                      // View Mode
+                                                      <div className="space-y-3">
+                                                        <div className="flex items-start justify-between">
+                                                          <div className="flex-1">
+                                                            <h4
+                                                              className={`font-semibold text-base ${colors.textColor} mb-1`}
+                                                            >
+                                                              {member.firstname}{" "}
+                                                              {member.middlename ||
+                                                                ""}{" "}
+                                                              {member.lastname}
+                                                            </h4>
+                                                            {member.relationship && (
+                                                              <Badge
+                                                                variant="outline"
+                                                                className="mt-1"
+                                                              >
+                                                                {
+                                                                  member.relationship
+                                                                }
+                                                              </Badge>
+                                                            )}
+                                                          </div>
+                                                          <div className="flex gap-2">
+                                                            {member.isDependent && (
+                                                              <Badge className="bg-blue-500">
+                                                                Dependent
+                                                              </Badge>
+                                                            )}
+                                                            <Button
+                                                              type="button"
+                                                              variant="ghost"
+                                                              size="sm"
+                                                              onClick={() => {
+                                                                setEditingFamilyMemberIndex(
+                                                                  index
+                                                                );
+                                                                setEditingFamilyMember(
+                                                                  {
+                                                                    ...member,
+                                                                    dateOfBirth:
+                                                                      member.dateOfBirth
+                                                                        ? new Date(
+                                                                            member.dateOfBirth
+                                                                          )
+                                                                        : undefined,
+                                                                  }
+                                                                );
+                                                              }}
+                                                            >
+                                                              <Edit2 className="h-4 w-4" />
+                                                            </Button>
+                                                            <Button
+                                                              type="button"
+                                                              variant="ghost"
+                                                              size="sm"
+                                                              onClick={() =>
+                                                                handleRemoveFamilyMember(
+                                                                  member.id
+                                                                )
+                                                              }
+                                                              className="text-red-500 hover:text-red-700"
+                                                            >
+                                                              <X className="h-4 w-4" />
+                                                            </Button>
+                                                          </div>
+                                                        </div>
+                                                        <div className="space-y-2 pt-2 border-t border-gray-200 dark:border-gray-700">
+                                                          {member.mobileNo && (
+                                                            <div className="flex items-center gap-2">
+                                                              <p
+                                                                className={`text-xs font-medium ${colors.textColorMuted} w-20`}
+                                                              >
+                                                                Mobile:
+                                                              </p>
+                                                              <p
+                                                                className={`text-sm ${colors.textColor}`}
+                                                              >
+                                                                {
+                                                                  member.mobileNo
+                                                                }
+                                                              </p>
+                                                            </div>
+                                                          )}
+                                                          {member.emailAddress && (
+                                                            <div className="flex items-center gap-2">
+                                                              <p
+                                                                className={`text-xs font-medium ${colors.textColorMuted} w-20`}
+                                                              >
+                                                                Email:
+                                                              </p>
+                                                              <p
+                                                                className={`text-sm ${colors.textColor}`}
+                                                              >
+                                                                {
+                                                                  member.emailAddress
+                                                                }
+                                                              </p>
+                                                            </div>
+                                                          )}
+                                                          {member.dateOfBirth && (
+                                                            <div className="flex items-center gap-2">
+                                                              <p
+                                                                className={`text-xs font-medium ${colors.textColorMuted} w-20`}
+                                                              >
+                                                                DOB:
+                                                              </p>
+                                                              <p
+                                                                className={`text-sm ${colors.textColor}`}
+                                                              >
+                                                                {new Date(
+                                                                  member.dateOfBirth
+                                                                ).toLocaleDateString()}
+                                                              </p>
+                                                            </div>
+                                                          )}
+                                                        </div>
+                                                      </div>
+                                                    )}
+                                                  </CardContent>
+                                                </Card>
+                                              )
+                                            )}
+                                          </div>
+                                        )}
+
+                                        {familyMembers.length === 0 &&
+                                          !isAddingFamilyMember && (
+                                            <Card
+                                              className={`border-${colors.borderColor} ${colors.cardBg} border-dashed`}
+                                            >
+                                              <CardContent className="p-6 text-center">
+                                                <Users className="h-8 w-8 mx-auto mb-2 text-gray-400" />
+                                                <p
+                                                  className={`text-sm ${colors.textColorMuted} mb-4`}
+                                                >
+                                                  No family members or next of
+                                                  kin added yet
+                                                </p>
+                                              </CardContent>
+                                            </Card>
+                                          )}
+                                      </div>
+                                    </CardContent>
+                                  </Card>
                                 </>
                               )}
                             </CardContent>
+                            <CardFooter className="flex justify-between border-t border-gray-200 dark:border-gray-800 pt-4">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                className={`border-${colors.borderColor} hover:bg-${colors.hoverBgColor}`}
+                                onClick={() => setActiveClientTab("account")}
+                              >
+                                Previous
+                              </Button>
+                            </CardFooter>
                           </Card>
                         </TabsContent>
                       )}
