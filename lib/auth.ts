@@ -146,9 +146,17 @@ export const authOptions: NextAuthOptions = {
 
           const data = await response.json();
           console.log("Auth Debug - Response data keys:", Object.keys(data));
-          const accessToken = data.base64EncodedAuthenticationKey;
+          console.log("Auth Debug - base64EncodedAuthenticationKey from Fineract:", data.base64EncodedAuthenticationKey);
+          
+          // Compute Basic auth token ourselves: base64(username:password)
+          const computedBasicAuth = Buffer.from(`${credentials.username}:${credentials.password}`).toString('base64');
+          console.log("Auth Debug - Computed Basic auth token:", computedBasicAuth);
+          
+          // Use our computed token instead of Fineract's response
+          const accessToken = computedBasicAuth;
 
-          if (!accessToken) {
+          if (!data.base64EncodedAuthenticationKey) {
+            // Auth failed if Fineract didn't return the key
             return null;
           }
 
@@ -164,7 +172,7 @@ export const authOptions: NextAuthOptions = {
             name: data.username,
             email: data.username,
             accessToken,
-            base64EncodedAuthenticationKey: data.base64EncodedAuthenticationKey,
+            base64EncodedAuthenticationKey: computedBasicAuth, // Use computed token, not Fineract's
             officeId: data.officeId,
             officeName: data.officeName,
             roles: data.roles,
