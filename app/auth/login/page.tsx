@@ -26,9 +26,9 @@ export default function LoginPage() {
   const router = useRouter();
 
   useEffect(() => {
-    // If user is already authenticated, redirect to dashboard
+    // If user is already authenticated, redirect to leads
     if (status === "authenticated") {
-      router.push("/dashboard");
+      router.push("/leads");
     }
   }, [status, router]);
 
@@ -47,7 +47,7 @@ export default function LoginPage() {
       const success = await login(username, password);
 
       if (success) {
-        router.push("/dashboard");
+        router.push("/leads");
       } else {
         setError("Invalid username or password");
       }
