@@ -6332,6 +6332,10 @@ export function ClientRegistrationForm({
                               }
                               onClick={async (e) => {
                                 e.preventDefault();
+                                
+                                // Capture form element BEFORE any async operations
+                                // (React synthetic events are recycled after await, making e.currentTarget null)
+                                const formElement = e.currentTarget?.closest("form");
 
                                 // Validate form before proceeding
                                 const formToValidate = externalForm || form;
@@ -6453,8 +6457,7 @@ export function ClientRegistrationForm({
                                     });
                                   } else {
                                     // For non-external form, trigger form submission
-                                    const formElement =
-                                      e.currentTarget.closest("form");
+                                    // Use the formElement captured at the start of the handler
                                     if (formElement) {
                                       formElement.requestSubmit();
                                       // Mark all completed sections as saved
