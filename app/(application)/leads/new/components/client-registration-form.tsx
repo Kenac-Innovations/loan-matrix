@@ -6332,10 +6332,11 @@ export function ClientRegistrationForm({
                               }
                               onClick={async (e) => {
                                 e.preventDefault();
-                                
+
                                 // Capture form element BEFORE any async operations
                                 // (React synthetic events are recycled after await, making e.currentTarget null)
-                                const formElement = e.currentTarget?.closest("form");
+                                const formElement =
+                                  e.currentTarget?.closest("form");
 
                                 // Validate form before proceeding
                                 const formToValidate = externalForm || form;
@@ -6455,8 +6456,159 @@ export function ClientRegistrationForm({
                                       });
                                       return prevCompletion;
                                     });
+                                  } else if (
+                                    clientLookupStatus === "not_found" ||
+                                    (clientLookupStatus !== "found" &&
+                                      !clientCreatedInFineract &&
+                                      !(window as any).fineractClientId)
+                                  ) {
+                                    // Client not found in Fineract OR resumed from local DB without Fineract client
+                                    // Create client directly via API
+                                    setIsSaving(true);
+                                    try {
+                                      // Prepare API data with proper type conversions
+                                      const apiData = {
+                                        ...formValues,
+                                        officeId: formValues.officeId
+                                          ? Number(formValues.officeId)
+                                          : undefined,
+                                        legalFormId: formValues.legalFormId
+                                          ? Number(formValues.legalFormId)
+                                          : undefined,
+                                        clientTypeId: formValues.clientTypeId
+                                          ? Number(formValues.clientTypeId)
+                                          : undefined,
+                                        clientClassificationId:
+                                          formValues.clientClassificationId
+                                            ? Number(
+                                                formValues.clientClassificationId
+                                              )
+                                            : undefined,
+                                        genderId: formValues.genderId
+                                          ? Number(formValues.genderId)
+                                          : undefined,
+                                        dateOfBirth: formValues.dateOfBirth
+                                          ? new Date(formValues.dateOfBirth)
+                                          : undefined,
+                                        submittedOnDate:
+                                          formValues.submittedOnDate
+                                            ? new Date(
+                                                formValues.submittedOnDate
+                                              )
+                                            : new Date(),
+                                        activationDate:
+                                          formValues.activationDate
+                                            ? new Date(
+                                                formValues.activationDate
+                                              )
+                                            : undefined,
+                                        savingsProductId:
+                                          formValues.savingsProductId
+                                            ? Number(
+                                                formValues.savingsProductId
+                                              )
+                                            : undefined,
+                                      };
+
+                                      // Call API to create lead with client in Fineract
+                                      const response = await fetch(
+                                        "/api/leads/operations",
+                                        {
+                                          method: "POST",
+                                          headers: {
+                                            "Content-Type": "application/json",
+                                          },
+                                          body: JSON.stringify({
+                                            operation: "createLeadWithClient",
+                                            data: apiData,
+                                          }),
+                                        }
+                                      );
+
+                                      if (!response.ok) {
+                                        let errorData;
+                                        try {
+                                          errorData = await response.json();
+                                        } catch {
+                                          errorData = {
+                                            error: `HTTP ${response.status}: ${response.statusText}`,
+                                          };
+                                        }
+                                        throw new Error(
+                                          errorData.error ||
+                                            "Failed to create client in Fineract"
+                                        );
+                                      }
+
+                                      const result = await response.json();
+                                      console.log(
+                                        "Client created successfully in Fineract:",
+                                        result
+                                      );
+
+                                      // Update state to reflect successful client creation
+                                      setClientLookupStatus("found");
+                                      if (setClientCreatedInFineract) {
+                                        setClientCreatedInFineract(true);
+                                      }
+                                      if (onClientCreated) {
+                                        onClientCreated();
+                                      }
+
+                                      // Store the Fineract client ID for future operations
+                                      if (result.fineractClientId) {
+                                        (window as any).fineractClientId =
+                                          result.fineractClientId;
+                                      }
+
+                                      // Update lead ID if returned
+                                      if (result.leadId) {
+                                        setCurrentLeadId(result.leadId);
+                                      }
+
+                                      // Mark all completed sections as saved
+                                      setSectionCompletion((prevCompletion) => {
+                                        setSectionSaved({
+                                          administrative:
+                                            prevCompletion.administrative,
+                                          personal: prevCompletion.personal,
+                                          contact: prevCompletion.contact,
+                                          classification:
+                                            prevCompletion.classification,
+                                          additional: prevCompletion.additional,
+                                          selfie: prevCompletion.selfie,
+                                          identityDocuments:
+                                            prevCompletion.identityDocuments,
+                                          otherDocuments:
+                                            prevCompletion.otherDocuments,
+                                          datatables: prevCompletion.datatables,
+                                        });
+                                        return prevCompletion;
+                                      });
+
+                                      success({
+                                        title: "Success",
+                                        description: `Client created successfully in Fineract! Account: ${
+                                          result.fineractAccountNo || "N/A"
+                                        }`,
+                                      });
+                                    } catch (createError: any) {
+                                      console.error(
+                                        "Error creating client in Fineract:",
+                                        createError
+                                      );
+                                      error({
+                                        title: "Fineract Error",
+                                        description:
+                                          createError.message ||
+                                          "Failed to create client in Fineract. Please try again.",
+                                      });
+                                      return; // Don't navigate if creation fails
+                                    } finally {
+                                      setIsSaving(false);
+                                    }
                                   } else {
-                                    // For non-external form, trigger form submission
+                                    // For non-external form with existing client, trigger form submission
                                     // Use the formElement captured at the start of the handler
                                     if (formElement) {
                                       formElement.requestSubmit();
