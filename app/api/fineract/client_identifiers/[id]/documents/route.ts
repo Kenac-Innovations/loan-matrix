@@ -167,11 +167,15 @@ export async function POST(
 
       // Append all fields from the incoming form data
       for (const [key, value] of formData.entries()) {
-        if (value instanceof File || value instanceof Blob) {
-          const buffer = Buffer.from(await value.arrayBuffer());
+        // Check if value is a Blob (files from formData are Blob in Node.js, not File)
+        if (typeof value === "object" && value !== null && typeof (value as Blob).arrayBuffer === "function") {
+          const blobValue = value as Blob;
+          const buffer = Buffer.from(await blobValue.arrayBuffer());
+          // Get filename from the Blob if it has a name property (like File does)
+          const filename = (value as any).name || "file";
           form.append(key, buffer, {
-            filename: value instanceof File ? value.name : "file",
-            contentType: value.type || "application/octet-stream",
+            filename: filename,
+            contentType: blobValue.type || "application/octet-stream",
           });
         } else {
           form.append(key, value);

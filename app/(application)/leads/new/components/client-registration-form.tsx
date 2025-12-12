@@ -8117,7 +8117,7 @@ export function ClientRegistrationForm({
                                                         >
                                                           {doc.name}
                                                         </p>
-                                                        {doc.file.type.startsWith(
+                                                        {doc.file?.type?.startsWith(
                                                           "image/"
                                                         ) && (
                                                           <img
@@ -8126,7 +8126,7 @@ export function ClientRegistrationForm({
                                                             className="w-full h-32 object-cover rounded"
                                                           />
                                                         )}
-                                                        {doc.file.type ===
+                                                        {doc.file?.type ===
                                                           "application/pdf" && (
                                                           <div className="w-full h-32 bg-gray-100 dark:bg-gray-800 rounded flex items-center justify-center">
                                                             <p className="text-sm text-gray-500">
