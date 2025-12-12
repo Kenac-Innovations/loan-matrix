@@ -23,7 +23,10 @@ export const metadata: Metadata = {
 export default async function UssdLeadsPage() {
   // Get tenant slug from headers (set by middleware)
   const headersList = await headers();
-  const tenantSlug = headersList.get("x-tenant-slug") || process.env.DEMO_TENANT_SLUG || "goodfellow";
+  const tenantSlug =
+    headersList.get("x-tenant-slug") ||
+    process.env.DEMO_TENANT_SLUG ||
+    "goodfellow";
 
   // Fetch USSD leads data server-side
   const ussdLeadsData = await getUssdLeadsData(tenantSlug);
@@ -76,7 +79,9 @@ export default async function UssdLeadsPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <UssdLoanApplicationsTable ussdLoanApplications={ussdLeadsData.applications} />
+              <UssdLoanApplicationsTable
+                ussdLoanApplications={ussdLeadsData.applications}
+              />
             </CardContent>
           </Card>
         </TabsContent>

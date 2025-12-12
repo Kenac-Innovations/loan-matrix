@@ -80,7 +80,9 @@ async function testDatabaseRetrieval() {
   console.log("📊 Testing database retrieval...");
 
   try {
-    const ussdLeadsData = await getUssdLeadsData("goodfellow", { limit: 10 });
+    const ussdLeadsData = await getUssdLeadsData("goodfellow", {
+      limit: 10,
+    });
 
     console.log(
       `✅ Retrieved ${ussdLeadsData.applications.length} USSD applications`

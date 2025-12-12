@@ -59,7 +59,9 @@ async function testQueueWithConsumer() {
 
     // Check database
     console.log("📊 Checking database for processed message...");
-    const ussdLeadsData = await getUssdLeadsData("goodfellow", { limit: 10 });
+    const ussdLeadsData = await getUssdLeadsData("goodfellow", {
+      limit: 10,
+    });
 
     console.log(
       `📈 Total applications: ${ussdLeadsData.metrics.totalApplications}`

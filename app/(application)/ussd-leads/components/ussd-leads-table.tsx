@@ -36,11 +36,11 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { 
-  MoreHorizontal, 
-  Phone, 
-  User, 
-  DollarSign, 
+import {
+  MoreHorizontal,
+  Phone,
+  User,
+  DollarSign,
   Calendar,
   CheckCircle,
   XCircle,
@@ -95,10 +95,12 @@ export function UssdLeadsTable({ initialData }: UssdLeadsTableProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
-  const [rejectApplicationId, setRejectApplicationId] = useState<number | null>(null);
+  const [rejectApplicationId, setRejectApplicationId] = useState<number | null>(
+    null
+  );
   const [rejectionReason, setRejectionReason] = useState("");
   const MAX_REASON_LENGTH = 20;
-  
+
   // Use SWR for real-time updates
   const { data, error, mutate } = useSWR("/api/ussd-leads", fetcher, {
     initialData,
@@ -124,7 +126,11 @@ export function UssdLeadsTable({ initialData }: UssdLeadsTableProps) {
     }
   );
 
-  const handleStatusUpdate = async (applicationId: number, newStatus: string, notes?: string) => {
+  const handleStatusUpdate = async (
+    applicationId: number,
+    newStatus: string,
+    notes?: string
+  ) => {
     try {
       const response = await fetch(`/api/ussd-leads/${applicationId}/status`, {
         method: "PUT",
@@ -183,19 +189,19 @@ export function UssdLeadsTable({ initialData }: UssdLeadsTableProps) {
 
   const handleRejectConfirm = async () => {
     if (!rejectApplicationId) return;
-    
+
     const trimmedReason = rejectionReason.trim();
-    
+
     if (!trimmedReason) {
       alert("Rejection reason is required");
       return;
     }
-    
+
     if (trimmedReason.length > MAX_REASON_LENGTH) {
       alert(`Rejection reason cannot exceed ${MAX_REASON_LENGTH} characters`);
       return;
     }
-    
+
     await handleStatusUpdate(rejectApplicationId, "REJECTED", trimmedReason);
     setRejectDialogOpen(false);
     setRejectApplicationId(null);
@@ -425,7 +431,7 @@ export function UssdLeadsTable({ initialData }: UssdLeadsTableProps) {
                               <CheckCircle className="mr-2 h-4 w-4" />
                               Approve
                             </DropdownMenuItem>
-                            <DropdownMenuItem 
+                            <DropdownMenuItem
                               onSelect={(e) => {
                                 e.preventDefault();
                                 openRejectDialog(app.loanApplicationUssdId);
@@ -449,7 +455,7 @@ export function UssdLeadsTable({ initialData }: UssdLeadsTableProps) {
                               <CheckCircle className="mr-2 h-4 w-4" />
                               Approve
                             </DropdownMenuItem>
-                            <DropdownMenuItem 
+                            <DropdownMenuItem
                               onSelect={(e) => {
                                 e.preventDefault();
                                 openRejectDialog(app.loanApplicationUssdId);
@@ -495,7 +501,8 @@ export function UssdLeadsTable({ initialData }: UssdLeadsTableProps) {
           <DialogHeader>
             <DialogTitle>Reject Application</DialogTitle>
             <DialogDescription>
-              Please provide a reason for rejecting this application (maximum {MAX_REASON_LENGTH} characters).
+              Please provide a reason for rejecting this application (maximum{" "}
+              {MAX_REASON_LENGTH} characters).
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
