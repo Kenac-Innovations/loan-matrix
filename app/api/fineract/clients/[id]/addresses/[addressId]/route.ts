@@ -33,56 +33,41 @@ export async function PUT(
       );
     }
 
-    // Filter payload to only include supported Fineract address fields
-    // Supported fields based on Fineract API: addressType, addressLine1, addressLine2, addressLine3,
-    // city, stateProvinceId, countryId, postalCode, isActive
-    // Unsupported fields: clientID, addressTypeId, street, townVillage, countyDistrict, latitude, longitude
-    const supportedFields = [
-      "addressType",
-      "addressLine1",
-      "addressLine2",
-      "addressLine3",
-      "city",
-      "stateProvinceId",
-      "countryId",
-      "postalCode",
-      "isActive",
-      "dateFormat",
-      "locale",
-    ];
+    // Build payload matching the working curl format exactly
+    // Body uses: {"addressType":17,"addressLine1":"...","addressLine2":"...","addressLine3":"...","city":"...","stateProvinceId":100,"countryId":99,"postalCode":"..."}
+    const payload: any = {};
 
-    const payload: any = {
-      dateFormat: body.dateFormat || "yyyy-MM-dd",
-      locale: body.locale || "en",
-    };
+    // Add addressType as number
+    payload.addressType = addressType;
 
-    // Only include supported fields
-    supportedFields.forEach((field) => {
-      if (
-        body[field] !== undefined &&
-        body[field] !== null &&
-        body[field] !== ""
-      ) {
-        // Convert IDs to numbers
-        if (
-          field === "addressType" ||
-          field === "stateProvinceId" ||
-          field === "countryId"
-        ) {
-          const numValue =
-            typeof body[field] === "string"
-              ? parseInt(body[field])
-              : body[field];
-          if (!isNaN(numValue)) {
-            payload[field] = numValue;
-          }
-        } else if (field === "isActive") {
-          payload[field] = Boolean(body[field]);
-        } else {
-          payload[field] = body[field];
-        }
-      }
-    });
+    // Add string fields
+    if (body.addressLine1) payload.addressLine1 = body.addressLine1;
+    if (body.addressLine2) payload.addressLine2 = body.addressLine2;
+    if (body.addressLine3) payload.addressLine3 = body.addressLine3;
+    if (body.city) payload.city = body.city;
+    if (body.postalCode) payload.postalCode = body.postalCode;
+
+    // Add ID fields as numbers
+    if (body.stateProvinceId) {
+      payload.stateProvinceId =
+        typeof body.stateProvinceId === "string"
+          ? parseInt(body.stateProvinceId)
+          : body.stateProvinceId;
+    }
+    if (body.countryId) {
+      payload.countryId =
+        typeof body.countryId === "string"
+          ? parseInt(body.countryId)
+          : body.countryId;
+    }
+
+    // Add optional fields
+    if (body.isActive !== undefined) payload.isActive = Boolean(body.isActive);
+
+    console.log(
+      "Sending address update payload to Fineract:",
+      JSON.stringify(payload)
+    );
 
     // Note: Fineract uses singular "client" not "clients" for addresses endpoint
     // And uses the address type as a query parameter: /client/{id}/addresses?type={addressType}
