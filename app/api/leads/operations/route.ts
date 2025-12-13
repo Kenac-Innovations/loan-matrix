@@ -419,6 +419,110 @@ async function handleCreateLeadWithClient(data: any) {
       );
     }
 
+    // Step 2a: Check if client already exists in Fineract by external ID (national ID)
+    if (validatedData.externalId) {
+      console.log("==========> Checking if client exists with external ID:", validatedData.externalId);
+      try {
+        const { fetchClientByExternalId } = await import("@/lib/api");
+        const existingClient = await fetchClientByExternalId(validatedData.externalId);
+        
+        if (existingClient && existingClient.id) {
+          console.log("==========> Client already exists in Fineract with ID:", existingClient.id);
+          // Client already exists - return their info instead of creating a new one
+          fineractClientId = existingClient.id;
+          
+          // Skip to creating the lead with the existing client data
+          const result = await prisma.$transaction(async (tx) => {
+            const session = await getSession();
+            if (!session?.user?.id) {
+              throw new Error("User not authenticated");
+            }
+            const userId = session.user.id;
+
+            const defaultTenant = await tx.tenant.findUnique({
+              where: { slug: "goodfellow" },
+            });
+
+            if (!defaultTenant) {
+              throw new Error("Default tenant not found. Please run database seed.");
+            }
+
+            const tenantId = defaultTenant.id;
+
+            // Create lead in database with existing Fineract client data
+            const newLead = await tx.lead.create({
+              data: {
+                userId,
+                tenantId,
+                officeId: validatedData.officeId,
+                officeName: validatedData.officeName,
+                legalFormId: validatedData.legalFormId,
+                legalFormName: validatedData.legalFormName,
+                externalId: validatedData.externalId,
+                firstname: validatedData.firstname,
+                middlename: validatedData.middlename,
+                lastname: validatedData.lastname,
+                dateOfBirth: validatedData.dateOfBirth || undefined,
+                gender: validatedData.gender,
+                genderId: validatedData.genderId || undefined,
+                isStaff: validatedData.isStaff,
+                mobileNo: validatedData.mobileNo,
+                countryCode: validatedData.countryCode,
+                emailAddress: validatedData.emailAddress,
+                clientTypeId: validatedData.clientTypeId || undefined,
+                clientTypeName: validatedData.clientTypeName,
+                clientClassificationId: validatedData.clientClassificationId || undefined,
+                clientClassificationName: validatedData.clientClassificationName,
+                submittedOnDate: validatedData.submittedOnDate,
+                active: validatedData.active,
+                activationDate: validatedData.activationDate || undefined,
+                openSavingsAccount: validatedData.openSavingsAccount,
+                savingsProductId: validatedData.savingsProductId || undefined,
+                savingsProductName: validatedData.savingsProductName,
+                monthlyIncomeRange: validatedData.monthlyIncomeRange,
+                employmentStatus: validatedData.employmentStatus,
+                employerName: validatedData.employerName,
+                yearsAtCurrentJob: validatedData.yearsAtCurrentJob,
+                hasExistingLoans: validatedData.hasExistingLoans,
+                monthlyDebtPayments: validatedData.monthlyDebtPayments,
+                propertyOwnership: validatedData.propertyOwnership,
+                businessOwnership: validatedData.businessOwnership,
+                businessType: validatedData.businessType,
+                fineractClientId: existingClient.id,
+                fineractAccountNo: existingClient.accountNo || null,
+                clientCreatedInFineract: true,
+                clientCreationDate: new Date(),
+                status: "DRAFT",
+                currentStep: 2,
+              },
+            });
+
+            return {
+              lead: newLead,
+              fineractClient: existingClient,
+              clientAlreadyExisted: true,
+            };
+          });
+
+          return NextResponse.json({
+            success: true,
+            message: "Client already exists in Fineract. Lead created with existing client.",
+            leadId: result.lead.id,
+            fineractClientId: existingClient.id,
+            fineractAccountNo: existingClient.accountNo || null,
+            clientAlreadyExisted: true,
+          });
+        }
+      } catch (lookupError: any) {
+        // Client not found is expected - continue with creation
+        if (!lookupError.message?.includes("not found")) {
+          console.log("==========> Error checking for existing client:", lookupError.message);
+        } else {
+          console.log("==========> Client not found in Fineract, will create new client");
+        }
+      }
+    }
+
     // Prepare client data for Fineract
     const clientData = {
       officeId: validatedData.officeId,
