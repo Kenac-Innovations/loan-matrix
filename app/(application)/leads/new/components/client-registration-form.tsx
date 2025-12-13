@@ -8502,8 +8502,7 @@ export function ClientRegistrationForm({
                               <CardDescription
                                 className={colors.textColorMuted}
                               >
-                                Address, data tables, and family members/next of
-                                kin information
+                                Additional info
                               </CardDescription>
                             </CardHeader>
                             <CardContent className="space-y-8">
@@ -8537,20 +8536,22 @@ export function ClientRegistrationForm({
                                     </div>
                                   </div>
 
-                                  {/* Family Members Skeleton */}
-                                  <div className="space-y-4">
-                                    <div className="flex items-center justify-between pb-2 border-b border-gray-200 dark:border-gray-700">
-                                      <div className="flex items-center gap-2">
-                                        <Skeleton className="h-5 w-5" />
-                                        <Skeleton className="h-6 w-40" />
-                                      </div>
-                                      <Skeleton className="h-9 w-32" />
-                                    </div>
+                                  {/* Family Members Skeleton - HIDDEN FOR NOW */}
+                                  {false && (
                                     <div className="space-y-4">
-                                      <Skeleton className="h-24 w-full" />
-                                      <Skeleton className="h-24 w-full" />
+                                      <div className="flex items-center justify-between pb-2 border-b border-gray-200 dark:border-gray-700">
+                                        <div className="flex items-center gap-2">
+                                          <Skeleton className="h-5 w-5" />
+                                          <Skeleton className="h-6 w-40" />
+                                        </div>
+                                        <Skeleton className="h-9 w-32" />
+                                      </div>
+                                      <div className="space-y-4">
+                                        <Skeleton className="h-24 w-full" />
+                                        <Skeleton className="h-24 w-full" />
+                                      </div>
                                     </div>
-                                  </div>
+                                  )}
                                 </div>
                               ) : (
                                 <>
@@ -10008,772 +10009,799 @@ export function ClientRegistrationForm({
                                     </CardContent>
                                   </Card>
 
-                                  {/* Family Members / Next of Kin */}
-                                  <Card className="border-green-500 bg-green-50 dark:bg-green-950">
-                                    <CardContent className="pt-6">
-                                      <div className="space-y-4">
-                                        <div className="flex items-center justify-between pb-2 border-b border-gray-200 dark:border-gray-700">
-                                          <div className="flex items-center gap-2">
-                                            <Users className="h-5 w-5 text-blue-500" />
-                                            <h3
-                                              className={`text-lg font-semibold ${colors.textColor}`}
-                                            >
-                                              Family Members / Next of Kin
-                                            </h3>
-                                          </div>
-                                          {!isAddingFamilyMember && (
-                                            <Button
-                                              type="button"
-                                              onClick={() => {
-                                                setIsAddingFamilyMember(true);
-                                                setEditingFamilyMember({});
-                                              }}
-                                              className="bg-blue-500 hover:bg-blue-600 text-white"
-                                              size="sm"
-                                            >
-                                              <UserPlus className="h-4 w-4 mr-2" />
-                                              Add Next of Kin
-                                            </Button>
-                                          )}
-                                        </div>
-
-                                        {/* Inline Add Form */}
-                                        {isAddingFamilyMember && (
-                                          <Card
-                                            className={`border-${colors.borderColor} ${colors.cardBg} border-2 border-blue-500`}
-                                          >
-                                            <CardContent className="p-6">
-                                              <h4
-                                                className={`font-semibold mb-4 ${colors.textColor}`}
+                                  {/* Family Members / Next of Kin - HIDDEN FOR NOW */}
+                                  {false && (
+                                    <Card className="border-green-500 bg-green-50 dark:bg-green-950">
+                                      <CardContent className="pt-6">
+                                        <div className="space-y-4">
+                                          <div className="flex items-center justify-between pb-2 border-b border-gray-200 dark:border-gray-700">
+                                            <div className="flex items-center gap-2">
+                                              <Users className="h-5 w-5 text-blue-500" />
+                                              <h3
+                                                className={`text-lg font-semibold ${colors.textColor}`}
                                               >
+                                                Family Members / Next of Kin
+                                              </h3>
+                                            </div>
+                                            {!isAddingFamilyMember && (
+                                              <Button
+                                                type="button"
+                                                onClick={() => {
+                                                  setIsAddingFamilyMember(true);
+                                                  setEditingFamilyMember({});
+                                                }}
+                                                className="bg-blue-500 hover:bg-blue-600 text-white"
+                                                size="sm"
+                                              >
+                                                <UserPlus className="h-4 w-4 mr-2" />
                                                 Add Next of Kin
-                                              </h4>
-                                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                <div className="space-y-2">
-                                                  <Label
-                                                    className={colors.textColor}
-                                                  >
-                                                    First Name{" "}
-                                                    <span className="text-red-500">
-                                                      *
-                                                    </span>
-                                                  </Label>
-                                                  <Input
-                                                    value={
-                                                      editingFamilyMember.firstname ||
-                                                      ""
-                                                    }
-                                                    onChange={(e) =>
-                                                      setEditingFamilyMember({
-                                                        ...editingFamilyMember,
-                                                        firstname:
-                                                          e.target.value,
-                                                      })
-                                                    }
-                                                    placeholder="First name"
-                                                    className={colors.inputBg}
-                                                  />
-                                                </div>
-                                                <div className="space-y-2">
-                                                  <Label
-                                                    className={colors.textColor}
-                                                  >
-                                                    Middle Name
-                                                  </Label>
-                                                  <Input
-                                                    value={
-                                                      editingFamilyMember.middlename ||
-                                                      ""
-                                                    }
-                                                    onChange={(e) =>
-                                                      setEditingFamilyMember({
-                                                        ...editingFamilyMember,
-                                                        middlename:
-                                                          e.target.value,
-                                                      })
-                                                    }
-                                                    placeholder="Middle name"
-                                                    className={colors.inputBg}
-                                                  />
-                                                </div>
-                                                <div className="space-y-2">
-                                                  <Label
-                                                    className={colors.textColor}
-                                                  >
-                                                    Last Name{" "}
-                                                    <span className="text-red-500">
-                                                      *
-                                                    </span>
-                                                  </Label>
-                                                  <Input
-                                                    value={
-                                                      editingFamilyMember.lastname ||
-                                                      ""
-                                                    }
-                                                    onChange={(e) =>
-                                                      setEditingFamilyMember({
-                                                        ...editingFamilyMember,
-                                                        lastname:
-                                                          e.target.value,
-                                                      })
-                                                    }
-                                                    placeholder="Last name"
-                                                    className={colors.inputBg}
-                                                  />
-                                                </div>
-                                                <div className="space-y-2">
-                                                  <Label
-                                                    className={colors.textColor}
-                                                  >
-                                                    Relationship{" "}
-                                                    <span className="text-red-500">
-                                                      *
-                                                    </span>
-                                                  </Label>
-                                                  <SearchableSelect
-                                                    options={
-                                                      relationshipOptions
-                                                    }
-                                                    value={
-                                                      editingFamilyMember.relationship ||
-                                                      ""
-                                                    }
-                                                    onValueChange={(value) =>
-                                                      setEditingFamilyMember({
-                                                        ...editingFamilyMember,
-                                                        relationship: value,
-                                                      })
-                                                    }
-                                                    placeholder="Select relationship"
-                                                    className={`border-${colors.borderColor} ${colors.inputBg}`}
-                                                    onAddNew={() =>
-                                                      setShowAddRelationshipDialog(
-                                                        true
-                                                      )
-                                                    }
-                                                    addNewLabel="Add new relationship"
-                                                  />
-                                                </div>
-                                                <div className="space-y-2">
-                                                  <Label
-                                                    className={colors.textColor}
-                                                  >
-                                                    Mobile Number
-                                                  </Label>
-                                                  <Input
-                                                    value={
-                                                      editingFamilyMember.mobileNo ||
-                                                      ""
-                                                    }
-                                                    onChange={(e) =>
-                                                      setEditingFamilyMember({
-                                                        ...editingFamilyMember,
-                                                        mobileNo:
-                                                          e.target.value,
-                                                      })
-                                                    }
-                                                    placeholder="Mobile number"
-                                                    className={colors.inputBg}
-                                                  />
-                                                </div>
-                                                <div className="space-y-2">
-                                                  <Label
-                                                    className={colors.textColor}
-                                                  >
-                                                    Email Address
-                                                  </Label>
-                                                  <Input
-                                                    type="email"
-                                                    value={
-                                                      editingFamilyMember.emailAddress ||
-                                                      ""
-                                                    }
-                                                    onChange={(e) =>
-                                                      setEditingFamilyMember({
-                                                        ...editingFamilyMember,
-                                                        emailAddress:
-                                                          e.target.value,
-                                                      })
-                                                    }
-                                                    placeholder="Email address"
-                                                    className={colors.inputBg}
-                                                  />
-                                                </div>
-                                                <div className="space-y-2">
-                                                  <Label
-                                                    className={colors.textColor}
-                                                  >
-                                                    Date of Birth
-                                                  </Label>
-                                                  <Input
-                                                    type="date"
-                                                    value={
-                                                      editingFamilyMember.dateOfBirth
-                                                        ? new Date(
-                                                            editingFamilyMember.dateOfBirth
-                                                          )
-                                                            .toISOString()
-                                                            .split("T")[0]
-                                                        : ""
-                                                    }
-                                                    onChange={(e) =>
-                                                      setEditingFamilyMember({
-                                                        ...editingFamilyMember,
-                                                        dateOfBirth: e.target
-                                                          .value
-                                                          ? new Date(
-                                                              e.target.value
-                                                            )
-                                                          : undefined,
-                                                      })
-                                                    }
-                                                    className={colors.inputBg}
-                                                  />
-                                                </div>
-                                                <div className="space-y-2 flex items-center">
-                                                  <Checkbox
-                                                    id="isDependent"
-                                                    checked={
-                                                      editingFamilyMember.isDependent ||
-                                                      false
-                                                    }
-                                                    onCheckedChange={(
-                                                      checked
-                                                    ) =>
-                                                      setEditingFamilyMember({
-                                                        ...editingFamilyMember,
-                                                        isDependent: checked,
-                                                      })
-                                                    }
-                                                  />
-                                                  <Label
-                                                    htmlFor="isDependent"
-                                                    className={`ml-2 ${colors.textColor}`}
-                                                  >
-                                                    Is Dependent
-                                                  </Label>
-                                                </div>
-                                              </div>
-                                              <div className="flex gap-2 justify-end mt-4">
-                                                <Button
-                                                  type="button"
-                                                  variant="outline"
-                                                  size="sm"
-                                                  onClick={() => {
-                                                    setIsAddingFamilyMember(
-                                                      false
-                                                    );
-                                                    setEditingFamilyMember({});
-                                                  }}
-                                                >
-                                                  Cancel
-                                                </Button>
-                                                <Button
-                                                  type="button"
-                                                  size="sm"
-                                                  onClick={async () => {
-                                                    if (
-                                                      !editingFamilyMember.firstname ||
-                                                      !editingFamilyMember.lastname ||
-                                                      !editingFamilyMember.relationship
-                                                    ) {
-                                                      error({
-                                                        title:
-                                                          "Validation Error",
-                                                        description:
-                                                          "Please fill in all required fields",
-                                                      });
-                                                      return;
-                                                    }
-                                                    await handleAddFamilyMember(
-                                                      editingFamilyMember as FamilyMemberValues
-                                                    );
-                                                    setIsAddingFamilyMember(
-                                                      false
-                                                    );
-                                                    setEditingFamilyMember({});
-                                                  }}
-                                                  className="bg-blue-500 hover:bg-blue-600"
-                                                >
-                                                  Save
-                                                </Button>
-                                              </div>
-                                            </CardContent>
-                                          </Card>
-                                        )}
-
-                                        {/* Existing Family Members */}
-                                        {familyMembers.length > 0 && (
-                                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                            {familyMembers.map(
-                                              (member: any, index: number) => (
-                                                <Card
-                                                  key={member.id || index}
-                                                  className={`border-${colors.borderColor} ${colors.cardBg} shadow-sm hover:shadow-md transition-shadow`}
-                                                >
-                                                  <CardContent className="p-5">
-                                                    {editingFamilyMemberIndex ===
-                                                    index ? (
-                                                      // Edit Mode
-                                                      <div className="space-y-4">
-                                                        <h4
-                                                          className={`font-semibold mb-4 ${colors.textColor}`}
-                                                        >
-                                                          Edit Next of Kin
-                                                        </h4>
-                                                        <div className="grid grid-cols-1 gap-3">
-                                                          <div className="space-y-2">
-                                                            <Label
-                                                              className={
-                                                                colors.textColor
-                                                              }
-                                                            >
-                                                              First Name{" "}
-                                                              <span className="text-red-500">
-                                                                *
-                                                              </span>
-                                                            </Label>
-                                                            <Input
-                                                              value={
-                                                                editingFamilyMember.firstname ||
-                                                                ""
-                                                              }
-                                                              onChange={(e) =>
-                                                                setEditingFamilyMember(
-                                                                  {
-                                                                    ...editingFamilyMember,
-                                                                    firstname:
-                                                                      e.target
-                                                                        .value,
-                                                                  }
-                                                                )
-                                                              }
-                                                              className={
-                                                                colors.inputBg
-                                                              }
-                                                            />
-                                                          </div>
-                                                          <div className="space-y-2">
-                                                            <Label
-                                                              className={
-                                                                colors.textColor
-                                                              }
-                                                            >
-                                                              Middle Name
-                                                            </Label>
-                                                            <Input
-                                                              value={
-                                                                editingFamilyMember.middlename ||
-                                                                ""
-                                                              }
-                                                              onChange={(e) =>
-                                                                setEditingFamilyMember(
-                                                                  {
-                                                                    ...editingFamilyMember,
-                                                                    middlename:
-                                                                      e.target
-                                                                        .value,
-                                                                  }
-                                                                )
-                                                              }
-                                                              className={
-                                                                colors.inputBg
-                                                              }
-                                                            />
-                                                          </div>
-                                                          <div className="space-y-2">
-                                                            <Label
-                                                              className={
-                                                                colors.textColor
-                                                              }
-                                                            >
-                                                              Last Name{" "}
-                                                              <span className="text-red-500">
-                                                                *
-                                                              </span>
-                                                            </Label>
-                                                            <Input
-                                                              value={
-                                                                editingFamilyMember.lastname ||
-                                                                ""
-                                                              }
-                                                              onChange={(e) =>
-                                                                setEditingFamilyMember(
-                                                                  {
-                                                                    ...editingFamilyMember,
-                                                                    lastname:
-                                                                      e.target
-                                                                        .value,
-                                                                  }
-                                                                )
-                                                              }
-                                                              className={
-                                                                colors.inputBg
-                                                              }
-                                                            />
-                                                          </div>
-                                                          <div className="space-y-2">
-                                                            <Label
-                                                              className={
-                                                                colors.textColor
-                                                              }
-                                                            >
-                                                              Relationship{" "}
-                                                              <span className="text-red-500">
-                                                                *
-                                                              </span>
-                                                            </Label>
-                                                            <SearchableSelect
-                                                              options={
-                                                                relationshipOptions
-                                                              }
-                                                              value={
-                                                                editingFamilyMember.relationship ||
-                                                                ""
-                                                              }
-                                                              onValueChange={(
-                                                                value
-                                                              ) =>
-                                                                setEditingFamilyMember(
-                                                                  {
-                                                                    ...editingFamilyMember,
-                                                                    relationship:
-                                                                      value,
-                                                                  }
-                                                                )
-                                                              }
-                                                              placeholder="Select relationship"
-                                                              className={`border-${colors.borderColor} ${colors.inputBg}`}
-                                                              onAddNew={() =>
-                                                                setShowAddRelationshipDialog(
-                                                                  true
-                                                                )
-                                                              }
-                                                              addNewLabel="Add new relationship"
-                                                            />
-                                                          </div>
-                                                          <div className="space-y-2">
-                                                            <Label
-                                                              className={
-                                                                colors.textColor
-                                                              }
-                                                            >
-                                                              Mobile Number
-                                                            </Label>
-                                                            <Input
-                                                              value={
-                                                                editingFamilyMember.mobileNo ||
-                                                                ""
-                                                              }
-                                                              onChange={(e) =>
-                                                                setEditingFamilyMember(
-                                                                  {
-                                                                    ...editingFamilyMember,
-                                                                    mobileNo:
-                                                                      e.target
-                                                                        .value,
-                                                                  }
-                                                                )
-                                                              }
-                                                              className={
-                                                                colors.inputBg
-                                                              }
-                                                            />
-                                                          </div>
-                                                          <div className="space-y-2">
-                                                            <Label
-                                                              className={
-                                                                colors.textColor
-                                                              }
-                                                            >
-                                                              Email Address
-                                                            </Label>
-                                                            <Input
-                                                              type="email"
-                                                              value={
-                                                                editingFamilyMember.emailAddress ||
-                                                                ""
-                                                              }
-                                                              onChange={(e) =>
-                                                                setEditingFamilyMember(
-                                                                  {
-                                                                    ...editingFamilyMember,
-                                                                    emailAddress:
-                                                                      e.target
-                                                                        .value,
-                                                                  }
-                                                                )
-                                                              }
-                                                              className={
-                                                                colors.inputBg
-                                                              }
-                                                            />
-                                                          </div>
-                                                          <div className="space-y-2">
-                                                            <Label
-                                                              className={
-                                                                colors.textColor
-                                                              }
-                                                            >
-                                                              Date of Birth
-                                                            </Label>
-                                                            <Input
-                                                              type="date"
-                                                              value={
-                                                                editingFamilyMember.dateOfBirth
-                                                                  ? new Date(
-                                                                      editingFamilyMember.dateOfBirth
-                                                                    )
-                                                                      .toISOString()
-                                                                      .split(
-                                                                        "T"
-                                                                      )[0]
-                                                                  : ""
-                                                              }
-                                                              onChange={(e) =>
-                                                                setEditingFamilyMember(
-                                                                  {
-                                                                    ...editingFamilyMember,
-                                                                    dateOfBirth:
-                                                                      e.target
-                                                                        .value
-                                                                        ? new Date(
-                                                                            e.target.value
-                                                                          )
-                                                                        : undefined,
-                                                                  }
-                                                                )
-                                                              }
-                                                              className={
-                                                                colors.inputBg
-                                                              }
-                                                            />
-                                                          </div>
-                                                          <div className="flex items-center space-x-2">
-                                                            <Checkbox
-                                                              id={`isDependent-${index}`}
-                                                              checked={
-                                                                editingFamilyMember.isDependent ||
-                                                                false
-                                                              }
-                                                              onCheckedChange={(
-                                                                checked
-                                                              ) =>
-                                                                setEditingFamilyMember(
-                                                                  {
-                                                                    ...editingFamilyMember,
-                                                                    isDependent:
-                                                                      checked,
-                                                                  }
-                                                                )
-                                                              }
-                                                            />
-                                                            <Label
-                                                              htmlFor={`isDependent-${index}`}
-                                                              className={
-                                                                colors.textColor
-                                                              }
-                                                            >
-                                                              Is Dependent
-                                                            </Label>
-                                                          </div>
-                                                        </div>
-                                                        <div className="flex gap-2 justify-end mt-4">
-                                                          <Button
-                                                            type="button"
-                                                            variant="outline"
-                                                            size="sm"
-                                                            onClick={() => {
-                                                              setEditingFamilyMemberIndex(
-                                                                null
-                                                              );
-                                                              setEditingFamilyMember(
-                                                                {}
-                                                              );
-                                                            }}
-                                                          >
-                                                            Cancel
-                                                          </Button>
-                                                          <Button
-                                                            type="button"
-                                                            size="sm"
-                                                            onClick={async () => {
-                                                              if (
-                                                                !editingFamilyMember.firstname ||
-                                                                !editingFamilyMember.lastname ||
-                                                                !editingFamilyMember.relationship
-                                                              ) {
-                                                                error({
-                                                                  title:
-                                                                    "Validation Error",
-                                                                  description:
-                                                                    "Please fill in all required fields",
-                                                                });
-                                                                return;
-                                                              }
-                                                              // Update existing member
-                                                              await handleAddFamilyMember(
-                                                                editingFamilyMember as FamilyMemberValues
-                                                              );
-                                                              setEditingFamilyMemberIndex(
-                                                                null
-                                                              );
-                                                              setEditingFamilyMember(
-                                                                {}
-                                                              );
-                                                            }}
-                                                            className="bg-blue-500 hover:bg-blue-600"
-                                                          >
-                                                            Save
-                                                          </Button>
-                                                        </div>
-                                                      </div>
-                                                    ) : (
-                                                      // View Mode
-                                                      <div className="space-y-3">
-                                                        <div className="flex items-start justify-between">
-                                                          <div className="flex-1">
-                                                            <h4
-                                                              className={`font-semibold text-base ${colors.textColor} mb-1`}
-                                                            >
-                                                              {member.firstname}{" "}
-                                                              {member.middlename ||
-                                                                ""}{" "}
-                                                              {member.lastname}
-                                                            </h4>
-                                                            {member.relationship && (
-                                                              <Badge
-                                                                variant="outline"
-                                                                className="mt-1"
-                                                              >
-                                                                {
-                                                                  member.relationship
-                                                                }
-                                                              </Badge>
-                                                            )}
-                                                          </div>
-                                                          <div className="flex gap-2">
-                                                            {member.isDependent && (
-                                                              <Badge className="bg-blue-500">
-                                                                Dependent
-                                                              </Badge>
-                                                            )}
-                                                            <Button
-                                                              type="button"
-                                                              variant="ghost"
-                                                              size="sm"
-                                                              onClick={() => {
-                                                                setEditingFamilyMemberIndex(
-                                                                  index
-                                                                );
-                                                                setEditingFamilyMember(
-                                                                  {
-                                                                    ...member,
-                                                                    dateOfBirth:
-                                                                      member.dateOfBirth
-                                                                        ? new Date(
-                                                                            member.dateOfBirth
-                                                                          )
-                                                                        : undefined,
-                                                                  }
-                                                                );
-                                                              }}
-                                                            >
-                                                              <Edit2 className="h-4 w-4" />
-                                                            </Button>
-                                                            <Button
-                                                              type="button"
-                                                              variant="ghost"
-                                                              size="sm"
-                                                              onClick={() =>
-                                                                handleRemoveFamilyMember(
-                                                                  member.id
-                                                                )
-                                                              }
-                                                              className="text-red-500 hover:text-red-700"
-                                                            >
-                                                              <X className="h-4 w-4" />
-                                                            </Button>
-                                                          </div>
-                                                        </div>
-                                                        <div className="space-y-2 pt-2 border-t border-gray-200 dark:border-gray-700">
-                                                          {member.mobileNo && (
-                                                            <div className="flex items-center gap-2">
-                                                              <p
-                                                                className={`text-xs font-medium ${colors.textColorMuted} w-20`}
-                                                              >
-                                                                Mobile:
-                                                              </p>
-                                                              <p
-                                                                className={`text-sm ${colors.textColor}`}
-                                                              >
-                                                                {
-                                                                  member.mobileNo
-                                                                }
-                                                              </p>
-                                                            </div>
-                                                          )}
-                                                          {member.emailAddress && (
-                                                            <div className="flex items-center gap-2">
-                                                              <p
-                                                                className={`text-xs font-medium ${colors.textColorMuted} w-20`}
-                                                              >
-                                                                Email:
-                                                              </p>
-                                                              <p
-                                                                className={`text-sm ${colors.textColor}`}
-                                                              >
-                                                                {
-                                                                  member.emailAddress
-                                                                }
-                                                              </p>
-                                                            </div>
-                                                          )}
-                                                          {member.dateOfBirth && (
-                                                            <div className="flex items-center gap-2">
-                                                              <p
-                                                                className={`text-xs font-medium ${colors.textColorMuted} w-20`}
-                                                              >
-                                                                DOB:
-                                                              </p>
-                                                              <p
-                                                                className={`text-sm ${colors.textColor}`}
-                                                              >
-                                                                {new Date(
-                                                                  member.dateOfBirth
-                                                                ).toLocaleDateString()}
-                                                              </p>
-                                                            </div>
-                                                          )}
-                                                        </div>
-                                                      </div>
-                                                    )}
-                                                  </CardContent>
-                                                </Card>
-                                              )
+                                              </Button>
                                             )}
                                           </div>
-                                        )}
 
-                                        {familyMembers.length === 0 &&
-                                          !isAddingFamilyMember && (
+                                          {/* Inline Add Form */}
+                                          {isAddingFamilyMember && (
                                             <Card
-                                              className={`border-${colors.borderColor} ${colors.cardBg} border-dashed`}
+                                              className={`border-${colors.borderColor} ${colors.cardBg} border-2 border-blue-500`}
                                             >
-                                              <CardContent className="p-6 text-center">
-                                                <Users className="h-8 w-8 mx-auto mb-2 text-gray-400" />
-                                                <p
-                                                  className={`text-sm ${colors.textColorMuted} mb-4`}
+                                              <CardContent className="p-6">
+                                                <h4
+                                                  className={`font-semibold mb-4 ${colors.textColor}`}
                                                 >
-                                                  No family members or next of
-                                                  kin added yet
-                                                </p>
+                                                  Add Next of Kin
+                                                </h4>
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                  <div className="space-y-2">
+                                                    <Label
+                                                      className={
+                                                        colors.textColor
+                                                      }
+                                                    >
+                                                      First Name{" "}
+                                                      <span className="text-red-500">
+                                                        *
+                                                      </span>
+                                                    </Label>
+                                                    <Input
+                                                      value={
+                                                        editingFamilyMember.firstname ||
+                                                        ""
+                                                      }
+                                                      onChange={(e) =>
+                                                        setEditingFamilyMember({
+                                                          ...editingFamilyMember,
+                                                          firstname:
+                                                            e.target.value,
+                                                        })
+                                                      }
+                                                      placeholder="First name"
+                                                      className={colors.inputBg}
+                                                    />
+                                                  </div>
+                                                  <div className="space-y-2">
+                                                    <Label
+                                                      className={
+                                                        colors.textColor
+                                                      }
+                                                    >
+                                                      Middle Name
+                                                    </Label>
+                                                    <Input
+                                                      value={
+                                                        editingFamilyMember.middlename ||
+                                                        ""
+                                                      }
+                                                      onChange={(e) =>
+                                                        setEditingFamilyMember({
+                                                          ...editingFamilyMember,
+                                                          middlename:
+                                                            e.target.value,
+                                                        })
+                                                      }
+                                                      placeholder="Middle name"
+                                                      className={colors.inputBg}
+                                                    />
+                                                  </div>
+                                                  <div className="space-y-2">
+                                                    <Label
+                                                      className={
+                                                        colors.textColor
+                                                      }
+                                                    >
+                                                      Last Name{" "}
+                                                      <span className="text-red-500">
+                                                        *
+                                                      </span>
+                                                    </Label>
+                                                    <Input
+                                                      value={
+                                                        editingFamilyMember.lastname ||
+                                                        ""
+                                                      }
+                                                      onChange={(e) =>
+                                                        setEditingFamilyMember({
+                                                          ...editingFamilyMember,
+                                                          lastname:
+                                                            e.target.value,
+                                                        })
+                                                      }
+                                                      placeholder="Last name"
+                                                      className={colors.inputBg}
+                                                    />
+                                                  </div>
+                                                  <div className="space-y-2">
+                                                    <Label
+                                                      className={
+                                                        colors.textColor
+                                                      }
+                                                    >
+                                                      Relationship{" "}
+                                                      <span className="text-red-500">
+                                                        *
+                                                      </span>
+                                                    </Label>
+                                                    <SearchableSelect
+                                                      options={
+                                                        relationshipOptions
+                                                      }
+                                                      value={
+                                                        editingFamilyMember.relationship ||
+                                                        ""
+                                                      }
+                                                      onValueChange={(value) =>
+                                                        setEditingFamilyMember({
+                                                          ...editingFamilyMember,
+                                                          relationship: value,
+                                                        })
+                                                      }
+                                                      placeholder="Select relationship"
+                                                      className={`border-${colors.borderColor} ${colors.inputBg}`}
+                                                      onAddNew={() =>
+                                                        setShowAddRelationshipDialog(
+                                                          true
+                                                        )
+                                                      }
+                                                      addNewLabel="Add new relationship"
+                                                    />
+                                                  </div>
+                                                  <div className="space-y-2">
+                                                    <Label
+                                                      className={
+                                                        colors.textColor
+                                                      }
+                                                    >
+                                                      Mobile Number
+                                                    </Label>
+                                                    <Input
+                                                      value={
+                                                        editingFamilyMember.mobileNo ||
+                                                        ""
+                                                      }
+                                                      onChange={(e) =>
+                                                        setEditingFamilyMember({
+                                                          ...editingFamilyMember,
+                                                          mobileNo:
+                                                            e.target.value,
+                                                        })
+                                                      }
+                                                      placeholder="Mobile number"
+                                                      className={colors.inputBg}
+                                                    />
+                                                  </div>
+                                                  <div className="space-y-2">
+                                                    <Label
+                                                      className={
+                                                        colors.textColor
+                                                      }
+                                                    >
+                                                      Email Address
+                                                    </Label>
+                                                    <Input
+                                                      type="email"
+                                                      value={
+                                                        editingFamilyMember.emailAddress ||
+                                                        ""
+                                                      }
+                                                      onChange={(e) =>
+                                                        setEditingFamilyMember({
+                                                          ...editingFamilyMember,
+                                                          emailAddress:
+                                                            e.target.value,
+                                                        })
+                                                      }
+                                                      placeholder="Email address"
+                                                      className={colors.inputBg}
+                                                    />
+                                                  </div>
+                                                  <div className="space-y-2">
+                                                    <Label
+                                                      className={
+                                                        colors.textColor
+                                                      }
+                                                    >
+                                                      Date of Birth
+                                                    </Label>
+                                                    <Input
+                                                      type="date"
+                                                      value={
+                                                        editingFamilyMember.dateOfBirth
+                                                          ? new Date(
+                                                              editingFamilyMember.dateOfBirth
+                                                            )
+                                                              .toISOString()
+                                                              .split("T")[0]
+                                                          : ""
+                                                      }
+                                                      onChange={(e) =>
+                                                        setEditingFamilyMember({
+                                                          ...editingFamilyMember,
+                                                          dateOfBirth: e.target
+                                                            .value
+                                                            ? new Date(
+                                                                e.target.value
+                                                              )
+                                                            : undefined,
+                                                        })
+                                                      }
+                                                      className={colors.inputBg}
+                                                    />
+                                                  </div>
+                                                  <div className="space-y-2 flex items-center">
+                                                    <Checkbox
+                                                      id="isDependent"
+                                                      checked={
+                                                        editingFamilyMember.isDependent ||
+                                                        false
+                                                      }
+                                                      onCheckedChange={(
+                                                        checked
+                                                      ) =>
+                                                        setEditingFamilyMember({
+                                                          ...editingFamilyMember,
+                                                          isDependent: checked,
+                                                        })
+                                                      }
+                                                    />
+                                                    <Label
+                                                      htmlFor="isDependent"
+                                                      className={`ml-2 ${colors.textColor}`}
+                                                    >
+                                                      Is Dependent
+                                                    </Label>
+                                                  </div>
+                                                </div>
+                                                <div className="flex gap-2 justify-end mt-4">
+                                                  <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    size="sm"
+                                                    onClick={() => {
+                                                      setIsAddingFamilyMember(
+                                                        false
+                                                      );
+                                                      setEditingFamilyMember(
+                                                        {}
+                                                      );
+                                                    }}
+                                                  >
+                                                    Cancel
+                                                  </Button>
+                                                  <Button
+                                                    type="button"
+                                                    size="sm"
+                                                    onClick={async () => {
+                                                      if (
+                                                        !editingFamilyMember.firstname ||
+                                                        !editingFamilyMember.lastname ||
+                                                        !editingFamilyMember.relationship
+                                                      ) {
+                                                        error({
+                                                          title:
+                                                            "Validation Error",
+                                                          description:
+                                                            "Please fill in all required fields",
+                                                        });
+                                                        return;
+                                                      }
+                                                      await handleAddFamilyMember(
+                                                        editingFamilyMember as FamilyMemberValues
+                                                      );
+                                                      setIsAddingFamilyMember(
+                                                        false
+                                                      );
+                                                      setEditingFamilyMember(
+                                                        {}
+                                                      );
+                                                    }}
+                                                    className="bg-blue-500 hover:bg-blue-600"
+                                                  >
+                                                    Save
+                                                  </Button>
+                                                </div>
                                               </CardContent>
                                             </Card>
                                           )}
-                                      </div>
-                                    </CardContent>
-                                  </Card>
+
+                                          {/* Existing Family Members */}
+                                          {familyMembers.length > 0 && (
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                              {familyMembers.map(
+                                                (
+                                                  member: any,
+                                                  index: number
+                                                ) => (
+                                                  <Card
+                                                    key={member.id || index}
+                                                    className={`border-${colors.borderColor} ${colors.cardBg} shadow-sm hover:shadow-md transition-shadow`}
+                                                  >
+                                                    <CardContent className="p-5">
+                                                      {editingFamilyMemberIndex ===
+                                                      index ? (
+                                                        // Edit Mode
+                                                        <div className="space-y-4">
+                                                          <h4
+                                                            className={`font-semibold mb-4 ${colors.textColor}`}
+                                                          >
+                                                            Edit Next of Kin
+                                                          </h4>
+                                                          <div className="grid grid-cols-1 gap-3">
+                                                            <div className="space-y-2">
+                                                              <Label
+                                                                className={
+                                                                  colors.textColor
+                                                                }
+                                                              >
+                                                                First Name{" "}
+                                                                <span className="text-red-500">
+                                                                  *
+                                                                </span>
+                                                              </Label>
+                                                              <Input
+                                                                value={
+                                                                  editingFamilyMember.firstname ||
+                                                                  ""
+                                                                }
+                                                                onChange={(e) =>
+                                                                  setEditingFamilyMember(
+                                                                    {
+                                                                      ...editingFamilyMember,
+                                                                      firstname:
+                                                                        e.target
+                                                                          .value,
+                                                                    }
+                                                                  )
+                                                                }
+                                                                className={
+                                                                  colors.inputBg
+                                                                }
+                                                              />
+                                                            </div>
+                                                            <div className="space-y-2">
+                                                              <Label
+                                                                className={
+                                                                  colors.textColor
+                                                                }
+                                                              >
+                                                                Middle Name
+                                                              </Label>
+                                                              <Input
+                                                                value={
+                                                                  editingFamilyMember.middlename ||
+                                                                  ""
+                                                                }
+                                                                onChange={(e) =>
+                                                                  setEditingFamilyMember(
+                                                                    {
+                                                                      ...editingFamilyMember,
+                                                                      middlename:
+                                                                        e.target
+                                                                          .value,
+                                                                    }
+                                                                  )
+                                                                }
+                                                                className={
+                                                                  colors.inputBg
+                                                                }
+                                                              />
+                                                            </div>
+                                                            <div className="space-y-2">
+                                                              <Label
+                                                                className={
+                                                                  colors.textColor
+                                                                }
+                                                              >
+                                                                Last Name{" "}
+                                                                <span className="text-red-500">
+                                                                  *
+                                                                </span>
+                                                              </Label>
+                                                              <Input
+                                                                value={
+                                                                  editingFamilyMember.lastname ||
+                                                                  ""
+                                                                }
+                                                                onChange={(e) =>
+                                                                  setEditingFamilyMember(
+                                                                    {
+                                                                      ...editingFamilyMember,
+                                                                      lastname:
+                                                                        e.target
+                                                                          .value,
+                                                                    }
+                                                                  )
+                                                                }
+                                                                className={
+                                                                  colors.inputBg
+                                                                }
+                                                              />
+                                                            </div>
+                                                            <div className="space-y-2">
+                                                              <Label
+                                                                className={
+                                                                  colors.textColor
+                                                                }
+                                                              >
+                                                                Relationship{" "}
+                                                                <span className="text-red-500">
+                                                                  *
+                                                                </span>
+                                                              </Label>
+                                                              <SearchableSelect
+                                                                options={
+                                                                  relationshipOptions
+                                                                }
+                                                                value={
+                                                                  editingFamilyMember.relationship ||
+                                                                  ""
+                                                                }
+                                                                onValueChange={(
+                                                                  value
+                                                                ) =>
+                                                                  setEditingFamilyMember(
+                                                                    {
+                                                                      ...editingFamilyMember,
+                                                                      relationship:
+                                                                        value,
+                                                                    }
+                                                                  )
+                                                                }
+                                                                placeholder="Select relationship"
+                                                                className={`border-${colors.borderColor} ${colors.inputBg}`}
+                                                                onAddNew={() =>
+                                                                  setShowAddRelationshipDialog(
+                                                                    true
+                                                                  )
+                                                                }
+                                                                addNewLabel="Add new relationship"
+                                                              />
+                                                            </div>
+                                                            <div className="space-y-2">
+                                                              <Label
+                                                                className={
+                                                                  colors.textColor
+                                                                }
+                                                              >
+                                                                Mobile Number
+                                                              </Label>
+                                                              <Input
+                                                                value={
+                                                                  editingFamilyMember.mobileNo ||
+                                                                  ""
+                                                                }
+                                                                onChange={(e) =>
+                                                                  setEditingFamilyMember(
+                                                                    {
+                                                                      ...editingFamilyMember,
+                                                                      mobileNo:
+                                                                        e.target
+                                                                          .value,
+                                                                    }
+                                                                  )
+                                                                }
+                                                                className={
+                                                                  colors.inputBg
+                                                                }
+                                                              />
+                                                            </div>
+                                                            <div className="space-y-2">
+                                                              <Label
+                                                                className={
+                                                                  colors.textColor
+                                                                }
+                                                              >
+                                                                Email Address
+                                                              </Label>
+                                                              <Input
+                                                                type="email"
+                                                                value={
+                                                                  editingFamilyMember.emailAddress ||
+                                                                  ""
+                                                                }
+                                                                onChange={(e) =>
+                                                                  setEditingFamilyMember(
+                                                                    {
+                                                                      ...editingFamilyMember,
+                                                                      emailAddress:
+                                                                        e.target
+                                                                          .value,
+                                                                    }
+                                                                  )
+                                                                }
+                                                                className={
+                                                                  colors.inputBg
+                                                                }
+                                                              />
+                                                            </div>
+                                                            <div className="space-y-2">
+                                                              <Label
+                                                                className={
+                                                                  colors.textColor
+                                                                }
+                                                              >
+                                                                Date of Birth
+                                                              </Label>
+                                                              <Input
+                                                                type="date"
+                                                                value={
+                                                                  editingFamilyMember.dateOfBirth
+                                                                    ? new Date(
+                                                                        editingFamilyMember.dateOfBirth
+                                                                      )
+                                                                        .toISOString()
+                                                                        .split(
+                                                                          "T"
+                                                                        )[0]
+                                                                    : ""
+                                                                }
+                                                                onChange={(e) =>
+                                                                  setEditingFamilyMember(
+                                                                    {
+                                                                      ...editingFamilyMember,
+                                                                      dateOfBirth:
+                                                                        e.target
+                                                                          .value
+                                                                          ? new Date(
+                                                                              e.target.value
+                                                                            )
+                                                                          : undefined,
+                                                                    }
+                                                                  )
+                                                                }
+                                                                className={
+                                                                  colors.inputBg
+                                                                }
+                                                              />
+                                                            </div>
+                                                            <div className="flex items-center space-x-2">
+                                                              <Checkbox
+                                                                id={`isDependent-${index}`}
+                                                                checked={
+                                                                  editingFamilyMember.isDependent ||
+                                                                  false
+                                                                }
+                                                                onCheckedChange={(
+                                                                  checked
+                                                                ) =>
+                                                                  setEditingFamilyMember(
+                                                                    {
+                                                                      ...editingFamilyMember,
+                                                                      isDependent:
+                                                                        checked,
+                                                                    }
+                                                                  )
+                                                                }
+                                                              />
+                                                              <Label
+                                                                htmlFor={`isDependent-${index}`}
+                                                                className={
+                                                                  colors.textColor
+                                                                }
+                                                              >
+                                                                Is Dependent
+                                                              </Label>
+                                                            </div>
+                                                          </div>
+                                                          <div className="flex gap-2 justify-end mt-4">
+                                                            <Button
+                                                              type="button"
+                                                              variant="outline"
+                                                              size="sm"
+                                                              onClick={() => {
+                                                                setEditingFamilyMemberIndex(
+                                                                  null
+                                                                );
+                                                                setEditingFamilyMember(
+                                                                  {}
+                                                                );
+                                                              }}
+                                                            >
+                                                              Cancel
+                                                            </Button>
+                                                            <Button
+                                                              type="button"
+                                                              size="sm"
+                                                              onClick={async () => {
+                                                                if (
+                                                                  !editingFamilyMember.firstname ||
+                                                                  !editingFamilyMember.lastname ||
+                                                                  !editingFamilyMember.relationship
+                                                                ) {
+                                                                  error({
+                                                                    title:
+                                                                      "Validation Error",
+                                                                    description:
+                                                                      "Please fill in all required fields",
+                                                                  });
+                                                                  return;
+                                                                }
+                                                                // Update existing member
+                                                                await handleAddFamilyMember(
+                                                                  editingFamilyMember as FamilyMemberValues
+                                                                );
+                                                                setEditingFamilyMemberIndex(
+                                                                  null
+                                                                );
+                                                                setEditingFamilyMember(
+                                                                  {}
+                                                                );
+                                                              }}
+                                                              className="bg-blue-500 hover:bg-blue-600"
+                                                            >
+                                                              Save
+                                                            </Button>
+                                                          </div>
+                                                        </div>
+                                                      ) : (
+                                                        // View Mode
+                                                        <div className="space-y-3">
+                                                          <div className="flex items-start justify-between">
+                                                            <div className="flex-1">
+                                                              <h4
+                                                                className={`font-semibold text-base ${colors.textColor} mb-1`}
+                                                              >
+                                                                {
+                                                                  member.firstname
+                                                                }{" "}
+                                                                {member.middlename ||
+                                                                  ""}{" "}
+                                                                {
+                                                                  member.lastname
+                                                                }
+                                                              </h4>
+                                                              {member.relationship && (
+                                                                <Badge
+                                                                  variant="outline"
+                                                                  className="mt-1"
+                                                                >
+                                                                  {
+                                                                    member.relationship
+                                                                  }
+                                                                </Badge>
+                                                              )}
+                                                            </div>
+                                                            <div className="flex gap-2">
+                                                              {member.isDependent && (
+                                                                <Badge className="bg-blue-500">
+                                                                  Dependent
+                                                                </Badge>
+                                                              )}
+                                                              <Button
+                                                                type="button"
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                onClick={() => {
+                                                                  setEditingFamilyMemberIndex(
+                                                                    index
+                                                                  );
+                                                                  setEditingFamilyMember(
+                                                                    {
+                                                                      ...member,
+                                                                      dateOfBirth:
+                                                                        member.dateOfBirth
+                                                                          ? new Date(
+                                                                              member.dateOfBirth
+                                                                            )
+                                                                          : undefined,
+                                                                    }
+                                                                  );
+                                                                }}
+                                                              >
+                                                                <Edit2 className="h-4 w-4" />
+                                                              </Button>
+                                                              <Button
+                                                                type="button"
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                onClick={() =>
+                                                                  handleRemoveFamilyMember(
+                                                                    member.id
+                                                                  )
+                                                                }
+                                                                className="text-red-500 hover:text-red-700"
+                                                              >
+                                                                <X className="h-4 w-4" />
+                                                              </Button>
+                                                            </div>
+                                                          </div>
+                                                          <div className="space-y-2 pt-2 border-t border-gray-200 dark:border-gray-700">
+                                                            {member.mobileNo && (
+                                                              <div className="flex items-center gap-2">
+                                                                <p
+                                                                  className={`text-xs font-medium ${colors.textColorMuted} w-20`}
+                                                                >
+                                                                  Mobile:
+                                                                </p>
+                                                                <p
+                                                                  className={`text-sm ${colors.textColor}`}
+                                                                >
+                                                                  {
+                                                                    member.mobileNo
+                                                                  }
+                                                                </p>
+                                                              </div>
+                                                            )}
+                                                            {member.emailAddress && (
+                                                              <div className="flex items-center gap-2">
+                                                                <p
+                                                                  className={`text-xs font-medium ${colors.textColorMuted} w-20`}
+                                                                >
+                                                                  Email:
+                                                                </p>
+                                                                <p
+                                                                  className={`text-sm ${colors.textColor}`}
+                                                                >
+                                                                  {
+                                                                    member.emailAddress
+                                                                  }
+                                                                </p>
+                                                              </div>
+                                                            )}
+                                                            {member.dateOfBirth && (
+                                                              <div className="flex items-center gap-2">
+                                                                <p
+                                                                  className={`text-xs font-medium ${colors.textColorMuted} w-20`}
+                                                                >
+                                                                  DOB:
+                                                                </p>
+                                                                <p
+                                                                  className={`text-sm ${colors.textColor}`}
+                                                                >
+                                                                  {new Date(
+                                                                    member.dateOfBirth
+                                                                  ).toLocaleDateString()}
+                                                                </p>
+                                                              </div>
+                                                            )}
+                                                          </div>
+                                                        </div>
+                                                      )}
+                                                    </CardContent>
+                                                  </Card>
+                                                )
+                                              )}
+                                            </div>
+                                          )}
+
+                                          {familyMembers.length === 0 &&
+                                            !isAddingFamilyMember && (
+                                              <Card
+                                                className={`border-${colors.borderColor} ${colors.cardBg} border-dashed`}
+                                              >
+                                                <CardContent className="p-6 text-center">
+                                                  <Users className="h-8 w-8 mx-auto mb-2 text-gray-400" />
+                                                  <p
+                                                    className={`text-sm ${colors.textColorMuted} mb-4`}
+                                                  >
+                                                    No family members or next of
+                                                    kin added yet
+                                                  </p>
+                                                </CardContent>
+                                              </Card>
+                                            )}
+                                        </div>
+                                      </CardContent>
+                                    </Card>
+                                  )}
                                 </>
                               )}
                             </CardContent>

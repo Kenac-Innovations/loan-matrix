@@ -550,9 +550,10 @@ export function DynamicDatatableContent({
         header.columnDisplayType === "INTEGER";
 
       // Convert columnValues to SearchableSelect options
+      // Prefer 'name' over 'value' as 'value' often contains code prefix like "cd_employment_type Employment Type"
       const codeValueOptions = header.columnValues.map((option: any) => ({
         value: option.id.toString(),
-        label: option.value || option.name || option.id.toString(),
+        label: option.name || option.value || option.id.toString(),
       }));
 
       return (
@@ -913,14 +914,14 @@ export function DynamicDatatableContent({
         setRowData(data.data || []);
 
         // Find the newly created code value and select it
+        // Check 'name' first as 'value' often contains code prefix
         const updatedHeader = data.columnHeaders?.find(
           (h: any) => h.columnName === currentCodeColumn.columnName
         );
         if (updatedHeader?.columnValues) {
           const newValue = updatedHeader.columnValues.find(
             (opt: any) =>
-              opt.name?.toLowerCase() === newCodeValueName.toLowerCase() ||
-              opt.value?.toLowerCase() === newCodeValueName.toLowerCase()
+              opt.name?.toLowerCase() === newCodeValueName.toLowerCase()
           );
           if (newValue) {
             const isIntegerType =
@@ -1134,6 +1135,7 @@ export function DynamicDatatableContent({
                   }
 
                   // For CODELOOKUP fields, try to find the matching value from columnValues
+                  // Prefer 'name' over 'value' as 'value' often contains code prefix like "cd_employment_type Employment Type"
                   let displayValue = cell;
                   if (
                     header?.columnDisplayType === "CODELOOKUP" &&
@@ -1146,7 +1148,7 @@ export function DynamicDatatableContent({
                     );
                     if (matchingOption) {
                       displayValue =
-                        matchingOption.value || matchingOption.name || cell;
+                        matchingOption.name || matchingOption.value || cell;
                     }
                   }
 
