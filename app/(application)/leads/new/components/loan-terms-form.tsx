@@ -1158,7 +1158,11 @@ export function LoanTermsForm({
                 control={form.control}
                 name="termFrequency"
                 render={({ field }) => (
-                  <Select onValueChange={field.onChange} value={field.value}>
+                  <Select
+                    onValueChange={field.onChange}
+                    value={field.value}
+                    disabled
+                  >
                     <SelectTrigger className="h-10 w-full">
                       <SelectValue placeholder="Select frequency" />
                     </SelectTrigger>
@@ -1202,6 +1206,7 @@ export function LoanTermsForm({
                 id="numberOfRepayments"
                 type="number"
                 className="h-10"
+                disabled
                 {...form.register("numberOfRepayments", {
                   valueAsNumber: true,
                 })}
@@ -1225,6 +1230,7 @@ export function LoanTermsForm({
                     <PopoverTrigger asChild>
                       <Button
                         variant="outline"
+                        disabled
                         className={cn(
                           "h-10 w-full justify-start text-left font-normal",
                           !field.value && "text-muted-foreground"
@@ -1265,6 +1271,7 @@ export function LoanTermsForm({
                     <PopoverTrigger asChild>
                       <Button
                         variant="outline"
+                        disabled
                         className={cn(
                           "h-10 w-full justify-start text-left font-normal",
                           !field.value && "text-muted-foreground"
@@ -1307,6 +1314,7 @@ export function LoanTermsForm({
                 id="repaymentEvery"
                 type="number"
                 className="h-10"
+                disabled
                 {...form.register("repaymentEvery", { valueAsNumber: true })}
               />
               {form.formState.errors.repaymentEvery && (
@@ -1327,7 +1335,11 @@ export function LoanTermsForm({
                 control={form.control}
                 name="repaymentFrequency"
                 render={({ field }) => (
-                  <Select onValueChange={field.onChange} value={field.value}>
+                  <Select
+                    onValueChange={field.onChange}
+                    value={field.value}
+                    disabled
+                  >
                     <SelectTrigger className="h-10 w-full">
                       <SelectValue placeholder="Select frequency" />
                     </SelectTrigger>
@@ -1364,7 +1376,11 @@ export function LoanTermsForm({
                 control={form.control}
                 name="repaymentFrequencyNthDay"
                 render={({ field }) => (
-                  <Select onValueChange={field.onChange} value={field.value}>
+                  <Select
+                    onValueChange={field.onChange}
+                    value={field.value}
+                    disabled
+                  >
                     <SelectTrigger className="h-10 w-full">
                       <SelectValue placeholder="Select On" />
                     </SelectTrigger>
@@ -1396,7 +1412,11 @@ export function LoanTermsForm({
                 control={form.control}
                 name="repaymentFrequencyDayOfWeek"
                 render={({ field }) => (
-                  <Select onValueChange={field.onChange} value={field.value}>
+                  <Select
+                    onValueChange={field.onChange}
+                    value={field.value}
+                    disabled
+                  >
                     <SelectTrigger className="h-10 w-full">
                       <SelectValue placeholder="Select Day" />
                     </SelectTrigger>
@@ -1469,6 +1489,7 @@ export function LoanTermsForm({
                 type="number"
                 step="0.01"
                 className="h-10"
+                disabled
                 {...form.register("nominalInterestRate", {
                   valueAsNumber: true,
                 })}
@@ -1491,7 +1512,11 @@ export function LoanTermsForm({
                 control={form.control}
                 name="interestRateFrequency"
                 render={({ field }) => (
-                  <Select onValueChange={field.onChange} value={field.value}>
+                  <Select
+                    onValueChange={field.onChange}
+                    value={field.value}
+                    disabled
+                  >
                     <SelectTrigger className="h-10 w-full">
                       <SelectValue placeholder="Select frequency" />
                     </SelectTrigger>
@@ -1525,7 +1550,11 @@ export function LoanTermsForm({
                 control={form.control}
                 name="interestMethod"
                 render={({ field }) => (
-                  <Select onValueChange={field.onChange} value={field.value}>
+                  <Select
+                    onValueChange={field.onChange}
+                    value={field.value}
+                    disabled
+                  >
                     <SelectTrigger className="h-10 w-full">
                       <SelectValue placeholder="Select method" />
                     </SelectTrigger>
@@ -1557,7 +1586,11 @@ export function LoanTermsForm({
                 control={form.control}
                 name="amortization"
                 render={({ field }) => (
-                  <Select onValueChange={field.onChange} value={field.value}>
+                  <Select
+                    onValueChange={field.onChange}
+                    value={field.value}
+                    disabled
+                  >
                     <SelectTrigger className="h-10 w-full">
                       <SelectValue placeholder="Select amortization" />
                     </SelectTrigger>
@@ -1586,6 +1619,7 @@ export function LoanTermsForm({
                 <Checkbox
                   id="isEqualAmortization"
                   checked={form.watch("isEqualAmortization")}
+                  disabled
                   onCheckedChange={(checked) =>
                     form.setValue("isEqualAmortization", checked as boolean)
                   }
@@ -1620,7 +1654,7 @@ export function LoanTermsForm({
                   loanTemplate.loanScheduleTypeOptions?.[0]?.value ||
                   "Cumulative"
                 }
-                readOnly
+                disabled
                 className="h-10 bg-muted"
               />
             </div>
@@ -1636,7 +1670,11 @@ export function LoanTermsForm({
                 control={form.control}
                 name="repaymentStrategy"
                 render={({ field }) => (
-                  <Select onValueChange={field.onChange} value={field.value}>
+                  <Select
+                    onValueChange={field.onChange}
+                    value={field.value}
+                    disabled
+                  >
                     <SelectTrigger className="h-10 w-full">
                       <SelectValue placeholder="Select strategy" />
                     </SelectTrigger>
@@ -1675,6 +1713,7 @@ export function LoanTermsForm({
                     type="number"
                     step="0.01"
                     className="h-10"
+                    disabled
                     value={field.value ?? 0}
                     onChange={(e) => {
                       const value = e.target.value;
@@ -1718,7 +1757,11 @@ export function LoanTermsForm({
                 control={form.control}
                 name="interestCalculationPeriod"
                 render={({ field }) => (
-                  <Select onValueChange={field.onChange} value={field.value}>
+                  <Select
+                    onValueChange={field.onChange}
+                    value={field.value}
+                    disabled
+                  >
                     <SelectTrigger className="h-10 w-full">
                       <SelectValue placeholder="Select period" />
                     </SelectTrigger>
@@ -1749,6 +1792,7 @@ export function LoanTermsForm({
                 <Checkbox
                   id="calculateInterestForExactDays"
                   checked={form.watch("calculateInterestForExactDays")}
+                  disabled
                   onCheckedChange={(checked) =>
                     form.setValue(
                       "calculateInterestForExactDays",
@@ -1778,6 +1822,7 @@ export function LoanTermsForm({
                     type="number"
                     step="0.01"
                     className="h-10"
+                    disabled
                     value={field.value ?? 0}
                     onChange={(e) => {
                       const value = e.target.value;
@@ -1813,6 +1858,7 @@ export function LoanTermsForm({
                     id="interestFreePeriod"
                     type="number"
                     className="h-10"
+                    disabled
                     value={field.value ?? 0}
                     onChange={(e) => {
                       const value = e.target.value;
@@ -1859,6 +1905,7 @@ export function LoanTermsForm({
                     id="graceOnPrincipalPayment"
                     type="number"
                     className="h-10"
+                    disabled
                     value={field.value ?? 0}
                     onChange={(e) => {
                       const value = e.target.value;
@@ -1894,6 +1941,7 @@ export function LoanTermsForm({
                     id="graceOnInterestPayment"
                     type="number"
                     className="h-10"
+                    disabled
                     value={field.value ?? 0}
                     onChange={(e) => {
                       const value = e.target.value;
@@ -1926,6 +1974,7 @@ export function LoanTermsForm({
                     id="onArrearsAgeing"
                     type="number"
                     className="h-10"
+                    disabled
                     value={field.value ?? 0}
                     onChange={(e) => {
                       const value = e.target.value;
@@ -1965,7 +2014,7 @@ export function LoanTermsForm({
               <Input
                 id="recalculateInterest"
                 value="No"
-                readOnly
+                disabled
                 className="h-10 bg-muted"
               />
             </div>
@@ -2224,6 +2273,7 @@ export function LoanTermsForm({
                 type="button"
                 variant="outline"
                 size="sm"
+                disabled
                 onClick={addCollateral}
                 className="flex items-center gap-2"
               >
@@ -2257,6 +2307,7 @@ export function LoanTermsForm({
                               <Select
                                 onValueChange={field.onChange}
                                 value={field.value}
+                                disabled
                               >
                                 <SelectTrigger className="h-7 w-full">
                                   <SelectValue placeholder="Select collateral" />
@@ -2281,6 +2332,7 @@ export function LoanTermsForm({
                           <Input
                             type="number"
                             className="h-7 w-full"
+                            disabled
                             {...form.register(`collaterals.${index}.quantity`, {
                               valueAsNumber: true,
                             })}
@@ -2291,6 +2343,7 @@ export function LoanTermsForm({
                             type="number"
                             step="0.01"
                             className="h-7 w-full"
+                            disabled
                             {...form.register(
                               `collaterals.${index}.totalValue`,
                               {
@@ -2309,6 +2362,7 @@ export function LoanTermsForm({
                             type="button"
                             variant="outline"
                             size="sm"
+                            disabled
                             onClick={() => removeCollateral(index)}
                             className="h-7 px-2 text-red-600 hover:text-red-700 w-full sm:w-auto text-xs"
                           >
