@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { extractTenantSlug } from "@/lib/tenant-service";
+import { getSession } from "@/lib/auth";
+import { getFineractService } from "@/lib/fineract-api";
+
+const FINERACT_BASE_URL = process.env.FINERACT_BASE_URL || "http://10.10.0.143";
 
 /**
  * GET /api/leads/[id]/complete-details
@@ -50,16 +54,6 @@ export async function GET(
       id: lead.id,
       name: `${lead.firstname} ${lead.lastname}`,
       fineractClientId: lead.fineractClientId,
-      fineractLoanId: lead.fineractLoanId,
-    });
-
-    // Log the fineractLoanId value and type
-    console.log("Fineract Loan ID details:", {
-      value: lead.fineractLoanId,
-      type: typeof lead.fineractLoanId,
-      isNull: lead.fineractLoanId === null,
-      isUndefined: lead.fineractLoanId === undefined,
-      truthy: !!lead.fineractLoanId,
     });
 
     // Parse state metadata to get loan details
@@ -129,7 +123,6 @@ export async function GET(
         familyMembers: lead.familyMembers,
         stateTransitions: lead.stateTransitions,
         fineractClientId: lead.fineractClientId,
-        fineractLoanId: lead.fineractLoanId,
       },
       loanInfo: {
         loanDetails,
@@ -142,133 +135,93 @@ export async function GET(
       fineractLoan: null,
     };
 
+    // Get session for Fineract API calls
+    const session = await getSession();
+    const accessToken =
+      session?.base64EncodedAuthenticationKey || session?.accessToken;
+
     // Fetch Fineract client data if available
-    if (lead.fineractClientId) {
+    if (lead.fineractClientId && accessToken) {
       try {
         console.log(
           "Fetching Fineract client data for ID:",
           lead.fineractClientId
         );
-        const clientResponse = await fetch(
-          `${request.nextUrl.origin}/api/fineract/clients/${lead.fineractClientId}/details`,
-          {
-            headers: {
-              Cookie: request.headers.get("cookie") || "",
-              "x-tenant-slug": tenantSlug,
-            },
-          }
+
+        const fineractService = getFineractService(accessToken, tenantSlug);
+        const clientData = await fineractService.getClient(
+          lead.fineractClientId
         );
-
-        console.log("Fineract client response status:", clientResponse.status);
-
-        if (clientResponse.ok) {
-          response.fineractClient = await clientResponse.json();
-          console.log("Fineract client data fetched successfully");
-        } else {
-          const errorData = await clientResponse.json().catch(() => ({}));
-          console.warn(
-            `Failed to fetch Fineract client ${lead.fineractClientId}:`,
-            clientResponse.status,
-            errorData
-          );
-        }
+        response.fineractClient = clientData;
+        console.log("Fineract client data fetched successfully");
       } catch (err) {
         console.error("Error fetching Fineract client:", err);
       }
     } else {
-      console.log("No Fineract client ID available");
+      console.log(
+        "No Fineract client ID available or no access token:",
+        !lead.fineractClientId ? "missing client ID" : "missing access token"
+      );
     }
 
-    // Fetch Fineract loan data - try by ID first, then by external ID (lead ID)
+    // Fetch Fineract loan data by external ID (lead ID)
     let loanFetched = false;
 
-    // Try fetching by fineractLoanId if available
-    if (lead.fineractLoanId) {
+    if (accessToken) {
+      const fineractService = getFineractService(accessToken, tenantSlug);
+
       try {
-        const loanId = lead.fineractLoanId.toString();
-        console.log("Fetching Fineract loan data for ID:", loanId);
+        console.log("Fetching loan by external ID (lead ID):", leadId);
 
-        const loanResponse = await fetch(
-          `${request.nextUrl.origin}/api/fineract/loans/${loanId}/details`,
-          {
-            headers: {
-              Cookie: request.headers.get("cookie") || "",
-              "x-tenant-slug": tenantSlug,
-            },
-          }
-        );
-
-        console.log("Fineract loan response status:", loanResponse.status);
-
-        if (loanResponse.ok) {
-          const loanData = await loanResponse.json();
-          console.log("Fineract loan data fetched successfully by ID");
-          console.log("Loan ID in response:", loanData?.id);
-          console.log("Loan account number:", loanData?.accountNo);
-          response.fineractLoan = loanData;
-          loanFetched = true;
-        } else {
-          console.warn(
-            `Failed to fetch Fineract loan by ID ${loanId}:`,
-            loanResponse.status
-          );
-        }
-      } catch (err) {
-        console.error("Error fetching Fineract loan by ID:", err);
-      }
-    }
-
-    // If not fetched by ID, try fetching by external ID (lead ID)
-    if (!loanFetched) {
-      try {
-        console.log(
-          "Attempting to fetch loan by external ID (lead ID):",
+        // Search for loan by external ID
+        const searchUrl = `${FINERACT_BASE_URL}/fineract-provider/api/v1/loans?externalId=${encodeURIComponent(
           leadId
-        );
-        const externalIdResponse = await fetch(
-          `${
-            request.nextUrl.origin
-          }/api/fineract/loans/by-external-id?externalId=${encodeURIComponent(
-            leadId
-          )}`,
-          {
-            headers: {
-              Cookie: request.headers.get("cookie") || "",
-              "x-tenant-slug": tenantSlug,
-            },
+        )}`;
+        const searchResponse = await fetch(searchUrl, {
+          method: "GET",
+          headers: {
+            Authorization: `Basic ${accessToken}`,
+            "Fineract-Platform-TenantId": tenantSlug,
+            Accept: "application/json",
+          },
+        });
+
+        if (searchResponse.ok) {
+          const searchData = await searchResponse.json();
+          let loans = [];
+          if (Array.isArray(searchData)) {
+            loans = searchData;
+          } else if (
+            searchData.pageItems &&
+            Array.isArray(searchData.pageItems)
+          ) {
+            loans = searchData.pageItems;
+          } else if (searchData.content && Array.isArray(searchData.content)) {
+            loans = searchData.content;
           }
-        );
 
-        console.log(
-          "External ID loan response status:",
-          externalIdResponse.status
-        );
+          const matchingLoan = loans.find(
+            (loan: any) => loan.externalId === leadId
+          );
 
-        if (externalIdResponse.ok) {
-          const loanData = await externalIdResponse.json();
-          console.log("Fineract loan data fetched successfully by external ID");
-          console.log("Loan ID in response:", loanData?.id);
-          console.log("Loan account number:", loanData?.accountNo);
-          console.log("Loan external ID:", loanData?.externalId);
-          response.fineractLoan = loanData;
-          loanFetched = true;
-
-          // Also save the loan ID to the lead for future lookups
-          if (loanData?.id && leadId) {
-            try {
-              await prisma.lead.update({
-                where: { id: leadId },
-                data: { fineractLoanId: loanData.id },
-              });
-              console.log("Saved fineractLoanId to lead:", loanData.id);
-            } catch (updateErr) {
-              console.warn("Failed to save fineractLoanId to lead:", updateErr);
-            }
+          if (matchingLoan?.id) {
+            // Fetch full loan details with associations
+            const fullLoanData = await fineractService.getLoan(matchingLoan.id);
+            console.log(
+              "Fineract loan data fetched successfully by external ID"
+            );
+            console.log("Loan ID in response:", fullLoanData?.id);
+            console.log("Loan account number:", fullLoanData?.accountNo);
+            console.log("Has summary:", !!fullLoanData?.summary);
+            response.fineractLoan = fullLoanData;
+            loanFetched = true;
+          } else {
+            console.log("No loan found with external ID:", leadId);
           }
         } else {
           console.warn(
-            `Failed to fetch Fineract loan by external ID ${leadId}:`,
-            externalIdResponse.status
+            `Failed to search Fineract loans by external ID ${leadId}:`,
+            searchResponse.status
           );
         }
       } catch (err) {
@@ -277,8 +230,7 @@ export async function GET(
     }
 
     if (!loanFetched) {
-      console.log("No Fineract loan found by ID or external ID");
-      console.log("Lead fineractLoanId value:", lead.fineractLoanId);
+      console.log("No Fineract loan found for lead:", leadId);
     }
 
     console.log("=== COMPLETE DETAILS RESPONSE READY ===");

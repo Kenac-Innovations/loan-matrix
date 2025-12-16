@@ -788,7 +788,7 @@ export function ComprehensiveLeadDetails({
                   <CardHeader>
                     <CardTitle>Loan Summary</CardTitle>
                     <CardDescription>
-                      Comprehensive financial summary from Fineract
+                      Comprehensive financial summary
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-6">

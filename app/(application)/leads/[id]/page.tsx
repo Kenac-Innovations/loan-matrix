@@ -37,77 +37,97 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { prisma } from "@/lib/prisma";
-import { headers, cookies } from "next/headers";
+import { headers } from "next/headers";
 import { extractTenantSlug } from "@/lib/tenant-service";
+import { getSession } from "@/lib/auth";
+import { getFineractService } from "@/lib/fineract-api";
+
+const FINERACT_BASE_URL = process.env.FINERACT_BASE_URL || "http://10.10.0.143";
 
 /**
- * Get Fineract loan status by calling the details endpoint
+ * Get Fineract loan status by calling Fineract API directly
  * Tries by loan ID first, then by external ID (leadId) as fallback
  */
 async function getFineractLoanStatus(
   loanId: number | string | null,
   leadId: string,
-  requestUrl: string,
-  cookieHeader: string,
   tenantSlug: string
 ): Promise<string | null> {
   try {
+    const session = await getSession();
+    const accessToken =
+      session?.base64EncodedAuthenticationKey || session?.accessToken;
+
+    if (!accessToken) {
+      console.warn("No access token available for Fineract API call");
+      return null;
+    }
+
+    const fineractService = getFineractService(accessToken, tenantSlug);
+
     // Try fetching by loan ID first if available
     if (loanId) {
       console.log("Fetching Fineract loan status by loan ID:", loanId);
-      const url = `${requestUrl}/api/fineract/loans/${loanId}/details`;
-      const response = await fetch(url, {
-        method: "GET",
-        headers: {
-          Accept: "application/json",
-          Cookie: cookieHeader,
-          "x-tenant-slug": tenantSlug,
-        },
-        cache: "no-store",
-      });
-
-      if (response.ok) {
-        const loanData = await response.json();
+      try {
+        const loanData = await fineractService.getLoan(Number(loanId));
         const status = loanData.status?.value || null;
         if (status) {
           console.log("Fineract loan status fetched by ID:", status);
           return status;
         }
-      } else {
-        console.warn(
-          `Failed to fetch Fineract loan status by ID ${loanId}:`,
-          response.status
-        );
+      } catch (error) {
+        console.warn(`Failed to fetch Fineract loan by ID ${loanId}:`, error);
       }
     }
 
-    // Fallback: Try fetching by external ID (leadId)
+    // Fallback: Try fetching by external ID (leadId) using direct Fineract API call
     console.log("Attempting to fetch loan status by external ID:", leadId);
-    const externalIdUrl = `${requestUrl}/api/fineract/loans/by-external-id?externalId=${encodeURIComponent(
-      leadId
-    )}`;
-    const externalIdResponse = await fetch(externalIdUrl, {
-      method: "GET",
-      headers: {
-        Accept: "application/json",
-        Cookie: cookieHeader,
-        "x-tenant-slug": tenantSlug,
-      },
-      cache: "no-store",
-    });
+    try {
+      const searchUrl = `${FINERACT_BASE_URL}/fineract-provider/api/v1/loans?externalId=${encodeURIComponent(
+        leadId
+      )}`;
+      const response = await fetch(searchUrl, {
+        method: "GET",
+        headers: {
+          Authorization: `Basic ${accessToken}`,
+          "Fineract-Platform-TenantId": tenantSlug,
+          Accept: "application/json",
+        },
+      });
 
-    if (externalIdResponse.ok) {
-      const loanData = await externalIdResponse.json();
-      const status = loanData.status?.value || null;
-      if (status) {
-        console.log("Fineract loan status fetched by external ID:", status);
-        return status;
+      if (response.ok) {
+        const searchData = await response.json();
+        // Handle different response formats
+        let loans = [];
+        if (Array.isArray(searchData)) {
+          loans = searchData;
+        } else if (
+          searchData.pageItems &&
+          Array.isArray(searchData.pageItems)
+        ) {
+          loans = searchData.pageItems;
+        } else if (searchData.content && Array.isArray(searchData.content)) {
+          loans = searchData.content;
+        }
+
+        const matchingLoan = loans.find(
+          (loan: any) => loan.externalId === leadId
+        );
+        if (matchingLoan) {
+          const status = matchingLoan.status?.value || null;
+          if (status) {
+            console.log("Fineract loan status fetched by external ID:", status);
+            return status;
+          }
+        }
+      } else {
+        console.warn(
+          `Failed to fetch Fineract loan by external ID ${leadId}:`,
+          response.status
+        );
       }
-    } else {
-      console.warn(
-        `Failed to fetch Fineract loan status by external ID ${leadId}:`,
-        externalIdResponse.status
-      );
+    } catch (error) {
+      console.warn(`Error fetching loan by external ID ${leadId}:`, error);
     }
 
     return null;
@@ -141,15 +161,6 @@ async function getLeadData(leadId: string) {
     // Extract tenant slug from host for Fineract API calls
     const tenantSlug = extractTenantSlug(host);
 
-    // For server-side API calls, use localhost to avoid DNS resolution issues
-    // The external domain (e.g., goodfellow-training.kenac.co.zw) may not be resolvable from the server
-    const port = process.env.PORT || "3000";
-    const requestUrl = `http://localhost:${port}`;
-
-    // Get cookies for authentication
-    const cookieStore = await cookies();
-    const cookieHeader = cookieStore.toString();
-
     // Fetch lead data
     const lead = await prisma.lead.findUnique({
       where: { id: leadId },
@@ -164,14 +175,12 @@ async function getLeadData(leadId: string) {
       orderBy: { order: "asc" },
     });
 
-    // Fetch Fineract loan status - try by loan ID first, then by external ID
-    let fineractLoanStatus: string | null = null;
-    const loanId = (lead as any)?.fineractLoanId;
-    fineractLoanStatus = await getFineractLoanStatus(
-      loanId || null,
+    // Fetch Fineract loan status directly from Fineract API
+    // No need for internal HTTP calls - we call Fineract directly from this Server Component
+    // Note: fineractLoanId doesn't exist in schema, so we always fetch by external ID (leadId)
+    const fineractLoanStatus = await getFineractLoanStatus(
+      null,
       leadId,
-      requestUrl,
-      cookieHeader,
       tenantSlug
     );
 
