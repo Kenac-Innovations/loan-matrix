@@ -38,6 +38,7 @@ import {
 } from "@/components/ui/popover";
 import { prisma } from "@/lib/prisma";
 import { headers, cookies } from "next/headers";
+import { extractTenantSlug } from "@/lib/tenant-service";
 
 /**
  * Get Fineract loan status by calling the details endpoint
@@ -47,7 +48,8 @@ async function getFineractLoanStatus(
   loanId: number | string | null,
   leadId: string,
   requestUrl: string,
-  cookieHeader: string
+  cookieHeader: string,
+  tenantSlug: string
 ): Promise<string | null> {
   try {
     // Try fetching by loan ID first if available
@@ -59,6 +61,7 @@ async function getFineractLoanStatus(
         headers: {
           Accept: "application/json",
           Cookie: cookieHeader,
+          "x-tenant-slug": tenantSlug,
         },
         cache: "no-store",
       });
@@ -88,6 +91,7 @@ async function getFineractLoanStatus(
       headers: {
         Accept: "application/json",
         Cookie: cookieHeader,
+        "x-tenant-slug": tenantSlug,
       },
       cache: "no-store",
     });
@@ -132,11 +136,15 @@ async function getLeadData(leadId: string) {
     // Get tenant from headers
     const headersList = await headers();
     const tenantId = headersList.get("x-tenant-id") || "default-tenant";
-
-    // Get the request URL from headers
     const host = headersList.get("host") || "localhost:3000";
-    const protocol = headersList.get("x-forwarded-proto") || "http";
-    const requestUrl = `${protocol}://${host}`;
+
+    // Extract tenant slug from host for Fineract API calls
+    const tenantSlug = extractTenantSlug(host);
+
+    // For server-side API calls, use localhost to avoid DNS resolution issues
+    // The external domain (e.g., goodfellow-training.kenac.co.zw) may not be resolvable from the server
+    const port = process.env.PORT || "3000";
+    const requestUrl = `http://localhost:${port}`;
 
     // Get cookies for authentication
     const cookieStore = await cookies();
@@ -163,7 +171,8 @@ async function getLeadData(leadId: string) {
       loanId || null,
       leadId,
       requestUrl,
-      cookieHeader
+      cookieHeader,
+      tenantSlug
     );
 
     // Extract CDE result from stateMetadata
