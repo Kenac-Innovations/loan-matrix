@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { extractTenantSlug } from "@/lib/tenant-service";
 
 /**
  * GET /api/leads/[id]/complete-details
@@ -13,8 +14,14 @@ export async function GET(
     const params = await context.params;
     const { id: leadId } = params;
 
+    // Extract tenant slug from request for internal API calls
+    const host = request.headers.get("host") || "localhost:3000";
+    const tenantSlug =
+      request.headers.get("x-tenant-slug") || extractTenantSlug(host);
+
     console.log("=== FETCHING COMPLETE DETAILS FOR LEAD ===");
     console.log("Lead ID:", leadId);
+    console.log("Tenant Slug:", tenantSlug);
 
     // Fetch lead from database
     const lead = await prisma.lead.findUnique({
@@ -147,6 +154,7 @@ export async function GET(
           {
             headers: {
               Cookie: request.headers.get("cookie") || "",
+              "x-tenant-slug": tenantSlug,
             },
           }
         );
@@ -185,6 +193,7 @@ export async function GET(
           {
             headers: {
               Cookie: request.headers.get("cookie") || "",
+              "x-tenant-slug": tenantSlug,
             },
           }
         );
@@ -225,6 +234,7 @@ export async function GET(
           {
             headers: {
               Cookie: request.headers.get("cookie") || "",
+              "x-tenant-slug": tenantSlug,
             },
           }
         );
