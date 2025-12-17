@@ -234,6 +234,8 @@ interface LoanTermsFormProps {
   onBack: () => void;
   onNext: () => void;
   onComplete?: () => void;
+  sharedFirstRepaymentOn?: Date;
+  onFirstRepaymentDateChange?: (date: Date) => void;
 }
 
 export function LoanTermsForm({
@@ -245,6 +247,8 @@ export function LoanTermsForm({
   onBack,
   onNext,
   onComplete,
+  sharedFirstRepaymentOn,
+  onFirstRepaymentDateChange,
 }: LoanTermsFormProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -735,19 +739,6 @@ export function LoanTermsForm({
                 loanTermsData.interestCalculationPeriod
               );
             }
-            // Use firstRepaymentOn from loan-terms, fallback to loan-details
-            if (loanTermsData.firstRepaymentOn) {
-              form.setValue(
-                "firstRepaymentOn",
-                new Date(loanTermsData.firstRepaymentOn)
-              );
-            } else if (loanDetailsData?.firstRepaymentOn) {
-              // Fallback to loan-details firstRepaymentOn if not set in terms
-              form.setValue(
-                "firstRepaymentOn",
-                new Date(loanDetailsData.firstRepaymentOn)
-              );
-            }
             if (loanTermsData.interestChargedFrom) {
               form.setValue(
                 "interestChargedFrom",
@@ -838,6 +829,17 @@ export function LoanTermsForm({
               setEditableCharges(initialCharges);
             }
           }
+        }
+
+        // Always load firstRepaymentOn from loan-details (set on Loan tab)
+        // This is done OUTSIDE the loanTermsData block so it runs even when there's no loan-terms
+        if (loanDetailsData?.firstRepaymentOn) {
+          const detailsDate = new Date(loanDetailsData.firstRepaymentOn);
+          console.log(
+            "LoanTermsForm: Loading firstRepaymentOn from loan-details:",
+            detailsDate
+          );
+          form.setValue("firstRepaymentOn", detailsDate);
         }
       } catch (error) {
         console.error("Error loading existing loan terms:", error);
@@ -1251,34 +1253,24 @@ export function LoanTermsForm({
                 control={form.control}
                 name="firstRepaymentOn"
                 render={({ field }) => (
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        disabled
-                        className={cn(
-                          "h-10 w-full justify-start text-left font-normal",
-                          !field.value && "text-muted-foreground"
-                        )}
-                      >
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {field.value
-                          ? format(field.value, "PPP")
-                          : "Pick a date"}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0">
-                      <Calendar
-                        mode="single"
-                        selected={field.value}
-                        onSelect={field.onChange}
-                        disabled={(date) => date < new Date("1900-01-01")}
-                        initialFocus
-                      />
-                    </PopoverContent>
-                  </Popover>
+                  <Button
+                    variant="outline"
+                    disabled
+                    className={cn(
+                      "h-10 w-full justify-start text-left font-normal cursor-not-allowed opacity-70",
+                      !field.value && "text-muted-foreground"
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {field.value
+                      ? format(field.value, "PPP")
+                      : "Set on Loan tab"}
+                  </Button>
                 )}
               />
+              <p className="text-xs text-muted-foreground">
+                Set on the Loan tab - syncs automatically
+              </p>
             </div>
 
             <div className="space-y-2">

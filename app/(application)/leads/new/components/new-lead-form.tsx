@@ -152,6 +152,9 @@ export function NewLeadForm() {
   const [repaymentSchedule, setRepaymentSchedule] = useState<any>(null);
   const [loanDetails, setLoanDetails] = useState<any>(null);
   const [loanTerms, setLoanTerms] = useState<any>(null);
+  const [sharedFirstRepaymentOn, setSharedFirstRepaymentOn] = useState<
+    Date | undefined
+  >(undefined);
 
   // Load leadId from URL or localStorage on mount
   useEffect(() => {
@@ -1014,6 +1017,8 @@ export function NewLeadForm() {
                         });
                         // Note: Navigation to next tab is handled by onNext callback
                       }}
+                      sharedFirstRepaymentOn={sharedFirstRepaymentOn}
+                      onFirstRepaymentDateChange={setSharedFirstRepaymentOn}
                     />
                   ) : (
                     <div className="text-center py-8">
@@ -1058,6 +1063,8 @@ export function NewLeadForm() {
                             "Loan terms saved successfully. You can proceed to the next stage.",
                         });
                       }}
+                      sharedFirstRepaymentOn={sharedFirstRepaymentOn}
+                      onFirstRepaymentDateChange={setSharedFirstRepaymentOn}
                     />
                   ) : (
                     <div className="text-center py-8">

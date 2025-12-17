@@ -214,6 +214,8 @@ interface LoanDetailsFormProps {
   onBack: () => void;
   onNext: (templateData?: LoanTemplate) => void;
   onComplete?: () => void;
+  sharedFirstRepaymentOn?: Date;
+  onFirstRepaymentDateChange?: (date: Date) => void;
 }
 
 export function LoanDetailsForm({
@@ -223,6 +225,8 @@ export function LoanDetailsForm({
   onBack,
   onNext,
   onComplete,
+  sharedFirstRepaymentOn,
+  onFirstRepaymentDateChange,
 }: LoanDetailsFormProps) {
   const [loanTemplate, setLoanTemplate] = useState<LoanTemplate | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -275,6 +279,84 @@ export function LoanDetailsForm({
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Only run once on mount
+
+  // Sync shared firstRepaymentOn from parent
+  useEffect(() => {
+    if (sharedFirstRepaymentOn) {
+      const currentDate = form.getValues("firstRepaymentOn");
+      // Only update if different to avoid loops
+      if (
+        !currentDate ||
+        currentDate.getTime() !== sharedFirstRepaymentOn.getTime()
+      ) {
+        console.log(
+          "LoanDetailsForm: Syncing from shared date:",
+          sharedFirstRepaymentOn
+        );
+        form.setValue("firstRepaymentOn", sharedFirstRepaymentOn);
+      }
+    }
+  }, [sharedFirstRepaymentOn, form]);
+
+  // Watch for changes to firstRepaymentOn and auto-save to DB
+  const watchedFirstRepaymentOn = form.watch("firstRepaymentOn");
+  const lastSavedFirstRepaymentOn = useRef<Date | null>(null);
+
+  useEffect(() => {
+    // Auto-save firstRepaymentOn when it changes
+    const autoSaveFirstRepaymentOn = async () => {
+      if (!watchedFirstRepaymentOn || !leadId) return;
+
+      // Skip if this is the same as what we last saved
+      if (
+        lastSavedFirstRepaymentOn.current &&
+        lastSavedFirstRepaymentOn.current.getTime() ===
+          watchedFirstRepaymentOn.getTime()
+      ) {
+        return;
+      }
+
+      try {
+        console.log(
+          "Auto-saving firstRepaymentOn:",
+          watchedFirstRepaymentOn.toISOString()
+        );
+
+        await fetch(`/api/leads/${leadId}/loan-details`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            firstRepaymentOn: watchedFirstRepaymentOn.toISOString(),
+          }),
+        });
+
+        lastSavedFirstRepaymentOn.current = watchedFirstRepaymentOn;
+        console.log("Auto-saved firstRepaymentOn successfully");
+      } catch (err) {
+        console.error("Failed to auto-save firstRepaymentOn:", err);
+      }
+    };
+
+    // Debounce the save to avoid too many requests
+    const timeoutId = setTimeout(autoSaveFirstRepaymentOn, 500);
+    return () => clearTimeout(timeoutId);
+  }, [watchedFirstRepaymentOn, leadId]);
+
+  // Notify parent when firstRepaymentOn changes
+  useEffect(() => {
+    if (watchedFirstRepaymentOn && onFirstRepaymentDateChange) {
+      if (
+        !sharedFirstRepaymentOn ||
+        watchedFirstRepaymentOn.getTime() !== sharedFirstRepaymentOn.getTime()
+      ) {
+        onFirstRepaymentDateChange(watchedFirstRepaymentOn);
+      }
+    }
+  }, [
+    watchedFirstRepaymentOn,
+    onFirstRepaymentDateChange,
+    sharedFirstRepaymentOn,
+  ]);
 
   // Fetch loan template data
   useEffect(() => {
@@ -506,9 +588,8 @@ export function LoanDetailsForm({
             if (result.data.fund) {
               form.setValue("fund", result.data.fund);
             }
-            if (result.data.submittedOn) {
-              form.setValue("submittedOn", new Date(result.data.submittedOn));
-            }
+            // Always use today's date for submittedOn (not saved value)
+            form.setValue("submittedOn", new Date());
             if (result.data.disbursementOn) {
               form.setValue(
                 "disbursementOn",
@@ -523,6 +604,10 @@ export function LoanDetailsForm({
                 savedDate.toISOString().split("T")[0]
               );
               form.setValue("firstRepaymentOn", savedDate);
+              // Notify parent to sync with other forms
+              if (onFirstRepaymentDateChange) {
+                onFirstRepaymentDateChange(savedDate);
+              }
             } else if (loanTermsData?.firstRepaymentOn) {
               // Fallback to loan-terms firstRepaymentOn if not set in details
               const termsDate = new Date(loanTermsData.firstRepaymentOn);
@@ -531,6 +616,10 @@ export function LoanDetailsForm({
                 termsDate.toISOString().split("T")[0]
               );
               form.setValue("firstRepaymentOn", termsDate);
+              // Notify parent to sync with other forms
+              if (onFirstRepaymentDateChange) {
+                onFirstRepaymentDateChange(termsDate);
+              }
             } else {
               // If no saved firstRepaymentOn in either, recalculate the default
               const calculatedDate = calculateFirstRepaymentDate();
@@ -539,6 +628,10 @@ export function LoanDetailsForm({
                 calculatedDate.toISOString().split("T")[0]
               );
               form.setValue("firstRepaymentOn", calculatedDate);
+              // Notify parent to sync with other forms
+              if (onFirstRepaymentDateChange) {
+                onFirstRepaymentDateChange(calculatedDate);
+              }
             }
             if (result.data.linkSavings) {
               form.setValue("linkSavings", result.data.linkSavings);

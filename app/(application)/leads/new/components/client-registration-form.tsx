@@ -1581,7 +1581,8 @@ export function ClientRegistrationForm({
       console.log("Syncing currentLeadId with leadId prop:", leadId);
       setCurrentLeadId(leadId);
     }
-  }, [leadId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leadId, currentLeadId]);
 
   // Use ref to track if we've already checked for prospect dialog (only check once)
   const hasCheckedProspectDialog = useRef(false);
@@ -2227,22 +2228,6 @@ export function ClientRegistrationForm({
   }, [currentLeadId, form, searchParams]);
 
   // Load stage history when leadId changes
-  useEffect(() => {
-    const loadStageHistory = async () => {
-      if (currentLeadId) {
-        try {
-          const history = await getLeadStageHistory(currentLeadId);
-          setStageHistory(history);
-        } catch (error) {
-          console.error("Error loading stage history:", error);
-        }
-      }
-    };
-
-    loadStageHistory();
-  }, [currentLeadId]);
-
-  // Handle prospect continuation
   useEffect(() => {
     const loadStageHistory = async () => {
       if (currentLeadId) {

@@ -24,6 +24,7 @@ import { format } from "date-fns";
 import { Upload, FileText, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import jsPDF from "jspdf";
+import { generateContractHTML } from "./contract-template";
 
 interface ContractData {
   // Client Information
@@ -265,12 +266,9 @@ export function LoanContracts({
         repaymentSchedule?.totalRepaymentExpected ||
         principal + interest + fees;
 
-      // Calculate monthly percentage rate
+      // Get interest rate from loan product template (not calculated)
       const numberOfPayments = loanTerms?.numberOfRepayments || 1;
-      const monthlyPercentageRate =
-        principal > 0
-          ? (((interest + fees) / principal) * 100) / numberOfPayments
-          : 0;
+      const monthlyPercentageRate = loanTerms?.nominalInterestRate || 0;
 
       // Format repayment schedule
       const formattedSchedule =
@@ -529,13 +527,23 @@ export function LoanContracts({
   };
 
   const handlePrint = () => {
-    window.print();
+    // Open a new window with the contract HTML template for printing
+    const contractHTML = generateContractHTML(contractData, {
+      borrower: borrowerSignature,
+      guarantor: guarantorSignature,
+      loanOfficer: loanOfficerSignature,
+    });
+    const printWindow = window.open("", "_blank");
+    if (printWindow) {
+      printWindow.document.write(contractHTML);
+      printWindow.document.close();
+      printWindow.focus();
+      printWindow.print();
+    }
   };
 
-  const generatePDFFromHTML = async (
-    element: HTMLElement,
-    filename: string
-  ): Promise<Blob> => {
+  // Generate Key Facts Statement PDF
+  const generateKeyFactsPDF = async (): Promise<Blob> => {
     const pdf = new jsPDF({
       orientation: "portrait",
       unit: "mm",
@@ -543,72 +551,235 @@ export function LoanContracts({
       compress: true,
     });
 
-    // Simple text-based approach to avoid CSS issues
-    const extractText = (el: HTMLElement, level: number = 0): string[] => {
-      const lines: string[] = [];
-      const indent = "  ".repeat(level);
-
-      el.childNodes.forEach((node) => {
-        if (node.nodeType === Node.TEXT_NODE) {
-          const text = node.textContent?.trim();
-          if (text) {
-            lines.push(indent + text);
-          }
-        } else if (node.nodeType === Node.ELEMENT_NODE) {
-          const childEl = node as HTMLElement;
-          const tagName = childEl.tagName.toLowerCase();
-
-          // Add spacing for headers
-          if (tagName.match(/^h[1-6]$/)) {
-            lines.push("");
-          }
-
-          lines.push(
-            ...extractText(
-              childEl,
-              level + (tagName === "div" || tagName === "section" ? 1 : 0)
-            )
-          );
-
-          // Add spacing after paragraphs
-          if (tagName === "p" || tagName.match(/^h[1-6]$/)) {
-            lines.push("");
-          }
-        }
-      });
-
-      return lines;
-    };
-
-    const textLines = extractText(element);
-
-    // Add title
-    pdf.setFontSize(16);
-    pdf.setFont("helvetica", "bold");
-    pdf.text(filename.replace(".pdf", "").replace(/_/g, " "), 15, 20);
-
-    // Add content
-    pdf.setFontSize(10);
-    pdf.setFont("helvetica", "normal");
-
-    let yPosition = 35;
-    const lineHeight = 7;
-    const pageHeight = 280;
     const margin = 15;
+    let yPosition = 20;
+    const lineHeight = 5;
+    const pageHeight = 280;
 
-    textLines.forEach((line) => {
-      if (yPosition > pageHeight) {
+    const addText = (
+      text: string,
+      fontSize: number = 10,
+      bold: boolean = false
+    ) => {
+      if (yPosition > pageHeight - 20) {
         pdf.addPage();
         yPosition = 20;
       }
-
-      // Split long lines
-      const splitLines = pdf.splitTextToSize(line, 180);
-      splitLines.forEach((splitLine: string) => {
-        pdf.text(splitLine, margin, yPosition);
+      pdf.setFontSize(fontSize);
+      pdf.setFont("helvetica", bold ? "bold" : "normal");
+      const splitLines = pdf.splitTextToSize(text, 180);
+      splitLines.forEach((line: string) => {
+        pdf.text(line, margin, yPosition);
         yPosition += lineHeight;
       });
+    };
+
+    const addSection = (title: string) => {
+      yPosition += 3;
+      addText(title, 11, true);
+      yPosition += 2;
+    };
+
+    // ========== KEY FACTS STATEMENT ==========
+    addText("GOODFELLOW FINANCE LIMITED (GFL)", 14, true);
+    addText("KEY FACTS STATEMENT FOR CONSUMER CREDIT", 12, true);
+    yPosition += 3;
+
+    addSection("SECTION I: KEY TERMS");
+    addText(
+      `1. Amount of Loan: ${contractData.currency} ${formatCurrency(
+        contractData.loanAmount
+      )}`
+    );
+    addText(`2. Duration of Loan Agreement: ${contractData.tenure}`);
+    addText(
+      `3. Amount Received: ${contractData.currency} ${formatCurrency(
+        contractData.disbursedAmount
+      )}`
+    );
+    addText(
+      `4. Interest: ${contractData.currency} ${formatCurrency(
+        contractData.interest
+      )}`
+    );
+    addText(
+      `5. Other Fees and Charges: ${contractData.currency} ${formatCurrency(
+        contractData.fees
+      )}`
+    );
+    addText(`6. Percentage Rate: ${contractData.monthlyPercentageRate}%`);
+    addText(`7. Date First Payment Due: ${contractData.firstPaymentDate}`);
+    addText(`8. Number of Payments: ${contractData.numberOfPayments}`);
+    addText(`9. Payment Frequency: ${contractData.paymentFrequency}`);
+    addText(
+      `10. Amount Per Payment: ${contractData.currency} ${formatCurrency(
+        contractData.paymentPerPeriod
+      )}`
+    );
+    addText(
+      `11. Total Cost of Credit: ${contractData.currency} ${formatCurrency(
+        contractData.totalCostOfCredit
+      )}`
+    );
+    addText(
+      `12. TOTAL AMOUNT YOU PAY: ${contractData.currency} ${formatCurrency(
+        contractData.totalRepayment
+      )}`
+    );
+
+    addSection("SECTION II: RISKS TO YOU");
+    addText(
+      "- Late or missing payments may be reported to a credit reference bureau"
+    );
+    addText("- Interest rates may change based on Bank of Zambia Policy Rate");
+
+    addSection("SECTION III: YOUR RIGHTS AND OBLIGATIONS");
+    addText("Contact: +260 211 238719 | info@goodfellow.co.zm");
+    addText("You may pay off your loan early without penalties");
+
+    addSection("SECTION IV: FEES AND CHARGES");
+    contractData.charges.forEach((charge) => {
+      addText(`${charge.name}: ${formatCurrency(charge.amount)}`);
     });
+    addText(
+      `Total Fees: ${contractData.currency} ${formatCurrency(
+        contractData.fees
+      )}`
+    );
+
+    addSection("SECTION VI: REPAYMENT SCHEDULE");
+    contractData.repaymentSchedule.forEach((period) => {
+      addText(
+        `#${period.paymentNumber} | ${period.dueDate} | ${formatCurrency(
+          period.paymentAmount
+        )} | Principal: ${formatCurrency(
+          period.principal
+        )} | Int/Fees: ${formatCurrency(
+          period.interestAndFees
+        )} | Bal: ${formatCurrency(period.remainingBalance)}`
+      );
+    });
+
+    addSection("BORROWER ACKNOWLEDGMENT");
+    addText(`Name: ${contractData.clientName}`);
+    addText(`NRC: ${contractData.nrc}`);
+    addText(`Date: ${format(new Date(), "dd/MM/yyyy")}`);
+    addText("Signature: [Signed electronically]");
+
+    return pdf.output("blob");
+  };
+
+  // Generate Salary Advance Contract PDF
+  const generateSalaryAdvanceContractPDF = async (): Promise<Blob> => {
+    const pdf = new jsPDF({
+      orientation: "portrait",
+      unit: "mm",
+      format: "a4",
+      compress: true,
+    });
+
+    const margin = 15;
+    let yPosition = 20;
+    const lineHeight = 5;
+    const pageHeight = 280;
+
+    const addText = (
+      text: string,
+      fontSize: number = 10,
+      bold: boolean = false
+    ) => {
+      if (yPosition > pageHeight - 20) {
+        pdf.addPage();
+        yPosition = 20;
+      }
+      pdf.setFontSize(fontSize);
+      pdf.setFont("helvetica", bold ? "bold" : "normal");
+      const splitLines = pdf.splitTextToSize(text, 180);
+      splitLines.forEach((line: string) => {
+        pdf.text(line, margin, yPosition);
+        yPosition += lineHeight;
+      });
+    };
+
+    const addSection = (title: string) => {
+      yPosition += 3;
+      addText(title, 11, true);
+      yPosition += 2;
+    };
+
+    // ========== SALARY ADVANCE CONTRACT ==========
+    addText("GOODFELLOW FINANCE LIMITED (GFL)", 14, true);
+    addText("SALARY ADVANCE CONTRACT", 12, true);
+    addText(
+      `GFL/LC/${format(new Date(), "yyyy")}/${contractData.gflNo || "N/A"}`,
+      9
+    );
+    yPosition += 3;
+
+    addSection("LOAN DETAILS");
+    addText(`GFL No.: ${contractData.gflNo || "N/A"}`);
+    addText(`NRC: ${contractData.nrc}`);
+    addText(`Loan ID: ${contractData.loanId || "N/A"}`);
+    addText(
+      `Loan Amount: ${contractData.currency} ${formatCurrency(
+        contractData.loanAmount
+      )}`
+    );
+    addText(`Tenure: ${contractData.tenure}`);
+    addText(`First Payment Due: ${contractData.firstPaymentDate}`);
+    addText(
+      `Interest: ${contractData.currency} ${formatCurrency(
+        contractData.interest
+      )}`
+    );
+    addText(
+      `Service Fee: ${contractData.currency} ${formatCurrency(
+        contractData.fees
+      )}`
+    );
+    addText(
+      `Total Cost of Borrowing: ${contractData.currency} ${formatCurrency(
+        contractData.totalCostOfCredit
+      )}`
+    );
+
+    addSection("PARTIES");
+    addText('Lender: Goodfellow Finance Limited ("Lender")');
+    addText(`Borrower: ${contractData.clientName}`);
+    addText(`NRC: ${contractData.nrc}`);
+    addText(`Date of Birth: ${contractData.dateOfBirth}`);
+    addText(`Employee No.: ${contractData.employeeNo || "N/A"}`);
+    addText(`Employer: ${contractData.employer || "N/A"}`);
+
+    addSection("OBLIGATIONS AND PERMISSIONS");
+    addText(
+      "1. Notify Lender immediately of changes to address, contact, bank details"
+    );
+    addText(
+      "2. Borrower permits Lender to draw against any registered bank account"
+    );
+    addText(
+      "3. Lender may obtain credit information from Credit Reference Bureaux"
+    );
+    addText(
+      "4. Payroll deduction may be used if Direct Debit collection fails"
+    );
+    addText("5. Outstanding balance may be rescheduled with applicable fees");
+    addText(
+      "6. Lender may take legal action; borrower agrees to repay legal costs"
+    );
+
+    addSection("DECLARATION");
+    addText(
+      `I, ${contractData.clientName}, confirm that I have read and understood the terms of this contract.`
+    );
+    yPosition += 3;
+    addText(`Signed at: ${contractData.branch}`);
+    addText(`Date: ${format(new Date(), "dd/MM/yyyy")}`);
+    addText(`Loan Purpose: ${contractData.loanPurpose || "N/A"}`);
+    yPosition += 5;
+    addText(`Borrower Name: ${contractData.clientName}`);
+    addText("Borrower Signature: [Signed electronically]");
 
     return pdf.output("blob");
   };
@@ -669,24 +840,14 @@ export function LoanContracts({
         }
       }
 
-      // Step 2: Generate PDFs from contract sections
+      // Step 2: Generate PDFs from contract data
       toast({
         title: "Generating contracts...",
         description: "Creating PDF documents",
       });
 
-      const keyFactsPDF = keyFactsRef.current
-        ? await generatePDFFromHTML(
-            keyFactsRef.current,
-            "Key_Facts_Statement.pdf"
-          )
-        : null;
-      const salaryAdvancePDF = salaryAdvanceRef.current
-        ? await generatePDFFromHTML(
-            salaryAdvanceRef.current,
-            "Salary_Advance_Contract.pdf"
-          )
-        : null;
+      const keyFactsPDF = await generateKeyFactsPDF();
+      const salaryAdvancePDF = await generateSalaryAdvanceContractPDF();
 
       // Step 3: Create loan in Fineract
       toast({
@@ -833,10 +994,10 @@ export function LoanContracts({
         return uploadResponse.json();
       };
 
+      // Upload both contract PDFs
       if (keyFactsPDF) {
         await uploadDocument(keyFactsPDF, "Key_Facts_Statement");
       }
-
       if (salaryAdvancePDF) {
         await uploadDocument(salaryAdvancePDF, "Salary_Advance_Contract");
       }
@@ -1202,572 +1363,345 @@ export function LoanContracts({
       `}</style>
 
       <div className="contract-section bg-white text-black dark:bg-white dark:text-black">
-        {/* Key Facts Statement */}
-        <Card
-          className="mb-6 break-after-page bg-white text-black border-gray-200 [&_*]:text-inherit"
-          ref={keyFactsRef}
-        >
-          <CardContent className="p-8 bg-white text-black">
-            <div className="space-y-6">
-              {/* Header */}
-              <div className="flex items-center gap-4 pb-4 border-b">
-                <div className="w-16 h-16 rounded-lg bg-gradient-to-br from-[#004f73] to-[#00a5c4] flex items-center justify-center text-white font-bold text-xl">
-                  GFL
+        {/* Contract Preview using HTML Template */}
+        <Card className="mb-6 bg-white text-black border-gray-200">
+          <CardHeader>
+            <CardTitle>Contract Preview</CardTitle>
+            <CardDescription>
+              Review the contract before printing or completing
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="p-4">
+            <iframe
+              srcDoc={generateContractHTML(contractData, {
+                borrower: borrowerSignature,
+                guarantor: guarantorSignature,
+                loanOfficer: loanOfficerSignature,
+              })}
+              className="w-full border rounded bg-white"
+              style={{ height: "700px", minHeight: "500px" }}
+              title="Loan Contract Preview"
+            />
+          </CardContent>
+        </Card>
+
+        {/* Hidden: Key Facts Statement (for PDF generation) */}
+        <div className="hidden">
+          <Card
+            className="mb-6 break-after-page bg-white text-black border-gray-200 [&_*]:text-inherit"
+            ref={keyFactsRef}
+          >
+            <CardContent className="p-8 bg-white text-black">
+              <div className="space-y-6">
+                {/* Header */}
+                <div className="flex items-center gap-4 pb-4 border-b">
+                  <div className="w-16 h-16 rounded-lg bg-gradient-to-br from-[#004f73] to-[#00a5c4] flex items-center justify-center text-white font-bold text-xl">
+                    GFL
+                  </div>
+                  <div>
+                    <h1 className="text-xl font-bold text-[#004f73]">
+                      GOODFELLOW FINANCE LIMITED (GFL)
+                    </h1>
+                    <p className="text-sm text-muted-foreground">
+                      Key Facts Statement & Loan Contract
+                    </p>
+                  </div>
                 </div>
+
+                {/* ANNEX 1 - KEY FACTS STATEMENT */}
                 <div>
-                  <h1 className="text-xl font-bold text-[#004f73]">
-                    GOODFELLOW FINANCE LIMITED (GFL)
-                  </h1>
-                  <p className="text-sm text-muted-foreground">
-                    Key Facts Statement & Loan Contract
+                  <h2 className="text-lg font-bold text-[#004f73] mb-2">
+                    ANNEX 1 — KEY FACTS STATEMENT FOR CONSUMER CREDIT
+                  </h2>
+                  <p className="text-xs text-muted-foreground mb-4">
+                    Review carefully before agreeing to a loan. You have the
+                    right to get a copy of the full loan agreement.
                   </p>
-                </div>
-              </div>
 
-              {/* ANNEX 1 - KEY FACTS STATEMENT */}
-              <div>
-                <h2 className="text-lg font-bold text-[#004f73] mb-2">
-                  ANNEX 1 — KEY FACTS STATEMENT FOR CONSUMER CREDIT
-                </h2>
-                <p className="text-xs text-muted-foreground mb-4">
-                  Review carefully before agreeing to a loan. You have the right
-                  to get a copy of the full loan agreement.
-                </p>
+                  {/* Section I: Key Terms */}
+                  <h3 className="text-sm font-semibold text-[#00a5c4] mb-3">
+                    SECTION I: KEY TERMS
+                  </h3>
 
-                {/* Section I: Key Terms */}
-                <h3 className="text-sm font-semibold text-[#00a5c4] mb-3">
-                  SECTION I: KEY TERMS
-                </h3>
+                  <div className="grid grid-cols-3 gap-4 mb-4">
+                    <div>
+                      <Label className="text-xs font-semibold">
+                        1. Amount of Loan
+                      </Label>
+                      <div className="bg-[#f1fcff] border border-dashed rounded p-2 mt-1">
+                        {contractData.currency}{" "}
+                        {formatCurrency(contractData.loanAmount)}
+                      </div>
+                    </div>
+                    <div>
+                      <Label className="text-xs font-semibold">
+                        2. Duration of Loan Agreement
+                      </Label>
+                      <div className="bg-[#f1fcff] border border-dashed rounded p-2 mt-1">
+                        {contractData.tenure}
+                      </div>
+                    </div>
+                    <div>
+                      <Label className="text-xs font-semibold">
+                        3. Amount Received
+                      </Label>
+                      <div className="bg-[#f1fcff] border border-dashed rounded p-2 mt-1">
+                        {contractData.currency}{" "}
+                        {formatCurrency(contractData.disbursedAmount)}
+                      </div>
+                    </div>
+                  </div>
 
-                <div className="grid grid-cols-3 gap-4 mb-4">
-                  <div>
+                  <div className="grid grid-cols-3 gap-4 mb-4">
+                    <div>
+                      <Label className="text-xs font-semibold">
+                        4. Interest
+                      </Label>
+                      <div className="bg-[#f1fcff] border border-dashed rounded p-2 mt-1">
+                        {contractData.currency}{" "}
+                        {formatCurrency(contractData.interest)}
+                      </div>
+                    </div>
+                    <div>
+                      <Label className="text-xs font-semibold">
+                        5. Other Fees and Charges
+                      </Label>
+                      <div className="bg-[#f1fcff] border border-dashed rounded p-2 mt-1">
+                        {contractData.currency}{" "}
+                        {formatCurrency(contractData.fees)}
+                      </div>
+                    </div>
+                    <div>
+                      <Label className="text-xs font-semibold">
+                        6. Monthly Percentage Rate
+                      </Label>
+                      <div className="bg-[#f1fcff] border border-dashed rounded p-2 mt-1">
+                        {contractData.monthlyPercentageRate.toFixed(2)}%
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-4 mb-4">
+                    <div>
+                      <Label className="text-xs font-semibold">
+                        7. Date First Payment Due
+                      </Label>
+                      <div className="bg-[#f1fcff] border border-dashed rounded p-2 mt-1">
+                        {contractData.firstPaymentDate}
+                      </div>
+                    </div>
+                    <div>
+                      <Label className="text-xs font-semibold">
+                        8. Number of Payments
+                      </Label>
+                      <div className="bg-[#f1fcff] border border-dashed rounded p-2 mt-1">
+                        {contractData.numberOfPayments}
+                      </div>
+                    </div>
+                    <div>
+                      <Label className="text-xs font-semibold">
+                        9. Payment Frequency
+                      </Label>
+                      <div className="bg-[#f1fcff] border border-dashed rounded p-2 mt-1">
+                        {contractData.paymentFrequency}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mb-4">
                     <Label className="text-xs font-semibold">
-                      1. Amount of Loan
+                      10. Amount Per Payment (Includes capital, interest,
+                      recurring fees)
                     </Label>
                     <div className="bg-[#f1fcff] border border-dashed rounded p-2 mt-1">
                       {contractData.currency}{" "}
-                      {formatCurrency(contractData.loanAmount)}
+                      {formatCurrency(contractData.paymentPerPeriod)}
                     </div>
                   </div>
-                  <div>
-                    <Label className="text-xs font-semibold">
-                      2. Duration of Loan Agreement
-                    </Label>
-                    <div className="bg-[#f1fcff] border border-dashed rounded p-2 mt-1">
-                      {contractData.tenure}
-                    </div>
-                  </div>
-                  <div>
-                    <Label className="text-xs font-semibold">
-                      3. Amount Received
-                    </Label>
-                    <div className="bg-[#f1fcff] border border-dashed rounded p-2 mt-1">
-                      {contractData.currency}{" "}
-                      {formatCurrency(contractData.disbursedAmount)}
-                    </div>
-                  </div>
-                </div>
 
-                <div className="grid grid-cols-3 gap-4 mb-4">
-                  <div>
-                    <Label className="text-xs font-semibold">4. Interest</Label>
-                    <div className="bg-[#f1fcff] border border-dashed rounded p-2 mt-1">
-                      {contractData.currency}{" "}
-                      {formatCurrency(contractData.interest)}
+                  <div className="grid grid-cols-2 gap-4 mb-4">
+                    <div>
+                      <Label className="text-xs font-semibold">
+                        11. Total Cost of Credit (interest + fees)
+                      </Label>
+                      <div className="bg-[#f1fcff] border border-dashed rounded p-2 mt-1">
+                        {contractData.currency}{" "}
+                        {formatCurrency(contractData.totalCostOfCredit)}
+                      </div>
+                    </div>
+                    <div>
+                      <Label className="text-xs font-semibold">
+                        12. TOTAL AMOUNT YOU PAY
+                      </Label>
+                      <div className="bg-[#f1fcff] border border-dashed rounded p-2 mt-1 font-bold">
+                        {contractData.currency}{" "}
+                        {formatCurrency(contractData.totalRepayment)}
+                      </div>
                     </div>
                   </div>
-                  <div>
-                    <Label className="text-xs font-semibold">
-                      5. Other Fees and Charges
-                    </Label>
-                    <div className="bg-[#f1fcff] border border-dashed rounded p-2 mt-1">
-                      {contractData.currency}{" "}
-                      {formatCurrency(contractData.fees)}
-                    </div>
-                  </div>
-                  <div>
-                    <Label className="text-xs font-semibold">
-                      6. Monthly Percentage Rate
-                    </Label>
-                    <div className="bg-[#f1fcff] border border-dashed rounded p-2 mt-1">
-                      {contractData.monthlyPercentageRate.toFixed(2)}%
-                    </div>
-                  </div>
-                </div>
 
-                <div className="grid grid-cols-3 gap-4 mb-4">
-                  <div>
-                    <Label className="text-xs font-semibold">
-                      7. Date First Payment Due
-                    </Label>
-                    <div className="bg-[#f1fcff] border border-dashed rounded p-2 mt-1">
-                      {contractData.firstPaymentDate}
-                    </div>
-                  </div>
-                  <div>
-                    <Label className="text-xs font-semibold">
-                      8. Number of Payments
-                    </Label>
-                    <div className="bg-[#f1fcff] border border-dashed rounded p-2 mt-1">
-                      {contractData.numberOfPayments}
-                    </div>
-                  </div>
-                  <div>
-                    <Label className="text-xs font-semibold">
-                      9. Payment Frequency
-                    </Label>
-                    <div className="bg-[#f1fcff] border border-dashed rounded p-2 mt-1">
-                      {contractData.paymentFrequency}
-                    </div>
-                  </div>
-                </div>
+                  {/* Section II: Risks */}
+                  <h3 className="text-sm font-semibold text-[#00a5c4] mb-2 mt-6">
+                    SECTION II: RISKS TO YOU
+                  </h3>
+                  <ul className="list-disc list-inside text-sm space-y-1 text-gray-700 dark:text-gray-700 mb-4">
+                    <li>
+                      Late or missing payments may be reported to a credit
+                      reference bureau and may severely affect your financial
+                      situation, collateral, and ability to reborrow.
+                    </li>
+                    <li>
+                      Your interest rate will change based on changes in the
+                      Bank of Zambia's Policy Rate. This change will affect the
+                      duration of your loan and your repayment amount.
+                    </li>
+                  </ul>
 
-                <div className="mb-4">
-                  <Label className="text-xs font-semibold">
-                    10. Amount Per Payment (Includes capital, interest,
-                    recurring fees)
-                  </Label>
-                  <div className="bg-[#f1fcff] border border-dashed rounded p-2 mt-1">
-                    {contractData.currency}{" "}
-                    {formatCurrency(contractData.paymentPerPeriod)}
+                  {/* Section III: Rights and Obligations */}
+                  <h3 className="text-sm font-semibold text-[#00a5c4] mb-2">
+                    SECTION III: YOUR RIGHTS AND OBLIGATIONS
+                  </h3>
+                  <div className="text-sm space-y-2 text-gray-700 dark:text-gray-700 mb-4">
+                    <p>
+                      Any questions or complaints? Call{" "}
+                      <strong>+260 211 238719</strong>, email{" "}
+                      <a
+                        href="mailto:info@goodfellow.co.zm"
+                        className="text-blue-600"
+                      >
+                        info@goodfellow.co.zm
+                      </a>{" "}
+                      or write to P.O. Box 50644 Lusaka.
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Unsatisfied with our response? Contact the Bank of Zambia
+                      at <strong>+260 211 399300</strong> or{" "}
+                      <a href="mailto:info@boz.zm" className="text-blue-600">
+                        info@boz.zm
+                      </a>
+                      . Visit{" "}
+                      <a href="https://www.boz.zm" className="text-blue-600">
+                        www.boz.zm
+                      </a>
+                      .
+                    </p>
+                    <p>
+                      You may pay off your loan early without penalties. You are
+                      required to make payments according to your loan agreement
+                      and to notify us of important changes in your situation.
+                    </p>
                   </div>
-                </div>
 
-                <div className="grid grid-cols-2 gap-4 mb-4">
-                  <div>
-                    <Label className="text-xs font-semibold">
-                      11. Total Cost of Credit (interest + fees)
-                    </Label>
-                    <div className="bg-[#f1fcff] border border-dashed rounded p-2 mt-1">
-                      {contractData.currency}{" "}
-                      {formatCurrency(contractData.totalCostOfCredit)}
-                    </div>
-                  </div>
-                  <div>
-                    <Label className="text-xs font-semibold">
-                      12. TOTAL AMOUNT YOU PAY
-                    </Label>
-                    <div className="bg-[#f1fcff] border border-dashed rounded p-2 mt-1 font-bold">
-                      {contractData.currency}{" "}
-                      {formatCurrency(contractData.totalRepayment)}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Section II: Risks */}
-                <h3 className="text-sm font-semibold text-[#00a5c4] mb-2 mt-6">
-                  SECTION II: RISKS TO YOU
-                </h3>
-                <ul className="list-disc list-inside text-sm space-y-1 text-gray-700 dark:text-gray-700 mb-4">
-                  <li>
-                    Late or missing payments may be reported to a credit
-                    reference bureau and may severely affect your financial
-                    situation, collateral, and ability to reborrow.
-                  </li>
-                  <li>
-                    Your interest rate will change based on changes in the Bank
-                    of Zambia's Policy Rate. This change will affect the
-                    duration of your loan and your repayment amount.
-                  </li>
-                </ul>
-
-                {/* Section III: Rights and Obligations */}
-                <h3 className="text-sm font-semibold text-[#00a5c4] mb-2">
-                  SECTION III: YOUR RIGHTS AND OBLIGATIONS
-                </h3>
-                <div className="text-sm space-y-2 text-gray-700 dark:text-gray-700 mb-4">
-                  <p>
-                    Any questions or complaints? Call{" "}
-                    <strong>+260 211 238719</strong>, email{" "}
-                    <a
-                      href="mailto:info@goodfellow.co.zm"
-                      className="text-blue-600"
-                    >
-                      info@goodfellow.co.zm
-                    </a>{" "}
-                    or write to P.O. Box 50644 Lusaka.
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    Unsatisfied with our response? Contact the Bank of Zambia at{" "}
-                    <strong>+260 211 399300</strong> or{" "}
-                    <a href="mailto:info@boz.zm" className="text-blue-600">
-                      info@boz.zm
-                    </a>
-                    . Visit{" "}
-                    <a href="https://www.boz.zm" className="text-blue-600">
-                      www.boz.zm
-                    </a>
-                    .
-                  </p>
-                  <p>
-                    You may pay off your loan early without penalties. You are
-                    required to make payments according to your loan agreement
-                    and to notify us of important changes in your situation.
-                  </p>
-                </div>
-
-                {/* Section IV: Fees */}
-                <h3 className="text-sm font-semibold text-[#00a5c4] mb-2">
-                  SECTION IV: UPFRONT AND RECURRING FEES
-                </h3>
-                <div className="border rounded-lg overflow-hidden mb-4">
-                  <table className="w-full text-sm">
-                    <thead className="bg-gradient-to-r from-[#004f73] to-[#00a5c4] text-white">
-                      <tr>
-                        <th className="p-2 text-left">Fee</th>
-                        <th className="p-2 text-right">
-                          Amount ({contractData.currency})
-                        </th>
-                        <th className="p-2 text-left">Notes</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {contractData.charges.map((charge, index) => (
-                        <tr key={index} className="border-t">
-                          <td className="p-2">{charge.name}</td>
-                          <td className="p-2 text-right">
-                            {formatCurrency(charge.amount)}
-                          </td>
-                          <td className="p-2">-</td>
-                        </tr>
-                      ))}
-                      <tr className="border-t font-bold bg-gray-50 dark:bg-gray-50 dark:text-black">
-                        <td className="p-2">Total (excluding interest)</td>
-                        <td className="p-2 text-right">
-                          {formatCurrency(
-                            contractData.charges.reduce(
-                              (sum, c) => sum + c.amount,
-                              0
-                            )
-                          )}
-                        </td>
-                        <td className="p-2">-</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* Section VI: Repayment Schedule */}
-                <h3 className="text-sm font-semibold text-[#00a5c4] mb-2">
-                  SECTION V: REPAYMENT SCHEDULE
-                </h3>
-                <div className="border rounded-lg overflow-hidden mb-4">
-                  <div className="max-h-64 overflow-y-auto">
-                    <table className="w-full text-xs">
-                      <thead className="bg-gradient-to-r from-[#004f73] to-[#00a5c4] text-white sticky top-0">
+                  {/* Section IV: Fees */}
+                  <h3 className="text-sm font-semibold text-[#00a5c4] mb-2">
+                    SECTION IV: UPFRONT AND RECURRING FEES
+                  </h3>
+                  <div className="border rounded-lg overflow-hidden mb-4">
+                    <table className="w-full text-sm">
+                      <thead className="bg-gradient-to-r from-[#004f73] to-[#00a5c4] text-white">
                         <tr>
-                          <th className="p-2 text-left">Payment #</th>
-                          <th className="p-2 text-left">Due Date</th>
-                          <th className="p-2 text-right">Payment Amount</th>
-                          <th className="p-2 text-right">Principal</th>
-                          <th className="p-2 text-right">Interest & Fees</th>
-                          <th className="p-2 text-right">Remaining Balance</th>
+                          <th className="p-2 text-left">Fee</th>
+                          <th className="p-2 text-right">
+                            Amount ({contractData.currency})
+                          </th>
+                          <th className="p-2 text-left">Notes</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {contractData.repaymentSchedule.map((period, index) => (
+                        {contractData.charges.map((charge, index) => (
                           <tr key={index} className="border-t">
-                            <td className="p-2">{period.paymentNumber}</td>
-                            <td className="p-2">{period.dueDate}</td>
+                            <td className="p-2">{charge.name}</td>
                             <td className="p-2 text-right">
-                              {formatCurrency(period.paymentAmount)}
+                              {formatCurrency(charge.amount)}
                             </td>
-                            <td className="p-2 text-right">
-                              {formatCurrency(period.principal)}
-                            </td>
-                            <td className="p-2 text-right">
-                              {formatCurrency(period.interestAndFees)}
-                            </td>
-                            <td className="p-2 text-right">
-                              {formatCurrency(period.remainingBalance)}
-                            </td>
+                            <td className="p-2">-</td>
                           </tr>
                         ))}
                         <tr className="border-t font-bold bg-gray-50 dark:bg-gray-50 dark:text-black">
-                          <td className="p-2" colSpan={2}>
-                            TOTAL
-                          </td>
+                          <td className="p-2">Total (excluding interest)</td>
                           <td className="p-2 text-right">
-                            {formatCurrency(contractData.totalRepayment)}
+                            {formatCurrency(
+                              contractData.charges.reduce(
+                                (sum, c) => sum + c.amount,
+                                0
+                              )
+                            )}
                           </td>
-                          <td className="p-2 text-right">
-                            {formatCurrency(contractData.loanAmount)}
-                          </td>
-                          <td className="p-2 text-right">
-                            {formatCurrency(contractData.totalCostOfCredit)}
-                          </td>
-                          <td className="p-2 text-right">-</td>
+                          <td className="p-2">-</td>
                         </tr>
                       </tbody>
                     </table>
                   </div>
-                </div>
 
-                <p className="text-xs text-muted-foreground mb-4">
-                  This information is not final until signed by all parties and
-                  does not replace the loan agreement.
-                </p>
-
-                {/* Signatures */}
-                <div className="grid grid-cols-2 gap-6 mt-6">
-                  <div>
-                    <p className="text-sm mb-2">Certified correct:</p>
-                    {loanOfficerSignature && (
-                      <img
-                        src={loanOfficerSignature}
-                        alt="Officer signature"
-                        className="max-h-16 mb-2"
-                      />
-                    )}
-                    <div className="border-b-2 border-gray-300 mb-1"></div>
-                    <p className="text-xs text-muted-foreground">
-                      Credit provider representative
-                    </p>
-                    <p className="text-xs mt-2">
-                      {contractData.loanOfficer || "___________"}
-                    </p>
+                  {/* Section VI: Repayment Schedule */}
+                  <h3 className="text-sm font-semibold text-[#00a5c4] mb-2">
+                    SECTION V: REPAYMENT SCHEDULE
+                  </h3>
+                  <div className="border rounded-lg overflow-hidden mb-4">
+                    <div className="max-h-64 overflow-y-auto">
+                      <table className="w-full text-xs">
+                        <thead className="bg-gradient-to-r from-[#004f73] to-[#00a5c4] text-white sticky top-0">
+                          <tr>
+                            <th className="p-2 text-left">Payment #</th>
+                            <th className="p-2 text-left">Due Date</th>
+                            <th className="p-2 text-right">Payment Amount</th>
+                            <th className="p-2 text-right">Principal</th>
+                            <th className="p-2 text-right">Interest & Fees</th>
+                            <th className="p-2 text-right">
+                              Remaining Balance
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {contractData.repaymentSchedule.map(
+                            (period, index) => (
+                              <tr key={index} className="border-t">
+                                <td className="p-2">{period.paymentNumber}</td>
+                                <td className="p-2">{period.dueDate}</td>
+                                <td className="p-2 text-right">
+                                  {formatCurrency(period.paymentAmount)}
+                                </td>
+                                <td className="p-2 text-right">
+                                  {formatCurrency(period.principal)}
+                                </td>
+                                <td className="p-2 text-right">
+                                  {formatCurrency(period.interestAndFees)}
+                                </td>
+                                <td className="p-2 text-right">
+                                  {formatCurrency(period.remainingBalance)}
+                                </td>
+                              </tr>
+                            )
+                          )}
+                          <tr className="border-t font-bold bg-gray-50 dark:bg-gray-50 dark:text-black">
+                            <td className="p-2" colSpan={2}>
+                              TOTAL
+                            </td>
+                            <td className="p-2 text-right">
+                              {formatCurrency(contractData.totalRepayment)}
+                            </td>
+                            <td className="p-2 text-right">
+                              {formatCurrency(contractData.loanAmount)}
+                            </td>
+                            <td className="p-2 text-right">
+                              {formatCurrency(contractData.totalCostOfCredit)}
+                            </td>
+                            <td className="p-2 text-right">-</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
-                  <div className="space-y-4">
+
+                  <p className="text-xs text-muted-foreground mb-4">
+                    This information is not final until signed by all parties
+                    and does not replace the loan agreement.
+                  </p>
+
+                  {/* Signatures */}
+                  <div className="grid grid-cols-2 gap-6 mt-6">
                     <div>
-                      {borrowerSignature && (
-                        <img
-                          src={borrowerSignature}
-                          alt="Borrower signature"
-                          className="max-h-16 mb-2"
-                        />
-                      )}
-                      <div className="border-b-2 border-gray-300 mb-1"></div>
-                      <p className="text-xs text-muted-foreground">
-                        Borrower (I acknowledge receipt prior to signing)
-                      </p>
-                      <p className="text-xs mt-1">{contractData.clientName}</p>
-                    </div>
-                    {guarantorSignature && (
-                      <div>
-                        <img
-                          src={guarantorSignature}
-                          alt="Guarantor signature"
-                          className="max-h-16 mb-2"
-                        />
-                        <div className="border-b-2 border-gray-300 mb-1"></div>
-                        <p className="text-xs text-muted-foreground">
-                          Guarantor
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                <p className="text-xs text-muted-foreground mt-4">
-                  Name of Borrower: {contractData.clientName} &nbsp; NRC:{" "}
-                  {contractData.nrc} &nbsp; Date prepared:{" "}
-                  {format(new Date(), "dd/MM/yyyy")}
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Salary Advance Contract */}
-        <Card
-          className="bg-white text-black border-gray-200 [&_*]:text-inherit"
-          ref={salaryAdvanceRef}
-        >
-          <CardContent className="p-8 bg-white text-black">
-            <div className="space-y-6">
-              {/* Header */}
-              <div className="flex items-center gap-4 pb-4 border-b">
-                <div className="w-16 h-16 rounded-lg bg-gradient-to-br from-[#004f73] to-[#00a5c4] flex items-center justify-center text-white font-bold text-xl">
-                  GFL
-                </div>
-                <div>
-                  <h1 className="text-xl font-bold text-[#004f73]">
-                    SALARY ADVANCE CONTRACT
-                  </h1>
-                  <p className="text-sm text-muted-foreground">
-                    GFL/LC/2025/02
-                  </p>
-                </div>
-              </div>
-
-              {/* Contract Details */}
-              <div className="grid grid-cols-3 gap-4">
-                <div>
-                  <Label className="text-xs font-semibold">GFL NO.</Label>
-                  <div className="bg-[#f1fcff] border border-dashed rounded p-2 mt-1">
-                    {contractData.gflNo || "N/A"}
-                  </div>
-                </div>
-                <div>
-                  <Label className="text-xs font-semibold">NRC</Label>
-                  <div className="bg-[#f1fcff] border border-dashed rounded p-2 mt-1">
-                    {contractData.nrc}
-                  </div>
-                </div>
-                <div>
-                  <Label className="text-xs font-semibold">LOAN ID</Label>
-                  <div className="bg-[#f1fcff] border border-dashed rounded p-2 mt-1">
-                    {contractData.loanId || leadId || "N/A"}
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-4">
-                <div>
-                  <Label className="text-xs font-semibold">Loan Amount</Label>
-                  <div className="bg-[#f1fcff] border border-dashed rounded p-2 mt-1">
-                    {contractData.currency}{" "}
-                    {formatCurrency(contractData.loanAmount)}
-                  </div>
-                </div>
-                <div>
-                  <Label className="text-xs font-semibold">Tenure</Label>
-                  <div className="bg-[#f1fcff] border border-dashed rounded p-2 mt-1">
-                    {contractData.tenure}
-                  </div>
-                </div>
-                <div>
-                  <Label className="text-xs font-semibold">Payment Due</Label>
-                  <div className="bg-[#f1fcff] border border-dashed rounded p-2 mt-1">
-                    {contractData.firstPaymentDate}
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-4">
-                <div>
-                  <Label className="text-xs font-semibold">Interest</Label>
-                  <div className="bg-[#f1fcff] border border-dashed rounded p-2 mt-1">
-                    {contractData.currency}{" "}
-                    {formatCurrency(contractData.interest)}
-                  </div>
-                </div>
-                <div>
-                  <Label className="text-xs font-semibold">Service Fee</Label>
-                  <div className="bg-[#f1fcff] border border-dashed rounded p-2 mt-1">
-                    {contractData.currency} {formatCurrency(contractData.fees)}
-                  </div>
-                </div>
-                <div>
-                  <Label className="text-xs font-semibold">
-                    Total Cost of Borrowing
-                  </Label>
-                  <div className="bg-[#f1fcff] border border-dashed rounded p-2 mt-1">
-                    {contractData.currency}{" "}
-                    {formatCurrency(contractData.totalRepayment)}
-                  </div>
-                </div>
-              </div>
-
-              {/* Parties */}
-              <div>
-                <h3 className="text-sm font-semibold text-[#00a5c4] mb-2">
-                  Parties
-                </h3>
-                <p className="text-sm">
-                  <strong>Lender:</strong> Goodfellow Finance Limited ("Lender")
-                </p>
-                <p className="text-sm mt-2">
-                  <strong>Borrower:</strong> {contractData.clientName} | NRC:{" "}
-                  {contractData.nrc} | DOB: {contractData.dateOfBirth} | Gender:{" "}
-                  {contractData.gender}
-                </p>
-                {contractData.employeeNo && contractData.employer && (
-                  <p className="text-sm mt-1">
-                    Employee No.: {contractData.employeeNo} | Employer:{" "}
-                    {contractData.employer}
-                  </p>
-                )}
-              </div>
-
-              {/* Obligations */}
-              <div>
-                <h3 className="text-sm font-semibold text-[#00a5c4] mb-2">
-                  Obligations & Permissions
-                </h3>
-                <ol className="list-decimal list-inside text-sm space-y-1 text-gray-700 dark:text-gray-700">
-                  <li>
-                    Notify the Lender immediately of changes to address,
-                    contact, bank details, employment or financial condition.
-                  </li>
-                  <li>
-                    The Borrower permits the Lender to draw against any bank
-                    account registered to the borrower (costs for bounced direct
-                    debit apply).
-                  </li>
-                  <li>
-                    The Lender may obtain and verify credit information from
-                    licensed Credit Reference Bureaux.
-                  </li>
-                  <li>
-                    In case of collection failure through Direct Debit, payroll
-                    deduction may be used to recover the amount owed.
-                  </li>
-                  <li>
-                    Reschedule outstanding balance if repayment is not completed
-                    within the scheduled month; full monthly interest and
-                    administrative fees may apply.
-                  </li>
-                  <li>
-                    The Lender may take legal action in Zambia; borrower agrees
-                    to repay expenses and legal costs incurred in recovery.
-                  </li>
-                </ol>
-              </div>
-
-              {/* Declaration */}
-              <div>
-                <h3 className="text-sm font-semibold text-[#00a5c4] mb-2">
-                  Declaration & Signatures
-                </h3>
-                <p className="text-sm mb-4">
-                  I <strong>{contractData.clientName}</strong> confirm that I
-                  have read and understood the terms of this salary advance
-                  contract.
-                </p>
-
-                <div className="grid grid-cols-2 gap-6">
-                  <div>
-                    <p className="text-sm">
-                      Signed at:{" "}
-                      <span className="bg-[#f1fcff] px-2">
-                        {contractData.branch}
-                      </span>
-                    </p>
-                    <p className="text-sm mt-2">
-                      Date:{" "}
-                      <span className="bg-[#f1fcff] px-2">
-                        {format(new Date(), "dd/MM/yyyy")}
-                      </span>
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm">
-                      Borrower's Name: {contractData.clientName}
-                    </p>
-                    <div className="mt-2">
-                      {borrowerSignature && (
-                        <img
-                          src={borrowerSignature}
-                          alt="Borrower signature"
-                          className="max-h-16 mb-2"
-                        />
-                      )}
-                      <div className="border-b-2 border-gray-300"></div>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Borrower's Signature
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-6 mt-6">
-                  <div>
-                    <p className="text-sm">
-                      Loan Officer's Name:{" "}
-                      {contractData.loanOfficer || "___________"}
-                    </p>
-                    <div className="mt-2">
+                      <p className="text-sm mb-2">Certified correct:</p>
                       {loanOfficerSignature && (
                         <img
                           src={loanOfficerSignature}
@@ -1775,22 +1709,286 @@ export function LoanContracts({
                           className="max-h-16 mb-2"
                         />
                       )}
-                      <div className="border-b-2 border-gray-300"></div>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Loan Officer's Signature
+                      <div className="border-b-2 border-gray-300 mb-1"></div>
+                      <p className="text-xs text-muted-foreground">
+                        Credit provider representative
+                      </p>
+                      <p className="text-xs mt-2">
+                        {contractData.loanOfficer || "___________"}
                       </p>
                     </div>
+                    <div className="space-y-4">
+                      <div>
+                        {borrowerSignature && (
+                          <img
+                            src={borrowerSignature}
+                            alt="Borrower signature"
+                            className="max-h-16 mb-2"
+                          />
+                        )}
+                        <div className="border-b-2 border-gray-300 mb-1"></div>
+                        <p className="text-xs text-muted-foreground">
+                          Borrower (I acknowledge receipt prior to signing)
+                        </p>
+                        <p className="text-xs mt-1">
+                          {contractData.clientName}
+                        </p>
+                      </div>
+                      {guarantorSignature && (
+                        <div>
+                          <img
+                            src={guarantorSignature}
+                            alt="Guarantor signature"
+                            className="max-h-16 mb-2"
+                          />
+                          <div className="border-b-2 border-gray-300 mb-1"></div>
+                          <p className="text-xs text-muted-foreground">
+                            Guarantor
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <p className="text-xs text-muted-foreground mt-4">
+                    Name of Borrower: {contractData.clientName} &nbsp; NRC:{" "}
+                    {contractData.nrc} &nbsp; Date prepared:{" "}
+                    {format(new Date(), "dd/MM/yyyy")}
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Salary Advance Contract */}
+          <Card
+            className="bg-white text-black border-gray-200 [&_*]:text-inherit"
+            ref={salaryAdvanceRef}
+          >
+            <CardContent className="p-8 bg-white text-black">
+              <div className="space-y-6">
+                {/* Header */}
+                <div className="flex items-center gap-4 pb-4 border-b">
+                  <div className="w-16 h-16 rounded-lg bg-gradient-to-br from-[#004f73] to-[#00a5c4] flex items-center justify-center text-white font-bold text-xl">
+                    GFL
                   </div>
                   <div>
-                    <p className="text-sm">
-                      Loan Purpose: {contractData.loanPurpose || "___________"}
+                    <h1 className="text-xl font-bold text-[#004f73]">
+                      SALARY ADVANCE CONTRACT
+                    </h1>
+                    <p className="text-sm text-muted-foreground">
+                      GFL/LC/2025/02
                     </p>
                   </div>
                 </div>
+
+                {/* Contract Details */}
+                <div className="grid grid-cols-3 gap-4">
+                  <div>
+                    <Label className="text-xs font-semibold">GFL NO.</Label>
+                    <div className="bg-[#f1fcff] border border-dashed rounded p-2 mt-1">
+                      {contractData.gflNo || "N/A"}
+                    </div>
+                  </div>
+                  <div>
+                    <Label className="text-xs font-semibold">NRC</Label>
+                    <div className="bg-[#f1fcff] border border-dashed rounded p-2 mt-1">
+                      {contractData.nrc}
+                    </div>
+                  </div>
+                  <div>
+                    <Label className="text-xs font-semibold">LOAN ID</Label>
+                    <div className="bg-[#f1fcff] border border-dashed rounded p-2 mt-1">
+                      {contractData.loanId || leadId || "N/A"}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-4">
+                  <div>
+                    <Label className="text-xs font-semibold">Loan Amount</Label>
+                    <div className="bg-[#f1fcff] border border-dashed rounded p-2 mt-1">
+                      {contractData.currency}{" "}
+                      {formatCurrency(contractData.loanAmount)}
+                    </div>
+                  </div>
+                  <div>
+                    <Label className="text-xs font-semibold">Tenure</Label>
+                    <div className="bg-[#f1fcff] border border-dashed rounded p-2 mt-1">
+                      {contractData.tenure}
+                    </div>
+                  </div>
+                  <div>
+                    <Label className="text-xs font-semibold">Payment Due</Label>
+                    <div className="bg-[#f1fcff] border border-dashed rounded p-2 mt-1">
+                      {contractData.firstPaymentDate}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-4">
+                  <div>
+                    <Label className="text-xs font-semibold">Interest</Label>
+                    <div className="bg-[#f1fcff] border border-dashed rounded p-2 mt-1">
+                      {contractData.currency}{" "}
+                      {formatCurrency(contractData.interest)}
+                    </div>
+                  </div>
+                  <div>
+                    <Label className="text-xs font-semibold">Service Fee</Label>
+                    <div className="bg-[#f1fcff] border border-dashed rounded p-2 mt-1">
+                      {contractData.currency}{" "}
+                      {formatCurrency(contractData.fees)}
+                    </div>
+                  </div>
+                  <div>
+                    <Label className="text-xs font-semibold">
+                      Total Cost of Borrowing
+                    </Label>
+                    <div className="bg-[#f1fcff] border border-dashed rounded p-2 mt-1">
+                      {contractData.currency}{" "}
+                      {formatCurrency(contractData.totalRepayment)}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Parties */}
+                <div>
+                  <h3 className="text-sm font-semibold text-[#00a5c4] mb-2">
+                    Parties
+                  </h3>
+                  <p className="text-sm">
+                    <strong>Lender:</strong> Goodfellow Finance Limited
+                    ("Lender")
+                  </p>
+                  <p className="text-sm mt-2">
+                    <strong>Borrower:</strong> {contractData.clientName} | NRC:{" "}
+                    {contractData.nrc} | DOB: {contractData.dateOfBirth} |
+                    Gender: {contractData.gender}
+                  </p>
+                  {contractData.employeeNo && contractData.employer && (
+                    <p className="text-sm mt-1">
+                      Employee No.: {contractData.employeeNo} | Employer:{" "}
+                      {contractData.employer}
+                    </p>
+                  )}
+                </div>
+
+                {/* Obligations */}
+                <div>
+                  <h3 className="text-sm font-semibold text-[#00a5c4] mb-2">
+                    Obligations & Permissions
+                  </h3>
+                  <ol className="list-decimal list-inside text-sm space-y-1 text-gray-700 dark:text-gray-700">
+                    <li>
+                      Notify the Lender immediately of changes to address,
+                      contact, bank details, employment or financial condition.
+                    </li>
+                    <li>
+                      The Borrower permits the Lender to draw against any bank
+                      account registered to the borrower (costs for bounced
+                      direct debit apply).
+                    </li>
+                    <li>
+                      The Lender may obtain and verify credit information from
+                      licensed Credit Reference Bureaux.
+                    </li>
+                    <li>
+                      In case of collection failure through Direct Debit,
+                      payroll deduction may be used to recover the amount owed.
+                    </li>
+                    <li>
+                      Reschedule outstanding balance if repayment is not
+                      completed within the scheduled month; full monthly
+                      interest and administrative fees may apply.
+                    </li>
+                    <li>
+                      The Lender may take legal action in Zambia; borrower
+                      agrees to repay expenses and legal costs incurred in
+                      recovery.
+                    </li>
+                  </ol>
+                </div>
+
+                {/* Declaration */}
+                <div>
+                  <h3 className="text-sm font-semibold text-[#00a5c4] mb-2">
+                    Declaration & Signatures
+                  </h3>
+                  <p className="text-sm mb-4">
+                    I <strong>{contractData.clientName}</strong> confirm that I
+                    have read and understood the terms of this salary advance
+                    contract.
+                  </p>
+
+                  <div className="grid grid-cols-2 gap-6">
+                    <div>
+                      <p className="text-sm">
+                        Signed at:{" "}
+                        <span className="bg-[#f1fcff] px-2">
+                          {contractData.branch}
+                        </span>
+                      </p>
+                      <p className="text-sm mt-2">
+                        Date:{" "}
+                        <span className="bg-[#f1fcff] px-2">
+                          {format(new Date(), "dd/MM/yyyy")}
+                        </span>
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-sm">
+                        Borrower's Name: {contractData.clientName}
+                      </p>
+                      <div className="mt-2">
+                        {borrowerSignature && (
+                          <img
+                            src={borrowerSignature}
+                            alt="Borrower signature"
+                            className="max-h-16 mb-2"
+                          />
+                        )}
+                        <div className="border-b-2 border-gray-300"></div>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Borrower's Signature
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-6 mt-6">
+                    <div>
+                      <p className="text-sm">
+                        Loan Officer's Name:{" "}
+                        {contractData.loanOfficer || "___________"}
+                      </p>
+                      <div className="mt-2">
+                        {loanOfficerSignature && (
+                          <img
+                            src={loanOfficerSignature}
+                            alt="Officer signature"
+                            className="max-h-16 mb-2"
+                          />
+                        )}
+                        <div className="border-b-2 border-gray-300"></div>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Loan Officer's Signature
+                        </p>
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-sm">
+                        Loan Purpose:{" "}
+                        {contractData.loanPurpose || "___________"}
+                      </p>
+                    </div>
+                  </div>
+                </div>
               </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        </div>
+        {/* End hidden section */}
 
         {/* Navigation Buttons at Bottom */}
         <Card className="print:hidden">
