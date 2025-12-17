@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -282,6 +282,9 @@ export function LoanTermsForm({
     chargesCollateral: false,
   });
 
+  // Track if frequency values have been set from template
+  const frequencyValuesSet = useRef(false);
+
   const form = useForm<LoanTermsFormData>({
     resolver: zodResolver(loanTermsSchema) as any,
     defaultValues: {
@@ -311,6 +314,9 @@ export function LoanTermsForm({
 
   // Fetch detailed template when clientId and productId are available
   useEffect(() => {
+    // Reset frequency values flag when product changes
+    frequencyValuesSet.current = false;
+
     const fetchDetailedTemplate = async () => {
       // Only fetch if we have clientId and productId, and don't already have a template with charges
       if (!clientId || !productId) return;
@@ -367,7 +373,20 @@ export function LoanTermsForm({
         setIsLoading(true);
         setError(null);
 
+        console.log("=== TEMPLATE POPULATION START ===");
         console.log("Populating form with template data:", loanTemplate);
+        console.log(
+          "Template has termPeriodFrequencyType:",
+          !!loanTemplate.termPeriodFrequencyType
+        );
+        console.log(
+          "Template has repaymentFrequencyType:",
+          !!loanTemplate.repaymentFrequencyType
+        );
+        console.log(
+          "Template has interestRateFrequencyType:",
+          !!loanTemplate.interestRateFrequencyType
+        );
         console.log(
           "AmortizationType from template:",
           loanTemplate.amortizationType
@@ -390,16 +409,27 @@ export function LoanTermsForm({
         }
 
         // Term Frequency - directly use the id from termPeriodFrequencyType
+        let termFreqValue = "";
         if (loanTemplate.termPeriodFrequencyType?.id !== undefined) {
-          const termFreqId = loanTemplate.termPeriodFrequencyType.id.toString();
-          form.setValue("termFrequency", termFreqId);
-          console.log("Set termFrequency from template:", termFreqId);
+          termFreqValue = loanTemplate.termPeriodFrequencyType.id.toString();
+          console.log(
+            "Set termFrequency from template:",
+            termFreqValue,
+            "options available:",
+            loanTemplate.termFrequencyTypeOptions?.length
+          );
         } else if (loanTemplate.termFrequencyTypeOptions?.length > 0) {
           // Fallback to first option
-          const defaultTermFreq =
+          termFreqValue =
             loanTemplate.termFrequencyTypeOptions[0].id.toString();
-          form.setValue("termFrequency", defaultTermFreq);
-          console.log("Set termFrequency fallback:", defaultTermFreq);
+          console.log("Set termFrequency fallback:", termFreqValue);
+        }
+        if (termFreqValue) {
+          form.setValue("termFrequency", termFreqValue, {
+            shouldDirty: true,
+            shouldTouch: true,
+            shouldValidate: false,
+          });
         }
 
         // Repayments
@@ -411,16 +441,28 @@ export function LoanTermsForm({
         }
 
         // Repayment Frequency - directly use the id from repaymentFrequencyType
+        let repaymentFreqValue = "";
         if (loanTemplate.repaymentFrequencyType?.id !== undefined) {
-          const freqId = loanTemplate.repaymentFrequencyType.id.toString();
-          form.setValue("repaymentFrequency", freqId);
-          console.log("Set repaymentFrequency from template:", freqId);
+          repaymentFreqValue =
+            loanTemplate.repaymentFrequencyType.id.toString();
+          console.log(
+            "Set repaymentFrequency from template:",
+            repaymentFreqValue,
+            "options available:",
+            loanTemplate.repaymentFrequencyTypeOptions?.length
+          );
         } else if (loanTemplate.repaymentFrequencyTypeOptions?.length > 0) {
           // Fallback to first option
-          const defaultFreq =
+          repaymentFreqValue =
             loanTemplate.repaymentFrequencyTypeOptions[0].id.toString();
-          form.setValue("repaymentFrequency", defaultFreq);
-          console.log("Set repaymentFrequency fallback:", defaultFreq);
+          console.log("Set repaymentFrequency fallback:", repaymentFreqValue);
+        }
+        if (repaymentFreqValue) {
+          form.setValue("repaymentFrequency", repaymentFreqValue, {
+            shouldDirty: true,
+            shouldTouch: true,
+            shouldValidate: false,
+          });
         }
 
         // Interest Rate
@@ -431,35 +473,36 @@ export function LoanTermsForm({
           );
         }
 
-        // Interest Rate Frequency
-        // Use interestRateFrequencyType from template to find matching option
-        if (
-          loanTemplate.interestRateFrequencyType &&
-          loanTemplate.interestRateFrequencyTypeOptions?.length > 0
-        ) {
-          const matchingInterestRateFreq =
-            loanTemplate.interestRateFrequencyTypeOptions.find(
-              (option) =>
-                option.id === loanTemplate.interestRateFrequencyType?.id ||
-                option.value ===
-                  loanTemplate.interestRateFrequencyType?.value ||
-                option.code === loanTemplate.interestRateFrequencyType?.code
-            );
-          if (matchingInterestRateFreq) {
-            form.setValue(
-              "interestRateFrequency",
-              matchingInterestRateFreq.id.toString()
-            );
-          }
-        } else if (loanTemplate.interestRateFrequencyTypeOptions?.length > 0) {
-          const defaultInterestType =
-            loanTemplate.interestRateFrequencyTypeOptions.find(
-              (t) => t.id === 2
-            ) || loanTemplate.interestRateFrequencyTypeOptions[0];
-          form.setValue(
-            "interestRateFrequency",
-            defaultInterestType.id.toString()
+        // Interest Rate Frequency - directly use the id from interestRateFrequencyType
+        let interestFreqValue = "";
+        if (loanTemplate.interestRateFrequencyType?.id !== undefined) {
+          interestFreqValue =
+            loanTemplate.interestRateFrequencyType.id.toString();
+          console.log(
+            "Set interestRateFrequency from template:",
+            interestFreqValue
           );
+        } else if (loanTemplate.interestRateFrequencyTypeOptions?.length > 0) {
+          interestFreqValue =
+            loanTemplate.interestRateFrequencyTypeOptions[0].id.toString();
+          console.log("Set interestRateFrequency fallback:", interestFreqValue);
+        }
+        if (interestFreqValue) {
+          form.setValue("interestRateFrequency", interestFreqValue, {
+            shouldDirty: true,
+            shouldTouch: true,
+            shouldValidate: false,
+          });
+        }
+
+        // Mark frequency values as set from template
+        if (termFreqValue || repaymentFreqValue || interestFreqValue) {
+          frequencyValuesSet.current = true;
+          console.log("Frequency values marked as SET:", {
+            termFreqValue,
+            repaymentFreqValue,
+            interestFreqValue,
+          });
         }
 
         // Interest Method
@@ -611,18 +654,38 @@ export function LoanTermsForm({
           // interestChargedFrom defaults to null - not set from disbursement date
         }
 
-        // Log form values after setting them
+        // Log form values IMMEDIATELY after setting them
+        const immediateValues = form.getValues();
+        console.log("=== IMMEDIATE FORM VALUES (right after setValue) ===");
+        console.log("termFrequency:", immediateValues.termFrequency);
+        console.log("repaymentFrequency:", immediateValues.repaymentFrequency);
+        console.log(
+          "interestRateFrequency:",
+          immediateValues.interestRateFrequency
+        );
+
+        // Log form values after a delay to check if something is resetting them
         setTimeout(() => {
-          const formValues = form.getValues();
-          console.log("Form values after population:", formValues);
-          console.log("=== FREQUENCY VALUES SET ===");
-          console.log("termFrequency:", formValues.termFrequency);
-          console.log("repaymentFrequency:", formValues.repaymentFrequency);
+          const delayedValues = form.getValues();
+          console.log("=== DELAYED FORM VALUES (100ms later) ===");
+          console.log("termFrequency:", delayedValues.termFrequency);
+          console.log("repaymentFrequency:", delayedValues.repaymentFrequency);
           console.log(
             "interestRateFrequency:",
-            formValues.interestRateFrequency
+            delayedValues.interestRateFrequency
           );
+
+          if (delayedValues.termFrequency !== immediateValues.termFrequency) {
+            console.error(
+              "!!! termFrequency was CHANGED from",
+              immediateValues.termFrequency,
+              "to",
+              delayedValues.termFrequency
+            );
+          }
         }, 100);
+
+        console.log("=== TEMPLATE POPULATION END ===");
       } catch (err) {
         console.error("Error populating form:", err);
         setError(
@@ -668,8 +731,17 @@ export function LoanTermsForm({
             if (loanTermsData.loanTerm) {
               form.setValue("loanTerm", loanTermsData.loanTerm);
             }
-            if (loanTermsData.termFrequency) {
+            // Only set frequency if we have a value AND template values weren't already set
+            if (loanTermsData.termFrequency && !frequencyValuesSet.current) {
               form.setValue("termFrequency", loanTermsData.termFrequency);
+              console.log(
+                "Setting termFrequency from saved data:",
+                loanTermsData.termFrequency
+              );
+            } else if (loanTermsData.termFrequency) {
+              console.log(
+                "Skipping termFrequency from saved data - already set from template"
+              );
             }
             if (loanTermsData.numberOfRepayments) {
               form.setValue(
@@ -680,10 +752,22 @@ export function LoanTermsForm({
             if (loanTermsData.repaymentEvery) {
               form.setValue("repaymentEvery", loanTermsData.repaymentEvery);
             }
-            if (loanTermsData.repaymentFrequency) {
+            // Only set repaymentFrequency if we have a value AND template values weren't already set
+            if (
+              loanTermsData.repaymentFrequency &&
+              !frequencyValuesSet.current
+            ) {
               form.setValue(
                 "repaymentFrequency",
                 loanTermsData.repaymentFrequency
+              );
+              console.log(
+                "Setting repaymentFrequency from saved data:",
+                loanTermsData.repaymentFrequency
+              );
+            } else if (loanTermsData.repaymentFrequency) {
+              console.log(
+                "Skipping repaymentFrequency from saved data - already set from template"
               );
             }
             if (loanTermsData.nominalInterestRate) {
@@ -692,10 +776,22 @@ export function LoanTermsForm({
                 loanTermsData.nominalInterestRate
               );
             }
-            if (loanTermsData.interestRateFrequency) {
+            // Only set interestRateFrequency if we have a value AND template values weren't already set
+            if (
+              loanTermsData.interestRateFrequency &&
+              !frequencyValuesSet.current
+            ) {
               form.setValue(
                 "interestRateFrequency",
                 loanTermsData.interestRateFrequency
+              );
+              console.log(
+                "Setting interestRateFrequency from saved data:",
+                loanTermsData.interestRateFrequency
+              );
+            } else if (loanTermsData.interestRateFrequency) {
+              console.log(
+                "Skipping interestRateFrequency from saved data - already set from template"
               );
             }
             if (loanTermsData.interestMethod) {
