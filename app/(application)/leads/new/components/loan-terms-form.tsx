@@ -386,27 +386,20 @@ export function LoanTermsForm({
         // Term Options
         if (loanTemplate.termFrequency !== undefined) {
           form.setValue("loanTerm", loanTemplate.termFrequency);
+          console.log("Set loanTerm:", loanTemplate.termFrequency);
         }
-        // Use termPeriodFrequencyType from template to find matching option
-        if (
-          loanTemplate.termPeriodFrequencyType &&
-          loanTemplate.termFrequencyTypeOptions?.length > 0
-        ) {
-          const matchingTermType = loanTemplate.termFrequencyTypeOptions.find(
-            (option) =>
-              option.id === loanTemplate.termPeriodFrequencyType?.id ||
-              option.value === loanTemplate.termPeriodFrequencyType?.value ||
-              option.code === loanTemplate.termPeriodFrequencyType?.code
-          );
-          if (matchingTermType) {
-            form.setValue("termFrequency", matchingTermType.id.toString());
-          }
+
+        // Term Frequency - directly use the id from termPeriodFrequencyType
+        if (loanTemplate.termPeriodFrequencyType?.id !== undefined) {
+          const termFreqId = loanTemplate.termPeriodFrequencyType.id.toString();
+          form.setValue("termFrequency", termFreqId);
+          console.log("Set termFrequency from template:", termFreqId);
         } else if (loanTemplate.termFrequencyTypeOptions?.length > 0) {
-          const defaultTermType =
-            loanTemplate.termFrequencyTypeOptions.find(
-              (t) => t.id === loanTemplate.termFrequency
-            ) || loanTemplate.termFrequencyTypeOptions[0];
-          form.setValue("termFrequency", defaultTermType.id.toString());
+          // Fallback to first option
+          const defaultTermFreq =
+            loanTemplate.termFrequencyTypeOptions[0].id.toString();
+          form.setValue("termFrequency", defaultTermFreq);
+          console.log("Set termFrequency fallback:", defaultTermFreq);
         }
 
         // Repayments
@@ -417,34 +410,17 @@ export function LoanTermsForm({
           form.setValue("repaymentEvery", loanTemplate.repaymentEvery);
         }
 
-        // Repayment Frequency
-        // Use repaymentFrequencyType from template to find matching option
-        if (
-          loanTemplate.repaymentFrequencyType &&
-          loanTemplate.repaymentFrequencyTypeOptions?.length > 0
-        ) {
-          const matchingRepaymentType =
-            loanTemplate.repaymentFrequencyTypeOptions.find(
-              (option) =>
-                option.id === loanTemplate.repaymentFrequencyType?.id ||
-                option.value === loanTemplate.repaymentFrequencyType?.value ||
-                option.code === loanTemplate.repaymentFrequencyType?.code
-            );
-          if (matchingRepaymentType) {
-            form.setValue(
-              "repaymentFrequency",
-              matchingRepaymentType.id.toString()
-            );
-          }
+        // Repayment Frequency - directly use the id from repaymentFrequencyType
+        if (loanTemplate.repaymentFrequencyType?.id !== undefined) {
+          const freqId = loanTemplate.repaymentFrequencyType.id.toString();
+          form.setValue("repaymentFrequency", freqId);
+          console.log("Set repaymentFrequency from template:", freqId);
         } else if (loanTemplate.repaymentFrequencyTypeOptions?.length > 0) {
-          const defaultRepaymentType =
-            loanTemplate.repaymentFrequencyTypeOptions.find(
-              (t) => t.id === loanTemplate.repaymentEvery
-            ) || loanTemplate.repaymentFrequencyTypeOptions[0];
-          form.setValue(
-            "repaymentFrequency",
-            defaultRepaymentType.id.toString()
-          );
+          // Fallback to first option
+          const defaultFreq =
+            loanTemplate.repaymentFrequencyTypeOptions[0].id.toString();
+          form.setValue("repaymentFrequency", defaultFreq);
+          console.log("Set repaymentFrequency fallback:", defaultFreq);
         }
 
         // Interest Rate
@@ -639,6 +615,13 @@ export function LoanTermsForm({
         setTimeout(() => {
           const formValues = form.getValues();
           console.log("Form values after population:", formValues);
+          console.log("=== FREQUENCY VALUES SET ===");
+          console.log("termFrequency:", formValues.termFrequency);
+          console.log("repaymentFrequency:", formValues.repaymentFrequency);
+          console.log(
+            "interestRateFrequency:",
+            formValues.interestRateFrequency
+          );
         }, 100);
       } catch (err) {
         console.error("Error populating form:", err);
