@@ -370,9 +370,6 @@ export function LoanTermsForm({
   useEffect(() => {
     if (loanTemplate) {
       try {
-        setIsLoading(true);
-        setError(null);
-
         console.log("=== TEMPLATE POPULATION START ===");
         console.log("Populating form with template data:", loanTemplate);
         console.log(
@@ -693,11 +690,10 @@ export function LoanTermsForm({
             ? err.message
             : "Failed to populate form with template data"
         );
-      } finally {
-        setIsLoading(false);
       }
     }
-  }, [loanTemplate, form]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loanTemplate]); // form is stable from useForm, no need in deps
 
   // Load existing loan terms data when leadId is available
   useEffect(() => {
