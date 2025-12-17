@@ -1,7 +1,7 @@
 "use client";
 
 import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { LeadsData } from "@/app/actions/leads-actions";
@@ -31,16 +31,14 @@ export function LeadsTable({ initialData }: LeadsTableProps) {
       cell: ({ getValue }) => (
         <div className="flex items-center gap-2">
           <Avatar className="h-8 w-8">
-            <AvatarImage
-              src={`/diverse-group-avatars.png?height=32&width=32&query=avatar ${getValue()}`}
-              alt={getValue()}
-            />
-            <AvatarFallback>
+            <AvatarFallback className="bg-primary/10 text-primary">
               {getValue()
                 ? (getValue() as string)
                     .split(" ")
                     .map((n) => n[0])
                     .join("")
+                    .slice(0, 2)
+                    .toUpperCase()
                 : "UN"}
             </AvatarFallback>
           </Avatar>

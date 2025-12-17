@@ -11,7 +11,7 @@ import {
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   Select,
   SelectContent,
@@ -252,15 +252,13 @@ export function PipelineView({ initialData }: PipelineViewProps) {
                   >
                     <div className="flex items-start gap-3 mb-3 sm:mb-0">
                       <Avatar className="h-10 w-10">
-                        <AvatarImage
-                          src={`/diverse-group-avatars.png?height=40&width=40&query=avatar ${lead.client}`}
-                          alt={lead.client}
-                        />
-                        <AvatarFallback>
+                        <AvatarFallback className="bg-primary/10 text-primary">
                           {lead.client
                             .split(" ")
                             .map((n) => n[0])
-                            .join("")}
+                            .join("")
+                            .slice(0, 2)
+                            .toUpperCase()}
                         </AvatarFallback>
                       </Avatar>
                       <div>

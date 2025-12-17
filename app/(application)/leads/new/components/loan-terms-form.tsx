@@ -704,6 +704,9 @@ export function LoanTermsForm({
     const loadExistingLoanTerms = async () => {
       if (!leadId) return;
 
+      console.log("=== LOAD EXISTING LOAN TERMS START ===");
+      console.log("frequencyValuesSet.current:", frequencyValuesSet.current);
+
       try {
         // Fetch both loan-terms and loan-details in parallel
         const [loanTermsResponse, loanDetailsResponse] = await Promise.all([
@@ -926,7 +929,8 @@ export function LoanTermsForm({
     };
 
     loadExistingLoanTerms();
-  }, [leadId, form, loanTemplate]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leadId]); // Only run when leadId changes, not on every template update
 
   const handleRemoveCharge = (index: number) => {
     setEditableCharges((prev) => prev.filter((_, i) => i !== index));

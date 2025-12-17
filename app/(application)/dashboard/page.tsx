@@ -16,14 +16,13 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import {
   LoanPortfolioChart,
   RiskAssessmentChart,
   ProgressChart,
 } from "@/components/charts";
-
 
 export default function DashboardPage() {
   return (
@@ -186,17 +185,13 @@ export default function DashboardPage() {
                 >
                   <div className="flex items-center gap-3">
                     <Avatar className="h-9 w-9">
-                      <AvatarImage
-                        src={`/diverse-group-avatars.png?height=36&width=36&query=avatar ${
-                          index + 1
-                        }`}
-                        alt={item.name}
-                      />
-                      <AvatarFallback>
+                      <AvatarFallback className="bg-primary/10 text-primary">
                         {item.name
                           .split(" ")
                           .map((n) => n[0])
-                          .join("")}
+                          .join("")
+                          .slice(0, 2)
+                          .toUpperCase()}
                       </AvatarFallback>
                     </Avatar>
                     <div>
