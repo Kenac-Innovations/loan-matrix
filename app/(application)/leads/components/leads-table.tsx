@@ -9,6 +9,7 @@ import { Lead } from "@/shared/types";
 import { GenericDataTable } from "@/components/tables/generic-data-table";
 import { DataTableColumn, DataTableFilter } from "@/shared/types/data-table";
 import { useState } from "react";
+import { CheckCircle2, UserCheck, FileEdit, Send } from "lucide-react";
 
 interface LeadsTableProps {
   initialData: LeadsData;
@@ -17,7 +18,7 @@ interface LeadsTableProps {
 export function LeadsTable({ initialData }: LeadsTableProps) {
   const { leads, pipelineStages } = initialData;
   const [customFilters, setCustomFilters] = useState<DataTableFilter[]>([
-    { columnId: "stage", value: "", type: "select" },
+    { columnId: "leadStatus", value: "", type: "select" },
     { columnId: "type", value: "", type: "select" },
   ]);
 
@@ -48,6 +49,38 @@ export function LeadsTable({ initialData }: LeadsTableProps) {
       ),
     },
     {
+      id: "leadStatus",
+      accessorKey: "loanSubmittedToFineract",
+      header: "Status",
+      cell: ({ row }) => {
+        const lead = row.original;
+        const isSubmitted = lead.loanSubmittedToFineract || lead.fineractLoanId;
+
+        if (isSubmitted) {
+          return (
+            <Badge className="bg-green-500 hover:bg-green-600 text-white border-0 text-xs">
+              <CheckCircle2 className="h-3 w-3 mr-1" />
+              Submitted
+            </Badge>
+          );
+        } else {
+          return (
+            <Badge
+              variant="outline"
+              className="border-yellow-500 bg-yellow-500/10 text-yellow-600 text-xs"
+            >
+              <FileEdit className="h-3 w-3 mr-1" />
+              Draft
+            </Badge>
+          );
+        }
+      },
+      filterOptions: [
+        { label: "Submitted", value: "true" },
+        { label: "Draft", value: "false" },
+      ],
+    },
+    {
       id: "amount",
       accessorKey: "amount",
       header: "Amount",
@@ -67,48 +100,6 @@ export function LeadsTable({ initialData }: LeadsTableProps) {
           value: type,
         })
       ),
-    },
-    {
-      id: "stage",
-      accessorKey: "stage",
-      header: "Stage",
-      cell: ({ row }) => {
-        const lead = row.original;
-        const stage = pipelineStages.find((s) => s.id === lead.stage);
-        return (
-          <Badge
-            className="text-white border-0 text-xs"
-            style={{ backgroundColor: stage?.color || "#6B7280" }}
-          >
-            {stage?.name || "Unknown"}
-          </Badge>
-        );
-      },
-      filterOptions: pipelineStages.map((stage) => ({
-        label: stage.name,
-        value: stage.id,
-      })),
-    },
-    {
-      id: "timeInStage",
-      accessorKey: "timeInStage",
-      header: "Time in Stage",
-      cell: ({ row }) => {
-        const lead = row.original;
-        return (
-          <span
-            className={`text-xs ${
-              lead.status === "overdue"
-                ? "text-red-400"
-                : lead.status === "warning"
-                ? "text-yellow-400"
-                : "text-muted-foreground"
-            }`}
-          >
-            {lead.timeInStage} / {lead.sla}
-          </span>
-        );
-      },
     },
     {
       id: "assigneeName",
@@ -151,17 +142,16 @@ export function LeadsTable({ initialData }: LeadsTableProps) {
       header: "Actions",
       cell: ({ row }) => {
         const lead = row.original;
-        const isDraft =
-          !lead.stage ||
-          !initialData.pipelineStages.find((s) => s.id === lead.stage);
+        // Show detail view for submitted loans, create view for drafts
+        const isSubmitted = lead.loanSubmittedToFineract || lead.fineractLoanId;
         return (
           <Button variant="ghost" size="sm" asChild>
             <Link
               href={
-                isDraft ? `/leads/new?leadId=${lead.id}` : `/leads/${lead.id}`
+                isSubmitted ? `/leads/${lead.id}` : `/leads/new?id=${lead.id}`
               }
             >
-              View
+              {isSubmitted ? "View" : "Continue"}
             </Link>
           </Button>
         );
@@ -172,11 +162,11 @@ export function LeadsTable({ initialData }: LeadsTableProps) {
 
   // Handle row click to navigate to lead details
   const handleRowClick = (lead: Lead) => {
-    const isDraft =
-      !lead.stage || !pipelineStages.find((s) => s.id === lead.stage);
-    window.location.href = isDraft
-      ? `/leads/new?leadId=${lead.id}`
-      : `/leads/${lead.id}`;
+    // Show detail view for submitted loans, create view for drafts
+    const isSubmitted = lead.loanSubmittedToFineract || lead.fineractLoanId;
+    window.location.href = isSubmitted
+      ? `/leads/${lead.id}`
+      : `/leads/new?id=${lead.id}`;
   };
 
   return (

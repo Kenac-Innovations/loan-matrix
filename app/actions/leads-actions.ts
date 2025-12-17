@@ -237,6 +237,12 @@ export async function getLeadsData(
         createdAt: lead.createdAt,
         updatedAt: lead.updatedAt,
         userId: lead.userId, // Include created by user ID
+        // Fineract tracking fields
+        fineractLoanId: lead.fineractLoanId,
+        loanSubmittedToFineract: lead.loanSubmittedToFineract,
+        loanSubmissionDate: lead.loanSubmissionDate,
+        clientCreatedInFineract: lead.clientCreatedInFineract,
+        fineractClientId: lead.fineractClientId,
       };
     });
 

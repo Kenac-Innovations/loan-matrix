@@ -144,6 +144,9 @@ model Lead {
   clientCreationDate         DateTime?
   fineractAccountNo          String?
   fineractClientId           Int?
+  fineractLoanId             Int?
+  loanSubmittedToFineract    Boolean             @default(false)
+  loanSubmissionDate         DateTime?
   familyMembers              FamilyMember[]
   currentStage               PipelineStage?      @relation("LeadCurrentStage", fields: [currentStageId], references: [id])
   tenant                     Tenant              @relation(fields: [tenantId], references: [id])

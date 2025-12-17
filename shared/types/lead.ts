@@ -17,6 +17,12 @@ export interface Lead {
   emailAddress?: string;
   currentStageId?: string;
   userId?: string; // Created by user ID
+  // Fineract tracking fields
+  fineractLoanId?: number | null;
+  loanSubmittedToFineract?: boolean;
+  loanSubmissionDate?: Date | null;
+  clientCreatedInFineract?: boolean;
+  fineractClientId?: number | null;
 }
 
 export interface PipelineStage {

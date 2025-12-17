@@ -168,13 +168,22 @@ export async function PATCH(
 
     console.log("Lead found, updating...");
 
+    // Handle date fields that might be passed as strings
+    const updateData = { ...body };
+    if (
+      updateData.loanSubmissionDate &&
+      typeof updateData.loanSubmissionDate === "string"
+    ) {
+      updateData.loanSubmissionDate = new Date(updateData.loanSubmissionDate);
+    }
+
     // Update lead (without tenant filter)
     const updatedLead = await prisma.lead.update({
       where: {
         id: leadId,
       },
       data: {
-        ...body,
+        ...updateData,
         updatedAt: new Date(),
       },
     });

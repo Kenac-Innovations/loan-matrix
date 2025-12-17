@@ -1698,7 +1698,7 @@ export function ComprehensiveLeadDetails({
                             className="border-green-500 bg-green-500/10 text-green-500 text-xs"
                           >
                             <CheckCircle className="mr-1 h-3 w-3" />
-                            From Fineract
+                            From Cloud Storage
                           </Badge>
                           <Button
                             variant="ghost"

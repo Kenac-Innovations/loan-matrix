@@ -157,7 +157,9 @@ export function NewLeadForm() {
   useEffect(() => {
     const loadLeadData = async () => {
       console.log("=== LOAD LEAD DATA START ===");
-      const leadIdFromUrl = searchParams?.get("leadId");
+      // Check for both 'id' and 'leadId' URL parameters for compatibility
+      const leadIdFromUrl =
+        searchParams?.get("id") || searchParams?.get("leadId");
       const leadIdFromStorage = LeadLocalStorage.getLeadId();
       console.log("Lead ID from URL:", leadIdFromUrl);
       console.log("Lead ID from localStorage:", leadIdFromStorage);
@@ -896,6 +898,7 @@ export function NewLeadForm() {
                 </CardHeader>
                 <CardContent className="space-y-4 px-2 lg:px-6">
                   <ClientRegistrationForm
+                    leadId={currentLeadId || undefined}
                     formData={clientFormData}
                     externalForm={form}
                     onFormSubmit={onSubmit}

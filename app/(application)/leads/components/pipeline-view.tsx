@@ -31,8 +31,9 @@ import {
   Filter,
   ChevronRight,
   AlertCircle,
-  Clock,
   Loader2,
+  CheckCircle2,
+  UserCheck,
 } from "lucide-react";
 import Link from "next/link";
 import {
@@ -265,6 +266,20 @@ export function PipelineView({ initialData }: PipelineViewProps) {
                       <div>
                         <div className="flex items-center gap-2">
                           <p className="text-sm font-medium">{lead.client}</p>
+                          {/* Fineract Status Indicator */}
+                          {lead.loanSubmittedToFineract ||
+                          lead.fineractLoanId ? (
+                            <CheckCircle2
+                              className="h-4 w-4 text-green-500"
+                              title="Loan submitted to Fineract"
+                            />
+                          ) : lead.clientCreatedInFineract ||
+                            lead.fineractClientId ? (
+                            <UserCheck
+                              className="h-4 w-4 text-blue-500"
+                              title="Client created in Fineract"
+                            />
+                          ) : null}
                           {lead.status === "overdue" && (
                             <Badge
                               variant="outline"
@@ -286,6 +301,20 @@ export function PipelineView({ initialData }: PipelineViewProps) {
                           <Badge variant="outline" className="text-xs">
                             {lead.type}
                           </Badge>
+                          {/* Status Badge */}
+                          {lead.loanSubmittedToFineract ||
+                          lead.fineractLoanId ? (
+                            <Badge className="bg-green-500 text-white border-0 text-xs">
+                              Submitted
+                            </Badge>
+                          ) : (
+                            <Badge
+                              variant="outline"
+                              className="border-yellow-500 bg-yellow-500/10 text-yellow-600 text-xs"
+                            >
+                              Draft
+                            </Badge>
+                          )}
                           <span className="text-xs text-muted-foreground">
                             {lead.amount}
                           </span>
@@ -294,20 +323,6 @@ export function PipelineView({ initialData }: PipelineViewProps) {
                     </div>
                     <div className="flex flex-wrap items-center gap-3 justify-between sm:justify-end">
                       <div className="flex items-center gap-2">
-                        <div className="flex items-center gap-1">
-                          <Clock className="h-3 w-3 text-muted-foreground" />
-                          <span
-                            className={`text-xs ${
-                              lead.status === "overdue"
-                                ? "text-red-400"
-                                : lead.status === "warning"
-                                ? "text-yellow-400"
-                                : "text-muted-foreground"
-                            }`}
-                          >
-                            {lead.timeInStage} / {lead.sla}
-                          </span>
-                        </div>
                         <div
                           className="h-6 w-6 rounded-full flex items-center justify-center"
                           style={{ backgroundColor: lead.assigneeColor }}
@@ -318,17 +333,6 @@ export function PipelineView({ initialData }: PipelineViewProps) {
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
-                        <Badge
-                          className="text-white border-0 text-xs"
-                          style={{
-                            backgroundColor:
-                              pipelineStages.find((s) => s.id === lead.stage)
-                                ?.color || "#6B7280",
-                          }}
-                        >
-                          {pipelineStages.find((s) => s.id === lead.stage)
-                            ?.name || "Draft"}
-                        </Badge>
                         <Button
                           variant="ghost"
                           size="icon"
@@ -337,10 +341,10 @@ export function PipelineView({ initialData }: PipelineViewProps) {
                         >
                           <Link
                             href={
-                              !lead.stage ||
-                              !pipelineStages.find((s) => s.id === lead.stage)
-                                ? `/leads/new?leadId=${lead.id}`
-                                : `/leads/${lead.id}`
+                              lead.loanSubmittedToFineract ||
+                              lead.fineractLoanId
+                                ? `/leads/${lead.id}`
+                                : `/leads/new?id=${lead.id}`
                             }
                           >
                             <ChevronRight className="h-4 w-4" />

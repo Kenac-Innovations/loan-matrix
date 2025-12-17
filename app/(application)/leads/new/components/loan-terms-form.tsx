@@ -628,7 +628,7 @@ export function LoanTermsForm({
           const [year, month, day] = loanTemplate.expectedDisbursementDate;
           const disbursementDate = new Date(year, month - 1, day);
           form.setValue("firstRepaymentOn", disbursementDate);
-          form.setValue("interestChargedFrom", disbursementDate);
+          // interestChargedFrom defaults to null - not set from disbursement date
         }
 
         // Log form values after setting them
@@ -655,9 +655,22 @@ export function LoanTermsForm({
       if (!leadId) return;
 
       try {
-        const response = await fetch(`/api/leads/${leadId}/loan-terms`);
-        if (response.ok) {
-          const result = await response.json();
+        // Fetch both loan-terms and loan-details in parallel
+        const [loanTermsResponse, loanDetailsResponse] = await Promise.all([
+          fetch(`/api/leads/${leadId}/loan-terms`),
+          fetch(`/api/leads/${leadId}/loan-details`),
+        ]);
+
+        let loanDetailsData: any = null;
+        if (loanDetailsResponse.ok) {
+          const detailsResult = await loanDetailsResponse.json();
+          if (detailsResult.success && detailsResult.data) {
+            loanDetailsData = detailsResult.data;
+          }
+        }
+
+        if (loanTermsResponse.ok) {
+          const result = await loanTermsResponse.json();
           if (result.success && result.data) {
             const loanTermsData = result.data;
 
@@ -722,10 +735,17 @@ export function LoanTermsForm({
                 loanTermsData.interestCalculationPeriod
               );
             }
+            // Use firstRepaymentOn from loan-terms, fallback to loan-details
             if (loanTermsData.firstRepaymentOn) {
               form.setValue(
                 "firstRepaymentOn",
                 new Date(loanTermsData.firstRepaymentOn)
+              );
+            } else if (loanDetailsData?.firstRepaymentOn) {
+              // Fallback to loan-details firstRepaymentOn if not set in terms
+              form.setValue(
+                "firstRepaymentOn",
+                new Date(loanDetailsData.firstRepaymentOn)
               );
             }
             if (loanTermsData.interestChargedFrom) {
@@ -1090,6 +1110,10 @@ export function LoanTermsForm({
           <CardDescription>
             Principal, term options, repayments, and repayment frequency
           </CardDescription>
+          <p className="text-xs text-amber-600 dark:text-amber-400 mt-2 italic">
+            Note: Only Principal Amount and Charges can be edited. Other fields
+            are pre-configured from the loan product.
+          </p>
         </div>
 
         {/* Principal */}
@@ -1140,7 +1164,8 @@ export function LoanTermsForm({
               <Input
                 id="loanTerm"
                 type="number"
-                className="h-10"
+                className="h-10 cursor-not-allowed"
+                disabled
                 {...form.register("loanTerm", { valueAsNumber: true })}
               />
               {form.formState.errors.loanTerm && (

@@ -1575,6 +1575,14 @@ export function ClientRegistrationForm({
   const [isSettingLeadIdFromAutoSave, setIsSettingLeadIdFromAutoSave] =
     useState(false);
 
+  // Sync currentLeadId with leadId prop when it changes
+  useEffect(() => {
+    if (leadId && leadId !== currentLeadId) {
+      console.log("Syncing currentLeadId with leadId prop:", leadId);
+      setCurrentLeadId(leadId);
+    }
+  }, [leadId]);
+
   // Use ref to track if we've already checked for prospect dialog (only check once)
   const hasCheckedProspectDialog = useRef(false);
 

@@ -39,6 +39,7 @@ export async function GET(
         externalId: true,
         dateOfBirth: true,
         gender: true,
+        genderId: true,
         fineractClientId: true,
         officeName: true,
 
@@ -142,6 +143,24 @@ export async function GET(
         },
         { status: 400 }
       );
+    }
+
+    // Fetch client template to get gender options
+    let clientTemplate: any = null;
+    try {
+      const clientTemplateResponse = await fetch(
+        `${request.nextUrl.origin}/api/fineract/clients/template`,
+        {
+          headers: {
+            "x-tenant-slug": tenantSlug,
+          },
+        }
+      );
+      if (clientTemplateResponse.ok) {
+        clientTemplate = await clientTemplateResponse.json();
+      }
+    } catch (err) {
+      console.error("Error fetching client template:", err);
     }
 
     // Fetch loan template for additional info
@@ -374,6 +393,15 @@ export async function GET(
       .reduce((sum, c) => sum + c.amount, 0);
     const disbursedAmount = principal - upfrontFees;
 
+    // Get gender name from genderId if lead.gender is not set
+    let genderName = lead.gender || "N/A";
+    if (!lead.gender && lead.genderId && clientTemplate?.genderOptions) {
+      const genderOption = clientTemplate.genderOptions.find(
+        (g: any) => g.id === lead.genderId
+      );
+      genderName = genderOption?.name || "N/A";
+    }
+
     const contractData = {
       // Client Information
       clientName,
@@ -381,7 +409,7 @@ export async function GET(
       dateOfBirth: lead.dateOfBirth
         ? format(new Date(lead.dateOfBirth), "dd/MM/yyyy")
         : "N/A",
-      gender: lead.gender || "N/A",
+      gender: genderName,
       employeeNo: undefined,
       employer: undefined,
       gflNo: lead.fineractClientId?.toString() || undefined,

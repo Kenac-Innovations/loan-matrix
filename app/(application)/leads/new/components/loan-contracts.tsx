@@ -785,7 +785,7 @@ export function LoanContracts({
 
       console.log("Loan created successfully:", createdLoanId);
 
-      // Save the Fineract loan ID to the lead
+      // Save the Fineract loan ID and submission status to the lead
       if (leadId && createdLoanId) {
         try {
           await fetch(`/api/leads/${leadId}`, {
@@ -795,8 +795,11 @@ export function LoanContracts({
             },
             body: JSON.stringify({
               fineractLoanId: createdLoanId,
+              loanSubmittedToFineract: true,
+              loanSubmissionDate: new Date().toISOString(),
             }),
           });
+          console.log("Loan ID and submission status saved to lead");
         } catch (err) {
           console.error("Error saving loan ID to lead:", err);
           // Don't block the flow
@@ -1198,10 +1201,13 @@ export function LoanContracts({
         }
       `}</style>
 
-      <div className="contract-section">
+      <div className="contract-section bg-white text-black dark:bg-white dark:text-black">
         {/* Key Facts Statement */}
-        <Card className="mb-6 break-after-page" ref={keyFactsRef}>
-          <CardContent className="p-8">
+        <Card
+          className="mb-6 break-after-page bg-white text-black border-gray-200 [&_*]:text-inherit"
+          ref={keyFactsRef}
+        >
+          <CardContent className="p-8 bg-white text-black">
             <div className="space-y-6">
               {/* Header */}
               <div className="flex items-center gap-4 pb-4 border-b">
@@ -1352,7 +1358,7 @@ export function LoanContracts({
                 <h3 className="text-sm font-semibold text-[#00a5c4] mb-2 mt-6">
                   SECTION II: RISKS TO YOU
                 </h3>
-                <ul className="list-disc list-inside text-sm space-y-1 text-gray-700 mb-4">
+                <ul className="list-disc list-inside text-sm space-y-1 text-gray-700 dark:text-gray-700 mb-4">
                   <li>
                     Late or missing payments may be reported to a credit
                     reference bureau and may severely affect your financial
@@ -1369,7 +1375,7 @@ export function LoanContracts({
                 <h3 className="text-sm font-semibold text-[#00a5c4] mb-2">
                   SECTION III: YOUR RIGHTS AND OBLIGATIONS
                 </h3>
-                <div className="text-sm space-y-2 text-gray-700 mb-4">
+                <div className="text-sm space-y-2 text-gray-700 dark:text-gray-700 mb-4">
                   <p>
                     Any questions or complaints? Call{" "}
                     <strong>+260 211 238719</strong>, email{" "}
@@ -1425,7 +1431,7 @@ export function LoanContracts({
                           <td className="p-2">-</td>
                         </tr>
                       ))}
-                      <tr className="border-t font-bold bg-gray-50">
+                      <tr className="border-t font-bold bg-gray-50 dark:bg-gray-50 dark:text-black">
                         <td className="p-2">Total (excluding interest)</td>
                         <td className="p-2 text-right">
                           {formatCurrency(
@@ -1477,7 +1483,7 @@ export function LoanContracts({
                             </td>
                           </tr>
                         ))}
-                        <tr className="border-t font-bold bg-gray-50">
+                        <tr className="border-t font-bold bg-gray-50 dark:bg-gray-50 dark:text-black">
                           <td className="p-2" colSpan={2}>
                             TOTAL
                           </td>
@@ -1563,8 +1569,11 @@ export function LoanContracts({
         </Card>
 
         {/* Salary Advance Contract */}
-        <Card ref={salaryAdvanceRef}>
-          <CardContent className="p-8">
+        <Card
+          className="bg-white text-black border-gray-200 [&_*]:text-inherit"
+          ref={salaryAdvanceRef}
+        >
+          <CardContent className="p-8 bg-white text-black">
             <div className="space-y-6">
               {/* Header */}
               <div className="flex items-center gap-4 pb-4 border-b">
@@ -1676,7 +1685,7 @@ export function LoanContracts({
                 <h3 className="text-sm font-semibold text-[#00a5c4] mb-2">
                   Obligations & Permissions
                 </h3>
-                <ol className="list-decimal list-inside text-sm space-y-1 text-gray-700">
+                <ol className="list-decimal list-inside text-sm space-y-1 text-gray-700 dark:text-gray-700">
                   <li>
                     Notify the Lender immediately of changes to address,
                     contact, bank details, employment or financial condition.

@@ -466,9 +466,22 @@ export function LoanDetailsForm({
 
       try {
         console.log("Loading existing loan details for leadId:", leadId);
-        const response = await fetch(`/api/leads/${leadId}/loan-details`);
-        if (response.ok) {
-          const result = await response.json();
+        // Fetch both loan-details and loan-terms in parallel
+        const [detailsResponse, termsResponse] = await Promise.all([
+          fetch(`/api/leads/${leadId}/loan-details`),
+          fetch(`/api/leads/${leadId}/loan-terms`),
+        ]);
+
+        let loanTermsData: any = null;
+        if (termsResponse.ok) {
+          const termsResult = await termsResponse.json();
+          if (termsResult.success && termsResult.data) {
+            loanTermsData = termsResult.data;
+          }
+        }
+
+        if (detailsResponse.ok) {
+          const result = await detailsResponse.json();
           console.log("Loaded loan details result:", result);
           if (result.success && result.data) {
             console.log("Setting form values from loaded data:", result.data);
@@ -502,15 +515,24 @@ export function LoanDetailsForm({
                 new Date(result.data.disbursementOn)
               );
             }
+            // Use firstRepaymentOn from loan-details, fallback to loan-terms
             if (result.data.firstRepaymentOn) {
               const savedDate = new Date(result.data.firstRepaymentOn);
               console.log(
-                "Loading saved firstRepaymentOn:",
+                "Loading saved firstRepaymentOn from loan-details:",
                 savedDate.toISOString().split("T")[0]
               );
               form.setValue("firstRepaymentOn", savedDate);
+            } else if (loanTermsData?.firstRepaymentOn) {
+              // Fallback to loan-terms firstRepaymentOn if not set in details
+              const termsDate = new Date(loanTermsData.firstRepaymentOn);
+              console.log(
+                "Loading firstRepaymentOn from loan-terms:",
+                termsDate.toISOString().split("T")[0]
+              );
+              form.setValue("firstRepaymentOn", termsDate);
             } else {
-              // If no saved firstRepaymentOn, recalculate the default
+              // If no saved firstRepaymentOn in either, recalculate the default
               const calculatedDate = calculateFirstRepaymentDate();
               console.log(
                 "No saved firstRepaymentOn, setting calculated default:",
