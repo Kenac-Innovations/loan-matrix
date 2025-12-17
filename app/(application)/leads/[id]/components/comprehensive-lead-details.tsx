@@ -36,6 +36,7 @@ import {
   Download,
 } from "lucide-react";
 import { format } from "date-fns";
+import { DynamicDatatableContent } from "@/app/(application)/clients/[id]/components/DynamicDatatableContent";
 
 interface ComprehensiveLeadDetailsProps {
   leadId: string;
@@ -50,6 +51,7 @@ export function ComprehensiveLeadDetails({
   const [clientImage, setClientImage] = useState<string | null>(null);
   const [loanDocuments, setLoanDocuments] = useState<any[]>([]);
   const [loadingLoanDocs, setLoadingLoanDocs] = useState(false);
+  const [clientDatatables, setClientDatatables] = useState<any[]>([]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -280,6 +282,28 @@ export function ComprehensiveLeadDetails({
     } else {
       console.log("No loan ID available, not fetching documents");
       setLoanDocuments([]);
+    }
+  }, [data]);
+
+  // Fetch client datatables when fineractClientId is available
+  useEffect(() => {
+    const fetchDatatables = async () => {
+      try {
+        const res = await fetch(`/api/fineract/datatables?apptable=m_client`, {
+          cache: "no-store",
+        });
+        if (res.ok) {
+          const datatables = await res.json();
+          setClientDatatables(datatables || []);
+        }
+      } catch (err) {
+        console.error("Error fetching datatables:", err);
+      }
+    };
+
+    const clientId = data?.lead?.fineractClientId || data?.fineractClient?.id;
+    if (clientId) {
+      fetchDatatables();
     }
   }, [data]);
 
@@ -598,38 +622,35 @@ export function ComprehensiveLeadDetails({
                 </div>
               </CardContent>
             </Card>
-
-            {/* Employment Information */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Employment Information</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <p className="text-muted-foreground">Status</p>
-                    <p className="font-medium">
-                      {lead.employmentStatus || "N/A"}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground">Employer</p>
-                    <p className="font-medium">{lead.employerName || "N/A"}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground">Years at Job</p>
-                    <p className="font-medium">
-                      {lead.yearsAtCurrentJob || "N/A"}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground">Bank</p>
-                    <p className="font-medium">{lead.bankName || "N/A"}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
           </div>
+
+          {/* Client Datatables */}
+          {(data?.lead?.fineractClientId || data?.fineractClient?.id) &&
+            clientDatatables.length > 0 && (
+              <div className="mt-6 space-y-6">
+                <h3 className="text-lg font-semibold">
+                  Additional Information
+                </h3>
+                {clientDatatables.map((dt: any) => (
+                  <Card key={dt.registeredTableName}>
+                    <CardHeader>
+                      <CardTitle className="text-base">
+                        {dt.registeredTableName.replace(/_/g, " ")}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <DynamicDatatableContent
+                        datatableName={dt.registeredTableName}
+                        clientId={
+                          data?.lead?.fineractClientId ||
+                          data?.fineractClient?.id
+                        }
+                      />
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
         </TabsContent>
 
         <TabsContent value="loan" className="mt-4">
