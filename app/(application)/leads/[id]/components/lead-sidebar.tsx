@@ -5,7 +5,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Clock, ShieldCheck, ArrowRight, Users, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useSession } from "next-auth/react";
 import Link from "next/link";
+import { LeadAssignment } from "./lead-assignment";
 
 interface LeadSidebarProps {
   leadId: string;
@@ -32,6 +34,12 @@ interface StageTime {
   status: "completed" | "in_progress" | "pending";
 }
 
+interface AssignmentInfo {
+  userId: number | null;
+  userName: string | null;
+  assignedAt: string | null;
+}
+
 interface SidebarData {
   currentStage: string;
   timeInCurrentStage: number; // in hours
@@ -40,32 +48,38 @@ interface SidebarData {
   teamMembers: TeamMember[];
   validations: ValidationResult[];
   stageTimes: StageTime[];
+  isSubmitted: boolean;
+  assignment: AssignmentInfo;
 }
 
 export function LeadSidebar({ leadId }: LeadSidebarProps) {
+  const { data: session } = useSession();
   const [data, setData] = useState<SidebarData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const fetchSidebarData = async () => {
-      try {
-        setLoading(true);
-        const response = await fetch(`/api/leads/${leadId}/sidebar`);
-        if (!response.ok) {
-          throw new Error("Failed to fetch sidebar data");
-        }
-        const sidebarData = await response.json();
-        setData(sidebarData);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "An error occurred");
-      } finally {
-        setLoading(false);
+  const fetchSidebarData = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch(`/api/leads/${leadId}/sidebar`);
+      if (!response.ok) {
+        throw new Error("Failed to fetch sidebar data");
       }
-    };
+      const sidebarData = await response.json();
+      setData(sidebarData);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "An error occurred");
+    } finally {
+      setLoading(false);
+    }
+  };
 
+  useEffect(() => {
     fetchSidebarData();
   }, [leadId]);
+
+  // Get current Mifos user ID from session
+  const currentMifosUserId = (session?.user as any)?.userId as number | undefined;
 
   const formatTime = (hours: number) => {
     const days = Math.floor(hours / 24);
@@ -115,6 +129,17 @@ export function LeadSidebar({ leadId }: LeadSidebarProps) {
 
   return (
     <div className="space-y-6">
+      {/* Assignment Card - Only show for submitted leads */}
+      {data.isSubmitted && (
+        <LeadAssignment
+          leadId={leadId}
+          isSubmitted={data.isSubmitted}
+          currentAssignment={data.assignment}
+          currentUserId={currentMifosUserId}
+          onAssignmentChange={fetchSidebarData}
+        />
+      )}
+
       {/* Turn-Around Time Card */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between pb-2">

@@ -1237,6 +1237,17 @@ export class FineractAPIService {
       throw error;
     }
   }
+
+  // User operations
+  async getUsers(): Promise<any[]> {
+    try {
+      const response: AxiosResponse<any[]> = await this.client.get("/users");
+      return response.data || [];
+    } catch (error: any) {
+      console.error("Error fetching Fineract users:", error.message);
+      throw error;
+    }
+  }
 }
 
 // Singleton instance for fallback

@@ -235,6 +235,13 @@ export async function GET(
       teamMembers,
       validations,
       stageTimes,
+      // Assignment info
+      isSubmitted: lead.loanSubmittedToFineract || false,
+      assignment: {
+        userId: lead.assignedToUserId,
+        userName: lead.assignedToUserName,
+        assignedAt: lead.assignedAt?.toISOString() || null,
+      },
     };
 
     return NextResponse.json(sidebarData);

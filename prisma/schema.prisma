@@ -147,6 +147,11 @@ model Lead {
   fineractLoanId             Int?
   loanSubmittedToFineract    Boolean             @default(false)
   loanSubmissionDate         DateTime?
+  // Assignment tracking for submitted leads
+  assignedToUserId           Int?                // Mifos/Fineract user ID
+  assignedToUserName         String?             // Mifos/Fineract user display name
+  assignedAt                 DateTime?           // When the lead was assigned
+  assignedByUserId           String?             // App user who made the assignment
   familyMembers              FamilyMember[]
   currentStage               PipelineStage?      @relation("LeadCurrentStage", fields: [currentStageId], references: [id])
   tenant                     Tenant              @relation(fields: [tenantId], references: [id])
