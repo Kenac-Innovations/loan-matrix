@@ -624,21 +624,29 @@ export function ComprehensiveLeadDetails({
             </Card>
           </div>
 
-          {/* Client Datatables */}
+          {/* Client Datatables - All merged into one card */}
           {(data?.lead?.fineractClientId || data?.fineractClient?.id) &&
             clientDatatables.length > 0 && (
-              <div className="mt-6 space-y-6">
-                <h3 className="text-lg font-semibold">
-                  Additional Information
-                </h3>
-                {clientDatatables.map((dt: any) => (
-                  <Card key={dt.registeredTableName}>
-                    <CardHeader>
-                      <CardTitle className="text-base">
+              <Card className="mt-6">
+                <CardHeader>
+                  <CardTitle>Additional Information</CardTitle>
+                  <CardDescription>
+                    Client data from Fineract system
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  {clientDatatables.map((dt: any, index: number) => (
+                    <div
+                      key={dt.registeredTableName}
+                      className={
+                        index < clientDatatables.length - 1
+                          ? "pb-6 border-b border-gray-200 dark:border-gray-700"
+                          : ""
+                      }
+                    >
+                      <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
                         {dt.registeredTableName.replace(/_/g, " ")}
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
+                      </h4>
                       <DynamicDatatableContent
                         datatableName={dt.registeredTableName}
                         clientId={
@@ -646,10 +654,10 @@ export function ComprehensiveLeadDetails({
                           data?.fineractClient?.id
                         }
                       />
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
             )}
         </TabsContent>
 

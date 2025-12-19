@@ -285,6 +285,13 @@ export function LoanTermsForm({
   // Track if frequency values have been set from template
   const frequencyValuesSet = useRef(false);
 
+  // Store frequency values in state to avoid React Hook Form reset issues
+  const [frequencyState, setFrequencyState] = useState({
+    termFrequency: "",
+    repaymentFrequency: "",
+    interestRateFrequency: "",
+  });
+
   const form = useForm<LoanTermsFormData>({
     resolver: zodResolver(loanTermsSchema) as any,
     defaultValues: {
@@ -492,9 +499,15 @@ export function LoanTermsForm({
           });
         }
 
-        // Mark frequency values as set from template
+        // Mark frequency values as set from template and store in state
         if (termFreqValue || repaymentFreqValue || interestFreqValue) {
           frequencyValuesSet.current = true;
+          // Store in state to bypass React Hook Form reset issues
+          setFrequencyState({
+            termFrequency: termFreqValue,
+            repaymentFrequency: repaymentFreqValue,
+            interestRateFrequency: interestFreqValue,
+          });
           console.log("Frequency values marked as SET:", {
             termFreqValue,
             repaymentFreqValue,
@@ -1042,7 +1055,16 @@ export function LoanTermsForm({
   };
 
   const handleSubmit = async (data: LoanTermsFormData) => {
-    console.log("LoanTermsForm submitting:", data);
+    // Ensure frequency values from state are included
+    const submissionData = {
+      ...data,
+      termFrequency: frequencyState.termFrequency || data.termFrequency,
+      repaymentFrequency:
+        frequencyState.repaymentFrequency || data.repaymentFrequency,
+      interestRateFrequency:
+        frequencyState.interestRateFrequency || data.interestRateFrequency,
+    };
+    console.log("LoanTermsForm submitting:", submissionData);
 
     // Save loan terms to database if leadId is available
     if (leadId) {
@@ -1050,12 +1072,12 @@ export function LoanTermsForm({
       try {
         // Prepare data for saving (convert dates to ISO strings)
         const loanTermsData = {
-          ...data,
-          firstRepaymentOn: data.firstRepaymentOn
-            ? data.firstRepaymentOn.toISOString()
+          ...submissionData,
+          firstRepaymentOn: submissionData.firstRepaymentOn
+            ? submissionData.firstRepaymentOn.toISOString()
             : null,
-          interestChargedFrom: data.interestChargedFrom
-            ? data.interestChargedFrom.toISOString()
+          interestChargedFrom: submissionData.interestChargedFrom
+            ? submissionData.interestChargedFrom.toISOString()
             : null,
           charges: editableCharges.map((charge) => ({
             chargeId: charge.chargeId,
@@ -1102,7 +1124,7 @@ export function LoanTermsForm({
       interestSchedule: true,
       chargesCollateral: true,
     });
-    onSubmit(data);
+    onSubmit(submissionData);
     onNext();
   };
 
@@ -1265,8 +1287,14 @@ export function LoanTermsForm({
                 name="termFrequency"
                 render={({ field }) => (
                   <Select
-                    onValueChange={field.onChange}
-                    value={field.value}
+                    onValueChange={(val) => {
+                      field.onChange(val);
+                      setFrequencyState((prev) => ({
+                        ...prev,
+                        termFrequency: val,
+                      }));
+                    }}
+                    value={frequencyState.termFrequency || field.value}
                     disabled
                   >
                     <SelectTrigger className="h-10 w-full">
@@ -1432,8 +1460,14 @@ export function LoanTermsForm({
                 name="repaymentFrequency"
                 render={({ field }) => (
                   <Select
-                    onValueChange={field.onChange}
-                    value={field.value}
+                    onValueChange={(val) => {
+                      field.onChange(val);
+                      setFrequencyState((prev) => ({
+                        ...prev,
+                        repaymentFrequency: val,
+                      }));
+                    }}
+                    value={frequencyState.repaymentFrequency || field.value}
                     disabled
                   >
                     <SelectTrigger className="h-10 w-full">
@@ -1609,8 +1643,14 @@ export function LoanTermsForm({
                 name="interestRateFrequency"
                 render={({ field }) => (
                   <Select
-                    onValueChange={field.onChange}
-                    value={field.value}
+                    onValueChange={(val) => {
+                      field.onChange(val);
+                      setFrequencyState((prev) => ({
+                        ...prev,
+                        interestRateFrequency: val,
+                      }));
+                    }}
+                    value={frequencyState.interestRateFrequency || field.value}
                     disabled
                   >
                     <SelectTrigger className="h-10 w-full">
