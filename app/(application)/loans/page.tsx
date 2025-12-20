@@ -1,20 +1,57 @@
 import { Suspense } from "react";
-import { headers, cookies } from "next/headers";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { LoansDataTable, Loan } from "@/components/tables/loans-data-table";
+import { getSession } from "@/lib/auth";
+import { getFineractTenantId } from "@/lib/fineract-tenant-service";
 
-async function fetchAllLoans() {
-  const hdrs = await headers();
-  const host = hdrs.get("x-forwarded-host") || hdrs.get("host");
-  const proto = hdrs.get("x-forwarded-proto") || "http";
-  const base = host ? `${proto}://${host}` : "http://localhost:3000";
-  const cookie = await cookies();
-  const cookieHeader = cookie.toString();
-  const res = await fetch(`${base}/api/fineract/loans`, {
-    cache: "no-store",
-    headers: cookieHeader ? { cookie: cookieHeader } : undefined,
-  });
-  return res.ok ? res.json() : null;
+const FINERACT_BASE_URL = process.env.FINERACT_BASE_URL || "http://10.10.0.143";
+
+async function fetchAllLoans(): Promise<any> {
+  try {
+    const session = await getSession();
+    const accessToken =
+      (session as any)?.base64EncodedAuthenticationKey ||
+      (session as any)?.accessToken;
+
+    if (!accessToken) {
+      console.warn("No access token available for fetching loans");
+      return null;
+    }
+
+    const fineractTenantId = await getFineractTenantId();
+
+    console.log("=== LOANS PAGE - Server-Side Fetch ===");
+    console.log("Using Fineract Tenant ID:", fineractTenantId);
+    console.log("======================================");
+
+    const url = `${FINERACT_BASE_URL}/fineract-provider/api/v1/loans?limit=500`;
+
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        Authorization: `Basic ${accessToken}`,
+        "Fineract-Platform-TenantId": fineractTenantId,
+        Accept: "application/json",
+      },
+      cache: "no-store",
+    });
+
+    if (!response.ok) {
+      console.error("Failed to fetch loans from Fineract:", response.status);
+      return null;
+    }
+
+    const result = await response.json();
+    console.log(
+      "Loans fetched successfully, count:",
+      result?.pageItems?.length || result?.length || 0
+    );
+
+    return result;
+  } catch (error) {
+    console.error("Error fetching loans:", error);
+    return null;
+  }
 }
 
 function transformLoanData(rawLoan: any): Loan {

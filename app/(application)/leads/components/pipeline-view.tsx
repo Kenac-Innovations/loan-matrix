@@ -50,21 +50,27 @@ interface PipelineViewProps {
 // Helper function to get status badge color based on Fineract loan status
 function getStatusBadgeColor(status: string): string {
   const statusLower = status.toLowerCase();
-  if (statusLower.includes("approved") && !statusLower.includes("pending")) {
+  // Active/Disbursed - green
+  if (statusLower.includes("active") || statusLower.includes("disbursed")) {
     return "bg-green-500 hover:bg-green-600";
   }
+  // Approved (not pending) - blue
+  if (statusLower.includes("approved") && !statusLower.includes("pending")) {
+    return "bg-blue-500 hover:bg-blue-600";
+  }
+  // Pending/Submitted - yellow
   if (statusLower.includes("pending") || statusLower.includes("submitted")) {
     return "bg-yellow-500 hover:bg-yellow-600";
   }
-  if (statusLower.includes("active") || statusLower.includes("disbursed")) {
-    return "bg-blue-500 hover:bg-blue-600";
-  }
+  // Rejected/Withdrawn - red
   if (statusLower.includes("rejected") || statusLower.includes("withdrawn")) {
     return "bg-red-500 hover:bg-red-600";
   }
+  // Closed/Written off - gray
   if (statusLower.includes("closed") || statusLower.includes("written off")) {
     return "bg-gray-500 hover:bg-gray-600";
   }
+  // Overpaid - purple
   if (statusLower.includes("overpaid")) {
     return "bg-purple-500 hover:bg-purple-600";
   }

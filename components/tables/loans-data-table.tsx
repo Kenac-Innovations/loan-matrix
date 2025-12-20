@@ -44,7 +44,7 @@ export function LoansDataTable({ data }: LoansDataTableProps) {
   const uniqueStatuses = useMemo(() => {
     const statuses = data
       .map((loan) => {
-        if (typeof loan.status === 'object' && loan.status !== null) {
+        if (typeof loan.status === "object" && loan.status !== null) {
           return (loan.status as any).value || String(loan.status);
         }
         return String(loan.status);
@@ -54,12 +54,14 @@ export function LoansDataTable({ data }: LoansDataTableProps) {
   }, [data]);
 
   const uniqueCurrencies = useMemo(() => {
-    const currencies = data.map((loan) => {
-      if (typeof loan.currency === 'object' && loan.currency !== null) {
-        return (loan.currency as any).code || String(loan.currency);
-      }
-      return String(loan.currency || 'USD');
-    }).filter(Boolean);
+    const currencies = data
+      .map((loan) => {
+        if (typeof loan.currency === "object" && loan.currency !== null) {
+          return (loan.currency as any).code || String(loan.currency);
+        }
+        return String(loan.currency || "USD");
+      })
+      .filter(Boolean);
     return Array.from(new Set(currencies));
   }, [data]);
 
@@ -76,18 +78,14 @@ export function LoansDataTable({ data }: LoansDataTableProps) {
       id: "clientName",
       accessorKey: "clientName",
       header: "Client",
-      cell: ({ getValue }) => (
-        <div className="font-medium">{getValue()}</div>
-      ),
+      cell: ({ getValue }) => <div className="font-medium">{getValue()}</div>,
     },
     {
       id: "productName",
       accessorKey: "productName",
       header: "Product",
       cell: ({ getValue }) => (
-        <div className="max-w-[200px] truncate">
-          {getValue()}
-        </div>
+        <div className="max-w-[200px] truncate">{getValue()}</div>
       ),
     },
     {
@@ -97,16 +95,21 @@ export function LoansDataTable({ data }: LoansDataTableProps) {
       cell: ({ getValue }) => {
         const status = getValue() as string;
         const statusColor = getStatusColor(status);
-        return (
-          <Badge variant="outline" className={statusColor}>
-            {status}
-          </Badge>
-        );
+        return <Badge className={statusColor}>{status}</Badge>;
       },
-      filterOptions: uniqueStatuses.map(status => ({
-        label: status,
-        value: status,
-      })),
+      filterOptions: uniqueStatuses.map((status) => {
+        const count = data.filter((loan) => {
+          const loanStatus =
+            typeof loan.status === "object" && loan.status !== null
+              ? (loan.status as any).value || String(loan.status)
+              : String(loan.status);
+          return loanStatus === status;
+        }).length;
+        return {
+          label: `${status} (${count})`,
+          value: status,
+        };
+      }),
     },
     {
       id: "currency",
@@ -114,12 +117,23 @@ export function LoansDataTable({ data }: LoansDataTableProps) {
       header: "Currency",
       cell: ({ getValue }) => {
         const currency = getValue() as any;
-        return <div className="text-sm">{currency?.code || currency || "USD"}</div>;
+        return (
+          <div className="text-sm">{currency?.code || currency || "USD"}</div>
+        );
       },
-      filterOptions: uniqueCurrencies.map(currency => ({
-        label: currency,
-        value: currency,
-      })),
+      filterOptions: uniqueCurrencies.map((currency) => {
+        const count = data.filter((loan) => {
+          const loanCurrency =
+            typeof loan.currency === "object" && loan.currency !== null
+              ? (loan.currency as any).code || String(loan.currency)
+              : String(loan.currency || "USD");
+          return loanCurrency === currency;
+        }).length;
+        return {
+          label: `${currency} (${count})`,
+          value: currency,
+        };
+      }),
     },
     {
       id: "principal",
@@ -213,23 +227,49 @@ export function LoansDataTable({ data }: LoansDataTableProps) {
 
 // Helper functions
 function getStatusColor(status: string): string {
-  switch (status.toLowerCase()) {
-    case "active":
-    case "approved":
-      return "bg-green-100 text-green-800 border-green-200";
-    case "pending":
-    case "submitted":
-      return "bg-yellow-100 text-yellow-800 border-yellow-200";
-    case "rejected":
-    case "cancelled":
-      return "bg-red-100 text-red-800 border-red-200";
-    case "disbursed":
-      return "bg-blue-100 text-blue-800 border-blue-200";
-    case "overdue":
-      return "bg-orange-100 text-orange-800 border-orange-200";
-    default:
-      return "bg-gray-100 text-gray-800 border-gray-200";
+  const statusLower = status.toLowerCase();
+
+  // Active/Disbursed
+  if (statusLower.includes("active") || statusLower.includes("disbursed")) {
+    return "bg-green-500 text-white border-0";
   }
+
+  // Approved (not pending approval)
+  if (statusLower.includes("approved") && !statusLower.includes("pending")) {
+    return "bg-blue-500 text-white border-0";
+  }
+
+  // Pending/Submitted
+  if (statusLower.includes("pending") || statusLower.includes("submitted")) {
+    return "bg-yellow-500 text-white border-0";
+  }
+
+  // Rejected/Withdrawn/Cancelled
+  if (
+    statusLower.includes("rejected") ||
+    statusLower.includes("withdrawn") ||
+    statusLower.includes("cancelled")
+  ) {
+    return "bg-red-500 text-white border-0";
+  }
+
+  // Closed/Written off
+  if (statusLower.includes("closed") || statusLower.includes("written off")) {
+    return "bg-gray-500 text-white border-0";
+  }
+
+  // Overpaid
+  if (statusLower.includes("overpaid")) {
+    return "bg-purple-500 text-white border-0";
+  }
+
+  // Overdue/In arrears
+  if (statusLower.includes("overdue") || statusLower.includes("arrears")) {
+    return "bg-orange-500 text-white border-0";
+  }
+
+  // Default
+  return "bg-gray-500 text-white border-0";
 }
 
 function formatDate(dateString: string): string {

@@ -27,6 +27,7 @@ import {
   Calculator,
   Info,
   Database,
+  Users,
 } from "lucide-react";
 import Link from "next/link";
 import {
@@ -168,11 +169,37 @@ function getStatusBadgeColor(status: string | null): string {
   if (!status) return "bg-gray-500";
   const statusLower = status.toLowerCase();
   if (statusLower.includes("active")) return "bg-green-500";
-  if (statusLower.includes("approved")) return "bg-blue-500";
+  if (statusLower.includes("approved") && !statusLower.includes("pending"))
+    return "bg-blue-500";
   if (statusLower.includes("submitted") || statusLower.includes("pending"))
     return "bg-yellow-500";
   if (statusLower.includes("closed")) return "bg-gray-500";
   return "bg-gray-500";
+}
+
+/**
+ * Get page background hue based on loan status
+ */
+function getStatusPageHue(status: string | null): string {
+  if (!status) return "";
+  const statusLower = status.toLowerCase();
+  // Active/Disbursed - green hue
+  if (statusLower.includes("active") || statusLower.includes("disbursed")) {
+    return "bg-green-50 dark:bg-green-950/20";
+  }
+  // Approved - blue hue
+  if (statusLower.includes("approved") && !statusLower.includes("pending")) {
+    return "bg-blue-50 dark:bg-blue-950/20";
+  }
+  // Pending/Submitted - yellow hue
+  if (statusLower.includes("submitted") || statusLower.includes("pending")) {
+    return "bg-yellow-50 dark:bg-yellow-950/20";
+  }
+  // Rejected - red hue
+  if (statusLower.includes("rejected") || statusLower.includes("withdrawn")) {
+    return "bg-red-50 dark:bg-red-950/20";
+  }
+  return "";
 }
 
 /**
@@ -434,97 +461,127 @@ export default async function LeadDetailPage({
   }
 
   const currentStage = lead.currentStage?.name || "New Lead";
+  const pageHue = getStatusPageHue(fineractLoanStatus);
 
   return (
-    <>
-      <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="icon" asChild className="h-8 w-8">
-            <Link href="/leads">
+    <div className={`-m-6 p-6 min-h-screen ${pageHue}`}>
+      <div className="space-y-4">
+        {/* Breadcrumbs */}
+        <nav className="flex items-center space-x-2 text-sm text-muted-foreground bg-muted/30 px-4 py-3 rounded-lg">
+          <Link href="/" className="hover:text-foreground transition-colors">
+            Home
+          </Link>
+          <span className="text-muted-foreground/50">/</span>
+          <Link
+            href="/leads"
+            className="hover:text-foreground transition-colors"
+          >
+            Leads
+          </Link>
+          <span className="text-muted-foreground/50">/</span>
+          <span className="text-foreground font-medium">Lead #{id}</span>
+        </nav>
+
+        {/* Enhanced Header */}
+        <div className="flex items-center gap-6">
+          <Link href="/leads">
+            <Button variant="outline" size="sm" className="shadow-sm">
               <ArrowLeft className="h-4 w-4" />
-            </Link>
-          </Button>
-          <div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <h2 className="text-2xl font-bold tracking-tight">Lead #{id}</h2>
-              {fineractLoanStatus && (
-                <Badge
-                  className={`${getStatusBadgeColor(
-                    fineractLoanStatus
-                  )} text-white border-0 whitespace-normal break-words`}
-                >
-                  {fineractLoanStatus}
-                </Badge>
-              )}
-              {cdeResult && (
-                <Link href={`/leads/${id}/cde`}>
-                  <Badge
-                    className={`${
-                      cdeResult.decision === "APPROVED"
-                        ? "bg-green-500"
-                        : cdeResult.decision === "MANUAL_REVIEW"
-                        ? "bg-yellow-500"
-                        : "bg-red-500"
-                    } text-white border-0 whitespace-normal break-words cursor-pointer hover:opacity-80 transition-opacity`}
-                  >
-                    CDE: {cdeResult.decision}
-                    {cdeResult.scoringResult?.creditScore && (
-                      <span className="ml-2 opacity-90">
-                        • Score: {cdeResult.scoringResult.creditScore}
+            </Button>
+          </Link>
+          <div className="flex-1">
+            <div className="flex items-center justify-between flex-wrap gap-4">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-full bg-purple-100 dark:bg-purple-900 flex items-center justify-center">
+                  <Users className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h1 className="text-3xl font-bold tracking-tight">
+                      Lead Details
+                    </h1>
+                    {fineractLoanStatus && (
+                      <Badge
+                        className={`${getStatusBadgeColor(
+                          fineractLoanStatus
+                        )} text-white border-0 whitespace-normal break-words`}
+                      >
+                        {fineractLoanStatus?.toLowerCase() === "active"
+                          ? "Disbursed"
+                          : fineractLoanStatus}
+                      </Badge>
+                    )}
+                    {cdeResult && (
+                      <Link href={`/leads/${id}/cde`}>
+                        <Badge
+                          className={`${
+                            cdeResult.decision === "APPROVED"
+                              ? "bg-green-500"
+                              : cdeResult.decision === "MANUAL_REVIEW"
+                              ? "bg-yellow-500"
+                              : "bg-red-500"
+                          } text-white border-0 whitespace-normal break-words cursor-pointer hover:opacity-80 transition-opacity`}
+                        >
+                          CDE: {cdeResult.decision}
+                          {cdeResult.scoringResult?.creditScore && (
+                            <span className="ml-2 opacity-90">
+                              • Score: {cdeResult.scoringResult.creditScore}
+                            </span>
+                          )}
+                          {cdeResult.pricingResult?.calculatedAPR && (
+                            <span className="ml-2 opacity-90">
+                              • APR:{" "}
+                              {cdeResult.pricingResult.calculatedAPR.toFixed(1)}
+                              %
+                            </span>
+                          )}
+                        </Badge>
+                      </Link>
+                    )}
+                  </div>
+                  <p className="text-muted-foreground">
+                    {lead.externalId && (
+                      <span className="mr-3">
+                        ID:{" "}
+                        <span className="font-mono font-medium text-foreground">
+                          {lead.externalId}
+                        </span>
                       </span>
                     )}
-                    {cdeResult.pricingResult?.calculatedAPR && (
-                      <span className="ml-2 opacity-90">
-                        • APR:{" "}
-                        {cdeResult.pricingResult.calculatedAPR.toFixed(1)}%
+                    <span className="mr-3">
+                      Stage:{" "}
+                      <span className="font-medium text-foreground">
+                        {currentStage}
+                      </span>
+                    </span>
+                    {lead.clientTypeName && (
+                      <span className="mr-3">
+                        Type:{" "}
+                        <span className="font-medium text-foreground">
+                          {lead.clientTypeName}
+                        </span>
                       </span>
                     )}
-                  </Badge>
-                </Link>
-              )}
-            </div>
-            <div className="flex items-center gap-3 text-sm text-muted-foreground flex-wrap">
-              {lead.externalId && (
-                <span>
-                  External ID:{" "}
-                  <span className="font-mono font-medium text-foreground">
-                    {lead.externalId}
-                  </span>
-                </span>
-              )}
-              <span>
-                Stage:{" "}
-                <span className="font-medium text-foreground">
-                  {currentStage}
-                </span>
-              </span>
-              {lead.clientTypeName && (
-                <span>
-                  Type:{" "}
-                  <span className="font-medium text-foreground">
-                    {lead.clientTypeName}
-                  </span>
-                </span>
-              )}
-              {(lead as any).fineractLoanId && (
-                <span>
-                  Loan ID:{" "}
-                  <span className="font-mono font-medium text-foreground">
-                    {(lead as any).fineractLoanId}
-                  </span>
-                </span>
-              )}
+                    {fineractLoanId && (
+                      <span>
+                        Loan:{" "}
+                        <span className="font-mono font-medium text-foreground">
+                          #{fineractLoanId}
+                        </span>
+                      </span>
+                    )}
+                  </p>
+                </div>
+              </div>
+              <LeadActions
+                leadId={id}
+                loanStatus={fineractLoanStatus}
+                loanId={fineractLoanId}
+                fineractClientId={lead.fineractClientId}
+              />
             </div>
           </div>
         </div>
-        <LeadActions
-          leadId={id}
-          currentStage={currentStage}
-          loanStatus={fineractLoanStatus}
-          loanId={fineractLoanId}
-          loanPrincipal={fineractLoanPrincipal}
-          assignedToUserId={lead.assignedToUserId}
-        />
       </div>
 
       <div className="mt-6 grid gap-6 grid-cols-1 lg:grid-cols-3">
@@ -608,6 +665,6 @@ export default async function LeadDetailPage({
           <LeadSidebar leadId={id} />
         </div>
       </div>
-    </>
+    </div>
   );
 }
