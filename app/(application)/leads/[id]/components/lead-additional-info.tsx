@@ -50,13 +50,15 @@ export function LeadAdditionalInfo({ leadId }: LeadAdditionalInfoProps) {
 
         setClientId(fineractClientId);
 
-        // Fetch datatables for the client
+        // Fetch datatables for clients (m_client app table)
         const datatableRes = await fetch(
-          `/api/fineract/clients/${fineractClientId}/datatables`
+          `/api/fineract/datatables?apptable=m_client`
         );
         if (datatableRes.ok) {
           const datatableData = await datatableRes.json();
           setDatatables(datatableData || []);
+        } else {
+          console.error("Failed to fetch datatables:", datatableRes.status);
         }
       } catch (err) {
         console.error("Error fetching additional info:", err);
