@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { extractTenantSlug } from "@/lib/tenant-service";
 import { getSession } from "@/lib/auth";
 import { getFineractService } from "@/lib/fineract-api";
+import { getFineractTenantId } from "@/lib/fineract-tenant-service";
 
 const FINERACT_BASE_URL = process.env.FINERACT_BASE_URL || "http://10.10.0.143";
 
@@ -146,6 +147,10 @@ export async function GET(
       sessionUserId: session?.user?.id,
     });
 
+    // Get the mapped Fineract tenant ID early (e.g., "goodfellow" -> "goodfellow-training")
+    const fineractTenantId = await getFineractTenantId();
+    console.log("Using Fineract tenant ID:", fineractTenantId);
+
     // Fetch Fineract client data if available
     if (lead.fineractClientId && accessToken) {
       try {
@@ -154,7 +159,11 @@ export async function GET(
           lead.fineractClientId
         );
 
-        const fineractService = getFineractService(accessToken, tenantSlug);
+        // IMPORTANT: Use fineractTenantId (mapped) not tenantSlug (unmapped)
+        const fineractService = getFineractService(
+          accessToken,
+          fineractTenantId
+        );
         const clientData = await fineractService.getClient(
           lead.fineractClientId
         );
@@ -174,7 +183,8 @@ export async function GET(
     let loanFetched = false;
 
     if (accessToken) {
-      const fineractService = getFineractService(accessToken, tenantSlug);
+      // IMPORTANT: Use fineractTenantId (mapped) not tenantSlug (unmapped) for the service
+      const fineractService = getFineractService(accessToken, fineractTenantId);
 
       try {
         console.log("Fetching loan by external ID (lead ID):", leadId);
@@ -187,7 +197,7 @@ export async function GET(
           method: "GET",
           headers: {
             Authorization: `Basic ${accessToken}`,
-            "Fineract-Platform-TenantId": tenantSlug,
+            "Fineract-Platform-TenantId": fineractTenantId,
             Accept: "application/json",
           },
           cache: "no-store",
@@ -200,7 +210,7 @@ export async function GET(
           console.log("Loan search raw data type:", typeof searchData);
           console.log(
             "Loan search raw data:",
-            JSON.stringify(searchData).substring(0, 500)
+            JSON.stringify(searchData).substring(0, 1000)
           );
 
           let loans = [];
@@ -215,14 +225,31 @@ export async function GET(
             loans = searchData.content;
           }
 
+          console.log("=== LOAN SEARCH RESULTS ===");
           console.log("Loans array length:", loans.length);
           console.log("Looking for loan with externalId:", leadId);
 
+          // Log all loans returned for debugging
+          loans.forEach((loan: any, index: number) => {
+            console.log(
+              `Loan ${index}: id=${loan.id}, externalId=${loan.externalId}, clientId=${loan.clientId}, accountNo=${loan.accountNo}`
+            );
+          });
+
+          // Find loan that EXACTLY matches the external ID
           const matchingLoan = loans.find(
             (loan: any) => loan.externalId === leadId
           );
 
-          console.log("Matching loan found:", !!matchingLoan, matchingLoan?.id);
+          console.log("Matching loan found:", !!matchingLoan);
+          if (matchingLoan) {
+            console.log("Matched loan details:", {
+              id: matchingLoan.id,
+              externalId: matchingLoan.externalId,
+              clientId: matchingLoan.clientId,
+              accountNo: matchingLoan.accountNo,
+            });
+          }
 
           if (matchingLoan?.id) {
             // Fetch full loan details with associations
@@ -232,6 +259,8 @@ export async function GET(
             );
             console.log("Loan ID in response:", fullLoanData?.id);
             console.log("Loan account number:", fullLoanData?.accountNo);
+            console.log("Loan external ID:", fullLoanData?.externalId);
+            console.log("Loan client ID:", fullLoanData?.clientId);
             console.log("Has summary:", !!fullLoanData?.summary);
             response.fineractLoan = fullLoanData;
             loanFetched = true;

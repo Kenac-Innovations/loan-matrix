@@ -43,6 +43,7 @@ import { headers } from "next/headers";
 import { extractTenantSlug } from "@/lib/tenant-service";
 import { getSession } from "@/lib/auth";
 import { getFineractService } from "@/lib/fineract-api";
+import { getFineractTenantId } from "@/lib/fineract-tenant-service";
 
 const FINERACT_BASE_URL = process.env.FINERACT_BASE_URL || "http://10.10.0.143";
 
@@ -57,8 +58,7 @@ interface FineractLoanInfo {
  */
 async function getFineractLoanInfo(
   loanId: number | string | null,
-  leadId: string,
-  tenantSlug: string
+  leadId: string
 ): Promise<FineractLoanInfo> {
   try {
     const session = await getSession();
@@ -70,7 +70,9 @@ async function getFineractLoanInfo(
       return { status: null, loanId: null };
     }
 
-    const fineractService = getFineractService(accessToken, tenantSlug);
+    // Get the mapped Fineract tenant ID (e.g., "goodfellow" -> "goodfellow-training")
+    const fineractTenantId = await getFineractTenantId();
+    const fineractService = getFineractService(accessToken, fineractTenantId);
 
     // Try fetching by loan ID first if available
     if (loanId) {
@@ -88,7 +90,11 @@ async function getFineractLoanInfo(
     }
 
     // Fallback: Try fetching by external ID (leadId) using direct Fineract API call
-    console.log("Attempting to fetch loan info by external ID:", leadId);
+    console.log(
+      " Server ",
+      "Attempting to fetch loan info by external ID:",
+      leadId
+    );
     try {
       const searchUrl = `${FINERACT_BASE_URL}/fineract-provider/api/v1/loans?externalId=${encodeURIComponent(
         leadId
@@ -97,9 +103,10 @@ async function getFineractLoanInfo(
         method: "GET",
         headers: {
           Authorization: `Basic ${accessToken}`,
-          "Fineract-Platform-TenantId": tenantSlug,
+          "Fineract-Platform-TenantId": fineractTenantId,
           Accept: "application/json",
         },
+        cache: "no-store",
       });
 
       if (response.ok) {
@@ -341,11 +348,7 @@ async function getLeadData(leadId: string) {
     // Fetch Fineract loan info directly from Fineract API
     // No need for internal HTTP calls - we call Fineract directly from this Server Component
     // Note: fineractLoanId doesn't exist in schema, so we always fetch by external ID (leadId)
-    const fineractLoanInfo = await getFineractLoanInfo(
-      null,
-      leadId,
-      tenantSlug
-    );
+    const fineractLoanInfo = await getFineractLoanInfo(null, leadId);
 
     // Extract CDE result from stateMetadata
     const stateMetadata = (lead as any)?.stateMetadata as any;
