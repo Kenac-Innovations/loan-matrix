@@ -9,7 +9,14 @@ import { Lead } from "@/shared/types";
 import { GenericDataTable } from "@/components/tables/generic-data-table";
 import { DataTableColumn, DataTableFilter } from "@/shared/types/data-table";
 import { useState } from "react";
-import { CheckCircle2, UserCheck, FileEdit, Send, User, Loader2 } from "lucide-react";
+import {
+  CheckCircle2,
+  UserCheck,
+  FileEdit,
+  Send,
+  User,
+  Loader2,
+} from "lucide-react";
 
 interface LeadsTableProps {
   initialData: LeadsData;
@@ -51,7 +58,9 @@ export function LeadsTable({ initialData }: LeadsTableProps) {
                 </AvatarFallback>
               </Avatar>
             )}
-            <span className={isNavigating ? "opacity-50" : ""}>{getValue()}</span>
+            <span className={isNavigating ? "opacity-50" : ""}>
+              {getValue()}
+            </span>
           </div>
         );
       },
@@ -116,11 +125,9 @@ export function LeadsTable({ initialData }: LeadsTableProps) {
       cell: ({ row }) => {
         const lead = row.original;
         const isSubmitted = lead.loanSubmittedToFineract || lead.fineractLoanId;
-        
+
         if (!isSubmitted) {
-          return (
-            <span className="text-xs text-muted-foreground">-</span>
-          );
+          return <span className="text-xs text-muted-foreground">-</span>;
         }
 
         if (lead.assignedToUserName) {
@@ -142,7 +149,10 @@ export function LeadsTable({ initialData }: LeadsTableProps) {
         }
 
         return (
-          <Badge variant="outline" className="text-xs border-orange-500 text-orange-500 bg-orange-500/10">
+          <Badge
+            variant="outline"
+            className="text-xs border-orange-500 text-orange-500 bg-orange-500/10"
+          >
             <User className="h-3 w-3 mr-1" />
             Unassigned
           </Badge>

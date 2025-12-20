@@ -272,130 +272,131 @@ export function PipelineView({ initialData }: PipelineViewProps) {
                         </div>
                       )}
                       <div className="flex items-start gap-3 mb-3 sm:mb-0">
-                      <Avatar className="h-10 w-10">
-                        <AvatarFallback className="bg-primary/10 text-primary">
-                          {lead.client
-                            .split(" ")
-                            .map((n) => n[0])
-                            .join("")
-                            .slice(0, 2)
-                            .toUpperCase()}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div>
+                        <Avatar className="h-10 w-10">
+                          <AvatarFallback className="bg-primary/10 text-primary">
+                            {lead.client
+                              .split(" ")
+                              .map((n) => n[0])
+                              .join("")
+                              .slice(0, 2)
+                              .toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <p className="text-sm font-medium">{lead.client}</p>
+                            {/* Fineract Status Indicator */}
+                            {lead.loanSubmittedToFineract ||
+                            lead.fineractLoanId ? (
+                              <CheckCircle2
+                                className="h-4 w-4 text-green-500"
+                                title="Loan submitted to Fineract"
+                              />
+                            ) : lead.clientCreatedInFineract ||
+                              lead.fineractClientId ? (
+                              <UserCheck
+                                className="h-4 w-4 text-blue-500"
+                                title="Client created in Fineract"
+                              />
+                            ) : null}
+                            {lead.status === "overdue" && (
+                              <Badge
+                                variant="outline"
+                                className="border-red-500 bg-red-500/10 text-red-400 text-xs"
+                              >
+                                Overdue
+                              </Badge>
+                            )}
+                            {lead.status === "warning" && (
+                              <Badge
+                                variant="outline"
+                                className="border-yellow-500 bg-yellow-500/10 text-yellow-400 text-xs"
+                              >
+                                At Risk
+                              </Badge>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 mt-1">
+                            <Badge variant="outline" className="text-xs">
+                              {lead.type}
+                            </Badge>
+                            {/* Status Badge */}
+                            {lead.loanSubmittedToFineract ||
+                            lead.fineractLoanId ? (
+                              <Badge className="bg-green-500 text-white border-0 text-xs">
+                                Submitted
+                              </Badge>
+                            ) : (
+                              <Badge
+                                variant="outline"
+                                className="border-yellow-500 bg-yellow-500/10 text-yellow-600 text-xs"
+                              >
+                                Draft
+                              </Badge>
+                            )}
+                            <span className="text-xs text-muted-foreground">
+                              {lead.amount}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-3 justify-between sm:justify-end">
+                        {/* Assigned User Display */}
                         <div className="flex items-center gap-2">
-                          <p className="text-sm font-medium">{lead.client}</p>
-                          {/* Fineract Status Indicator */}
                           {lead.loanSubmittedToFineract ||
                           lead.fineractLoanId ? (
-                            <CheckCircle2
-                              className="h-4 w-4 text-green-500"
-                              title="Loan submitted to Fineract"
-                            />
-                          ) : lead.clientCreatedInFineract ||
-                            lead.fineractClientId ? (
-                            <UserCheck
-                              className="h-4 w-4 text-blue-500"
-                              title="Client created in Fineract"
-                            />
-                          ) : null}
-                          {lead.status === "overdue" && (
-                            <Badge
-                              variant="outline"
-                              className="border-red-500 bg-red-500/10 text-red-400 text-xs"
-                            >
-                              Overdue
-                            </Badge>
-                          )}
-                          {lead.status === "warning" && (
-                            <Badge
-                              variant="outline"
-                              className="border-yellow-500 bg-yellow-500/10 text-yellow-400 text-xs"
-                            >
-                              At Risk
-                            </Badge>
+                            lead.assignedToUserName ? (
+                              <div className="flex items-center gap-1.5">
+                                <Avatar className="h-6 w-6">
+                                  <AvatarFallback className="bg-green-500/20 text-green-600 text-xs">
+                                    {lead.assignedToUserName
+                                      .split(" ")
+                                      .map((n: string) => n[0])
+                                      .join("")
+                                      .slice(0, 2)
+                                      .toUpperCase()}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <span className="text-xs text-muted-foreground hidden sm:inline">
+                                  {lead.assignedToUserName}
+                                </span>
+                              </div>
+                            ) : (
+                              <Badge
+                                variant="outline"
+                                className="text-xs border-orange-500 text-orange-500 bg-orange-500/10"
+                              >
+                                <User className="h-3 w-3 mr-1" />
+                                Unassigned
+                              </Badge>
+                            )
+                          ) : (
+                            <span className="text-xs text-muted-foreground">
+                              -
+                            </span>
                           )}
                         </div>
-                        <div className="flex items-center gap-2 mt-1">
-                          <Badge variant="outline" className="text-xs">
-                            {lead.type}
-                          </Badge>
-                          {/* Status Badge */}
-                          {lead.loanSubmittedToFineract ||
-                          lead.fineractLoanId ? (
-                            <Badge className="bg-green-500 text-white border-0 text-xs">
-                              Submitted
-                            </Badge>
-                          ) : (
-                            <Badge
-                              variant="outline"
-                              className="border-yellow-500 bg-yellow-500/10 text-yellow-600 text-xs"
-                            >
-                              Draft
-                            </Badge>
-                          )}
-                          <span className="text-xs text-muted-foreground">
-                            {lead.amount}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-3 justify-between sm:justify-end">
-                      {/* Assigned User Display */}
-                      <div className="flex items-center gap-2">
-                        {lead.loanSubmittedToFineract || lead.fineractLoanId ? (
-                          lead.assignedToUserName ? (
-                            <div className="flex items-center gap-1.5">
-                              <Avatar className="h-6 w-6">
-                                <AvatarFallback className="bg-green-500/20 text-green-600 text-xs">
-                                  {lead.assignedToUserName
-                                    .split(" ")
-                                    .map((n: string) => n[0])
-                                    .join("")
-                                    .slice(0, 2)
-                                    .toUpperCase()}
-                                </AvatarFallback>
-                              </Avatar>
-                              <span className="text-xs text-muted-foreground hidden sm:inline">
-                                {lead.assignedToUserName}
-                              </span>
-                            </div>
-                          ) : (
-                            <Badge
-                              variant="outline"
-                              className="text-xs border-orange-500 text-orange-500 bg-orange-500/10"
-                            >
-                              <User className="h-3 w-3 mr-1" />
-                              Unassigned
-                            </Badge>
-                          )
-                        ) : (
-                          <span className="text-xs text-muted-foreground">
-                            -
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          asChild
-                          className="h-8 w-8"
-                        >
-                          <Link
-                            href={
-                              lead.loanSubmittedToFineract ||
-                              lead.fineractLoanId
-                                ? `/leads/${lead.id}`
-                                : `/leads/new?id=${lead.id}`
-                            }
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            asChild
+                            className="h-8 w-8"
                           >
-                            <ChevronRight className="h-4 w-4" />
-                          </Link>
-                        </Button>
+                            <Link
+                              href={
+                                lead.loanSubmittedToFineract ||
+                                lead.fineractLoanId
+                                  ? `/leads/${lead.id}`
+                                  : `/leads/new?id=${lead.id}`
+                              }
+                            >
+                              <ChevronRight className="h-4 w-4" />
+                            </Link>
+                          </Button>
+                        </div>
                       </div>
                     </div>
-                  </div>
                   );
                 })
               : !isLoading && (

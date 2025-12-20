@@ -128,54 +128,58 @@ export function LeadAdditionalInfo({ leadId }: LeadAdditionalInfoProps) {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Database className="h-5 w-5" />
-          Additional Information
-        </CardTitle>
-        <CardDescription>
-          Extended client data from Fineract system ({datatables.length} tables)
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <Tabs defaultValue={datatables[0]?.registeredTableName} className="w-full">
-          <TabsList className="w-full flex flex-wrap h-auto gap-1 bg-muted/50 p-1">
-            {datatables.map((dt) => (
-              <TabsTrigger
-                key={dt.registeredTableName}
-                value={dt.registeredTableName}
-                className="text-xs px-3 py-1.5 data-[state=active]:bg-background"
-                title={formatTableName(dt.registeredTableName)}
-              >
-                {getTabLabel(dt.registeredTableName)}
-              </TabsTrigger>
-            ))}
-          </TabsList>
+    <div className="flex flex-col lg:flex-row gap-4">
+      {/* Vertical Tabs on the Left */}
+      <Tabs
+        defaultValue={datatables[0]?.registeredTableName}
+        orientation="vertical"
+        className="flex flex-col lg:flex-row w-full gap-4"
+      >
+        <TabsList className="flex lg:flex-col h-auto lg:w-56 shrink-0 bg-muted/50 p-1 gap-1 overflow-x-auto lg:overflow-x-visible">
+          {datatables.map((dt) => (
+            <TabsTrigger
+              key={dt.registeredTableName}
+              value={dt.registeredTableName}
+              className="text-xs px-3 py-2 justify-start text-left data-[state=active]:bg-background whitespace-nowrap lg:whitespace-normal w-full"
+              title={formatTableName(dt.registeredTableName)}
+            >
+              <Database className="h-3.5 w-3.5 mr-2 shrink-0" />
+              <span className="truncate">{formatTableName(dt.registeredTableName)}</span>
+            </TabsTrigger>
+          ))}
+        </TabsList>
 
+        {/* Content Card on the Right */}
+        <div className="flex-1 min-w-0">
           {datatables.map((dt) => (
             <TabsContent
               key={dt.registeredTableName}
               value={dt.registeredTableName}
-              className="mt-4"
+              className="mt-0"
             >
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <Database className="h-5 w-5" />
                     {formatTableName(dt.registeredTableName)}
-                  </h4>
-                </div>
-                {clientId && (
-                  <DynamicDatatableContent
-                    datatableName={dt.registeredTableName}
-                    clientId={clientId}
-                  />
-                )}
-              </div>
+                  </CardTitle>
+                  <CardDescription>
+                    Client data from Fineract system
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {clientId && (
+                    <DynamicDatatableContent
+                      datatableName={dt.registeredTableName}
+                      clientId={clientId}
+                    />
+                  )}
+                </CardContent>
+              </Card>
             </TabsContent>
           ))}
-        </Tabs>
-      </CardContent>
-    </Card>
+        </div>
+      </Tabs>
+    </div>
   );
 }

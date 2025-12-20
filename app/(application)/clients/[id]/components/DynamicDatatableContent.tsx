@@ -173,11 +173,26 @@ export function DynamicDatatableContent({
 
   const formatHeaderName = (name: string) => {
     // Convert camelCase or snake_case to Title Case
-    return name
+    let formatted = name
       .replace(/([A-Z])/g, " $1")
       .replace(/_/g, " ")
       .replace(/^./, (str) => str.toUpperCase())
       .trim();
+
+    // Handle duplicated patterns like "bank branch code cd bank branch code"
+    // Pattern: "Text cd Text" or "Text cd- Text" -> extract just "Text"
+    const duplicateMatch = formatted.match(/^(.+?)\s+cd[\s-]+\1$/i);
+    if (duplicateMatch && duplicateMatch[1]) {
+      return duplicateMatch[1].trim();
+    }
+
+    // Pattern: "Text cd text" (slightly different case) -> extract first part
+    const cdMatch = formatted.match(/^(.+?)\s+cd[\s-]+/i);
+    if (cdMatch && cdMatch[1]) {
+      return cdMatch[1].trim();
+    }
+
+    return formatted;
   };
 
   const getRowId = (rowIndex: number): number | null => {
@@ -550,11 +565,34 @@ export function DynamicDatatableContent({
         header.columnDisplayType === "INTEGER";
 
       // Convert columnValues to SearchableSelect options
-      // Prefer 'name' over 'value' as 'value' often contains code prefix like "cd_employment_type Employment Type"
-      const codeValueOptions = header.columnValues.map((option: any) => ({
-        value: option.id.toString(),
-        label: option.name || option.value || option.id.toString(),
-      }));
+      // Prefer 'name' over 'value' as 'value' often contains duplicated text
+      const codeValueOptions = header.columnValues.map((option: any) => {
+        let label = option.id.toString();
+        if (option.name) {
+          label = option.name;
+        } else if (option.value) {
+          // Value might have duplicated text or code prefix
+          const valueStr = String(option.value);
+
+          // Try to find a pattern like "text cd_something text" and take the first part
+          const cdMatch = valueStr.match(/^(.+?)\s+cd_[a-z_]+\s+/i);
+          if (cdMatch && cdMatch[1]) {
+            label = cdMatch[1].trim();
+          } else {
+            // Try pattern: starts with cd_xxx followed by space and text
+            const prefixMatch = valueStr.match(/^cd_[a-z_]+\s+(.+)$/i);
+            if (prefixMatch && prefixMatch[1]) {
+              label = prefixMatch[1].trim();
+            } else {
+              label = valueStr;
+            }
+          }
+        }
+        return {
+          value: option.id.toString(),
+          label,
+        };
+      });
 
       return (
         <div className="space-y-1">
@@ -1135,7 +1173,7 @@ export function DynamicDatatableContent({
                   }
 
                   // For CODELOOKUP fields, try to find the matching value from columnValues
-                  // Prefer 'name' over 'value' as 'value' often contains code prefix like "cd_employment_type Employment Type"
+                  // Prefer 'name' over 'value' as 'value' often contains duplicated text like "Bank branch code cd_bank_branch_code Bank branch code"
                   let displayValue = cell;
                   if (
                     header?.columnDisplayType === "CODELOOKUP" &&
@@ -1147,8 +1185,34 @@ export function DynamicDatatableContent({
                       (opt: any) => opt.id === cell || opt.id === Number(cell)
                     );
                     if (matchingOption) {
-                      displayValue =
-                        matchingOption.name || matchingOption.value || cell;
+                      // Use name if available (cleanest option)
+                      if (matchingOption.name) {
+                        displayValue = matchingOption.name;
+                      } else if (matchingOption.value) {
+                        // Value might have duplicated text or code prefix
+                        // Pattern 1: "Name cd_code_name Name" -> extract first "Name"
+                        // Pattern 2: "cd_code_name Name" -> extract "Name"
+                        const valueStr = String(matchingOption.value);
+
+                        // Try to find a pattern like "text cd_something text" and take the first part
+                        const cdMatch = valueStr.match(
+                          /^(.+?)\s+cd_[a-z_]+\s+/i
+                        );
+                        if (cdMatch && cdMatch[1]) {
+                          displayValue = cdMatch[1].trim();
+                        } else {
+                          // Try pattern: starts with cd_xxx followed by space and text
+                          const prefixMatch =
+                            valueStr.match(/^cd_[a-z_]+\s+(.+)$/i);
+                          if (prefixMatch && prefixMatch[1]) {
+                            displayValue = prefixMatch[1].trim();
+                          } else {
+                            displayValue = valueStr;
+                          }
+                        }
+                      } else {
+                        displayValue = cell;
+                      }
                     }
                   }
 
