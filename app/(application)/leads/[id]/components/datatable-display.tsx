@@ -30,7 +30,9 @@ export function DatatableDisplay({
   clientId,
   initialData,
 }: DatatableDisplayProps) {
-  const [headers, setHeaders] = useState<any[]>(initialData?.columnHeaders || []);
+  const [headers, setHeaders] = useState<any[]>(
+    initialData?.columnHeaders || []
+  );
   const [rows, setRows] = useState<any[][]>(
     (initialData?.data || []).map((r: any) => r.row)
   );
@@ -471,8 +473,7 @@ export function DatatableDisplay({
       header.columnValues.length > 0
     ) {
       const isIntegerType =
-        header.columnType === "INTEGER" ||
-        header.columnType === "BIGINT";
+        header.columnType === "INTEGER" || header.columnType === "BIGINT";
 
       const codeValueOptions = header.columnValues.map((option: any) => {
         let label = option.id.toString();
@@ -786,7 +787,10 @@ export function DatatableDisplay({
             <Button
               type="button"
               onClick={async () => {
-                if (!currentCodeColumn?.columnCode || !newCodeValueName.trim()) {
+                if (
+                  !currentCodeColumn?.columnCode ||
+                  !newCodeValueName.trim()
+                ) {
                   toast({
                     title: "Error",
                     description: "Code name and value name are required",
@@ -807,7 +811,8 @@ export function DatatableDisplay({
                       body: JSON.stringify({
                         name: newCodeValueName.trim(),
                         description:
-                          newCodeValueDescription.trim() || newCodeValueName.trim(),
+                          newCodeValueDescription.trim() ||
+                          newCodeValueName.trim(),
                         position: 0,
                         isActive: true,
                       }),
@@ -816,7 +821,9 @@ export function DatatableDisplay({
 
                   const result = await response.json();
                   if (!response.ok) {
-                    throw new Error(result.error || "Failed to create code value");
+                    throw new Error(
+                      result.error || "Failed to create code value"
+                    );
                   }
 
                   toast({

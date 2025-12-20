@@ -54,7 +54,9 @@ export function LeadAdditionalInfo({
         <CardContent className="py-12">
           <div className="flex flex-col items-center justify-center gap-3">
             <AlertCircle className="h-8 w-8 text-yellow-500" />
-            <p className="text-muted-foreground">No Fineract client linked to this lead</p>
+            <p className="text-muted-foreground">
+              No Fineract client linked to this lead
+            </p>
           </div>
         </CardContent>
       </Card>
@@ -67,7 +69,9 @@ export function LeadAdditionalInfo({
         <CardContent className="py-12">
           <div className="flex flex-col items-center justify-center gap-3">
             <Database className="h-8 w-8 text-muted-foreground" />
-            <p className="text-muted-foreground">No additional data available</p>
+            <p className="text-muted-foreground">
+              No additional data available
+            </p>
           </div>
         </CardContent>
       </Card>
@@ -91,7 +95,9 @@ export function LeadAdditionalInfo({
               title={formatTableName(dt.registeredTableName)}
             >
               <Database className="h-3.5 w-3.5 mr-2 shrink-0" />
-              <span className="truncate">{formatTableName(dt.registeredTableName)}</span>
+              <span className="truncate">
+                {formatTableName(dt.registeredTableName)}
+              </span>
             </TabsTrigger>
           ))}
         </TabsList>
