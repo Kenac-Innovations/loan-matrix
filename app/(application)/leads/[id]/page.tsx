@@ -16,10 +16,8 @@ import { LeadActions } from "./components/lead-actions";
 import { LeadValidations } from "./components/lead-validations";
 import { LeadCDE } from "./components/lead-cde";
 import { LeadCommunications } from "./components/lead-communications";
-import { LeadStateMachine } from "./components/lead-state-machine";
 import { LeadSidebar } from "./components/lead-sidebar";
 import { LeadAdditionalInfo } from "./components/lead-additional-info";
-import TransitionHistory from "./components/transition-history";
 import {
   ArrowLeft,
   FileText,
@@ -27,9 +25,7 @@ import {
   Activity,
   ShieldCheck,
   Calculator,
-  Play,
   Info,
-  History,
   Database,
 } from "lucide-react";
 import Link from "next/link";
@@ -50,6 +46,7 @@ const FINERACT_BASE_URL = process.env.FINERACT_BASE_URL || "http://10.10.0.143";
 interface FineractLoanInfo {
   status: string | null;
   loanId: number | null;
+  principal: number | null;
 }
 
 /**
@@ -67,7 +64,7 @@ async function getFineractLoanInfo(
 
     if (!accessToken) {
       console.warn("No access token available for Fineract API call");
-      return { status: null, loanId: null };
+      return { status: null, loanId: null, principal: null };
     }
 
     // Get the mapped Fineract tenant ID (e.g., "goodfellow" -> "goodfellow-training")
@@ -80,9 +77,15 @@ async function getFineractLoanInfo(
       try {
         const loanData = await fineractService.getLoan(Number(loanId));
         const status = loanData.status?.value || null;
+        const principal =
+          loanData.principal || loanData.approvedPrincipal || null;
         if (status) {
-          console.log("Fineract loan info fetched by ID:", { status, loanId });
-          return { status, loanId: Number(loanId) };
+          console.log("Fineract loan info fetched by ID:", {
+            status,
+            loanId,
+            principal,
+          });
+          return { status, loanId: Number(loanId), principal };
         }
       } catch (error) {
         console.warn(`Failed to fetch Fineract loan by ID ${loanId}:`, error);
@@ -130,12 +133,15 @@ async function getFineractLoanInfo(
         if (matchingLoan) {
           const status = matchingLoan.status?.value || null;
           const fineractLoanId = matchingLoan.id || null;
+          const principal =
+            matchingLoan.principal || matchingLoan.approvedPrincipal || null;
           if (status) {
             console.log("Fineract loan info fetched by external ID:", {
               status,
               loanId: fineractLoanId,
+              principal,
             });
-            return { status, loanId: fineractLoanId };
+            return { status, loanId: fineractLoanId, principal };
           }
         }
       } else {
@@ -148,10 +154,10 @@ async function getFineractLoanInfo(
       console.warn(`Error fetching loan by external ID ${leadId}:`, error);
     }
 
-    return { status: null, loanId: null };
+    return { status: null, loanId: null, principal: null };
   } catch (error) {
     console.error("Error fetching Fineract loan info:", error);
-    return { status: null, loanId: null };
+    return { status: null, loanId: null, principal: null };
   }
 }
 
@@ -376,6 +382,7 @@ async function getLeadData(leadId: string) {
       stages,
       fineractLoanStatus: fineractLoanInfo.status,
       fineractLoanId: fineractLoanInfo.loanId,
+      fineractLoanPrincipal: fineractLoanInfo.principal,
       cdeResult,
       clientDatatables,
       clientDocuments: fineractDocs.clientDocuments,
@@ -389,6 +396,7 @@ async function getLeadData(leadId: string) {
       stages: [],
       fineractLoanStatus: null,
       fineractLoanId: null,
+      fineractLoanPrincipal: null,
       cdeResult: null,
       clientDatatables: [],
       datatableData: {},
@@ -409,6 +417,7 @@ export default async function LeadDetailPage({
     stages,
     fineractLoanStatus,
     fineractLoanId,
+    fineractLoanPrincipal,
     cdeResult,
     clientDatatables,
     datatableData,
@@ -513,6 +522,7 @@ export default async function LeadDetailPage({
           currentStage={currentStage}
           loanStatus={fineractLoanStatus}
           loanId={fineractLoanId}
+          loanPrincipal={fineractLoanPrincipal}
           assignedToUserId={lead.assignedToUserId}
         />
       </div>
@@ -548,14 +558,6 @@ export default async function LeadDetailPage({
               <TabsTrigger value="affordability">
                 <Calculator className="mr-2 h-4 w-4" />
                 <span className="whitespace-nowrap">CDE</span>
-              </TabsTrigger>
-              <TabsTrigger value="state-machine">
-                <Play className="mr-2 h-4 w-4" />
-                <span className="whitespace-nowrap">State Machine</span>
-              </TabsTrigger>
-              <TabsTrigger value="history">
-                <History className="mr-2 h-4 w-4" />
-                <span className="whitespace-nowrap">History</span>
               </TabsTrigger>
             </TabsList>
             <TabsContent value="details" className="mt-4">
@@ -599,12 +601,6 @@ export default async function LeadDetailPage({
             </TabsContent>
             <TabsContent value="affordability" className="mt-4">
               <LeadCDE leadId={id} />
-            </TabsContent>
-            <TabsContent value="state-machine" className="mt-4">
-              <LeadStateMachine leadId={id} />
-            </TabsContent>
-            <TabsContent value="history" className="mt-4">
-              <TransitionHistory leadId={id} />
             </TabsContent>
           </Tabs>
         </div>

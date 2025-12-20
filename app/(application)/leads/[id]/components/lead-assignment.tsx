@@ -19,15 +19,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { toast } from "sonner";
-import {
-  UserCheck,
-  UserX,
-  Users,
-  CheckCircle,
-  XCircle,
-  Loader2,
-  RefreshCw,
-} from "lucide-react";
+import { UserCheck, UserX, Users, Loader2, RefreshCw } from "lucide-react";
 
 interface MifosUser {
   id: number;
@@ -116,7 +108,9 @@ export function LeadAssignment({
 
     setIsLoading(true);
     try {
-      const selectedUser = users.find((u) => u.id.toString() === selectedUserId);
+      const selectedUser = users.find(
+        (u) => u.id.toString() === selectedUserId
+      );
       if (!selectedUser) {
         toast.error("Selected user not found");
         return;
@@ -250,7 +244,10 @@ export function LeadAssignment({
             <CardTitle className="text-lg">Assignment</CardTitle>
           </div>
           {isAssigned && assignedUser?.userName && (
-            <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+            <Badge
+              variant="outline"
+              className="bg-green-50 text-green-700 border-green-200"
+            >
               <UserCheck className="h-3 w-3 mr-1" />
               Assigned
             </Badge>
@@ -275,40 +272,12 @@ export function LeadAssignment({
                 <p className="font-medium">{assignedUser.userName}</p>
                 {assignedUser.assignedAt && (
                   <p className="text-sm text-muted-foreground">
-                    Assigned {new Date(assignedUser.assignedAt).toLocaleDateString()}
+                    Assigned{" "}
+                    {new Date(assignedUser.assignedAt).toLocaleDateString()}
                   </p>
                 )}
               </div>
             </div>
-
-            {/* Show approve/reject buttons only for assigned user */}
-            {isCurrentUserAssigned && (
-              <div className="flex gap-2">
-                <Button
-                  variant="default"
-                  className="flex-1 bg-green-600 hover:bg-green-700"
-                  onClick={() => toast.info("Approve functionality coming soon")}
-                >
-                  <CheckCircle className="h-4 w-4 mr-2" />
-                  Approve
-                </Button>
-                <Button
-                  variant="destructive"
-                  className="flex-1"
-                  onClick={() => toast.info("Reject functionality coming soon")}
-                >
-                  <XCircle className="h-4 w-4 mr-2" />
-                  Reject
-                </Button>
-              </div>
-            )}
-
-            {/* Show message if not assigned to current user */}
-            {!isCurrentUserAssigned && assignedUser?.userId && (
-              <p className="text-sm text-muted-foreground text-center py-2 bg-yellow-50 dark:bg-yellow-900/20 rounded border border-yellow-200 dark:border-yellow-800">
-                This lead is assigned to another user. Only the assigned user can approve or reject.
-              </p>
-            )}
 
             {/* Reassign option (for admins or the assigned user) */}
             <div className="pt-2 border-t">
@@ -369,7 +338,9 @@ export function LeadAssignment({
               >
                 <SelectTrigger className="flex-1">
                   <SelectValue
-                    placeholder={isFetchingUsers ? "Loading users..." : "Select user..."}
+                    placeholder={
+                      isFetchingUsers ? "Loading users..." : "Select user..."
+                    }
                   />
                 </SelectTrigger>
                 <SelectContent>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import {
   Card,
   CardContent,
@@ -51,10 +51,13 @@ export function ComprehensiveLeadDetails({
   const [loanDocuments, setLoanDocuments] = useState<any[]>([]);
   const [loadingLoanDocs, setLoadingLoanDocs] = useState(false);
 
-  useEffect(() => {
-    const fetchData = async () => {
+  // Memoized fetch function that can be called to refresh data
+  const fetchData = useCallback(
+    async (showLoadingState = true) => {
       try {
-        setLoading(true);
+        if (showLoadingState) {
+          setLoading(true);
+        }
         console.log("Fetching complete details for lead:", leadId);
 
         const response = await fetch(`/api/leads/${leadId}/complete-details`);
@@ -78,10 +81,36 @@ export function ComprehensiveLeadDetails({
       } finally {
         setLoading(false);
       }
+    },
+    [leadId]
+  );
+
+  // Initial data fetch
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  // Listen for loan action complete events to refresh data
+  useEffect(() => {
+    const handleLoanActionComplete = (event: CustomEvent) => {
+      // Only refresh if this is the same lead
+      if (event.detail?.leadId === leadId) {
+        console.log("Loan action completed, refreshing data...");
+        fetchData(false); // Don't show loading state for refresh
+      }
     };
 
-    fetchData();
-  }, [leadId]);
+    window.addEventListener(
+      "loan-action-complete",
+      handleLoanActionComplete as EventListener
+    );
+    return () => {
+      window.removeEventListener(
+        "loan-action-complete",
+        handleLoanActionComplete as EventListener
+      );
+    };
+  }, [leadId, fetchData]);
 
   // Fetch client image when fineractClientId is available
   useEffect(() => {
@@ -565,14 +594,14 @@ export function ComprehensiveLeadDetails({
         </TabsList>
 
         <TabsContent value="overview" className="mt-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="space-y-6">
             {/* Personal Information */}
             <Card>
               <CardHeader>
                 <CardTitle>Personal Information</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="grid grid-cols-2 gap-4 text-sm">
+              <CardContent>
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-6 text-sm">
                   <div>
                     <p className="text-muted-foreground">Gender</p>
                     <p className="font-medium">{lead.gender || "N/A"}</p>
@@ -595,11 +624,28 @@ export function ComprehensiveLeadDetails({
                       {lead.clientClassificationName || "N/A"}
                     </p>
                   </div>
+                  <div>
+                    <p className="text-muted-foreground">Client Type</p>
+                    <p className="font-medium">
+                      {lead.clientTypeName || "N/A"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Office</p>
+                    <p className="font-medium">{lead.officeName || "N/A"}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Phone</p>
+                    <p className="font-medium">{lead.mobileNo || "N/A"}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Email</p>
+                    <p className="font-medium">{lead.emailAddress || "N/A"}</p>
+                  </div>
                 </div>
               </CardContent>
             </Card>
           </div>
-
         </TabsContent>
 
         <TabsContent value="loan" className="mt-4">

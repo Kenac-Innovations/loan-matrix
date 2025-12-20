@@ -21,6 +21,7 @@ import { ValidationConfig } from "./components/validation-config";
 import { AffordabilityConfig } from "./components/affordability-config";
 import { NotificationConfig } from "./components/notification-config";
 import { CreditScoringConfig } from "./components/credit-scoring-config";
+import { MetricsConfig } from "./components/metrics-config";
 
 export default function ConfigPage() {
   const [saved, setSaved] = useState(false);
@@ -77,7 +78,7 @@ export default function ConfigPage() {
       )}
 
       <Tabs defaultValue="pipeline" className="w-full">
-        <TabsList className="grid grid-cols-8 w-full max-w-5xl">
+        <TabsList className="grid grid-cols-9 w-full max-w-6xl">
           <TabsTrigger
             value="pipeline"
             className="data-[state=active]:bg-blue-500"
@@ -92,6 +93,12 @@ export default function ConfigPage() {
           </TabsTrigger>
           <TabsTrigger value="sla" className="data-[state=active]:bg-blue-500">
             SLA
+          </TabsTrigger>
+          <TabsTrigger
+            value="metrics"
+            className="data-[state=active]:bg-blue-500"
+          >
+            Metrics
           </TabsTrigger>
           <TabsTrigger
             value="fields"
@@ -161,6 +168,19 @@ export default function ConfigPage() {
             </CardHeader>
             <CardContent>
               <SLAConfig />
+            </CardContent>
+          </Card>
+        </TabsContent>
+        <TabsContent value="metrics">
+          <Card>
+            <CardHeader>
+              <CardTitle>Metric Targets</CardTitle>
+              <CardDescription>
+                Configure performance targets displayed on the leads dashboard
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <MetricsConfig />
             </CardContent>
           </Card>
         </TabsContent>

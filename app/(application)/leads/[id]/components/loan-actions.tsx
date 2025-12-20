@@ -10,6 +10,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -22,17 +30,28 @@ import {
   FileCheck,
   Loader2,
   AlertCircle,
+  ChevronDown,
+  Plus,
+  Edit,
+  UserMinus,
+  Trash2,
+  Shield,
+  Eye,
+  UserPlus,
+  FileText,
+  UserCog,
 } from "lucide-react";
 
 interface LoanActionsProps {
   leadId: string;
   loanStatus?: string | null;
   loanId?: number | null;
+  loanPrincipal?: number | null;
   isAssignedToCurrentUser: boolean;
   onActionComplete?: () => void;
 }
 
-// Map Fineract loan statuses to available actions
+// Map Fineract loan statuses to primary actions (shown as buttons)
 const STATUS_ACTIONS: Record<
   string,
   {
@@ -80,10 +99,65 @@ const STATUS_ACTIONS: Record<
   ],
 };
 
+// Additional dropdown actions based on status
+const STATUS_DROPDOWN_ACTIONS: Record<
+  string,
+  {
+    action: string;
+    label: string;
+    icon: any;
+    destructive?: boolean;
+  }[]
+> = {
+  "Submitted and pending approval": [
+    { action: "addLoanCharge", label: "Add Loan Charge", icon: Plus },
+    { action: "modifyApplication", label: "Modify Application", icon: Edit },
+    {
+      action: "withdrawnByClient",
+      label: "Withdrawn by Client",
+      icon: UserMinus,
+    },
+    { action: "delete", label: "Delete", icon: Trash2, destructive: true },
+    { action: "addCollateral", label: "Add Collateral", icon: Shield },
+    { action: "viewGuarantors", label: "View Guarantors", icon: Eye },
+    { action: "createGuarantor", label: "Create Guarantor", icon: UserPlus },
+    {
+      action: "loanScreenReports",
+      label: "Loan Screen Reports",
+      icon: FileText,
+    },
+    {
+      action: "assignLoanOfficer",
+      label: "Assign Loan Officer",
+      icon: UserCog,
+    },
+  ],
+  Approved: [
+    { action: "addLoanCharge", label: "Add Loan Charge", icon: Plus },
+    { action: "addCollateral", label: "Add Collateral", icon: Shield },
+    { action: "viewGuarantors", label: "View Guarantors", icon: Eye },
+    {
+      action: "assignLoanOfficer",
+      label: "Assign Loan Officer",
+      icon: UserCog,
+    },
+  ],
+  Active: [
+    { action: "addLoanCharge", label: "Add Loan Charge", icon: Plus },
+    { action: "makeRepayment", label: "Make Repayment", icon: Banknote },
+    {
+      action: "loanScreenReports",
+      label: "Loan Screen Reports",
+      icon: FileText,
+    },
+  ],
+};
+
 export function LoanActions({
   leadId,
   loanStatus,
   loanId,
+  loanPrincipal,
   isAssignedToCurrentUser,
   onActionComplete,
 }: LoanActionsProps) {
@@ -91,17 +165,62 @@ export function LoanActions({
   const [actionDialogOpen, setActionDialogOpen] = useState(false);
   const [currentAction, setCurrentAction] = useState<string | null>(null);
   const [note, setNote] = useState("");
-  const [approvedAmount, setApprovedAmount] = useState("");
+  const [approvedAmount, setApprovedAmount] = useState(
+    loanPrincipal ? loanPrincipal.toString() : ""
+  );
   const [disbursementDate, setDisbursementDate] = useState(
     new Date().toISOString().split("T")[0]
   );
 
   // Get available actions based on loan status
   const availableActions = loanStatus ? STATUS_ACTIONS[loanStatus] || [] : [];
+  const dropdownActions = loanStatus
+    ? STATUS_DROPDOWN_ACTIONS[loanStatus] || []
+    : [];
 
   const handleActionClick = (action: string) => {
     setCurrentAction(action);
     setActionDialogOpen(true);
+  };
+
+  const handleDropdownAction = (action: string) => {
+    // Some actions open dialogs, others may navigate or show toast
+    switch (action) {
+      case "addLoanCharge":
+        toast.info("Add Loan Charge feature coming soon");
+        break;
+      case "modifyApplication":
+        toast.info("Modify Application feature coming soon");
+        break;
+      case "withdrawnByClient":
+        setCurrentAction("withdrawnByClient");
+        setActionDialogOpen(true);
+        break;
+      case "delete":
+        setCurrentAction("delete");
+        setActionDialogOpen(true);
+        break;
+      case "addCollateral":
+        toast.info("Add Collateral feature coming soon");
+        break;
+      case "viewGuarantors":
+        toast.info("View Guarantors feature coming soon");
+        break;
+      case "createGuarantor":
+        toast.info("Create Guarantor feature coming soon");
+        break;
+      case "loanScreenReports":
+        toast.info("Loan Screen Reports feature coming soon");
+        break;
+      case "assignLoanOfficer":
+        toast.info("Assign Loan Officer feature coming soon");
+        break;
+      case "makeRepayment":
+        toast.info("Make Repayment feature coming soon");
+        break;
+      default:
+        toast.info(`${action} feature coming soon`);
+    }
   };
 
   const handleActionConfirm = async () => {
@@ -130,6 +249,12 @@ export function LoanActions({
         toast.success(`Loan ${currentAction.replace("_", " ")} successful`);
         setActionDialogOpen(false);
         setNote("");
+        // Dispatch custom event to notify other components to refresh
+        window.dispatchEvent(
+          new CustomEvent("loan-action-complete", {
+            detail: { leadId, loanId, action: currentAction },
+          })
+        );
         onActionComplete?.();
       } else {
         const error = await response.json();
@@ -172,14 +297,47 @@ export function LoanActions({
         return "Undo Loan Approval";
       case "write_off":
         return "Write Off Loan";
+      case "withdrawnByClient":
+        return "Withdrawn by Client";
+      case "delete":
+        return "Delete Loan Application";
       default:
         return "Confirm Action";
     }
   };
 
+  const getActionDescription = () => {
+    switch (currentAction) {
+      case "approve":
+        return "Please confirm the loan approval. This will move the loan to approved status.";
+      case "reject":
+        return "Please provide a reason for rejecting this loan application.";
+      case "disburse":
+        return "Please confirm the disbursement details for this loan.";
+      case "undo_approval":
+        return "This will revert the loan to pending approval status.";
+      case "write_off":
+        return "This action cannot be undone. Please confirm you want to write off this loan.";
+      case "withdrawnByClient":
+        return "This will mark the loan application as withdrawn by the client. Please provide a reason.";
+      case "delete":
+        return "This will permanently delete the loan application. This action cannot be undone.";
+      default:
+        return "Please confirm this action.";
+    }
+  };
+
+  const isDestructiveAction = [
+    "reject",
+    "write_off",
+    "withdrawnByClient",
+    "delete",
+  ].includes(currentAction || "");
+
   return (
     <>
       <div className="flex flex-wrap gap-2">
+        {/* Primary action buttons */}
         {availableActions.map((actionConfig) => (
           <Button
             key={actionConfig.action}
@@ -195,6 +353,36 @@ export function LoanActions({
             {actionConfig.label}
           </Button>
         ))}
+
+        {/* More Actions Dropdown */}
+        {dropdownActions.length > 0 && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline">
+                More
+                <ChevronDown className="ml-2 h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuLabel>Loan Actions</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {dropdownActions.map((actionConfig) => (
+                <DropdownMenuItem
+                  key={actionConfig.action}
+                  onClick={() => handleDropdownAction(actionConfig.action)}
+                  className={
+                    actionConfig.destructive
+                      ? "text-destructive focus:text-destructive"
+                      : ""
+                  }
+                >
+                  <actionConfig.icon className="mr-2 h-4 w-4" />
+                  {actionConfig.label}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
       </div>
 
       {/* Action Confirmation Dialog */}
@@ -202,18 +390,7 @@ export function LoanActions({
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{getActionTitle()}</DialogTitle>
-            <DialogDescription>
-              {currentAction === "approve" &&
-                "Please confirm the loan approval. This will move the loan to approved status."}
-              {currentAction === "reject" &&
-                "Please provide a reason for rejecting this loan application."}
-              {currentAction === "disburse" &&
-                "Please confirm the disbursement details for this loan."}
-              {currentAction === "undo_approval" &&
-                "This will revert the loan to pending approval status."}
-              {currentAction === "write_off" &&
-                "This action cannot be undone. Please confirm you want to write off this loan."}
-            </DialogDescription>
+            <DialogDescription>{getActionDescription()}</DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 py-4">
@@ -250,16 +427,35 @@ export function LoanActions({
               </div>
             )}
 
+            {(currentAction === "withdrawnByClient" ||
+              currentAction === "delete") && (
+              <div className="space-y-2">
+                <Label>Date</Label>
+                <Input
+                  type="date"
+                  value={disbursementDate}
+                  onChange={(e) => setDisbursementDate(e.target.value)}
+                />
+              </div>
+            )}
+
             <div className="space-y-2">
               <Label>
-                {currentAction === "reject"
-                  ? "Rejection Reason"
+                {currentAction === "reject" ||
+                currentAction === "withdrawnByClient"
+                  ? "Reason"
+                  : currentAction === "delete"
+                  ? "Confirmation Note"
                   : "Note (optional)"}
               </Label>
               <Textarea
                 placeholder={
                   currentAction === "reject"
                     ? "Enter reason for rejection..."
+                    : currentAction === "withdrawnByClient"
+                    ? "Enter reason for withdrawal..."
+                    : currentAction === "delete"
+                    ? "Enter reason for deletion..."
                     : "Enter any additional notes..."
                 }
                 value={note}
@@ -278,17 +474,17 @@ export function LoanActions({
               Cancel
             </Button>
             <Button
-              variant={
-                currentAction === "reject" || currentAction === "write_off"
-                  ? "destructive"
-                  : "default"
-              }
+              variant={isDestructiveAction ? "destructive" : "default"}
               onClick={handleActionConfirm}
-              disabled={isLoading || (currentAction === "reject" && !note)}
+              disabled={
+                isLoading ||
+                ((currentAction === "reject" ||
+                  currentAction === "withdrawnByClient" ||
+                  currentAction === "delete") &&
+                  !note)
+              }
               className={
-                currentAction !== "reject" && currentAction !== "write_off"
-                  ? "bg-green-600 hover:bg-green-700"
-                  : ""
+                !isDestructiveAction ? "bg-green-600 hover:bg-green-700" : ""
               }
             >
               {isLoading ? (

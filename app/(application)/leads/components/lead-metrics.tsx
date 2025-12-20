@@ -1,13 +1,34 @@
 "use client";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Clock, TrendingUp, TrendingDown, CheckCircle2 } from "lucide-react";
+import {
+  TrendingUp,
+  TrendingDown,
+  CheckCircle2,
+  PartyPopper,
+} from "lucide-react";
 import { ProgressChart, MetricsChart } from "@/components/charts";
 import { LeadMetrics as LeadMetricsType } from "@/app/actions/leads-actions";
 
 interface LeadMetricsProps {
   className?: string;
   metrics: LeadMetricsType;
+}
+
+type TargetStatus = "met" | "at-risk" | "missed";
+
+// Helper function to get card styling based on target status
+function getCardStyle(status: TargetStatus): string {
+  switch (status) {
+    case "met":
+      return "border-green-500/50 bg-green-500/5 dark:bg-green-500/10";
+    case "at-risk":
+      return "border-amber-500/50 bg-amber-500/5 dark:bg-amber-500/10";
+    case "missed":
+      return "border-red-500/50 bg-red-500/5 dark:bg-red-500/10";
+    default:
+      return "";
+  }
 }
 
 export function LeadMetrics({ className, metrics }: LeadMetricsProps) {
@@ -24,7 +45,40 @@ export function LeadMetrics({ className, metrics }: LeadMetricsProps) {
       100
   );
 
-  // Calculate trends (placeholder - in real app this would come from historical data)
+  // Calculate target status for each metric
+  // Active Leads: met if >= target, at-risk if >= 80%, missed if < 80%
+  const activeLeadsStatus: TargetStatus =
+    metrics.activeLeads >= metrics.monthlyTarget
+      ? "met"
+      : metrics.activeLeads >= metrics.monthlyTarget * 0.8
+      ? "at-risk"
+      : "missed";
+
+  // Conversion Rate: met if >= target, at-risk if >= 80%, missed if < 80%
+  const conversionStatus: TargetStatus =
+    metrics.conversionRate >= metrics.conversionTarget
+      ? "met"
+      : metrics.conversionRate >= metrics.conversionTarget * 0.8
+      ? "at-risk"
+      : "missed";
+
+  // Processing Time: met if <= target, at-risk if <= 120%, missed if > 120%
+  const processingTimeStatus: TargetStatus =
+    metrics.avgProcessingTime <= metrics.processingTimeTarget
+      ? "met"
+      : metrics.avgProcessingTime <= metrics.processingTimeTarget * 1.2
+      ? "at-risk"
+      : "missed";
+
+  // SLA Compliance: met if >= 90%, at-risk if >= 75%, missed if < 75%
+  const slaStatus: TargetStatus =
+    metrics.slaCompliance >= 90
+      ? "met"
+      : metrics.slaCompliance >= 75
+      ? "at-risk"
+      : "missed";
+
+  // Calculate trends
   const activeLeadsTrend =
     metrics.activeLeads > metrics.monthlyTarget * 0.8 ? "up" : "down";
   const conversionTrend =
@@ -36,9 +90,14 @@ export function LeadMetrics({ className, metrics }: LeadMetricsProps) {
     <div
       className={`grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 ${className}`}
     >
-      <Card>
+      <Card className={getCardStyle(activeLeadsStatus)}>
         <CardHeader className="flex flex-row items-center justify-between pb-2">
-          <CardTitle className="text-sm font-medium">Active Leads</CardTitle>
+          <CardTitle className="text-sm font-medium flex items-center gap-2">
+            Active Leads
+            {activeLeadsStatus === "met" && (
+              <PartyPopper className="h-4 w-4 text-green-500" />
+            )}
+          </CardTitle>
           {activeLeadsTrend === "up" ? (
             <TrendingUp className="h-4 w-4 text-green-400" />
           ) : (
@@ -72,9 +131,14 @@ export function LeadMetrics({ className, metrics }: LeadMetricsProps) {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className={getCardStyle(conversionStatus)}>
         <CardHeader className="flex flex-row items-center justify-between pb-2">
-          <CardTitle className="text-sm font-medium">Conversion Rate</CardTitle>
+          <CardTitle className="text-sm font-medium flex items-center gap-2">
+            Conversion Rate
+            {conversionStatus === "met" && (
+              <PartyPopper className="h-4 w-4 text-green-500" />
+            )}
+          </CardTitle>
           {conversionTrend === "up" ? (
             <TrendingUp className="h-4 w-4 text-green-400" />
           ) : (
@@ -111,10 +175,13 @@ export function LeadMetrics({ className, metrics }: LeadMetricsProps) {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className={getCardStyle(processingTimeStatus)}>
         <CardHeader className="flex flex-row items-center justify-between pb-2">
-          <CardTitle className="text-sm font-medium">
+          <CardTitle className="text-sm font-medium flex items-center gap-2">
             Avg. Processing Time
+            {processingTimeStatus === "met" && (
+              <PartyPopper className="h-4 w-4 text-green-500" />
+            )}
           </CardTitle>
           {processingTimeTrend === "up" ? (
             <TrendingUp className="h-4 w-4 text-green-400" />
@@ -153,9 +220,14 @@ export function LeadMetrics({ className, metrics }: LeadMetricsProps) {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className={getCardStyle(slaStatus)}>
         <CardHeader className="flex flex-row items-center justify-between pb-2">
-          <CardTitle className="text-sm font-medium">SLA Compliance</CardTitle>
+          <CardTitle className="text-sm font-medium flex items-center gap-2">
+            SLA Compliance
+            {slaStatus === "met" && (
+              <PartyPopper className="h-4 w-4 text-green-500" />
+            )}
+          </CardTitle>
           {slaComplianceTrend === "up" ? (
             <CheckCircle2 className="h-4 w-4 text-green-400" />
           ) : (

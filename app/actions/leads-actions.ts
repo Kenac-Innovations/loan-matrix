@@ -7,6 +7,10 @@ import {
 } from "@/lib/tenant-service";
 import { UssdLeadsMetrics, UssdLoanApplication } from "./ussd-leads-actions";
 import { Lead, PipelineStage } from "@/shared/types/lead";
+import { getSession } from "@/lib/auth";
+import { getFineractTenantId } from "@/lib/fineract-tenant-service";
+
+const FINERACT_BASE_URL = process.env.FINERACT_BASE_URL || "http://10.10.0.143";
 
 export interface ConversionMetrics {
   labels: string[];
@@ -35,6 +39,20 @@ export interface LeadMetrics {
   conversionMetrics: ConversionMetrics;
   stageTATMetrics: StageTATMetrics[];
 }
+
+// Tenant metric settings stored in tenant.settings JSON field
+export interface TenantMetricSettings {
+  monthlyTarget?: number;
+  conversionTarget?: number;
+  processingTimeTarget?: number;
+}
+
+// Default metric targets
+const DEFAULT_METRIC_SETTINGS: Required<TenantMetricSettings> = {
+  monthlyTarget: 50,
+  conversionTarget: 75,
+  processingTimeTarget: 10,
+};
 
 export interface LeadsData {
   leads: Lead[] | UssdLoanApplication[];
@@ -243,12 +261,95 @@ export async function getLeadsData(
         loanSubmissionDate: lead.loanSubmissionDate,
         clientCreatedInFineract: lead.clientCreatedInFineract,
         fineractClientId: lead.fineractClientId,
+        // Set to "Draft" for non-submitted leads, will be updated with Fineract status for submitted leads
+        fineractLoanStatus: lead.loanSubmittedToFineract ? null : "Draft",
         // Assignment fields
         assignedToUserId: lead.assignedToUserId,
         assignedToUserName: lead.assignedToUserName,
         assignedAt: lead.assignedAt,
       };
     });
+
+    // Fetch Fineract loan statuses for submitted leads
+    const submittedLeads = transformedLeads.filter(
+      (lead) => lead.loanSubmittedToFineract
+    );
+
+    if (submittedLeads.length > 0) {
+      try {
+        const session = await getSession();
+        const accessToken =
+          session?.base64EncodedAuthenticationKey || session?.accessToken;
+
+        if (accessToken) {
+          const fineractTenantId = await getFineractTenantId();
+
+          // Fetch statuses in parallel for all submitted leads
+          const statusPromises = submittedLeads.map(async (lead) => {
+            try {
+              // Try to fetch by external ID (leadId)
+              const searchUrl = `${FINERACT_BASE_URL}/fineract-provider/api/v1/loans?externalId=${encodeURIComponent(
+                lead.id
+              )}`;
+
+              const response = await fetch(searchUrl, {
+                method: "GET",
+                headers: {
+                  Authorization: `Basic ${accessToken}`,
+                  "Fineract-Platform-TenantId": fineractTenantId,
+                  Accept: "application/json",
+                },
+                cache: "no-store",
+              });
+
+              if (response.ok) {
+                const searchData = await response.json();
+                let loans = [];
+                if (Array.isArray(searchData)) {
+                  loans = searchData;
+                } else if (
+                  searchData.pageItems &&
+                  Array.isArray(searchData.pageItems)
+                ) {
+                  loans = searchData.pageItems;
+                } else if (
+                  searchData.content &&
+                  Array.isArray(searchData.content)
+                ) {
+                  loans = searchData.content;
+                }
+
+                const matchingLoan = loans.find(
+                  (loan: any) => loan.externalId === lead.id
+                );
+
+                if (matchingLoan?.status?.value) {
+                  return { leadId: lead.id, status: matchingLoan.status.value };
+                }
+              }
+            } catch (error) {
+              console.error(
+                `Error fetching Fineract status for lead ${lead.id}:`,
+                error
+              );
+            }
+            return { leadId: lead.id, status: null };
+          });
+
+          const statuses = await Promise.all(statusPromises);
+
+          // Update leads with their statuses
+          statuses.forEach(({ leadId, status }) => {
+            const lead = transformedLeads.find((l) => l.id === leadId);
+            if (lead && status) {
+              lead.fineractLoanStatus = status;
+            }
+          });
+        }
+      } catch (error) {
+        console.error("Error fetching Fineract loan statuses:", error);
+      }
+    }
 
     // Get total count for pagination
     const totalCount = await prisma.lead.count({ where });
@@ -323,6 +424,19 @@ export async function getLeadsData(
       slaConfigs
     );
 
+    // Get metric targets from tenant settings, falling back to defaults
+    const tenantSettings = (tenant.settings as TenantMetricSettings) || {};
+    const metricSettings = {
+      monthlyTarget:
+        tenantSettings.monthlyTarget ?? DEFAULT_METRIC_SETTINGS.monthlyTarget,
+      conversionTarget:
+        tenantSettings.conversionTarget ??
+        DEFAULT_METRIC_SETTINGS.conversionTarget,
+      processingTimeTarget:
+        tenantSettings.processingTimeTarget ??
+        DEFAULT_METRIC_SETTINGS.processingTimeTarget,
+    };
+
     const metrics: LeadMetrics = {
       activeLeads,
       conversionRate,
@@ -331,9 +445,9 @@ export async function getLeadsData(
       onTimeCount,
       atRiskCount,
       overdueCount,
-      monthlyTarget: 50, // This could come from tenant settings
-      conversionTarget: 75, // This could come from tenant settings
-      processingTimeTarget: 10, // This could come from tenant settings
+      monthlyTarget: metricSettings.monthlyTarget,
+      conversionTarget: metricSettings.conversionTarget,
+      processingTimeTarget: metricSettings.processingTimeTarget,
       conversionMetrics,
       stageTATMetrics,
     };

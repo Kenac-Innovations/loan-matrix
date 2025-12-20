@@ -9,17 +9,34 @@ import { Lead } from "@/shared/types";
 import { GenericDataTable } from "@/components/tables/generic-data-table";
 import { DataTableColumn, DataTableFilter } from "@/shared/types/data-table";
 import { useState } from "react";
-import {
-  CheckCircle2,
-  UserCheck,
-  FileEdit,
-  Send,
-  User,
-  Loader2,
-} from "lucide-react";
+import { FileEdit, User, Loader2 } from "lucide-react";
 
 interface LeadsTableProps {
   initialData: LeadsData;
+}
+
+// Helper function to get status badge color based on Fineract loan status
+function getStatusBadgeColor(status: string): string {
+  const statusLower = status.toLowerCase();
+  if (statusLower.includes("approved") && !statusLower.includes("pending")) {
+    return "bg-green-500 hover:bg-green-600";
+  }
+  if (statusLower.includes("pending") || statusLower.includes("submitted")) {
+    return "bg-yellow-500 hover:bg-yellow-600";
+  }
+  if (statusLower.includes("active") || statusLower.includes("disbursed")) {
+    return "bg-blue-500 hover:bg-blue-600";
+  }
+  if (statusLower.includes("rejected") || statusLower.includes("withdrawn")) {
+    return "bg-red-500 hover:bg-red-600";
+  }
+  if (statusLower.includes("closed") || statusLower.includes("written off")) {
+    return "bg-gray-500 hover:bg-gray-600";
+  }
+  if (statusLower.includes("overpaid")) {
+    return "bg-purple-500 hover:bg-purple-600";
+  }
+  return "bg-blue-500 hover:bg-blue-600";
 }
 
 export function LeadsTable({ initialData }: LeadsTableProps) {
@@ -67,20 +84,13 @@ export function LeadsTable({ initialData }: LeadsTableProps) {
     },
     {
       id: "leadStatus",
-      accessorKey: "loanSubmittedToFineract",
+      accessorKey: "fineractLoanStatus",
       header: "Status",
       cell: ({ row }) => {
         const lead = row.original;
-        const isSubmitted = lead.loanSubmittedToFineract || lead.fineractLoanId;
+        const status = lead.fineractLoanStatus;
 
-        if (isSubmitted) {
-          return (
-            <Badge className="bg-green-500 hover:bg-green-600 text-white border-0 text-xs">
-              <CheckCircle2 className="h-3 w-3 mr-1" />
-              Submitted
-            </Badge>
-          );
-        } else {
+        if (status === "Draft" || !status) {
           return (
             <Badge
               variant="outline"
@@ -91,11 +101,35 @@ export function LeadsTable({ initialData }: LeadsTableProps) {
             </Badge>
           );
         }
+
+        // Transform "Active" to "Disbursed" for better clarity
+        const displayStatus = status === "Active" ? "Disbursed" : status;
+        return (
+          <Badge
+            className={`${getStatusBadgeColor(
+              status
+            )} text-white border-0 text-xs`}
+          >
+            {displayStatus}
+          </Badge>
+        );
       },
-      filterOptions: [
-        { label: "Submitted", value: "true" },
-        { label: "Draft", value: "false" },
-      ],
+      filterOptions: Array.from(
+        new Set(
+          leads
+            .map((lead) => lead.fineractLoanStatus)
+            .filter((status): status is string => !!status)
+        )
+      ).map((status) => {
+        const count = leads.filter(
+          (lead) => lead.fineractLoanStatus === status
+        ).length;
+        const displayLabel = status === "Active" ? "Disbursed" : status;
+        return {
+          label: `${displayLabel} (${count})`,
+          value: status,
+        };
+      }),
     },
     {
       id: "amount",
@@ -112,10 +146,13 @@ export function LeadsTable({ initialData }: LeadsTableProps) {
         </Badge>
       ),
       filterOptions: Array.from(new Set(leads.map((lead) => lead.type))).map(
-        (type) => ({
-          label: type,
-          value: type,
-        })
+        (type) => {
+          const count = leads.filter((lead) => lead.type === type).length;
+          return {
+            label: `${type} (${count})`,
+            value: type,
+          };
+        }
       ),
     },
     {

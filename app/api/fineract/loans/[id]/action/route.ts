@@ -11,7 +11,13 @@ export async function POST(
   try {
     const { id: loanId } = await params;
     const body = await request.json();
-    const { action, note, approvedOnDate, approvedLoanAmount, actualDisbursementDate } = body;
+    const {
+      action,
+      note,
+      approvedOnDate,
+      approvedLoanAmount,
+      actualDisbursementDate,
+    } = body;
 
     if (!action) {
       return NextResponse.json(
@@ -54,6 +60,8 @@ export async function POST(
         command = "approve";
         actionBody = {
           approvedOnDate: formatDate(approvedOnDate || new Date()),
+          dateFormat: "dd MMMM yyyy",
+          locale: "en",
           note: note || undefined,
         };
         if (approvedLoanAmount) {
@@ -65,6 +73,8 @@ export async function POST(
         command = "reject";
         actionBody = {
           rejectedOnDate: formatDate(new Date()),
+          dateFormat: "dd MMMM yyyy",
+          locale: "en",
           note: note || "Loan application rejected",
         };
         break;
@@ -72,7 +82,11 @@ export async function POST(
       case "disburse":
         command = "disburse";
         actionBody = {
-          actualDisbursementDate: formatDate(actualDisbursementDate || new Date()),
+          actualDisbursementDate: formatDate(
+            actualDisbursementDate || new Date()
+          ),
+          dateFormat: "dd MMMM yyyy",
+          locale: "en",
           note: note || undefined,
         };
         break;
@@ -88,6 +102,8 @@ export async function POST(
         command = "writeoff";
         actionBody = {
           transactionDate: formatDate(new Date()),
+          dateFormat: "dd MMMM yyyy",
+          locale: "en",
           note: note || "Loan written off",
         };
         break;
@@ -104,7 +120,9 @@ export async function POST(
 
     // Call Fineract API
     const response = await fetch(
-      `${process.env.FINERACT_BASE_URL || "http://10.10.0.143"}/fineract-provider/api/v1/loans/${loanId}?command=${command}`,
+      `${
+        process.env.FINERACT_BASE_URL || "http://10.10.0.143"
+      }/fineract-provider/api/v1/loans/${loanId}?command=${command}`,
       {
         method: "POST",
         headers: {
@@ -121,7 +139,10 @@ export async function POST(
       console.error("Fineract loan action error:", errorData);
       return NextResponse.json(
         {
-          error: errorData.defaultUserMessage || errorData.error || `Failed to ${action} loan`,
+          error:
+            errorData.defaultUserMessage ||
+            errorData.error ||
+            `Failed to ${action} loan`,
           details: errorData,
         },
         { status: response.status }
@@ -149,8 +170,18 @@ export async function POST(
 function formatDate(date: Date | string): string {
   const d = typeof date === "string" ? new Date(date) : date;
   const months = [
-    "January", "February", "March", "April", "May", "June",
-    "July", "August", "September", "October", "November", "December"
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
   ];
   return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
 }

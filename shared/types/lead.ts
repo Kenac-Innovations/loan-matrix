@@ -23,6 +23,7 @@ export interface Lead {
   loanSubmissionDate?: Date | null;
   clientCreatedInFineract?: boolean;
   fineractClientId?: number | null;
+  fineractLoanStatus?: string | null; // Loan status from Fineract
   // Assignment fields
   assignedToUserId?: number | null;
   assignedToUserName?: string | null;
