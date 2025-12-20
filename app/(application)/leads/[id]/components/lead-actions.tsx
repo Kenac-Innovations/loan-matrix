@@ -55,9 +55,19 @@ export function LeadActions({
   const { data: session } = useSession();
   const [addNoteOpen, setAddNoteOpen] = useState(false);
 
-  // Get current user's Mifos ID
-  const currentUserId = (session?.user as any)?.userId as number | undefined;
-  const isAssignedToCurrentUser = currentUserId && assignedToUserId === currentUserId;
+  // Get current user's Mifos ID - try userId first, then fall back to id
+  const sessionUser = session?.user as any;
+  const currentUserId = sessionUser?.userId ?? (sessionUser?.id ? parseInt(sessionUser.id) : undefined);
+  const isAssignedToCurrentUser = !!(currentUserId && assignedToUserId && currentUserId === assignedToUserId);
+
+  // Debug logging
+  console.log("Assignment Check:", {
+    currentUserId,
+    assignedToUserId,
+    isAssignedToCurrentUser,
+    sessionUserId: sessionUser?.userId,
+    sessionId: sessionUser?.id,
+  });
 
   return (
     <div className="flex flex-wrap gap-2">

@@ -78,8 +78,9 @@ export function LeadSidebar({ leadId }: LeadSidebarProps) {
     fetchSidebarData();
   }, [leadId]);
 
-  // Get current Mifos user ID from session
-  const currentMifosUserId = (session?.user as any)?.userId as number | undefined;
+  // Get current Mifos user ID from session - try userId first, then fall back to id
+  const sessionUser = session?.user as any;
+  const currentMifosUserId = sessionUser?.userId ?? (sessionUser?.id ? parseInt(sessionUser.id) : undefined);
 
   const formatTime = (hours: number) => {
     const days = Math.floor(hours / 24);

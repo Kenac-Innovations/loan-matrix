@@ -124,7 +124,10 @@ async function getFineractLoanInfo(
           const status = matchingLoan.status?.value || null;
           const fineractLoanId = matchingLoan.id || null;
           if (status) {
-            console.log("Fineract loan info fetched by external ID:", { status, loanId: fineractLoanId });
+            console.log("Fineract loan info fetched by external ID:", {
+              status,
+              loanId: fineractLoanId,
+            });
             return { status, loanId: fineractLoanId };
           }
         }
@@ -297,7 +300,10 @@ async function getClientDatatables(
           datatableData[dt.registeredTableName] = data;
         }
       } catch (err) {
-        console.warn(`Failed to fetch data for ${dt.registeredTableName}:`, err);
+        console.warn(
+          `Failed to fetch data for ${dt.registeredTableName}:`,
+          err
+        );
       }
     }
 
@@ -362,10 +368,10 @@ async function getLeadData(leadId: string) {
       tenantSlug
     );
 
-    return { 
-      lead, 
-      stages, 
-      fineractLoanStatus: fineractLoanInfo.status, 
+    return {
+      lead,
+      stages,
+      fineractLoanStatus: fineractLoanInfo.status,
       fineractLoanId: fineractLoanInfo.loanId,
       cdeResult,
       clientDatatables,
@@ -395,7 +401,17 @@ export default async function LeadDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const { lead, stages, fineractLoanStatus, fineractLoanId, cdeResult, clientDatatables, datatableData, clientDocuments, loanDocuments } = await getLeadData(id);
+  const {
+    lead,
+    stages,
+    fineractLoanStatus,
+    fineractLoanId,
+    cdeResult,
+    clientDatatables,
+    datatableData,
+    clientDocuments,
+    loanDocuments,
+  } = await getLeadData(id);
 
   if (!lead) {
     return (
@@ -489,8 +505,8 @@ export default async function LeadDetailPage({
             </div>
           </div>
         </div>
-        <LeadActions 
-          leadId={id} 
+        <LeadActions
+          leadId={id}
           currentStage={currentStage}
           loanStatus={fineractLoanStatus}
           loanId={fineractLoanId}
@@ -543,8 +559,8 @@ export default async function LeadDetailPage({
               <ComprehensiveLeadDetails leadId={id} />
             </TabsContent>
             <TabsContent value="additional-info" className="mt-4">
-              <LeadAdditionalInfo 
-                leadId={id} 
+              <LeadAdditionalInfo
+                leadId={id}
                 clientId={lead.fineractClientId || null}
                 datatables={clientDatatables}
                 datatableData={datatableData}
@@ -564,8 +580,8 @@ export default async function LeadDetailPage({
               </Card>
             </TabsContent>
             <TabsContent value="documents" className="mt-4">
-              <LeadDocuments 
-                leadId={id} 
+              <LeadDocuments
+                leadId={id}
                 fineractClientId={lead.fineractClientId || null}
                 fineractLoanId={fineractLoanId || null}
                 initialClientDocuments={clientDocuments}
