@@ -246,12 +246,22 @@ export function PipelineView({ initialData }: PipelineViewProps) {
               </div>
             )}
             {!isLoading && filteredLeads.length > 0
-              ? filteredLeads.map((lead) => (
-                  <div
-                    key={lead.id}
-                    className="flex flex-col sm:flex-row sm:items-center justify-between rounded-md border p-3 hover:bg-accent/50"
-                  >
-                    <div className="flex items-start gap-3 mb-3 sm:mb-0">
+              ? filteredLeads.map((lead) => {
+                  const isSubmitted =
+                    lead.loanSubmittedToFineract || lead.fineractLoanId;
+                  const handleRowClick = () => {
+                    window.location.href = isSubmitted
+                      ? `/leads/${lead.id}`
+                      : `/leads/new?id=${lead.id}`;
+                  };
+
+                  return (
+                    <div
+                      key={lead.id}
+                      onClick={handleRowClick}
+                      className="flex flex-col sm:flex-row sm:items-center justify-between rounded-md border p-3 hover:bg-accent/50 cursor-pointer transition-colors"
+                    >
+                      <div className="flex items-start gap-3 mb-3 sm:mb-0">
                       <Avatar className="h-10 w-10">
                         <AvatarFallback className="bg-primary/10 text-primary">
                           {lead.client
@@ -323,7 +333,7 @@ export function PipelineView({ initialData }: PipelineViewProps) {
                     <div className="flex flex-wrap items-center gap-3 justify-between sm:justify-end">
                       {/* Assigned User Display */}
                       <div className="flex items-center gap-2">
-                        {(lead.loanSubmittedToFineract || lead.fineractLoanId) ? (
+                        {lead.loanSubmittedToFineract || lead.fineractLoanId ? (
                           lead.assignedToUserName ? (
                             <div className="flex items-center gap-1.5">
                               <Avatar className="h-6 w-6">
@@ -341,13 +351,18 @@ export function PipelineView({ initialData }: PipelineViewProps) {
                               </span>
                             </div>
                           ) : (
-                            <Badge variant="outline" className="text-xs border-orange-500 text-orange-500 bg-orange-500/10">
+                            <Badge
+                              variant="outline"
+                              className="text-xs border-orange-500 text-orange-500 bg-orange-500/10"
+                            >
                               <User className="h-3 w-3 mr-1" />
                               Unassigned
                             </Badge>
                           )
                         ) : (
-                          <span className="text-xs text-muted-foreground">-</span>
+                          <span className="text-xs text-muted-foreground">
+                            -
+                          </span>
                         )}
                       </div>
                       <div className="flex items-center gap-2">
@@ -371,7 +386,8 @@ export function PipelineView({ initialData }: PipelineViewProps) {
                       </div>
                     </div>
                   </div>
-                ))
+                  );
+                })
               : !isLoading && (
                   <div className="flex flex-col items-center justify-center py-8">
                     <AlertCircle className="h-8 w-8 text-muted-foreground mb-2" />
