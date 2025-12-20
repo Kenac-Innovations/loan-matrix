@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import {
   Card,
   CardContent,
@@ -9,105 +8,53 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Loader2, Database, AlertCircle } from "lucide-react";
-import { DynamicDatatableContent } from "@/app/(application)/clients/[id]/components/DynamicDatatableContent";
+import { Database, AlertCircle } from "lucide-react";
+import { DatatableDisplay } from "./datatable-display";
 
 interface LeadAdditionalInfoProps {
   leadId: string;
+  clientId: number | null;
+  datatables: any[];
+  datatableData: Record<string, any>;
 }
 
-interface Datatable {
-  registeredTableName: string;
-  applicationTableName?: string;
-  entitySubType?: string;
-}
-
-export function LeadAdditionalInfo({ leadId }: LeadAdditionalInfoProps) {
-  const [datatables, setDatatables] = useState<Datatable[]>([]);
-  const [clientId, setClientId] = useState<number | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        setLoading(true);
-
-        // First fetch lead details to get fineractClientId
-        const leadResponse = await fetch(`/api/leads/${leadId}/complete-details`);
-        if (!leadResponse.ok) {
-          throw new Error("Failed to fetch lead details");
-        }
-        const leadData = await leadResponse.json();
-        const fineractClientId =
-          leadData?.lead?.fineractClientId || leadData?.fineractClient?.id;
-
-        if (!fineractClientId) {
-          setError("No Fineract client linked to this lead");
-          setLoading(false);
-          return;
-        }
-
-        setClientId(fineractClientId);
-
-        // Fetch datatables for clients (m_client app table)
-        const datatableRes = await fetch(
-          `/api/fineract/datatables?apptable=m_client`
-        );
-        if (datatableRes.ok) {
-          const datatableData = await datatableRes.json();
-          setDatatables(datatableData || []);
-        } else {
-          console.error("Failed to fetch datatables:", datatableRes.status);
-        }
-      } catch (err) {
-        console.error("Error fetching additional info:", err);
-        setError(err instanceof Error ? err.message : "An error occurred");
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchData();
-  }, [leadId]);
-
+export function LeadAdditionalInfo({
+  leadId,
+  clientId,
+  datatables,
+  datatableData,
+}: LeadAdditionalInfoProps) {
   // Format table name for display
   const formatTableName = (name: string) => {
-    return name
+    let formatted = name
       .replace(/^m_|^dt_|^cd_/i, "") // Remove common prefixes
       .replace(/_/g, " ") // Replace underscores with spaces
       .split(" ")
       .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
       .join(" ");
+
+    // Handle duplicated patterns like "bank branch code cd bank branch code"
+    const duplicateMatch = formatted.match(/^(.+?)\s+cd[\s-]+\1$/i);
+    if (duplicateMatch && duplicateMatch[1]) {
+      return duplicateMatch[1].trim();
+    }
+
+    // Pattern: "Text cd text" -> extract first part
+    const cdMatch = formatted.match(/^(.+?)\s+cd[\s-]+/i);
+    if (cdMatch && cdMatch[1]) {
+      return cdMatch[1].trim();
+    }
+
+    return formatted;
   };
 
-  // Get a short label for the tab
-  const getTabLabel = (name: string) => {
-    const formatted = formatTableName(name);
-    // If name is too long, truncate with ellipsis
-    return formatted.length > 20 ? formatted.substring(0, 17) + "..." : formatted;
-  };
-
-  if (loading) {
-    return (
-      <Card>
-        <CardContent className="py-12">
-          <div className="flex flex-col items-center justify-center gap-3">
-            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-            <p className="text-muted-foreground">Loading additional information...</p>
-          </div>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  if (error) {
+  if (!clientId) {
     return (
       <Card>
         <CardContent className="py-12">
           <div className="flex flex-col items-center justify-center gap-3">
             <AlertCircle className="h-8 w-8 text-yellow-500" />
-            <p className="text-muted-foreground">{error}</p>
+            <p className="text-muted-foreground">No Fineract client linked to this lead</p>
           </div>
         </CardContent>
       </Card>
@@ -168,12 +115,11 @@ export function LeadAdditionalInfo({ leadId }: LeadAdditionalInfoProps) {
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  {clientId && (
-                    <DynamicDatatableContent
-                      datatableName={dt.registeredTableName}
-                      clientId={clientId}
-                    />
-                  )}
+                  <DatatableDisplay
+                    datatableName={dt.registeredTableName}
+                    clientId={clientId}
+                    initialData={datatableData[dt.registeredTableName]}
+                  />
                 </CardContent>
               </Card>
             </TabsContent>

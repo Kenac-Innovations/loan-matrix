@@ -159,6 +159,74 @@ function getStatusBadgeColor(status: string | null): string {
   return "bg-gray-500";
 }
 
+/**
+ * Fetch client datatables from Fineract
+ */
+async function getClientDatatables(
+  clientId: number,
+  tenantSlug: string
+): Promise<{ datatables: any[]; datatableData: Record<string, any> }> {
+  try {
+    const session = await getSession();
+    const accessToken =
+      session?.base64EncodedAuthenticationKey || session?.accessToken;
+
+    if (!accessToken) {
+      return { datatables: [], datatableData: {} };
+    }
+
+    // Fetch list of datatables for clients
+    const datatableListUrl = `${FINERACT_BASE_URL}/fineract-provider/api/v1/datatables?apptable=m_client`;
+    const datatableListRes = await fetch(datatableListUrl, {
+      method: "GET",
+      headers: {
+        Authorization: `Basic ${accessToken}`,
+        "Fineract-Platform-TenantId": tenantSlug,
+        Accept: "application/json",
+      },
+      cache: "no-store",
+    });
+
+    if (!datatableListRes.ok) {
+      console.warn("Failed to fetch datatables list:", datatableListRes.status);
+      return { datatables: [], datatableData: {} };
+    }
+
+    const datatables = await datatableListRes.json();
+    const datatableData: Record<string, any> = {};
+
+    // Fetch data for each datatable
+    for (const dt of datatables) {
+      try {
+        const dataUrl = `${FINERACT_BASE_URL}/fineract-provider/api/v1/datatables/${encodeURIComponent(
+          dt.registeredTableName
+        )}/${clientId}?genericResultSet=true`;
+        const dataRes = await fetch(dataUrl, {
+          method: "GET",
+          headers: {
+            Authorization: `Basic ${accessToken}`,
+            "Fineract-Platform-TenantId": tenantSlug,
+            Accept: "application/json",
+          },
+          cache: "no-store",
+        });
+
+        if (dataRes.ok) {
+          const data = await dataRes.json();
+          datatableData[dt.registeredTableName] = data;
+        }
+      } catch (err) {
+        console.warn(`Failed to fetch data for ${dt.registeredTableName}:`, err);
+      }
+    }
+
+    return { datatables, datatableData };
+  } catch (error) {
+    console.error("Error fetching client datatables:", error);
+    return { datatables: [], datatableData: {} };
+  }
+}
+
 async function getLeadData(leadId: string) {
   try {
     // Get tenant from headers
@@ -196,12 +264,24 @@ async function getLeadData(leadId: string) {
     const stateMetadata = (lead as any)?.stateMetadata as any;
     const cdeResult = stateMetadata?.cdeResult || null;
 
+    // Fetch client datatables if client is linked
+    let clientDatatables: any[] = [];
+    let datatableData: Record<string, any> = {};
+    const clientId = lead?.fineractClientId;
+    if (clientId) {
+      const result = await getClientDatatables(clientId, tenantSlug);
+      clientDatatables = result.datatables;
+      datatableData = result.datatableData;
+    }
+
     return { 
       lead, 
       stages, 
       fineractLoanStatus: fineractLoanInfo.status, 
       fineractLoanId: fineractLoanInfo.loanId,
-      cdeResult 
+      cdeResult,
+      clientDatatables,
+      datatableData,
     };
   } catch (error) {
     console.error("Error fetching lead data:", error);
@@ -211,6 +291,8 @@ async function getLeadData(leadId: string) {
       fineractLoanStatus: null,
       fineractLoanId: null,
       cdeResult: null,
+      clientDatatables: [],
+      datatableData: {},
     };
   }
 }
@@ -221,7 +303,7 @@ export default async function LeadDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const { lead, stages, fineractLoanStatus, fineractLoanId, cdeResult } = await getLeadData(id);
+  const { lead, stages, fineractLoanStatus, fineractLoanId, cdeResult, clientDatatables, datatableData } = await getLeadData(id);
 
   if (!lead) {
     return (
@@ -369,7 +451,12 @@ export default async function LeadDetailPage({
               <ComprehensiveLeadDetails leadId={id} />
             </TabsContent>
             <TabsContent value="additional-info" className="mt-4">
-              <LeadAdditionalInfo leadId={id} />
+              <LeadAdditionalInfo 
+                leadId={id} 
+                clientId={lead.fineractClientId || null}
+                datatables={clientDatatables}
+                datatableData={datatableData}
+              />
             </TabsContent>
             <TabsContent value="timeline" className="mt-4">
               <Card>
