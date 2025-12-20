@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import {
   Card,
   CardContent,
@@ -8,7 +9,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Database, AlertCircle } from "lucide-react";
+import { Database, AlertCircle, Loader2 } from "lucide-react";
 import { DatatableDisplay } from "./datatable-display";
 
 interface LeadAdditionalInfoProps {
@@ -21,9 +22,67 @@ interface LeadAdditionalInfoProps {
 export function LeadAdditionalInfo({
   leadId,
   clientId,
-  datatables,
-  datatableData,
+  datatables: initialDatatables,
+  datatableData: initialDatatableData,
 }: LeadAdditionalInfoProps) {
+  const [datatables, setDatatables] = useState<any[]>(initialDatatables || []);
+  const [datatableData, setDatatableData] = useState<Record<string, any>>(
+    initialDatatableData || {}
+  );
+  const [loading, setLoading] = useState(false);
+  const [hasFetched, setHasFetched] = useState(
+    initialDatatables && initialDatatables.length > 0
+  );
+
+  // Fallback: fetch client-side if server-side data is empty
+  useEffect(() => {
+    const fetchDatatables = async () => {
+      if (!clientId || hasFetched) return;
+
+      setLoading(true);
+      try {
+        // Fetch list of datatables
+        const listRes = await fetch(`/api/fineract/datatables?apptable=m_client`);
+        if (!listRes.ok) {
+          console.warn("Failed to fetch datatables list:", listRes.status);
+          setLoading(false);
+          setHasFetched(true);
+          return;
+        }
+
+        const dts = await listRes.json();
+        setDatatables(dts || []);
+
+        // Fetch data for each datatable
+        const dataMap: Record<string, any> = {};
+        for (const dt of dts || []) {
+          try {
+            const dataRes = await fetch(
+              `/api/fineract/datatables/${encodeURIComponent(
+                dt.registeredTableName
+              )}/${clientId}?genericResultSet=true`
+            );
+            if (dataRes.ok) {
+              const data = await dataRes.json();
+              dataMap[dt.registeredTableName] = data;
+            }
+          } catch (err) {
+            console.warn(`Failed to fetch data for ${dt.registeredTableName}:`, err);
+          }
+        }
+
+        setDatatableData(dataMap);
+        setHasFetched(true);
+      } catch (err) {
+        console.error("Error fetching datatables:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchDatatables();
+  }, [clientId, hasFetched]);
+
   // Format table name for display
   const formatTableName = (name: string) => {
     let formatted = name
@@ -63,6 +122,19 @@ export function LeadAdditionalInfo({
     );
   }
 
+  if (loading) {
+    return (
+      <Card>
+        <CardContent className="py-12">
+          <div className="flex flex-col items-center justify-center gap-3">
+            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            <p className="text-muted-foreground">Loading additional information...</p>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
   if (datatables.length === 0) {
     return (
       <Card>
@@ -86,7 +158,7 @@ export function LeadAdditionalInfo({
         orientation="vertical"
         className="flex flex-col lg:flex-row w-full gap-4"
       >
-        <TabsList className="flex lg:flex-col h-auto lg:w-56 shrink-0 bg-muted/50 p-1 gap-1 overflow-x-auto lg:overflow-x-visible">
+        <TabsList className="flex lg:flex-col h-auto lg:w-56 lg:h-[600px] shrink-0 bg-muted/50 p-1 gap-1 overflow-x-auto lg:overflow-y-auto lg:overflow-x-visible">
           {datatables.map((dt) => (
             <TabsTrigger
               key={dt.registeredTableName}
@@ -110,8 +182,8 @@ export function LeadAdditionalInfo({
               value={dt.registeredTableName}
               className="mt-0"
             >
-              <Card>
-                <CardHeader className="pb-3">
+              <Card className="flex flex-col h-[600px]">
+                <CardHeader className="pb-3 shrink-0">
                   <CardTitle className="text-lg flex items-center gap-2">
                     <Database className="h-5 w-5" />
                     {formatTableName(dt.registeredTableName)}
@@ -120,7 +192,7 @@ export function LeadAdditionalInfo({
                     Client data from Fineract system
                   </CardDescription>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="overflow-y-auto flex-1">
                   <DatatableDisplay
                     datatableName={dt.registeredTableName}
                     clientId={clientId}
