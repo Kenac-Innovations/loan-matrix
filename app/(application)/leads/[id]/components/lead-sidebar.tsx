@@ -271,60 +271,6 @@ export function LeadSidebar({ leadId }: LeadSidebarProps) {
         </CardContent>
       </Card>
 
-      {/* Assigned Team Members Card */}
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between pb-2">
-          <CardTitle className="text-sm">Assigned Team Members</CardTitle>
-          <Users className="h-4 w-4 text-blue-400" />
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-3">
-            {data.teamMembers.length > 0 ? (
-              data.teamMembers.map((member, index) => (
-                <div key={index} className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div
-                      className={`h-8 w-8 rounded-full ${member.color} flex items-center justify-center`}
-                    >
-                      <span className="text-xs font-medium text-white">
-                        {member.initials}
-                      </span>
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium">{member.name}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {member.role}
-                      </p>
-                    </div>
-                  </div>
-                  <Badge
-                    variant="outline"
-                    className={`${
-                      member.status === "completed"
-                        ? "border-green-500 bg-green-500/10 text-green-400"
-                        : member.status === "in_progress"
-                        ? "border-yellow-500 bg-yellow-500/10 text-yellow-400"
-                        : "border-gray-500 bg-gray-500/10 text-gray-400"
-                    }`}
-                  >
-                    {member.status === "completed"
-                      ? "Completed"
-                      : member.status === "in_progress"
-                      ? "In Progress"
-                      : "Pending"}
-                  </Badge>
-                </div>
-              ))
-            ) : (
-              <div className="text-center py-4">
-                <p className="text-xs text-muted-foreground">
-                  No team members assigned
-                </p>
-              </div>
-            )}
-          </div>
-        </CardContent>
-      </Card>
     </div>
   );
 }

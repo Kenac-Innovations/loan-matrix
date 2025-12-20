@@ -46,15 +46,20 @@ import { getFineractService } from "@/lib/fineract-api";
 
 const FINERACT_BASE_URL = process.env.FINERACT_BASE_URL || "http://10.10.0.143";
 
+interface FineractLoanInfo {
+  status: string | null;
+  loanId: number | null;
+}
+
 /**
- * Get Fineract loan status by calling Fineract API directly
+ * Get Fineract loan info by calling Fineract API directly
  * Tries by loan ID first, then by external ID (leadId) as fallback
  */
-async function getFineractLoanStatus(
+async function getFineractLoanInfo(
   loanId: number | string | null,
   leadId: string,
   tenantSlug: string
-): Promise<string | null> {
+): Promise<FineractLoanInfo> {
   try {
     const session = await getSession();
     const accessToken =
@@ -62,20 +67,20 @@ async function getFineractLoanStatus(
 
     if (!accessToken) {
       console.warn("No access token available for Fineract API call");
-      return null;
+      return { status: null, loanId: null };
     }
 
     const fineractService = getFineractService(accessToken, tenantSlug);
 
     // Try fetching by loan ID first if available
     if (loanId) {
-      console.log("Fetching Fineract loan status by loan ID:", loanId);
+      console.log("Fetching Fineract loan info by loan ID:", loanId);
       try {
         const loanData = await fineractService.getLoan(Number(loanId));
         const status = loanData.status?.value || null;
         if (status) {
-          console.log("Fineract loan status fetched by ID:", status);
-          return status;
+          console.log("Fineract loan info fetched by ID:", { status, loanId });
+          return { status, loanId: Number(loanId) };
         }
       } catch (error) {
         console.warn(`Failed to fetch Fineract loan by ID ${loanId}:`, error);
@@ -83,7 +88,7 @@ async function getFineractLoanStatus(
     }
 
     // Fallback: Try fetching by external ID (leadId) using direct Fineract API call
-    console.log("Attempting to fetch loan status by external ID:", leadId);
+    console.log("Attempting to fetch loan info by external ID:", leadId);
     try {
       const searchUrl = `${FINERACT_BASE_URL}/fineract-provider/api/v1/loans?externalId=${encodeURIComponent(
         leadId
@@ -117,9 +122,10 @@ async function getFineractLoanStatus(
         );
         if (matchingLoan) {
           const status = matchingLoan.status?.value || null;
+          const fineractLoanId = matchingLoan.id || null;
           if (status) {
-            console.log("Fineract loan status fetched by external ID:", status);
-            return status;
+            console.log("Fineract loan info fetched by external ID:", { status, loanId: fineractLoanId });
+            return { status, loanId: fineractLoanId };
           }
         }
       } else {
@@ -132,10 +138,10 @@ async function getFineractLoanStatus(
       console.warn(`Error fetching loan by external ID ${leadId}:`, error);
     }
 
-    return null;
+    return { status: null, loanId: null };
   } catch (error) {
-    console.error("Error fetching Fineract loan status:", error);
-    return null;
+    console.error("Error fetching Fineract loan info:", error);
+    return { status: null, loanId: null };
   }
 }
 
@@ -177,10 +183,10 @@ async function getLeadData(leadId: string) {
       orderBy: { order: "asc" },
     });
 
-    // Fetch Fineract loan status directly from Fineract API
+    // Fetch Fineract loan info directly from Fineract API
     // No need for internal HTTP calls - we call Fineract directly from this Server Component
     // Note: fineractLoanId doesn't exist in schema, so we always fetch by external ID (leadId)
-    const fineractLoanStatus = await getFineractLoanStatus(
+    const fineractLoanInfo = await getFineractLoanInfo(
       null,
       leadId,
       tenantSlug
@@ -190,13 +196,20 @@ async function getLeadData(leadId: string) {
     const stateMetadata = (lead as any)?.stateMetadata as any;
     const cdeResult = stateMetadata?.cdeResult || null;
 
-    return { lead, stages, fineractLoanStatus, cdeResult };
+    return { 
+      lead, 
+      stages, 
+      fineractLoanStatus: fineractLoanInfo.status, 
+      fineractLoanId: fineractLoanInfo.loanId,
+      cdeResult 
+    };
   } catch (error) {
     console.error("Error fetching lead data:", error);
     return {
       lead: null,
       stages: [],
       fineractLoanStatus: null,
+      fineractLoanId: null,
       cdeResult: null,
     };
   }
@@ -208,7 +221,7 @@ export default async function LeadDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const { lead, stages, fineractLoanStatus, cdeResult } = await getLeadData(id);
+  const { lead, stages, fineractLoanStatus, fineractLoanId, cdeResult } = await getLeadData(id);
 
   if (!lead) {
     return (
@@ -302,7 +315,13 @@ export default async function LeadDetailPage({
             </div>
           </div>
         </div>
-        <LeadActions leadId={id} currentStage={currentStage} />
+        <LeadActions 
+          leadId={id} 
+          currentStage={currentStage}
+          loanStatus={fineractLoanStatus}
+          loanId={fineractLoanId}
+          assignedToUserId={lead.assignedToUserId}
+        />
       </div>
 
       <div className="mt-6 grid gap-6 grid-cols-1 lg:grid-cols-3">

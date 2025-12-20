@@ -9,7 +9,7 @@ import { Lead } from "@/shared/types";
 import { GenericDataTable } from "@/components/tables/generic-data-table";
 import { DataTableColumn, DataTableFilter } from "@/shared/types/data-table";
 import { useState } from "react";
-import { CheckCircle2, UserCheck, FileEdit, Send } from "lucide-react";
+import { CheckCircle2, UserCheck, FileEdit, Send, User } from "lucide-react";
 
 interface LeadsTableProps {
   initialData: LeadsData;
@@ -100,23 +100,42 @@ export function LeadsTable({ initialData }: LeadsTableProps) {
       ),
     },
     {
-      id: "assigneeName",
-      accessorKey: "assigneeName",
-      header: "Assignee",
+      id: "assignedTo",
+      accessorKey: "assignedToUserName",
+      header: "Assigned To",
       cell: ({ row }) => {
         const lead = row.original;
-        return (
-          <div className="flex items-center gap-2">
-            <div
-              className="h-6 w-6 rounded-full flex items-center justify-center"
-              style={{ backgroundColor: lead.assigneeColor }}
-            >
-              <span className="text-xs font-medium text-white">
-                {lead.assignee}
-              </span>
+        const isSubmitted = lead.loanSubmittedToFineract || lead.fineractLoanId;
+        
+        if (!isSubmitted) {
+          return (
+            <span className="text-xs text-muted-foreground">-</span>
+          );
+        }
+
+        if (lead.assignedToUserName) {
+          return (
+            <div className="flex items-center gap-2">
+              <Avatar className="h-6 w-6">
+                <AvatarFallback className="bg-green-500/20 text-green-600 text-xs">
+                  {lead.assignedToUserName
+                    .split(" ")
+                    .map((n: string) => n[0])
+                    .join("")
+                    .slice(0, 2)
+                    .toUpperCase()}
+                </AvatarFallback>
+              </Avatar>
+              <span className="text-xs">{lead.assignedToUserName}</span>
             </div>
-            <span className="text-xs">{lead.assigneeName}</span>
-          </div>
+          );
+        }
+
+        return (
+          <Badge variant="outline" className="text-xs border-orange-500 text-orange-500 bg-orange-500/10">
+            <User className="h-3 w-3 mr-1" />
+            Unassigned
+          </Badge>
         );
       },
     },

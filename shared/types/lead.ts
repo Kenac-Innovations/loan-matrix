@@ -23,6 +23,10 @@ export interface Lead {
   loanSubmissionDate?: Date | null;
   clientCreatedInFineract?: boolean;
   fineractClientId?: number | null;
+  // Assignment fields
+  assignedToUserId?: number | null;
+  assignedToUserName?: string | null;
+  assignedAt?: Date | null;
 }
 
 export interface PipelineStage {

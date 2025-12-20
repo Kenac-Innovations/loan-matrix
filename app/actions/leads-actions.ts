@@ -243,6 +243,10 @@ export async function getLeadsData(
         loanSubmissionDate: lead.loanSubmissionDate,
         clientCreatedInFineract: lead.clientCreatedInFineract,
         fineractClientId: lead.fineractClientId,
+        // Assignment fields
+        assignedToUserId: lead.assignedToUserId,
+        assignedToUserName: lead.assignedToUserName,
+        assignedAt: lead.assignedAt,
       };
     });
 
