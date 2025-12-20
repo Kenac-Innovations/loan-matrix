@@ -139,6 +139,12 @@ export async function GET(
     const session = await getSession();
     const accessToken =
       session?.base64EncodedAuthenticationKey || session?.accessToken;
+    
+    console.log("Session for Fineract calls:", {
+      hasSession: !!session,
+      hasAccessToken: !!accessToken,
+      sessionUserId: session?.user?.id,
+    });
 
     // Fetch Fineract client data if available
     if (lead.fineractClientId && accessToken) {
@@ -184,10 +190,16 @@ export async function GET(
             "Fineract-Platform-TenantId": tenantSlug,
             Accept: "application/json",
           },
+          cache: "no-store",
         });
 
+        console.log("Loan search response status:", searchResponse.status);
+        
         if (searchResponse.ok) {
           const searchData = await searchResponse.json();
+          console.log("Loan search raw data type:", typeof searchData);
+          console.log("Loan search raw data:", JSON.stringify(searchData).substring(0, 500));
+          
           let loans = [];
           if (Array.isArray(searchData)) {
             loans = searchData;
@@ -200,9 +212,14 @@ export async function GET(
             loans = searchData.content;
           }
 
+          console.log("Loans array length:", loans.length);
+          console.log("Looking for loan with externalId:", leadId);
+          
           const matchingLoan = loans.find(
             (loan: any) => loan.externalId === leadId
           );
+          
+          console.log("Matching loan found:", !!matchingLoan, matchingLoan?.id);
 
           if (matchingLoan?.id) {
             // Fetch full loan details with associations
