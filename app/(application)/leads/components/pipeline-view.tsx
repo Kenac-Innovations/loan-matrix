@@ -34,6 +34,7 @@ import {
   Loader2,
   CheckCircle2,
   UserCheck,
+  User,
 } from "lucide-react";
 import Link from "next/link";
 import {
@@ -320,15 +321,34 @@ export function PipelineView({ initialData }: PipelineViewProps) {
                       </div>
                     </div>
                     <div className="flex flex-wrap items-center gap-3 justify-between sm:justify-end">
+                      {/* Assigned User Display */}
                       <div className="flex items-center gap-2">
-                        <div
-                          className="h-6 w-6 rounded-full flex items-center justify-center"
-                          style={{ backgroundColor: lead.assigneeColor }}
-                        >
-                          <span className="text-xs font-medium text-white">
-                            {lead.assignee}
-                          </span>
-                        </div>
+                        {(lead.loanSubmittedToFineract || lead.fineractLoanId) ? (
+                          lead.assignedToUserName ? (
+                            <div className="flex items-center gap-1.5">
+                              <Avatar className="h-6 w-6">
+                                <AvatarFallback className="bg-green-500/20 text-green-600 text-xs">
+                                  {lead.assignedToUserName
+                                    .split(" ")
+                                    .map((n: string) => n[0])
+                                    .join("")
+                                    .slice(0, 2)
+                                    .toUpperCase()}
+                                </AvatarFallback>
+                              </Avatar>
+                              <span className="text-xs text-muted-foreground hidden sm:inline">
+                                {lead.assignedToUserName}
+                              </span>
+                            </div>
+                          ) : (
+                            <Badge variant="outline" className="text-xs border-orange-500 text-orange-500 bg-orange-500/10">
+                              <User className="h-3 w-3 mr-1" />
+                              Unassigned
+                            </Badge>
+                          )
+                        ) : (
+                          <span className="text-xs text-muted-foreground">-</span>
+                        )}
                       </div>
                       <div className="flex items-center gap-2">
                         <Button
