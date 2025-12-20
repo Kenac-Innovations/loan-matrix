@@ -33,17 +33,50 @@ interface LoanActionsProps {
 }
 
 // Map Fineract loan statuses to available actions
-const STATUS_ACTIONS: Record<string, { action: string; label: string; icon: any; variant: "default" | "destructive" | "outline" }[]> = {
+const STATUS_ACTIONS: Record<
+  string,
+  {
+    action: string;
+    label: string;
+    icon: any;
+    variant: "default" | "destructive" | "outline";
+  }[]
+> = {
   "Submitted and pending approval": [
-    { action: "approve", label: "Approve", icon: CheckCircle, variant: "default" },
-    { action: "reject", label: "Reject", icon: XCircle, variant: "destructive" },
+    {
+      action: "approve",
+      label: "Approve",
+      icon: CheckCircle,
+      variant: "default",
+    },
+    {
+      action: "reject",
+      label: "Reject",
+      icon: XCircle,
+      variant: "destructive",
+    },
   ],
-  "Approved": [
-    { action: "disburse", label: "Disburse", icon: Banknote, variant: "default" },
-    { action: "undo_approval", label: "Undo Approval", icon: RotateCcw, variant: "outline" },
+  Approved: [
+    {
+      action: "disburse",
+      label: "Disburse",
+      icon: Banknote,
+      variant: "default",
+    },
+    {
+      action: "undo_approval",
+      label: "Undo Approval",
+      icon: RotateCcw,
+      variant: "outline",
+    },
   ],
-  "Active": [
-    { action: "write_off", label: "Write Off", icon: AlertCircle, variant: "destructive" },
+  Active: [
+    {
+      action: "write_off",
+      label: "Write Off",
+      icon: AlertCircle,
+      variant: "destructive",
+    },
   ],
 };
 
@@ -86,7 +119,9 @@ export function LoanActions({
           action: currentAction,
           note,
           approvedOnDate: disbursementDate,
-          approvedLoanAmount: approvedAmount ? parseFloat(approvedAmount) : undefined,
+          approvedLoanAmount: approvedAmount
+            ? parseFloat(approvedAmount)
+            : undefined,
           actualDisbursementDate: disbursementDate,
         }),
       });
@@ -98,7 +133,9 @@ export function LoanActions({
         onActionComplete?.();
       } else {
         const error = await response.json();
-        toast.error(error.error || `Failed to ${currentAction.replace("_", " ")} loan`);
+        toast.error(
+          error.error || `Failed to ${currentAction.replace("_", " ")} loan`
+        );
       }
     } catch (error) {
       console.error("Error performing loan action:", error);
@@ -215,7 +252,9 @@ export function LoanActions({
 
             <div className="space-y-2">
               <Label>
-                {currentAction === "reject" ? "Rejection Reason" : "Note (optional)"}
+                {currentAction === "reject"
+                  ? "Rejection Reason"
+                  : "Note (optional)"}
               </Label>
               <Textarea
                 placeholder={
@@ -239,7 +278,11 @@ export function LoanActions({
               Cancel
             </Button>
             <Button
-              variant={currentAction === "reject" || currentAction === "write_off" ? "destructive" : "default"}
+              variant={
+                currentAction === "reject" || currentAction === "write_off"
+                  ? "destructive"
+                  : "default"
+              }
               onClick={handleActionConfirm}
               disabled={isLoading || (currentAction === "reject" && !note)}
               className={
