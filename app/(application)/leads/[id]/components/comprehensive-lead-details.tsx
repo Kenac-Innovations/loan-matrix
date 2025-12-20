@@ -36,7 +36,6 @@ import {
   Download,
 } from "lucide-react";
 import { format } from "date-fns";
-import { DynamicDatatableContent } from "@/app/(application)/clients/[id]/components/DynamicDatatableContent";
 
 interface ComprehensiveLeadDetailsProps {
   leadId: string;
@@ -51,7 +50,6 @@ export function ComprehensiveLeadDetails({
   const [clientImage, setClientImage] = useState<string | null>(null);
   const [loanDocuments, setLoanDocuments] = useState<any[]>([]);
   const [loadingLoanDocs, setLoadingLoanDocs] = useState(false);
-  const [clientDatatables, setClientDatatables] = useState<any[]>([]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -282,28 +280,6 @@ export function ComprehensiveLeadDetails({
     } else {
       console.log("No loan ID available, not fetching documents");
       setLoanDocuments([]);
-    }
-  }, [data]);
-
-  // Fetch client datatables when fineractClientId is available
-  useEffect(() => {
-    const fetchDatatables = async () => {
-      try {
-        const res = await fetch(`/api/fineract/datatables?apptable=m_client`, {
-          cache: "no-store",
-        });
-        if (res.ok) {
-          const datatables = await res.json();
-          setClientDatatables(datatables || []);
-        }
-      } catch (err) {
-        console.error("Error fetching datatables:", err);
-      }
-    };
-
-    const clientId = data?.lead?.fineractClientId || data?.fineractClient?.id;
-    if (clientId) {
-      fetchDatatables();
     }
   }, [data]);
 
@@ -624,41 +600,6 @@ export function ComprehensiveLeadDetails({
             </Card>
           </div>
 
-          {/* Client Datatables - All merged into one card */}
-          {(data?.lead?.fineractClientId || data?.fineractClient?.id) &&
-            clientDatatables.length > 0 && (
-              <Card className="mt-6">
-                <CardHeader>
-                  <CardTitle>Additional Information</CardTitle>
-                  <CardDescription>
-                    Client data from Fineract system
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  {clientDatatables.map((dt: any, index: number) => (
-                    <div
-                      key={dt.registeredTableName}
-                      className={
-                        index < clientDatatables.length - 1
-                          ? "pb-6 border-b border-gray-200 dark:border-gray-700"
-                          : ""
-                      }
-                    >
-                      <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
-                        {dt.registeredTableName.replace(/_/g, " ")}
-                      </h4>
-                      <DynamicDatatableContent
-                        datatableName={dt.registeredTableName}
-                        clientId={
-                          data?.lead?.fineractClientId ||
-                          data?.fineractClient?.id
-                        }
-                      />
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
-            )}
         </TabsContent>
 
         <TabsContent value="loan" className="mt-4">

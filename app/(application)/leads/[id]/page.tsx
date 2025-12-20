@@ -18,6 +18,7 @@ import { LeadCDE } from "./components/lead-cde";
 import { LeadCommunications } from "./components/lead-communications";
 import { LeadStateMachine } from "./components/lead-state-machine";
 import { LeadSidebar } from "./components/lead-sidebar";
+import { LeadAdditionalInfo } from "./components/lead-additional-info";
 import TransitionHistory from "./components/transition-history";
 import {
   ArrowLeft,
@@ -29,6 +30,7 @@ import {
   Play,
   Info,
   History,
+  Database,
 } from "lucide-react";
 import Link from "next/link";
 import {
@@ -311,6 +313,10 @@ export default async function LeadDetailPage({
                 <FileText className="mr-2 h-4 w-4" />
                 <span className="whitespace-nowrap">Details</span>
               </TabsTrigger>
+              <TabsTrigger value="additional-info">
+                <Database className="mr-2 h-4 w-4" />
+                <span className="whitespace-nowrap">Additional Info</span>
+              </TabsTrigger>
               <TabsTrigger value="timeline">
                 <Activity className="mr-2 h-4 w-4" />
                 <span className="whitespace-nowrap">Timeline</span>
@@ -342,6 +348,9 @@ export default async function LeadDetailPage({
             </TabsList>
             <TabsContent value="details" className="mt-4">
               <ComprehensiveLeadDetails leadId={id} />
+            </TabsContent>
+            <TabsContent value="additional-info" className="mt-4">
+              <LeadAdditionalInfo leadId={id} />
             </TabsContent>
             <TabsContent value="timeline" className="mt-4">
               <Card>
