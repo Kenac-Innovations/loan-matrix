@@ -9,7 +9,7 @@ import { Lead } from "@/shared/types";
 import { GenericDataTable } from "@/components/tables/generic-data-table";
 import { DataTableColumn, DataTableFilter } from "@/shared/types/data-table";
 import { useState } from "react";
-import { CheckCircle2, UserCheck, FileEdit, Send, User } from "lucide-react";
+import { CheckCircle2, UserCheck, FileEdit, Send, User, Loader2 } from "lucide-react";
 
 interface LeadsTableProps {
   initialData: LeadsData;
@@ -21,6 +21,7 @@ export function LeadsTable({ initialData }: LeadsTableProps) {
     { columnId: "leadStatus", value: "", type: "select" },
     { columnId: "type", value: "", type: "select" },
   ]);
+  const [navigatingLeadId, setNavigatingLeadId] = useState<string | null>(null);
 
   // Define table columns using DataTableColumn format
   const columns: DataTableColumn<Lead>[] = [
@@ -28,23 +29,32 @@ export function LeadsTable({ initialData }: LeadsTableProps) {
       id: "client",
       accessorKey: "client",
       header: "Client",
-      cell: ({ getValue }) => (
-        <div className="flex items-center gap-2">
-          <Avatar className="h-8 w-8">
-            <AvatarFallback className="bg-primary/10 text-primary">
-              {getValue()
-                ? (getValue() as string)
-                    .split(" ")
-                    .map((n) => n[0])
-                    .join("")
-                    .slice(0, 2)
-                    .toUpperCase()
-                : "UN"}
-            </AvatarFallback>
-          </Avatar>
-          <span>{getValue()}</span>
-        </div>
-      ),
+      cell: ({ getValue, row }) => {
+        const isNavigating = navigatingLeadId === row.original.id;
+        return (
+          <div className="flex items-center gap-2">
+            {isNavigating ? (
+              <div className="h-8 w-8 flex items-center justify-center">
+                <Loader2 className="h-5 w-5 animate-spin text-primary" />
+              </div>
+            ) : (
+              <Avatar className="h-8 w-8">
+                <AvatarFallback className="bg-primary/10 text-primary">
+                  {getValue()
+                    ? (getValue() as string)
+                        .split(" ")
+                        .map((n) => n[0])
+                        .join("")
+                        .slice(0, 2)
+                        .toUpperCase()
+                    : "UN"}
+                </AvatarFallback>
+              </Avatar>
+            )}
+            <span className={isNavigating ? "opacity-50" : ""}>{getValue()}</span>
+          </div>
+        );
+      },
     },
     {
       id: "leadStatus",
@@ -179,6 +189,8 @@ export function LeadsTable({ initialData }: LeadsTableProps) {
 
   // Handle row click to navigate to lead details
   const handleRowClick = (lead: Lead) => {
+    // Set navigating state to show loader
+    setNavigatingLeadId(lead.id);
     // Show detail view for submitted loans, create view for drafts
     const isSubmitted = lead.loanSubmittedToFineract || lead.fineractLoanId;
     window.location.href = isSubmitted

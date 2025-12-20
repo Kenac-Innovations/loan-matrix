@@ -52,6 +52,7 @@ export function PipelineView({ initialData }: PipelineViewProps) {
   const [currentPage, setCurrentPage] = useState(1);
   const [leadsData, setLeadsData] = useState(initialData);
   const [isLoading, setIsLoading] = useState(false);
+  const [navigatingLeadId, setNavigatingLeadId] = useState<string | null>(null);
   const [pageSize] = useState(10);
 
   const { leads, pipelineStages, pagination } = leadsData;
@@ -249,7 +250,9 @@ export function PipelineView({ initialData }: PipelineViewProps) {
               ? filteredLeads.map((lead) => {
                   const isSubmitted =
                     lead.loanSubmittedToFineract || lead.fineractLoanId;
+                  const isNavigating = navigatingLeadId === lead.id;
                   const handleRowClick = () => {
+                    setNavigatingLeadId(lead.id);
                     window.location.href = isSubmitted
                       ? `/leads/${lead.id}`
                       : `/leads/new?id=${lead.id}`;
@@ -259,8 +262,15 @@ export function PipelineView({ initialData }: PipelineViewProps) {
                     <div
                       key={lead.id}
                       onClick={handleRowClick}
-                      className="flex flex-col sm:flex-row sm:items-center justify-between rounded-md border p-3 hover:bg-accent/50 cursor-pointer transition-colors"
+                      className={`relative flex flex-col sm:flex-row sm:items-center justify-between rounded-md border p-3 hover:bg-accent/50 cursor-pointer transition-colors ${
+                        isNavigating ? "opacity-70 pointer-events-none" : ""
+                      }`}
                     >
+                      {isNavigating && (
+                        <div className="absolute inset-0 flex items-center justify-center bg-background/50 rounded-md">
+                          <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                        </div>
+                      )}
                       <div className="flex items-start gap-3 mb-3 sm:mb-0">
                       <Avatar className="h-10 w-10">
                         <AvatarFallback className="bg-primary/10 text-primary">
