@@ -23,6 +23,10 @@ import {
 
 interface LeadDocumentsProps {
   leadId: string;
+  fineractClientId?: number | null;
+  fineractLoanId?: number | null;
+  initialClientDocuments?: any[];
+  initialLoanDocuments?: any[];
 }
 
 interface Document {
@@ -43,7 +47,7 @@ interface Document {
   updatedAt: string;
 }
 
-interface LoanDocument {
+interface FineractDocument {
   id: number;
   parentEntityType: string;
   parentEntityId: number;
@@ -56,20 +60,39 @@ interface LoanDocument {
   storageKey?: string;
 }
 
-export function LeadDocuments({ leadId }: LeadDocumentsProps) {
+export function LeadDocuments({ 
+  leadId,
+  fineractClientId: initialClientId,
+  fineractLoanId: initialLoanId,
+  initialClientDocuments = [],
+  initialLoanDocuments = [],
+}: LeadDocumentsProps) {
   const [documents, setDocuments] = useState<Document[]>([]);
-  const [loanDocuments, setLoanDocuments] = useState<LoanDocument[]>([]);
-  const [fineractLoanId, setFineractLoanId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loanDocuments, setLoanDocuments] = useState<FineractDocument[]>(initialLoanDocuments);
+  const [clientDocuments, setClientDocuments] = useState<FineractDocument[]>(initialClientDocuments);
+  const [fineractLoanId, setFineractLoanId] = useState<string | null>(
+    initialLoanId ? String(initialLoanId) : null
+  );
+  const [fineractClientId, setFineractClientId] = useState<string | null>(
+    initialClientId ? String(initialClientId) : null
+  );
+  const [loading, setLoading] = useState(false);
   const [loadingLoanDocs, setLoadingLoanDocs] = useState(false);
+  const [loadingClientDocs, setLoadingClientDocs] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [hasFetched, setHasFetched] = useState(
+    initialClientDocuments.length > 0 || initialLoanDocuments.length > 0
+  );
 
   useEffect(() => {
     const fetchDocuments = async () => {
+      // Skip if we already have server-side data
+      if (hasFetched) return;
+
       try {
         setLoading(true);
 
-        // Fetch lead documents
+        // Fetch lead documents (local)
         const response = await fetch(`/api/leads/${leadId}/documents`);
         if (!response.ok) {
           throw new Error("Failed to fetch documents");
@@ -77,20 +100,32 @@ export function LeadDocuments({ leadId }: LeadDocumentsProps) {
         const data = await response.json();
         setDocuments(data);
 
-        // Fetch lead complete details to get fineractLoanId
-        const leadDetailsResponse = await fetch(
-          `/api/leads/${leadId}/complete-details`
-        );
-        if (leadDetailsResponse.ok) {
-          const leadDetails = await leadDetailsResponse.json();
-          const loanId = leadDetails?.lead?.fineractLoanId;
+        // Only fetch Fineract documents if not already provided
+        if (initialClientDocuments.length === 0 && initialLoanDocuments.length === 0) {
+          // Fetch lead complete details to get fineractLoanId and fineractClientId
+          const leadDetailsResponse = await fetch(
+            `/api/leads/${leadId}/complete-details`
+          );
+          if (leadDetailsResponse.ok) {
+            const leadDetails = await leadDetailsResponse.json();
+            const loanId = leadDetails?.fineractLoan?.id;
+            const clientId = leadDetails?.lead?.fineractClientId;
 
-          if (loanId) {
-            setFineractLoanId(loanId.toString());
-            // Fetch loan documents
-            await fetchLoanDocuments(loanId.toString());
+            if (loanId && !fineractLoanId) {
+              setFineractLoanId(loanId.toString());
+              // Fetch loan documents
+              await fetchLoanDocuments(loanId.toString());
+            }
+
+            if (clientId && !fineractClientId) {
+              setFineractClientId(clientId.toString());
+              // Fetch client documents
+              await fetchClientDocuments(clientId.toString());
+            }
           }
         }
+
+        setHasFetched(true);
       } catch (err) {
         setError(err instanceof Error ? err.message : "An error occurred");
       } finally {
@@ -119,19 +154,15 @@ export function LeadDocuments({ leadId }: LeadDocumentsProps) {
         console.log("Loan documents response:", data);
 
         // Handle different response structures from Fineract
-        let docs: LoanDocument[] = [];
+        let docs: FineractDocument[] = [];
 
         if (Array.isArray(data)) {
-          // Direct array response
           docs = data;
         } else if (data.pageItems && Array.isArray(data.pageItems)) {
-          // Paginated response
           docs = data.pageItems;
         } else if (data.content && Array.isArray(data.content)) {
-          // Alternative paginated structure
           docs = data.content;
         } else if (data.data && Array.isArray(data.data)) {
-          // Wrapped in data property
           docs = data.data;
         } else {
           console.warn("Unexpected loan documents response structure:", data);
@@ -145,6 +176,52 @@ export function LeadDocuments({ leadId }: LeadDocumentsProps) {
         setLoanDocuments([]);
       } finally {
         setLoadingLoanDocs(false);
+      }
+    };
+
+    const fetchClientDocuments = async (clientId: string) => {
+      try {
+        setLoadingClientDocs(true);
+        console.log("Fetching client documents for client ID:", clientId);
+        const response = await fetch(`/api/fineract/clients/${clientId}/documents`);
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          console.warn("Failed to fetch client documents:", {
+            status: response.status,
+            statusText: response.statusText,
+            error: errorData,
+          });
+          setClientDocuments([]);
+          return;
+        }
+
+        const data = await response.json();
+        console.log("Client documents response:", data);
+
+        // Handle different response structures from Fineract
+        let docs: FineractDocument[] = [];
+
+        if (Array.isArray(data)) {
+          docs = data;
+        } else if (data.pageItems && Array.isArray(data.pageItems)) {
+          docs = data.pageItems;
+        } else if (data.content && Array.isArray(data.content)) {
+          docs = data.content;
+        } else if (data.data && Array.isArray(data.data)) {
+          docs = data.data;
+        } else {
+          console.warn("Unexpected client documents response structure:", data);
+          docs = [];
+        }
+
+        console.log(`Found ${docs.length} client documents`);
+        setClientDocuments(docs);
+      } catch (err) {
+        console.error("Error fetching client documents:", err);
+        setClientDocuments([]);
+      } finally {
+        setLoadingClientDocs(false);
       }
     };
 
@@ -233,6 +310,35 @@ export function LeadDocuments({ leadId }: LeadDocumentsProps) {
     }
   };
 
+  const handleDownloadClientDocument = async (
+    documentId: string,
+    fileName: string
+  ) => {
+    if (!fineractClientId) return;
+
+    try {
+      const response = await fetch(
+        `/api/fineract/clients/${fineractClientId}/documents/${documentId}/attachment`
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to download document");
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = fileName || `document-${documentId}`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (err) {
+      console.error("Error downloading client document:", err);
+    }
+  };
+
   if (loading) {
     return (
       <Card>
@@ -289,6 +395,99 @@ export function LeadDocuments({ leadId }: LeadDocumentsProps) {
       </CardHeader>
       <CardContent>
         <div className="space-y-6">
+          {/* Client Documents Section */}
+          {fineractClientId && (
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-medium text-foreground">
+                  Client Documents
+                  {clientDocuments.length > 0 && (
+                    <span className="ml-2 text-muted-foreground">
+                      ({clientDocuments.length})
+                    </span>
+                  )}
+                </h3>
+                {loadingClientDocs && (
+                  <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                )}
+              </div>
+              {loadingClientDocs ? (
+                <div className="text-center py-8">
+                  <Loader2 className="mx-auto h-6 w-6 animate-spin text-muted-foreground" />
+                  <p className="text-sm text-muted-foreground mt-2">
+                    Loading client documents...
+                  </p>
+                </div>
+              ) : clientDocuments.length === 0 ? (
+                <div className="text-center py-8 border-2 border-dashed border-muted rounded-lg">
+                  <p className="text-sm text-muted-foreground">
+                    No client documents found in Fineract
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {clientDocuments.map((doc) => (
+                    <div
+                      key={doc.id}
+                      className="flex flex-col sm:flex-row sm:items-center justify-between rounded-md border border-border bg-card p-3 hover:bg-muted/50"
+                    >
+                      <div className="flex items-start gap-3 mb-3 sm:mb-0">
+                        <div className="rounded-md bg-purple-500/20 p-2">
+                          <FileText className="h-5 w-5 text-purple-500" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-foreground">
+                            {doc.name || doc.fileName || `Document ${doc.id}`}
+                          </p>
+                          <div className="flex items-center gap-2 mt-1">
+                            <Badge variant="outline" className="text-xs">
+                              {doc.type || "Document"}
+                            </Badge>
+                            {doc.size > 0 && (
+                              <span className="text-xs text-muted-foreground">
+                                {formatFileSize(doc.size)}
+                              </span>
+                            )}
+                            {doc.description && (
+                              <span className="text-xs text-muted-foreground">
+                                • {doc.description}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 justify-between sm:justify-end">
+                        <Badge
+                          variant="outline"
+                          className="border-purple-500 bg-purple-500/10 text-purple-500 text-xs"
+                        >
+                          <CheckCircle2 className="mr-1 h-3 w-3" />
+                          Client Document
+                        </Badge>
+                        <div className="flex items-center">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                            title="Download document"
+                            onClick={() =>
+                              handleDownloadClientDocument(
+                                doc.id.toString(),
+                                doc.fileName || doc.name
+                              )
+                            }
+                          >
+                            <Download className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Loan Documents Section */}
           {fineractLoanId && (
             <div>
@@ -383,7 +582,7 @@ export function LeadDocuments({ leadId }: LeadDocumentsProps) {
           )}
 
           {/* Lead Documents Section */}
-          {documents.length === 0 && !fineractLoanId ? (
+          {documents.length === 0 && loanDocuments.length === 0 && clientDocuments.length === 0 ? (
             <div className="text-center py-12">
               <FileText className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
               <h3 className="text-lg font-medium text-foreground mb-2">

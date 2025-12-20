@@ -42,7 +42,9 @@ export function LeadAdditionalInfo({
       setLoading(true);
       try {
         // Fetch list of datatables
-        const listRes = await fetch(`/api/fineract/datatables?apptable=m_client`);
+        const listRes = await fetch(
+          `/api/fineract/datatables?apptable=m_client`
+        );
         if (!listRes.ok) {
           console.warn("Failed to fetch datatables list:", listRes.status);
           setLoading(false);
@@ -67,7 +69,10 @@ export function LeadAdditionalInfo({
               dataMap[dt.registeredTableName] = data;
             }
           } catch (err) {
-            console.warn(`Failed to fetch data for ${dt.registeredTableName}:`, err);
+            console.warn(
+              `Failed to fetch data for ${dt.registeredTableName}:`,
+              err
+            );
           }
         }
 
@@ -128,7 +133,9 @@ export function LeadAdditionalInfo({
         <CardContent className="py-12">
           <div className="flex flex-col items-center justify-center gap-3">
             <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-            <p className="text-muted-foreground">Loading additional information...</p>
+            <p className="text-muted-foreground">
+              Loading additional information...
+            </p>
           </div>
         </CardContent>
       </Card>

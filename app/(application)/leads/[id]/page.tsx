@@ -160,6 +160,87 @@ function getStatusBadgeColor(status: string | null): string {
 }
 
 /**
+ * Fetch documents from Fineract (client and loan)
+ */
+async function getFineractDocuments(
+  clientId: number | null,
+  loanId: number | null,
+  tenantSlug: string
+): Promise<{ clientDocuments: any[]; loanDocuments: any[] }> {
+  try {
+    const session = await getSession();
+    const accessToken =
+      session?.base64EncodedAuthenticationKey || session?.accessToken;
+
+    if (!accessToken) {
+      return { clientDocuments: [], loanDocuments: [] };
+    }
+
+    const clientDocuments: any[] = [];
+    const loanDocuments: any[] = [];
+
+    // Fetch client documents
+    if (clientId) {
+      try {
+        const clientDocsUrl = `${FINERACT_BASE_URL}/fineract-provider/api/v1/clients/${clientId}/documents`;
+        const clientDocsRes = await fetch(clientDocsUrl, {
+          method: "GET",
+          headers: {
+            Authorization: `Basic ${accessToken}`,
+            "Fineract-Platform-TenantId": tenantSlug,
+            Accept: "application/json",
+          },
+          cache: "no-store",
+        });
+
+        if (clientDocsRes.ok) {
+          const data = await clientDocsRes.json();
+          if (Array.isArray(data)) {
+            clientDocuments.push(...data);
+          } else if (data.pageItems) {
+            clientDocuments.push(...data.pageItems);
+          }
+        }
+      } catch (err) {
+        console.warn("Failed to fetch client documents:", err);
+      }
+    }
+
+    // Fetch loan documents
+    if (loanId) {
+      try {
+        const loanDocsUrl = `${FINERACT_BASE_URL}/fineract-provider/api/v1/loans/${loanId}/documents`;
+        const loanDocsRes = await fetch(loanDocsUrl, {
+          method: "GET",
+          headers: {
+            Authorization: `Basic ${accessToken}`,
+            "Fineract-Platform-TenantId": tenantSlug,
+            Accept: "application/json",
+          },
+          cache: "no-store",
+        });
+
+        if (loanDocsRes.ok) {
+          const data = await loanDocsRes.json();
+          if (Array.isArray(data)) {
+            loanDocuments.push(...data);
+          } else if (data.pageItems) {
+            loanDocuments.push(...data.pageItems);
+          }
+        }
+      } catch (err) {
+        console.warn("Failed to fetch loan documents:", err);
+      }
+    }
+
+    return { clientDocuments, loanDocuments };
+  } catch (error) {
+    console.error("Error fetching Fineract documents:", error);
+    return { clientDocuments: [], loanDocuments: [] };
+  }
+}
+
+/**
  * Fetch client datatables from Fineract
  */
 async function getClientDatatables(
@@ -274,6 +355,13 @@ async function getLeadData(leadId: string) {
       datatableData = result.datatableData;
     }
 
+    // Fetch Fineract documents (client and loan)
+    const fineractDocs = await getFineractDocuments(
+      clientId || null,
+      fineractLoanInfo.loanId || null,
+      tenantSlug
+    );
+
     return { 
       lead, 
       stages, 
@@ -281,6 +369,8 @@ async function getLeadData(leadId: string) {
       fineractLoanId: fineractLoanInfo.loanId,
       cdeResult,
       clientDatatables,
+      clientDocuments: fineractDocs.clientDocuments,
+      loanDocuments: fineractDocs.loanDocuments,
       datatableData,
     };
   } catch (error) {
@@ -293,6 +383,8 @@ async function getLeadData(leadId: string) {
       cdeResult: null,
       clientDatatables: [],
       datatableData: {},
+      clientDocuments: [],
+      loanDocuments: [],
     };
   }
 }
@@ -303,7 +395,7 @@ export default async function LeadDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const { lead, stages, fineractLoanStatus, fineractLoanId, cdeResult, clientDatatables, datatableData } = await getLeadData(id);
+  const { lead, stages, fineractLoanStatus, fineractLoanId, cdeResult, clientDatatables, datatableData, clientDocuments, loanDocuments } = await getLeadData(id);
 
   if (!lead) {
     return (
@@ -472,7 +564,13 @@ export default async function LeadDetailPage({
               </Card>
             </TabsContent>
             <TabsContent value="documents" className="mt-4">
-              <LeadDocuments leadId={id} />
+              <LeadDocuments 
+                leadId={id} 
+                fineractClientId={lead.fineractClientId || null}
+                fineractLoanId={fineractLoanId || null}
+                initialClientDocuments={clientDocuments}
+                initialLoanDocuments={loanDocuments}
+              />
             </TabsContent>
             <TabsContent value="validations" className="mt-4">
               <LeadValidations leadId={id} stage={currentStage} />
