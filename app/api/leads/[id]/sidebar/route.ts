@@ -76,14 +76,46 @@ export async function GET(
       timeInCurrentStageMs / (1000 * 60 * 60)
     );
 
-    // Get pipeline stages for SLA information
+    // Get pipeline stages with SLA configurations
     const stages = await prisma.pipelineStage.findMany({
       where: {
         tenantId: tenant.id,
         isActive: true,
       },
+      include: {
+        slaConfigs: {
+          where: {
+            enabled: true,
+          },
+          orderBy: {
+            createdAt: "desc",
+          },
+          take: 1, // Get the most recent enabled SLA config for each stage
+        },
+      },
       orderBy: { order: "asc" },
     });
+
+    // Helper function to convert SLA timeframe to hours
+    const getSlaHours = (
+      slaConfig: { timeframe: number; timeUnit: string } | undefined
+    ): number => {
+      if (!slaConfig) return 72; // Default 3 days if no SLA config
+
+      const { timeframe, timeUnit } = slaConfig;
+      switch (timeUnit.toLowerCase()) {
+        case "minutes":
+          return Math.ceil(timeframe / 60);
+        case "hours":
+          return timeframe;
+        case "days":
+          return timeframe * 24;
+        case "weeks":
+          return timeframe * 24 * 7;
+        default:
+          return timeframe; // Assume hours if unknown unit
+      }
+    };
 
     // Calculate stage times and SLA performance
     const stageTimes = [];
@@ -91,6 +123,9 @@ export async function GET(
 
     for (let i = 0; i < stages.length; i++) {
       const stage = stages[i];
+      const slaConfig = stage.slaConfigs[0]; // Get the first (most recent) SLA config
+      const slaHours = getSlaHours(slaConfig);
+
       const stageTransition = transitions.find(
         (t) => t.toStage.id === stage.id
       );
@@ -111,7 +146,7 @@ export async function GET(
         stageTimes.push({
           stageName: stage.name,
           timeSpent: timeSpentHours,
-          slaHours: 72, // Default 3 days
+          slaHours,
           status:
             stage.id === lead.currentStage?.id ? "in_progress" : "completed",
         });
@@ -119,14 +154,14 @@ export async function GET(
         stageTimes.push({
           stageName: stage.name,
           timeSpent: timeInCurrentStageHours,
-          slaHours: 72, // Default 3 days
+          slaHours,
           status: "in_progress",
         });
       } else {
         stageTimes.push({
           stageName: stage.name,
           timeSpent: 0,
-          slaHours: 72, // Default 3 days
+          slaHours,
           status: "pending",
         });
       }
@@ -329,11 +364,17 @@ export async function GET(
       }
     }
 
+    // Get current stage SLA from the stages we already fetched
+    const currentStageData = stages.find((s) => s.id === lead.currentStage?.id);
+    const currentStageSLA = currentStageData
+      ? getSlaHours(currentStageData.slaConfigs[0])
+      : 72; // Default 3 days if no current stage
+
     const sidebarData = {
       currentStage: lead.currentStage?.name || "New Lead",
       timeInCurrentStage: timeInCurrentStageHours,
       totalTime: totalTimeHours,
-      currentStageSLA: 72, // Default 3 days
+      currentStageSLA,
       teamMembers,
       validations,
       stageTimes,

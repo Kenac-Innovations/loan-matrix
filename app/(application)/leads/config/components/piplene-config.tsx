@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,6 +14,8 @@ import {
   Edit2,
   ArrowRight,
   Settings,
+  Loader2,
+  Save,
 } from "lucide-react";
 import {
   Card,
@@ -27,11 +29,85 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   defaultStages,
   defaultStageColors,
-  type Stage
+  type Stage,
 } from "@/shared/defaults/pipeline-config";
+import { toast } from "sonner";
 
 export function PipelineConfig() {
-  const [stages, setStages] = useState<Stage[]>(defaultStages);
+  const [stages, setStages] = useState<Stage[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [hasChanges, setHasChanges] = useState(false);
+
+  // Fetch stages from database on mount
+  useEffect(() => {
+    fetchStages();
+  }, []);
+
+  const fetchStages = async () => {
+    try {
+      setIsLoading(true);
+      const response = await fetch("/api/pipeline/stages");
+      if (response.ok) {
+        const data = await response.json();
+        if (data.stages && data.stages.length > 0) {
+          setStages(
+            data.stages.map((s: any) => ({
+              id: s.id,
+              name: s.name,
+              description: s.description || "",
+              color: s.color || "#3b82f6",
+              isInitialState: s.isInitialState || false,
+              isFinalState: s.isFinalState || false,
+              allowedTransitions: s.allowedTransitions || [],
+              order: s.order,
+            }))
+          );
+        } else {
+          // Use defaults if no stages in database
+          setStages(defaultStages);
+        }
+      } else {
+        console.error("Failed to fetch stages");
+        setStages(defaultStages);
+      }
+    } catch (error) {
+      console.error("Error fetching stages:", error);
+      setStages(defaultStages);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const saveStages = async () => {
+    try {
+      setIsSaving(true);
+      const response = await fetch("/api/pipeline/stages", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ stages }),
+      });
+
+      if (response.ok) {
+        toast.success("Pipeline stages saved successfully");
+        setHasChanges(false);
+        // Refresh to get updated IDs
+        await fetchStages();
+      } else {
+        const error = await response.json();
+        toast.error(error.error || "Failed to save stages");
+      }
+    } catch (error) {
+      console.error("Error saving stages:", error);
+      toast.error("Error saving stages");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const markChanged = () => {
+    setHasChanges(true);
+  };
 
   const [editingStage, setEditingStage] = useState<Stage | null>(null);
   const [newStage, setNewStage] = useState<Partial<Stage>>({
@@ -47,14 +123,21 @@ export function PipelineConfig() {
     const [reorderedItem] = items.splice(result.source.index, 1);
     items.splice(result.destination.index, 0, reorderedItem);
 
-    setStages(items);
+    // Update order property
+    const reorderedItems = items.map((item, index) => ({
+      ...item,
+      order: index + 1,
+    }));
+
+    setStages(reorderedItems);
+    markChanged();
   };
 
   const handleAddStage = () => {
     if (!newStage.name) return;
 
     const stage: Stage = {
-      id: Date.now().toString(),
+      id: `new-${Date.now()}`,
       name: newStage.name,
       description: newStage.description || "",
       color: newStage.color || "#3b82f6",
@@ -62,10 +145,12 @@ export function PipelineConfig() {
 
     setStages([...stages, stage]);
     setNewStage({ name: "", description: "", color: "#3b82f6" });
+    markChanged();
   };
 
   const handleDeleteStage = (id: string) => {
     setStages(stages.filter((stage) => stage.id !== id));
+    markChanged();
   };
 
   const handleEditStage = (stage: Stage) => {
@@ -82,6 +167,7 @@ export function PipelineConfig() {
     );
 
     setEditingStage(null);
+    markChanged();
   };
 
   const handleToggleTransition = (fromStageId: string, toStageId: string) => {
@@ -101,18 +187,43 @@ export function PipelineConfig() {
         return stage;
       })
     );
+    markChanged();
   };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
-      <div className="space-y-4">
-        <h3 className="text-lg font-medium">
-          Pipeline State Machine Configuration
-        </h3>
-        <p className="text-sm text-muted-foreground">
-          Configure your pipeline stages and state transitions. This creates a
-          state machine that controls how leads move through your pipeline.
-        </p>
+      <div className="flex items-start justify-between">
+        <div className="space-y-1">
+          <h3 className="text-lg font-medium">
+            Pipeline State Machine Configuration
+          </h3>
+          <p className="text-sm text-muted-foreground">
+            Configure your pipeline stages and state transitions. This creates a
+            state machine that controls how leads move through your pipeline.
+          </p>
+        </div>
+        {hasChanges && (
+          <Button
+            onClick={saveStages}
+            disabled={isSaving}
+            className="bg-green-500 hover:bg-green-600"
+          >
+            {isSaving ? (
+              <Loader2 className="h-4 w-4 animate-spin mr-2" />
+            ) : (
+              <Save className="h-4 w-4 mr-2" />
+            )}
+            Save Changes
+          </Button>
+        )}
       </div>
 
       <Tabs defaultValue="stages" className="space-y-6">

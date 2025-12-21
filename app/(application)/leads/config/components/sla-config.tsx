@@ -1,10 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Trash2, Plus, Edit2, Clock, AlertTriangle } from "lucide-react";
+import {
+  Trash2,
+  Plus,
+  Edit2,
+  Clock,
+  AlertTriangle,
+  Loader2,
+  Save,
+} from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Select,
@@ -17,18 +25,81 @@ import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
 import {
-  defaultStageSLAs,
   defaultTimeUnits,
-  defaultSLAColors,
   type SLALevel,
-  type StageSLA
+  type StageSLA,
 } from "@/shared/defaults/sla-config";
-import { defaultPipelineStages } from "@/shared/defaults";
+import { toast } from "sonner";
+
+interface PipelineStage {
+  id: string;
+  name: string;
+}
 
 export function SLAConfig() {
-  const [stageSLAs, setStageSLAs] = useState<StageSLA[]>(defaultStageSLAs);
+  const [stageSLAs, setStageSLAs] = useState<StageSLA[]>([]);
+  const [pipelineStages, setPipelineStages] = useState<PipelineStage[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [hasChanges, setHasChanges] = useState(false);
 
   const [editingSLA, setEditingSLA] = useState<StageSLA | null>(null);
+
+  useEffect(() => {
+    fetchSLAConfigs();
+  }, []);
+
+  const fetchSLAConfigs = async () => {
+    try {
+      setIsLoading(true);
+      const response = await fetch("/api/pipeline/sla");
+      if (response.ok) {
+        const data = await response.json();
+        // Show whatever is in the database (even if empty)
+        setStageSLAs(data.stageSLAs || []);
+        if (data.stages) {
+          setPipelineStages(data.stages);
+        }
+      } else {
+        console.error("Failed to fetch SLA configs");
+        setStageSLAs([]);
+      }
+    } catch (error) {
+      console.error("Error fetching SLA configs:", error);
+      setStageSLAs([]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const saveSLAConfigs = async () => {
+    try {
+      setIsSaving(true);
+      const response = await fetch("/api/pipeline/sla", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ stageSLAs }),
+      });
+
+      if (response.ok) {
+        toast.success("SLA configurations saved successfully");
+        setHasChanges(false);
+        await fetchSLAConfigs();
+      } else {
+        const error = await response.json();
+        toast.error(error.error || "Failed to save SLA configs");
+      }
+    } catch (error) {
+      console.error("Error saving SLA configs:", error);
+      toast.error("Error saving SLA configs");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const markChanged = () => {
+    setHasChanges(true);
+  };
   const [editingSLALevel, setEditingSLALevel] = useState<SLALevel | null>(null);
   const [newSLALevel, setNewSLALevel] = useState<Partial<SLALevel>>({
     name: "",
@@ -40,11 +111,17 @@ export function SLAConfig() {
     color: "#3b82f6",
   });
 
-  const pipelineStages = defaultPipelineStages;
-
   const handleEditSLA = (sla: StageSLA) => {
     setEditingSLA(sla);
   };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
 
   const handleEditSLALevel = (level: SLALevel) => {
     setEditingSLALevel(level);
@@ -54,7 +131,7 @@ export function SLAConfig() {
     if (!editingSLA || !newSLALevel.name) return;
 
     const slaLevel: SLALevel = {
-      id: Date.now().toString(),
+      id: `new-${Date.now()}`,
       name: newSLALevel.name,
       timeframe: newSLALevel.timeframe || 4,
       timeUnit: newSLALevel.timeUnit || "hours",
@@ -78,6 +155,7 @@ export function SLAConfig() {
       notifyManager: false,
       color: "#3b82f6",
     });
+    markChanged();
   };
 
   const handleUpdateSLALevel = () => {
@@ -91,6 +169,7 @@ export function SLAConfig() {
     });
 
     setEditingSLALevel(null);
+    markChanged();
   };
 
   const handleDeleteSLALevel = (levelId: string) => {
@@ -100,6 +179,7 @@ export function SLAConfig() {
       ...editingSLA,
       slaLevels: editingSLA.slaLevels.filter((level) => level.id !== levelId),
     });
+    markChanged();
   };
 
   const handleUpdateSLA = () => {
@@ -110,6 +190,7 @@ export function SLAConfig() {
     );
 
     setEditingSLA(null);
+    markChanged();
   };
 
   const handleAddStageSLA = () => {
@@ -122,7 +203,7 @@ export function SLAConfig() {
     if (availableStages.length === 0) return;
 
     const newStageSLA: StageSLA = {
-      id: Date.now().toString(),
+      id: `new-${Date.now()}`,
       stageName: availableStages[0].name,
       description: `SLA for ${availableStages[0].name} stage`,
       slaLevels: [],
@@ -130,10 +211,12 @@ export function SLAConfig() {
 
     setStageSLAs([...stageSLAs, newStageSLA]);
     setEditingSLA(newStageSLA);
+    markChanged();
   };
 
   const handleDeleteStageSLA = (slaId: string) => {
     setStageSLAs(stageSLAs.filter((sla) => sla.id !== slaId));
+    markChanged();
   };
 
   const getTimeUnitLabel = (unit: string, value: number) => {
@@ -145,11 +228,27 @@ export function SLAConfig() {
 
   return (
     <div className="space-y-6">
-      <div className="space-y-4">
-        <h3 className="text-lg font-medium">SLA Configuration</h3>
-        <p className="text-sm text-muted-foreground">
-          Configure Service Level Agreements for each stage in your pipeline
-        </p>
+      <div className="flex items-start justify-between">
+        <div className="space-y-1">
+          <h3 className="text-lg font-medium">SLA Configuration</h3>
+          <p className="text-sm text-muted-foreground">
+            Configure Service Level Agreements for each stage in your pipeline
+          </p>
+        </div>
+        {hasChanges && (
+          <Button
+            onClick={saveSLAConfigs}
+            disabled={isSaving}
+            className="bg-green-500 hover:bg-green-600"
+          >
+            {isSaving ? (
+              <Loader2 className="h-4 w-4 animate-spin mr-2" />
+            ) : (
+              <Save className="h-4 w-4 mr-2" />
+            )}
+            Save Changes
+          </Button>
+        )}
       </div>
 
       <div className="grid gap-4">
@@ -418,7 +517,10 @@ export function SLAConfig() {
                               </SelectTrigger>
                               <SelectContent>
                                 {defaultTimeUnits.map((unit) => (
-                                  <SelectItem key={unit.value} value={unit.value}>
+                                  <SelectItem
+                                    key={unit.value}
+                                    value={unit.value}
+                                  >
                                     {unit.label}
                                   </SelectItem>
                                 ))}
@@ -575,7 +677,10 @@ export function SLAConfig() {
                               </SelectTrigger>
                               <SelectContent>
                                 {defaultTimeUnits.map((unit) => (
-                                  <SelectItem key={unit.value} value={unit.value}>
+                                  <SelectItem
+                                    key={unit.value}
+                                    value={unit.value}
+                                  >
                                     {unit.label}
                                   </SelectItem>
                                 ))}

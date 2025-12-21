@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { FineractAPIService } from "@/lib/fineract-api";
 import { getFineractTenantId } from "@/lib/fineract-tenant-service";
 import { getSession } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
+import { getTenantBySlug } from "@/lib/tenant-service";
 
 // POST /api/fineract/loans/[id]/action - Perform an action on a loan
 export async function POST(
@@ -41,8 +43,9 @@ export async function POST(
     // Get tenant
     const tenantSlug =
       request.headers.get("x-tenant-slug") ||
-      request.nextUrl.hostname.split(".")[0];
-    const tenantId = await getFineractTenantId(tenantSlug);
+      request.nextUrl.hostname.split(".")[0] ||
+      "goodfellow";
+    const tenantId = await getFineractTenantId();
 
     const fineractService = new FineractAPIService({
       baseUrl: process.env.FINERACT_BASE_URL || "http://10.10.0.143",
@@ -152,6 +155,14 @@ export async function POST(
     const result = await response.json();
     console.log("Loan action result:", result);
 
+    // Transition lead stage based on action
+    try {
+      await transitionLeadStage(loanId, action, tenantSlug);
+    } catch (transitionError) {
+      console.error("Error transitioning lead stage:", transitionError);
+      // Don't fail the request if stage transition fails
+    }
+
     return NextResponse.json({
       success: true,
       message: `Loan ${action.replace("_", " ")} successful`,
@@ -184,4 +195,99 @@ function formatDate(date: Date | string): string {
     "December",
   ];
   return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
+}
+
+/**
+ * Transition lead pipeline stage based on loan action
+ */
+async function transitionLeadStage(
+  loanId: string,
+  action: string,
+  tenantSlug: string
+) {
+  // Map loan actions to target stage names
+  const actionToStageMap: Record<string, string> = {
+    approve: "Approval",
+    disburse: "Disbursement",
+  };
+
+  const targetStageName = actionToStageMap[action];
+  if (!targetStageName) {
+    console.log(`No stage transition needed for action: ${action}`);
+    return;
+  }
+
+  // Get tenant
+  const tenant = await getTenantBySlug(tenantSlug);
+  if (!tenant) {
+    console.error(`Tenant not found: ${tenantSlug}`);
+    return;
+  }
+
+  // Find lead by fineractLoanId
+  const lead = await prisma.lead.findFirst({
+    where: {
+      tenantId: tenant.id,
+      fineractLoanId: parseInt(loanId),
+    },
+    include: {
+      currentStage: true,
+    },
+  });
+
+  if (!lead) {
+    console.log(`No lead found with fineractLoanId: ${loanId}`);
+    return;
+  }
+
+  // Find target stage
+  const targetStage = await prisma.pipelineStage.findFirst({
+    where: {
+      tenantId: tenant.id,
+      name: targetStageName,
+      isActive: true,
+    },
+  });
+
+  if (!targetStage) {
+    console.error(`Target stage not found: ${targetStageName}`);
+    return;
+  }
+
+  // Check if lead is already in the target stage
+  if (lead.currentStageId === targetStage.id) {
+    console.log(`Lead ${lead.id} is already in stage: ${targetStageName}`);
+    return;
+  }
+
+  // Create state transition record
+  await prisma.stateTransition.create({
+    data: {
+      leadId: lead.id,
+      tenantId: tenant.id,
+      fromStageId: lead.currentStageId || targetStage.id,
+      toStageId: targetStage.id,
+      event: `loan_${action}`,
+      triggeredBy: "system",
+      triggeredAt: new Date(),
+      metadata: {
+        loanId: loanId,
+        action: action,
+        automated: true,
+      },
+    },
+  });
+
+  // Update lead's current stage
+  await prisma.lead.update({
+    where: { id: lead.id },
+    data: {
+      currentStageId: targetStage.id,
+      updatedAt: new Date(),
+    },
+  });
+
+  console.log(
+    `Lead ${lead.id} transitioned from "${lead.currentStage?.name}" to "${targetStageName}"`
+  );
 }

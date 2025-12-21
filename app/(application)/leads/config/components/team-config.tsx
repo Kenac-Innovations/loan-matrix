@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Trash2, Plus, Edit2, Users, X } from "lucide-react";
+import { Trash2, Plus, Edit2, Users, X, Loader2, Save } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -17,17 +17,24 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { TeamAwareStateMachineService } from "@/lib/team-state-machine-service";
 import {
-  defaultTeams,
-  defaultPipelineStages,
   defaultRoles,
   type TeamMember,
-  type Team
+  type Team,
 } from "@/shared/defaults/team-config";
+import { toast } from "sonner";
+
+interface PipelineStage {
+  id: string;
+  name: string;
+}
 
 export function TeamConfig() {
-  const [teams, setTeams] = useState<Team[]>(defaultTeams);
+  const [teams, setTeams] = useState<Team[]>([]);
+  const [pipelineStages, setPipelineStages] = useState<string[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [hasChanges, setHasChanges] = useState(false);
 
   const [editingTeam, setEditingTeam] = useState<Team | null>(null);
   const [newTeam, setNewTeam] = useState<Partial<Team>>({
@@ -43,13 +50,67 @@ export function TeamConfig() {
     role: "",
   });
 
-  const pipelineStages = defaultPipelineStages;
+  useEffect(() => {
+    fetchTeams();
+  }, []);
+
+  const fetchTeams = async () => {
+    try {
+      setIsLoading(true);
+      const response = await fetch("/api/pipeline/teams");
+      if (response.ok) {
+        const data = await response.json();
+        // Show whatever is in the database (even if empty)
+        setTeams(data.teams || []);
+        if (data.stages) {
+          setPipelineStages(data.stages.map((s: PipelineStage) => s.name));
+        }
+      } else {
+        console.error("Failed to fetch teams");
+        setTeams([]);
+      }
+    } catch (error) {
+      console.error("Error fetching teams:", error);
+      setTeams([]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const saveTeams = async () => {
+    try {
+      setIsSaving(true);
+      const response = await fetch("/api/pipeline/teams", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ teams }),
+      });
+
+      if (response.ok) {
+        toast.success("Teams saved successfully");
+        setHasChanges(false);
+        await fetchTeams();
+      } else {
+        const error = await response.json();
+        toast.error(error.error || "Failed to save teams");
+      }
+    } catch (error) {
+      console.error("Error saving teams:", error);
+      toast.error("Error saving teams");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const markChanged = () => {
+    setHasChanges(true);
+  };
 
   const handleAddTeam = () => {
     if (!newTeam.name) return;
 
     const team: Team = {
-      id: Date.now().toString(),
+      id: `new-${Date.now()}`,
       name: newTeam.name,
       description: newTeam.description || "",
       members: newTeam.members || [],
@@ -58,10 +119,12 @@ export function TeamConfig() {
 
     setTeams([...teams, team]);
     setNewTeam({ name: "", description: "", members: [], pipelineStages: [] });
+    markChanged();
   };
 
   const handleDeleteTeam = (id: string) => {
     setTeams(teams.filter((team) => team.id !== id));
+    markChanged();
   };
 
   const handleEditTeam = (team: Team) => {
@@ -76,13 +139,14 @@ export function TeamConfig() {
     );
 
     setEditingTeam(null);
+    markChanged();
   };
 
   const handleAddMember = () => {
     if (!newMember.name || !newMember.email) return;
 
     const member: TeamMember = {
-      id: Date.now().toString(),
+      id: `new-${Date.now()}`,
       name: newMember.name,
       email: newMember.email,
       role: newMember.role || "Team Member",
@@ -101,6 +165,7 @@ export function TeamConfig() {
     }
 
     setNewMember({ name: "", email: "", role: "" });
+    markChanged();
   };
 
   const handleDeleteMember = (teamId: string, memberId: string) => {
@@ -122,15 +187,40 @@ export function TeamConfig() {
         })
       );
     }
+    markChanged();
   };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
-      <div className="space-y-4">
-        <h3 className="text-lg font-medium">Teams Configuration</h3>
-        <p className="text-sm text-muted-foreground">
-          Configure teams and assign them to pipeline stages
-        </p>
+      <div className="flex items-start justify-between">
+        <div className="space-y-1">
+          <h3 className="text-lg font-medium">Teams Configuration</h3>
+          <p className="text-sm text-muted-foreground">
+            Configure teams and assign them to pipeline stages
+          </p>
+        </div>
+        {hasChanges && (
+          <Button
+            onClick={saveTeams}
+            disabled={isSaving}
+            className="bg-green-500 hover:bg-green-600"
+          >
+            {isSaving ? (
+              <Loader2 className="h-4 w-4 animate-spin mr-2" />
+            ) : (
+              <Save className="h-4 w-4 mr-2" />
+            )}
+            Save Changes
+          </Button>
+        )}
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">

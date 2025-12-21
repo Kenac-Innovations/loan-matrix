@@ -72,12 +72,15 @@ export async function getTenantBySlug(
  * Get or create default tenant
  */
 export async function getOrCreateDefaultTenant(): Promise<TenantInfo> {
+  // Try to find goodfellow tenant first
   let tenant = await getTenantBySlug("goodfellow");
 
   if (!tenant) {
-    // Create default tenant
-    tenant = await prisma.tenant.create({
-      data: {
+    // Try to find or create default tenant using upsert to avoid race conditions
+    tenant = await prisma.tenant.upsert({
+      where: { slug: "default" },
+      update: {}, // Don't update anything if it exists
+      create: {
         name: "Default Organization",
         slug: "default",
         settings: {
