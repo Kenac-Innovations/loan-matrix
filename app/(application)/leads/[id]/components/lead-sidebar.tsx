@@ -40,6 +40,14 @@ interface AssignmentInfo {
   assignedAt: string | null;
 }
 
+interface LoanActionInfo {
+  approvedBy: string | null;
+  approvedOnDate: string | null;
+  disbursedBy: string | null;
+  disbursedOnDate: string | null;
+  loanStatus: string | null;
+}
+
 interface SidebarData {
   currentStage: string;
   timeInCurrentStage: number; // in hours
@@ -50,6 +58,7 @@ interface SidebarData {
   stageTimes: StageTime[];
   isSubmitted: boolean;
   assignment: AssignmentInfo;
+  loanActionInfo?: LoanActionInfo;
 }
 
 export function LeadSidebar({ leadId }: LeadSidebarProps) {
@@ -80,7 +89,9 @@ export function LeadSidebar({ leadId }: LeadSidebarProps) {
 
   // Get current Mifos user ID from session - try userId first, then fall back to id
   const sessionUser = session?.user as any;
-  const currentMifosUserId = sessionUser?.userId ?? (sessionUser?.id ? parseInt(sessionUser.id) : undefined);
+  const currentMifosUserId =
+    sessionUser?.userId ??
+    (sessionUser?.id ? parseInt(sessionUser.id) : undefined);
 
   const formatTime = (hours: number) => {
     const days = Math.floor(hours / 24);
@@ -138,6 +149,7 @@ export function LeadSidebar({ leadId }: LeadSidebarProps) {
           currentAssignment={data.assignment}
           currentUserId={currentMifosUserId}
           onAssignmentChange={fetchSidebarData}
+          loanActionInfo={data.loanActionInfo}
         />
       )}
 
@@ -271,7 +283,6 @@ export function LeadSidebar({ leadId }: LeadSidebarProps) {
           </div>
         </CardContent>
       </Card>
-
     </div>
   );
 }

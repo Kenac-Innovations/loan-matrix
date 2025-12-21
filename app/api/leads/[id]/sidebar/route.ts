@@ -1,6 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getTenantBySlug } from "@/lib/tenant-service";
+import { getSession } from "@/lib/auth";
+import { getFineractTenantId } from "@/lib/fineract-tenant-service";
+
+const FINERACT_BASE_URL = process.env.FINERACT_BASE_URL || "http://10.10.0.143";
+
+interface LoanActionInfo {
+  approvedBy: string | null;
+  approvedOnDate: string | null;
+  disbursedBy: string | null;
+  disbursedOnDate: string | null;
+  loanStatus: string | null;
+}
 
 export async function GET(
   request: NextRequest,
@@ -227,6 +239,96 @@ export async function GET(
       ];
     }
 
+    // Fetch loan action info from Fineract if loan is submitted
+    let loanActionInfo: LoanActionInfo = {
+      approvedBy: null,
+      approvedOnDate: null,
+      disbursedBy: null,
+      disbursedOnDate: null,
+      loanStatus: null,
+    };
+
+    if (lead.loanSubmittedToFineract && lead.fineractLoanId) {
+      try {
+        const session = await getSession();
+        const accessToken =
+          (session as any)?.base64EncodedAuthenticationKey ||
+          (session as any)?.accessToken;
+
+        if (accessToken) {
+          const fineractTenantId = await getFineractTenantId();
+          const loanResponse = await fetch(
+            `${FINERACT_BASE_URL}/fineract-provider/api/v1/loans/${lead.fineractLoanId}`,
+            {
+              headers: {
+                Authorization: `Basic ${accessToken}`,
+                "Fineract-Platform-TenantId": fineractTenantId,
+                Accept: "application/json",
+              },
+              cache: "no-store",
+            }
+          );
+
+          if (loanResponse.ok) {
+            const loanData = await loanResponse.json();
+            const timeline = loanData.timeline || {};
+
+            // Get loan status
+            loanActionInfo.loanStatus = loanData.status?.value || null;
+
+            // Get approved by info
+            if (timeline.approvedByFirstname || timeline.approvedByLastname) {
+              loanActionInfo.approvedBy = `${
+                timeline.approvedByFirstname || ""
+              } ${timeline.approvedByLastname || ""}`.trim();
+            } else if (timeline.approvedByUsername) {
+              loanActionInfo.approvedBy = timeline.approvedByUsername;
+            }
+
+            // Get approved on date
+            if (timeline.approvedOnDate) {
+              if (Array.isArray(timeline.approvedOnDate)) {
+                const [year, month, day] = timeline.approvedOnDate;
+                loanActionInfo.approvedOnDate = new Date(
+                  year,
+                  month - 1,
+                  day
+                ).toISOString();
+              } else {
+                loanActionInfo.approvedOnDate = timeline.approvedOnDate;
+              }
+            }
+
+            // Get disbursed by info
+            if (timeline.disbursedByFirstname || timeline.disbursedByLastname) {
+              loanActionInfo.disbursedBy = `${
+                timeline.disbursedByFirstname || ""
+              } ${timeline.disbursedByLastname || ""}`.trim();
+            } else if (timeline.disbursedByUsername) {
+              loanActionInfo.disbursedBy = timeline.disbursedByUsername;
+            }
+
+            // Get disbursed on date
+            if (timeline.actualDisbursementDate) {
+              if (Array.isArray(timeline.actualDisbursementDate)) {
+                const [year, month, day] = timeline.actualDisbursementDate;
+                loanActionInfo.disbursedOnDate = new Date(
+                  year,
+                  month - 1,
+                  day
+                ).toISOString();
+              } else {
+                loanActionInfo.disbursedOnDate =
+                  timeline.actualDisbursementDate;
+              }
+            }
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching loan action info:", error);
+      }
+    }
+
     const sidebarData = {
       currentStage: lead.currentStage?.name || "New Lead",
       timeInCurrentStage: timeInCurrentStageHours,
@@ -242,6 +344,8 @@ export async function GET(
         userName: lead.assignedToUserName,
         assignedAt: lead.assignedAt?.toISOString() || null,
       },
+      // Loan action info
+      loanActionInfo,
     };
 
     return NextResponse.json(sidebarData);

@@ -19,7 +19,15 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { toast } from "sonner";
-import { UserCheck, UserX, Users, Loader2, RefreshCw } from "lucide-react";
+import {
+  UserCheck,
+  UserX,
+  Users,
+  Loader2,
+  RefreshCw,
+  CheckCircle,
+  Banknote,
+} from "lucide-react";
 
 interface MifosUser {
   id: number;
@@ -33,6 +41,14 @@ interface MifosUser {
   roles?: string[];
 }
 
+interface LoanActionInfo {
+  approvedBy: string | null;
+  approvedOnDate: string | null;
+  disbursedBy: string | null;
+  disbursedOnDate: string | null;
+  loanStatus: string | null;
+}
+
 interface LeadAssignmentProps {
   leadId: string;
   isSubmitted: boolean;
@@ -43,6 +59,7 @@ interface LeadAssignmentProps {
   };
   currentUserId?: number; // Current logged-in Mifos user ID
   onAssignmentChange?: () => void;
+  loanActionInfo?: LoanActionInfo;
 }
 
 export function LeadAssignment({
@@ -51,6 +68,7 @@ export function LeadAssignment({
   currentAssignment,
   currentUserId,
   onAssignmentChange,
+  loanActionInfo,
 }: LeadAssignmentProps) {
   const [users, setUsers] = useState<MifosUser[]>([]);
   const [selectedUserId, setSelectedUserId] = useState<string>("");
@@ -66,6 +84,11 @@ export function LeadAssignment({
   // Check if current user is the assigned user
   const isCurrentUserAssigned =
     currentUserId && assignedUser?.userId === currentUserId;
+
+  // Check if loan is disbursed (active status means disbursed)
+  const isDisbursed =
+    loanActionInfo?.loanStatus?.toLowerCase() === "active" ||
+    loanActionInfo?.loanStatus?.toLowerCase().includes("disbursed");
 
   // Fetch Mifos users
   const fetchUsers = async () => {
@@ -243,7 +266,12 @@ export function LeadAssignment({
             <Users className="h-5 w-5 text-muted-foreground" />
             <CardTitle className="text-lg">Assignment</CardTitle>
           </div>
-          {isAssigned && assignedUser?.userName && (
+          {isDisbursed ? (
+            <Badge className="bg-green-500 text-white">
+              <Banknote className="h-3 w-3 mr-1" />
+              Disbursed
+            </Badge>
+          ) : isAssigned && assignedUser?.userName ? (
             <Badge
               variant="outline"
               className="bg-green-50 text-green-700 border-green-200"
@@ -251,138 +279,192 @@ export function LeadAssignment({
               <UserCheck className="h-3 w-3 mr-1" />
               Assigned
             </Badge>
-          )}
+          ) : null}
         </div>
         <CardDescription>
-          {isAssigned
+          {isDisbursed
+            ? "Loan has been disbursed - no further assignments allowed"
+            : isAssigned
             ? "This lead is currently assigned for review"
             : "Assign this lead to a user for review and action"}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {isAssigned && assignedUser?.userName ? (
-          <div className="space-y-4">
-            <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg">
-              <Avatar className="h-10 w-10">
-                <AvatarFallback className="bg-primary/10 text-primary">
-                  {getInitials(assignedUser.userName)}
-                </AvatarFallback>
-              </Avatar>
-              <div className="flex-1">
-                <p className="font-medium">{assignedUser.userName}</p>
-                {assignedUser.assignedAt && (
-                  <p className="text-sm text-muted-foreground">
-                    Assigned{" "}
-                    {new Date(assignedUser.assignedAt).toLocaleDateString()}
-                  </p>
-                )}
-              </div>
-            </div>
-
-            {/* Reassign option (for admins or the assigned user) */}
-            <div className="pt-2 border-t">
-              <div className="flex gap-2">
-                <Select
-                  value={selectedUserId}
-                  onValueChange={setSelectedUserId}
-                  disabled={isFetchingUsers || isLoading}
-                >
-                  <SelectTrigger className="flex-1">
-                    <SelectValue placeholder="Reassign to..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {users.map((user) => (
-                      <SelectItem key={user.id} value={user.id.toString()}>
-                        <div className="flex items-center gap-2">
-                          <span>{user.displayName}</span>
-                          {user.officeName && (
-                            <span className="text-xs text-muted-foreground">
-                              ({user.officeName})
-                            </span>
-                          )}
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Button
-                  variant="outline"
-                  onClick={handleAssign}
-                  disabled={!selectedUserId || isLoading}
-                >
-                  {isLoading ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <RefreshCw className="h-4 w-4" />
-                  )}
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={handleUnassign}
-                  disabled={isLoading}
-                  title="Unassign"
-                >
-                  <UserX className="h-4 w-4 text-red-500" />
-                </Button>
-              </div>
+        {/* Current Assignee */}
+        {isAssigned && assignedUser?.userName && (
+          <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg">
+            <Avatar className="h-10 w-10">
+              <AvatarFallback className="bg-primary/10 text-primary">
+                {getInitials(assignedUser.userName)}
+              </AvatarFallback>
+            </Avatar>
+            <div className="flex-1">
+              <p className="text-xs text-muted-foreground uppercase tracking-wider">
+                Current Assignee
+              </p>
+              <p className="font-medium">{assignedUser.userName}</p>
+              {assignedUser.assignedAt && (
+                <p className="text-sm text-muted-foreground">
+                  Assigned{" "}
+                  {new Date(assignedUser.assignedAt).toLocaleDateString()}
+                </p>
+              )}
             </div>
           </div>
-        ) : (
-          <div className="space-y-3">
-            <div className="flex gap-2">
-              <Select
-                value={selectedUserId}
-                onValueChange={setSelectedUserId}
-                disabled={isFetchingUsers || isLoading}
-              >
-                <SelectTrigger className="flex-1">
-                  <SelectValue
-                    placeholder={
-                      isFetchingUsers ? "Loading users..." : "Select user..."
-                    }
-                  />
-                </SelectTrigger>
-                <SelectContent>
-                  {users.map((user) => (
-                    <SelectItem key={user.id} value={user.id.toString()}>
-                      <div className="flex items-center gap-2">
-                        <span>{user.displayName}</span>
-                        {user.officeName && (
-                          <span className="text-xs text-muted-foreground">
-                            ({user.officeName})
-                          </span>
-                        )}
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Button
-                onClick={handleAssign}
-                disabled={!selectedUserId || isLoading}
-              >
-                {isLoading ? (
-                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                ) : (
-                  <UserCheck className="h-4 w-4 mr-2" />
-                )}
-                Assign
-              </Button>
-            </div>
+        )}
 
-            {currentUserId && (
-              <Button
-                variant="outline"
-                className="w-full"
-                onClick={handleAssignToSelf}
-                disabled={isLoading}
-              >
-                <UserCheck className="h-4 w-4 mr-2" />
-                Assign to Me
-              </Button>
+        {/* Approved By */}
+        {loanActionInfo?.approvedBy && (
+          <div className="flex items-center gap-3 p-3 bg-blue-50 dark:bg-blue-950/30 rounded-lg">
+            <div className="h-10 w-10 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center">
+              <CheckCircle className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+            </div>
+            <div className="flex-1">
+              <p className="text-xs text-muted-foreground uppercase tracking-wider">
+                Approved By
+              </p>
+              <p className="font-medium">{loanActionInfo.approvedBy}</p>
+              {loanActionInfo.approvedOnDate && (
+                <p className="text-sm text-muted-foreground">
+                  {new Date(loanActionInfo.approvedOnDate).toLocaleDateString()}
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Disbursed By */}
+        {loanActionInfo?.disbursedBy && (
+          <div className="flex items-center gap-3 p-3 bg-green-50 dark:bg-green-950/30 rounded-lg">
+            <div className="h-10 w-10 rounded-full bg-green-100 dark:bg-green-900 flex items-center justify-center">
+              <Banknote className="h-5 w-5 text-green-600 dark:text-green-400" />
+            </div>
+            <div className="flex-1">
+              <p className="text-xs text-muted-foreground uppercase tracking-wider">
+                Disbursed By
+              </p>
+              <p className="font-medium">{loanActionInfo.disbursedBy}</p>
+              {loanActionInfo.disbursedOnDate && (
+                <p className="text-sm text-muted-foreground">
+                  {new Date(
+                    loanActionInfo.disbursedOnDate
+                  ).toLocaleDateString()}
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Assignment Controls - Only show if not disbursed */}
+        {!isDisbursed && (
+          <>
+            {isAssigned && assignedUser?.userName ? (
+              <div className="pt-2 border-t">
+                <div className="flex gap-2">
+                  <Select
+                    value={selectedUserId}
+                    onValueChange={setSelectedUserId}
+                    disabled={isFetchingUsers || isLoading}
+                  >
+                    <SelectTrigger className="flex-1">
+                      <SelectValue placeholder="Reassign to..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {users.map((user) => (
+                        <SelectItem key={user.id} value={user.id.toString()}>
+                          <div className="flex items-center gap-2">
+                            <span>{user.displayName}</span>
+                            {user.officeName && (
+                              <span className="text-xs text-muted-foreground">
+                                ({user.officeName})
+                              </span>
+                            )}
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    variant="outline"
+                    onClick={handleAssign}
+                    disabled={!selectedUserId || isLoading}
+                  >
+                    {isLoading ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-4 w-4" />
+                    )}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={handleUnassign}
+                    disabled={isLoading}
+                    title="Unassign"
+                  >
+                    <UserX className="h-4 w-4 text-red-500" />
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="flex gap-2">
+                  <Select
+                    value={selectedUserId}
+                    onValueChange={setSelectedUserId}
+                    disabled={isFetchingUsers || isLoading}
+                  >
+                    <SelectTrigger className="flex-1">
+                      <SelectValue
+                        placeholder={
+                          isFetchingUsers
+                            ? "Loading users..."
+                            : "Select user..."
+                        }
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {users.map((user) => (
+                        <SelectItem key={user.id} value={user.id.toString()}>
+                          <div className="flex items-center gap-2">
+                            <span>{user.displayName}</span>
+                            {user.officeName && (
+                              <span className="text-xs text-muted-foreground">
+                                ({user.officeName})
+                              </span>
+                            )}
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    onClick={handleAssign}
+                    disabled={!selectedUserId || isLoading}
+                  >
+                    {isLoading ? (
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    ) : (
+                      <UserCheck className="h-4 w-4 mr-2" />
+                    )}
+                    Assign
+                  </Button>
+                </div>
+
+                {currentUserId && (
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={handleAssignToSelf}
+                    disabled={isLoading}
+                  >
+                    <UserCheck className="h-4 w-4 mr-2" />
+                    Assign to Me
+                  </Button>
+                )}
+              </div>
             )}
-          </div>
+          </>
         )}
       </CardContent>
     </Card>
