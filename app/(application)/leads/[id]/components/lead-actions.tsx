@@ -3,6 +3,9 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { ExternalLink } from "lucide-react";
+import { LoanActions } from "./loan-actions";
+import { useSession } from "next-auth/react";
+import { useRouter } from "next/navigation";
 
 interface LeadActionsProps {
   leadId: string;
@@ -19,13 +22,51 @@ export function LeadActions({
   leadId,
   loanStatus,
   loanId,
+  loanPrincipal,
+  assignedToUserId,
   fineractClientId,
+  onRefresh,
 }: LeadActionsProps) {
-  // Only show the View Loan button if there's a loan
+  const { data: session } = useSession();
+  const router = useRouter();
+
+  // Get current user's Mifos ID from session - try userId first, then fall back to id
+  const sessionUser = session?.user as any;
+  const currentMifosUserId =
+    sessionUser?.userId ??
+    (sessionUser?.id ? parseInt(sessionUser.id) : undefined);
+  const isAssignedToCurrentUser = currentMifosUserId === assignedToUserId;
+
+  // Only show if there's a loan
   if (!loanId || !fineractClientId) {
     return null;
   }
 
+  // Check if pre-disbursement status (show approve/disburse actions)
+  const statusLower = (loanStatus || "").toLowerCase();
+  const isPreDisbursement =
+    statusLower.includes("submitted") ||
+    statusLower.includes("pending") ||
+    statusLower === "approved";
+
+  // For pre-disbursement statuses, show LoanActions (approve/disburse)
+  if (isPreDisbursement) {
+    return (
+      <LoanActions
+        leadId={leadId}
+        loanStatus={loanStatus}
+        loanId={loanId}
+        loanPrincipal={loanPrincipal}
+        isAssignedToCurrentUser={isAssignedToCurrentUser}
+        onActionComplete={() => {
+          router.refresh();
+          onRefresh?.();
+        }}
+      />
+    );
+  }
+
+  // For post-disbursement statuses (Active/Disbursed, Closed, etc.), show View Loan button
   return (
     <div className="flex flex-wrap gap-2">
       <Button asChild className="bg-blue-500 hover:bg-blue-600">

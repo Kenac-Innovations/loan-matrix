@@ -56,6 +56,18 @@ export function LeadsTable({ initialData }: LeadsTableProps) {
   // Define table columns using DataTableColumn format
   const columns: DataTableColumn<Lead>[] = [
     {
+      id: "rowNumber",
+      header: "#",
+      cell: ({ row }) => {
+        return (
+          <span className="text-muted-foreground font-mono text-xs">
+            {row.index + 1}
+          </span>
+        );
+      },
+      enableSorting: false,
+    },
+    {
       id: "client",
       accessorKey: "client",
       header: "Client",

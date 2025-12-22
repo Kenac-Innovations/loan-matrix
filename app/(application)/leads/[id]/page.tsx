@@ -577,6 +577,8 @@ export default async function LeadDetailPage({
                 leadId={id}
                 loanStatus={fineractLoanStatus}
                 loanId={fineractLoanId}
+                loanPrincipal={fineractLoanPrincipal}
+                assignedToUserId={lead.assignedToUserId}
                 fineractClientId={lead.fineractClientId}
               />
             </div>

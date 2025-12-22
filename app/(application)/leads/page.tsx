@@ -28,7 +28,8 @@ export default async function LeadsPage() {
   const tenantSlug = headersList.get("x-tenant-slug") || "default";
 
   // Fetch leads data server-side (full dataset for metrics)
-  const leadsData = await getLeadsData(tenantSlug);
+  // Use a high limit to get all leads for accurate metrics and table display
+  const leadsData = await getLeadsData(tenantSlug, { limit: 1000 });
 
   return (
     <>
