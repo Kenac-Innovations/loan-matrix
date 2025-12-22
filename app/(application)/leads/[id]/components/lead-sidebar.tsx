@@ -87,6 +87,20 @@ export function LeadSidebar({ leadId }: LeadSidebarProps) {
     fetchSidebarData();
   }, [leadId]);
 
+  // Listen for assignment changes and loan action events to refresh sidebar data
+  useEffect(() => {
+    const handleRefresh = () => {
+      fetchSidebarData();
+    };
+
+    window.addEventListener("assignment-change", handleRefresh);
+    window.addEventListener("loan-action-complete", handleRefresh);
+    return () => {
+      window.removeEventListener("assignment-change", handleRefresh);
+      window.removeEventListener("loan-action-complete", handleRefresh);
+    };
+  }, [leadId]);
+
   // Get current Mifos user ID from session - try userId first, then fall back to id
   const sessionUser = session?.user as any;
   const currentMifosUserId =

@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { ExternalLink } from "lucide-react";
@@ -36,6 +37,18 @@ export function LeadActions({
     sessionUser?.userId ??
     (sessionUser?.id ? parseInt(sessionUser.id) : undefined);
   const isAssignedToCurrentUser = currentMifosUserId === assignedToUserId;
+
+  // Listen for assignment changes and refresh the page
+  useEffect(() => {
+    const handleAssignmentChange = () => {
+      router.refresh();
+    };
+
+    window.addEventListener("assignment-change", handleAssignmentChange);
+    return () => {
+      window.removeEventListener("assignment-change", handleAssignmentChange);
+    };
+  }, [router]);
 
   // Only show if there's a loan
   if (!loanId || !fineractClientId) {

@@ -158,6 +158,12 @@ export function LeadAssignment({
           assignedAt: data.lead.assignedAt,
         });
         toast.success(`Lead assigned to ${selectedUser.displayName}`);
+        // Dispatch event to notify all components to refresh
+        window.dispatchEvent(
+          new CustomEvent("assignment-change", {
+            detail: { leadId, userId: data.lead.assignedToUserId },
+          })
+        );
         onAssignmentChange?.();
       } else {
         const error = await response.json();
@@ -205,6 +211,12 @@ export function LeadAssignment({
           assignedAt: data.lead.assignedAt,
         });
         toast.success("Lead assigned to you");
+        // Dispatch event to notify all components to refresh
+        window.dispatchEvent(
+          new CustomEvent("assignment-change", {
+            detail: { leadId, userId: data.lead.assignedToUserId },
+          })
+        );
         onAssignmentChange?.();
       } else {
         const error = await response.json();
@@ -231,6 +243,12 @@ export function LeadAssignment({
         setAssignedUser(null);
         setSelectedUserId("");
         toast.success("Lead unassigned");
+        // Dispatch event to notify all components to refresh
+        window.dispatchEvent(
+          new CustomEvent("assignment-change", {
+            detail: { leadId, userId: null },
+          })
+        );
         onAssignmentChange?.();
       } else {
         const error = await response.json();
