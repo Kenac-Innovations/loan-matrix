@@ -286,7 +286,18 @@ export function LoanTermsForm({
   const frequencyValuesSet = useRef(false);
   const templateValuesSet = useRef(false);
 
-  // Store frequency values in state to avoid React Hook Form reset issues
+  // Use a ref to store frequency values - this is stable and won't be affected by re-renders
+  const frequencyValuesRef = useRef({
+    termFrequency: "",
+    repaymentFrequency: "",
+    interestRateFrequency: "",
+    interestMethod: "",
+    amortization: "",
+    repaymentStrategy: "",
+    interestCalculationPeriod: "",
+  });
+
+  // Store frequency values in state to trigger re-renders when values change
   const [frequencyState, setFrequencyState] = useState({
     termFrequency: "",
     repaymentFrequency: "",
@@ -296,6 +307,29 @@ export function LoanTermsForm({
     repaymentStrategy: "",
     interestCalculationPeriod: "",
   });
+
+  // Helper function to update frequency values - updates both ref and state
+  const updateFrequencyValues = (values: Partial<typeof frequencyState>) => {
+    // Only update if new values are non-empty
+    const newValues = { ...frequencyValuesRef.current };
+    let hasChanges = false;
+
+    Object.entries(values).forEach(([key, value]) => {
+      if (value && value !== newValues[key as keyof typeof newValues]) {
+        newValues[key as keyof typeof newValues] = value;
+        hasChanges = true;
+      }
+    });
+
+    if (hasChanges) {
+      console.log("Updating frequency values:", {
+        old: frequencyValuesRef.current,
+        new: newValues,
+      });
+      frequencyValuesRef.current = newValues;
+      setFrequencyState(newValues);
+    }
+  };
 
   // Debug: log component mount/unmount
   useEffect(() => {
@@ -668,22 +702,18 @@ export function LoanTermsForm({
 
         // Store all template values in state to prevent them from being overwritten
         templateValuesSet.current = true;
-        setFrequencyState((prev) => {
-          // Only update if we have new values to set
-          const newState = {
-            termFrequency: termFreqValue || prev.termFrequency,
-            repaymentFrequency: repaymentFreqValue || prev.repaymentFrequency,
-            interestRateFrequency:
-              interestFreqValue || prev.interestRateFrequency,
-            interestMethod: interestMethodValue || prev.interestMethod,
-            amortization: amortizationValue || prev.amortization,
-            repaymentStrategy: repaymentStrategyValue || prev.repaymentStrategy,
-            interestCalculationPeriod:
-              interestCalcPeriodValue || prev.interestCalculationPeriod,
-          };
-          console.log("Setting frequency state:", { prev, newState });
-          return newState;
+
+        // Use the helper function that updates both ref and state
+        updateFrequencyValues({
+          termFrequency: termFreqValue,
+          repaymentFrequency: repaymentFreqValue,
+          interestRateFrequency: interestFreqValue,
+          interestMethod: interestMethodValue,
+          amortization: amortizationValue,
+          repaymentStrategy: repaymentStrategyValue,
+          interestCalculationPeriod: interestCalcPeriodValue,
         });
+
         console.log("All template values stored in state:", {
           termFreqValue,
           repaymentFreqValue,
@@ -1392,12 +1422,12 @@ export function LoanTermsForm({
                   <Select
                     onValueChange={(val) => {
                       field.onChange(val);
-                      setFrequencyState((prev) => ({
-                        ...prev,
-                        termFrequency: val,
-                      }));
+                      updateFrequencyValues({ termFrequency: val });
                     }}
-                    value={frequencyState.termFrequency}
+                    value={
+                      frequencyValuesRef.current.termFrequency ||
+                      frequencyState.termFrequency
+                    }
                     disabled
                   >
                     <SelectTrigger className="h-10 w-full">
@@ -1565,12 +1595,12 @@ export function LoanTermsForm({
                   <Select
                     onValueChange={(val) => {
                       field.onChange(val);
-                      setFrequencyState((prev) => ({
-                        ...prev,
-                        repaymentFrequency: val,
-                      }));
+                      updateFrequencyValues({ repaymentFrequency: val });
                     }}
-                    value={frequencyState.repaymentFrequency}
+                    value={
+                      frequencyValuesRef.current.repaymentFrequency ||
+                      frequencyState.repaymentFrequency
+                    }
                     disabled
                   >
                     <SelectTrigger className="h-10 w-full">
@@ -1748,12 +1778,12 @@ export function LoanTermsForm({
                   <Select
                     onValueChange={(val) => {
                       field.onChange(val);
-                      setFrequencyState((prev) => ({
-                        ...prev,
-                        interestRateFrequency: val,
-                      }));
+                      updateFrequencyValues({ interestRateFrequency: val });
                     }}
-                    value={frequencyState.interestRateFrequency}
+                    value={
+                      frequencyValuesRef.current.interestRateFrequency ||
+                      frequencyState.interestRateFrequency
+                    }
                     disabled
                   >
                     <SelectTrigger className="h-10 w-full">
@@ -1792,12 +1822,12 @@ export function LoanTermsForm({
                   <Select
                     onValueChange={(val) => {
                       field.onChange(val);
-                      setFrequencyState((prev) => ({
-                        ...prev,
-                        interestMethod: val,
-                      }));
+                      updateFrequencyValues({ interestMethod: val });
                     }}
-                    value={frequencyState.interestMethod}
+                    value={
+                      frequencyValuesRef.current.interestMethod ||
+                      frequencyState.interestMethod
+                    }
                     disabled
                   >
                     <SelectTrigger className="h-10 w-full">
@@ -1834,12 +1864,12 @@ export function LoanTermsForm({
                   <Select
                     onValueChange={(val) => {
                       field.onChange(val);
-                      setFrequencyState((prev) => ({
-                        ...prev,
-                        amortization: val,
-                      }));
+                      updateFrequencyValues({ amortization: val });
                     }}
-                    value={frequencyState.amortization}
+                    value={
+                      frequencyValuesRef.current.amortization ||
+                      frequencyState.amortization
+                    }
                     disabled
                   >
                     <SelectTrigger className="h-10 w-full">
@@ -1924,12 +1954,12 @@ export function LoanTermsForm({
                   <Select
                     onValueChange={(val) => {
                       field.onChange(val);
-                      setFrequencyState((prev) => ({
-                        ...prev,
-                        repaymentStrategy: val,
-                      }));
+                      updateFrequencyValues({ repaymentStrategy: val });
                     }}
-                    value={frequencyState.repaymentStrategy}
+                    value={
+                      frequencyValuesRef.current.repaymentStrategy ||
+                      frequencyState.repaymentStrategy
+                    }
                     disabled
                   >
                     <SelectTrigger className="h-10 w-full">
@@ -2017,12 +2047,12 @@ export function LoanTermsForm({
                   <Select
                     onValueChange={(val) => {
                       field.onChange(val);
-                      setFrequencyState((prev) => ({
-                        ...prev,
-                        interestCalculationPeriod: val,
-                      }));
+                      updateFrequencyValues({ interestCalculationPeriod: val });
                     }}
-                    value={frequencyState.interestCalculationPeriod}
+                    value={
+                      frequencyValuesRef.current.interestCalculationPeriod ||
+                      frequencyState.interestCalculationPeriod
+                    }
                     disabled
                   >
                     <SelectTrigger className="h-10 w-full">
