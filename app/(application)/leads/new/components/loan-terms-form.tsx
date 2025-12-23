@@ -1181,23 +1181,41 @@ export function LoanTermsForm({
   };
 
   const handleSubmit = async (data: LoanTermsFormData) => {
-    // Ensure all template values from state are included
+    // Use ref values as source of truth (they're stable and won't be reset)
+    const refValues = frequencyValuesRef.current;
     const submissionData = {
       ...data,
-      termFrequency: frequencyState.termFrequency || data.termFrequency,
+      termFrequency:
+        refValues.termFrequency ||
+        frequencyState.termFrequency ||
+        data.termFrequency,
       repaymentFrequency:
-        frequencyState.repaymentFrequency || data.repaymentFrequency,
+        refValues.repaymentFrequency ||
+        frequencyState.repaymentFrequency ||
+        data.repaymentFrequency,
       interestRateFrequency:
-        frequencyState.interestRateFrequency || data.interestRateFrequency,
-      interestMethod: frequencyState.interestMethod || data.interestMethod,
-      amortization: frequencyState.amortization || data.amortization,
+        refValues.interestRateFrequency ||
+        frequencyState.interestRateFrequency ||
+        data.interestRateFrequency,
+      interestMethod:
+        refValues.interestMethod ||
+        frequencyState.interestMethod ||
+        data.interestMethod,
+      amortization:
+        refValues.amortization ||
+        frequencyState.amortization ||
+        data.amortization,
       repaymentStrategy:
-        frequencyState.repaymentStrategy || data.repaymentStrategy,
+        refValues.repaymentStrategy ||
+        frequencyState.repaymentStrategy ||
+        data.repaymentStrategy,
       interestCalculationPeriod:
+        refValues.interestCalculationPeriod ||
         frequencyState.interestCalculationPeriod ||
         data.interestCalculationPeriod,
     };
     console.log("LoanTermsForm submitting:", submissionData);
+    console.log("Ref values used:", refValues);
 
     // Save loan terms to database if leadId is available
     if (leadId) {
