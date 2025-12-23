@@ -282,14 +282,19 @@ export function LoanTermsForm({
     chargesCollateral: false,
   });
 
-  // Track if frequency values have been set from template
+  // Track if template values have been set
   const frequencyValuesSet = useRef(false);
+  const templateValuesSet = useRef(false);
 
   // Store frequency values in state to avoid React Hook Form reset issues
   const [frequencyState, setFrequencyState] = useState({
     termFrequency: "",
     repaymentFrequency: "",
     interestRateFrequency: "",
+    interestMethod: "",
+    amortization: "",
+    repaymentStrategy: "",
+    interestCalculationPeriod: "",
   });
 
   const form = useForm<LoanTermsFormData>({
@@ -321,14 +326,14 @@ export function LoanTermsForm({
 
   // Fetch detailed template when clientId and productId are available
   useEffect(() => {
-    // Reset frequency values flag when product changes
-    frequencyValuesSet.current = false;
-
     const fetchDetailedTemplate = async () => {
       // Only fetch if we have clientId and productId, and don't already have a template with charges
       if (!clientId || !productId) return;
       // If we already have a template with charges, don't refetch
       if (loanTemplate?.charges && loanTemplate.charges.length > 0) return;
+
+      // Reset frequency values flag only when we're actually fetching a new template
+      frequencyValuesSet.current = false;
 
       try {
         setIsLoading(true);
@@ -485,7 +490,7 @@ export function LoanTermsForm({
           console.log(
             "Set interestRateFrequency from template:",
             interestFreqValue
-            );
+          );
         } else if (loanTemplate.interestRateFrequencyTypeOptions?.length > 0) {
           interestFreqValue =
             loanTemplate.interestRateFrequencyTypeOptions[0].id.toString();
@@ -502,12 +507,6 @@ export function LoanTermsForm({
         // Mark frequency values as set from template and store in state
         if (termFreqValue || repaymentFreqValue || interestFreqValue) {
           frequencyValuesSet.current = true;
-          // Store in state to bypass React Hook Form reset issues
-          setFrequencyState({
-            termFrequency: termFreqValue,
-            repaymentFrequency: repaymentFreqValue,
-            interestRateFrequency: interestFreqValue,
-          });
           console.log("Frequency values marked as SET:", {
             termFreqValue,
             repaymentFreqValue,
@@ -517,6 +516,7 @@ export function LoanTermsForm({
 
         // Interest Method
         // Use interestType from template to find matching option
+        let interestMethodValue = "";
         if (
           loanTemplate.interestType &&
           loanTemplate.interestTypeOptions?.length > 0
@@ -528,17 +528,20 @@ export function LoanTermsForm({
               option.code === loanTemplate.interestType?.code
           );
           if (matchingInterestType) {
-            form.setValue("interestMethod", matchingInterestType.id.toString());
+            interestMethodValue = matchingInterestType.id.toString();
+            form.setValue("interestMethod", interestMethodValue);
           }
         } else if (loanTemplate.interestTypeOptions?.length > 0) {
           const defaultInterestMethod =
             loanTemplate.interestTypeOptions.find((t) => t.id === 1) ||
             loanTemplate.interestTypeOptions[0];
-          form.setValue("interestMethod", defaultInterestMethod.id.toString());
+          interestMethodValue = defaultInterestMethod.id.toString();
+          form.setValue("interestMethod", interestMethodValue);
         }
 
         // Amortization
         // Use amortizationType from template to find matching option (e.g., "Equal installments")
+        let amortizationValue = "";
         if (
           loanTemplate.amortizationType &&
           loanTemplate.amortizationTypeOptions?.length > 0
@@ -564,7 +567,7 @@ export function LoanTermsForm({
           console.log("Matching amortization found:", matchingAmortization);
 
           if (matchingAmortization) {
-            const amortizationValue = matchingAmortization.id.toString();
+            amortizationValue = matchingAmortization.id.toString();
             form.setValue("amortization", amortizationValue);
             console.log("Set amortization to:", amortizationValue);
           } else {
@@ -575,11 +578,9 @@ export function LoanTermsForm({
               loanTemplate.amortizationTypeOptions.find((t) => t.id === 1) ||
               loanTemplate.amortizationTypeOptions[0];
             if (defaultAmortization) {
-              form.setValue("amortization", defaultAmortization.id.toString());
-              console.log(
-                "Set amortization to default:",
-                defaultAmortization.id.toString()
-              );
+              amortizationValue = defaultAmortization.id.toString();
+              form.setValue("amortization", amortizationValue);
+              console.log("Set amortization to default:", amortizationValue);
             }
           }
         } else if (loanTemplate.amortizationTypeOptions?.length > 0) {
@@ -588,11 +589,9 @@ export function LoanTermsForm({
             loanTemplate.amortizationTypeOptions.find((t) => t.id === 1) ||
             loanTemplate.amortizationTypeOptions[0];
           if (defaultAmortization) {
-            form.setValue("amortization", defaultAmortization.id.toString());
-            console.log(
-              "Set amortization to default:",
-              defaultAmortization.id.toString()
-            );
+            amortizationValue = defaultAmortization.id.toString();
+            form.setValue("amortization", amortizationValue);
+            console.log("Set amortization to default:", amortizationValue);
           }
         } else {
           console.warn("No amortizationTypeOptions available");
@@ -608,11 +607,11 @@ export function LoanTermsForm({
 
         // Repayment Strategy
         // Use transactionProcessingStrategyCode from template if available, otherwise find from options
+        let repaymentStrategyValue = "";
         if (loanTemplate.transactionProcessingStrategyCode) {
-          form.setValue(
-            "repaymentStrategy",
-            loanTemplate.transactionProcessingStrategyCode
-          );
+          repaymentStrategyValue =
+            loanTemplate.transactionProcessingStrategyCode;
+          form.setValue("repaymentStrategy", repaymentStrategyValue);
         } else if (
           loanTemplate.transactionProcessingStrategyOptions?.length > 0
         ) {
@@ -620,11 +619,13 @@ export function LoanTermsForm({
             loanTemplate.transactionProcessingStrategyOptions.find(
               (t) => t.code === "creocore-strategy"
             ) || loanTemplate.transactionProcessingStrategyOptions[0];
-          form.setValue("repaymentStrategy", defaultStrategy.code);
+          repaymentStrategyValue = defaultStrategy.code;
+          form.setValue("repaymentStrategy", repaymentStrategyValue);
         }
 
         // Interest Calculation Period
         // Use interestCalculationPeriodType from template to find matching option
+        let interestCalcPeriodValue = "";
         if (
           loanTemplate.interestCalculationPeriodType &&
           loanTemplate.interestCalculationPeriodTypeOptions?.length > 0
@@ -638,10 +639,8 @@ export function LoanTermsForm({
                 option.code === loanTemplate.interestCalculationPeriodType?.code
             );
           if (matchingCalcPeriod) {
-            form.setValue(
-              "interestCalculationPeriod",
-              matchingCalcPeriod.id.toString()
-            );
+            interestCalcPeriodValue = matchingCalcPeriod.id.toString();
+            form.setValue("interestCalculationPeriod", interestCalcPeriodValue);
           }
         } else if (
           loanTemplate.interestCalculationPeriodTypeOptions?.length > 0
@@ -650,11 +649,30 @@ export function LoanTermsForm({
             loanTemplate.interestCalculationPeriodTypeOptions.find(
               (t) => t.id === 1
             ) || loanTemplate.interestCalculationPeriodTypeOptions[0];
-          form.setValue(
-            "interestCalculationPeriod",
-            defaultCalcPeriod.id.toString()
-          );
+          interestCalcPeriodValue = defaultCalcPeriod.id.toString();
+          form.setValue("interestCalculationPeriod", interestCalcPeriodValue);
         }
+
+        // Store all template values in state to prevent them from being overwritten
+        templateValuesSet.current = true;
+        setFrequencyState({
+          termFrequency: termFreqValue,
+          repaymentFrequency: repaymentFreqValue,
+          interestRateFrequency: interestFreqValue,
+          interestMethod: interestMethodValue,
+          amortization: amortizationValue,
+          repaymentStrategy: repaymentStrategyValue,
+          interestCalculationPeriod: interestCalcPeriodValue,
+        });
+        console.log("All template values stored in state:", {
+          termFreqValue,
+          repaymentFreqValue,
+          interestFreqValue,
+          interestMethodValue,
+          amortizationValue,
+          repaymentStrategyValue,
+          interestCalcPeriodValue,
+        });
 
         // Set disbursement date for first repayment
         if (loanTemplate.expectedDisbursementDate) {
@@ -806,11 +824,28 @@ export function LoanTermsForm({
                 "Skipping interestRateFrequency from saved data - already set from template"
               );
             }
-            if (loanTermsData.interestMethod) {
+            // Only set these values if template values weren't already set
+            if (loanTermsData.interestMethod && !templateValuesSet.current) {
               form.setValue("interestMethod", loanTermsData.interestMethod);
+              console.log(
+                "Setting interestMethod from saved data:",
+                loanTermsData.interestMethod
+              );
+            } else if (loanTermsData.interestMethod) {
+              console.log(
+                "Skipping interestMethod from saved data - already set from template"
+              );
             }
-            if (loanTermsData.amortization) {
+            if (loanTermsData.amortization && !templateValuesSet.current) {
               form.setValue("amortization", loanTermsData.amortization);
+              console.log(
+                "Setting amortization from saved data:",
+                loanTermsData.amortization
+              );
+            } else if (loanTermsData.amortization) {
+              console.log(
+                "Skipping amortization from saved data - already set from template"
+              );
             }
             if (loanTermsData.isEqualAmortization !== undefined) {
               form.setValue(
@@ -818,16 +853,35 @@ export function LoanTermsForm({
                 loanTermsData.isEqualAmortization
               );
             }
-            if (loanTermsData.repaymentStrategy) {
+            if (loanTermsData.repaymentStrategy && !templateValuesSet.current) {
               form.setValue(
                 "repaymentStrategy",
                 loanTermsData.repaymentStrategy
               );
+              console.log(
+                "Setting repaymentStrategy from saved data:",
+                loanTermsData.repaymentStrategy
+              );
+            } else if (loanTermsData.repaymentStrategy) {
+              console.log(
+                "Skipping repaymentStrategy from saved data - already set from template"
+              );
             }
-            if (loanTermsData.interestCalculationPeriod) {
+            if (
+              loanTermsData.interestCalculationPeriod &&
+              !templateValuesSet.current
+            ) {
               form.setValue(
                 "interestCalculationPeriod",
                 loanTermsData.interestCalculationPeriod
+              );
+              console.log(
+                "Setting interestCalculationPeriod from saved data:",
+                loanTermsData.interestCalculationPeriod
+              );
+            } else if (loanTermsData.interestCalculationPeriod) {
+              console.log(
+                "Skipping interestCalculationPeriod from saved data - already set from template"
               );
             }
             if (loanTermsData.interestChargedFrom) {
@@ -1055,7 +1109,7 @@ export function LoanTermsForm({
   };
 
   const handleSubmit = async (data: LoanTermsFormData) => {
-    // Ensure frequency values from state are included
+    // Ensure all template values from state are included
     const submissionData = {
       ...data,
       termFrequency: frequencyState.termFrequency || data.termFrequency,
@@ -1063,6 +1117,13 @@ export function LoanTermsForm({
         frequencyState.repaymentFrequency || data.repaymentFrequency,
       interestRateFrequency:
         frequencyState.interestRateFrequency || data.interestRateFrequency,
+      interestMethod: frequencyState.interestMethod || data.interestMethod,
+      amortization: frequencyState.amortization || data.amortization,
+      repaymentStrategy:
+        frequencyState.repaymentStrategy || data.repaymentStrategy,
+      interestCalculationPeriod:
+        frequencyState.interestCalculationPeriod ||
+        data.interestCalculationPeriod,
     };
     console.log("LoanTermsForm submitting:", submissionData);
 
@@ -1360,19 +1421,19 @@ export function LoanTermsForm({
                 control={form.control}
                 name="firstRepaymentOn"
                 render={({ field }) => (
-                      <Button
-                        variant="outline"
+                  <Button
+                    variant="outline"
                     disabled
-                        className={cn(
+                    className={cn(
                       "h-10 w-full justify-start text-left font-normal cursor-not-allowed opacity-70",
-                          !field.value && "text-muted-foreground"
-                        )}
-                      >
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {field.value
-                          ? format(field.value, "PPP")
+                      !field.value && "text-muted-foreground"
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {field.value
+                      ? format(field.value, "PPP")
                       : "Set on Loan tab"}
-                      </Button>
+                  </Button>
                 )}
               />
               <p className="text-xs text-muted-foreground">
@@ -1687,8 +1748,14 @@ export function LoanTermsForm({
                 name="interestMethod"
                 render={({ field }) => (
                   <Select
-                    onValueChange={field.onChange}
-                    value={field.value}
+                    onValueChange={(val) => {
+                      field.onChange(val);
+                      setFrequencyState((prev) => ({
+                        ...prev,
+                        interestMethod: val,
+                      }));
+                    }}
+                    value={frequencyState.interestMethod || field.value}
                     disabled
                   >
                     <SelectTrigger className="h-10 w-full">
@@ -1723,8 +1790,14 @@ export function LoanTermsForm({
                 name="amortization"
                 render={({ field }) => (
                   <Select
-                    onValueChange={field.onChange}
-                    value={field.value}
+                    onValueChange={(val) => {
+                      field.onChange(val);
+                      setFrequencyState((prev) => ({
+                        ...prev,
+                        amortization: val,
+                      }));
+                    }}
+                    value={frequencyState.amortization || field.value}
                     disabled
                   >
                     <SelectTrigger className="h-10 w-full">
@@ -1807,8 +1880,14 @@ export function LoanTermsForm({
                 name="repaymentStrategy"
                 render={({ field }) => (
                   <Select
-                    onValueChange={field.onChange}
-                    value={field.value}
+                    onValueChange={(val) => {
+                      field.onChange(val);
+                      setFrequencyState((prev) => ({
+                        ...prev,
+                        repaymentStrategy: val,
+                      }));
+                    }}
+                    value={frequencyState.repaymentStrategy || field.value}
                     disabled
                   >
                     <SelectTrigger className="h-10 w-full">
@@ -1894,8 +1973,16 @@ export function LoanTermsForm({
                 name="interestCalculationPeriod"
                 render={({ field }) => (
                   <Select
-                    onValueChange={field.onChange}
-                    value={field.value}
+                    onValueChange={(val) => {
+                      field.onChange(val);
+                      setFrequencyState((prev) => ({
+                        ...prev,
+                        interestCalculationPeriod: val,
+                      }));
+                    }}
+                    value={
+                      frequencyState.interestCalculationPeriod || field.value
+                    }
                     disabled
                   >
                     <SelectTrigger className="h-10 w-full">
