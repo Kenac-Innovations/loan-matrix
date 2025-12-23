@@ -870,12 +870,20 @@ export function LoanTermsForm({
             const loanTermsData = result.data;
             console.log("Loaded loan terms data:", loanTermsData);
 
-            // Populate form fields - only non-template values
-            if (loanTermsData.principal) {
+            // Populate form fields - only if template values weren't already set
+            if (loanTermsData.principal && !templateValuesSet.current) {
               form.setValue("principal", loanTermsData.principal);
+            } else if (loanTermsData.principal) {
+              console.log(
+                "Skipping principal from saved data - already set from template"
+              );
             }
-            if (loanTermsData.loanTerm) {
+            if (loanTermsData.loanTerm && !templateValuesSet.current) {
               form.setValue("loanTerm", loanTermsData.loanTerm);
+            } else if (loanTermsData.loanTerm) {
+              console.log(
+                "Skipping loanTerm from saved data - already set from template"
+              );
             }
             // Only set frequency if we have a value AND template values weren't already set
             if (loanTermsData.termFrequency && !frequencyValuesSet.current) {
@@ -889,14 +897,27 @@ export function LoanTermsForm({
                 "Skipping termFrequency from saved data - already set from template"
               );
             }
-            if (loanTermsData.numberOfRepayments) {
+            // Only set numberOfRepayments if template values weren't already set
+            if (
+              loanTermsData.numberOfRepayments &&
+              !templateValuesSet.current
+            ) {
               form.setValue(
                 "numberOfRepayments",
                 loanTermsData.numberOfRepayments
               );
+            } else if (loanTermsData.numberOfRepayments) {
+              console.log(
+                "Skipping numberOfRepayments from saved data - already set from template"
+              );
             }
-            if (loanTermsData.repaymentEvery) {
+            // Only set repaymentEvery if template values weren't already set
+            if (loanTermsData.repaymentEvery && !templateValuesSet.current) {
               form.setValue("repaymentEvery", loanTermsData.repaymentEvery);
+            } else if (loanTermsData.repaymentEvery) {
+              console.log(
+                "Skipping repaymentEvery from saved data - already set from template"
+              );
             }
             // Only set repaymentFrequency if we have a value AND template values weren't already set
             if (
@@ -916,10 +937,17 @@ export function LoanTermsForm({
                 "Skipping repaymentFrequency from saved data - already set from template"
               );
             }
-            if (loanTermsData.nominalInterestRate) {
+            if (
+              loanTermsData.nominalInterestRate &&
+              !templateValuesSet.current
+            ) {
               form.setValue(
                 "nominalInterestRate",
                 loanTermsData.nominalInterestRate
+              );
+            } else if (loanTermsData.nominalInterestRate) {
+              console.log(
+                "Skipping nominalInterestRate from saved data - already set from template"
               );
             }
             // Only set interestRateFrequency if we have a value AND template values weren't already set
