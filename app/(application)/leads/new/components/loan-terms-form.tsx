@@ -297,6 +297,14 @@ export function LoanTermsForm({
     interestCalculationPeriod: "",
   });
 
+  // Debug: log component mount/unmount
+  useEffect(() => {
+    console.log("=== LOAN TERMS FORM MOUNTED ===");
+    return () => {
+      console.log("=== LOAN TERMS FORM UNMOUNTED ===");
+    };
+  }, []);
+
   // Debug: log when frequencyState changes
   useEffect(() => {
     console.log("=== FREQUENCY STATE CHANGED ===", frequencyState);
@@ -660,14 +668,21 @@ export function LoanTermsForm({
 
         // Store all template values in state to prevent them from being overwritten
         templateValuesSet.current = true;
-        setFrequencyState({
-          termFrequency: termFreqValue,
-          repaymentFrequency: repaymentFreqValue,
-          interestRateFrequency: interestFreqValue,
-          interestMethod: interestMethodValue,
-          amortization: amortizationValue,
-          repaymentStrategy: repaymentStrategyValue,
-          interestCalculationPeriod: interestCalcPeriodValue,
+        setFrequencyState((prev) => {
+          // Only update if we have new values to set
+          const newState = {
+            termFrequency: termFreqValue || prev.termFrequency,
+            repaymentFrequency: repaymentFreqValue || prev.repaymentFrequency,
+            interestRateFrequency:
+              interestFreqValue || prev.interestRateFrequency,
+            interestMethod: interestMethodValue || prev.interestMethod,
+            amortization: amortizationValue || prev.amortization,
+            repaymentStrategy: repaymentStrategyValue || prev.repaymentStrategy,
+            interestCalculationPeriod:
+              interestCalcPeriodValue || prev.interestCalculationPeriod,
+          };
+          console.log("Setting frequency state:", { prev, newState });
+          return newState;
         });
         console.log("All template values stored in state:", {
           termFreqValue,

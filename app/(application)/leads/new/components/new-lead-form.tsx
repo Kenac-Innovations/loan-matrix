@@ -1041,6 +1041,7 @@ export function NewLeadForm() {
                 <CardContent className="p-2 lg:p-6">
                   {loanTemplateData || (fineractClientId && loanProductId) ? (
                     <LoanTermsForm
+                      key={`loan-terms-${currentLeadId}`}
                       loanTemplate={loanTemplateData}
                       clientId={fineractClientId || undefined}
                       productId={loanProductId || undefined}
