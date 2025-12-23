@@ -297,6 +297,11 @@ export function LoanTermsForm({
     interestCalculationPeriod: "",
   });
 
+  // Debug: log when frequencyState changes
+  useEffect(() => {
+    console.log("=== FREQUENCY STATE CHANGED ===", frequencyState);
+  }, [frequencyState]);
+
   const form = useForm<LoanTermsFormData>({
     resolver: zodResolver(loanTermsSchema) as any,
     defaultValues: {
@@ -732,7 +737,14 @@ export function LoanTermsForm({
       if (!leadId) return;
 
       console.log("=== LOAD EXISTING LOAN TERMS START ===");
-      console.log("frequencyValuesSet.current:", frequencyValuesSet.current);
+      console.log(
+        "frequencyValuesSet.current (at start):",
+        frequencyValuesSet.current
+      );
+      console.log(
+        "templateValuesSet.current (at start):",
+        templateValuesSet.current
+      );
 
       try {
         // Fetch both loan-terms and loan-details in parallel
@@ -740,6 +752,17 @@ export function LoanTermsForm({
           fetch(`/api/leads/${leadId}/loan-terms`),
           fetch(`/api/leads/${leadId}/loan-details`),
         ]);
+
+        // Check flags AFTER async operations - template might have been populated during fetch
+        console.log("=== AFTER FETCH ===");
+        console.log(
+          "frequencyValuesSet.current (after fetch):",
+          frequencyValuesSet.current
+        );
+        console.log(
+          "templateValuesSet.current (after fetch):",
+          templateValuesSet.current
+        );
 
         let loanDetailsData: any = null;
         if (loanDetailsResponse.ok) {
@@ -753,8 +776,9 @@ export function LoanTermsForm({
           const result = await loanTermsResponse.json();
           if (result.success && result.data) {
             const loanTermsData = result.data;
+            console.log("Loaded loan terms data:", loanTermsData);
 
-            // Populate form fields
+            // Populate form fields - only non-template values
             if (loanTermsData.principal) {
               form.setValue("principal", loanTermsData.principal);
             }
@@ -986,6 +1010,9 @@ export function LoanTermsForm({
           );
           form.setValue("firstRepaymentOn", detailsDate);
         }
+
+        console.log("=== LOAD EXISTING LOAN TERMS END ===");
+        console.log("Form values after load:", form.getValues());
       } catch (error) {
         console.error("Error loading existing loan terms:", error);
       }
@@ -1355,7 +1382,7 @@ export function LoanTermsForm({
                         termFrequency: val,
                       }));
                     }}
-                    value={frequencyState.termFrequency || field.value}
+                    value={frequencyState.termFrequency}
                     disabled
                   >
                     <SelectTrigger className="h-10 w-full">
@@ -1528,7 +1555,7 @@ export function LoanTermsForm({
                         repaymentFrequency: val,
                       }));
                     }}
-                    value={frequencyState.repaymentFrequency || field.value}
+                    value={frequencyState.repaymentFrequency}
                     disabled
                   >
                     <SelectTrigger className="h-10 w-full">
@@ -1711,7 +1738,7 @@ export function LoanTermsForm({
                         interestRateFrequency: val,
                       }));
                     }}
-                    value={frequencyState.interestRateFrequency || field.value}
+                    value={frequencyState.interestRateFrequency}
                     disabled
                   >
                     <SelectTrigger className="h-10 w-full">
@@ -1755,7 +1782,7 @@ export function LoanTermsForm({
                         interestMethod: val,
                       }));
                     }}
-                    value={frequencyState.interestMethod || field.value}
+                    value={frequencyState.interestMethod}
                     disabled
                   >
                     <SelectTrigger className="h-10 w-full">
@@ -1797,7 +1824,7 @@ export function LoanTermsForm({
                         amortization: val,
                       }));
                     }}
-                    value={frequencyState.amortization || field.value}
+                    value={frequencyState.amortization}
                     disabled
                   >
                     <SelectTrigger className="h-10 w-full">
@@ -1887,7 +1914,7 @@ export function LoanTermsForm({
                         repaymentStrategy: val,
                       }));
                     }}
-                    value={frequencyState.repaymentStrategy || field.value}
+                    value={frequencyState.repaymentStrategy}
                     disabled
                   >
                     <SelectTrigger className="h-10 w-full">
@@ -1980,9 +2007,7 @@ export function LoanTermsForm({
                         interestCalculationPeriod: val,
                       }));
                     }}
-                    value={
-                      frequencyState.interestCalculationPeriod || field.value
-                    }
+                    value={frequencyState.interestCalculationPeriod}
                     disabled
                   >
                     <SelectTrigger className="h-10 w-full">
