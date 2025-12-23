@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -285,6 +285,53 @@ export function LoanTermsForm({
   // Track if template values have been set
   const frequencyValuesSet = useRef(false);
   const templateValuesSet = useRef(false);
+
+  // Compute display values directly from template - this survives remounts!
+  const templateDerivedValues = useMemo(() => {
+    if (!loanTemplate) {
+      return {
+        termFrequency: "",
+        repaymentFrequency: "",
+        interestRateFrequency: "",
+        interestMethod: "",
+        amortization: "",
+        repaymentStrategy: "",
+        interestCalculationPeriod: "",
+      };
+    }
+
+    const termFreq = loanTemplate.termPeriodFrequencyType?.id?.toString() || "";
+    const repaymentFreq =
+      loanTemplate.repaymentFrequencyType?.id?.toString() || "";
+    const interestRateFreq =
+      loanTemplate.interestRateFrequencyType?.id?.toString() || "";
+    const interestMethod = loanTemplate.interestType?.id?.toString() || "";
+    const amortization = loanTemplate.amortizationType?.id?.toString() || "";
+    const repaymentStrategy =
+      loanTemplate.transactionProcessingStrategyCode || "";
+    const interestCalcPeriod =
+      loanTemplate.interestCalculationPeriodType?.id?.toString() || "";
+
+    console.log("=== TEMPLATE DERIVED VALUES (computed from prop) ===", {
+      termFreq,
+      repaymentFreq,
+      interestRateFreq,
+      interestMethod,
+      amortization,
+      repaymentStrategy,
+      interestCalcPeriod,
+    });
+
+    return {
+      termFrequency: termFreq,
+      repaymentFrequency: repaymentFreq,
+      interestRateFrequency: interestRateFreq,
+      interestMethod,
+      amortization,
+      repaymentStrategy,
+      interestCalculationPeriod: interestCalcPeriod,
+    };
+  }, [loanTemplate]);
 
   // Use a ref to store frequency values - this is stable and won't be affected by re-renders
   const frequencyValuesRef = useRef({
@@ -1181,41 +1228,48 @@ export function LoanTermsForm({
   };
 
   const handleSubmit = async (data: LoanTermsFormData) => {
-    // Use ref values as source of truth (they're stable and won't be reset)
+    // Use templateDerivedValues as primary source (computed from prop, survives remounts)
     const refValues = frequencyValuesRef.current;
     const submissionData = {
       ...data,
       termFrequency:
+        templateDerivedValues.termFrequency ||
         refValues.termFrequency ||
         frequencyState.termFrequency ||
         data.termFrequency,
       repaymentFrequency:
+        templateDerivedValues.repaymentFrequency ||
         refValues.repaymentFrequency ||
         frequencyState.repaymentFrequency ||
         data.repaymentFrequency,
       interestRateFrequency:
+        templateDerivedValues.interestRateFrequency ||
         refValues.interestRateFrequency ||
         frequencyState.interestRateFrequency ||
         data.interestRateFrequency,
       interestMethod:
+        templateDerivedValues.interestMethod ||
         refValues.interestMethod ||
         frequencyState.interestMethod ||
         data.interestMethod,
       amortization:
+        templateDerivedValues.amortization ||
         refValues.amortization ||
         frequencyState.amortization ||
         data.amortization,
       repaymentStrategy:
+        templateDerivedValues.repaymentStrategy ||
         refValues.repaymentStrategy ||
         frequencyState.repaymentStrategy ||
         data.repaymentStrategy,
       interestCalculationPeriod:
+        templateDerivedValues.interestCalculationPeriod ||
         refValues.interestCalculationPeriod ||
         frequencyState.interestCalculationPeriod ||
         data.interestCalculationPeriod,
     };
     console.log("LoanTermsForm submitting:", submissionData);
-    console.log("Ref values used:", refValues);
+    console.log("Template derived values used:", templateDerivedValues);
 
     // Save loan terms to database if leadId is available
     if (leadId) {
@@ -1443,6 +1497,7 @@ export function LoanTermsForm({
                       updateFrequencyValues({ termFrequency: val });
                     }}
                     value={
+                      templateDerivedValues.termFrequency ||
                       frequencyValuesRef.current.termFrequency ||
                       frequencyState.termFrequency
                     }
@@ -1616,6 +1671,7 @@ export function LoanTermsForm({
                       updateFrequencyValues({ repaymentFrequency: val });
                     }}
                     value={
+                      templateDerivedValues.repaymentFrequency ||
                       frequencyValuesRef.current.repaymentFrequency ||
                       frequencyState.repaymentFrequency
                     }
@@ -1799,6 +1855,7 @@ export function LoanTermsForm({
                       updateFrequencyValues({ interestRateFrequency: val });
                     }}
                     value={
+                      templateDerivedValues.interestRateFrequency ||
                       frequencyValuesRef.current.interestRateFrequency ||
                       frequencyState.interestRateFrequency
                     }
@@ -1843,6 +1900,7 @@ export function LoanTermsForm({
                       updateFrequencyValues({ interestMethod: val });
                     }}
                     value={
+                      templateDerivedValues.interestMethod ||
                       frequencyValuesRef.current.interestMethod ||
                       frequencyState.interestMethod
                     }
@@ -1885,6 +1943,7 @@ export function LoanTermsForm({
                       updateFrequencyValues({ amortization: val });
                     }}
                     value={
+                      templateDerivedValues.amortization ||
                       frequencyValuesRef.current.amortization ||
                       frequencyState.amortization
                     }
@@ -1975,6 +2034,7 @@ export function LoanTermsForm({
                       updateFrequencyValues({ repaymentStrategy: val });
                     }}
                     value={
+                      templateDerivedValues.repaymentStrategy ||
                       frequencyValuesRef.current.repaymentStrategy ||
                       frequencyState.repaymentStrategy
                     }
@@ -2068,6 +2128,7 @@ export function LoanTermsForm({
                       updateFrequencyValues({ interestCalculationPeriod: val });
                     }}
                     value={
+                      templateDerivedValues.interestCalculationPeriod ||
                       frequencyValuesRef.current.interestCalculationPeriod ||
                       frequencyState.interestCalculationPeriod
                     }
