@@ -84,8 +84,9 @@ export function ClientsTable() {
   const [searchTimeout, setSearchTimeout] = useState<NodeJS.Timeout | null>(
     null
   );
+  const [isSearching, setIsSearching] = useState(false);
 
-  // Debounced search handler
+  // Debounced search handler - requires minimum 2 characters
   const handleSearchChange = useCallback(
     (value: string) => {
       setSearchInput(value);
@@ -95,13 +96,19 @@ export function ClientsTable() {
         clearTimeout(searchTimeout);
       }
 
-      // Set new timeout for debounced search
-      const timeout = setTimeout(() => {
-        setQuery(value);
-        setOffset(0); // Reset to first page on new search
-      }, 300);
+      // Only search if 2+ characters or empty (to clear search)
+      if (value.length >= 2 || value.length === 0) {
+        setIsSearching(value.length >= 2);
 
-      setSearchTimeout(timeout);
+        // Set new timeout for debounced search (500ms for better UX)
+        const timeout = setTimeout(() => {
+          setQuery(value.length >= 2 ? value : "");
+          setOffset(0);
+          setIsSearching(false);
+        }, 500);
+
+        setSearchTimeout(timeout);
+      }
     },
     [searchTimeout]
   );
@@ -111,6 +118,7 @@ export function ClientsTable() {
     setSearchInput("");
     setQuery("");
     setOffset(0);
+    setIsSearching(false);
     if (searchTimeout) {
       clearTimeout(searchTimeout);
     }
@@ -121,7 +129,15 @@ export function ClientsTable() {
     query ? `&query=${encodeURIComponent(query)}` : ""
   }`;
 
-  const { data, error, isLoading, mutate } = useSWR(apiUrl, fetcher);
+  // Use keepPreviousData to prevent content flash during search
+  const { data, error, isLoading } = useSWR(apiUrl, fetcher, {
+    keepPreviousData: true,
+  });
+
+  // Show skeleton only on initial load, not during search
+  const showSkeleton = isLoading && !data;
+  // Show subtle loading indicator when searching with existing data
+  const showSearchingIndicator = (isLoading || isSearching) && data;
 
   // Handle different response formats from Fineract API
   const clients: FineractClient[] = (() => {

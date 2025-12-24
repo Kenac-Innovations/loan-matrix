@@ -35,10 +35,9 @@ import {
   ChevronRight,
   AlertCircle,
   Eye,
-  Edit,
   MoreHorizontal,
   Calendar,
-  DollarSign,
+  Loader2,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -82,8 +81,9 @@ export default function LoansPage() {
   const [searchTimeout, setSearchTimeout] = useState<NodeJS.Timeout | null>(
     null
   );
+  const [isSearching, setIsSearching] = useState(false);
 
-  // Debounced search handler
+  // Debounced search handler - requires minimum 2 characters
   const handleSearchChange = useCallback(
     (value: string) => {
       setSearchInput(value);
@@ -92,12 +92,18 @@ export default function LoansPage() {
         clearTimeout(searchTimeout);
       }
 
-      const timeout = setTimeout(() => {
-        setQuery(value);
-        setOffset(0);
-      }, 300);
+      // Only search if 2+ characters or empty (to clear search)
+      if (value.length >= 2 || value.length === 0) {
+        setIsSearching(value.length >= 2);
 
-      setSearchTimeout(timeout);
+        const timeout = setTimeout(() => {
+          setQuery(value.length >= 2 ? value : "");
+          setOffset(0);
+          setIsSearching(false);
+        }, 500);
+
+        setSearchTimeout(timeout);
+      }
     },
     [searchTimeout]
   );
@@ -106,6 +112,7 @@ export default function LoansPage() {
     setSearchInput("");
     setQuery("");
     setOffset(0);
+    setIsSearching(false);
     if (searchTimeout) {
       clearTimeout(searchTimeout);
     }
@@ -116,7 +123,14 @@ export default function LoansPage() {
     query ? `&query=${encodeURIComponent(query)}` : ""
   }`;
 
-  const { data, error, isLoading } = useSWR(apiUrl, fetcher);
+  // Use keepPreviousData to prevent content flash during search
+  const { data, error, isLoading } = useSWR(apiUrl, fetcher, {
+    keepPreviousData: true,
+  });
+
+  // Show skeleton only on initial load
+  const showSkeleton = isLoading && !data;
+  const showSearchingIndicator = (isLoading || isSearching) && data;
 
   // Parse loans from response
   const loans: Loan[] = (() => {
@@ -193,7 +207,7 @@ export default function LoansPage() {
     }).format(amount);
   };
 
-  if (isLoading && !data) {
+  if (showSkeleton) {
     return (
       <div className="space-y-6">
         <div>
@@ -257,9 +271,13 @@ export default function LoansPage() {
         <CardContent className="space-y-4">
           {/* Search Input */}
           <div className="relative max-w-sm">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            {showSearchingIndicator ? (
+              <Loader2 className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground animate-spin" />
+            ) : (
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            )}
             <Input
-              placeholder="Search by client name or account number..."
+              placeholder="Search by client name or account number (min 2 chars)..."
               value={searchInput}
               onChange={(e) => handleSearchChange(e.target.value)}
               className="pl-10 pr-10"
