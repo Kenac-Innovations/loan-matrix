@@ -1,6 +1,6 @@
 "use client";
 
-import useSWR from 'swr';
+import useSWR from "swr";
 import {
   Users,
   UserCheck,
@@ -17,31 +17,38 @@ interface ClientMetricsData {
   inactiveClients: number;
   newClientsThisMonth: number;
   totalPortfolioValue: number;
+  totalOutstanding: number;
   averageLoanAmount: number;
   clientGrowthRate: number;
   riskClients: number;
+  currency: string;
+  loansCount: number;
+  activeLoansCount: number;
 }
 
 // Simple fetcher for SWR
-const fetcher = (url: string) => fetch(url).then(res => res.json());
+const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
 export function ClientMetrics() {
-  const { data, error, isLoading } = useSWR('/api/fineract/clients-metrics', fetcher);
+  const { data, error, isLoading } = useSWR(
+    "/api/fineract/clients-metrics",
+    fetcher
+  );
 
   // Handle different response formats
   const metrics: ClientMetricsData | null = (() => {
     if (!data) return null;
-    
+
     // If data is directly the metrics object
     if (data.totalClients !== undefined) {
       return data;
     }
-    
+
     // If data has a metrics property
     if (data.metrics && data.metrics.totalClients !== undefined) {
       return data.metrics;
     }
-    
+
     // Fallback to null
     return null;
   })();
@@ -78,10 +85,10 @@ export function ClientMetrics() {
     );
   }
 
-  const formatCurrency = (amount: number) => {
+  const formatCurrency = (amount: number, currencyCode?: string) => {
     return new Intl.NumberFormat("en-US", {
       style: "currency",
-      currency: "USD",
+      currency: currencyCode || metrics.currency || "USD",
       minimumFractionDigits: 0,
       maximumFractionDigits: 0,
     }).format(amount);
@@ -146,7 +153,24 @@ export function ClientMetrics() {
           <div className="text-2xl font-bold">
             {formatCurrency(metrics.totalPortfolioValue)}
           </div>
-          <p className="text-xs text-green-400">+8% from last month</p>
+          <p className="text-xs text-muted-foreground">
+            {formatNumber(metrics.loansCount)} total loans ({metrics.currency})
+          </p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between pb-2">
+          <CardTitle className="text-sm font-medium">Outstanding</CardTitle>
+          <DollarSign className="h-4 w-4 text-orange-400" />
+        </CardHeader>
+        <CardContent>
+          <div className="text-2xl font-bold">
+            {formatCurrency(metrics.totalOutstanding)}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {formatNumber(metrics.activeLoansCount)} active loans
+          </p>
         </CardContent>
       </Card>
 
@@ -159,7 +183,9 @@ export function ClientMetrics() {
           <div className="text-2xl font-bold">
             {formatCurrency(metrics.averageLoanAmount)}
           </div>
-          <p className="text-xs text-muted-foreground">Per active client</p>
+          <p className="text-xs text-muted-foreground">
+            Per loan ({metrics.currency})
+          </p>
         </CardContent>
       </Card>
 
