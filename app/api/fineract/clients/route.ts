@@ -58,9 +58,10 @@ export async function GET(request: Request) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
       }
 
-      // Use Fineract's search endpoint
+      // Use Fineract's search endpoint - uppercase query for case-sensitive Fineract
+      const uppercaseQuery = query.toUpperCase();
       const searchUrl = `${baseUrl}/fineract-provider/api/v1/search?query=${encodeURIComponent(
-        query
+        uppercaseQuery
       )}&resource=clients`;
 
       const searchResponse = await fetch(searchUrl, {

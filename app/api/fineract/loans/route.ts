@@ -66,11 +66,13 @@ export async function GET(request: NextRequest) {
 
     // If we have a search query, use Fineract's search API
     if (query) {
-      console.log("Searching loans with query:", query);
+      // Uppercase query for case-sensitive Fineract
+      const uppercaseQuery = query.toUpperCase();
+      console.log("Searching loans with query:", uppercaseQuery);
 
       // First search for matching accounts/clients
       const searchUrl = `${baseUrl}/fineract-provider/api/v1/search?query=${encodeURIComponent(
-        query
+        uppercaseQuery
       )}&resource=loans,clients`;
 
       const searchResponse = await fetch(searchUrl, {
