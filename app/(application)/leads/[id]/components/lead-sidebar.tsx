@@ -67,21 +67,21 @@ export function LeadSidebar({ leadId }: LeadSidebarProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchSidebarData = async () => {
-    try {
-      setLoading(true);
-      const response = await fetch(`/api/leads/${leadId}/sidebar`);
-      if (!response.ok) {
-        throw new Error("Failed to fetch sidebar data");
+    const fetchSidebarData = async () => {
+      try {
+        setLoading(true);
+        const response = await fetch(`/api/leads/${leadId}/sidebar`);
+        if (!response.ok) {
+          throw new Error("Failed to fetch sidebar data");
+        }
+        const sidebarData = await response.json();
+        setData(sidebarData);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "An error occurred");
+      } finally {
+        setLoading(false);
       }
-      const sidebarData = await response.json();
-      setData(sidebarData);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "An error occurred");
-    } finally {
-      setLoading(false);
-    }
-  };
+    };
 
   useEffect(() => {
     fetchSidebarData();

@@ -230,10 +230,10 @@ export function SLAConfig() {
     <div className="space-y-6">
       <div className="flex items-start justify-between">
         <div className="space-y-1">
-          <h3 className="text-lg font-medium">SLA Configuration</h3>
-          <p className="text-sm text-muted-foreground">
-            Configure Service Level Agreements for each stage in your pipeline
-          </p>
+        <h3 className="text-lg font-medium">SLA Configuration</h3>
+        <p className="text-sm text-muted-foreground">
+          Configure Service Level Agreements for each stage in your pipeline
+        </p>
         </div>
         {hasChanges && (
           <Button

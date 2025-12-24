@@ -57,8 +57,8 @@ export function LoansDataTable({ data }: LoansDataTableProps) {
     const currencies = data
       .map((loan) => {
         if (typeof loan.currency === "object" && loan.currency !== null) {
-          return (loan.currency as any).code || String(loan.currency);
-        }
+        return (loan.currency as any).code || String(loan.currency);
+      }
         return String(loan.currency || "USD");
       })
       .filter(Boolean);
@@ -107,7 +107,7 @@ export function LoansDataTable({ data }: LoansDataTableProps) {
         }).length;
         return {
           label: `${status} (${count})`,
-          value: status,
+        value: status,
         };
       }),
     },
@@ -131,7 +131,7 @@ export function LoansDataTable({ data }: LoansDataTableProps) {
         }).length;
         return {
           label: `${currency} (${count})`,
-          value: currency,
+        value: currency,
         };
       }),
     },

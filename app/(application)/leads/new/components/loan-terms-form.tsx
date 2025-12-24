@@ -584,7 +584,7 @@ export function LoanTermsForm({
           console.log(
             "Set interestRateFrequency from template:",
             interestFreqValue
-          );
+            );
         } else if (loanTemplate.interestRateFrequencyTypeOptions?.length > 0) {
           interestFreqValue =
             loanTemplate.interestRateFrequencyTypeOptions[0].id.toString();
@@ -1594,19 +1594,19 @@ export function LoanTermsForm({
                 control={form.control}
                 name="firstRepaymentOn"
                 render={({ field }) => (
-                  <Button
-                    variant="outline"
+                      <Button
+                        variant="outline"
                     disabled
-                    className={cn(
+                        className={cn(
                       "h-10 w-full justify-start text-left font-normal cursor-not-allowed opacity-70",
-                      !field.value && "text-muted-foreground"
-                    )}
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {field.value
-                      ? format(field.value, "PPP")
+                          !field.value && "text-muted-foreground"
+                        )}
+                      >
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {field.value
+                          ? format(field.value, "PPP")
                       : "Set on Loan tab"}
-                  </Button>
+                      </Button>
                 )}
               />
               <p className="text-xs text-muted-foreground">

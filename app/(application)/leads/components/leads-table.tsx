@@ -74,29 +74,29 @@ export function LeadsTable({ initialData }: LeadsTableProps) {
       cell: ({ getValue, row }) => {
         const isNavigating = navigatingLeadId === row.original.id;
         return (
-          <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2">
             {isNavigating ? (
               <div className="h-8 w-8 flex items-center justify-center">
                 <Loader2 className="h-5 w-5 animate-spin text-primary" />
               </div>
             ) : (
-              <Avatar className="h-8 w-8">
+          <Avatar className="h-8 w-8">
                 <AvatarFallback className="bg-primary/10 text-primary">
-                  {getValue()
-                    ? (getValue() as string)
-                        .split(" ")
-                        .map((n) => n[0])
-                        .join("")
+              {getValue()
+                ? (getValue() as string)
+                    .split(" ")
+                    .map((n) => n[0])
+                    .join("")
                         .slice(0, 2)
                         .toUpperCase()
-                    : "UN"}
-                </AvatarFallback>
-              </Avatar>
+                : "UN"}
+            </AvatarFallback>
+          </Avatar>
             )}
             <span className={isNavigating ? "opacity-50" : ""}>
               {getValue()}
             </span>
-          </div>
+        </div>
         );
       },
     },
@@ -168,7 +168,7 @@ export function LeadsTable({ initialData }: LeadsTableProps) {
           const count = leads.filter((lead) => lead.type === type).length;
           return {
             label: `${type} (${count})`,
-            value: type,
+          value: type,
           };
         }
       ),

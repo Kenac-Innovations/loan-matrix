@@ -253,7 +253,8 @@ export function ClientsTable() {
     });
   };
 
-  if (isLoading) {
+  // Only show skeleton on initial load (when there's no data yet)
+  if (isLoading && !data) {
     return (
       <div className="space-y-4">
         {[...Array(5)].map((_, i) => (
@@ -292,7 +293,7 @@ export function ClientsTable() {
       <div className="space-y-4">
         {/* Search Input */}
         <div className="relative max-w-sm">
-          {isSearching ? (
+          {isSearching || isLoading ? (
             <Loader2 className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground animate-spin" />
           ) : (
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -336,7 +337,7 @@ export function ClientsTable() {
     <div className="space-y-4">
       {/* Search Input */}
       <div className="relative max-w-sm">
-        {isSearching ? (
+        {isSearching || isLoading ? (
           <Loader2 className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground animate-spin" />
         ) : (
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />

@@ -589,7 +589,7 @@ export function DynamicDatatableContent({
           }
         }
         return {
-          value: option.id.toString(),
+        value: option.id.toString(),
           label,
         };
       });

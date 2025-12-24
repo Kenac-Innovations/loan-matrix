@@ -202,10 +202,10 @@ export function TeamConfig() {
     <div className="space-y-6">
       <div className="flex items-start justify-between">
         <div className="space-y-1">
-          <h3 className="text-lg font-medium">Teams Configuration</h3>
-          <p className="text-sm text-muted-foreground">
-            Configure teams and assign them to pipeline stages
-          </p>
+        <h3 className="text-lg font-medium">Teams Configuration</h3>
+        <p className="text-sm text-muted-foreground">
+          Configure teams and assign them to pipeline stages
+        </p>
         </div>
         {hasChanges && (
           <Button

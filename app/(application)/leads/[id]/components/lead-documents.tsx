@@ -103,19 +103,19 @@ export function LeadDocuments({
         // Only fetch Fineract documents if not already provided
         if (initialClientDocuments.length === 0 && initialLoanDocuments.length === 0) {
           // Fetch lead complete details to get fineractLoanId and fineractClientId
-          const leadDetailsResponse = await fetch(
-            `/api/leads/${leadId}/complete-details`
-          );
-          if (leadDetailsResponse.ok) {
-            const leadDetails = await leadDetailsResponse.json();
+        const leadDetailsResponse = await fetch(
+          `/api/leads/${leadId}/complete-details`
+        );
+        if (leadDetailsResponse.ok) {
+          const leadDetails = await leadDetailsResponse.json();
             const loanId = leadDetails?.fineractLoan?.id;
             const clientId = leadDetails?.lead?.fineractClientId;
 
             if (loanId && !fineractLoanId) {
-              setFineractLoanId(loanId.toString());
-              // Fetch loan documents
-              await fetchLoanDocuments(loanId.toString());
-            }
+            setFineractLoanId(loanId.toString());
+            // Fetch loan documents
+            await fetchLoanDocuments(loanId.toString());
+          }
 
             if (clientId && !fineractClientId) {
               setFineractClientId(clientId.toString());
