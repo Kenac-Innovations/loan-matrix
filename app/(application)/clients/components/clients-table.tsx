@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import Link from "next/link";
-import useSWR from 'swr';
+import useSWR from "swr";
 import {
   Eye,
   Edit,
@@ -14,7 +14,10 @@ import {
   AlertCircle,
   ChevronLeft,
   ChevronRight,
+  Search,
+  X,
 } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -71,47 +74,88 @@ interface PaginationInfo {
 }
 
 // Simple fetcher for SWR
-const fetcher = (url: string) => fetch(url).then(res => res.json());
+const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
 export function ClientsTable() {
   const [offset, setOffset] = useState(0);
   const [limit, setLimit] = useState(20);
-  const [query, setQuery] = useState('');
+  const [searchInput, setSearchInput] = useState("");
+  const [query, setQuery] = useState("");
+  const [searchTimeout, setSearchTimeout] = useState<NodeJS.Timeout | null>(
+    null
+  );
+
+  // Debounced search handler
+  const handleSearchChange = useCallback(
+    (value: string) => {
+      setSearchInput(value);
+
+      // Clear previous timeout
+      if (searchTimeout) {
+        clearTimeout(searchTimeout);
+      }
+
+      // Set new timeout for debounced search
+      const timeout = setTimeout(() => {
+        setQuery(value);
+        setOffset(0); // Reset to first page on new search
+      }, 300);
+
+      setSearchTimeout(timeout);
+    },
+    [searchTimeout]
+  );
+
+  // Clear search
+  const handleClearSearch = useCallback(() => {
+    setSearchInput("");
+    setQuery("");
+    setOffset(0);
+    if (searchTimeout) {
+      clearTimeout(searchTimeout);
+    }
+  }, [searchTimeout]);
 
   // Build the API URL with query parameters
-  const apiUrl = `/api/fineract/clients?offset=${offset}&limit=${limit}${query ? `&query=${encodeURIComponent(query)}` : ''}`;
+  const apiUrl = `/api/fineract/clients?offset=${offset}&limit=${limit}${
+    query ? `&query=${encodeURIComponent(query)}` : ""
+  }`;
 
   const { data, error, isLoading, mutate } = useSWR(apiUrl, fetcher);
 
   // Handle different response formats from Fineract API
   const clients: FineractClient[] = (() => {
     if (!data) return [];
-    
+
     // Handle the specific response format from your backend
-    if (data.clients && data.clients.pageItems && Array.isArray(data.clients.pageItems)) {
+    if (
+      data.clients &&
+      data.clients.pageItems &&
+      Array.isArray(data.clients.pageItems)
+    ) {
       return data.clients.pageItems;
     }
-    
+
     // If data has a clients property (our wrapper)
     if (data.clients && Array.isArray(data.clients)) {
       return data.clients;
     }
-    
+
     // If data is directly an array
     if (Array.isArray(data)) {
       return data;
     }
-    
+
     // If data has pageItems (Fineract pagination format)
     if (data.pageItems && Array.isArray(data.pageItems)) {
       return data.pageItems;
     }
-    
+
     // If data has content (another Fineract format)
     if (data.content && Array.isArray(data.content)) {
       return data.content;
     }
-    
+
     // Fallback to empty array
     return [];
   })();
@@ -119,12 +163,12 @@ export function ClientsTable() {
   // Get total count from the response
   const totalCount = (() => {
     if (!data) return 0;
-    
+
     // Handle the specific response format from your backend
     if (data.clients && data.clients.totalFilteredRecords) {
       return data.clients.totalFilteredRecords;
     }
-    
+
     // Fallback to array length
     return clients.length;
   })();
@@ -174,7 +218,7 @@ export function ClientsTable() {
 
   const formatDate = (dateInput: string | number[] | undefined) => {
     if (!dateInput) return "Not specified";
-    
+
     let date: Date;
     if (Array.isArray(dateInput) && dateInput.length === 3) {
       const [year, month, day] = dateInput;
@@ -184,7 +228,7 @@ export function ClientsTable() {
     } else {
       return "Invalid date";
     }
-    
+
     return date.toLocaleDateString("en-US", {
       year: "numeric",
       month: "short",
@@ -228,13 +272,37 @@ export function ClientsTable() {
 
   if (clients.length === 0) {
     return (
-      <Card>
-        <CardContent className="p-6">
-          <div className="text-center text-muted-foreground">
-            No clients found. Please check your Fineract connection.
-          </div>
-        </CardContent>
-      </Card>
+      <div className="space-y-4">
+        {/* Search Input */}
+        <div className="relative max-w-sm">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            placeholder="Search by name or account number..."
+            value={searchInput}
+            onChange={(e) => handleSearchChange(e.target.value)}
+            className="pl-10 pr-10"
+          />
+          {searchInput && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 p-0"
+              onClick={handleClearSearch}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
+        <Card>
+          <CardContent className="p-6">
+            <div className="text-center text-muted-foreground">
+              {query
+                ? `No clients found matching "${query}". Try a different search term.`
+                : "No clients found. Please check your Fineract connection."}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
     );
   }
 
@@ -245,6 +313,27 @@ export function ClientsTable() {
 
   return (
     <div className="space-y-4">
+      {/* Search Input */}
+      <div className="relative max-w-sm">
+        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          placeholder="Search by name or account number..."
+          value={searchInput}
+          onChange={(e) => handleSearchChange(e.target.value)}
+          className="pl-10 pr-10"
+        />
+        {searchInput && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 p-0"
+            onClick={handleClearSearch}
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        )}
+      </div>
+
       <div className="rounded-md border">
         <Table>
           <TableHeader>
@@ -383,9 +472,7 @@ export function ClientsTable() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() =>
-                  handlePageChange(Math.max(0, offset - limit))
-                }
+                onClick={() => handlePageChange(Math.max(0, offset - limit))}
                 disabled={offset === 0}
               >
                 <ChevronLeft className="h-4 w-4" />
@@ -394,9 +481,7 @@ export function ClientsTable() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() =>
-                  handlePageChange(offset + limit)
-                }
+                onClick={() => handlePageChange(offset + limit)}
                 disabled={!hasMore}
               >
                 Next

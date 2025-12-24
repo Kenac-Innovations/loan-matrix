@@ -59,39 +59,165 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get("status");
     const limit = searchParams.get("limit") || "100";
     const offset = searchParams.get("offset") || "0";
+    const query = searchParams.get("query");
+    const accountNo = searchParams.get("accountNo");
 
-    // Build the Fineract API URL with query parameters
-    let url = `${baseUrl}/fineract-provider/api/v1/loans?limit=${limit}&offset=${offset}`;
-    if (status) {
-      url += `&status=${status}`;
-    }
+    let result;
 
-    console.log("Fetching loans from Fineract:", url);
-    console.log("Fineract-Platform-TenantId header:", fineractTenantId);
+    // If we have a search query, use Fineract's search API
+    if (query) {
+      console.log("Searching loans with query:", query);
 
-    const response = await fetch(url, {
-      method: "GET",
-      headers: {
-        Authorization: `Basic ${accessToken}`,
-        "Fineract-Platform-TenantId": fineractTenantId,
-        Accept: "application/json",
-      },
-      cache: "no-store",
-    });
+      // First search for matching accounts/clients
+      const searchUrl = `${baseUrl}/fineract-provider/api/v1/search?query=${encodeURIComponent(
+        query
+      )}&resource=loans,clients`;
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("Fineract loans fetch failed:", response.status, errorText);
-      return NextResponse.json(
-        {
-          success: false,
-          error: `Failed to fetch loans: ${response.status}`,
+      const searchResponse = await fetch(searchUrl, {
+        method: "GET",
+        headers: {
+          Authorization: `Basic ${accessToken}`,
+          "Fineract-Platform-TenantId": fineractTenantId,
+          Accept: "application/json",
         },
-        { status: response.status }
-      );
+        cache: "no-store",
+      });
+
+      if (searchResponse.ok) {
+        const searchResults = await searchResponse.json();
+        console.log("Search results:", searchResults?.length || 0);
+
+        // Extract loan IDs from search results and fetch full loan details
+        const loanIds = new Set<number>();
+        const clientIds = new Set<number>();
+
+        for (const item of searchResults || []) {
+          if (item.entityType === "LOAN") {
+            loanIds.add(item.entityId);
+          } else if (item.entityType === "CLIENT") {
+            clientIds.add(item.entityId);
+          }
+        }
+
+        // If we found clients, fetch their loans too
+        if (clientIds.size > 0) {
+          for (const clientId of Array.from(clientIds).slice(0, 10)) {
+            // Limit to 10 clients
+            const clientLoansUrl = `${baseUrl}/fineract-provider/api/v1/loans?sqlSearch=l.client_id=${clientId}`;
+            const clientLoansResponse = await fetch(clientLoansUrl, {
+              method: "GET",
+              headers: {
+                Authorization: `Basic ${accessToken}`,
+                "Fineract-Platform-TenantId": fineractTenantId,
+                Accept: "application/json",
+              },
+              cache: "no-store",
+            });
+            if (clientLoansResponse.ok) {
+              const clientLoans = await clientLoansResponse.json();
+              for (const loan of clientLoans?.pageItems || clientLoans || []) {
+                loanIds.add(loan.id);
+              }
+            }
+          }
+        }
+
+        // Fetch full details for found loans
+        const loans = [];
+        for (const loanId of Array.from(loanIds).slice(0, 50)) {
+          // Limit to 50 loans
+          const loanUrl = `${baseUrl}/fineract-provider/api/v1/loans/${loanId}`;
+          const loanResponse = await fetch(loanUrl, {
+            method: "GET",
+            headers: {
+              Authorization: `Basic ${accessToken}`,
+              "Fineract-Platform-TenantId": fineractTenantId,
+              Accept: "application/json",
+            },
+            cache: "no-store",
+          });
+          if (loanResponse.ok) {
+            const loan = await loanResponse.json();
+            loans.push(loan);
+          }
+        }
+
+        result = { pageItems: loans, totalFilteredRecords: loans.length };
+      } else {
+        // Fallback to regular listing if search fails
+        console.log("Search failed, falling back to regular listing");
+        result = { pageItems: [], totalFilteredRecords: 0 };
+      }
+    } else if (accountNo) {
+      // Search by exact account number
+      const accountUrl = `${baseUrl}/fineract-provider/api/v1/loans?sqlSearch=l.account_no='${accountNo}'`;
+
+      const response = await fetch(accountUrl, {
+        method: "GET",
+        headers: {
+          Authorization: `Basic ${accessToken}`,
+          "Fineract-Platform-TenantId": fineractTenantId,
+          Accept: "application/json",
+        },
+        cache: "no-store",
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(
+          "Fineract loans fetch failed:",
+          response.status,
+          errorText
+        );
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Failed to fetch loans: ${response.status}`,
+          },
+          { status: response.status }
+        );
+      }
+
+      result = await response.json();
+    } else {
+      // Regular listing with pagination
+      let url = `${baseUrl}/fineract-provider/api/v1/loans?limit=${limit}&offset=${offset}`;
+      if (status) {
+        url += `&status=${status}`;
+      }
+
+      console.log("Fetching loans from Fineract:", url);
+      console.log("Fineract-Platform-TenantId header:", fineractTenantId);
+
+      const response = await fetch(url, {
+        method: "GET",
+        headers: {
+          Authorization: `Basic ${accessToken}`,
+          "Fineract-Platform-TenantId": fineractTenantId,
+          Accept: "application/json",
+        },
+        cache: "no-store",
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(
+          "Fineract loans fetch failed:",
+          response.status,
+          errorText
+        );
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Failed to fetch loans: ${response.status}`,
+          },
+          { status: response.status }
+        );
+      }
+
+      result = await response.json();
     }
 
-    const result = await response.json();
     console.log(
       "Loans fetched successfully, count:",
       result?.pageItems?.length || result?.length || 0
