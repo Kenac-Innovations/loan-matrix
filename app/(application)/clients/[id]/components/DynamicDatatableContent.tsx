@@ -29,16 +29,23 @@ import {
 interface DynamicDatatableContentProps {
   datatableName: string;
   clientId: number;
+  initialData?: any;
 }
 
 export function DynamicDatatableContent({
   datatableName,
   clientId,
+  initialData,
 }: DynamicDatatableContentProps) {
-  const [headers, setHeaders] = useState<any[]>([]);
-  const [rows, setRows] = useState<any[][]>([]);
-  const [rowData, setRowData] = useState<any[]>([]); // Store full row data including IDs
-  const [loading, setLoading] = useState(true);
+  // Initialize state from server-provided data if available
+  const [headers, setHeaders] = useState<any[]>(
+    initialData?.columnHeaders || []
+  );
+  const [rows, setRows] = useState<any[][]>(
+    (initialData?.data || []).map((r: any) => r.row)
+  );
+  const [rowData, setRowData] = useState<any[]>(initialData?.data || []); // Store full row data including IDs
+  const [loading, setLoading] = useState(!initialData);
   const [error, setError] = useState<string | null>(null);
   const [editingRowIndex, setEditingRowIndex] = useState<number | null>(null);
   const [editedData, setEditedData] = useState<Record<string, any>>({});
@@ -51,6 +58,11 @@ export function DynamicDatatableContent({
   const { toast } = useToast();
 
   useEffect(() => {
+    // Skip initial fetch if we have server-provided data
+    if (initialData) {
+      return;
+    }
+
     const load = async () => {
       try {
         setLoading(true);
@@ -76,7 +88,7 @@ export function DynamicDatatableContent({
       }
     };
     load();
-  }, [datatableName, clientId]);
+  }, [datatableName, clientId, initialData]);
 
   const formatCell = (
     val: any,
@@ -589,7 +601,7 @@ export function DynamicDatatableContent({
           }
         }
         return {
-        value: option.id.toString(),
+          value: option.id.toString(),
           label,
         };
       });

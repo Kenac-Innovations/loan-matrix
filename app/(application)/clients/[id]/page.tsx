@@ -1,40 +1,17 @@
-import { Suspense } from "react";
 import { notFound } from "next/navigation";
-import {
-  ArrowLeft,
-  User,
-  Phone,
-  Mail,
-  MapPin,
-  Calendar,
-  CreditCard,
-  DollarSign,
-  AlertCircle,
-  FileText,
-  Activity,
-  Edit,
-  Receipt,
-  FileSpreadsheet,
-  History,
-} from "lucide-react";
-import Link from "next/link";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { CreditCard, Receipt, FileSpreadsheet, Database } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { headers } from "next/headers";
+import { getSession } from "@/lib/auth";
+import { getFineractTenantId } from "@/lib/fineract-tenant-service";
 import { ClientDetails } from "./components/client-details";
 import { ClientLoans } from "./components/client-loans";
 import { ClientTransactions } from "./components/client-transactions";
 import { ClientDocuments } from "./components/client-documents";
-import { DynamicDatatableContent } from "./components/DynamicDatatableContent";
+import { ClientAdditionalInfo } from "./components/client-additional-info";
+import { ClientHeader } from "./components/client-header";
+
+const FINERACT_BASE_URL =
+  process.env.FINERACT_BASE_URL || "http://10.10.0.143:8443";
 
 interface PageProps {
   params: Promise<{
@@ -42,59 +19,264 @@ interface PageProps {
   }>;
 }
 
+/**
+ * Fetch client data from Fineract
+ */
+async function getClientData(clientId: number) {
+  try {
+    const session = await getSession();
+    const accessToken =
+      session?.base64EncodedAuthenticationKey || session?.accessToken;
+
+    if (!accessToken) {
+      console.warn("No access token available for client fetch");
+      return null;
+    }
+
+    const fineractTenantId = await getFineractTenantId();
+
+    const response = await fetch(
+      `${FINERACT_BASE_URL}/fineract-provider/api/v1/clients/${clientId}`,
+      {
+        method: "GET",
+        headers: {
+          Authorization: `Basic ${accessToken}`,
+          "Fineract-Platform-TenantId": fineractTenantId,
+          Accept: "application/json",
+        },
+        cache: "no-store",
+      }
+    );
+
+    if (!response.ok) {
+      console.error(`Failed to fetch client ${clientId}:`, response.status);
+      return null;
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error("Error fetching client data:", error);
+    return null;
+  }
+}
+
+/**
+ * Fetch client image from Fineract
+ */
+async function getClientImage(clientId: number): Promise<string | null> {
+  try {
+    const session = await getSession();
+    const accessToken =
+      session?.base64EncodedAuthenticationKey || session?.accessToken;
+
+    if (!accessToken) {
+      return null;
+    }
+
+    const fineractTenantId = await getFineractTenantId();
+
+    const response = await fetch(
+      `${FINERACT_BASE_URL}/fineract-provider/api/v1/clients/${clientId}/images?maxHeight=200`,
+      {
+        method: "GET",
+        headers: {
+          Authorization: `Basic ${accessToken}`,
+          "Fineract-Platform-TenantId": fineractTenantId,
+          Accept: "application/json, text/plain, */*",
+        },
+        cache: "no-store",
+      }
+    );
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const contentType = response.headers.get("content-type");
+    let imageData: any;
+
+    if (contentType?.includes("application/json")) {
+      imageData = await response.json();
+    } else {
+      imageData = await response.text();
+    }
+
+    if (!imageData) return null;
+
+    // Helper to check if string looks like base64
+    const isBase64Like = (str: string): boolean => {
+      const base64Regex = /^[A-Za-z0-9+/=]+$/;
+      return base64Regex.test(str) && str.length > 10;
+    };
+
+    // Convert to data URI
+    if (typeof imageData === "string") {
+      if (imageData.startsWith("data:image/")) {
+        return imageData;
+      } else if (isBase64Like(imageData)) {
+        return `data:image/jpeg;base64,${imageData}`;
+      }
+    } else if (imageData?.imageData) {
+      if (imageData.imageData.startsWith("data:image/")) {
+        return imageData.imageData;
+      } else if (isBase64Like(imageData.imageData)) {
+        return `data:image/jpeg;base64,${imageData.imageData}`;
+      }
+    } else if (imageData?.base64EncodedImage) {
+      if (imageData.base64EncodedImage.startsWith("data:image/")) {
+        return imageData.base64EncodedImage;
+      } else if (isBase64Like(imageData.base64EncodedImage)) {
+        return `data:image/jpeg;base64,${imageData.base64EncodedImage}`;
+      }
+    }
+
+    return null;
+  } catch (error) {
+    console.error("Error fetching client image:", error);
+    return null;
+  }
+}
+
+/**
+ * Fetch datatables list for clients
+ */
+async function getDatatables() {
+  try {
+    const session = await getSession();
+    const accessToken =
+      session?.base64EncodedAuthenticationKey || session?.accessToken;
+
+    if (!accessToken) {
+      console.warn("No access token available for datatables fetch");
+      return [];
+    }
+
+    const fineractTenantId = await getFineractTenantId();
+
+    const response = await fetch(
+      `${FINERACT_BASE_URL}/fineract-provider/api/v1/datatables?apptable=m_client`,
+      {
+        method: "GET",
+        headers: {
+          Authorization: `Basic ${accessToken}`,
+          "Fineract-Platform-TenantId": fineractTenantId,
+          Accept: "application/json",
+        },
+        cache: "no-store",
+      }
+    );
+
+    if (!response.ok) {
+      console.error("Failed to fetch datatables:", response.status);
+      return [];
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error("Error fetching datatables:", error);
+    return [];
+  }
+}
+
+/**
+ * Fetch datatable data for a specific client
+ */
+async function getDatatableData(
+  clientId: number,
+  datatables: any[]
+): Promise<Record<string, any>> {
+  const datatableData: Record<string, any> = {};
+
+  if (!datatables || datatables.length === 0) {
+    return datatableData;
+  }
+
+  try {
+    const session = await getSession();
+    const accessToken =
+      session?.base64EncodedAuthenticationKey || session?.accessToken;
+
+    if (!accessToken) {
+      return datatableData;
+    }
+
+    const fineractTenantId = await getFineractTenantId();
+
+    // Fetch data for each datatable
+    await Promise.all(
+      datatables.map(async (dt: any) => {
+        try {
+          const response = await fetch(
+            `${FINERACT_BASE_URL}/fineract-provider/api/v1/datatables/${encodeURIComponent(
+              dt.registeredTableName
+            )}/${clientId}?genericResultSet=true`,
+            {
+              method: "GET",
+              headers: {
+                Authorization: `Basic ${accessToken}`,
+                "Fineract-Platform-TenantId": fineractTenantId,
+                Accept: "application/json",
+              },
+              cache: "no-store",
+            }
+          );
+
+          if (response.ok) {
+            const data = await response.json();
+            datatableData[dt.registeredTableName] = data;
+          }
+        } catch (err) {
+          console.warn(
+            `Failed to fetch data for ${dt.registeredTableName}:`,
+            err
+          );
+        }
+      })
+    );
+  } catch (error) {
+    console.error("Error fetching datatable data:", error);
+  }
+
+  return datatableData;
+}
+
 export default async function ClientDetailPage({ params }: PageProps) {
   const { id } = await params;
-  const clientId = parseInt(id);
+  const clientId = Number.parseInt(id);
 
-  if (isNaN(clientId)) {
+  if (Number.isNaN(clientId)) {
     notFound();
   }
 
-  // Fetch dynamic datatable list for this client page
-  let dynamicTabs: any[] = [];
-  try {
-    const h = await headers();
-    const host = h.get("x-forwarded-host") || h.get("host") || "localhost:3000";
-    const proto = h.get("x-forwarded-proto") || "http";
-    const origin = `${proto}://${host}`;
-    const res = await fetch(
-      `${origin}/api/fineract/datatables?apptable=m_client`,
-      { cache: "no-store" }
-    );
-    if (res.ok) dynamicTabs = await res.json();
-  } catch {}
+  // Fetch all data server-side in parallel
+  const [client, clientImage, datatables] = await Promise.all([
+    getClientData(clientId),
+    getClientImage(clientId),
+    getDatatables(),
+  ]);
+
+  // Fetch datatable data after we have the datatables list
+  const datatableData = await getDatatableData(clientId, datatables || []);
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center gap-4">
-        <Link href="/clients">
-          <Button variant="outline" size="sm">
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-        </Link>
-        <div className="flex-1">
-          <h1 className="text-3xl font-bold tracking-tight">Client Details</h1>
-          <p className="text-muted-foreground">
-            View and manage client information
-          </p>
-        </div>
-        <Link href={`/clients/${clientId}/edit`}>
-          <Button size="sm">
-            <Edit className="h-4 w-4 mr-2" />
-            Edit Client
-          </Button>
-        </Link>
-      </div>
+      {/* Enhanced Header with Breadcrumbs */}
+      <ClientHeader
+        clientId={clientId}
+        client={client}
+        clientImage={clientImage}
+      />
 
-      {/* Client Overview */}
-      <Suspense fallback={<div>Loading client details...</div>}>
-        <ClientDetails clientId={clientId} />
-      </Suspense>
+      {/* Client Overview Cards */}
+      <ClientDetails
+        clientId={clientId}
+        client={client}
+        clientImage={clientImage}
+      />
 
       {/* Detailed Information Tabs */}
       <Tabs defaultValue="loans" className="space-y-4">
-        <TabsList>
+        <TabsList className="w-full sm:w-auto overflow-x-auto">
           <TabsTrigger
             value="loans"
             className="flex items-center gap-2 px-2 md:px-3"
@@ -117,120 +299,34 @@ export default async function ClientDetailPage({ params }: PageProps) {
             <span className="hidden sm:inline">Documents</span>
           </TabsTrigger>
           <TabsTrigger
-            value="activity"
+            value="additional-info"
             className="flex items-center gap-2 px-2 md:px-3"
           >
-            <History className="h-4 w-4" />
-            <span className="hidden sm:inline">Activity</span>
+            <Database className="h-4 w-4" />
+            <span className="hidden sm:inline">Additional Info</span>
           </TabsTrigger>
         </TabsList>
 
-        {/* Dynamic datatable tabs */}
-        {Array.isArray(dynamicTabs) && dynamicTabs.length > 0 && (
-          <TabsList className="w-full overflow-x-auto">
-            {dynamicTabs.map((dt: any) => (
-              <TabsTrigger
-                key={dt.registeredTableName}
-                value={`dt-${dt.registeredTableName}`}
-                className="px-3"
-              >
-                {dt.registeredTableName}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        )}
-
         <TabsContent value="loans" className="space-y-4">
-          <Suspense fallback={<div>Loading loans...</div>}>
-            <ClientLoans clientId={clientId} />
-          </Suspense>
+          <ClientLoans clientId={clientId} />
         </TabsContent>
 
         <TabsContent value="transactions" className="space-y-4">
-          <Suspense fallback={<div>Loading transactions...</div>}>
-            <ClientTransactions clientId={clientId} />
-          </Suspense>
+          <ClientTransactions clientId={clientId} />
         </TabsContent>
 
         <TabsContent value="documents" className="space-y-4">
-          <Suspense fallback={<div>Loading documents...</div>}>
-            <ClientDocuments clientId={clientId} />
-          </Suspense>
+          <ClientDocuments clientId={clientId} />
         </TabsContent>
 
-        <TabsContent value="activity" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Recent Activity</CardTitle>
-              <CardDescription>
-                Timeline of client interactions and updates
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <div className="flex items-start gap-3">
-                  <div className="rounded-full bg-blue-500/20 p-1.5">
-                    <Activity className="h-4 w-4 text-blue-500" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium">Client activated</p>
-                    <p className="text-xs text-muted-foreground">
-                      Client account was successfully activated
-                    </p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      Today, 09:42 AM
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-start gap-3">
-                  <div className="rounded-full bg-green-500/20 p-1.5">
-                    <CreditCard className="h-4 w-4 text-green-500" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium">
-                      Loan application submitted
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      New loan application for $50,000 submitted
-                    </p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      Yesterday, 2:30 PM
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-start gap-3">
-                  <div className="rounded-full bg-purple-500/20 p-1.5">
-                    <FileText className="h-4 w-4 text-purple-500" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium">Documents uploaded</p>
-                    <p className="text-xs text-muted-foreground">
-                      KYC documents uploaded and verified
-                    </p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      2 days ago, 11:15 AM
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+        {/* Additional Info Tab - Dynamic Datatables */}
+        <TabsContent value="additional-info" className="space-y-4">
+          <ClientAdditionalInfo
+            clientId={clientId}
+            datatables={datatables || []}
+            datatableData={datatableData}
+          />
         </TabsContent>
-
-        {/* Dynamic datatable contents */}
-        {Array.isArray(dynamicTabs) &&
-          dynamicTabs.map((dt: any) => (
-            <TabsContent
-              key={`content-${dt.registeredTableName}`}
-              value={`dt-${dt.registeredTableName}`}
-              className="space-y-4"
-            >
-              <DynamicDatatableContent
-                datatableName={dt.registeredTableName}
-                clientId={clientId}
-              />
-            </TabsContent>
-          ))}
       </Tabs>
     </div>
   );

@@ -1,34 +1,25 @@
-"use client";
-
-import useSWR from 'swr';
 import {
   User,
   Phone,
   Mail,
-  MapPin,
   Calendar,
-  CreditCard,
-  DollarSign,
   AlertCircle,
   Building,
   Hash,
+  Users,
 } from "lucide-react";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 interface FineractClient {
   id: number;
   accountNo: string;
+  externalId?: string;
   displayName: string;
-  firstname: string;
-  lastname: string;
+  firstname?: string;
+  lastname?: string;
+  middlename?: string;
   mobileNo?: string;
   emailAddress?: string;
   status: {
@@ -39,6 +30,7 @@ interface FineractClient {
   active: boolean;
   activationDate?: string | number[];
   officeName: string;
+  officeId?: number;
   timeline: {
     submittedOnDate: string | number[];
     activatedOnDate?: string | number[];
@@ -48,36 +40,27 @@ interface FineractClient {
     id: number;
     name: string;
   };
+  clientClassification?: {
+    id: number;
+    name: string;
+  };
+  clientType?: {
+    id: number;
+    name: string;
+  };
 }
 
 interface ClientDetailsProps {
   clientId: number;
+  client: FineractClient | null;
+  clientImage: string | null;
 }
 
-// Simple fetcher for SWR
-const fetcher = (url: string) => fetch(url).then(res => res.json());
-
-export function ClientDetails({ clientId }: ClientDetailsProps) {
-  const { data, error, isLoading } = useSWR(`/api/fineract/clients/${clientId}`, fetcher);
-
-  // Handle different response formats
-  const client: FineractClient | null = (() => {
-    if (!data) return null;
-    
-    // If data has a client property (our wrapper)
-    if (data.client) {
-      return data.client;
-    }
-    
-    // If data is directly the client object
-    if (data.id && data.accountNo) {
-      return data;
-    }
-    
-    // Fallback to null
-    return null;
-  })();
-
+export function ClientDetails({
+  clientId,
+  client,
+  clientImage,
+}: ClientDetailsProps) {
   const getStatusBadge = (
     status: FineractClient["status"],
     active: boolean
@@ -112,7 +95,7 @@ export function ClientDetails({ clientId }: ClientDetailsProps) {
 
   const formatDate = (dateInput: string | number[] | undefined) => {
     if (!dateInput) return "Not specified";
-    
+
     let date: Date;
     if (Array.isArray(dateInput) && dateInput.length === 3) {
       const [year, month, day] = dateInput;
@@ -122,7 +105,7 @@ export function ClientDetails({ clientId }: ClientDetailsProps) {
     } else {
       return "Invalid date";
     }
-    
+
     return date.toLocaleDateString("en-US", {
       year: "numeric",
       month: "long",
@@ -130,28 +113,7 @@ export function ClientDetails({ clientId }: ClientDetailsProps) {
     });
   };
 
-  if (isLoading) {
-    return (
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        {[...Array(3)].map((_, i) => (
-          <Card key={i}>
-            <CardHeader>
-              <div className="h-6 w-32 bg-muted animate-pulse rounded" />
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                <div className="h-4 w-full bg-muted animate-pulse rounded" />
-                <div className="h-4 w-3/4 bg-muted animate-pulse rounded" />
-                <div className="h-4 w-1/2 bg-muted animate-pulse rounded" />
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-    );
-  }
-
-  if (error || !client) {
+  if (!client) {
     return (
       <Card>
         <CardContent className="p-6">
@@ -178,12 +140,12 @@ export function ClientDetails({ clientId }: ClientDetailsProps) {
           <div className="flex items-center gap-4">
             <Avatar className="h-16 w-16">
               <AvatarImage
-                src={`/api/placeholder/64/64?text=${client.firstname[0]}${client.lastname[0]}`}
+                src={clientImage || undefined}
                 alt={client.displayName}
               />
               <AvatarFallback className="text-lg">
-                {client.firstname[0]}
-                {client.lastname[0]}
+                {client.firstname?.[0] || ""}
+                {client.lastname?.[0] || ""}
               </AvatarFallback>
             </Avatar>
             <div>
@@ -208,6 +170,15 @@ export function ClientDetails({ clientId }: ClientDetailsProps) {
                 {client.accountNo}
               </span>
             </div>
+            {client.externalId && (
+              <div className="flex items-center gap-2">
+                <Hash className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm">
+                  <span className="font-medium">External ID:</span>{" "}
+                  <span className="font-mono">{client.externalId}</span>
+                </span>
+              </div>
+            )}
             {client.gender && (
               <div className="flex items-center gap-2">
                 <User className="h-4 w-4 text-muted-foreground" />
@@ -223,6 +194,24 @@ export function ClientDetails({ clientId }: ClientDetailsProps) {
                 <span className="text-sm">
                   <span className="font-medium">Date of Birth:</span>{" "}
                   {formatDate(client.dateOfBirth)}
+                </span>
+              </div>
+            )}
+            {client.clientType && (
+              <div className="flex items-center gap-2">
+                <Users className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm">
+                  <span className="font-medium">Client Type:</span>{" "}
+                  {client.clientType.name}
+                </span>
+              </div>
+            )}
+            {client.clientClassification && (
+              <div className="flex items-center gap-2">
+                <Users className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm">
+                  <span className="font-medium">Classification:</span>{" "}
+                  {client.clientClassification.name}
                 </span>
               </div>
             )}
