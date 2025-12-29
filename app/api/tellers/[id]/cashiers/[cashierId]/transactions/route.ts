@@ -5,7 +5,7 @@ import { getTenantFromHeaders } from "@/lib/tenant-service";
 
 /**
  * GET /api/tellers/[id]/cashiers/[cashierId]/transactions
- * Get transactions for a cashier
+ * Get summary and transactions for a cashier
  */
 export async function GET(
   request: NextRequest,
@@ -20,9 +20,24 @@ export async function GET(
       return NextResponse.json({ error: "Tenant not found" }, { status: 404 });
     }
 
-    const teller = await prisma.teller.findFirst({
+    // Handle fineract-prefixed IDs for teller
+    let fineractTellerIdFromPrefix: number | null = null;
+    if (tellerId.startsWith("fineract-")) {
+      fineractTellerIdFromPrefix = parseInt(tellerId.replace("fineract-", ""));
+    }
+
+    // Get teller by database ID or Fineract ID
+    let teller = await prisma.teller.findFirst({
       where: { id: tellerId, tenantId: tenant.id },
     });
+
+    // Try by Fineract ID if not found
+    const fineractTellerIdToSearch = fineractTellerIdFromPrefix || (!isNaN(Number(tellerId)) ? Number(tellerId) : null);
+    if (!teller && fineractTellerIdToSearch) {
+      teller = await prisma.teller.findFirst({
+        where: { fineractTellerId: fineractTellerIdToSearch, tenantId: tenant.id },
+      });
+    }
 
     if (!teller || !teller.fineractTellerId) {
       return NextResponse.json(
@@ -31,50 +46,52 @@ export async function GET(
       );
     }
 
-    // Try to find cashier by database ID first, then by Fineract ID
+    // Parse cashierId - could be database ID or Fineract ID
+    const cashierIdNum = parseInt(cashierId);
+    const isNumericId = !isNaN(cashierIdNum);
+
+    // Try to find cashier by database ID first
     let cashier = await prisma.cashier.findFirst({
-      where: { id: cashierId, tellerId, tenantId: tenant.id },
+      where: { id: cashierId, tellerId: teller.id, tenantId: tenant.id },
     });
 
-    // If not found by database ID, try Fineract ID
-    if (!cashier) {
-      const fineractCashierId = parseInt(cashierId);
-      if (!isNaN(fineractCashierId)) {
-        cashier = await prisma.cashier.findFirst({
-          where: {
-            fineractCashierId,
-            tellerId,
-            tenantId: tenant.id,
-          },
-        });
-      }
+    // If not found by database ID and cashierId is numeric, try Fineract ID
+    if (!cashier && isNumericId) {
+      cashier = await prisma.cashier.findFirst({
+        where: {
+          fineractCashierId: cashierIdNum,
+          tellerId: teller.id,
+          tenantId: tenant.id,
+        },
+      });
     }
 
     // Get Fineract cashier ID
-    const fineractCashierId = cashier?.fineractCashierId || parseInt(cashierId);
-
-    if (isNaN(fineractCashierId)) {
+    let fineractCashierId: number;
+    if (cashier?.fineractCashierId) {
+      fineractCashierId = cashier.fineractCashierId;
+    } else if (isNumericId) {
+      fineractCashierId = cashierIdNum;
+    } else {
       return NextResponse.json(
         { error: "Cashier not found or invalid cashier ID" },
         { status: 404 }
       );
     }
 
-    // Get date range from query params
+    // Get currency code from query params (default to ZMW)
     const { searchParams } = new URL(request.url);
-    const fromDate = searchParams.get("fromDate") || undefined;
-    const toDate = searchParams.get("toDate") || undefined;
+    const currencyCode = searchParams.get("currencyCode") || "ZMW";
 
-    // Fetch transactions from Fineract
+    // Fetch summary and transactions from Fineract
     const fineractService = await getFineractServiceWithSession();
-    const transactions = await fineractService.getCashierTransactions(
+    const summaryAndTransactions = await fineractService.getCashierSummaryAndTransactions(
       teller.fineractTellerId,
       fineractCashierId,
-      fromDate,
-      toDate
+      currencyCode
     );
 
-    return NextResponse.json(transactions);
+    return NextResponse.json(summaryAndTransactions);
   } catch (error) {
     console.error("Error fetching cashier transactions:", error);
     return NextResponse.json(
@@ -86,5 +103,3 @@ export async function GET(
     );
   }
 }
-
-

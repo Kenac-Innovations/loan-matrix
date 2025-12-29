@@ -38,10 +38,12 @@ import { SearchableSelect } from "@/components/searchable-select";
 import { AllocateCashModal } from "@/app/(application)/tellers/components/allocate-cash-modal";
 import { SettleCashModal } from "./components/settle-cash-modal";
 import { ReconcileCashModal } from "./components/reconcile-cash-modal";
-import { TransactionsModal } from "./components/transactions-modal";
+// TransactionsModal replaced with dedicated page at /tellers/[id]/cashiers/[cashierId]/transactions
 import { StartSessionModal } from "./components/start-session-modal";
 import { CloseSessionModal } from "./components/close-session-modal";
 import { EditCashierModal } from "./components/edit-cashier-modal";
+import { CashInModal } from "./components/cash-in-modal";
+import { CashOutModal } from "./components/cash-out-modal";
 import {
   DollarSign,
   Wallet,
@@ -52,6 +54,8 @@ import {
   MoreHorizontal,
   Edit,
   RotateCcw,
+  ArrowDownLeft,
+  ArrowUpRight,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -79,6 +83,7 @@ interface Cashier {
   cashOut?: number;
   netCash?: number;
   expectedBalance?: number;
+  currencyCode?: string;
 }
 
 interface Staff {
@@ -105,9 +110,10 @@ export default function CashiersPage({
   const [showAllocateModal, setShowAllocateModal] = useState(false);
   const [showSettleModal, setShowSettleModal] = useState(false);
   const [showReconcileModal, setShowReconcileModal] = useState(false);
-  const [showTransactionsModal, setShowTransactionsModal] = useState(false);
   const [showStartSessionModal, setShowStartSessionModal] = useState(false);
   const [showCloseSessionModal, setShowCloseSessionModal] = useState(false);
+  const [showCashInModal, setShowCashInModal] = useState(false);
+  const [showCashOutModal, setShowCashOutModal] = useState(false);
   const [selectedCashier, setSelectedCashier] = useState<Cashier | null>(null);
   const [sessionData, setSessionData] = useState<any>(null);
   const [formData, setFormData] = useState({
@@ -179,36 +185,65 @@ export default function CashiersPage({
         const data = await response.json();
         setCashiers(data || []);
 
-        // Fetch session data for each cashier
+        // Fetch session data and Fineract balance for each cashier
         for (const cashier of data || []) {
           const cashierId = cashier.dbId || cashier.id.toString();
+          const fineractCashierId = cashier.id || cashier.fineractCashierId;
+          
           try {
+            // Fetch local session data
             const sessionResponse = await fetch(
               `/api/tellers/${id}/cashiers/${cashierId}/session`
             );
-            if (sessionResponse.ok) {
-              const sessionInfo = await sessionResponse.json();
-              // Update cashier with session data
-              const updatedCashier = {
-                ...cashier,
-                sessionStatus:
-                  sessionInfo.session?.sessionStatus || "NOT_STARTED",
-                allocatedBalance: sessionInfo.balances?.allocatedBalance || 0,
-                availableBalance: sessionInfo.balances?.availableBalance || 0,
-                openingFloat: sessionInfo.balances?.openingFloat || 0,
-                cashIn: sessionInfo.balances?.cashIn || 0,
-                cashOut: sessionInfo.balances?.cashOut || 0,
-                netCash: sessionInfo.balances?.netCash || 0,
-                expectedBalance: sessionInfo.balances?.expectedBalance || 0,
-              };
-              setCashiers((prev) =>
-                prev.map((c) =>
-                  (c.dbId || c.id.toString()) === cashierId ? updatedCashier : c
-                )
-              );
+            
+            // Fetch Fineract balance (use first available currency)
+            const currencyResponse = await fetch("/api/fineract/currencies");
+            let fineractBalance = 0;
+            let currencyCode = "USD";
+            
+            if (currencyResponse.ok) {
+              const currencyData = await currencyResponse.json();
+              const currencies = currencyData.selectedCurrencyOptions || currencyData || [];
+              if (currencies.length > 0) {
+                currencyCode = currencies[0].code;
+                
+                // Fetch Fineract summary
+                const summaryResponse = await fetch(
+                  `/api/tellers/${id}/cashiers/${cashierId}/transactions?currencyCode=${currencyCode}`
+                );
+                if (summaryResponse.ok) {
+                  const summaryData = await summaryResponse.json();
+                  fineractBalance = summaryData.netCash || 0;
+                }
+              }
             }
+            
+            let sessionInfo = { session: null, balances: {} };
+            if (sessionResponse.ok) {
+              sessionInfo = await sessionResponse.json();
+            }
+            
+            // Update cashier with session data and Fineract balance
+            const updatedCashier = {
+              ...cashier,
+              sessionStatus:
+                sessionInfo.session?.sessionStatus || "NOT_STARTED",
+              allocatedBalance: sessionInfo.balances?.allocatedBalance || 0,
+              availableBalance: sessionInfo.balances?.availableBalance || 0,
+              openingFloat: sessionInfo.balances?.openingFloat || 0,
+              cashIn: sessionInfo.balances?.cashIn || 0,
+              cashOut: sessionInfo.balances?.cashOut || 0,
+              netCash: fineractBalance, // Use Fineract balance
+              expectedBalance: sessionInfo.balances?.expectedBalance || 0,
+              currencyCode,
+            };
+            setCashiers((prev) =>
+              prev.map((c) =>
+                (c.dbId || c.id.toString()) === cashierId ? updatedCashier : c
+              )
+            );
           } catch (error) {
-            console.error("Error fetching session for cashier:", error);
+            console.error("Error fetching data for cashier:", error);
           }
         }
       }
@@ -386,6 +421,42 @@ export default function CashiersPage({
       },
     },
     {
+      id: "balance",
+      header: "Balance",
+      cell: ({ row }: { row: any }) => {
+        const cashier = row.original as Cashier;
+        const balance = cashier.netCash || 0;
+        const currency = cashier.currencyCode || "USD";
+        
+        const formatAmount = (amount: number) => {
+          try {
+            return new Intl.NumberFormat("en-US", {
+              style: "currency",
+              currency: currency,
+            }).format(amount);
+          } catch {
+            return `${currency} ${amount.toFixed(2)}`;
+          }
+        };
+        
+        return (
+          <div className="text-right">
+            <span
+              className={`font-semibold ${
+                balance > 0
+                  ? "text-green-600"
+                  : balance < 0
+                  ? "text-red-600"
+                  : "text-muted-foreground"
+              }`}
+            >
+              {formatAmount(balance)}
+            </span>
+          </div>
+        );
+      },
+    },
+    {
       id: "sessionStatus",
       header: "Session",
       cell: ({ row }: { row: any }) => {
@@ -395,6 +466,7 @@ export default function CashiersPage({
           NOT_STARTED: "bg-gray-500",
           ACTIVE: "bg-green-500",
           CLOSED: "bg-yellow-500",
+          SETTLED: "bg-purple-500",
           CLOSED_VERIFIED: "bg-blue-500",
         };
         return (
@@ -462,29 +534,36 @@ export default function CashiersPage({
               )}
               {canCloseSession && (
                 <DropdownMenuItem
-                  onClick={async (e) => {
+                  onClick={(e) => {
                     e.stopPropagation();
                     setSelectedCashier(cashier);
-                    // Fetch latest session data
-                    const cashierId = cashier.dbId || cashier.id.toString();
-                    try {
-                      const response = await fetch(
-                        `/api/tellers/${tellerId}/cashiers/${cashierId}/session`
-                      );
-                      if (response.ok) {
-                        const data = await response.json();
-                        setSessionData(data);
-                        setShowCloseSessionModal(true);
-                      }
-                    } catch (error) {
-                      console.error("Error fetching session:", error);
-                    }
+                    setShowCloseSessionModal(true);
                   }}
                 >
                   <Square className="h-4 w-4 mr-2" />
                   Close Session
                 </DropdownMenuItem>
               )}
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSelectedCashier(cashier);
+                  setShowCashInModal(true);
+                }}
+              >
+                <ArrowDownLeft className="h-4 w-4 mr-2 text-green-600" />
+                Cash In
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSelectedCashier(cashier);
+                  setShowCashOutModal(true);
+                }}
+              >
+                <ArrowUpRight className="h-4 w-4 mr-2 text-red-600" />
+                Cash Out
+              </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={(e) => {
                   e.stopPropagation();
@@ -498,8 +577,8 @@ export default function CashiersPage({
               <DropdownMenuItem
                 onClick={(e) => {
                   e.stopPropagation();
-                  setSelectedCashier(cashier);
-                  setShowTransactionsModal(true);
+                  const cashierIdToUse = cashier.dbId || cashier.id.toString();
+                  router.push(`/tellers/${tellerId}/cashiers/${cashierIdToUse}/transactions`);
                 }}
               >
                 <Eye className="h-4 w-4 mr-2" />
@@ -756,17 +835,6 @@ export default function CashiersPage({
         />
       )}
 
-      {/* Transactions Modal */}
-      {selectedCashier && (
-        <TransactionsModal
-          open={showTransactionsModal}
-          onOpenChange={setShowTransactionsModal}
-          tellerId={tellerId}
-          cashierId={selectedCashier.dbId || selectedCashier.id.toString()}
-          cashierName={selectedCashier.staffName}
-        />
-      )}
-
       {/* Start Session Modal */}
       {selectedCashier && (
         <StartSessionModal
@@ -784,17 +852,13 @@ export default function CashiersPage({
       )}
 
       {/* Close Session Modal */}
-      {selectedCashier && sessionData && (
+      {selectedCashier && (
         <CloseSessionModal
           open={showCloseSessionModal}
           onOpenChange={setShowCloseSessionModal}
           tellerId={tellerId}
           cashierId={selectedCashier.dbId || selectedCashier.id.toString()}
           cashierName={selectedCashier.staffName}
-          expectedBalance={sessionData.balances?.expectedBalance || 0}
-          openingFloat={sessionData.balances?.openingFloat || 0}
-          cashIn={sessionData.balances?.cashIn || 0}
-          cashOut={sessionData.balances?.cashOut || 0}
         />
       )}
 
@@ -817,6 +881,34 @@ export default function CashiersPage({
           tellerId={tellerId}
           cashierId={selectedCashier.dbId || selectedCashier.id.toString()}
           cashierName={selectedCashier.staffName}
+        />
+      )}
+
+      {/* Cash In Modal */}
+      {selectedCashier && (
+        <CashInModal
+          open={showCashInModal}
+          onOpenChange={setShowCashInModal}
+          tellerId={tellerId}
+          cashierId={selectedCashier.dbId || selectedCashier.id.toString()}
+          cashierName={selectedCashier.staffName}
+          onSuccess={() => {
+            fetchCashiers(tellerId);
+          }}
+        />
+      )}
+
+      {/* Cash Out Modal */}
+      {selectedCashier && (
+        <CashOutModal
+          open={showCashOutModal}
+          onOpenChange={setShowCashOutModal}
+          tellerId={tellerId}
+          cashierId={selectedCashier.dbId || selectedCashier.id.toString()}
+          cashierName={selectedCashier.staffName}
+          onSuccess={() => {
+            fetchCashiers(tellerId);
+          }}
         />
       )}
     </div>

@@ -17,24 +17,72 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const officeId = searchParams.get("officeId");
 
-    // Get tellers from Fineract
+    // Get tellers from Fineract - this is the source of truth
     const fineractService = await getFineractServiceWithSession();
     const fineractTellers = await fineractService.getTellers(
       officeId ? parseInt(officeId) : undefined
     );
 
-    // Get tellers from database
+    console.log("Fineract tellers count:", fineractTellers.length);
+
+    // Get existing database tellers
+    const existingDbTellers = await prisma.teller.findMany({
+      where: {
+        tenantId: tenant.id,
+        fineractTellerId: { not: null },
+      },
+      select: { fineractTellerId: true, id: true },
+    });
+    const existingFineractIds = new Set(existingDbTellers.map(t => t.fineractTellerId));
+
+    // Auto-sync: Create database records for any Fineract tellers that don't exist
+    const tellersToSync = fineractTellers.filter((ft: any) => !existingFineractIds.has(ft.id));
+    
+    if (tellersToSync.length > 0) {
+      console.log(`Auto-syncing ${tellersToSync.length} Fineract tellers to database`);
+      
+      for (const ft of tellersToSync) {
+        try {
+          await prisma.teller.create({
+            data: {
+              tenantId: tenant.id,
+              fineractTellerId: ft.id,
+              officeId: ft.officeId,
+              officeName: ft.officeName || `Office ${ft.officeId}`,
+              name: ft.name,
+              description: ft.description || "",
+              startDate: Array.isArray(ft.startDate) 
+                ? new Date(ft.startDate[0], ft.startDate[1] - 1, ft.startDate[2])
+                : new Date(ft.startDate || Date.now()),
+              endDate: ft.endDate 
+                ? (Array.isArray(ft.endDate)
+                    ? new Date(ft.endDate[0], ft.endDate[1] - 1, ft.endDate[2])
+                    : new Date(ft.endDate))
+                : null,
+              status: ft.status || "ACTIVE",
+            },
+          });
+          console.log(`Synced Fineract teller ${ft.id} (${ft.name}) to database`);
+        } catch (syncError: any) {
+          // Ignore duplicate errors
+          if (!syncError.message?.includes("Unique constraint")) {
+            console.error(`Error syncing teller ${ft.id}:`, syncError.message);
+          }
+        }
+      }
+    }
+
+    // Now get all database tellers with enrichment data
     const dbTellers = await prisma.teller.findMany({
       where: {
         tenantId: tenant.id,
-        ...(officeId && { officeId: parseInt(officeId) }),
         isActive: true,
       },
       include: {
         cashAllocations: {
           where: {
             status: "ACTIVE",
-            cashierId: null, // Only teller vault allocations
+            cashierId: null,
           },
           orderBy: { allocatedDate: "desc" },
         },
@@ -47,25 +95,22 @@ export async function GET(request: NextRequest) {
           },
         },
       },
-      orderBy: { createdAt: "desc" },
     });
 
-    // Calculate available balance for each teller
-    const tellersWithBalances = await Promise.all(
+    // Calculate balances for database tellers
+    const dbTellerBalances = await Promise.all(
       dbTellers.map(async (dbTeller) => {
         const vaultBalance = dbTeller.cashAllocations.reduce(
           (sum, alloc) => sum + alloc.amount,
           0
         );
 
-        // Exclude variance allocations - variance is tracked separately
         const cashierAllocations = await prisma.cashAllocation.findMany({
           where: {
             tellerId: dbTeller.id,
             tenantId: tenant.id,
             cashierId: { not: null },
             status: "ACTIVE",
-            // Exclude variance allocations (those with notes containing "Variance")
             notes: { not: { contains: "Variance" } },
           },
         });
@@ -79,34 +124,37 @@ export async function GET(request: NextRequest) {
         const currency = dbTeller.cashAllocations[0]?.currency || "USD";
 
         return {
-          ...dbTeller,
+          fineractTellerId: dbTeller.fineractTellerId,
+          dbId: dbTeller.id,
           vaultBalance,
           availableBalance,
           allocatedToCashiers,
-          currentAllocation: {
-            amount: availableBalance,
-            currency: currency,
-          },
+          currentAllocation: { amount: availableBalance, currency },
+          activeCashiers: dbTeller.cashiers.length,
+          settlementCount: dbTeller._count.settlements,
         };
       })
     );
 
-    // Merge Fineract and database data
+    // Merge Fineract data with database data - all should now have database IDs
     const mergedTellers = fineractTellers.map((ft: any) => {
-      const dbTeller = tellersWithBalances.find(
-        (dt) => dt.fineractTellerId === ft.id
-      );
+      const dbData = dbTellerBalances.find((dt) => dt.fineractTellerId === ft.id);
       return {
         ...ft,
-        ...(dbTeller && {
-          id: dbTeller.id,
-          currentAllocation: dbTeller.currentAllocation,
-          activeCashiers: dbTeller.cashiers.length,
-          settlementCount: dbTeller._count.settlements,
+        id: dbData?.dbId, // Use database ID
+        fineractTellerId: ft.id,
+        ...(dbData && {
+          currentAllocation: dbData.currentAllocation,
+          vaultBalance: dbData.vaultBalance,
+          availableBalance: dbData.availableBalance,
+          allocatedToCashiers: dbData.allocatedToCashiers,
+          activeCashiers: dbData.activeCashiers,
+          settlementCount: dbData.settlementCount,
         }),
       };
-    });
+    }).filter((t: any) => t.id); // Only return tellers with database IDs
 
+    console.log("Returning merged tellers count:", mergedTellers.length);
     return NextResponse.json(mergedTellers);
   } catch (error) {
     console.error("Error fetching tellers:", error);

@@ -13,15 +13,21 @@ export async function GET(
 ) {
   try {
     const params = await context.params;
-    const { id } = params;
+    let { id } = params;
     const tenant = await getTenantFromHeaders();
 
     if (!tenant) {
       return NextResponse.json({ error: "Tenant not found" }, { status: 404 });
     }
 
-    // Try to get from database first
-    const dbTeller = await prisma.teller.findFirst({
+    // Handle fineract-prefixed IDs (e.g., "fineract-123")
+    let fineractIdFromPrefix: number | null = null;
+    if (id.startsWith("fineract-")) {
+      fineractIdFromPrefix = parseInt(id.replace("fineract-", ""));
+    }
+
+    // Try to get from database first by ID
+    let dbTeller = await prisma.teller.findFirst({
       where: {
         id,
         tenantId: tenant.id,
@@ -33,7 +39,6 @@ export async function GET(
             cashierId: null, // Only teller vault allocations
           },
           orderBy: { allocatedDate: "desc" },
-          // Remove take: 1 to get ALL vault allocations, not just the latest one
         },
         cashiers: {
           where: { isActive: true },
@@ -44,6 +49,83 @@ export async function GET(
         },
       },
     });
+
+    // If not found, try by Fineract ID (in case the ID is a number or fineract-prefixed)
+    const fineractIdToSearch = fineractIdFromPrefix || (!isNaN(Number(id)) ? Number(id) : null);
+    if (!dbTeller && fineractIdToSearch) {
+      dbTeller = await prisma.teller.findFirst({
+        where: {
+          fineractTellerId: fineractIdToSearch,
+          tenantId: tenant.id,
+        },
+        include: {
+          cashAllocations: {
+            where: {
+              status: "ACTIVE",
+              cashierId: null,
+            },
+            orderBy: { allocatedDate: "desc" },
+          },
+          cashiers: {
+            where: { isActive: true },
+          },
+          settlements: {
+            orderBy: { settlementDate: "desc" },
+            take: 10,
+          },
+        },
+      });
+    }
+
+    // If still not found but we have a Fineract ID, fetch from Fineract and auto-sync
+    if (!dbTeller && fineractIdToSearch) {
+      try {
+        const fineractService = await getFineractServiceWithSession();
+        const fineractTeller = await fineractService.getTeller(fineractIdToSearch);
+        
+        if (fineractTeller) {
+          // Auto-sync: Create the teller in the database
+          dbTeller = await prisma.teller.create({
+            data: {
+              tenantId: tenant.id,
+              fineractTellerId: fineractIdToSearch,
+              officeId: fineractTeller.officeId,
+              officeName: fineractTeller.officeName || `Office ${fineractTeller.officeId}`,
+              name: fineractTeller.name,
+              description: fineractTeller.description || "",
+              startDate: Array.isArray(fineractTeller.startDate) 
+                ? new Date(fineractTeller.startDate[0], fineractTeller.startDate[1] - 1, fineractTeller.startDate[2])
+                : new Date(fineractTeller.startDate),
+              endDate: fineractTeller.endDate 
+                ? (Array.isArray(fineractTeller.endDate)
+                    ? new Date(fineractTeller.endDate[0], fineractTeller.endDate[1] - 1, fineractTeller.endDate[2])
+                    : new Date(fineractTeller.endDate))
+                : null,
+              status: fineractTeller.status || "ACTIVE",
+            },
+            include: {
+              cashAllocations: {
+                where: {
+                  status: "ACTIVE",
+                  cashierId: null,
+                },
+                orderBy: { allocatedDate: "desc" },
+              },
+              cashiers: {
+                where: { isActive: true },
+              },
+              settlements: {
+                orderBy: { settlementDate: "desc" },
+                take: 10,
+              },
+            },
+          });
+          console.log(`Auto-synced Fineract teller ${fineractIdToSearch} to database as ${dbTeller.id}`);
+        }
+      } catch (syncError) {
+        console.error("Error syncing teller from Fineract:", syncError);
+      }
+    }
 
     if (!dbTeller) {
       return NextResponse.json({ error: "Teller not found" }, { status: 404 });
@@ -158,9 +240,18 @@ export async function PUT(
     }
 
     const body = await request.json();
-    const dbTeller = await prisma.teller.findFirst({
+    
+    // Try to find teller by database ID first
+    let dbTeller = await prisma.teller.findFirst({
       where: { id, tenantId: tenant.id },
     });
+
+    // If not found, try by Fineract ID
+    if (!dbTeller && !isNaN(Number(id))) {
+      dbTeller = await prisma.teller.findFirst({
+        where: { fineractTellerId: Number(id), tenantId: tenant.id },
+      });
+    }
 
     if (!dbTeller) {
       return NextResponse.json({ error: "Teller not found" }, { status: 404 });
@@ -172,9 +263,9 @@ export async function PUT(
       await fineractService.updateTeller(dbTeller.fineractTellerId, body);
     }
 
-    // Update in database
+    // Update in database using the actual database ID
     const updatedTeller = await prisma.teller.update({
-      where: { id },
+      where: { id: dbTeller.id },
       data: {
         name: body.name,
         description: body.description,
@@ -214,9 +305,17 @@ export async function DELETE(
       return NextResponse.json({ error: "Tenant not found" }, { status: 404 });
     }
 
-    const dbTeller = await prisma.teller.findFirst({
+    // Try to find teller by database ID first
+    let dbTeller = await prisma.teller.findFirst({
       where: { id, tenantId: tenant.id },
     });
+
+    // If not found, try by Fineract ID
+    if (!dbTeller && !isNaN(Number(id))) {
+      dbTeller = await prisma.teller.findFirst({
+        where: { fineractTellerId: Number(id), tenantId: tenant.id },
+      });
+    }
 
     if (!dbTeller) {
       return NextResponse.json({ error: "Teller not found" }, { status: 404 });
@@ -233,9 +332,9 @@ export async function DELETE(
       }
     }
 
-    // Soft delete in database
+    // Soft delete in database using the actual database ID
     await prisma.teller.update({
-      where: { id },
+      where: { id: dbTeller.id },
       data: { isActive: false, status: "CLOSED" },
     });
 

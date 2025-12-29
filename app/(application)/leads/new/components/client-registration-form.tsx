@@ -402,6 +402,15 @@ export function ClientRegistrationForm({
   const [clientLookupStatus, setClientLookupStatus] = useState<
     "idle" | "not_found" | "found" | "error"
   >(clientCreatedInFineract ? "found" : "idle");
+
+  // Client picker state
+  const [clientPickerSearch, setClientPickerSearch] = useState("");
+  const [clientPickerResults, setClientPickerResults] = useState<any[]>([]);
+  const [isLoadingClients, setIsLoadingClients] = useState(false);
+  const [clientPickerPage, setClientPickerPage] = useState(0);
+  const [hasMoreClients, setHasMoreClients] = useState(true);
+  const [clientsInitiallyLoaded, setClientsInitiallyLoaded] = useState(false);
+  const [selectedClientId, setSelectedClientId] = useState<number | null>(null);
   const [isFormDisabled, setIsFormDisabled] = useState(false);
   const [activeClientTab, setActiveClientTab] = useState("general");
 
@@ -1587,28 +1596,29 @@ export function ClientRegistrationForm({
   // Use ref to track if we've already checked for prospect dialog (only check once)
   const hasCheckedProspectDialog = useRef(false);
 
-  // Initialize form - use external form if provided, otherwise create new one
-  const form =
-    externalForm ||
-    useForm<ClientFormValues>({
-      resolver: zodResolver(clientFormSchema) as any,
-      defaultValues: {
-        officeId: "1",
-        legalFormId: "1",
-        externalId: "",
-        firstname: "",
-        middlename: "",
-        lastname: "",
-        isStaff: false,
-        mobileNo: "",
-        countryCode: "+263",
-        emailAddress: "",
-        submittedOnDate: new Date(),
-        active: true,
-        openSavingsAccount: false,
-        currentStep: 1,
-      },
-    });
+  // Initialize internal form - always call useForm to comply with React hooks rules
+  const internalForm = useForm<ClientFormValues>({
+    resolver: zodResolver(clientFormSchema) as any,
+    defaultValues: {
+      officeId: "1",
+      legalFormId: "1",
+      externalId: "",
+      firstname: "",
+      middlename: "",
+      lastname: "",
+      isStaff: false,
+      mobileNo: "",
+      countryCode: "+263",
+      emailAddress: "",
+      submittedOnDate: new Date(),
+      active: true,
+      openSavingsAccount: false,
+      currentStep: 1,
+    },
+  });
+
+  // Use external form if provided, otherwise use internal form
+  const form = externalForm || internalForm;
 
   // Family member form
   const familyMemberForm = useForm<FamilyMemberValues>({
@@ -1910,6 +1920,25 @@ export function ClientRegistrationForm({
       handleClientLookup();
     }
   }, [nationalIdLookup]);
+
+  // Load clients for the picker on mount
+  useEffect(() => {
+    if (!clientsInitiallyLoaded && !isLoading) {
+      setClientsInitiallyLoaded(true);
+      fetchClientsForPicker("", 0);
+    }
+  }, [clientsInitiallyLoaded, isLoading]);
+
+  // Reset selected client when lookup is complete
+  useEffect(() => {
+    if (clientLookupStatus !== "idle" && selectedClientId !== null) {
+      setSelectedClientId(null);
+      // Clear the client picker results after successful selection
+      setClientPickerSearch("");
+      setClientPickerResults([]);
+      setClientPickerPage(0);
+    }
+  }, [clientLookupStatus]);
 
   // Load data on mount or from props
   useEffect(() => {
@@ -2497,6 +2526,85 @@ export function ClientRegistrationForm({
       });
     } else {
       form.setValue("mobileNo", formattedNumber, { shouldValidate: false });
+    }
+  };
+
+  // Fetch clients for the client picker (same logic as clients page)
+  const fetchClientsForPicker = async (
+    searchText: string = "",
+    page: number = 0,
+    append: boolean = false
+  ) => {
+    setIsLoadingClients(true);
+    try {
+      // Build the API URL with query parameters (same as clients page)
+      const apiUrl = `/api/fineract/clients?offset=${
+        page * 20
+      }&limit=20&orderBy=id&sortOrder=DESC${
+        searchText.trim()
+          ? `&query=${encodeURIComponent(searchText.trim())}`
+          : ""
+      }`;
+
+      const response = await fetch(apiUrl);
+      if (response.ok) {
+        const data = await response.json();
+
+        // Handle different response formats from Fineract API (same as clients page)
+        let clients: any[] = [];
+
+        // Handle the specific response format from backend
+        if (
+          data.clients &&
+          data.clients.pageItems &&
+          Array.isArray(data.clients.pageItems)
+        ) {
+          clients = data.clients.pageItems;
+        }
+        // If data has a clients property (wrapper)
+        else if (data.clients && Array.isArray(data.clients)) {
+          clients = data.clients;
+        }
+        // If data is directly an array
+        else if (Array.isArray(data)) {
+          clients = data;
+        }
+        // If data has pageItems (Fineract pagination format)
+        else if (data.pageItems && Array.isArray(data.pageItems)) {
+          clients = data.pageItems;
+        }
+        // If data has content (another Fineract format)
+        else if (data.content && Array.isArray(data.content)) {
+          clients = data.content;
+        }
+
+        if (append) {
+          setClientPickerResults((prev) => [...prev, ...clients]);
+        } else {
+          setClientPickerResults(clients);
+        }
+        setHasMoreClients(clients.length === 20);
+      }
+    } catch (err) {
+      console.error("Error fetching clients for picker:", err);
+    } finally {
+      setIsLoadingClients(false);
+    }
+  };
+
+  // Handle selecting a client from the picker
+  const handleSelectClientFromPicker = (client: any) => {
+    if (client.externalId) {
+      setSelectedClientId(client.id);
+      setNationalIdLookup(client.externalId);
+      // Trigger the search
+      pendingAutoSearch.current = client.externalId;
+    } else {
+      error({
+        title: "Missing External ID",
+        description:
+          "This client does not have an External ID. Please search manually.",
+      });
     }
   };
 
@@ -3148,7 +3256,15 @@ export function ClientRegistrationForm({
       if (result.success) {
         // If no leadId yet, update URL with the new leadId
         if (!leadId && result.leadId) {
-          router.push(`/leads/new?id=${result.leadId}`);
+          console.log(
+            "==========> Updating URL with leadId from draft save:",
+            result.leadId
+          );
+          window.history.replaceState(
+            null,
+            "",
+            `/leads/new?id=${result.leadId}`
+          );
         }
 
         saveSuccess("Draft");
@@ -4629,6 +4745,210 @@ export function ClientRegistrationForm({
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
+                  {/* Client Search and Listing - Hidden when client is found */}
+                  {clientLookupStatus !== "found" && (
+                    <div className="space-y-3">
+                      <Label className={colors.textColor}>
+                        Select Existing Client
+                      </Label>
+                      {/* Search input */}
+                      <div className="flex gap-2">
+                        <div className="flex-1 relative">
+                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                          <Input
+                            placeholder="Search by name, account no, or ID..."
+                            value={clientPickerSearch}
+                            onChange={(e) =>
+                              setClientPickerSearch(e.target.value)
+                            }
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.preventDefault();
+                                setClientPickerPage(0);
+                                fetchClientsForPicker(clientPickerSearch, 0);
+                              }
+                            }}
+                            className="pl-9"
+                          />
+                        </div>
+                        <Button
+                          type="button"
+                          onClick={() => {
+                            setClientPickerPage(0);
+                            fetchClientsForPicker(clientPickerSearch, 0);
+                          }}
+                          disabled={isLoadingClients}
+                          size="sm"
+                        >
+                          {isLoadingClients ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            "Search"
+                          )}
+                        </Button>
+                      </div>
+
+                      {/* Client list */}
+                      <div className="border rounded-lg overflow-hidden">
+                        <div className="max-h-80 overflow-y-auto">
+                          {isLoadingClients &&
+                          (!Array.isArray(clientPickerResults) ||
+                            clientPickerResults.length === 0) ? (
+                            <div className="flex items-center justify-center py-8">
+                              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                            </div>
+                          ) : !Array.isArray(clientPickerResults) ||
+                            clientPickerResults.length === 0 ? (
+                            <div className="text-center py-8 text-muted-foreground">
+                              No clients found. Try a different search or
+                              register a new client below.
+                            </div>
+                          ) : (
+                            <table className="w-full">
+                              <thead className="bg-muted/50 sticky top-0">
+                                <tr className="border-b">
+                                  <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground">
+                                    Client
+                                  </th>
+                                  <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground hidden sm:table-cell">
+                                    Account No
+                                  </th>
+                                  <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground hidden md:table-cell">
+                                    External ID
+                                  </th>
+                                  <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground">
+                                    Status
+                                  </th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {clientPickerResults.map((client: any) => {
+                                  const isSelected =
+                                    selectedClientId === client.id;
+                                  return (
+                                    <tr
+                                      key={client.id}
+                                      onClick={() =>
+                                        !selectedClientId &&
+                                        handleSelectClientFromPicker(client)
+                                      }
+                                      onKeyDown={(e) => {
+                                        if (
+                                          (e.key === "Enter" ||
+                                            e.key === " ") &&
+                                          !selectedClientId
+                                        ) {
+                                          e.preventDefault();
+                                          handleSelectClientFromPicker(client);
+                                        }
+                                      }}
+                                      tabIndex={selectedClientId ? -1 : 0}
+                                      role="button"
+                                      className={`border-b transition-colors ${
+                                        isSelected
+                                          ? "bg-primary/10"
+                                          : selectedClientId
+                                          ? "opacity-50 cursor-not-allowed"
+                                          : "hover:bg-muted/50 cursor-pointer"
+                                      }`}
+                                    >
+                                      <td className="py-3 px-3">
+                                        <div className="flex items-center gap-3">
+                                          {isSelected ? (
+                                            <div className="h-8 w-8 rounded-full bg-primary/20 flex items-center justify-center">
+                                              <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                                            </div>
+                                          ) : (
+                                            <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary text-sm font-medium">
+                                              {client.firstname?.[0] || ""}
+                                              {client.lastname?.[0] || ""}
+                                            </div>
+                                          )}
+                                          <span className="font-medium truncate">
+                                            {client.displayName ||
+                                              `${client.firstname} ${client.lastname}`}
+                                            {isSelected && (
+                                              <span className="ml-2 text-sm text-muted-foreground">
+                                                Loading...
+                                              </span>
+                                            )}
+                                          </span>
+                                        </div>
+                                      </td>
+                                      <td className="py-3 px-3 text-sm text-muted-foreground hidden sm:table-cell">
+                                        {client.accountNo}
+                                      </td>
+                                      <td className="py-3 px-3 text-sm text-muted-foreground hidden md:table-cell">
+                                        {client.externalId || "-"}
+                                      </td>
+                                      <td className="py-3 px-3">
+                                        <Badge
+                                          variant="outline"
+                                          className={
+                                            client.active
+                                              ? "bg-green-500 text-white border-0"
+                                              : "bg-gray-500 text-white border-0"
+                                          }
+                                        >
+                                          {client.active
+                                            ? "Active"
+                                            : "Inactive"}
+                                        </Badge>
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          )}
+                        </div>
+                        {hasMoreClients &&
+                          Array.isArray(clientPickerResults) &&
+                          clientPickerResults.length > 0 && (
+                            <div className="border-t p-2 bg-muted/30">
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                className="w-full"
+                                onClick={() => {
+                                  const nextPage = clientPickerPage + 1;
+                                  setClientPickerPage(nextPage);
+                                  fetchClientsForPicker(
+                                    clientPickerSearch,
+                                    nextPage,
+                                    true
+                                  );
+                                }}
+                                disabled={isLoadingClients}
+                                size="sm"
+                              >
+                                {isLoadingClients ? (
+                                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                                ) : null}
+                                Load More Clients
+                              </Button>
+                            </div>
+                          )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Divider - Hidden when client is found */}
+                  {clientLookupStatus !== "found" && (
+                    <div className="relative py-2">
+                      <div className="absolute inset-0 flex items-center">
+                        <span className="w-full border-t" />
+                      </div>
+                      <div className="relative flex justify-center text-xs uppercase">
+                        <span
+                          className={`px-2 ${colors.cardBg} text-muted-foreground`}
+                        >
+                          Or register new client
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="space-y-2">
                     <Label
                       htmlFor="nationalIdLookup"
@@ -6588,9 +6908,19 @@ export function ClientRegistrationForm({
                                           result.fineractClientId;
                                       }
 
-                                      // Update lead ID if returned
+                                      // Update lead ID if returned and update URL
                                       if (result.leadId) {
                                         setCurrentLeadId(result.leadId);
+                                        // Update URL with the new lead ID using replaceState for reliability
+                                        console.log(
+                                          "==========> Updating URL with leadId:",
+                                          result.leadId
+                                        );
+                                        window.history.replaceState(
+                                          null,
+                                          "",
+                                          `/leads/new?id=${result.leadId}`
+                                        );
                                       }
 
                                       // Mark all completed sections as saved

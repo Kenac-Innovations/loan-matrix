@@ -50,7 +50,8 @@ export async function getTenantBySlug(
   slug: string
 ): Promise<TenantInfo | null> {
   try {
-    const tenant = await prisma.tenant.findUnique({
+    // Use findFirst since we need to filter by isActive which isn't part of the unique constraint
+    const tenant = await prisma.tenant.findFirst({
       where: { slug, isActive: true },
       select: {
         id: true,

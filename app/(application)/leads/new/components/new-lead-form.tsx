@@ -190,6 +190,13 @@ export function NewLeadForm() {
             if ((window as any).fineractClientId) {
               setFineractClientId((window as any).fineractClientId);
             }
+          } else if (leadResponse.status === 404) {
+            // Lead no longer exists in database - clear stale data
+            console.log(
+              "==========> Lead not found (404), clearing stale localStorage data"
+            );
+            LeadLocalStorage.clear();
+            setCurrentLeadId(null);
           }
         } catch (error) {
           console.error("Error loading lead data:", error);
@@ -623,7 +630,10 @@ export function NewLeadForm() {
       // Only update if we don't already have a leadId (prevents overwriting when updating)
       if (result.leadId && (!currentLeadId || operation !== "updateClient")) {
         console.log("==========> Setting leadId to:", result.leadId);
+        console.log("==========> Updating URL with leadId:", result.leadId);
         setCurrentLeadId(result.leadId);
+        // Update URL with the new lead ID using replace to avoid history clutter
+        window.history.replaceState(null, "", `/leads/new?id=${result.leadId}`);
       } else {
         console.log("==========> Keeping existing leadId:", currentLeadId);
       }
@@ -644,7 +654,7 @@ export function NewLeadForm() {
               }`,
       });
 
-      // Clear local storage
+      // Clear local storage after URL is updated
       LeadLocalStorage.clear();
     } catch (error: any) {
       console.error("Error creating lead:", error);

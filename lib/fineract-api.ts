@@ -411,6 +411,8 @@ export class FineractAPIService {
   constructor(config: FineractConfig, authToken?: string) {
     this.config = config;
 
+    console.log("FineractAPIService initialized with tenant:", config.tenantId);
+
     const headers: any = {
       "Fineract-Platform-TenantId": config.tenantId,
       "Content-Type": "application/json",
@@ -863,7 +865,15 @@ export class FineractAPIService {
       if (officeId) {
         url += `?officeId=${officeId}`;
       }
+      console.log("Fetching tellers from Fineract:", url);
       const response: AxiosResponse<any> = await this.client.get(url);
+
+      console.log("Fineract getTellers response:", {
+        dataType: typeof response.data,
+        isArray: Array.isArray(response.data),
+        length: Array.isArray(response.data) ? response.data.length : "N/A",
+        data: JSON.stringify(response.data).substring(0, 500),
+      });
 
       // Handle different response structures
       if (Array.isArray(response.data)) {
@@ -953,8 +963,14 @@ export class FineractAPIService {
   // Cashier operations
   async getCashiers(tellerId: number): Promise<any[]> {
     try {
+      // First try without date parameters to get all cashiers
       const response: AxiosResponse<any> = await this.client.get(
         `/tellers/${tellerId}/cashiers`
+      );
+
+      console.log(
+        "Fineract getCashiers response:",
+        JSON.stringify(response.data, null, 2)
       );
 
       // Handle different response structures
@@ -1103,18 +1119,56 @@ export class FineractAPIService {
     tellerId: number,
     cashierId: number,
     settlementData: {
-      closingBalance: number;
-      notes?: string;
+      txnDate: string;
+      currencyCode: string;
+      txnAmount: string;
+      txnNote?: string;
+      dateFormat?: string;
+      locale?: string;
     }
   ): Promise<any> {
     try {
+      // Use the settle command for cash out transactions
       const response: AxiosResponse<any> = await this.client.post(
-        `/tellers/${tellerId}/cashiers/${cashierId}/settle`,
-        settlementData
+        `/tellers/${tellerId}/cashiers/${cashierId}/settle?command=settle`,
+        {
+          ...settlementData,
+          dateFormat: settlementData.dateFormat || "dd MMMM yyyy",
+          locale: settlementData.locale || "en",
+        }
       );
       return response.data;
-    } catch (error) {
-      console.error("Fineract API Error:", error);
+    } catch (error: any) {
+      console.error("Fineract API Error settling cash for cashier:", {
+        message: error.message,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data,
+      });
+      throw error;
+    }
+  }
+
+  async getCashierSummaryAndTransactions(
+    tellerId: number,
+    cashierId: number,
+    currencyCode: string = "ZMW"
+  ): Promise<any> {
+    try {
+      const url = `/tellers/${tellerId}/cashiers/${cashierId}/summaryandtransactions?currencyCode=${currencyCode}`;
+      console.log("Fetching cashier summary and transactions:", url);
+      const response: AxiosResponse<any> = await this.client.get(url);
+      console.log(
+        "Cashier summary response:",
+        JSON.stringify(response.data, null, 2).substring(0, 500)
+      );
+      return response.data;
+    } catch (error: any) {
+      console.error("Fineract API Error getting cashier summary:", {
+        message: error.message,
+        status: error.response?.status,
+        data: error.response?.data,
+      });
       throw error;
     }
   }
@@ -1122,19 +1176,25 @@ export class FineractAPIService {
   async getCashierTransactions(
     tellerId: number,
     cashierId: number,
+    currencyCode: string = "ZMW",
     fromDate?: string,
     toDate?: string
   ): Promise<any[]> {
     try {
-      let url = `/tellers/${tellerId}/cashiers/${cashierId}/transactions`;
-      const params = new URLSearchParams();
-      if (fromDate) params.append("fromDate", fromDate);
-      if (toDate) params.append("toDate", toDate);
-      if (params.toString()) {
-        url += `?${params.toString()}`;
-      }
+      // Use summaryandtransactions endpoint which includes transactions
+      const url = `/tellers/${tellerId}/cashiers/${cashierId}/summaryandtransactions?currencyCode=${currencyCode}`;
       const response: AxiosResponse<any> = await this.client.get(url);
-      return Array.isArray(response.data) ? response.data : [];
+
+      // Extract transactions from the response
+      if (
+        response.data?.cashierTransactions &&
+        Array.isArray(response.data.cashierTransactions)
+      ) {
+        return response.data.cashierTransactions;
+      } else if (Array.isArray(response.data)) {
+        return response.data;
+      }
+      return [];
     } catch (error) {
       console.error("Fineract API Error:", error);
       throw error;

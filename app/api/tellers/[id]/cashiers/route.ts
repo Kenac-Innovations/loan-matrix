@@ -13,15 +13,71 @@ export async function GET(
 ) {
   try {
     const params = await context.params;
-    const { id: tellerId } = params;
+    let { id: tellerId } = params;
     const tenant = await getTenantFromHeaders();
 
     if (!tenant) {
       return NextResponse.json({ error: "Tenant not found" }, { status: 404 });
     }
 
-    const teller = await prisma.teller.findFirst({
+    // Handle fineract-prefixed IDs (e.g., "fineract-123")
+    let fineractIdFromPrefix: number | null = null;
+    if (tellerId.startsWith("fineract-")) {
+      fineractIdFromPrefix = parseInt(tellerId.replace("fineract-", ""));
+    }
+
+    // Try to find teller by database ID first
+    let teller = await prisma.teller.findFirst({
       where: { id: tellerId, tenantId: tenant.id },
+    });
+
+    // If not found, try by Fineract ID
+    const fineractIdToSearch = fineractIdFromPrefix || (!isNaN(Number(tellerId)) ? Number(tellerId) : null);
+    if (!teller && fineractIdToSearch) {
+      teller = await prisma.teller.findFirst({
+        where: { fineractTellerId: fineractIdToSearch, tenantId: tenant.id },
+      });
+    }
+
+    // If still not found but we have a Fineract ID, auto-sync from Fineract
+    if (!teller && fineractIdToSearch) {
+      try {
+        const fineractService = await getFineractServiceWithSession();
+        const fineractTeller = await fineractService.getTeller(fineractIdToSearch);
+        
+        if (fineractTeller) {
+          // Auto-sync: Create the teller in the database
+          teller = await prisma.teller.create({
+            data: {
+              tenantId: tenant.id,
+              fineractTellerId: fineractIdToSearch,
+              officeId: fineractTeller.officeId,
+              officeName: fineractTeller.officeName || `Office ${fineractTeller.officeId}`,
+              name: fineractTeller.name,
+              description: fineractTeller.description || "",
+              startDate: Array.isArray(fineractTeller.startDate) 
+                ? new Date(fineractTeller.startDate[0], fineractTeller.startDate[1] - 1, fineractTeller.startDate[2])
+                : new Date(fineractTeller.startDate),
+              endDate: fineractTeller.endDate 
+                ? (Array.isArray(fineractTeller.endDate)
+                    ? new Date(fineractTeller.endDate[0], fineractTeller.endDate[1] - 1, fineractTeller.endDate[2])
+                    : new Date(fineractTeller.endDate))
+                : null,
+              status: fineractTeller.status || "ACTIVE",
+            },
+          });
+          console.log(`Auto-synced Fineract teller ${fineractIdToSearch} to database as ${teller.id}`);
+        }
+      } catch (syncError) {
+        console.error("Error syncing teller from Fineract:", syncError);
+      }
+    }
+
+    console.log("GET Cashiers - Teller lookup:", {
+      tellerId,
+      tenantId: tenant.id,
+      found: !!teller,
+      fineractTellerId: teller?.fineractTellerId,
     });
 
     if (!teller) {
@@ -41,12 +97,12 @@ export async function GET(
       teller.fineractTellerId
     );
 
-    console.log(`Fetched ${fineractCashiers.length} cashiers from Fineract`);
+    console.log(`Fetched ${fineractCashiers.length} cashiers from Fineract for teller ${teller.fineractTellerId}`);
 
     // Look up database cashiers by Fineract ID to get database IDs
     const dbCashiers = await prisma.cashier.findMany({
       where: {
-        tellerId,
+        tellerId: teller.id, // Use the database teller ID
         tenantId: tenant.id,
         fineractCashierId: {
           not: null,
@@ -87,7 +143,7 @@ export async function POST(
 ) {
   try {
     const params = await context.params;
-    const { id: tellerId } = params;
+    let { id: tellerId } = params;
     const tenant = await getTenantFromHeaders();
 
     if (!tenant) {
@@ -113,8 +169,65 @@ export async function POST(
       );
     }
 
-    const teller = await prisma.teller.findFirst({
+    // Handle fineract-prefixed IDs (e.g., "fineract-123")
+    let fineractIdFromPrefix: number | null = null;
+    if (tellerId.startsWith("fineract-")) {
+      fineractIdFromPrefix = parseInt(tellerId.replace("fineract-", ""));
+    }
+
+    // Try to find teller by database ID first
+    let teller = await prisma.teller.findFirst({
       where: { id: tellerId, tenantId: tenant.id },
+    });
+
+    // If not found, try by Fineract ID
+    const fineractIdToSearch = fineractIdFromPrefix || (!isNaN(Number(tellerId)) ? Number(tellerId) : null);
+    if (!teller && fineractIdToSearch) {
+      teller = await prisma.teller.findFirst({
+        where: { fineractTellerId: fineractIdToSearch, tenantId: tenant.id },
+      });
+    }
+
+    // If still not found but we have a Fineract ID, auto-sync from Fineract
+    if (!teller && fineractIdToSearch) {
+      try {
+        const fineractService = await getFineractServiceWithSession();
+        const fineractTeller = await fineractService.getTeller(fineractIdToSearch);
+        
+        if (fineractTeller) {
+          // Auto-sync: Create the teller in the database
+          teller = await prisma.teller.create({
+            data: {
+              tenantId: tenant.id,
+              fineractTellerId: fineractIdToSearch,
+              officeId: fineractTeller.officeId,
+              officeName: fineractTeller.officeName || `Office ${fineractTeller.officeId}`,
+              name: fineractTeller.name,
+              description: fineractTeller.description || "",
+              startDate: Array.isArray(fineractTeller.startDate) 
+                ? new Date(fineractTeller.startDate[0], fineractTeller.startDate[1] - 1, fineractTeller.startDate[2])
+                : new Date(fineractTeller.startDate),
+              endDate: fineractTeller.endDate 
+                ? (Array.isArray(fineractTeller.endDate)
+                    ? new Date(fineractTeller.endDate[0], fineractTeller.endDate[1] - 1, fineractTeller.endDate[2])
+                    : new Date(fineractTeller.endDate))
+                : null,
+              status: fineractTeller.status || "ACTIVE",
+            },
+          });
+          console.log(`Auto-synced Fineract teller ${fineractIdToSearch} to database as ${teller.id}`);
+        }
+      } catch (syncError) {
+        console.error("Error syncing teller from Fineract:", syncError);
+      }
+    }
+
+    console.log("POST Cashier - Teller lookup:", {
+      tellerId,
+      tenantId: tenant.id,
+      found: !!teller,
+      fineractTellerId: teller?.fineractTellerId,
+      tellerName: teller?.name,
     });
 
     if (!teller) {
@@ -226,7 +339,7 @@ export async function POST(
       const cashier = await prisma.cashier.create({
         data: {
           tenantId: tenant.id,
-          tellerId,
+          tellerId: teller.id, // Use the database teller ID, not the URL param
           fineractCashierId,
           staffId: parseInt(staffId),
           staffName: staffName || `Staff ${staffId}`,

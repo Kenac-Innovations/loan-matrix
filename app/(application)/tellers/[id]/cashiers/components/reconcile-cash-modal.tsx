@@ -15,33 +15,25 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Loader2, AlertCircle } from "lucide-react";
+import { Loader2, RefreshCw, CheckCircle } from "lucide-react";
 
-interface Settlement {
-  id: string;
-  openingBalance: number;
-  closingBalance: number;
-  cashIn: number;
-  cashOut: number;
-  expectedBalance: number;
-  actualBalance: number;
-  difference: number;
-  status: string;
-  settlementDate: string;
+interface Currency {
+  code: string;
+  name: string;
 }
 
-interface ClosedSession {
-  id: string;
+interface FineractSummary {
+  sumCashAllocation: number;
+  sumCashSettlement: number;
+  netCash: number;
+  tellerName?: string;
+  cashierName?: string;
+}
+
+interface SessionInfo {
   sessionStatus: string;
-  allocatedBalance: number;
-  openingFloat: number;
-  cashIn: number;
-  cashOut: number;
-  countedCashAmount: number | null;
-  closingBalance: number | null;
-  expectedBalance: number | null;
-  difference: number | null;
-  sessionEndTime: string | null;
+  countedCashAmount?: number;
+  closingBalance?: number;
 }
 
 interface ReconcileCashModalProps {
@@ -62,387 +54,372 @@ export function ReconcileCashModal({
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [loadingData, setLoadingData] = useState(false);
-  const [settlement, setSettlement] = useState<Settlement | null>(null);
-  const [closedSession, setClosedSession] = useState<ClosedSession | null>(
-    null
-  );
-  const [tellerAvailableBalance, setTellerAvailableBalance] = useState<
-    number | null
-  >(null);
+  const [currencies, setCurrencies] = useState<Currency[]>([]);
+  const [currencyCode, setCurrencyCode] = useState("");
+  const [summary, setSummary] = useState<FineractSummary | null>(null);
+  const [sessionInfo, setSessionInfo] = useState<SessionInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [formData, setFormData] = useState({
-    returnedAmount: "",
     notes: "",
   });
 
-  // Fetch closed session and settlement when modal opens
+  // Fetch currencies and session info on mount
   useEffect(() => {
-    if (open && tellerId && cashierId) {
-      fetchData();
+    if (open) {
+      fetchCurrencies();
+      fetchSessionInfo();
+      setError(null);
+      setSuccess(null);
     }
-  }, [open, tellerId, cashierId]);
+  }, [open]);
 
-  const fetchData = async () => {
+  // Fetch Fineract summary when currency changes
+  useEffect(() => {
+    if (open && currencyCode && tellerId && cashierId) {
+      fetchFineractSummary();
+    }
+  }, [open, currencyCode, tellerId, cashierId]);
+
+  const fetchCurrencies = async () => {
+    try {
+      const response = await fetch("/api/fineract/currencies");
+      if (response.ok) {
+        const data = await response.json();
+        const currencyList = Array.isArray(data.selectedCurrencyOptions)
+          ? data.selectedCurrencyOptions
+          : Array.isArray(data)
+          ? data
+          : data.currencies || [];
+
+        setCurrencies(currencyList);
+
+        if (currencyList.length > 0 && !currencyCode) {
+          setCurrencyCode(currencyList[0].code);
+        }
+      }
+    } catch (error) {
+      console.error("Error fetching currencies:", error);
+    }
+  };
+
+  const fetchSessionInfo = async () => {
+    try {
+      const response = await fetch(
+        `/api/tellers/${tellerId}/cashiers/${cashierId}/session`
+      );
+      if (response.ok) {
+        const data = await response.json();
+        setSessionInfo({
+          sessionStatus: data.session?.sessionStatus || "NONE",
+          countedCashAmount: data.session?.countedCashAmount,
+          closingBalance: data.session?.closingBalance,
+        });
+      }
+    } catch (error) {
+      console.error("Error fetching session:", error);
+    }
+  };
+
+  const fetchFineractSummary = async () => {
     setLoadingData(true);
     setError(null);
     try {
-      // Fetch closed session (to get counted cash)
-      const sessionResponse = await fetch(
-        `/api/tellers/${tellerId}/cashiers/${cashierId}/sessions?status=CLOSED&limit=1`
-      );
+      const url = `/api/tellers/${tellerId}/cashiers/${cashierId}/transactions?currencyCode=${currencyCode}`;
+      const response = await fetch(url);
 
-      // Fetch pending settlement
-      const settlementResponse = await fetch(
-        `/api/tellers/${tellerId}/cashiers/${cashierId}/settlements?status=PENDING&latest=true`
-      );
-
-      // Fetch teller available balance
-      const tellerResponse = await fetch(`/api/tellers/${tellerId}`);
-
-      let sessionData = null;
-      let settlementData = null;
-      let tellerData = null;
-
-      if (sessionResponse.ok) {
-        const response = await sessionResponse.json();
-        // API returns { sessions: [...], total, limit, offset }
-        if (
-          response.sessions &&
-          Array.isArray(response.sessions) &&
-          response.sessions.length > 0
-        ) {
-          sessionData = response.sessions[0];
-        } else if (Array.isArray(response) && response.length > 0) {
-          // Fallback: if response is directly an array
-          sessionData = response[0];
-        } else if (response && response.id) {
-          // Fallback: if response is a single session object
-          sessionData = response;
-        }
+      if (response.ok) {
+        const data = await response.json();
+        setSummary({
+          sumCashAllocation: data.sumCashAllocation || 0,
+          sumCashSettlement: data.sumCashSettlement || 0,
+          netCash: data.netCash || 0,
+          tellerName: data.tellerName,
+          cashierName: data.cashierName,
+        });
+      } else {
+        console.error("Failed to fetch Fineract summary");
+        setSummary(null);
       }
-
-      if (settlementResponse.ok) {
-        settlementData = await settlementResponse.json();
-      }
-
-      if (tellerResponse.ok) {
-        tellerData = await tellerResponse.json();
-        setTellerAvailableBalance(tellerData.availableBalance || 0);
-      }
-
-      if (!sessionData) {
-        setError("No closed session found. Please close the session first.");
-        setLoadingData(false);
-        return;
-      }
-
-      if (!settlementData) {
-        setError("No pending settlement found. Please settle cash first.");
-        setLoadingData(false);
-        return;
-      }
-
-      setClosedSession(sessionData);
-      setSettlement(settlementData);
-
-      // Pre-fill returned amount with counted cash from closed session
-      const countedCash =
-        sessionData.countedCashAmount || sessionData.closingBalance || 0;
-
-      setFormData({
-        returnedAmount: countedCash.toFixed(2),
-        notes: "",
-      });
     } catch (error) {
-      console.error("Error fetching data:", error);
-      setError("Failed to fetch session or settlement data");
+      console.error("Error fetching Fineract summary:", error);
+      setSummary(null);
     } finally {
       setLoadingData(false);
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const formatAmount = (amount: number) => {
+    try {
+      return new Intl.NumberFormat("en-US", {
+        style: "currency",
+        currency: currencyCode || "USD",
+      }).format(amount);
+    } catch {
+      return `${currencyCode || "USD"} ${amount.toFixed(2)}`;
+    }
+  };
+
+  const handleReconcile = async () => {
     setLoading(true);
     setError(null);
+    setSuccess(null);
 
-    if (!closedSession) {
-      setError("No closed session found");
-      setLoading(false);
-      return;
-    }
+    const remainingBalance = summary?.netCash || 0;
 
-    if (!settlement) {
-      setError("No pending settlement found. Please settle cash first.");
-      setLoading(false);
-      return;
-    }
-
-    if (!formData.returnedAmount || parseFloat(formData.returnedAmount) < 0) {
-      setError("Please enter a valid returned amount");
+    if (remainingBalance <= 0) {
+      setSuccess("Reconciliation complete! No remaining balance to return.");
       setLoading(false);
       return;
     }
 
     try {
+      // Settle remaining balance back to teller safe
       const response = await fetch(
-        `/api/tellers/${tellerId}/cashiers/${cashierId}/reconcile`,
+        `/api/tellers/${tellerId}/cashiers/${cashierId}/settle`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            settlementId: settlement.id,
-            returnedAmount: parseFloat(formData.returnedAmount),
-            notes: formData.notes,
+            amount: remainingBalance,
+            currency: currencyCode,
+            notes: formData.notes || "End of day reconciliation - Return to teller safe",
+            date: new Date().toISOString().split("T")[0],
           }),
         }
       );
 
       if (response.ok) {
-        const result = await response.json();
-        onOpenChange(false);
-        router.refresh();
-        setFormData({ returnedAmount: "", notes: "" });
-        setSettlement(null);
-
-        // Show success message
-        alert(
-          `Reconciliation successful!\n\n` +
-            `Reversed ${result.reconciliation.reversedAllocations} allocations\n` +
-            `Returned ${result.reconciliation.vaultAllocation.amount} ${result.reconciliation.vaultAllocation.currency} to vault\n` +
-            (result.reconciliation.variance
-              ? `Variance: ${result.reconciliation.variance.amount} ${result.reconciliation.variance.currency} (${result.reconciliation.variance.type})\n`
-              : "") +
-            `Cashier balance: ${result.reconciliation.cashierBalance}\n` +
-            `Vault balance: ${result.reconciliation.vaultBalance}`
+        setSuccess(
+          `Reconciliation complete! ${formatAmount(remainingBalance)} returned to teller safe.`
         );
+        
+        // Refresh data
+        setTimeout(() => {
+          fetchFineractSummary();
+          fetchSessionInfo();
+        }, 1000);
       } else {
         const errorData = await response.json();
-        setError(
-          errorData.error || errorData.details || "Failed to reconcile cash"
-        );
+        const errorMessage =
+          errorData.fineractError?.errors?.[0]?.defaultUserMessage ||
+          errorData.error ||
+          errorData.details ||
+          "Failed to reconcile";
+        setError(errorMessage);
       }
     } catch (error) {
-      console.error("Error reconciling cash:", error);
+      console.error("Error reconciling:", error);
       setError("Failed to reconcile cash");
     } finally {
       setLoading(false);
     }
   };
 
-  if (!open) return null;
-
-  // Get values from closed session instead of settlement
-  const openingBalance =
-    closedSession?.allocatedBalance || closedSession?.openingFloat || 0;
-  const cashIn = closedSession?.cashIn || 0;
-  const cashOut = closedSession?.cashOut || 0;
-  const expectedBalance =
-    closedSession?.expectedBalance || openingBalance + cashIn - cashOut;
-  const countedCash =
-    closedSession?.countedCashAmount || closedSession?.closingBalance || 0;
-  const variance = closedSession?.difference || countedCash - expectedBalance;
-  const expectedReturn = expectedBalance;
+  const remainingBalance = summary?.netCash || 0;
+  const isReconciled = remainingBalance === 0;
+  const isSettled = sessionInfo?.sessionStatus === "SETTLED";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[600px]">
         <DialogHeader>
-          <DialogTitle>Reconcile Cash - Return to Vault</DialogTitle>
+          <DialogTitle>Reconcile & Return Cash</DialogTitle>
           <DialogDescription>
-            {cashierName && `Return cash from ${cashierName} to teller vault`}
+            {cashierName
+              ? `Return remaining cash from ${cashierName} to teller safe`
+              : "Return remaining cash to teller safe"}
           </DialogDescription>
         </DialogHeader>
 
-        {loadingData ? (
-          <div className="flex items-center justify-center py-8">
-            <Loader2 className="h-6 w-6 animate-spin" />
-            <span className="ml-2">Loading session and settlement data...</span>
-          </div>
-        ) : closedSession ? (
-          <form onSubmit={handleSubmit}>
-            <div className="space-y-4 py-4">
-              {/* Session Summary */}
-              <div className="grid grid-cols-2 gap-4 p-4 border rounded-lg bg-muted/50">
-                <div>
-                  <Label className="text-xs text-muted-foreground">
-                    Teller Available Balance
-                  </Label>
-                  <p className="text-lg font-semibold text-blue-600">
-                    {new Intl.NumberFormat("en-US", {
-                      style: "currency",
-                      currency: "USD",
-                    }).format(tellerAvailableBalance || 0)}
-                  </p>
-                </div>
-                <div>
-                  <Label className="text-xs text-muted-foreground">
-                    Opening Balance
-                  </Label>
-                  <p className="text-lg font-semibold">
-                    {new Intl.NumberFormat("en-US", {
-                      style: "currency",
-                      currency: "USD",
-                    }).format(openingBalance)}
-                  </p>
-                </div>
-                <div>
-                  <Label className="text-xs text-muted-foreground">
-                    Cash In
-                  </Label>
-                  <p className="text-lg font-semibold text-green-600">
-                    {new Intl.NumberFormat("en-US", {
-                      style: "currency",
-                      currency: "USD",
-                    }).format(cashIn)}
-                  </p>
-                </div>
-                <div>
-                  <Label className="text-xs text-muted-foreground">
-                    Cash Out
-                  </Label>
-                  <p className="text-lg font-semibold text-red-600">
-                    {new Intl.NumberFormat("en-US", {
-                      style: "currency",
-                      currency: "USD",
-                    }).format(cashOut)}
-                  </p>
-                </div>
-                <div>
-                  <Label className="text-xs text-muted-foreground">
-                    Expected Balance
-                  </Label>
-                  <p className="text-lg font-semibold">
-                    {new Intl.NumberFormat("en-US", {
-                      style: "currency",
-                      currency: "USD",
-                    }).format(expectedBalance)}
-                  </p>
-                </div>
-                <div>
-                  <Label className="text-xs text-muted-foreground">
-                    Counted Cash (from Session)
-                  </Label>
-                  <p className="text-lg font-semibold">
-                    {new Intl.NumberFormat("en-US", {
-                      style: "currency",
-                      currency: "USD",
-                    }).format(countedCash)}
-                  </p>
-                </div>
-                <div>
-                  <Label className="text-xs text-muted-foreground">
-                    Variance
-                  </Label>
-                  <p
-                    className={`text-lg font-semibold ${
-                      variance > 0
-                        ? "text-green-600"
-                        : variance < 0
-                        ? "text-red-600"
-                        : ""
-                    }`}
-                  >
-                    {variance > 0 ? "+" : ""}
-                    {new Intl.NumberFormat("en-US", {
-                      style: "currency",
-                      currency: "USD",
-                    }).format(variance)}
-                  </p>
-                </div>
+        <div className="space-y-4 py-4">
+          {/* Session Status */}
+          {sessionInfo && (
+            <div
+              className={`p-3 border rounded-lg ${
+                isSettled
+                  ? "bg-green-50 border-green-200"
+                  : sessionInfo.sessionStatus === "CLOSED"
+                  ? "bg-yellow-50 border-yellow-200"
+                  : "bg-gray-50 border-gray-200"
+              }`}
+            >
+              <div className="flex justify-between items-center">
+                <span className="text-sm font-medium">Session Status</span>
+                <span
+                  className={`text-sm font-bold ${
+                    isSettled
+                      ? "text-green-700"
+                      : sessionInfo.sessionStatus === "CLOSED"
+                      ? "text-yellow-700"
+                      : "text-gray-700"
+                  }`}
+                >
+                  {sessionInfo.sessionStatus}
+                </span>
               </div>
-
-              <Alert>
-                <AlertCircle className="h-4 w-4" />
-                <AlertDescription>
-                  This will reverse all cashier allocations and return cash to
-                  the vault. The cashier's balance will become 0. Any variance
-                  will be tracked separately.
-                </AlertDescription>
-              </Alert>
-
-              <div className="space-y-2">
-                <Label htmlFor="returnedAmount">
-                  Amount to Return to Vault{" "}
-                  <span className="text-red-500">*</span>
-                </Label>
-                <Input
-                  id="returnedAmount"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={formData.returnedAmount}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      returnedAmount: e.target.value,
-                    })
-                  }
-                  required
-                  placeholder="0.00"
-                />
-                <p className="text-xs text-muted-foreground">
-                  Enter the actual cash amount being returned to the vault
-                  (pre-filled with counted cash)
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="notes">Reconciliation Notes</Label>
-                <Textarea
-                  id="notes"
-                  value={formData.notes}
-                  onChange={(e) =>
-                    setFormData({ ...formData, notes: e.target.value })
-                  }
-                  placeholder="Add any notes about the reconciliation..."
-                  rows={3}
-                />
-              </div>
-
-              {error && (
-                <Alert variant="destructive">
-                  <AlertDescription>{error}</AlertDescription>
-                </Alert>
-              )}
             </div>
+          )}
 
-            <DialogFooter>
+          {/* Currency Selector */}
+          <div className="flex items-center gap-4">
+            <Label htmlFor="currencyCode" className="shrink-0">
+              Currency:
+            </Label>
+            <div className="flex gap-2 flex-1">
+              <select
+                id="currencyCode"
+                value={currencyCode}
+                onChange={(e) => setCurrencyCode(e.target.value)}
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              >
+                {currencies.map((currency) => (
+                  <option key={currency.code} value={currency.code}>
+                    {currency.code} - {currency.name}
+                  </option>
+                ))}
+              </select>
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => onOpenChange(false)}
-                disabled={loading}
+                size="icon"
+                onClick={fetchFineractSummary}
+                disabled={loadingData}
               >
-                Cancel
-              </Button>
-              <Button type="submit" disabled={loading}>
-                {loading ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Reconciling...
-                  </>
-                ) : (
-                  "Reconcile & Return Cash"
-                )}
-              </Button>
-            </DialogFooter>
-          </form>
-        ) : (
-          <div className="py-4">
-            <Alert variant="destructive">
-              <AlertDescription>
-                {error ||
-                  "No pending settlement found. Please settle cash first."}
-              </AlertDescription>
-            </Alert>
-            <div className="mt-4 flex justify-end">
-              <Button variant="outline" onClick={() => onOpenChange(false)}>
-                Close
+                <RefreshCw
+                  className={`h-4 w-4 ${loadingData ? "animate-spin" : ""}`}
+                />
               </Button>
             </div>
           </div>
-        )}
+
+          {/* Fineract Summary */}
+          {loadingData ? (
+            <div className="flex items-center justify-center p-8 border rounded-lg bg-muted/50">
+              <Loader2 className="h-6 w-6 animate-spin mr-2" />
+              <span>Loading data from Fineract...</span>
+            </div>
+          ) : summary ? (
+            <div className="space-y-4">
+              <div className="grid grid-cols-3 gap-4 p-4 border rounded-lg bg-muted/50">
+                <div>
+                  <Label className="text-xs text-muted-foreground">
+                    Total Cash In
+                  </Label>
+                  <p className="text-lg font-semibold text-green-600">
+                    {formatAmount(summary.sumCashAllocation)}
+                  </p>
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">
+                    Total Cash Out
+                  </Label>
+                  <p className="text-lg font-semibold text-red-600">
+                    {formatAmount(summary.sumCashSettlement)}
+                  </p>
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">
+                    Remaining Balance
+                  </Label>
+                  <p className="text-lg font-bold">{formatAmount(remainingBalance)}</p>
+                </div>
+              </div>
+
+              {/* Reconciliation Status */}
+              {isReconciled ? (
+                <div className="p-4 border rounded-lg bg-green-50 border-green-200">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle className="h-5 w-5 text-green-600" />
+                    <span className="font-medium text-green-800">
+                      Fully Reconciled
+                    </span>
+                  </div>
+                  <p className="text-sm text-green-600 mt-1">
+                    All cash has been returned to the teller safe. Balance is zero.
+                  </p>
+                </div>
+              ) : (
+                <div className="p-4 border rounded-lg bg-blue-50 border-blue-200">
+                  <div className="flex justify-between items-center">
+                    <span className="font-medium text-blue-800">
+                      Amount to Return
+                    </span>
+                    <span className="text-xl font-bold text-blue-800">
+                      {formatAmount(remainingBalance)}
+                    </span>
+                  </div>
+                  <p className="text-sm text-blue-600 mt-1">
+                    This amount will be returned to the teller safe
+                  </p>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="p-4 border rounded-lg bg-muted/50 text-center text-muted-foreground">
+              No data available. Select a currency to load data.
+            </div>
+          )}
+
+          {/* Notes */}
+          {!isReconciled && (
+            <div className="space-y-2">
+              <Label htmlFor="notes">Notes</Label>
+              <Textarea
+                id="notes"
+                value={formData.notes}
+                onChange={(e) =>
+                  setFormData({ ...formData, notes: e.target.value })
+                }
+                placeholder="End of day reconciliation notes..."
+                rows={2}
+              />
+            </div>
+          )}
+
+          {/* Error */}
+          {error && (
+            <Alert variant="destructive">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+
+          {/* Success */}
+          {success && (
+            <Alert className="bg-green-50 border-green-200">
+              <CheckCircle className="h-4 w-4 text-green-600" />
+              <AlertDescription className="text-green-800">
+                {success}
+              </AlertDescription>
+            </Alert>
+          )}
+        </div>
+
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            disabled={loading}
+          >
+            {isReconciled ? "Close" : "Cancel"}
+          </Button>
+          {!isReconciled && (
+            <Button
+              onClick={handleReconcile}
+              disabled={loading || !summary || remainingBalance <= 0}
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Processing...
+                </>
+              ) : (
+                `Return ${formatAmount(remainingBalance)} to Safe`
+              )}
+            </Button>
+          )}
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

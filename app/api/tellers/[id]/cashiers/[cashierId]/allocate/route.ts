@@ -43,26 +43,41 @@ export async function POST(
       );
     }
 
-    // Get teller and cashier
-    const teller = await prisma.teller.findFirst({
-      where: { id: tellerId, tenantId: tenant.id },
+    // Handle fineract-prefixed IDs for teller
+    let dbTellerId = tellerId;
+    let fineractTellerIdFromPrefix: number | null = null;
+    if (tellerId.startsWith("fineract-")) {
+      fineractTellerIdFromPrefix = parseInt(tellerId.replace("fineract-", ""));
+    }
+
+    // Get teller by database ID or Fineract ID
+    let teller = await prisma.teller.findFirst({
+      where: { id: dbTellerId, tenantId: tenant.id },
     });
+
+    // Try by Fineract ID if not found
+    const fineractTellerIdToSearch = fineractTellerIdFromPrefix || (!isNaN(Number(tellerId)) ? Number(tellerId) : null);
+    if (!teller && fineractTellerIdToSearch) {
+      teller = await prisma.teller.findFirst({
+        where: { fineractTellerId: fineractTellerIdToSearch, tenantId: tenant.id },
+      });
+    }
 
     // Parse cashierId - could be database ID or Fineract ID
     const cashierIdNum = parseInt(cashierId);
     const isNumericId = !isNaN(cashierIdNum);
 
-    // Try to find cashier by database ID first
-    let cashier = await prisma.cashier.findFirst({
-      where: { id: cashierId, tellerId, tenantId: tenant.id },
-    });
+    // Try to find cashier by database ID first (using teller.id if found)
+    let cashier = teller ? await prisma.cashier.findFirst({
+      where: { id: cashierId, tellerId: teller.id, tenantId: tenant.id },
+    }) : null;
 
     // If not found by database ID and cashierId is numeric, try Fineract ID
-    if (!cashier && isNumericId) {
+    if (!cashier && isNumericId && teller) {
       cashier = await prisma.cashier.findFirst({
         where: {
           fineractCashierId: cashierIdNum,
-          tellerId,
+          tellerId: teller.id,
           tenantId: tenant.id,
         },
       });
@@ -82,7 +97,7 @@ export async function POST(
     }
 
     // If cashier still doesn't exist in database, fetch from Fineract and create it
-    if (!cashier && teller.fineractTellerId) {
+    if (!cashier && teller?.fineractTellerId) {
       try {
         const fineractService = await getFineractServiceWithSession();
         const fineractCashier = await fineractService.getCashier(
@@ -103,7 +118,7 @@ export async function POST(
         cashier = await prisma.cashier.create({
           data: {
             tenantId: tenant.id,
-            tellerId,
+            tellerId: teller.id,
             fineractCashierId: fineractCashier.id,
             staffId: fineractCashier.staffId || 0,
             staffName:
@@ -151,7 +166,7 @@ export async function POST(
     // Check teller vault balance (allocations where cashierId is null)
     const tellerVaultAllocations = await prisma.cashAllocation.findMany({
       where: {
-        tellerId,
+        tellerId: teller.id,
         tenantId: tenant.id,
         cashierId: null, // Teller vault allocations
         status: "ACTIVE",
@@ -167,7 +182,7 @@ export async function POST(
     // Exclude variance allocations - variance is tracked separately
     const cashierAllocations = await prisma.cashAllocation.findMany({
       where: {
-        tellerId,
+        tellerId: teller.id,
         tenantId: tenant.id,
         cashierId: { not: null },
         status: "ACTIVE",
@@ -229,6 +244,13 @@ export async function POST(
     let fineractAllocationId: number | null = null;
     try {
       const fineractService = await getFineractServiceWithSession();
+      console.log("Calling Fineract allocateCashToCashier with:", {
+        tellerId: teller.fineractTellerId,
+        cashierId: fineractCashierId,
+        txnDate,
+        currencyCode: currency,
+        txnAmount: amount.toString(),
+      });
       const result = await fineractService.allocateCashToCashier(
         teller.fineractTellerId,
         fineractCashierId,
@@ -236,20 +258,38 @@ export async function POST(
           txnDate,
           currencyCode: currency,
           txnAmount: amount.toString(),
-          txnNote: notes || "",
+          txnNote: notes || "Allocation from teller safe",
           dateFormat: "dd MMMM yyyy",
           locale: "en",
         }
       );
+      console.log("Fineract allocateCashToCashier result:", result);
       fineractAllocationId = result.resourceId || result.id || null;
     } catch (error: any) {
-      console.error("Error allocating cash in Fineract:", {
+      const errorDetails = {
         message: error.message,
         status: error.response?.status,
         data: error.response?.data,
-      });
-      // Continue with local allocation even if Fineract fails
-      // fineractAllocationId will remain null
+      };
+      console.error("Error allocating cash in Fineract:", errorDetails);
+      // Return full error details so user can see what went wrong
+      return NextResponse.json(
+        {
+          error: "Failed to allocate cash in Fineract",
+          details: error.response?.data?.defaultUserMessage || 
+                   error.response?.data?.errors?.[0]?.defaultUserMessage ||
+                   error.message,
+          fineractError: error.response?.data || null,
+          debugInfo: {
+            tellerId: teller.fineractTellerId,
+            cashierId: fineractCashierId,
+            txnDate,
+            currencyCode: currency,
+            txnAmount: amount.toString(),
+          },
+        },
+        { status: error.response?.status || 500 }
+      );
     }
 
     // Create allocation record in database with cashierId
@@ -301,7 +341,7 @@ export async function POST(
       const allocation = await prisma.cashAllocation.create({
         data: {
           tenantId: tenant.id,
-          tellerId,
+          tellerId: teller.id,
           cashierId: cashier.id, // Must be set for cashier allocations
           fineractAllocationId: fineractAllocationId || null, // Use null if undefined/0 or duplicate
           amount: parseFloat(amount),
@@ -323,7 +363,7 @@ export async function POST(
         const allocation = await prisma.cashAllocation.create({
           data: {
             tenantId: tenant.id,
-            tellerId,
+            tellerId: teller.id,
             cashierId: cashier.id,
             fineractAllocationId: null, // Set to null to avoid constraint
             amount: parseFloat(amount),
