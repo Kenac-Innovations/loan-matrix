@@ -221,17 +221,6 @@ export function ClientMetrics() {
           <p className="text-xs text-red-400">Require attention</p>
         </CardContent>
       </Card>
-
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between pb-2">
-          <CardTitle className="text-sm font-medium">Growth Rate</CardTitle>
-          <TrendingUp className="h-4 w-4 text-green-400" />
-        </CardHeader>
-        <CardContent>
-          <div className="text-2xl font-bold">{metrics.clientGrowthRate}%</div>
-          <p className="text-xs text-green-400">Monthly growth</p>
-        </CardContent>
-      </Card>
     </div>
   );
 }

@@ -57,7 +57,10 @@ export default async function ClientDetailPage({ params }: PageProps) {
     const host = h.get("x-forwarded-host") || h.get("host") || "localhost:3000";
     const proto = h.get("x-forwarded-proto") || "http";
     const origin = `${proto}://${host}`;
-    const res = await fetch(`${origin}/api/fineract/datatables?apptable=m_client`, { cache: 'no-store' });
+    const res = await fetch(
+      `${origin}/api/fineract/datatables?apptable=m_client`,
+      { cache: "no-store" }
+    );
     if (res.ok) dynamicTabs = await res.json();
   } catch {}
 
@@ -91,30 +94,30 @@ export default async function ClientDetailPage({ params }: PageProps) {
 
       {/* Detailed Information Tabs */}
       <Tabs defaultValue="loans" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-4 md:grid-cols-4">
-          <TabsTrigger 
-            value="loans" 
+        <TabsList>
+          <TabsTrigger
+            value="loans"
             className="flex items-center gap-2 px-2 md:px-3"
           >
             <CreditCard className="h-4 w-4" />
             <span className="hidden sm:inline">Loans</span>
           </TabsTrigger>
-          <TabsTrigger 
-            value="transactions" 
+          <TabsTrigger
+            value="transactions"
             className="flex items-center gap-2 px-2 md:px-3"
           >
             <Receipt className="h-4 w-4" />
             <span className="hidden sm:inline">Transactions</span>
           </TabsTrigger>
-          <TabsTrigger 
-            value="documents" 
+          <TabsTrigger
+            value="documents"
             className="flex items-center gap-2 px-2 md:px-3"
           >
             <FileSpreadsheet className="h-4 w-4" />
             <span className="hidden sm:inline">Documents</span>
           </TabsTrigger>
-          <TabsTrigger 
-            value="activity" 
+          <TabsTrigger
+            value="activity"
             className="flex items-center gap-2 px-2 md:px-3"
           >
             <History className="h-4 w-4" />
@@ -126,7 +129,11 @@ export default async function ClientDetailPage({ params }: PageProps) {
         {Array.isArray(dynamicTabs) && dynamicTabs.length > 0 && (
           <TabsList className="w-full overflow-x-auto">
             {dynamicTabs.map((dt: any) => (
-              <TabsTrigger key={dt.registeredTableName} value={`dt-${dt.registeredTableName}`} className="px-3">
+              <TabsTrigger
+                key={dt.registeredTableName}
+                value={`dt-${dt.registeredTableName}`}
+                className="px-3"
+              >
                 {dt.registeredTableName}
               </TabsTrigger>
             ))}
@@ -211,11 +218,19 @@ export default async function ClientDetailPage({ params }: PageProps) {
         </TabsContent>
 
         {/* Dynamic datatable contents */}
-        {Array.isArray(dynamicTabs) && dynamicTabs.map((dt: any) => (
-          <TabsContent key={`content-${dt.registeredTableName}`} value={`dt-${dt.registeredTableName}`} className="space-y-4">
-            <DynamicDatatableContent datatableName={dt.registeredTableName} clientId={clientId} />
-          </TabsContent>
-        ))}
+        {Array.isArray(dynamicTabs) &&
+          dynamicTabs.map((dt: any) => (
+            <TabsContent
+              key={`content-${dt.registeredTableName}`}
+              value={`dt-${dt.registeredTableName}`}
+              className="space-y-4"
+            >
+              <DynamicDatatableContent
+                datatableName={dt.registeredTableName}
+                clientId={clientId}
+              />
+            </TabsContent>
+          ))}
       </Tabs>
     </div>
   );

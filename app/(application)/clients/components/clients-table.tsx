@@ -1,12 +1,9 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import useSWR from "swr";
 import {
-  Eye,
-  Edit,
-  MoreHorizontal,
   Phone,
   Mail,
   MapPin,
@@ -17,17 +14,15 @@ import {
   Search,
   X,
   Loader2,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
+  Filter,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import {
   Table,
   TableBody,
@@ -77,7 +72,11 @@ interface PaginationInfo {
 // Simple fetcher for SWR
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
+// Fetch offices for filter dropdown
+const officesFetcher = (url: string) => fetch(url).then((res) => res.json());
+
 export function ClientsTable() {
+  const router = useRouter();
   const [offset, setOffset] = useState(0);
   const [limit, setLimit] = useState(20);
   const [searchInput, setSearchInput] = useState("");
@@ -86,6 +85,18 @@ export function ClientsTable() {
     null
   );
   const [isSearching, setIsSearching] = useState(false);
+  const [navigatingToClient, setNavigatingToClient] = useState<number | null>(
+    null
+  );
+
+  // Filter and sort states
+  const [officeId, setOfficeId] = useState<string>("");
+  const [status, setStatus] = useState<string>("");
+  const [orderBy, setOrderBy] = useState<string>("id");
+  const [sortOrder, setSortOrder] = useState<string>("DESC");
+
+  // Fetch offices for filter dropdown
+  const { data: officesData } = useSWR("/api/fineract/offices", officesFetcher);
 
   // Debounced search handler - requires minimum 2 characters
   const handleSearchChange = useCallback(
@@ -126,8 +137,10 @@ export function ClientsTable() {
   }, [searchTimeout]);
 
   // Build the API URL with query parameters
-  const apiUrl = `/api/fineract/clients?offset=${offset}&limit=${limit}${
+  const apiUrl = `/api/fineract/clients?offset=${offset}&limit=${limit}&orderBy=${orderBy}&sortOrder=${sortOrder}${
     query ? `&query=${encodeURIComponent(query)}` : ""
+  }${officeId ? `&officeId=${officeId}` : ""}${
+    status ? `&status=${status}` : ""
   }`;
 
   // Use keepPreviousData to prevent content flash during search
@@ -288,11 +301,105 @@ export function ClientsTable() {
     );
   }
 
+  // Get offices list
+  const offices = officesData || [];
+
+  // Clear all filters
+  const handleClearFilters = () => {
+    setOfficeId("");
+    setStatus("");
+    setOrderBy("id");
+    setSortOrder("DESC");
+    setOffset(0);
+  };
+
+  const hasActiveFilters =
+    officeId || status || orderBy !== "id" || sortOrder !== "DESC";
+
+  // Handle column sort click
+  const handleSort = (column: string) => {
+    if (orderBy === column) {
+      // Toggle sort order if same column
+      setSortOrder(sortOrder === "ASC" ? "DESC" : "ASC");
+    } else {
+      // Set new column with DESC default
+      setOrderBy(column);
+      setSortOrder("DESC");
+    }
+    setOffset(0);
+  };
+
+  // Render sort indicator
+  const SortIndicator = ({ column }: { column: string }) => {
+    if (orderBy !== column) {
+      return <ArrowUpDown className="ml-1 h-3 w-3 text-muted-foreground/50" />;
+    }
+    return sortOrder === "ASC" ? (
+      <ArrowUp className="ml-1 h-3 w-3" />
+    ) : (
+      <ArrowDown className="ml-1 h-3 w-3" />
+    );
+  };
+
   if (clients.length === 0) {
     return (
       <div className="space-y-4">
+        {/* Search and Filters */}
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="relative w-full sm:max-w-sm">
+            {isSearching || isLoading ? (
+              <Loader2 className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground animate-spin" />
+            ) : (
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            )}
+            <Input
+              placeholder="Search by name or account number..."
+              value={searchInput}
+              onChange={(e) => handleSearchChange(e.target.value)}
+              className="pl-10 pr-10"
+            />
+            {searchInput && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 p-0"
+                onClick={handleClearSearch}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
+          {hasActiveFilters && (
+            <Button variant="ghost" size="sm" onClick={handleClearFilters}>
+              <X className="h-3.5 w-3.5 mr-1" />
+              Clear Filters
+            </Button>
+          )}
+        </div>
+        <Card>
+          <CardContent className="p-6">
+            <div className="text-center text-muted-foreground">
+              {query || hasActiveFilters
+                ? "No clients found matching your search or filters. Try adjusting your criteria."
+                : "No clients found. Please check your Fineract connection."}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  const currentPage = Math.floor(offset / limit) + 1;
+  const totalPages = Math.ceil(totalCount / limit);
+  const startRecord = offset + 1;
+  const endRecord = Math.min(offset + limit, totalCount);
+
+  return (
+    <div className="space-y-4">
+      {/* Search and Filters */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         {/* Search Input */}
-        <div className="relative max-w-sm">
+        <div className="relative w-full sm:max-w-sm">
           {isSearching || isLoading ? (
             <Loader2 className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground animate-spin" />
           ) : (
@@ -315,81 +422,128 @@ export function ClientsTable() {
             </Button>
           )}
         </div>
-        <Card>
-          <CardContent className="p-6">
-            <div className="text-center text-muted-foreground">
-              {query
-                ? `No clients found matching "${query}". Try a different search term.`
-                : "No clients found. Please check your Fineract connection."}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
 
-  const currentPage = Math.floor(offset / limit) + 1;
-  const totalPages = Math.ceil(totalCount / limit);
-  const startRecord = offset + 1;
-  const endRecord = Math.min(offset + limit, totalCount);
-
-  return (
-    <div className="space-y-4">
-      {/* Search Input */}
-      <div className="relative max-w-sm">
-        {isSearching || isLoading ? (
-          <Loader2 className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground animate-spin" />
-        ) : (
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        )}
-        <Input
-          placeholder="Search by name or account number..."
-          value={searchInput}
-          onChange={(e) => handleSearchChange(e.target.value)}
-          className="pl-10 pr-10"
-        />
-        {searchInput && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 p-0"
-            onClick={handleClearSearch}
+        {/* Filters */}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Office Filter */}
+          <Select
+            value={officeId}
+            onValueChange={(value) => {
+              setOfficeId(value === "all" ? "" : value);
+              setOffset(0);
+            }}
           >
-            <X className="h-4 w-4" />
-          </Button>
-        )}
+            <SelectTrigger className="w-[160px] h-9">
+              <MapPin className="h-3.5 w-3.5 mr-2 text-muted-foreground" />
+              <SelectValue placeholder="All Offices" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Offices</SelectItem>
+              {offices.map((office: any) => (
+                <SelectItem key={office.id} value={office.id.toString()}>
+                  {office.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          {/* Status Filter */}
+          <Select
+            value={status}
+            onValueChange={(value) => {
+              setStatus(value === "all" ? "" : value);
+              setOffset(0);
+            }}
+          >
+            <SelectTrigger className="w-[140px] h-9">
+              <Filter className="h-3.5 w-3.5 mr-2 text-muted-foreground" />
+              <SelectValue placeholder="All Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Status</SelectItem>
+              <SelectItem value="active">Active</SelectItem>
+              <SelectItem value="pending">Pending</SelectItem>
+              <SelectItem value="closed">Closed</SelectItem>
+              <SelectItem value="inactive">Inactive</SelectItem>
+            </SelectContent>
+          </Select>
+
+          {/* Clear Filters */}
+          {(officeId || status) && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-9"
+              onClick={handleClearFilters}
+            >
+              <X className="h-3.5 w-3.5 mr-1" />
+              Clear
+            </Button>
+          )}
+        </div>
       </div>
 
       <div className="rounded-md border">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Client</TableHead>
+              <TableHead
+                className="cursor-pointer hover:bg-muted/50 select-none"
+                onClick={() => handleSort("displayName")}
+              >
+                <div className="flex items-center">
+                  Client
+                  <SortIndicator column="displayName" />
+                </div>
+              </TableHead>
               <TableHead>Account No</TableHead>
               <TableHead>Contact</TableHead>
               <TableHead>Office</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead>Joined</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
+              <TableHead
+                className="cursor-pointer hover:bg-muted/50 select-none"
+                onClick={() => handleSort("submittedOnDate")}
+              >
+                <div className="flex items-center">
+                  Joined
+                  <SortIndicator column="submittedOnDate" />
+                </div>
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {clients.map((client) => (
-              <TableRow key={client.id}>
+              <TableRow
+                key={client.id}
+                className={`cursor-pointer hover:bg-muted/50 ${
+                  navigatingToClient === client.id ? "opacity-70" : ""
+                }`}
+                onClick={() => {
+                  setNavigatingToClient(client.id);
+                  router.push(`/clients/${client.id}`);
+                }}
+              >
                 <TableCell>
                   <div className="flex items-center gap-3">
-                    <Avatar className="h-9 w-9">
-                      <AvatarImage
-                        src={`/api/placeholder/36/36?text=${
-                          client.firstname?.[0] || "U"
-                        }${client.lastname?.[0] || "N"}`}
-                        alt={client.displayName}
-                      />
-                      <AvatarFallback>
-                        {client.firstname?.[0] || "U"}
-                        {client.lastname?.[0] || "N"}
-                      </AvatarFallback>
-                    </Avatar>
+                    <div className="relative">
+                      <Avatar className="h-9 w-9">
+                        <AvatarImage
+                          src={`/api/placeholder/36/36?text=${
+                            client.firstname?.[0] || "U"
+                          }${client.lastname?.[0] || "N"}`}
+                          alt={client.displayName}
+                        />
+                        <AvatarFallback>
+                          {client.firstname?.[0] || "U"}
+                          {client.lastname?.[0] || "N"}
+                        </AvatarFallback>
+                      </Avatar>
+                      {navigatingToClient === client.id && (
+                        <div className="absolute inset-0 flex items-center justify-center bg-background/80 rounded-full">
+                          <Loader2 className="h-5 w-5 animate-spin" />
+                        </div>
+                      )}
+                    </div>
                     <div>
                       <div className="font-medium">{client.displayName}</div>
                       <div className="text-sm text-muted-foreground">
@@ -431,30 +585,6 @@ export function ClientsTable() {
                     <Calendar className="h-3 w-3" />
                     {formatDate(client.timeline.submittedOnDate)}
                   </div>
-                </TableCell>
-                <TableCell className="text-right">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" className="h-8 w-8 p-0">
-                        <span className="sr-only">Open menu</span>
-                        <MoreHorizontal className="h-4 w-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem asChild>
-                        <Link href={`/clients/${client.id}`}>
-                          <Eye className="mr-2 h-4 w-4" />
-                          View Details
-                        </Link>
-                      </DropdownMenuItem>
-                      <DropdownMenuItem asChild>
-                        <Link href={`/clients/${client.id}/edit`}>
-                          <Edit className="mr-2 h-4 w-4" />
-                          Edit Client
-                        </Link>
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
                 </TableCell>
               </TableRow>
             ))}
