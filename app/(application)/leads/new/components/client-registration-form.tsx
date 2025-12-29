@@ -1877,6 +1877,40 @@ export function ClientRegistrationForm({
     checkExistingProspect();
   }, []); // Empty dependency array - only run once on mount
 
+  // Auto-search for client when externalId is provided in URL (from client details page)
+  const hasTriggeredAutoSearch = useRef(false);
+  const pendingAutoSearch = useRef<string | null>(null);
+
+  useEffect(() => {
+    const externalIdFromUrl = searchParams?.get("externalId");
+    if (
+      externalIdFromUrl &&
+      !hasTriggeredAutoSearch.current &&
+      !isLoading &&
+      offices.length > 0
+    ) {
+      hasTriggeredAutoSearch.current = true;
+      console.log(
+        "Auto-searching for client with externalId:",
+        externalIdFromUrl
+      );
+      setNationalIdLookup(externalIdFromUrl);
+      pendingAutoSearch.current = externalIdFromUrl;
+    }
+  }, [searchParams, isLoading, offices.length]);
+
+  // Trigger search when nationalIdLookup is set from URL parameter
+  useEffect(() => {
+    if (
+      pendingAutoSearch.current &&
+      nationalIdLookup === pendingAutoSearch.current &&
+      nationalIdLookup.trim()
+    ) {
+      pendingAutoSearch.current = null;
+      handleClientLookup();
+    }
+  }, [nationalIdLookup]);
+
   // Load data on mount or from props
   useEffect(() => {
     const loadData = async () => {

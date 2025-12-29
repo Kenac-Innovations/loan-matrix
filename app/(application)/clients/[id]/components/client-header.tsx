@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowLeft, Edit, Users } from "lucide-react";
+import { ArrowLeft, Edit, Users, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -175,12 +175,26 @@ export function ClientHeader({
                 </p>
               </div>
             </div>
-            <Link href={`/clients/${clientId}/edit`}>
-              <Button size="sm">
-                <Edit className="h-4 w-4 mr-2" />
-                Edit Client
-              </Button>
-            </Link>
+            <div className="flex items-center gap-2">
+              {client.active && client.externalId && (
+                <Link
+                  href={`/leads/new?externalId=${encodeURIComponent(
+                    client.externalId
+                  )}`}
+                >
+                  <Button size="sm" className="bg-green-600 hover:bg-green-700">
+                    <Plus className="h-4 w-4 mr-2" />
+                    Apply for Loan
+                  </Button>
+                </Link>
+              )}
+              <Link href={`/clients/${clientId}/edit`}>
+                <Button size="sm" variant="outline">
+                  <Edit className="h-4 w-4 mr-2" />
+                  Edit Client
+                </Button>
+              </Link>
+            </div>
           </div>
         </div>
       </div>
