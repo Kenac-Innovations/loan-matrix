@@ -1142,6 +1142,35 @@ export function LoanTermsForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leadId]); // Only run when leadId changes, not on every template update
 
+  // Initialize default charges from template when no charges exist yet
+  useEffect(() => {
+    // Only initialize if we have template charges but no editable charges
+    if (
+      loanTemplate?.charges &&
+      loanTemplate.charges.length > 0 &&
+      editableCharges.length === 0
+    ) {
+      console.log("Initializing default charges from template:", loanTemplate.charges);
+      const disbursementDate = loanTemplate.expectedDisbursementDate
+        ? new Date(
+            loanTemplate.expectedDisbursementDate[0],
+            loanTemplate.expectedDisbursementDate[1] - 1,
+            loanTemplate.expectedDisbursementDate[2]
+          )
+        : new Date();
+
+      const initialCharges = loanTemplate.charges.map((charge: any) => ({
+        chargeId: charge.chargeId || charge.id,
+        name: charge.name || "Unknown Charge",
+        amount: charge.amount || 0,
+        dueDate: disbursementDate,
+        originalCharge: charge,
+      }));
+      setEditableCharges(initialCharges);
+      console.log("Default charges initialized:", initialCharges);
+    }
+  }, [loanTemplate, editableCharges.length]);
+
   const handleRemoveCharge = (index: number) => {
     setEditableCharges((prev) => prev.filter((_, i) => i !== index));
   };
