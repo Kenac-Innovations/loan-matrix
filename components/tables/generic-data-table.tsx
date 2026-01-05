@@ -160,6 +160,9 @@ export function GenericDataTable<TData>({
   enableColumnVisibility = true,
   enableExport = true,
   enableFilters = true,
+  hideSearch = false,
+  customSearchInput,
+  searchResultInfo,
   pageSize = 10,
   tableId = "generic-table",
   onRowClick,
@@ -471,16 +474,20 @@ export function GenericDataTable<TData>({
       <div className="flex-shrink-0 mb-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:gap-4 lg:flex-1">
-            {/* Global search */}
-            <div className="relative flex-1 max-w-sm">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder={searchPlaceholder}
-                value={globalFilter ?? ""}
-                onChange={(event) => setGlobalFilter(String(event.target.value))}
-                className="pl-10 h-9"
-              />
-            </div>
+            {/* Custom search input (server-side) or default search */}
+            {customSearchInput ? (
+              customSearchInput
+            ) : !hideSearch && (
+              <div className="relative flex-1 max-w-sm">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder={searchPlaceholder}
+                  value={globalFilter ?? ""}
+                  onChange={(event) => setGlobalFilter(String(event.target.value))}
+                  className="pl-10 h-9"
+                />
+              </div>
+            )}
 
             {/* Custom filters */}
             <div className="flex-1">
@@ -552,6 +559,11 @@ export function GenericDataTable<TData>({
             )}
           </div>
         </div>
+        
+        {/* Search result info */}
+        {searchResultInfo && (
+          <p className="text-sm text-muted-foreground mt-2">{searchResultInfo}</p>
+        )}
       </div>
 
       {/* Table Container - Single scroll container */}

@@ -88,6 +88,15 @@ export interface DataTableProps<TData = any> {
   /** Enable custom filters */
   enableFilters?: boolean;
   
+  /** Hide the search bar */
+  hideSearch?: boolean;
+  
+  /** Custom search input to replace the default search */
+  customSearchInput?: React.ReactNode;
+  
+  /** Info text to show below search (e.g., search result count) */
+  searchResultInfo?: string;
+  
   /** Number of rows per page */
   pageSize?: number;
   

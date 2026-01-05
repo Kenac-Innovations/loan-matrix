@@ -25,9 +25,12 @@ export type Loan = {
 
 interface LoansDataTableProps {
   data: Loan[];
+  hideSearch?: boolean;
+  serverSearchInput?: React.ReactNode;
+  searchResultInfo?: string;
 }
 
-export function LoansDataTable({ data }: LoansDataTableProps) {
+export function LoansDataTable({ data, hideSearch = false, serverSearchInput, searchResultInfo }: LoansDataTableProps) {
   const [customFilters, setCustomFilters] = useState<DataTableFilter[]>([
     { columnId: "status", value: "", type: "select" },
     { columnId: "currency", value: "", type: "select" },
@@ -207,8 +210,8 @@ export function LoansDataTable({ data }: LoansDataTableProps) {
     <GenericDataTable
       data={data}
       columns={columns}
-      searchPlaceholder="Search loans..."
-      searchColumn="clientName"
+      searchPlaceholder={hideSearch ? "" : "Search loans..."}
+      searchColumn={hideSearch ? undefined : "clientName"}
       enableSelection={true}
       enablePagination={true}
       enableColumnVisibility={false}
@@ -218,9 +221,12 @@ export function LoansDataTable({ data }: LoansDataTableProps) {
       tableId="loans-table"
       onRowClick={handleRowClick}
       exportFileName="loans-export"
-      emptyMessage="No loans found."
+      emptyMessage={searchResultInfo ? `No loans found. ${searchResultInfo}` : "No loans found."}
       customFilters={customFilters}
       onFilterChange={setCustomFilters}
+      hideSearch={hideSearch}
+      customSearchInput={serverSearchInput}
+      searchResultInfo={searchResultInfo}
     />
   );
 }

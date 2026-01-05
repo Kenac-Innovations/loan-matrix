@@ -150,46 +150,42 @@ export default function LoansPage() {
         <CardHeader>
           <CardTitle>All Loans</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
-          {/* Server-side Search Input */}
-          <div className="relative max-w-sm">
-            {isSearching || isLoading ? (
-              <Loader2 className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground animate-spin" />
-            ) : (
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            )}
-            <Input
-              placeholder="Search by client name or account number..."
-              value={searchInput}
-              onChange={(e) => handleSearchChange(e.target.value)}
-              className="pl-10 pr-10"
-            />
-            {searchInput && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 p-0"
-                onClick={handleClearSearch}
-              >
-                <X className="h-4 w-4" />
-              </Button>
-            )}
-          </div>
-          
-          {query && (
-            <p className="text-sm text-muted-foreground">
-              Showing search results for &quot;{query}&quot; ({loans.length} found)
-            </p>
-          )}
-
-          {loans.length === 0 ? (
+        <CardContent>
+          {loans.length === 0 && !query ? (
             <div className="text-center py-6 text-muted-foreground">
-              {query
-                ? `No loans found matching "${query}". Try a different search term.`
-                : "No loans found."}
+              No loans found.
             </div>
           ) : (
-            <LoansDataTable data={loans} />
+            <LoansDataTable 
+              data={loans} 
+              hideSearch={true}
+              serverSearchInput={
+                <div className="relative flex-1 max-w-sm">
+                  {isSearching || isLoading ? (
+                    <Loader2 className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground animate-spin" />
+                  ) : (
+                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  )}
+                  <Input
+                    placeholder="Search by client name or account..."
+                    value={searchInput}
+                    onChange={(e) => handleSearchChange(e.target.value)}
+                    className="pl-10 pr-10 h-9"
+                  />
+                  {searchInput && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 p-0"
+                      onClick={handleClearSearch}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
+              }
+              searchResultInfo={query ? `Showing results for "${query}" (${loans.length} found)` : undefined}
+            />
           )}
         </CardContent>
       </Card>
