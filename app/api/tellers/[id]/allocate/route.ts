@@ -35,11 +35,20 @@ export async function POST(
       );
     }
 
-    const teller = await prisma.teller.findFirst({
+    // Try to find teller by database ID first
+    let teller = await prisma.teller.findFirst({
       where: { id: tellerId, tenantId: tenant.id },
     });
 
+    // If not found, try by Fineract teller ID (the ID might be a number)
+    if (!teller && !isNaN(Number(tellerId))) {
+      teller = await prisma.teller.findFirst({
+        where: { fineractTellerId: Number(tellerId), tenantId: tenant.id },
+      });
+    }
+
     if (!teller) {
+      console.error("Teller not found for ID:", tellerId, "tenant:", tenant.id);
       return NextResponse.json({ error: "Teller not found" }, { status: 404 });
     }
 
@@ -49,7 +58,7 @@ export async function POST(
     const allocation = await prisma.cashAllocation.create({
       data: {
         tenantId: tenant.id,
-        tellerId,
+        tellerId: teller.id, // Use the database ID from the found teller
         cashierId: null, // null = teller vault allocation
         fineractAllocationId: null, // No Fineract allocation for teller-level
         amount: parseFloat(amount),
