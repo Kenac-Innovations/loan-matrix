@@ -427,6 +427,9 @@ export function ClientRegistrationForm({
   const [selectedClientId, setSelectedClientId] = useState<number | null>(null);
   const [isFormDisabled, setIsFormDisabled] = useState(false);
   const [activeClientTab, setActiveClientTab] = useState("general");
+  
+  // Fineract client ID - declared early so it can be used in useEffects
+  const [fineractClientId, setFineractClientId] = useState<number | null>(null);
 
   // Update clientLookupStatus when clientCreatedInFineract changes
   useEffect(() => {
@@ -455,7 +458,8 @@ export function ClientRegistrationForm({
   // Fetch additional details (address, data tables) when we have a Fineract client ID
   useEffect(() => {
     const fetchAdditionalDetails = async () => {
-      const clientId = (window as any).fineractClientId;
+      // Use React state fineractClientId first, fallback to window
+      const clientId = fineractClientId || (window as any).fineractClientId;
 
       if (!clientId || !clientCreatedInFineract) {
         return;
@@ -463,7 +467,9 @@ export function ClientRegistrationForm({
 
       setIsLoadingAdditionalDetails(true);
       const numericClientId = Number(clientId);
-      setFineractClientId(numericClientId);
+      if (!fineractClientId) {
+        setFineractClientId(numericClientId);
+      }
 
       try {
         // Fetch address field configuration
@@ -1028,14 +1034,22 @@ export function ClientRegistrationForm({
       }
     };
 
-    if (clientCreatedInFineract) {
+    console.log("useEffect check for datatables fetch:", {
+      clientCreatedInFineract,
+      fineractClientId,
+      windowFineractClientId: (window as any).fineractClientId,
+      shouldFetch: clientCreatedInFineract && (fineractClientId || (window as any).fineractClientId)
+    });
+    
+    if (clientCreatedInFineract && (fineractClientId || (window as any).fineractClientId)) {
+      console.log(">>> Triggering fetchAdditionalDetails for datatables...");
       // Wrap in try-catch to prevent unhandled promise rejections
       fetchAdditionalDetails().catch((error) => {
         console.error("Unhandled error in fetchAdditionalDetails:", error);
         setIsLoadingAdditionalDetails(false);
       });
     }
-  }, [clientCreatedInFineract]);
+  }, [clientCreatedInFineract, fineractClientId]);
 
   // State for dropdown options
   const [offices, setOffices] = useState<any[]>([]);
@@ -1049,7 +1063,6 @@ export function ClientRegistrationForm({
   const [relationships, setRelationships] = useState<any[]>([]);
 
   // State for additional details tab
-  const [fineractClientId, setFineractClientId] = useState<number | null>(null);
   const [clientAddress, setClientAddress] = useState<any>(null);
   const [dataTables, setDataTables] = useState<any[]>([]);
   const [editingDatatables, setEditingDatatables] = useState<Set<string>>(
@@ -2360,29 +2373,30 @@ export function ClientRegistrationForm({
                   // If we have Fineract data, client exists in Fineract
                   if (fineractData) {
                     console.log("==========> Client exists in Fineract");
-                    console.log(
-                      "==========> Setting clientCreatedInFineract to true"
-                    );
 
                     setClientLookupStatus("found");
                     setIsFormDisabled(false);
 
-                    // Update parent component's state
+                    // Store the Fineract client ID FIRST (before setting clientCreatedInFineract)
+                    if (fineractData?.id) {
+                      (window as any).fineractClientId = fineractData.id;
+                      // Immediately set the React state for fineractClientId
+                      setFineractClientId(Number(fineractData.id));
+                      console.log("==========> Set fineractClientId:", fineractData.id);
+                    }
+
+                    // Update parent component's state AFTER setting clientId
                     if (setFormCompletionStatus) {
                       setFormCompletionStatus((prev) => ({
                         ...prev,
                         client: true,
                       }));
                     }
+                    console.log(
+                      "==========> Setting clientCreatedInFineract to true"
+                    );
                     if (setClientCreatedInFineract) {
                       setClientCreatedInFineract(true);
-                    }
-
-                    // Store the Fineract client ID for future updates
-                    if (fineractData?.id) {
-                      (window as any).fineractClientId = fineractData.id;
-                      // Immediately set the React state for fineractClientId
-                      setFineractClientId(Number(fineractData.id));
                     }
                   } else if (localData) {
                     // Client exists locally but not in Fineract yet
@@ -2981,6 +2995,21 @@ export function ClientRegistrationForm({
       return;
     }
 
+    // Clear localStorage draft when starting a new search
+    LeadLocalStorage.clear();
+    console.log("Cleared localStorage draft for new client search");
+
+    // Clear window.fineractClientId and React state
+    (window as any).fineractClientId = null;
+    setFineractClientId(null);
+    setDataTables([]);
+    setClientAddress(null);
+    
+    // Clear clientCreatedInFineract flag if we have access to it
+    if (setClientCreatedInFineract) {
+      setClientCreatedInFineract(false);
+    }
+
     // Clear all internal storage when ID number search is initiated
     setFamilyMembers([]);
     setExistingClientImage(null);
@@ -3485,21 +3514,8 @@ export function ClientRegistrationForm({
           );
         }
 
-        // Mark the client step as completed since we found an existing client
-        console.log("==========> Marking client step as completed");
-        if (setFormCompletionStatus) {
-          setFormCompletionStatus((prev) => ({ ...prev, client: true }));
-        }
-        if (setClientCreatedInFineract) {
-          console.log("==========> Setting clientCreatedInFineract to true");
-          setClientCreatedInFineract(true);
-        } else {
-          console.log(
-            "==========> setClientCreatedInFineract function not available"
-          );
-        }
-
-        // Store the Fineract client ID for future updates
+        // Store the Fineract client ID FIRST (before setting clientCreatedInFineract)
+        // This ensures the useEffect has the client ID when it runs
         if (fineractData?.id) {
           console.log(
             "==========> Storing Fineract client ID:",
@@ -3514,6 +3530,25 @@ export function ClientRegistrationForm({
             (window as any).fineractClientId
           );
         } else {
+          console.log("==========> No fineractData.id found to store");
+        }
+
+        // Mark the client step as completed since we found an existing client
+        console.log("==========> Marking client step as completed");
+        if (setFormCompletionStatus) {
+          setFormCompletionStatus((prev) => ({ ...prev, client: true }));
+        }
+        if (setClientCreatedInFineract) {
+          console.log("==========> Setting clientCreatedInFineract to true");
+          setClientCreatedInFineract(true);
+        } else {
+          console.log(
+            "==========> setClientCreatedInFineract function not available"
+          );
+        }
+
+        // (fineractClientId already stored above)
+        if (!fineractData?.id) {
           console.log(
             "==========> No fineractData.id found, cannot store Fineract client ID"
           );
@@ -7256,7 +7291,18 @@ export function ClientRegistrationForm({
                                         result
                                       );
 
-                                      // Update state to reflect successful client creation
+                                      // Store the Fineract client ID FIRST (before setting clientCreatedInFineract)
+                                      if (result.fineractClientId) {
+                                        (window as any).fineractClientId =
+                                          result.fineractClientId;
+                                        // Immediately set the React state for fineractClientId
+                                        setFineractClientId(
+                                          Number(result.fineractClientId)
+                                        );
+                                        console.log("Set fineractClientId:", result.fineractClientId);
+                                      }
+
+                                      // Update state to reflect successful client creation AFTER setting clientId
                                       setClientLookupStatus("found");
                                       if (setClientCreatedInFineract) {
                                         setClientCreatedInFineract(true);
@@ -7265,13 +7311,10 @@ export function ClientRegistrationForm({
                                         onClientCreated();
                                       }
 
-                                      // Store the Fineract client ID for future operations
+                                      // (fineractClientId already stored above)
                                       if (result.fineractClientId) {
-                                        (window as any).fineractClientId =
-                                          result.fineractClientId;
-                                        // Immediately set the React state for fineractClientId
-                                        setFineractClientId(
-                                          Number(result.fineractClientId)
+                                        // Already handled above
+                                        console.log("fineractClientId already set:", result.fineractClientId
                                         );
                                       }
 
