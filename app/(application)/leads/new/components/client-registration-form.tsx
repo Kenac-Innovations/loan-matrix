@@ -2245,6 +2245,8 @@ export function ClientRegistrationForm({
                     // Store the Fineract client ID for future updates
                     if (fineractData?.id) {
                       (window as any).fineractClientId = fineractData.id;
+                      // Immediately set the React state for fineractClientId
+                      setFineractClientId(Number(fineractData.id));
                     }
                   } else if (localData) {
                     // Client exists locally but not in Fineract yet
@@ -2589,6 +2591,125 @@ export function ClientRegistrationForm({
       console.error("Error fetching clients for picker:", err);
     } finally {
       setIsLoadingClients(false);
+    }
+  };
+
+  // Refetch KYC data (identifiers, documents) - used when switching tabs
+  const refetchKYCData = async () => {
+    const clientId = fineractClientId || (window as any).fineractClientId;
+    if (!clientId) {
+      console.log("No fineractClientId available for KYC refetch");
+      return;
+    }
+
+    const numericClientId = Number(clientId);
+    console.log("Refetching KYC data for client:", numericClientId);
+
+    setIsLoadingKYC(true);
+    try {
+      // Fetch existing identifiers
+      const identifiersResponse = await fetch(
+        `/api/fineract/clients/${numericClientId}/identifiers`
+      );
+
+      if (identifiersResponse.ok) {
+        const identifiersData = await identifiersResponse.json();
+
+        // Handle both array and object with array property
+        let identifiers = [];
+        if (Array.isArray(identifiersData)) {
+          identifiers = identifiersData;
+        } else if (identifiersData?.pageItems) {
+          identifiers = identifiersData.pageItems;
+        } else if (identifiersData?.identifiers) {
+          identifiers = identifiersData.identifiers;
+        } else if (identifiersData?.data) {
+          identifiers = Array.isArray(identifiersData.data)
+            ? identifiersData.data
+            : [];
+        }
+
+        setExistingIdentifiers(identifiers);
+
+        // Fetch documents for each identifier
+        const documentsMap = new Map<number, any[]>();
+        if (Array.isArray(identifiers) && identifiers.length > 0) {
+          const fetchPromises = identifiers.map(async (identifier: any) => {
+            const identifierId = identifier.id;
+            if (!identifierId) return;
+
+            try {
+              const docsResponse = await fetch(
+                `/api/fineract/client_identifiers/${identifierId}/documents`
+              );
+              if (docsResponse.ok) {
+                const docsData = await docsResponse.json();
+                let docs = [];
+                if (Array.isArray(docsData)) {
+                  docs = docsData;
+                } else if (docsData?.pageItems) {
+                  docs = docsData.pageItems;
+                } else if (docsData?.content) {
+                  docs = docsData.content;
+                } else if (docsData?.documents) {
+                  docs = docsData.documents;
+                }
+                documentsMap.set(identifierId, docs);
+              } else {
+                documentsMap.set(identifierId, []);
+              }
+            } catch (docErr) {
+              documentsMap.set(identifierId, []);
+            }
+          });
+
+          await Promise.all(fetchPromises);
+        }
+
+        setIdentifierDocuments(documentsMap);
+      }
+
+      // Fetch client documents
+      const documentsResponse = await fetch(
+        `/api/fineract/clients/${numericClientId}/documents`
+      );
+      if (documentsResponse.ok) {
+        const documentsData = await documentsResponse.json();
+        let documents = [];
+        if (Array.isArray(documentsData)) {
+          documents = documentsData;
+        } else if (documentsData?.pageItems) {
+          documents = documentsData.pageItems;
+        } else if (documentsData?.content) {
+          documents = documentsData.content;
+        } else if (documentsData?.documents) {
+          documents = documentsData.documents;
+        }
+        setClientDocuments(documents);
+      }
+
+      // Fetch client image/selfie
+      try {
+        const imageResponse = await fetch(
+          `/api/fineract/clients/${numericClientId}/images`
+        );
+        if (imageResponse.ok) {
+          const imageData = await imageResponse.json();
+          if (imageData?.imageData) {
+            const base64Image = `data:image/jpeg;base64,${imageData.imageData}`;
+            setExistingClientImage(base64Image);
+            setSelfieImage(base64Image);
+          }
+        }
+      } catch (imgErr) {
+        console.log("No client image found or error fetching:", imgErr);
+      }
+
+      console.log("KYC data refetch completed");
+    } catch (err) {
+      console.error("Error refetching KYC data:", err);
+    } finally {
+      setIsLoadingKYC(false);
     }
   };
 
@@ -3141,6 +3262,8 @@ export function ClientRegistrationForm({
           );
           // Store in a way that can be accessed by the parent component
           (window as any).fineractClientId = fineractData.id;
+          // Immediately set the React state for fineractClientId
+          setFineractClientId(Number(fineractData.id));
           console.log(
             "==========> Stored fineractClientId in window:",
             (window as any).fineractClientId
@@ -5250,6 +5373,11 @@ export function ClientRegistrationForm({
                         }
 
                         setActiveClientTab(newTab);
+
+                        // Refetch data when switching to KYC tab to ensure latest data is loaded
+                        if (newTab === "account" && fineractClientId) {
+                          refetchKYCData();
+                        }
                       }}
                       className="w-full"
                     >
@@ -6805,26 +6933,40 @@ export function ClientRegistrationForm({
                                     }
                                   } else if (externalForm && onFormSubmit) {
                                     // Client doesn't exist yet, submit the form to create it
-                                    await onFormSubmit(formValues);
-                                    // Mark all completed sections as saved after successful submission
-                                    setSectionCompletion((prevCompletion) => {
-                                      setSectionSaved({
-                                        administrative:
-                                          prevCompletion.administrative,
-                                        personal: prevCompletion.personal,
-                                        contact: prevCompletion.contact,
-                                        classification:
-                                          prevCompletion.classification,
-                                        additional: prevCompletion.additional,
-                                        selfie: prevCompletion.selfie,
-                                        identityDocuments:
-                                          prevCompletion.identityDocuments,
-                                        otherDocuments:
-                                          prevCompletion.otherDocuments,
-                                        datatables: prevCompletion.datatables,
+                                    try {
+                                      await onFormSubmit(formValues);
+                                      // Mark all completed sections as saved after successful submission
+                                      setSectionCompletion((prevCompletion) => {
+                                        setSectionSaved({
+                                          administrative:
+                                            prevCompletion.administrative,
+                                          personal: prevCompletion.personal,
+                                          contact: prevCompletion.contact,
+                                          classification:
+                                            prevCompletion.classification,
+                                          additional: prevCompletion.additional,
+                                          selfie: prevCompletion.selfie,
+                                          identityDocuments:
+                                            prevCompletion.identityDocuments,
+                                          otherDocuments:
+                                            prevCompletion.otherDocuments,
+                                          datatables: prevCompletion.datatables,
+                                        });
+                                        return prevCompletion;
                                       });
-                                      return prevCompletion;
-                                    });
+                                    } catch (submitError: any) {
+                                      console.error(
+                                        "Error submitting form:",
+                                        submitError
+                                      );
+                                      error({
+                                        title: "Submission Error",
+                                        description:
+                                          submitError.message ||
+                                          "Failed to create client. Please try again.",
+                                      });
+                                      return; // Don't navigate if submission fails
+                                    }
                                   } else if (
                                     clientLookupStatus === "not_found" ||
                                     (clientLookupStatus !== "found" &&
@@ -6928,6 +7070,10 @@ export function ClientRegistrationForm({
                                       if (result.fineractClientId) {
                                         (window as any).fineractClientId =
                                           result.fineractClientId;
+                                        // Immediately set the React state for fineractClientId
+                                        setFineractClientId(
+                                          Number(result.fineractClientId)
+                                        );
                                       }
 
                                       // Update lead ID if returned and update URL

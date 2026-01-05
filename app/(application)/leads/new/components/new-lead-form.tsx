@@ -481,7 +481,7 @@ export function NewLeadForm() {
           description: "Please fix the errors in the form before submitting",
           variant: "destructive",
         });
-        return;
+        throw new Error("Form validation failed");
       }
 
       // Validate required fields before submission
@@ -492,7 +492,7 @@ export function NewLeadForm() {
             "Please fill in all required fields (Office and Legal Form)",
           variant: "destructive",
         });
-        return;
+        throw new Error("Missing required fields");
       }
 
       console.log("Form data being submitted:", data);
@@ -681,6 +681,9 @@ export function NewLeadForm() {
             }
           : undefined,
       });
+      
+      // Re-throw the error so the caller can handle it (e.g., prevent navigation)
+      throw error;
     } finally {
       setIsSubmitting(false);
     }
