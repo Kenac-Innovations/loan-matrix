@@ -55,7 +55,20 @@ const affordabilitySchema = z
   .refine((data) => data.netMonthlyIncome <= data.grossMonthlyIncome, {
     message: "Net monthly income cannot be greater than gross monthly income",
     path: ["netMonthlyIncome"],
-  });
+  })
+  .refine(
+    (data) =>
+      data.mobileInOwnName &&
+      data.hasProofOfIncome &&
+      data.hasValidNationalId &&
+      data.identityVerified &&
+      data.employmentVerified &&
+      data.incomeVerified,
+    {
+      message: "All verification checkboxes must be checked to proceed",
+      path: ["incomeVerified"], // Show error on the last checkbox
+    }
+  );
 
 type AffordabilityFormValues = z.infer<typeof affordabilitySchema>;
 
@@ -140,10 +153,13 @@ export function SimplifiedAffordabilityForm({
     const incomeComplete =
       watchedValues.grossMonthlyIncome > 0 &&
       watchedValues.netMonthlyIncome > 0;
+    // All verification checkboxes must be checked to be complete
     const verificationComplete =
-      watchedValues.hasValidNationalId ||
-      watchedValues.identityVerified ||
-      watchedValues.employmentVerified ||
+      watchedValues.mobileInOwnName &&
+      watchedValues.hasProofOfIncome &&
+      watchedValues.hasValidNationalId &&
+      watchedValues.identityVerified &&
+      watchedValues.employmentVerified &&
       watchedValues.incomeVerified;
 
     setSectionCompletion({
@@ -153,6 +169,8 @@ export function SimplifiedAffordabilityForm({
   }, [
     watchedValues.grossMonthlyIncome,
     watchedValues.netMonthlyIncome,
+    watchedValues.mobileInOwnName,
+    watchedValues.hasProofOfIncome,
     watchedValues.hasValidNationalId,
     watchedValues.identityVerified,
     watchedValues.employmentVerified,
@@ -497,15 +515,22 @@ export function SimplifiedAffordabilityForm({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="space-y-2">
             <Label htmlFor="nationality">Nationality</Label>
+            {/* TODO: Make nationality options configurable via tenant settings */}
             <Controller
               control={form.control}
               name="nationality"
               render={({ field }) => (
-                <Input
-                  id="nationality"
-                  placeholder="Enter nationality"
-                  {...field}
-                />
+                <Select
+                  value={field.value}
+                  onValueChange={field.onChange}
+                >
+                  <SelectTrigger id="nationality">
+                    <SelectValue placeholder="Select nationality" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Zambian">Zambian</SelectItem>
+                  </SelectContent>
+                </Select>
               )}
             />
           </div>
@@ -656,9 +681,15 @@ export function SimplifiedAffordabilityForm({
             className={`px-6 transition-all duration-300 ${
               isCompleted
                 ? "bg-green-500 hover:bg-green-600"
-                : "bg-blue-500 hover:bg-blue-600"
+                : sectionCompletion.income && sectionCompletion.verification
+                ? "bg-blue-500 hover:bg-blue-600"
+                : "bg-gray-400 cursor-not-allowed"
             }`}
-            disabled={isSaving}
+            disabled={
+              isSaving ||
+              !sectionCompletion.income ||
+              !sectionCompletion.verification
+            }
           >
             {isSaving ? (
               <>

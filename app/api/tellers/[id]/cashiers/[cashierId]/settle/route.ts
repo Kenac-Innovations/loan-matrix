@@ -188,8 +188,8 @@ export async function POST(
 
     // Settle cash in Fineract (cash out transaction)
     let fineractSettlementId: number | null = null;
-    try {
-      const fineractService = await getFineractServiceWithSession();
+      try {
+        const fineractService = await getFineractServiceWithSession();
       console.log("Calling Fineract settleCashForCashier with:", {
         tellerId: teller.fineractTellerId,
         cashierId: fineractCashierId,
@@ -197,18 +197,18 @@ export async function POST(
         currencyCode: currency,
         txnAmount: amount.toString(),
       });
-      const result = await fineractService.settleCashForCashier(
-        teller.fineractTellerId,
+        const result = await fineractService.settleCashForCashier(
+          teller.fineractTellerId,
         fineractCashierId,
-        {
+          {
           txnDate,
           currencyCode: currency,
           txnAmount: amount.toString(),
           txnNote: notes || "Cash Out",
           dateFormat: "dd MMMM yyyy",
           locale: "en",
-        }
-      );
+          }
+        );
       fineractSettlementId = result.resourceId || result.id || null;
       console.log("Fineract settle response:", result);
     } catch (error: any) {
@@ -275,19 +275,19 @@ export async function POST(
     today.setHours(0, 0, 0, 0);
     
     await prisma.cashierSession.updateMany({
-      where: {
-        cashierId: cashier.id,
-        tenantId: tenant.id,
+        where: {
+          cashierId: cashier.id,
+          tenantId: tenant.id,
         sessionStatus: "CLOSED",
         sessionDate: {
           gte: today,
         },
       },
-      data: {
+          data: {
         sessionStatus: "SETTLED",
         updatedAt: new Date(),
-      },
-    });
+          },
+        });
 
     return NextResponse.json({
       success: true,

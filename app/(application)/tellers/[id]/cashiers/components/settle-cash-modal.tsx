@@ -319,7 +319,7 @@ export function SettleCashModal({
                       : "bg-yellow-50 border-yellow-200"
                 }`}>
                   <div className="flex justify-between items-center">
-                    <div>
+                  <div>
                       <span className={`text-sm font-medium ${
                         isBalanced 
                           ? "text-green-800" 
@@ -366,27 +366,27 @@ export function SettleCashModal({
             </div>
           ) : summary ? (
             <div className="grid grid-cols-3 gap-4 p-4 border rounded-lg bg-muted/50">
-              <div>
+                  <div>
                 <Label className="text-xs text-muted-foreground">Cash In</Label>
-                <p className="text-lg font-semibold text-green-600">
+                    <p className="text-lg font-semibold text-green-600">
                   {formatAmount(cashIn)}
-                </p>
-              </div>
-              <div>
-                <Label className="text-xs text-muted-foreground">
-                  Cash Out
-                </Label>
-                <p className="text-lg font-semibold text-red-600">
+                    </p>
+                  </div>
+                  <div>
+                    <Label className="text-xs text-muted-foreground">
+                      Cash Out
+                    </Label>
+                    <p className="text-lg font-semibold text-red-600">
                   {formatAmount(cashOut)}
-                </p>
-              </div>
-              <div>
-                <Label className="text-xs text-muted-foreground">
+                    </p>
+                  </div>
+                  <div>
+                    <Label className="text-xs text-muted-foreground">
                   Fineract Balance
-                </Label>
+                    </Label>
                 <p className="text-lg font-bold">{formatAmount(balance)}</p>
-              </div>
-            </div>
+                  </div>
+                </div>
           ) : (
             <div className="p-4 border rounded-lg bg-muted/50 text-center text-muted-foreground">
               No data available. Select a currency to load data.
@@ -423,18 +423,18 @@ export function SettleCashModal({
 
               {formData.amount && summary && (
                 <div className="p-3 border rounded-lg bg-blue-50">
-                  <div className="flex justify-between items-center">
+                    <div className="flex justify-between items-center">
                     <span className="text-sm text-muted-foreground">
                       Remaining Balance After Settlement:
-                    </span>
+                      </span>
                     <span
                       className={`text-lg font-bold ${
                         remainingBalance < 0 ? "text-red-600" : ""
                       }`}
                     >
                       {formatAmount(remainingBalance)}
-                    </span>
-                  </div>
+                      </span>
+                    </div>
                 </div>
               )}
 

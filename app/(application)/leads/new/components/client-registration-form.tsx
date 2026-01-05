@@ -990,9 +990,25 @@ export function ClientRegistrationForm({
               }
             })
           );
-          // Show all tables, not just those with data
+
+          // Filter out hidden datatables (Blacklisting, Credit Limits, Legacy Data)
+          // TODO: Make hidden datatables configurable via tenant settings
+          const hiddenDatatables = [
+            "Blacklisting",
+            "Credit Limits",
+            "Legacy Data",
+          ];
+          const filteredTables = tablesWithData.filter((table: any) => {
+            const tableName =
+              table.registeredTableName || table.displayName || "";
+            return !hiddenDatatables.some((hidden) =>
+              tableName.toLowerCase().includes(hidden.toLowerCase())
+            );
+          });
+
           console.log("All available tables:", tablesWithData);
-          setDataTables(tablesWithData);
+          console.log("Filtered tables (hidden removed):", filteredTables);
+          setDataTables(filteredTables);
         } else {
           console.error(
             "Failed to fetch data tables:",
@@ -1036,6 +1052,9 @@ export function ClientRegistrationForm({
   const [fineractClientId, setFineractClientId] = useState<number | null>(null);
   const [clientAddress, setClientAddress] = useState<any>(null);
   const [dataTables, setDataTables] = useState<any[]>([]);
+  const [editingDatatables, setEditingDatatables] = useState<Set<string>>(
+    new Set()
+  ); // Track which datatables are being edited
   const [isLoadingAdditionalDetails, setIsLoadingAdditionalDetails] =
     useState(false);
   const [isEditingAddress, setIsEditingAddress] = useState(false);
@@ -1177,20 +1196,104 @@ export function ClientRegistrationForm({
     return true;
   };
 
+  // Define mandatory datatables that must have data before proceeding to affordability
+  // TODO: Make mandatory datatables configurable via tenant settings
+  const mandatoryDatatables = [
+    "Banking Details",
+    "Employment Info",
+    "Next of Kin",
+    "Supervisor Info",
+  ];
+
+  // Check if a datatable name matches any of the mandatory ones
+  const isDatatableMandatory = (tableName: string) => {
+    return mandatoryDatatables.some((mandatory) =>
+      tableName.toLowerCase().includes(mandatory.toLowerCase())
+    );
+  };
+
+  // Check if a mandatory datatable has data
+  const hasDatatableData = (tableName: string) => {
+    const table = dataTables.find((t: any) => {
+      const name =
+        t.registeredTableName || t.displayName || t.datatableName || "";
+      return name.toLowerCase().includes(tableName.toLowerCase());
+    });
+    return table?.hasData === true;
+  };
+
   const checkDatatablesSection = () => {
-    // Optional section - always return true for now
-    return true;
+    // Check if all mandatory datatables have data
+    return mandatoryDatatables.every((mandatoryTable) => {
+      // Check if this mandatory table exists and has data
+      const tableExists = dataTables.some((t: any) => {
+        const name =
+          t.registeredTableName || t.displayName || t.datatableName || "";
+        return name.toLowerCase().includes(mandatoryTable.toLowerCase());
+      });
+
+      // If the table doesn't exist in the list, we can't validate it
+      // (it might be filtered out or not configured)
+      if (!tableExists) return true;
+
+      return hasDatatableData(mandatoryTable);
+    });
   };
 
   // Check if address details are complete (required for affordability)
   const checkAddressSection = () => {
-    if (!clientAddress) return false;
-    // Check for required address fields - at minimum we need addressLine1 and city
-    const hasAddressLine1 = !!(
-      clientAddress.addressLine1 || clientAddress.street
+    if (!clientAddress) {
+      console.log("checkAddressSection: No clientAddress");
+      return false;
+    }
+
+    // Log what we have for debugging
+    console.log("checkAddressSection: clientAddress =", clientAddress);
+
+    // Check for any meaningful address data
+    // Fineract can return various field names depending on configuration
+    const hasAddressLine = !!(
+      clientAddress.addressLine1 ||
+      clientAddress.addressLine2 ||
+      clientAddress.addressLine3 ||
+      clientAddress.street ||
+      clientAddress.streetAddress ||
+      clientAddress.address
     );
-    const hasCity = !!(clientAddress.city || clientAddress.townVillage);
-    return hasAddressLine1 && hasCity;
+
+    const hasLocation = !!(
+      clientAddress.city ||
+      clientAddress.townVillage ||
+      clientAddress.town ||
+      clientAddress.village ||
+      clientAddress.district ||
+      clientAddress.stateProvinceId ||
+      clientAddress.countryId ||
+      clientAddress.postalCode
+    );
+
+    // If we have an address object with any content, consider it valid
+    // This is more lenient - just having any address field is enough
+    const hasAnyAddressContent = Object.keys(clientAddress).some(
+      (key) =>
+        clientAddress[key] !== null &&
+        clientAddress[key] !== undefined &&
+        clientAddress[key] !== "" &&
+        key !== "addressId" &&
+        key !== "clientId" &&
+        key !== "client_id" &&
+        key !== "addressTypeId" &&
+        key !== "addressType" &&
+        key !== "isActive"
+    );
+
+    console.log("checkAddressSection:", {
+      hasAddressLine,
+      hasLocation,
+      hasAnyAddressContent,
+    });
+
+    return hasAddressLine || hasLocation || hasAnyAddressContent;
   };
 
   // Helper function to get section status: 'incomplete', 'pending', or 'saved'
@@ -1264,6 +1367,7 @@ export function ClientRegistrationForm({
     clientCreatedInFineract,
     onAllSectionsComplete,
     clientAddress,
+    dataTables,
   ]);
 
   // Helper function to extract identifier ID from document filename
@@ -2809,8 +2913,23 @@ export function ClientRegistrationForm({
           })
         );
 
+        // Filter out hidden datatables (Blacklisting, Credit Limits, Legacy Data)
+        const hiddenDatatables = [
+          "Blacklisting",
+          "Credit Limits",
+          "Legacy Data",
+        ];
+        const filteredTables = tablesWithData.filter((table: any) => {
+          const tableName =
+            table.registeredTableName || table.displayName || "";
+          return !hiddenDatatables.some((hidden) =>
+            tableName.toLowerCase().includes(hidden.toLowerCase())
+          );
+        });
+
         console.log("Refetched tables with data:", tablesWithData);
-        setDataTables(tablesWithData);
+        console.log("Filtered tables (hidden removed):", filteredTables);
+        setDataTables(filteredTables);
       }
 
       // Fetch client address
@@ -10569,52 +10688,189 @@ export function ClientRegistrationForm({
                                   </Card>
 
                                   {/* Data Tables */}
-                                  <Card className="border-green-500 bg-green-50 dark:bg-green-950">
+                                  <Card
+                                    className={
+                                      checkDatatablesSection()
+                                        ? "border-green-500 bg-green-50 dark:bg-green-950"
+                                        : "border-red-500 bg-red-50 dark:bg-red-950"
+                                    }
+                                  >
                                     <CardContent className="pt-6">
                                       <div className="space-y-4">
                                         <div className="flex items-center gap-2 pb-2 border-b border-gray-200 dark:border-gray-700">
-                                          <Database className="h-5 w-5 text-blue-500" />
+                                          <Database
+                                            className={
+                                              checkDatatablesSection()
+                                                ? "h-5 w-5 text-green-500"
+                                                : "h-5 w-5 text-red-500"
+                                            }
+                                          />
                                           <h3
                                             className={`text-lg font-semibold ${colors.textColor}`}
                                           >
                                             Associated Data Tables
+                                            <span className="text-red-500 ml-1">
+                                              *
+                                            </span>
                                           </h3>
+                                          {!checkDatatablesSection() && (
+                                            <span className="text-xs text-red-500 font-normal ml-2">
+                                              (Complete required tables to
+                                              proceed)
+                                            </span>
+                                          )}
                                         </div>
                                         {dataTables.length > 0 ? (
                                           <div className="space-y-6">
-                                            {dataTables.map((table: any) => (
-                                              <div
-                                                key={
-                                                  table.registeredTableName ||
-                                                  table.datatableName
+                                            {dataTables.map((table: any) => {
+                                              const tableName =
+                                                table.registeredTableName ||
+                                                table.displayName ||
+                                                table.datatableName ||
+                                                "";
+                                              const tableKey =
+                                                table.registeredTableName ||
+                                                table.datatableName;
+                                              const isMandatory =
+                                                isDatatableMandatory(tableName);
+                                              const hasData =
+                                                table.hasData === true;
+                                              const isEditing =
+                                                editingDatatables.has(tableKey);
+                                              const isIncomplete =
+                                                isMandatory && !hasData;
+
+                                              // Determine styling: red (incomplete) > amber (editing) > green (complete)
+                                              const getContainerStyle = () => {
+                                                if (isIncomplete) {
+                                                  return "border-red-400 bg-red-50 dark:bg-red-950/50";
                                                 }
-                                                className={`rounded-lg border border-${colors.borderColor} ${colors.cardBg} shadow-sm`}
-                                              >
-                                                <div className="px-6 pt-6 pb-4 border-b border-gray-200 dark:border-gray-700">
-                                                  <h4
-                                                    className={`text-base font-semibold ${colors.textColor} flex items-center gap-2`}
+                                                if (isEditing) {
+                                                  return "border-amber-400 bg-amber-50 dark:bg-amber-950/50";
+                                                }
+                                                if (isMandatory && hasData) {
+                                                  return "border-green-400 bg-green-50 dark:bg-green-950/50";
+                                                }
+                                                return `border-${colors.borderColor} ${colors.cardBg}`;
+                                              };
+
+                                              const getBorderStyle = () => {
+                                                if (isIncomplete) {
+                                                  return "border-red-200 dark:border-red-700";
+                                                }
+                                                if (isEditing) {
+                                                  return "border-amber-200 dark:border-amber-700";
+                                                }
+                                                return "border-gray-200 dark:border-gray-700";
+                                              };
+
+                                              const getIconStyle = () => {
+                                                if (isIncomplete) {
+                                                  return "h-4 w-4 text-red-500";
+                                                }
+                                                if (isEditing) {
+                                                  return "h-4 w-4 text-amber-500";
+                                                }
+                                                if (isMandatory && hasData) {
+                                                  return "h-4 w-4 text-green-500";
+                                                }
+                                                return "h-4 w-4 text-blue-500";
+                                              };
+
+                                              return (
+                                                <div
+                                                  key={tableKey}
+                                                  className={`rounded-lg border shadow-sm ${getContainerStyle()}`}
+                                                >
+                                                  <div
+                                                    className={`px-6 pt-6 pb-4 border-b ${getBorderStyle()}`}
                                                   >
-                                                    <Building2 className="h-4 w-4 text-blue-500" />
-                                                    {table.registeredTableName ||
-                                                      table.displayName ||
-                                                      table.datatableName}
-                                                  </h4>
+                                                    <h4
+                                                      className={`text-base font-semibold ${colors.textColor} flex items-center gap-2`}
+                                                    >
+                                                      <Building2
+                                                        className={getIconStyle()}
+                                                      />
+                                                      {tableName}
+                                                      {isMandatory && (
+                                                        <span className="text-red-500 ml-1">
+                                                          *
+                                                        </span>
+                                                      )}
+                                                      {isIncomplete && (
+                                                        <span className="text-xs text-red-500 font-normal ml-2">
+                                                          (Required)
+                                                        </span>
+                                                      )}
+                                                      {isEditing && (
+                                                        <span className="text-xs text-amber-600 font-normal ml-2">
+                                                          (Editing - Save to
+                                                          continue)
+                                                        </span>
+                                                      )}
+                                                      {isMandatory &&
+                                                        hasData &&
+                                                        !isEditing && (
+                                                          <CheckCircle2 className="h-4 w-4 text-green-500 ml-2" />
+                                                        )}
+                                                    </h4>
+                                                  </div>
+                                                  <div className="p-6">
+                                                    {fineractClientId && (
+                                                      <DynamicDatatableContent
+                                                        datatableName={
+                                                          table.registeredTableName ||
+                                                          table.datatableName
+                                                        }
+                                                        clientId={
+                                                          fineractClientId
+                                                        }
+                                                        onDataChange={(
+                                                          newHasData
+                                                        ) => {
+                                                          // Update the dataTables state to reflect the new hasData status
+                                                          setDataTables(
+                                                            (prev) =>
+                                                              prev.map((t) =>
+                                                                (t.registeredTableName ||
+                                                                  t.datatableName) ===
+                                                                tableKey
+                                                                  ? {
+                                                                      ...t,
+                                                                      hasData:
+                                                                        newHasData,
+                                                                    }
+                                                                  : t
+                                                              )
+                                                          );
+                                                        }}
+                                                        onEditingChange={(
+                                                          editing
+                                                        ) => {
+                                                          // Track which datatables are being edited
+                                                          setEditingDatatables(
+                                                            (prev) => {
+                                                              const newSet =
+                                                                new Set(prev);
+                                                              if (editing) {
+                                                                newSet.add(
+                                                                  tableKey
+                                                                );
+                                                              } else {
+                                                                newSet.delete(
+                                                                  tableKey
+                                                                );
+                                                              }
+                                                              return newSet;
+                                                            }
+                                                          );
+                                                        }}
+                                                      />
+                                                    )}
+                                                  </div>
                                                 </div>
-                                                <div className="p-6">
-                                                  {fineractClientId && (
-                                                    <DynamicDatatableContent
-                                                      datatableName={
-                                                        table.registeredTableName ||
-                                                        table.datatableName
-                                                      }
-                                                      clientId={
-                                                        fineractClientId
-                                                      }
-                                                    />
-                                                  )}
-                                                </div>
-                                              </div>
-                                            ))}
+                                              );
+                                            })}
                                           </div>
                                         ) : (
                                           <Card

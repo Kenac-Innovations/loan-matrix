@@ -224,24 +224,24 @@ export default function CashiersPage({
             }
             
             // Update cashier with session data and Fineract balance
-            const updatedCashier = {
-              ...cashier,
-              sessionStatus:
-                sessionInfo.session?.sessionStatus || "NOT_STARTED",
-              allocatedBalance: sessionInfo.balances?.allocatedBalance || 0,
-              availableBalance: sessionInfo.balances?.availableBalance || 0,
-              openingFloat: sessionInfo.balances?.openingFloat || 0,
-              cashIn: sessionInfo.balances?.cashIn || 0,
-              cashOut: sessionInfo.balances?.cashOut || 0,
+              const updatedCashier = {
+                ...cashier,
+                sessionStatus:
+                  sessionInfo.session?.sessionStatus || "NOT_STARTED",
+                allocatedBalance: sessionInfo.balances?.allocatedBalance || 0,
+                availableBalance: sessionInfo.balances?.availableBalance || 0,
+                openingFloat: sessionInfo.balances?.openingFloat || 0,
+                cashIn: sessionInfo.balances?.cashIn || 0,
+                cashOut: sessionInfo.balances?.cashOut || 0,
               netCash: fineractBalance, // Use Fineract balance
-              expectedBalance: sessionInfo.balances?.expectedBalance || 0,
+                expectedBalance: sessionInfo.balances?.expectedBalance || 0,
               currencyCode,
-            };
-            setCashiers((prev) =>
-              prev.map((c) =>
-                (c.dbId || c.id.toString()) === cashierId ? updatedCashier : c
-              )
-            );
+              };
+              setCashiers((prev) =>
+                prev.map((c) =>
+                  (c.dbId || c.id.toString()) === cashierId ? updatedCashier : c
+                )
+              );
           } catch (error) {
             console.error("Error fetching data for cashier:", error);
           }
@@ -537,7 +537,7 @@ export default function CashiersPage({
                   onClick={(e) => {
                     e.stopPropagation();
                     setSelectedCashier(cashier);
-                    setShowCloseSessionModal(true);
+                        setShowCloseSessionModal(true);
                   }}
                 >
                   <Square className="h-4 w-4 mr-2" />

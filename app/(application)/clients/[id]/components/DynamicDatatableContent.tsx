@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { Loader2, AlertCircle, Edit2, Save, X, Plus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -26,16 +26,75 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
+// Helper function to check if a column is a phone/mobile number field
+const isPhoneNumberField = (columnName: string): boolean => {
+  const lowerName = columnName.toLowerCase();
+  return (
+    lowerName.includes("mobile") ||
+    lowerName.includes("phone") ||
+    lowerName.includes("tel") ||
+    lowerName.includes("cell") ||
+    lowerName.includes("contact_number") ||
+    lowerName.includes("contactnumber")
+  );
+};
+
+// Format phone number for display (Zambian format)
+const formatZambianPhoneDisplay = (value: string): string => {
+  if (!value) return "";
+  // Remove all non-digits
+  let digits = value.replace(/\D/g, "");
+  
+  // Remove country code if present
+  if (digits.startsWith("260")) {
+    digits = digits.substring(3);
+  }
+  
+  // Remove leading zero if present
+  if (digits.startsWith("0")) {
+    digits = digits.substring(1);
+  }
+  
+  // Format as 9X XXX XXXX
+  if (digits.length >= 9) {
+    return `${digits.slice(0, 2)} ${digits.slice(2, 5)} ${digits.slice(5, 9)}`;
+  }
+  return digits;
+};
+
+// Format phone number for storage (just digits, max 10)
+const formatPhoneForStorage = (value: string): string => {
+  // Remove all non-digits
+  let digits = value.replace(/\D/g, "");
+  
+  // Remove country code if present
+  if (digits.startsWith("260")) {
+    digits = digits.substring(3);
+  }
+  
+  // Remove leading zero if present
+  if (digits.startsWith("0")) {
+    digits = digits.substring(1);
+  }
+  
+  // Limit to 9 digits (Zambian local number without leading 0)
+  return digits.slice(0, 9);
+};
+
 interface DynamicDatatableContentProps {
   datatableName: string;
   clientId: number;
   initialData?: any;
+  onDataChange?: (hasData: boolean) => void; // Callback when data changes (add/edit/delete)
+  onEditingChange?: (isEditing: boolean) => void; // Callback when editing state changes
 }
 
 export function DynamicDatatableContent({
   datatableName,
   clientId,
   initialData,
+  onDataChange,
+  onEditingChange,
 }: DynamicDatatableContentProps) {
   // Initialize state from server-provided data if available
   const [headers, setHeaders] = useState<any[]>(
@@ -56,6 +115,26 @@ export function DynamicDatatableContent({
   const [newCodeValueDescription, setNewCodeValueDescription] = useState("");
   const [addingCodeValue, setAddingCodeValue] = useState(false);
   const { toast } = useToast();
+
+  // Store callbacks in refs to avoid stale closures and infinite loops
+  const onEditingChangeRef = useRef(onEditingChange);
+  const onDataChangeRef = useRef(onDataChange);
+  
+  // Update refs when callbacks change
+  useEffect(() => {
+    onEditingChangeRef.current = onEditingChange;
+  }, [onEditingChange]);
+  
+  useEffect(() => {
+    onDataChangeRef.current = onDataChange;
+  }, [onDataChange]);
+
+  // Notify parent when editing state changes
+  useEffect(() => {
+    if (onEditingChangeRef.current) {
+      onEditingChangeRef.current(editingRowIndex !== null);
+    }
+  }, [editingRowIndex]);
 
   useEffect(() => {
     // Skip initial fetch if we have server-provided data
@@ -439,6 +518,11 @@ export function DynamicDatatableContent({
         const mapped: any[][] = (data.data || []).map((r: any) => r.row);
         setRows(mapped);
         setRowData(data.data || []);
+        
+        // Notify parent that data has changed
+        if (onDataChangeRef.current) {
+          onDataChangeRef.current(mapped.length > 0);
+        }
       }
     } catch (err: any) {
       console.error("Error saving row:", err);
@@ -656,6 +740,37 @@ export function DynamicDatatableContent({
       );
     }
 
+    // Phone number field - detect by column name and apply Zambian format
+    if (isPhoneNumberField(columnName)) {
+      const displayValue = formatZambianPhoneDisplay(String(currentValue ?? ""));
+      return (
+        <div className="space-y-1">
+          <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            {formatHeaderName(columnName)}
+          </Label>
+          <div className="flex">
+            <div className="flex items-center px-3 border border-r-0 rounded-l-md bg-muted text-muted-foreground text-sm">
+              +260
+            </div>
+            <Input
+              type="tel"
+              value={displayValue}
+              onChange={(e) => {
+                const formatted = formatPhoneForStorage(e.target.value);
+                handleFieldChange(columnName, formatted);
+              }}
+              placeholder="9X XXX XXXX"
+              maxLength={12}
+              className="text-sm rounded-l-none"
+            />
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Enter 9 digit Zambian number (e.g., 97 123 4567)
+          </p>
+        </div>
+      );
+    }
+
     // Text field (default)
     return (
       <div className="space-y-1">
@@ -830,6 +945,11 @@ export function DynamicDatatableContent({
         const mapped: any[][] = (data.data || []).map((r: any) => r.row);
         setRows(mapped);
         setRowData(data.data || []);
+        
+        // Notify parent that data has changed
+        if (onDataChangeRef.current) {
+          onDataChangeRef.current(mapped.length > 0);
+        }
       }
     } catch (err: any) {
       console.error("Error creating row:", err);
@@ -1096,6 +1216,19 @@ export function DynamicDatatableContent({
   return (
     <>
       <div className="space-y-4">
+        {/* Add Entry Button at the top */}
+        <div className="flex justify-end">
+          <Button
+            type="button"
+            onClick={startAddingNew}
+            className="bg-blue-500 hover:bg-blue-600"
+            size="sm"
+          >
+            <Plus className="mr-2 h-4 w-4" />
+            Add Entry
+          </Button>
+        </div>
+
         {rows.map((row, ri) => {
           const isEditing = editingRowIndex === ri;
 
@@ -1228,11 +1361,22 @@ export function DynamicDatatableContent({
                     }
                   }
 
-                  const cellValue = formatCell(
-                    displayValue,
-                    header?.columnType,
-                    header?.columnDisplayType
-                  );
+                  // Format phone numbers with Zambian international format
+                  let cellValue;
+                  if (isPhoneNumberField(header?.columnName || "")) {
+                    const formattedPhone = formatZambianPhoneDisplay(String(displayValue ?? ""));
+                    cellValue = formattedPhone ? (
+                      <span className="font-medium">+260 {formattedPhone}</span>
+                    ) : (
+                      <span className="text-muted-foreground italic">—</span>
+                    );
+                  } else {
+                    cellValue = formatCell(
+                      displayValue,
+                      header?.columnType,
+                      header?.columnDisplayType
+                    );
+                  }
 
                   return (
                     <div key={`${ri}-${ci}`} className="space-y-1">

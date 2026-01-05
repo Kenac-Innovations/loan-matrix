@@ -298,7 +298,7 @@ export function ReconcileCashModal({
             <div className="flex items-center justify-center p-8 border rounded-lg bg-muted/50">
               <Loader2 className="h-6 w-6 animate-spin mr-2" />
               <span>Loading data from Fineract...</span>
-            </div>
+                </div>
           ) : summary ? (
             <div className="space-y-4">
               <div className="grid grid-cols-3 gap-4 p-4 border rounded-lg bg-muted/50">
@@ -354,35 +354,35 @@ export function ReconcileCashModal({
                   </p>
                 </div>
               )}
-            </div>
+              </div>
           ) : (
             <div className="p-4 border rounded-lg bg-muted/50 text-center text-muted-foreground">
               No data available. Select a currency to load data.
-            </div>
+              </div>
           )}
 
           {/* Notes */}
           {!isReconciled && (
-            <div className="space-y-2">
+              <div className="space-y-2">
               <Label htmlFor="notes">Notes</Label>
-              <Textarea
-                id="notes"
-                value={formData.notes}
-                onChange={(e) =>
-                  setFormData({ ...formData, notes: e.target.value })
-                }
+                <Textarea
+                  id="notes"
+                  value={formData.notes}
+                  onChange={(e) =>
+                    setFormData({ ...formData, notes: e.target.value })
+                  }
                 placeholder="End of day reconciliation notes..."
                 rows={2}
-              />
-            </div>
+                />
+              </div>
           )}
 
           {/* Error */}
-          {error && (
-            <Alert variant="destructive">
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          )}
+              {error && (
+                <Alert variant="destructive">
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              )}
 
           {/* Success */}
           {success && (
@@ -393,33 +393,33 @@ export function ReconcileCashModal({
               </AlertDescription>
             </Alert>
           )}
-        </div>
+            </div>
 
-        <DialogFooter>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-            disabled={loading}
-          >
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => onOpenChange(false)}
+                disabled={loading}
+              >
             {isReconciled ? "Close" : "Cancel"}
-          </Button>
+              </Button>
           {!isReconciled && (
             <Button
               onClick={handleReconcile}
               disabled={loading || !summary || remainingBalance <= 0}
             >
-              {loading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                {loading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   Processing...
-                </>
-              ) : (
+                  </>
+                ) : (
                 `Return ${formatAmount(remainingBalance)} to Safe`
-              )}
-            </Button>
+                )}
+              </Button>
           )}
-        </DialogFooter>
+            </DialogFooter>
       </DialogContent>
     </Dialog>
   );

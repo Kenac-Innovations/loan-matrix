@@ -1188,7 +1188,7 @@ export function LoanTermsForm({
   };
 
   const handleAddCharge = () => {
-    if (!selectedChargeOption || !newChargeAmount || !newChargeDueDate) {
+    if (!selectedChargeOption || !newChargeAmount) {
       return;
     }
 
@@ -1197,13 +1197,24 @@ export function LoanTermsForm({
     );
 
     if (selectedCharge) {
+      // Check if this charge requires a due date (Specified Due Date time type)
+      const requiresDueDate =
+        selectedCharge.chargeTimeType?.code === "specifiedDueDate" ||
+        selectedCharge.chargeTimeType?.value === "Specified Due Date" ||
+        selectedCharge.chargeTimeType?.id === 2;
+
+      // If due date is required but not provided, don't proceed
+      if (requiresDueDate && !newChargeDueDate) {
+        return;
+      }
+
       setEditableCharges((prev) => [
         ...prev,
         {
           chargeId: selectedCharge.id,
           name: selectedCharge.name,
           amount: parseFloat(newChargeAmount),
-          dueDate: newChargeDueDate,
+          dueDate: newChargeDueDate || new Date(), // Use current date as fallback if not required
           originalCharge: selectedCharge,
         },
       ]);
@@ -2563,42 +2574,63 @@ export function LoanTermsForm({
                         onChange={(e) => setNewChargeAmount(e.target.value)}
                       />
                     </div>
-                    <div className="space-y-2">
-                      <Label>Due Date</Label>
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <Button
-                            variant="outline"
-                            className={cn(
-                              "w-full justify-start text-left font-normal",
-                              !newChargeDueDate && "text-muted-foreground"
-                            )}
-                          >
-                            <CalendarIcon className="mr-2 h-4 w-4" />
-                            {newChargeDueDate
-                              ? format(newChargeDueDate, "PPP")
-                              : "Pick a date"}
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0">
-                          <Calendar
-                            mode="single"
-                            selected={newChargeDueDate}
-                            onSelect={setNewChargeDueDate}
-                            initialFocus
-                          />
-                        </PopoverContent>
-                      </Popover>
-                    </div>
+                    {/* Only show Due Date for charges with "Specified Due Date" time type */}
+                    {(() => {
+                      const selectedCharge = loanTemplate.chargeOptions?.find(
+                        (opt: any) => opt.id.toString() === selectedChargeOption
+                      );
+                      const requiresDueDate =
+                        selectedCharge?.chargeTimeType?.code === "specifiedDueDate" ||
+                        selectedCharge?.chargeTimeType?.value === "Specified Due Date" ||
+                        selectedCharge?.chargeTimeType?.id === 2;
+                      
+                      return requiresDueDate ? (
+                        <div className="space-y-2">
+                          <Label>Due Date</Label>
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <Button
+                                variant="outline"
+                                className={cn(
+                                  "w-full justify-start text-left font-normal",
+                                  !newChargeDueDate && "text-muted-foreground"
+                                )}
+                              >
+                                <CalendarIcon className="mr-2 h-4 w-4" />
+                                {newChargeDueDate
+                                  ? format(newChargeDueDate, "PPP")
+                                  : "Pick a date"}
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0">
+                              <Calendar
+                                mode="single"
+                                selected={newChargeDueDate}
+                                onSelect={setNewChargeDueDate}
+                                initialFocus
+                              />
+                            </PopoverContent>
+                          </Popover>
+                        </div>
+                      ) : null;
+                    })()}
                   </div>
                   <Button
                     type="button"
                     onClick={handleAddCharge}
-                    disabled={
-                      !selectedChargeOption ||
-                      !newChargeAmount ||
-                      !newChargeDueDate
-                    }
+                    disabled={(() => {
+                      const selectedCharge = loanTemplate.chargeOptions?.find(
+                        (opt: any) => opt.id.toString() === selectedChargeOption
+                      );
+                      const requiresDueDate =
+                        selectedCharge?.chargeTimeType?.code === "specifiedDueDate" ||
+                        selectedCharge?.chargeTimeType?.value === "Specified Due Date" ||
+                        selectedCharge?.chargeTimeType?.id === 2;
+                      
+                      return !selectedChargeOption ||
+                        !newChargeAmount ||
+                        (requiresDueDate && !newChargeDueDate);
+                    })()}
                   >
                     Add Charge
                   </Button>
@@ -2650,35 +2682,40 @@ export function LoanTermsForm({
                             }
                           />
                         </div>
-                        <div className="space-y-2">
-                          <Label>Due Date</Label>
-                          <Popover>
-                            <PopoverTrigger asChild>
-                              <Button
-                                variant="outline"
-                                className={cn(
-                                  "w-full justify-start text-left font-normal",
-                                  !charge.dueDate && "text-muted-foreground"
-                                )}
-                              >
-                                <CalendarIcon className="mr-2 h-4 w-4" />
-                                {charge.dueDate
-                                  ? format(charge.dueDate, "PPP")
-                                  : "Pick a date"}
-                              </Button>
-                            </PopoverTrigger>
-                            <PopoverContent className="w-auto p-0">
-                              <Calendar
-                                mode="single"
-                                selected={charge.dueDate}
-                                onSelect={(date) =>
-                                  date && handleUpdateChargeDueDate(index, date)
-                                }
-                                initialFocus
-                              />
-                            </PopoverContent>
-                          </Popover>
-                        </div>
+                        {/* Only show Due Date for charges with "Specified Due Date" time type */}
+                        {(charge.originalCharge?.chargeTimeType?.code === "specifiedDueDate" ||
+                          charge.originalCharge?.chargeTimeType?.value === "Specified Due Date" ||
+                          charge.originalCharge?.chargeTimeType?.id === 2) && (
+                          <div className="space-y-2">
+                            <Label>Due Date</Label>
+                            <Popover>
+                              <PopoverTrigger asChild>
+                                <Button
+                                  variant="outline"
+                                  className={cn(
+                                    "w-full justify-start text-left font-normal",
+                                    !charge.dueDate && "text-muted-foreground"
+                                  )}
+                                >
+                                  <CalendarIcon className="mr-2 h-4 w-4" />
+                                  {charge.dueDate
+                                    ? format(charge.dueDate, "PPP")
+                                    : "Pick a date"}
+                                </Button>
+                              </PopoverTrigger>
+                              <PopoverContent className="w-auto p-0">
+                                <Calendar
+                                  mode="single"
+                                  selected={charge.dueDate}
+                                  onSelect={(date) =>
+                                    date && handleUpdateChargeDueDate(index, date)
+                                  }
+                                  initialFocus
+                                />
+                              </PopoverContent>
+                            </Popover>
+                          </div>
+                        )}
                       </div>
                     </div>
                   ))

@@ -60,7 +60,7 @@ export async function POST(
     if (!teller && fineractTellerIdToSearch) {
       teller = await prisma.teller.findFirst({
         where: { fineractTellerId: fineractTellerIdToSearch, tenantId: tenant.id },
-      });
+    });
     }
 
     // Parse cashierId - could be database ID or Fineract ID

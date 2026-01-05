@@ -125,7 +125,7 @@ export function CloseSessionModal({
       } else {
         console.error("Failed to fetch Fineract summary");
         setSummary(null);
-      }
+    }
     } catch (error) {
       console.error("Error fetching Fineract summary:", error);
       setSummary(null);
@@ -275,36 +275,36 @@ export function CloseSessionModal({
                 <span>Loading session data from Fineract...</span>
               </div>
             ) : summary ? (
-              <div className="grid grid-cols-2 gap-4 p-4 border rounded-lg bg-muted/50">
-                <div>
-                  <Label className="text-xs text-muted-foreground">
+            <div className="grid grid-cols-2 gap-4 p-4 border rounded-lg bg-muted/50">
+              <div>
+                <Label className="text-xs text-muted-foreground">
                     Cash In (Allocated)
-                  </Label>
-                  <p className="text-lg font-semibold text-green-600">
+                </Label>
+                <p className="text-lg font-semibold text-green-600">
                     {formatAmount(cashIn)}
-                  </p>
-                </div>
-                <div>
-                  <Label className="text-xs text-muted-foreground">
+                </p>
+              </div>
+              <div>
+                <Label className="text-xs text-muted-foreground">
                     Cash Out (Settled)
-                  </Label>
-                  <p className="text-lg font-semibold text-red-600">
+                </Label>
+                <p className="text-lg font-semibold text-red-600">
                     {formatAmount(cashOut)}
-                  </p>
-                </div>
+                </p>
+              </div>
                 <div className="col-span-2">
-                  <Label className="text-xs text-muted-foreground">
+                <Label className="text-xs text-muted-foreground">
                     Expected Balance (Net Cash)
-                  </Label>
+                </Label>
                   <p className="text-2xl font-bold">
                     {formatAmount(expectedBalance)}
-                  </p>
+                </p>
                 </div>
               </div>
             ) : (
               <div className="p-4 border rounded-lg bg-muted/50 text-center text-muted-foreground">
                 No session data available. Select a currency to load data.
-              </div>
+            </div>
             )}
 
             <div className="space-y-2">

@@ -57,13 +57,13 @@ export async function GET(
 
     // If not found by database ID and cashierId is numeric, try Fineract ID
     if (!cashier && isNumericId) {
-      cashier = await prisma.cashier.findFirst({
-        where: {
+        cashier = await prisma.cashier.findFirst({
+          where: {
           fineractCashierId: cashierIdNum,
           tellerId: teller.id,
-          tenantId: tenant.id,
-        },
-      });
+            tenantId: tenant.id,
+          },
+        });
     }
 
     // Get Fineract cashier ID
