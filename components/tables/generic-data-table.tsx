@@ -306,6 +306,11 @@ export function GenericDataTable<TData>({
     return cols;
   }, [columns, enableSelection]);
 
+  // Reset pagination when data changes significantly
+  React.useEffect(() => {
+    setPagination(prev => ({ ...prev, pageIndex: 0 }));
+  }, [data.length]);
+
   // Handle row selection changes
   React.useEffect(() => {
     if (onSelectionChange && enableSelection) {

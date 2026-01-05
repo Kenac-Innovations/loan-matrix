@@ -66,14 +66,13 @@ export async function GET(request: NextRequest) {
 
     // If we have a search query, use Fineract's search API
     if (query) {
-      // Uppercase query for case-sensitive Fineract
-      const uppercaseQuery = query.toUpperCase();
-      console.log("Searching loans with query:", uppercaseQuery);
+      const searchQuery = query.trim();
+      console.log("Searching loans with query:", searchQuery);
 
-      // First search for matching accounts/clients
-      const searchUrl = `${baseUrl}/fineract-provider/api/v1/search?query=${encodeURIComponent(
-        uppercaseQuery
-      )}&resource=loans,clients`;
+      // Use Fineract's search endpoint to find loans and clients
+      const searchUrl = `${baseUrl}/fineract-provider/api/v1/search?query=${encodeURIComponent(searchQuery)}&resource=loans,clients&exactMatch=false`;
+
+      console.log("Search URL:", searchUrl);
 
       const searchResponse = await fetch(searchUrl, {
         method: "GET",
@@ -87,9 +86,9 @@ export async function GET(request: NextRequest) {
 
       if (searchResponse.ok) {
         const searchResults = await searchResponse.json();
-        console.log("Search results:", searchResults?.length || 0);
+        console.log("Search API found results:", searchResults?.length || 0);
 
-        // Extract loan IDs from search results and fetch full loan details
+        // Collect unique loan IDs and client IDs from search results
         const loanIds = new Set<number>();
         const clientIds = new Set<number>();
 
@@ -101,35 +100,16 @@ export async function GET(request: NextRequest) {
           }
         }
 
-        // If we found clients, fetch their loans too
-        if (clientIds.size > 0) {
-          for (const clientId of Array.from(clientIds).slice(0, 10)) {
-            // Limit to 10 clients
-            const clientLoansUrl = `${baseUrl}/fineract-provider/api/v1/loans?sqlSearch=l.client_id=${clientId}`;
-            const clientLoansResponse = await fetch(clientLoansUrl, {
-              method: "GET",
-              headers: {
-                Authorization: `Basic ${accessToken}`,
-                "Fineract-Platform-TenantId": fineractTenantId,
-                Accept: "application/json",
-              },
-              cache: "no-store",
-            });
-            if (clientLoansResponse.ok) {
-              const clientLoans = await clientLoansResponse.json();
-              for (const loan of clientLoans?.pageItems || clientLoans || []) {
-                loanIds.add(loan.id);
-              }
-            }
-          }
-        }
+        console.log("Found loan IDs:", loanIds.size, "client IDs:", clientIds.size);
 
-        // Fetch full details for found loans
-        const loans = [];
-        for (const loanId of Array.from(loanIds).slice(0, 50)) {
-          // Limit to 50 loans
-          const loanUrl = `${baseUrl}/fineract-provider/api/v1/loans/${loanId}`;
-          const loanResponse = await fetch(loanUrl, {
+        // Fetch loans for matching clients using SQL search
+        if (clientIds.size > 0) {
+          const clientIdList = Array.from(clientIds).join(',');
+          const clientLoansUrl = `${baseUrl}/fineract-provider/api/v1/loans?sqlSearch=l.client_id in (${clientIdList})&limit=500`;
+          
+          console.log("Fetching loans for clients:", clientLoansUrl);
+          
+          const clientLoansResponse = await fetch(clientLoansUrl, {
             method: "GET",
             headers: {
               Authorization: `Basic ${accessToken}`,
@@ -138,16 +118,45 @@ export async function GET(request: NextRequest) {
             },
             cache: "no-store",
           });
-          if (loanResponse.ok) {
-            const loan = await loanResponse.json();
-            loans.push(loan);
+          
+          if (clientLoansResponse.ok) {
+            const clientLoansResult = await clientLoansResponse.json();
+            const clientLoans = clientLoansResult?.pageItems || clientLoansResult || [];
+            console.log("Found loans for clients:", clientLoans.length);
+            
+            // Return these loans directly
+            result = { pageItems: clientLoans, totalFilteredRecords: clientLoans.length };
+          } else {
+            result = { pageItems: [], totalFilteredRecords: 0 };
           }
+        } else if (loanIds.size > 0) {
+          // Fetch loans by IDs
+          const loanIdList = Array.from(loanIds).join(',');
+          const loansUrl = `${baseUrl}/fineract-provider/api/v1/loans?sqlSearch=l.id in (${loanIdList})&limit=500`;
+          
+          const loansResponse = await fetch(loansUrl, {
+            method: "GET",
+            headers: {
+              Authorization: `Basic ${accessToken}`,
+              "Fineract-Platform-TenantId": fineractTenantId,
+              Accept: "application/json",
+            },
+            cache: "no-store",
+          });
+          
+          if (loansResponse.ok) {
+            const loansResult = await loansResponse.json();
+            const loans = loansResult?.pageItems || loansResult || [];
+            result = { pageItems: loans, totalFilteredRecords: loans.length };
+          } else {
+            result = { pageItems: [], totalFilteredRecords: 0 };
+          }
+        } else {
+          result = { pageItems: [], totalFilteredRecords: 0 };
         }
-
-        result = { pageItems: loans, totalFilteredRecords: loans.length };
       } else {
-        // Fallback to regular listing if search fails
-        console.log("Search failed, falling back to regular listing");
+        const errorText = await searchResponse.text();
+        console.error("Search API failed:", searchResponse.status, errorText);
         result = { pageItems: [], totalFilteredRecords: 0 };
       }
     } else if (accountNo) {

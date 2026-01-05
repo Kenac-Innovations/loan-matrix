@@ -25,12 +25,9 @@ export type Loan = {
 
 interface LoansDataTableProps {
   data: Loan[];
-  hideSearch?: boolean;
-  serverSearchInput?: React.ReactNode;
-  searchResultInfo?: string;
 }
 
-export function LoansDataTable({ data, hideSearch = false, serverSearchInput, searchResultInfo }: LoansDataTableProps) {
+export function LoansDataTable({ data }: LoansDataTableProps) {
   const [customFilters, setCustomFilters] = useState<DataTableFilter[]>([
     { columnId: "status", value: "", type: "select" },
     { columnId: "currency", value: "", type: "select" },
@@ -143,12 +140,9 @@ export function LoansDataTable({ data, hideSearch = false, serverSearchInput, se
       accessorKey: "principal",
       header: "Principal",
       cell: ({ getValue, row }) => {
-        const amount = parseFloat(getValue());
+        const amount = parseFloat(getValue()) || 0;
         const currency = row.original.currency || "USD";
-        const formatted = new Intl.NumberFormat("en-US", {
-          style: "currency",
-          currency: currency,
-        }).format(amount);
+        const formatted = formatCurrency(amount, currency);
         return <div className="text-right font-medium">{formatted}</div>;
       },
     },
@@ -157,12 +151,9 @@ export function LoansDataTable({ data, hideSearch = false, serverSearchInput, se
       accessorKey: "outstandingBalance",
       header: "Outstanding",
       cell: ({ getValue, row }) => {
-        const amount = parseFloat(getValue());
+        const amount = parseFloat(getValue()) || 0;
         const currency = row.original.currency || "USD";
-        const formatted = new Intl.NumberFormat("en-US", {
-          style: "currency",
-          currency: currency,
-        }).format(amount);
+        const formatted = formatCurrency(amount, currency);
         return <div className="text-right font-medium">{formatted}</div>;
       },
     },
@@ -210,8 +201,7 @@ export function LoansDataTable({ data, hideSearch = false, serverSearchInput, se
     <GenericDataTable
       data={data}
       columns={columns}
-      searchPlaceholder={hideSearch ? "" : "Search loans..."}
-      searchColumn={hideSearch ? undefined : "clientName"}
+      hideSearch={true}
       enableSelection={true}
       enablePagination={true}
       enableColumnVisibility={false}
@@ -221,12 +211,9 @@ export function LoansDataTable({ data, hideSearch = false, serverSearchInput, se
       tableId="loans-table"
       onRowClick={handleRowClick}
       exportFileName="loans-export"
-      emptyMessage={searchResultInfo ? `No loans found. ${searchResultInfo}` : "No loans found."}
+      emptyMessage="No loans found."
       customFilters={customFilters}
       onFilterChange={setCustomFilters}
-      hideSearch={hideSearch}
-      customSearchInput={serverSearchInput}
-      searchResultInfo={searchResultInfo}
     />
   );
 }
@@ -289,5 +276,17 @@ function formatDate(dateString: string): string {
     });
   } catch {
     return dateString;
+  }
+}
+
+function formatCurrency(amount: number, currency: string): string {
+  try {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: currency,
+    }).format(amount);
+  } catch {
+    // Fallback for invalid currency codes
+    return `${currency} ${amount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   }
 }
