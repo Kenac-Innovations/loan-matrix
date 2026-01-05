@@ -104,9 +104,6 @@ export function UserProfileClient({ userProfileData }: UserProfileClientProps) {
             }}
           >
             <Bell className="h-5 w-5" />
-            <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-blue-500 text-xs font-bold">
-              8
-            </span>
             <span className="sr-only">Notifications</span>
           </Button>
 
@@ -115,12 +112,6 @@ export function UserProfileClient({ userProfileData }: UserProfileClientProps) {
               <div className="p-3 border-b border-border">
                 <div className="flex items-center justify-between">
                   <h3 className="text-sm font-medium">Notifications</h3>
-                  <Badge
-                    variant="outline"
-                    className="bg-blue-500 text-white border-0 text-xs"
-                  >
-                    8 New
-                  </Badge>
                 </div>
               </div>
 
@@ -303,10 +294,10 @@ export function UserProfileClient({ userProfileData }: UserProfileClientProps) {
                   </Avatar>
                 </div>
                 
-                {/* Desktop: Full profile with tenant */}
+                {/* Desktop: Full profile with username */}
                 <div className="hidden lg:flex items-center gap-2 bg-blue-500/10 border border-blue-500/20 rounded-full px-3 py-1">
                   <span className="text-sm font-medium text-blue-600 dark:text-blue-400">
-                    {userProfileData.tenantId.toUpperCase()}
+                    {userFullName}
                   </span>
                   <Avatar className="h-8 w-8 border-2 border-blue-500">
                     <AvatarImage src="/professional-avatar.svg" alt="Avatar" />

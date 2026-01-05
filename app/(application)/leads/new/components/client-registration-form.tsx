@@ -2645,6 +2645,28 @@ export function ClientRegistrationForm({
       datatables: false,
     });
 
+    // Reset form to default values before starting new search
+    // This clears any data from previously selected client
+    form.reset({
+      officeId: "1",
+      legalFormId: "1",
+      externalId: "",
+      firstname: "",
+      middlename: "",
+      lastname: "",
+      isStaff: false,
+      mobileNo: "",
+      countryCode: "+263",
+      emailAddress: "",
+      submittedOnDate: new Date(),
+      active: true,
+      openSavingsAccount: false,
+      currentStep: 1,
+    });
+
+    // Clear selected client ID from previous search
+    setSelectedClientId(null);
+
     setIsSearchingClient(true);
     setClientLookupStatus("idle");
 
