@@ -56,339 +56,340 @@ export function generateContractHTML(
   data: ContractData,
   signatures: SignatureData = {}
 ): string {
-  const chargesTableRows = data.charges
-    .map(
-      (charge) =>
-        `<tr><td>${charge.name}</td><td>${formatCurrency(
-          charge.amount
-        )}</td><td>-</td></tr>`
-    )
-    .join("");
-
-  const repaymentScheduleRows = data.repaymentSchedule
-    .map(
-      (period) =>
-        `<tr><td>${period.paymentNumber}</td><td>${
-          period.dueDate
-        }</td><td>${formatCurrency(
-          period.paymentAmount
-        )}</td><td>${formatCurrency(period.principal)}</td><td>${formatCurrency(
-          period.interestAndFees
-        )}</td><td>${formatCurrency(period.remainingBalance)}</td></tr>`
-    )
-    .join("");
-
   const signatureTimestamp = format(new Date(), "dd/MM/yyyy HH:mm");
-  const preparedDate = format(new Date(), "dd/MM/yyyy");
+  const preparedDate = format(new Date(), "EEEE, dd MMMM yyyy");
   const preparedYear = format(new Date(), "yyyy");
 
   const borrowerSignatureImg = signatures.borrower
-    ? `<img src="${signatures.borrower}" alt="Borrower Signature" style="max-width:120px;max-height:50px;border:1px solid #e6eef2;border-radius:3px" />`
-    : '<div style="border:1px dashed #e6eef2;padding:20px;text-align:center;color:#6b7280;font-size:8px">Signature required</div>';
+    ? `<img src="${signatures.borrower}" alt="Borrower Signature" style="max-width:200px;max-height:60px;border-bottom:1px solid #000" />`
+    : '<div style="border-bottom:1px dotted #000;width:200px;height:40px;display:inline-block"></div>';
 
-  const logoImage =
-    '<img src="/gfl-logo.png" alt="GFL Logo" style="max-width:60px;max-height:60px;display:block;margin:0 auto 4px auto" />';
+  const loanOfficerSignatureImg = signatures.loanOfficer
+    ? `<img src="${signatures.loanOfficer}" alt="Loan Officer Signature" style="max-width:200px;max-height:60px;border-bottom:1px solid #000" />`
+    : '<div style="border-bottom:1px dotted #000;width:200px;height:40px;display:inline-block"></div>';
 
   return `<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>GFL - Key Facts Statement and Nano Loan Product Contract</title>
+  <title>Salary Advance Contract - ${data.clientName}</title>
   <style>
-    @page { margin: 0.4in; size: A4; }
-    body{font-family:Arial,Helvetica,sans-serif;line-height:1.2;color:#0f1724;background:#fbfdff;margin:0;padding:8px;font-size:10px}
-    .container{max-width:100%;margin:0 auto}
-    header{margin-bottom:6px;overflow:hidden;padding-bottom:2px;border-bottom:1px solid #e6eef2;text-align:center}
-    header > div{display:block;text-align:center}
-    header img{display:block;margin:0 auto 4px auto;max-width:50px;max-height:50px}
-    .logo{width:40px;height:40px;border-radius:4px;background:#004f73;display:block;text-align:center;line-height:40px;color:white;font-weight:700;font-size:14px;margin:0 auto 4px auto}
-    h1{font-size:12px;margin:0 0 2px 0;color:#004f73;display:block;text-align:center}
-    .meta{color:#6b7280;font-size:9px;margin-top:1px;text-align:center}
-
-    .section{background:#ffffff;border:1px solid #e6eef2;border-radius:4px;padding:8px;margin-bottom:6px}
-    h2{font-size:11px;color:#004f73;margin:0 0 3px 0;font-weight:700}
-    h3{font-size:10px;color:#00a5c4;margin:4px 0 3px 0;font-weight:600}
-
-    .row{display:block;overflow:hidden;margin-bottom:3px}
-    .col{display:inline-block;width:31.33%;vertical-align:top;margin-right:1%;margin-bottom:3px;box-sizing:border-box}
-    label{display:block;font-weight:600;margin-bottom:1px;color:#0b2b3b;font-size:9px}
-    .value{background:#f1fcff;border:1px solid #e6eef2;padding:3px 5px;border-radius:3px;color:#0f1724;min-height:14px;font-size:9px}
-
-    table{width:100%;border-collapse:collapse;margin-top:3px;font-size:8px}
-    table th, table td{border:1px solid #e6eef2;padding:3px 4px;text-align:left}
-    thead th{background:#004f73;color:white;font-weight:700;font-size:8px;padding:3px 4px}
-
-    ul{margin:3px 0 0 14px;padding-left:10px;font-size:9px}
-    ol{margin:3px 0 0 14px;padding-left:10px;font-size:9px}
-    li{margin-bottom:1px;line-height:1.2}
-
-    p{margin:3px 0;font-size:9px;line-height:1.2}
-
-    .signature{margin-top:6px;display:block;overflow:hidden}
-    .signature > div{display:inline-block;width:48%;vertical-align:top;margin-right:2%}
-    .signature img{max-width:120px;max-height:50px;border:1px solid #e6eef2;border-radius:3px}
-    .signature p{margin:1px 0;font-size:8px}
-    .small{font-size:8px;color:#6b7280}
+    @page { margin: 0.5in; size: A4; }
+    * { box-sizing: border-box; }
+    body {
+      font-family: Arial, Helvetica, sans-serif;
+      line-height: 1.4;
+      color: #000;
+      background: #fff;
+      margin: 0;
+      padding: 20px;
+      font-size: 11px;
+    }
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+      background: #fff;
+    }
     
-    .schedule-compact table{font-size:7px}
-    .schedule-compact table th, .schedule-compact table td{padding:2px 3px}
+    /* Header */
+    .header {
+      text-align: center;
+      margin-bottom: 20px;
+      padding-bottom: 15px;
+      border-bottom: 2px solid #000;
+    }
+    .header h1 {
+      font-size: 18px;
+      font-weight: bold;
+      margin: 0 0 15px 0;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+    .logo {
+      width: 80px;
+      height: 80px;
+      margin: 0 auto 10px auto;
+      display: block;
+    }
+    
+    /* Info rows */
+    .info-row {
+      display: flex;
+      flex-wrap: wrap;
+      margin-bottom: 8px;
+      font-size: 11px;
+    }
+    .info-item {
+      margin-right: 30px;
+      margin-bottom: 5px;
+    }
+    .info-item strong {
+      font-weight: bold;
+    }
+    .info-item span {
+      margin-left: 5px;
+    }
+    
+    /* Sections */
+    .section {
+      margin-bottom: 20px;
+    }
+    .section-title {
+      font-size: 12px;
+      font-weight: bold;
+      margin-bottom: 10px;
+      text-transform: uppercase;
+    }
+    
+    /* Parties */
+    .party {
+      margin-bottom: 10px;
+    }
+    .party-title {
+      font-weight: bold;
+    }
+    .party-details {
+      margin-left: 0;
+    }
+    
+    /* Lists */
+    .obligations-list, .permissions-list {
+      margin: 10px 0;
+      padding-left: 25px;
+    }
+    .obligations-list li, .permissions-list li {
+      margin-bottom: 8px;
+      text-align: justify;
+    }
+    .sub-list {
+      margin-top: 5px;
+      padding-left: 20px;
+      list-style-type: disc;
+    }
+    .sub-list li {
+      margin-bottom: 3px;
+    }
+    
+    /* Declaration */
+    .declaration {
+      margin-top: 20px;
+      margin-bottom: 20px;
+    }
+    .declaration p {
+      text-align: justify;
+      margin-bottom: 15px;
+    }
+    
+    /* Signatures */
+    .signatures {
+      margin-top: 30px;
+    }
+    .signature-row {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 25px;
+    }
+    .signature-block {
+      width: 48%;
+    }
+    .signature-line {
+      border-bottom: 1px dotted #000;
+      min-width: 200px;
+      display: inline-block;
+      min-height: 40px;
+      vertical-align: bottom;
+    }
+    .signature-label {
+      margin-top: 5px;
+      font-size: 10px;
+    }
+    
+    /* Dotted fill lines */
+    .dotted-fill {
+      border-bottom: 1px dotted #000;
+      display: inline;
+    }
+    
+    @media print {
+      body { padding: 0; }
+      .container { max-width: 100%; }
+    }
   </style>
 </head>
 <body>
   <div class="container">
-    <header>
-      <div style="text-align:center">
-        ${logoImage}
-        <h1>GOODFELLOW FINANCE LIMITED (GFL)</h1>
-        <div class="meta">Key Facts Statement and Nano Loan Product Contract</div>
-      </div>
-    </header>
-
-    <!-- KEY FACTS STATEMENT -->
-    <section class="section" id="key-facts-statement">
-      <h2>ANNEX 1 - KEY FACTS STATEMENT FOR CONSUMER CREDIT</h2>
-      <p class="small">Review carefully before agreeing to a loan. You have the right to get a copy of the full loan agreement.</p>
-
-      <h3>SECTION I: KEY TERMS</h3>
-      <div class="row">
-        <div class="col">
-          <label>1. Amount of Loan</label>
-          <div class="value">${data.currency} ${formatCurrency(
-    data.loanAmount
-  )}</div>
+    <!-- Header -->
+    <div class="header">
+      <img src="/gfl-logo.png" alt="GFL Logo" class="logo" onerror="this.style.display='none'" />
+      <h1>SALARY ADVANCE CONTRACT</h1>
+      
+      <!-- Top info row -->
+      <div class="info-row" style="justify-content: space-between;">
+        <div class="info-item">
+          <strong>GFL NO.:</strong>
+          <span>${data.gflNo || "N/A"}</span>
         </div>
-        <div class="col">
-          <label>2. Duration of Loan Agreement</label>
-          <div class="value">${data.tenure}</div>
+        <div class="info-item">
+          <strong>LOAN ID:</strong>
+          <span>${data.loanId || "N/A"}</span>
         </div>
-        <div class="col">
-          <label>3. Amount Received</label>
-          <div class="value">${data.currency} ${formatCurrency(
-    data.disbursedAmount
-  )}</div>
+        <div class="info-item">
+          <strong>BRANCH:</strong>
+          <span>${data.branch}</span>
         </div>
       </div>
-
-      <div class="row">
-        <div class="col">
-          <label>4. Interest</label>
-          <div class="value">${data.currency} ${formatCurrency(
-    data.interest
-  )}</div>
+      
+      <!-- NRC and Loan Purpose -->
+      <div class="info-row">
+        <div class="info-item">
+          <strong>NRC:</strong>
+          <span>${data.nrc}</span>
         </div>
-        <div class="col">
-          <label>5. Other Fees and Charges (Section III)</label>
-          <div class="value">${data.currency} ${formatCurrency(data.fees)}</div>
-        </div>
-        <div class="col">
-          <label>6. Percentage Rate</label>
-          <div class="value">${data.monthlyPercentageRate.toFixed(2)}%</div>
+        <div class="info-item" style="flex: 1;">
+          <strong>LOAN PURPOSE:</strong>
+          <span>${data.loanPurpose || "..................................................................."}</span>
         </div>
       </div>
-
-      <div class="row">
-        <div class="col">
-          <label>7. Date First Payment Due</label>
-          <div class="value">${data.firstPaymentDate}</div>
+      
+      <!-- Financial details row -->
+      <div class="info-row">
+        <div class="info-item">
+          <strong>LOAN AMOUNT:</strong>
+          <span>${formatCurrency(data.loanAmount)}</span>
         </div>
-        <div class="col">
-          <label>8. Number of Payments</label>
-          <div class="value">${data.numberOfPayments}</div>
+        <div class="info-item">
+          <strong>INTEREST:</strong>
+          <span>${formatCurrency(data.interest)}</span>
         </div>
-        <div class="col">
-          <label>9. Payment Frequency</label>
-          <div class="value">${data.paymentFrequency}</div>
+        <div class="info-item">
+          <strong>SERVICE FEE:</strong>
+          <span>${formatCurrency(data.fees)}</span>
         </div>
-      </div>
-
-      <div class="row">
-        <div class="col">
-          <label>10. Amount Per Payment</label>
-          <div class="value">${data.currency} ${formatCurrency(
-    data.paymentPerPeriod
-  )}</div>
+        <div class="info-item">
+          <strong>TOTAL AMOUNT DUE:</strong>
+          <span>${formatCurrency(data.totalRepayment)}</span>
         </div>
-        <div class="col">
-          <label>11. Total Cost of Credit</label>
-          <div class="value">${data.currency} ${formatCurrency(
-    data.totalCostOfCredit
-  )}</div>
-        </div>
-        <div class="col">
-          <label>12. TOTAL AMOUNT YOU PAY</label>
-          <div class="value">${data.currency} ${formatCurrency(
-    data.totalRepayment
-  )}</div>
+        <div class="info-item">
+          <strong>TENURE:</strong>
+          <span>${data.numberOfPayments}</span>
         </div>
       </div>
-
-      <h3>SECTION II: RISKS TO YOU</h3>
-      <ul>
-        <li>Late or missing payments may be reported to a credit reference bureau and may severely affect your financial situation, collateral, and ability to reborrow.</li>
-        <li>Your interest rate will change based on changes in the Bank of Zambia Policy Rate. This change will affect the duration of your loan and your repayment amount.</li>
-      </ul>
-
-      <h3>SECTION III: YOUR RIGHTS AND OBLIGATIONS</h3>
-      <p>Any questions or complaints? Call <strong>+260 211 238719</strong>, email <a href="mailto:info@goodfellow.co.zm">info@goodfellow.co.zm</a> or write to P.O. Box 50644 Lusaka.</p>
-      <p class="small">Unsatisfied with our response? Contact the Bank of Zambia at <strong>+260 211 399300</strong> or <a href="mailto:info@boz.zm">info@boz.zm</a>. Visit <a href="https://www.boz.zm">www.boz.zm</a>.</p>
-      <p>You may pay off your loan early without penalties. You are required to make payments according to your loan agreement and to notify us of important changes in your situation.</p>
-
-      <h3>SECTION IV: UPFRONT AND RECURRING FEES</h3>
-      <table>
-        <thead>
-          <tr><th>Fee</th><th>Amount (${data.currency})</th><th>Notes</th></tr>
-        </thead>
-        <tbody>
-          ${chargesTableRows}
-          <tr><td><strong>Total (excluding interest)</strong></td><td><strong>${formatCurrency(
-            data.fees
-          )}</strong></td><td></td></tr>
-        </tbody>
-      </table>
-
-      <h3>SECTION V: IMPORTANT TERMS AND CONDITIONS</h3>
-      <p style="margin:2px 0"><strong>Late payment interest arrears:</strong> As per agreement | <strong>Default interest:</strong> As per agreement | <strong>Cash deposit:</strong> None</p>
-      <p style="margin:2px 0"><strong>Variable interest rate applies:</strong> Yes | <strong>Collateral:</strong> As per agreement</p>
-
-      <h3>SECTION VI: REPAYMENT SCHEDULE</h3>
-      <div class="schedule-compact">
-        <table>
-          <thead>
-            <tr><th>#</th><th>Due Date</th><th>Amount</th><th>Principal</th><th>Interest and Fees</th><th>Balance</th></tr>
-          </thead>
-          <tbody>
-            ${repaymentScheduleRows}
-          </tbody>
-        </table>
-      </div>
-
-      <p class="small" style="margin:4px 0">This information is not final until signed by all parties and does not replace the loan agreement.</p>
-
-      <div class="signature">
-        <div>
-          <p style="margin:2px 0"><strong>Borrower (I acknowledge receipt prior to signing)</strong></p>
-          <p style="margin:2px 0">Name: <span class="value" style="display:inline;padding:2px 4px">${
-            data.clientName
-          }</span></p>
-          <p style="margin:2px 0">Signature:</p>
-          ${borrowerSignatureImg}
-          <p class="small" style="margin:2px 0">Date and Time: ${signatureTimestamp}</p>
+      
+      <!-- Payment details -->
+      <div class="info-row">
+        <div class="info-item">
+          <strong>PAYMENT DUE DATE:</strong>
+          <span>${data.firstPaymentDate}</span>
+        </div>
+        <div class="info-item">
+          <strong>TOTAL COST OF BORROWING:</strong>
+          <span>${formatCurrency(data.totalCostOfCredit)}</span>
         </div>
       </div>
-
-      <p class="small" style="margin:4px 0;text-align:center">Name of Borrower: ${
-        data.clientName
-      } | Application No: ${
-    data.loanId || "N/A"
-  } | Date prepared: ${preparedDate}</p>
-    </section>
-
-    <!-- SALARY ADVANCE CONTRACT -->
-    <section class="section" id="nano-loan-contract">
-      <div style="text-align:center;margin-bottom:8px">
-        ${logoImage}
-        <h1 style="font-size:12px;margin:0 0 2px 0;color:#004f73">GOODFELLOW FINANCE LIMITED (GFL)</h1>
+    </div>
+    
+    <!-- PARTIES Section -->
+    <div class="section">
+      <div class="section-title">PARTIES</div>
+      
+      <div class="party">
+        <span class="party-title">GOODFELLOW FINANCE LIMITED</span>
+        <span>(hereinafter called the "Lender")</span>
       </div>
-      <h2>SALARY ADVANCE CONTRACT</h2>
-      <p class="small">GFL/LC/${preparedYear}/${data.gflNo || "N/A"}</p>
-
-      <div class="row">
-        <div class="col">
-          <label>GFL NO.</label>
-          <div class="value">${data.gflNo || "N/A"}</div>
-        </div>
-        <div class="col">
-          <label>NRC</label>
-          <div class="value">${data.nrc}</div>
-        </div>
-        <div class="col">
-          <label>LOAN ID</label>
-          <div class="value">${data.loanId || "N/A"}</div>
-        </div>
+      
+      <div class="party">
+        <span class="party-title">AND</span>
       </div>
-
-      <div style="margin-top:12px" class="row">
-        <div class="col">
-          <label>Loan Amount</label>
-          <div class="value">${data.currency} ${formatCurrency(
-    data.loanAmount
-  )}</div>
-        </div>
-        <div class="col">
-          <label>Tenure</label>
-          <div class="value">${data.tenure}</div>
-        </div>
-        <div class="col">
-          <label>Payment Due</label>
-          <div class="value">${data.firstPaymentDate}</div>
-        </div>
+      
+      <div class="party">
+        <span class="party-title">THE BORROWER:</span>
+        <span>${data.clientName}</span>
+        <span style="margin-left: 20px;"><strong>NRC:</strong> ${data.nrc}</span>
+        <span style="margin-left: 20px;"><strong>DOB:</strong> ${data.dateOfBirth}</span>
       </div>
-
-      <div style="margin-top:12px" class="row">
-        <div class="col">
-          <label>Interest</label>
-          <div class="value">${data.currency} ${formatCurrency(
-    data.interest
-  )}</div>
-        </div>
-        <div class="col">
-          <label>Service Fee</label>
-          <div class="value">${data.currency} ${formatCurrency(data.fees)}</div>
-        </div>
-        <div class="col">
-          <label>Total Cost of Borrowing</label>
-          <div class="value">${data.currency} ${formatCurrency(
-    data.totalCostOfCredit
-  )}</div>
-        </div>
+      
+      <div class="party">
+        <span><strong>GENDER:</strong> ${data.gender}</span>
+        <span style="margin-left: 20px;"><strong>EMPLOYER:</strong> ${data.employer || "N/A"}</span>
+        <span style="margin-left: 20px;"><strong>EMPLOYEE NO.:</strong> ${data.employeeNo || "N/A"}</span>
       </div>
-
-      <h3 style="margin-top:12px">Parties</h3>
-      <p><strong>Lender:</strong> Goodfellow Finance Limited ("Lender")</p>
-      <p><strong>Borrower:</strong> <span class="value">${
-        data.clientName
-      }</span> NRC: <span class="value">${
-    data.nrc
-  }</span> DOB: <span class="value">${data.dateOfBirth}</span></p>
-      <p>Employee No.: <span class="value">${
-        data.employeeNo || "N/A"
-      }</span> Employer: <span class="value">${
-    data.employer || "N/A"
-  }</span></p>
-
-      <h3 style="margin-top:12px">Obligations and Permissions</h3>
-      <ol>
-        <li>Notify the Lender immediately of changes to address, contact, bank details, employment or financial condition.</li>
-        <li>The Borrower permits the Lender to draw against any bank account registered to the borrower (costs for bounced direct debit apply).</li>
-        <li>The Lender may obtain and verify credit information from licensed Credit Reference Bureaux.</li>
-        <li>In case of collection failure through Direct Debit, payroll deduction may be used to recover the amount owed.</li>
-        <li>Reschedule outstanding balance if repayment is not completed within the scheduled month; full monthly interest and administrative fees may apply.</li>
-        <li>The Lender may take legal action in Zambia; borrower agrees to repay expenses and legal costs incurred in recovery.</li>
+    </div>
+    
+    <!-- OBLIGATIONS Section -->
+    <div class="section">
+      <div class="section-title">OBLIGATIONS</div>
+      <ol class="obligations-list">
+        <li>
+          Notify the Lender immediately of any changes to the following:
+          <ul class="sub-list">
+            <li>Address or contact information</li>
+            <li>Bank details</li>
+            <li>Employment details</li>
+            <li>Financial condition</li>
+          </ul>
+        </li>
       </ol>
-
-      <h3 style="margin-top:12px">Declaration and Signatures</h3>
-      <p>I <span class="value">${
-        data.clientName
-      }</span> confirm that I have read and understood the terms of this Nano Loan Product contract.</p>
-
-      <div style="margin-top:12px" class="row">
-        <div class="col">
-          <p>Signed at: <span class="value">${data.branch}</span></p>
-          <p>Date: <span class="value">${preparedDate}</span></p>
-          <p style="margin-top:8px">Loan Purpose: <span class="value">${
-            data.loanPurpose || "N/A"
-          }</span></p>
-          <p style="margin-top:8px"><strong>Borrower Name:</strong> <span class="value">${
-            data.clientName
-          }</span></p>
-          <p><strong>Borrower Signature:</strong></p>
+    </div>
+    
+    <!-- PERMISSIONS Section -->
+    <div class="section">
+      <div class="section-title">PERMISSIONS</div>
+      <p>The Borrower hereby permits the Lender to:</p>
+      <ol class="permissions-list">
+        <li>Draw against any bank account registered in the name of the borrower. The borrower will incur the cost charged on bouncing a direct debit (DDACC).</li>
+        <li>Obtain details from any party about the borrower's financial credit worthiness and banking details, including but not limited to credit records and payment history. Obtain and verify the Borrowers credit information, from any licenced Credit Reference Bureau.</li>
+        <li>Obtain and verify the Borrowers credit information, from any licenced Credit Reference Bureau.</li>
+        <li>In case of collection failure through Direct Debit (DDACC), use payroll deduction to recover the amount owed.</li>
+        <li>Reschedule the outstanding balance if the advance repayment is not completed within the scheduled month. In this case, a full monthly interest rate may be applied to the outstanding amount for that period, along with any applicable administrative fees to cover the costs associated with managing the outstanding balance.</li>
+        <li>To take legal action against the borrower in a court of competent jurisdiction in Zambia to recover money that is owed and is overdue. In the case of legal action, the borrower agrees to repay all expenses and legal costs incurred by the lender in the recovery of any overdue payment.</li>
+      </ol>
+    </div>
+    
+    <!-- DECLARATION Section -->
+    <div class="section declaration">
+      <div class="section-title">DECLARATION</div>
+      <p>
+        I <span class="dotted-fill" style="min-width: 250px; display: inline-block;">${data.clientName}</span> confirm that I have read and understood the terms of this salary advance contract, that it has been explained to me, and that I have understood the cost of borrowing for this loan.
+      </p>
+      
+      <p style="margin-top: 20px;">
+        Signed at: <span style="margin-left: 10px;">${data.branch}</span>
+        <span style="margin-left: 50px;">on</span>
+        <span style="margin-left: 10px;">${preparedDate}</span>
+      </p>
+    </div>
+    
+    <!-- Signatures -->
+    <div class="signatures">
+      <div class="signature-row">
+        <div class="signature-block">
+          <p><strong>Borrower's Name:</strong></p>
+          <div class="signature-line">${data.clientName}</div>
+        </div>
+        <div class="signature-block">
+          <p><strong>Borrower's Signature:</strong></p>
           ${borrowerSignatureImg}
-          <p class="small" style="margin-top:5px">Date and Time: ${signatureTimestamp}</p>
         </div>
       </div>
-
-    </section>
+      
+      <div class="signature-row">
+        <div class="signature-block">
+          <p><strong>Loan Officer's Name:</strong></p>
+          <div class="signature-line">${data.loanOfficer || ""}</div>
+        </div>
+        <div class="signature-block">
+          <p><strong>Loan Officer's Signature:</strong></p>
+          ${loanOfficerSignatureImg}
+        </div>
+      </div>
+    </div>
+    
+    <!-- Footer -->
+    <div style="margin-top: 30px; text-align: center; font-size: 9px; color: #666; border-top: 1px solid #ccc; padding-top: 10px;">
+      <p>Goodfellow Finance Limited | Licensed by Bank of Zambia</p>
+      <p>Contract Reference: GFL/LC/${preparedYear}/${data.gflNo || "N/A"}</p>
+    </div>
   </div>
 </body>
 </html>`;

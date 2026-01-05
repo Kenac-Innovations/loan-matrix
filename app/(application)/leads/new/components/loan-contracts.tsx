@@ -594,13 +594,74 @@ export function LoanContracts({
       });
       printWindow.document.write(contractHTML);
     } else {
-      // Print both - use the combined contract template
+      // Print both - Key Facts Statement AND Salary Advance Contract
+      const keyFactsData = getKeyFactsData();
+      if (!keyFactsData) return;
+      
+      const kfsHTML = generateKeyFactsStatementHTML(keyFactsData, {
+        borrower: borrowerSignature,
+        guarantor: guarantorSignature,
+        creditProvider: loanOfficerSignature,
+      });
+      
       const contractHTML = generateContractHTML(contractData, {
         borrower: borrowerSignature,
         guarantor: guarantorSignature,
         loanOfficer: loanOfficerSignature,
       });
-      printWindow.document.write(contractHTML);
+      
+      // Extract body content from both HTML documents and combine them
+      const kfsBodyMatch = kfsHTML.match(/<body[^>]*>([\s\S]*)<\/body>/i);
+      const contractBodyMatch = contractHTML.match(/<body[^>]*>([\s\S]*)<\/body>/i);
+      
+      const kfsBody = kfsBodyMatch ? kfsBodyMatch[1] : "";
+      const contractBody = contractBodyMatch ? contractBodyMatch[1] : "";
+      
+      // Extract styles from both documents
+      const kfsStyleMatch = kfsHTML.match(/<style[^>]*>([\s\S]*?)<\/style>/gi);
+      const contractStyleMatch = contractHTML.match(/<style[^>]*>([\s\S]*?)<\/style>/gi);
+      
+      const combinedStyles = [
+        ...(kfsStyleMatch || []),
+        ...(contractStyleMatch || [])
+      ].join("\n");
+      
+      // Create combined HTML with page break between documents
+      const combinedHTML = `
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+          <meta charset="utf-8" />
+          <meta name="viewport" content="width=device-width, initial-scale=1" />
+          <title>GFL - Key Facts Statement & Salary Advance Contract</title>
+          ${combinedStyles}
+          <style>
+            .page-break {
+              page-break-after: always;
+              break-after: page;
+            }
+            @media print {
+              .page-break {
+                page-break-after: always;
+                break-after: page;
+              }
+            }
+          </style>
+        </head>
+        <body>
+          <!-- Key Facts Statement -->
+          <div class="page-break">
+            ${kfsBody}
+          </div>
+          <!-- Salary Advance Contract -->
+          <div>
+            ${contractBody}
+          </div>
+        </body>
+        </html>
+      `;
+      
+      printWindow.document.write(combinedHTML);
     }
 
     printWindow.document.close();

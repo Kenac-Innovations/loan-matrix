@@ -174,12 +174,16 @@ export function NewLeadForm() {
         console.log("Setting currentLeadId to:", leadId);
         setCurrentLeadId(leadId);
 
+        // Store fineractClientId locally for use in subsequent calls
+        let loadedFineractClientId: number | null = null;
+
         // Fetch lead data to get fineractClientId
         try {
           const leadResponse = await fetch(`/api/leads/${leadId}`);
           if (leadResponse.ok) {
             const leadData = await leadResponse.json();
             if (leadData.fineractClientId) {
+              loadedFineractClientId = leadData.fineractClientId;
               setFineractClientId(leadData.fineractClientId);
               console.log(
                 "Loaded fineractClientId from lead:",
@@ -188,6 +192,7 @@ export function NewLeadForm() {
             }
             // Also check window for fineractClientId (set by client registration form)
             if ((window as any).fineractClientId) {
+              loadedFineractClientId = (window as any).fineractClientId;
               setFineractClientId((window as any).fineractClientId);
             }
           } else if (leadResponse.status === 404) {
@@ -197,6 +202,7 @@ export function NewLeadForm() {
             );
             LeadLocalStorage.clear();
             setCurrentLeadId(null);
+            return; // Exit early if lead not found
           }
         } catch (error) {
           console.error("Error loading lead data:", error);
@@ -227,6 +233,9 @@ export function NewLeadForm() {
         }
 
         // Check if loan details exist for this lead
+        let loadedLoanDetails: any = null;
+        let loadedProductId: number | null = null;
+        
         try {
           const loanResponse = await fetch(`/api/leads/${leadId}/loan-details`);
           if (loanResponse.ok) {
@@ -239,14 +248,17 @@ export function NewLeadForm() {
                 loanResult.data.loanOfficer;
 
               if (hasLoanDetails) {
-                console.log("Loan details found, marking as complete");
+                console.log("Loan details found, marking as complete and setting state");
+                loadedLoanDetails = loanResult.data;
+                setLoanDetails(loanResult.data); // Actually set the state!
                 setFormCompletionStatus((prev) => ({
                   ...prev,
                   loan: true,
                 }));
                 // Set loanProductId from loan details if available
                 if (loanResult.data.productId) {
-                  setLoanProductId(parseInt(loanResult.data.productId));
+                  loadedProductId = parseInt(loanResult.data.productId);
+                  setLoanProductId(loadedProductId);
                 }
               }
             }
@@ -256,6 +268,7 @@ export function NewLeadForm() {
         }
 
         // Check if loan terms exist for this lead
+        let loadedLoanTerms: any = null;
         try {
           const loanTermsResponse = await fetch(
             `/api/leads/${leadId}/loan-terms`
@@ -270,7 +283,9 @@ export function NewLeadForm() {
                 loanTermsResult.data.numberOfRepayments;
 
               if (hasLoanTerms) {
-                console.log("Loan terms found, marking as complete");
+                console.log("Loan terms found, marking as complete and setting state");
+                loadedLoanTerms = loanTermsResult.data;
+                setLoanTerms(loanTermsResult.data); // Actually set the state!
                 setFormCompletionStatus((prev) => ({
                   ...prev,
                   terms: true,
@@ -280,6 +295,131 @@ export function NewLeadForm() {
           }
         } catch (error) {
           console.error("Error checking loan terms:", error);
+        }
+
+        // If we have loan details with productId and fineractClientId, fetch the loan template
+        // Note: loadedFineractClientId was set at the beginning of this block when fetching lead data
+        if (loadedProductId && loadedFineractClientId) {
+          try {
+            console.log("Fetching loan template for productId:", loadedProductId, "clientId:", loadedFineractClientId);
+            const templateResponse = await fetch(
+              `/api/fineract/loans/template?clientId=${loadedFineractClientId}&productId=${loadedProductId}&activeOnly=true&staffInSelectedOfficeOnly=true&templateType=individual`
+            );
+            if (templateResponse.ok) {
+              const templateData = await templateResponse.json();
+              console.log("Loan template loaded for continued application");
+              setLoanTemplateData(templateData);
+
+              // If we have all the data needed, calculate the repayment schedule
+              if (loadedLoanDetails && loadedLoanTerms && templateData) {
+                console.log("All data available, calculating repayment schedule for continued application");
+                try {
+                  const { format } = await import("date-fns");
+                  
+                  const submittedDate = loadedLoanDetails.submittedOn
+                    ? format(new Date(loadedLoanDetails.submittedOn), "dd MMMM yyyy")
+                    : format(new Date(), "dd MMMM yyyy");
+
+                  const disbursementDate = loadedLoanDetails.disbursementOn
+                    ? format(new Date(loadedLoanDetails.disbursementOn), "dd MMMM yyyy")
+                    : format(new Date(), "dd MMMM yyyy");
+
+                  const charges = (loadedLoanTerms.charges || []).map((charge: any) => ({
+                    chargeId: charge.chargeId,
+                    amount: charge.amount,
+                    dueDate: charge.dueDate,
+                  }));
+
+                  const payload = {
+                    productId: loadedProductId,
+                    loanOfficerId: loadedLoanDetails.loanOfficer || "",
+                    loanPurposeId: loadedLoanDetails.loanPurpose || "",
+                    fundId: loadedLoanDetails.fund || "",
+                    submittedOnDate: submittedDate,
+                    expectedDisbursementDate: disbursementDate,
+                    externalId: "",
+                    linkAccountId: loadedLoanDetails.linkSavings || "",
+                    createStandingInstructionAtDisbursement:
+                      loadedLoanDetails.createStandingInstructions ? "true" : "",
+                    loanTermFrequency: loadedLoanTerms.loanTerm || 1,
+                    loanTermFrequencyType: loadedLoanTerms.termFrequency
+                      ? parseInt(loadedLoanTerms.termFrequency)
+                      : templateData?.termPeriodFrequencyType?.id || 2,
+                    numberOfRepayments: loadedLoanTerms.numberOfRepayments || 1,
+                    repaymentEvery: loadedLoanTerms.repaymentEvery || 1,
+                    repaymentFrequencyType: loadedLoanTerms.repaymentFrequency
+                      ? parseInt(loadedLoanTerms.repaymentFrequency)
+                      : templateData?.repaymentFrequencyType?.id || 2,
+                    repaymentFrequencyNthDayType:
+                      loadedLoanTerms.repaymentFrequencyNthDay || "",
+                    repaymentFrequencyDayOfWeekType:
+                      loadedLoanTerms.repaymentFrequencyDayOfWeek || "",
+                    repaymentsStartingFromDate: loadedLoanTerms.firstRepaymentOn
+                      ? format(new Date(loadedLoanTerms.firstRepaymentOn), "dd MMMM yyyy")
+                      : null,
+                    interestChargedFromDate: loadedLoanTerms.interestChargedFrom
+                      ? format(new Date(loadedLoanTerms.interestChargedFrom), "dd MMMM yyyy")
+                      : null,
+                    interestType: loadedLoanTerms.interestMethod
+                      ? parseInt(loadedLoanTerms.interestMethod)
+                      : templateData?.interestType?.id || 1,
+                    isEqualAmortization: loadedLoanTerms.isEqualAmortization || false,
+                    amortizationType: loadedLoanTerms.amortization
+                      ? parseInt(loadedLoanTerms.amortization)
+                      : templateData?.amortizationType?.id || 1,
+                    interestCalculationPeriodType: loadedLoanTerms.interestCalculationPeriod
+                      ? parseInt(loadedLoanTerms.interestCalculationPeriod)
+                      : templateData?.interestCalculationPeriodType?.id || 1,
+                    loanIdToClose: "",
+                    isTopup: "",
+                    transactionProcessingStrategyCode:
+                      loadedLoanTerms.repaymentStrategy ||
+                      templateData?.transactionProcessingStrategyCode ||
+                      "creocore-strategy",
+                    interestRateFrequencyType: loadedLoanTerms.interestRateFrequency
+                      ? parseInt(loadedLoanTerms.interestRateFrequency)
+                      : templateData?.interestRateFrequencyType?.id || 2,
+                    interestRatePerPeriod: loadedLoanTerms.nominalInterestRate || 0,
+                    charges: charges,
+                    collateral: [],
+                    dateFormat: "dd MMMM yyyy",
+                    locale: "en",
+                    clientId: loadedFineractClientId,
+                    loanType: "individual",
+                    principal: loadedLoanTerms.principal || 0,
+                    allowPartialPeriodInterestCalcualtion: false,
+                  };
+
+                  const scheduleResponse = await fetch(
+                    `/api/fineract/loans/calculate-schedule`,
+                    {
+                      method: "POST",
+                      headers: {
+                        "Content-Type": "application/json",
+                      },
+                      body: JSON.stringify(payload),
+                    }
+                  );
+
+                  if (scheduleResponse.ok) {
+                    const scheduleData = await scheduleResponse.json();
+                    console.log("Repayment schedule calculated for continued application");
+                    setRepaymentSchedule(scheduleData);
+                    setFormCompletionStatus((prev) => ({
+                      ...prev,
+                      schedule: true,
+                    }));
+                  } else {
+                    console.error("Failed to calculate repayment schedule:", await scheduleResponse.text());
+                  }
+                } catch (scheduleError) {
+                  console.error("Error calculating repayment schedule:", scheduleError);
+                }
+              }
+            }
+          } catch (templateError) {
+            console.error("Error fetching loan template:", templateError);
+          }
         }
       } else {
         console.log("No lead ID found, starting fresh lead");
