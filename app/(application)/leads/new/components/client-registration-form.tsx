@@ -130,8 +130,14 @@ const clientFormSchema = z
     }),
     genderId: z.string().optional(),
     isStaff: z.boolean().default(false),
-    mobileNo: z.string().min(1, "Mobile number is required"),
-    countryCode: z.string().default("+263"),
+    mobileNo: z
+      .string()
+      .min(1, "Mobile number is required")
+      .refine((val) => {
+        const digitsOnly = val.replace(/\D/g, "");
+        return digitsOnly.length <= 10;
+      }, "Phone number cannot exceed 10 digits"),
+    countryCode: z.string().default("+260"), // Zambia
     emailAddress: z.string().email("Invalid email address"),
     clientTypeId: z.string().optional(),
     clientClassificationId: z.string().optional(),
@@ -259,62 +265,70 @@ const savingsProductSchema = z.object({
 
 type ClientFormValues = z.infer<typeof clientFormSchema>;
 
-// Phone number parsing utility
+// TODO: Make country code configuration (DEFAULT_COUNTRY_CODE, allowed countries) configurable via tenant settings or environment variables
+// Currently hardcoded to Zambia (+260) only
+
+// Default country code - Zambia
+const DEFAULT_COUNTRY_CODE = "+260";
+
+// Phone number parsing utility - Zambia only
 const parsePhoneNumber = (
   phoneNumber: string
 ): { countryCode: string; number: string } => {
-  if (!phoneNumber) return { countryCode: "+263", number: "" };
+  if (!phoneNumber) return { countryCode: DEFAULT_COUNTRY_CODE, number: "" };
 
   // Remove all non-digit characters for parsing
   const digitsOnly = phoneNumber.replace(/\D/g, "");
 
-  // Common country codes in the region (2-3 digits)
-  const countryCodes = [
-    { code: "260", prefix: "+260" }, // Zambia
-    { code: "263", prefix: "+263" }, // Zimbabwe
-    { code: "27", prefix: "+27" }, // South Africa
-    { code: "258", prefix: "+258" }, // Mozambique
-    { code: "265", prefix: "+265" }, // Malawi
-    { code: "266", prefix: "+266" }, // Lesotho
-    { code: "267", prefix: "+267" }, // Botswana
-    { code: "268", prefix: "+268" }, // Eswatini
-    { code: "236", prefix: "+236" }, // Central African Republic
-    { code: "257", prefix: "+257" }, // Burundi
-    { code: "253", prefix: "+253" }, // Djibouti
-    { code: "291", prefix: "+291" }, // Eritrea
-    { code: "251", prefix: "+251" }, // Ethiopia
-    { code: "254", prefix: "+254" }, // Kenya
-    { code: "250", prefix: "+250" }, // Rwanda
-    { code: "248", prefix: "+248" }, // Seychelles
-    { code: "255", prefix: "+255" }, // Tanzania
-    { code: "256", prefix: "+256" }, // Uganda
-  ];
-
-  // Check if number starts with a country code
-  for (const country of countryCodes) {
-    if (digitsOnly.startsWith(country.code)) {
-      const number = digitsOnly.substring(country.code.length);
-      // Validate that we have a reasonable number length after country code
-      if (number.length >= 7 && number.length <= 12) {
-        return { countryCode: country.prefix, number };
-      }
+  // Check if number starts with Zambia country code
+  if (digitsOnly.startsWith("260")) {
+    const number = digitsOnly.substring(3);
+    // Zambia mobile numbers are 9 digits after country code
+    if (number.length >= 9 && number.length <= 10) {
+      return { countryCode: DEFAULT_COUNTRY_CODE, number };
     }
   }
 
-  // If no country code detected, return as is with default country code
-  return { countryCode: "+263", number: digitsOnly };
+  // If no country code detected, return as is with Zambia country code
+  return { countryCode: DEFAULT_COUNTRY_CODE, number: digitsOnly };
 };
 
-// Format phone number for display (add spaces for readability)
+// Validate Zambia phone number format
+const validateZambiaPhoneNumber = (number: string): boolean => {
+  const digitsOnly = number.replace(/\D/g, "");
+  // Zambia mobile numbers start with 9 and are 9 digits (e.g., 9XXXXXXXX)
+  // Or can be 10 digits if starting with 0 (e.g., 09XXXXXXXX)
+  if (digitsOnly.length === 9 && digitsOnly.startsWith("9")) {
+    return true;
+  }
+  if (digitsOnly.length === 10 && digitsOnly.startsWith("09")) {
+    return true;
+  }
+  return false;
+};
+
+// Format phone number for display - Zambia format (XX XXX XXXX)
+// Max 10 digits allowed
 const formatPhoneNumber = (number: string): string => {
   if (!number) return "";
-  const digitsOnly = number.replace(/\D/g, "");
-  // Format as XXX XXX XXXX for 9-10 digits, or keep as is for other lengths
+  let digitsOnly = number.replace(/\D/g, "");
+
+  // Cap at 10 digits max
+  if (digitsOnly.length > 10) {
+    digitsOnly = digitsOnly.substring(0, 10);
+  }
+
+  // Remove leading 0 if present (convert 09XXXXXXXX to 9XXXXXXXX)
+  if (digitsOnly.startsWith("0") && digitsOnly.length === 10) {
+    digitsOnly = digitsOnly.substring(1);
+  }
+
+  // Zambia mobile numbers are 9 digits: format as 9X XXX XXXX
   if (digitsOnly.length === 9) {
-    return `${digitsOnly.slice(0, 3)} ${digitsOnly.slice(
-      3,
-      6
-    )} ${digitsOnly.slice(6)}`;
+    return `${digitsOnly.slice(0, 2)} ${digitsOnly.slice(
+      2,
+      5
+    )} ${digitsOnly.slice(5)}`;
   } else if (digitsOnly.length === 10) {
     return `${digitsOnly.slice(0, 3)} ${digitsOnly.slice(
       3,
@@ -1168,6 +1182,17 @@ export function ClientRegistrationForm({
     return true;
   };
 
+  // Check if address details are complete (required for affordability)
+  const checkAddressSection = () => {
+    if (!clientAddress) return false;
+    // Check for required address fields - at minimum we need addressLine1 and city
+    const hasAddressLine1 = !!(
+      clientAddress.addressLine1 || clientAddress.street
+    );
+    const hasCity = !!(clientAddress.city || clientAddress.townVillage);
+    return hasAddressLine1 && hasCity;
+  };
+
   // Helper function to get section status: 'incomplete', 'pending', or 'saved'
   const getSectionStatus = (
     sectionName: keyof typeof sectionCompletion
@@ -1213,7 +1238,8 @@ export function ClientRegistrationForm({
   };
 
   const checkAdditionalDetailsTabCompletion = () => {
-    return sectionCompletion.datatables;
+    // Address is required to proceed to affordability
+    return checkAddressSection() && sectionCompletion.datatables;
   };
 
   const checkAllSectionsComplete = () => {
@@ -1232,7 +1258,13 @@ export function ClientRegistrationForm({
       const isComplete = checkAllSectionsComplete();
       onAllSectionsComplete(isComplete);
     }
-  }, [sectionCompletion, clientCreatedInFineract, onAllSectionsComplete]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    sectionCompletion,
+    clientCreatedInFineract,
+    onAllSectionsComplete,
+    clientAddress,
+  ]);
 
   // Helper function to extract identifier ID from document filename
   // NOTE: This is kept for backward compatibility with documents uploaded using the old method.
@@ -1608,7 +1640,7 @@ export function ClientRegistrationForm({
       lastname: "",
       isStaff: false,
       mobileNo: "",
-      countryCode: "+263",
+      countryCode: "+260", // Zambia
       emailAddress: "",
       submittedOnDate: new Date(),
       active: true,
@@ -2014,7 +2046,7 @@ export function ClientRegistrationForm({
               genderId: lead.genderId?.toString() || undefined,
               isStaff: lead.isStaff || false,
               mobileNo: lead.mobileNo || "",
-              countryCode: lead.countryCode || "+263",
+              countryCode: lead.countryCode || "+260", // Default to Zambia
               emailAddress: lead.emailAddress || "",
               clientTypeId: lead.clientTypeId?.toString() || undefined,
               clientClassificationId:
@@ -2713,6 +2745,100 @@ export function ClientRegistrationForm({
     }
   };
 
+  // Refetch Additional Details data (datatables, address) - used when switching to additional tab
+  const refetchAdditionalDetailsData = async () => {
+    const clientId = fineractClientId || (window as any).fineractClientId;
+    if (!clientId) {
+      console.log(
+        "No fineractClientId available for additional details refetch"
+      );
+      return;
+    }
+
+    const numericClientId = Number(clientId);
+    console.log("Refetching additional details for client:", numericClientId);
+
+    setIsLoadingAdditionalDetails(true);
+    try {
+      // Fetch available data tables for this client
+      const datatablesResponse = await fetch(
+        `/api/fineract/datatables?apptable=m_client`
+      );
+      if (datatablesResponse.ok) {
+        const datatablesData = await datatablesResponse.json();
+        console.log("Refetched data tables:", datatablesData);
+
+        // Handle different response formats
+        const tablesList = Array.isArray(datatablesData)
+          ? datatablesData
+          : datatablesData?.data || datatablesData?.pageItems || [];
+
+        // Check each table for data
+        const tablesWithData = await Promise.all(
+          (tablesList || []).map(async (table: any) => {
+            try {
+              const tableName = table.registeredTableName;
+              if (!tableName) {
+                return { ...table, hasData: false };
+              }
+
+              const tableDataResponse = await fetch(
+                `/api/fineract/datatables/${encodeURIComponent(
+                  tableName
+                )}/${numericClientId}?genericResultSet=true`
+              );
+              if (tableDataResponse.ok) {
+                const tableData = await tableDataResponse.json();
+                const hasData = tableData.data && tableData.data.length > 0;
+                return {
+                  ...table,
+                  datatableName: tableName,
+                  displayName: table.registeredTableName,
+                  hasData: hasData,
+                };
+              }
+              return {
+                ...table,
+                datatableName: tableName,
+                displayName: table.registeredTableName,
+                hasData: false,
+              };
+            } catch {
+              return { ...table, hasData: false };
+            }
+          })
+        );
+
+        console.log("Refetched tables with data:", tablesWithData);
+        setDataTables(tablesWithData);
+      }
+
+      // Fetch client address
+      try {
+        const addressResponse = await fetch(
+          `/api/fineract/clients/${numericClientId}/addresses`
+        );
+        if (addressResponse.ok) {
+          const addressData = await addressResponse.json();
+          const addresses = Array.isArray(addressData)
+            ? addressData
+            : addressData?.addresses || [];
+          if (addresses.length > 0) {
+            setClientAddress(addresses[0]);
+          }
+        }
+      } catch {
+        console.log("No address found for client");
+      }
+
+      console.log("Additional details refetch completed");
+    } catch (err) {
+      console.error("Error refetching additional details:", err);
+    } finally {
+      setIsLoadingAdditionalDetails(false);
+    }
+  };
+
   // Handle selecting a client from the picker
   const handleSelectClientFromPicker = (client: any) => {
     if (client.externalId) {
@@ -2777,7 +2903,7 @@ export function ClientRegistrationForm({
       lastname: "",
       isStaff: false,
       mobileNo: "",
-      countryCode: "+263",
+      countryCode: "+260", // Zambia
       emailAddress: "",
       submittedOnDate: new Date(),
       active: true,
@@ -3344,7 +3470,7 @@ export function ClientRegistrationForm({
       lastname: "",
       isStaff: false,
       mobileNo: "",
-      countryCode: "+263",
+      countryCode: "+260", // Zambia
       emailAddress: "",
       submittedOnDate: new Date(),
       active: true,
@@ -5374,9 +5500,12 @@ export function ClientRegistrationForm({
 
                         setActiveClientTab(newTab);
 
-                        // Refetch data when switching to KYC tab to ensure latest data is loaded
+                        // Refetch data when switching tabs to ensure latest data is loaded
                         if (newTab === "account" && fineractClientId) {
                           refetchKYCData();
+                        }
+                        if (newTab === "additional" && fineractClientId) {
+                          refetchAdditionalDetailsData();
                         }
                       }}
                       className="w-full"
@@ -6269,64 +6398,14 @@ export function ClientRegistrationForm({
                                           <SelectTrigger
                                             className={`h-10 w-24 sm:w-28 lg:w-32 border-${colors.borderColor} ${colors.inputBg} flex-shrink-0`}
                                           >
-                                            <SelectValue placeholder="+263" />
+                                            <SelectValue placeholder="+260" />
                                           </SelectTrigger>
                                           <SelectContent
                                             className={`border-${colors.borderColor} ${colors.dropdownBg} ${colors.textColor}`}
                                           >
-                                            <SelectItem value="+263">
-                                              🇿🇼 +263
-                                            </SelectItem>
-                                            <SelectItem value="+27">
-                                              🇿🇦 +27
-                                            </SelectItem>
+                                            {/* TODO: Make country options configurable via tenant settings */}
                                             <SelectItem value="+260">
                                               🇿🇲 +260
-                                            </SelectItem>
-                                            <SelectItem value="+258">
-                                              🇲🇿 +258
-                                            </SelectItem>
-                                            <SelectItem value="+265">
-                                              🇲🇼 +265
-                                            </SelectItem>
-                                            <SelectItem value="+266">
-                                              🇱🇸 +266
-                                            </SelectItem>
-                                            <SelectItem value="+267">
-                                              🇧🇼 +267
-                                            </SelectItem>
-                                            <SelectItem value="+268">
-                                              🇸🇿 +268
-                                            </SelectItem>
-                                            <SelectItem value="+236">
-                                              🇨🇫 +236
-                                            </SelectItem>
-                                            <SelectItem value="+257">
-                                              🇧🇮 +257
-                                            </SelectItem>
-                                            <SelectItem value="+253">
-                                              🇩🇯 +253
-                                            </SelectItem>
-                                            <SelectItem value="+291">
-                                              🇪🇷 +291
-                                            </SelectItem>
-                                            <SelectItem value="+251">
-                                              🇪🇹 +251
-                                            </SelectItem>
-                                            <SelectItem value="+254">
-                                              🇰🇪 +254
-                                            </SelectItem>
-                                            <SelectItem value="+250">
-                                              🇷🇼 +250
-                                            </SelectItem>
-                                            <SelectItem value="+248">
-                                              🇸🇨 +248
-                                            </SelectItem>
-                                            <SelectItem value="+255">
-                                              🇹🇿 +255
-                                            </SelectItem>
-                                            <SelectItem value="+256">
-                                              🇺🇬 +256
                                             </SelectItem>
                                           </SelectContent>
                                         </Select>
@@ -6335,7 +6414,8 @@ export function ClientRegistrationForm({
                                     <div className="relative">
                                       <Input
                                         id="mobileNo"
-                                        placeholder="Enter mobile number"
+                                        placeholder="9X XXX XXXX"
+                                        maxLength={12}
                                         className={getInputErrorStyling(
                                           hasFieldError(
                                             form,
@@ -9080,18 +9160,38 @@ export function ClientRegistrationForm({
                                 </div>
                               ) : (
                                 <>
-                                  {/* Address Details */}
-                                  <Card className="border-green-500 bg-green-50 dark:bg-green-950">
+                                  {/* Address Details - Required Section */}
+                                  <Card
+                                    className={
+                                      checkAddressSection()
+                                        ? "border-green-500 bg-green-50 dark:bg-green-950"
+                                        : "border-red-500 bg-red-50 dark:bg-red-950"
+                                    }
+                                  >
                                     <CardContent className="pt-6">
                                       <div className="space-y-4">
                                         <div className="flex items-center justify-between pb-2 border-b border-gray-200 dark:border-gray-700">
                                           <div className="flex items-center gap-2">
-                                            <MapPin className="h-5 w-5 text-blue-500" />
+                                            <MapPin
+                                              className={
+                                                checkAddressSection()
+                                                  ? "h-5 w-5 text-green-500"
+                                                  : "h-5 w-5 text-red-500"
+                                              }
+                                            />
                                             <h3
                                               className={`text-lg font-semibold ${colors.textColor}`}
                                             >
                                               Address Details
+                                              <span className="text-red-500 ml-1">
+                                                *
+                                              </span>
                                             </h3>
+                                            {!checkAddressSection() && (
+                                              <span className="text-xs text-red-500 font-normal ml-2">
+                                                (Required to proceed)
+                                              </span>
+                                            )}
                                           </div>
                                           {!isEditingAddress &&
                                             fineractClientId && (
