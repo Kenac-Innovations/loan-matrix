@@ -38,35 +38,53 @@ export async function GET(request: NextRequest) {
     // Auto-sync: Create database records for any Fineract tellers that don't exist
     const tellersToSync = fineractTellers.filter((ft: any) => !existingFineractIds.has(ft.id));
     
+    console.log(`Fineract tellers: ${fineractTellers.length}, Existing in DB: ${existingFineractIds.size}, Need to sync: ${tellersToSync.length}`);
+    
     if (tellersToSync.length > 0) {
-      console.log(`Auto-syncing ${tellersToSync.length} Fineract tellers to database`);
+      console.log(`Auto-syncing ${tellersToSync.length} Fineract tellers to database:`, tellersToSync.map((t: any) => ({ id: t.id, name: t.name })));
       
       for (const ft of tellersToSync) {
         try {
-          await prisma.teller.create({
-            data: {
-              tenantId: tenant.id,
-              fineractTellerId: ft.id,
-              officeId: ft.officeId,
-              officeName: ft.officeName || `Office ${ft.officeId}`,
-              name: ft.name,
-              description: ft.description || "",
-              startDate: Array.isArray(ft.startDate) 
-                ? new Date(ft.startDate[0], ft.startDate[1] - 1, ft.startDate[2])
-                : new Date(ft.startDate || Date.now()),
-              endDate: ft.endDate 
-                ? (Array.isArray(ft.endDate)
-                    ? new Date(ft.endDate[0], ft.endDate[1] - 1, ft.endDate[2])
-                    : new Date(ft.endDate))
-                : null,
-              status: ft.status || "ACTIVE",
-            },
+          // Parse status - could be a number (300=ACTIVE) or string
+          let statusStr = "ACTIVE";
+          if (typeof ft.status === "number") {
+            statusStr = ft.status === 300 ? "ACTIVE" : ft.status === 400 ? "INACTIVE" : "PENDING";
+          } else if (typeof ft.status === "object" && ft.status?.value) {
+            statusStr = ft.status.value;
+          } else if (typeof ft.status === "string") {
+            statusStr = ft.status;
+          }
+
+          const tellerData = {
+            tenantId: tenant.id,
+            fineractTellerId: ft.id,
+            officeId: ft.officeId,
+            officeName: ft.officeName || `Office ${ft.officeId}`,
+            name: ft.name,
+            description: ft.description || "",
+            startDate: Array.isArray(ft.startDate) 
+              ? new Date(ft.startDate[0], ft.startDate[1] - 1, ft.startDate[2])
+              : new Date(ft.startDate || Date.now()),
+            endDate: ft.endDate 
+              ? (Array.isArray(ft.endDate)
+                  ? new Date(ft.endDate[0], ft.endDate[1] - 1, ft.endDate[2])
+                  : new Date(ft.endDate))
+              : null,
+            status: statusStr,
+          };
+          
+          console.log(`Creating teller in DB:`, { fineractTellerId: ft.id, name: ft.name });
+          
+          const created = await prisma.teller.create({
+            data: tellerData,
           });
-          console.log(`Synced Fineract teller ${ft.id} (${ft.name}) to database`);
+          
+          console.log(`✓ Synced Fineract teller ${ft.id} (${ft.name}) to database, DB ID: ${created.id}`);
         } catch (syncError: any) {
-          // Ignore duplicate errors
-          if (!syncError.message?.includes("Unique constraint")) {
-            console.error(`Error syncing teller ${ft.id}:`, syncError.message);
+          console.error(`✗ Error syncing teller ${ft.id} (${ft.name}):`, syncError.message);
+          // Log full error for debugging
+          if (syncError.code) {
+            console.error(`  Prisma error code: ${syncError.code}`);
           }
         }
       }

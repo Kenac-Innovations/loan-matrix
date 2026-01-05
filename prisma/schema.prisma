@@ -527,7 +527,7 @@ model UssdLoanApplication {
 model Teller {
   id               String           @id @default(cuid())
   tenantId         String
-  fineractTellerId Int?             @unique
+  fineractTellerId Int?
   officeId         Int
   officeName       String
   name             String
@@ -553,7 +553,7 @@ model Cashier {
   id                String           @id @default(cuid())
   tenantId          String
   tellerId          String
-  fineractCashierId Int?             @unique
+  fineractCashierId Int?
   staffId           Int
   staffName         String
   startDate         DateTime
@@ -570,6 +570,7 @@ model Cashier {
   sessions          CashierSession[]
   cashAllocations   CashAllocation[]
 
+  @@unique([tenantId, fineractCashierId])
   @@index([tenantId, tellerId])
   @@index([tenantId, staffId])
   @@index([tenantId, status])
