@@ -86,8 +86,15 @@ const leadFormSchema = z.object({
   dateOfBirth: z.date().optional(),
   gender: z.string().optional(),
   isStaff: z.boolean().default(false),
-  mobileNo: z.string().min(10, { message: "Valid phone number is required" }),
-  countryCode: z.string().default("+1"),
+  mobileNo: z
+    .string()
+    .min(1, { message: "Mobile number is required" })
+    .refine((val) => {
+      const digitsOnly = val.replace(/\D/g, "");
+      // Zambia mobile numbers must be exactly 9 digits after +260
+      return digitsOnly.length === 9;
+    }, "Phone number must be exactly 9 digits (e.g., 977123456)"),
+  countryCode: z.string().default("+260"), // Zambia
   emailAddress: z.string().email({ message: "Valid email is required" }),
   clientTypeId: z.string().optional(),
   clientClassificationId: z.string().optional(),
@@ -235,7 +242,7 @@ export function NewLeadForm() {
         // Check if loan details exist for this lead
         let loadedLoanDetails: any = null;
         let loadedProductId: number | null = null;
-        
+
         try {
           const loanResponse = await fetch(`/api/leads/${leadId}/loan-details`);
           if (loanResponse.ok) {
@@ -248,7 +255,9 @@ export function NewLeadForm() {
                 loanResult.data.loanOfficer;
 
               if (hasLoanDetails) {
-                console.log("Loan details found, marking as complete and setting state");
+                console.log(
+                  "Loan details found, marking as complete and setting state"
+                );
                 loadedLoanDetails = loanResult.data;
                 setLoanDetails(loanResult.data); // Actually set the state!
                 setFormCompletionStatus((prev) => ({
@@ -283,7 +292,9 @@ export function NewLeadForm() {
                 loanTermsResult.data.numberOfRepayments;
 
               if (hasLoanTerms) {
-                console.log("Loan terms found, marking as complete and setting state");
+                console.log(
+                  "Loan terms found, marking as complete and setting state"
+                );
                 loadedLoanTerms = loanTermsResult.data;
                 setLoanTerms(loanTermsResult.data); // Actually set the state!
                 setFormCompletionStatus((prev) => ({
@@ -301,7 +312,12 @@ export function NewLeadForm() {
         // Note: loadedFineractClientId was set at the beginning of this block when fetching lead data
         if (loadedProductId && loadedFineractClientId) {
           try {
-            console.log("Fetching loan template for productId:", loadedProductId, "clientId:", loadedFineractClientId);
+            console.log(
+              "Fetching loan template for productId:",
+              loadedProductId,
+              "clientId:",
+              loadedFineractClientId
+            );
             const templateResponse = await fetch(
               `/api/fineract/loans/template?clientId=${loadedFineractClientId}&productId=${loadedProductId}&activeOnly=true&staffInSelectedOfficeOnly=true&templateType=individual`
             );
@@ -312,23 +328,33 @@ export function NewLeadForm() {
 
               // If we have all the data needed, calculate the repayment schedule
               if (loadedLoanDetails && loadedLoanTerms && templateData) {
-                console.log("All data available, calculating repayment schedule for continued application");
+                console.log(
+                  "All data available, calculating repayment schedule for continued application"
+                );
                 try {
                   const { format } = await import("date-fns");
-                  
+
                   const submittedDate = loadedLoanDetails.submittedOn
-                    ? format(new Date(loadedLoanDetails.submittedOn), "dd MMMM yyyy")
+                    ? format(
+                        new Date(loadedLoanDetails.submittedOn),
+                        "dd MMMM yyyy"
+                      )
                     : format(new Date(), "dd MMMM yyyy");
 
                   const disbursementDate = loadedLoanDetails.disbursementOn
-                    ? format(new Date(loadedLoanDetails.disbursementOn), "dd MMMM yyyy")
+                    ? format(
+                        new Date(loadedLoanDetails.disbursementOn),
+                        "dd MMMM yyyy"
+                      )
                     : format(new Date(), "dd MMMM yyyy");
 
-                  const charges = (loadedLoanTerms.charges || []).map((charge: any) => ({
-                    chargeId: charge.chargeId,
-                    amount: charge.amount,
-                    dueDate: charge.dueDate,
-                  }));
+                  const charges = (loadedLoanTerms.charges || []).map(
+                    (charge: any) => ({
+                      chargeId: charge.chargeId,
+                      amount: charge.amount,
+                      dueDate: charge.dueDate,
+                    })
+                  );
 
                   const payload = {
                     productId: loadedProductId,
@@ -340,7 +366,9 @@ export function NewLeadForm() {
                     externalId: "",
                     linkAccountId: loadedLoanDetails.linkSavings || "",
                     createStandingInstructionAtDisbursement:
-                      loadedLoanDetails.createStandingInstructions ? "true" : "",
+                      loadedLoanDetails.createStandingInstructions
+                        ? "true"
+                        : "",
                     loanTermFrequency: loadedLoanTerms.loanTerm || 1,
                     loanTermFrequencyType: loadedLoanTerms.termFrequency
                       ? parseInt(loadedLoanTerms.termFrequency)
@@ -355,31 +383,41 @@ export function NewLeadForm() {
                     repaymentFrequencyDayOfWeekType:
                       loadedLoanTerms.repaymentFrequencyDayOfWeek || "",
                     repaymentsStartingFromDate: loadedLoanTerms.firstRepaymentOn
-                      ? format(new Date(loadedLoanTerms.firstRepaymentOn), "dd MMMM yyyy")
+                      ? format(
+                          new Date(loadedLoanTerms.firstRepaymentOn),
+                          "dd MMMM yyyy"
+                        )
                       : null,
                     interestChargedFromDate: loadedLoanTerms.interestChargedFrom
-                      ? format(new Date(loadedLoanTerms.interestChargedFrom), "dd MMMM yyyy")
+                      ? format(
+                          new Date(loadedLoanTerms.interestChargedFrom),
+                          "dd MMMM yyyy"
+                        )
                       : null,
                     interestType: loadedLoanTerms.interestMethod
                       ? parseInt(loadedLoanTerms.interestMethod)
                       : templateData?.interestType?.id || 1,
-                    isEqualAmortization: loadedLoanTerms.isEqualAmortization || false,
+                    isEqualAmortization:
+                      loadedLoanTerms.isEqualAmortization || false,
                     amortizationType: loadedLoanTerms.amortization
                       ? parseInt(loadedLoanTerms.amortization)
                       : templateData?.amortizationType?.id || 1,
-                    interestCalculationPeriodType: loadedLoanTerms.interestCalculationPeriod
-                      ? parseInt(loadedLoanTerms.interestCalculationPeriod)
-                      : templateData?.interestCalculationPeriodType?.id || 1,
+                    interestCalculationPeriodType:
+                      loadedLoanTerms.interestCalculationPeriod
+                        ? parseInt(loadedLoanTerms.interestCalculationPeriod)
+                        : templateData?.interestCalculationPeriodType?.id || 1,
                     loanIdToClose: "",
                     isTopup: "",
                     transactionProcessingStrategyCode:
                       loadedLoanTerms.repaymentStrategy ||
                       templateData?.transactionProcessingStrategyCode ||
                       "creocore-strategy",
-                    interestRateFrequencyType: loadedLoanTerms.interestRateFrequency
-                      ? parseInt(loadedLoanTerms.interestRateFrequency)
-                      : templateData?.interestRateFrequencyType?.id || 2,
-                    interestRatePerPeriod: loadedLoanTerms.nominalInterestRate || 0,
+                    interestRateFrequencyType:
+                      loadedLoanTerms.interestRateFrequency
+                        ? parseInt(loadedLoanTerms.interestRateFrequency)
+                        : templateData?.interestRateFrequencyType?.id || 2,
+                    interestRatePerPeriod:
+                      loadedLoanTerms.nominalInterestRate || 0,
                     charges: charges,
                     collateral: [],
                     dateFormat: "dd MMMM yyyy",
@@ -403,17 +441,25 @@ export function NewLeadForm() {
 
                   if (scheduleResponse.ok) {
                     const scheduleData = await scheduleResponse.json();
-                    console.log("Repayment schedule calculated for continued application");
+                    console.log(
+                      "Repayment schedule calculated for continued application"
+                    );
                     setRepaymentSchedule(scheduleData);
                     setFormCompletionStatus((prev) => ({
                       ...prev,
                       schedule: true,
                     }));
                   } else {
-                    console.error("Failed to calculate repayment schedule:", await scheduleResponse.text());
+                    console.error(
+                      "Failed to calculate repayment schedule:",
+                      await scheduleResponse.text()
+                    );
                   }
                 } catch (scheduleError) {
-                  console.error("Error calculating repayment schedule:", scheduleError);
+                  console.error(
+                    "Error calculating repayment schedule:",
+                    scheduleError
+                  );
                 }
               }
             }
@@ -821,7 +867,7 @@ export function NewLeadForm() {
             }
           : undefined,
       });
-      
+
       // Re-throw the error so the caller can handle it (e.g., prevent navigation)
       throw error;
     } finally {

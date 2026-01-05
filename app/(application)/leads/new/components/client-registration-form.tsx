@@ -135,8 +135,9 @@ const clientFormSchema = z
       .min(1, "Mobile number is required")
       .refine((val) => {
         const digitsOnly = val.replace(/\D/g, "");
-        return digitsOnly.length <= 10;
-      }, "Phone number cannot exceed 10 digits"),
+        // Zambia mobile numbers must be exactly 9 digits after +260
+        return digitsOnly.length === 9;
+      }, "Phone number must be exactly 9 digits (e.g., 977123456)"),
     countryCode: z.string().default("+260"), // Zambia
     emailAddress: z.string().email("Invalid email address"),
     clientTypeId: z.string().optional(),
@@ -272,55 +273,58 @@ type ClientFormValues = z.infer<typeof clientFormSchema>;
 const DEFAULT_COUNTRY_CODE = "+260";
 
 // Phone number parsing utility - Zambia only
+// Normalizes phone numbers to exactly 9 digits after +260
 const parsePhoneNumber = (
   phoneNumber: string
 ): { countryCode: string; number: string } => {
   if (!phoneNumber) return { countryCode: DEFAULT_COUNTRY_CODE, number: "" };
 
   // Remove all non-digit characters for parsing
-  const digitsOnly = phoneNumber.replace(/\D/g, "");
+  let digitsOnly = phoneNumber.replace(/\D/g, "");
 
-  // Check if number starts with Zambia country code
+  // Check if number starts with Zambia country code (260)
   if (digitsOnly.startsWith("260")) {
-    const number = digitsOnly.substring(3);
-    // Zambia mobile numbers are 9 digits after country code
-    if (number.length >= 9 && number.length <= 10) {
-      return { countryCode: DEFAULT_COUNTRY_CODE, number };
-    }
+    digitsOnly = digitsOnly.substring(3);
   }
 
-  // If no country code detected, return as is with Zambia country code
+  // Remove leading 0 if present (e.g., 0977123456 -> 977123456)
+  if (digitsOnly.length === 10 && digitsOnly.startsWith("0")) {
+    digitsOnly = digitsOnly.substring(1);
+  }
+
+  // Return the normalized 9-digit number
   return { countryCode: DEFAULT_COUNTRY_CODE, number: digitsOnly };
 };
 
-// Validate Zambia phone number format
+// Validate Zambia phone number format - must be exactly 9 digits
 const validateZambiaPhoneNumber = (number: string): boolean => {
   const digitsOnly = number.replace(/\D/g, "");
-  // Zambia mobile numbers start with 9 and are 9 digits (e.g., 9XXXXXXXX)
-  // Or can be 10 digits if starting with 0 (e.g., 09XXXXXXXX)
-  if (digitsOnly.length === 9 && digitsOnly.startsWith("9")) {
+  // Zambia mobile numbers must be exactly 9 digits after +260 (e.g., 977123456)
+  // If user entered with leading 0 (e.g., 0977123456), strip the 0
+  if (digitsOnly.length === 9) {
     return true;
   }
-  if (digitsOnly.length === 10 && digitsOnly.startsWith("09")) {
-    return true;
+  // Handle case where user entered 10 digits starting with 0
+  if (digitsOnly.length === 10 && digitsOnly.startsWith("0")) {
+    return true; // Will be normalized to 9 digits
   }
   return false;
 };
 
 // Format phone number for display - Zambia format (XX XXX XXXX)
-// Max 10 digits allowed
+// Must be exactly 9 digits after +260
 const formatPhoneNumber = (number: string): string => {
   if (!number) return "";
   let digitsOnly = number.replace(/\D/g, "");
 
-  // Cap at 10 digits max
-  if (digitsOnly.length > 10) {
-    digitsOnly = digitsOnly.substring(0, 10);
-  }
-
   // Remove leading 0 if present (convert 09XXXXXXXX to 9XXXXXXXX)
   if (digitsOnly.startsWith("0") && digitsOnly.length === 10) {
     digitsOnly = digitsOnly.substring(1);
+  }
+
+  // Cap at 9 digits max (Zambia mobile numbers are exactly 9 digits after +260)
+  if (digitsOnly.length > 9) {
+    digitsOnly = digitsOnly.substring(0, 9);
   }
 
   // Zambia mobile numbers are 9 digits: format as 9X XXX XXXX
@@ -329,12 +333,8 @@ const formatPhoneNumber = (number: string): string => {
       2,
       5
     )} ${digitsOnly.slice(5)}`;
-  } else if (digitsOnly.length === 10) {
-    return `${digitsOnly.slice(0, 3)} ${digitsOnly.slice(
-      3,
-      6
-    )} ${digitsOnly.slice(6)}`;
   }
+  // Return partial number as-is while typing
   return digitsOnly;
 };
 type FamilyMemberValues = z.infer<typeof familyMemberSchema>;
