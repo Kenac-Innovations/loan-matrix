@@ -136,8 +136,25 @@ export async function GET(request: NextRequest) {
       })
     );
 
+    // Fetch cashiers from Fineract for each teller
+    const tellersWithCashiers = await Promise.all(
+      fineractTellers.map(async (ft: any) => {
+        let fineractCashiers: any[] = [];
+        try {
+          fineractCashiers = await fineractService.getCashiers(ft.id);
+        } catch (err) {
+          console.error(`Error fetching cashiers for teller ${ft.id}:`, err);
+        }
+        return {
+          ...ft,
+          fineractCashiers,
+          activeCashiers: fineractCashiers.length,
+        };
+      })
+    );
+
     // Merge Fineract data with database data - all should now have database IDs
-    const mergedTellers = fineractTellers.map((ft: any) => {
+    const mergedTellers = tellersWithCashiers.map((ft: any) => {
       const dbData = dbTellerBalances.find((dt) => dt.fineractTellerId === ft.id);
       return {
         ...ft,
@@ -148,9 +165,9 @@ export async function GET(request: NextRequest) {
           vaultBalance: dbData.vaultBalance,
           availableBalance: dbData.availableBalance,
           allocatedToCashiers: dbData.allocatedToCashiers,
-          activeCashiers: dbData.activeCashiers,
           settlementCount: dbData.settlementCount,
         }),
+        // Use Fineract cashier count (already set above)
       };
     }).filter((t: any) => t.id); // Only return tellers with database IDs
 

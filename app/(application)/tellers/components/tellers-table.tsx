@@ -18,6 +18,7 @@ import { formatDate } from "@/lib/format-date";
 
 interface Teller {
   id: string;
+  fineractTellerId: number;
   name: string;
   description?: string;
   officeId: number;
@@ -176,23 +177,23 @@ export function TellersTable() {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem
-                onClick={() => router.push(`/tellers/${teller.id}`)}
+                onClick={() => router.push(`/tellers/${teller.fineractTellerId}`)}
               >
                 View Details
               </DropdownMenuItem>
               <DropdownMenuItem
-                onClick={() => router.push(`/tellers/${teller.id}/cashiers`)}
+                onClick={() => router.push(`/tellers/${teller.fineractTellerId}/cashiers`)}
               >
                 Manage Cashiers
               </DropdownMenuItem>
               <DropdownMenuItem
-                onClick={() => router.push(`/tellers/${teller.id}/allocate`)}
+                onClick={() => router.push(`/tellers/${teller.fineractTellerId}/allocate`)}
               >
                 Allocate Cash
               </DropdownMenuItem>
               {teller.status === "ACTIVE" && (
                 <DropdownMenuItem
-                  onClick={() => router.push(`/tellers/${teller.id}/settle`)}
+                  onClick={() => router.push(`/tellers/${teller.fineractTellerId}/settle`)}
                 >
                   <CheckCircle className="h-4 w-4 mr-2" />
                   Settle Cash
@@ -221,7 +222,7 @@ export function TellersTable() {
       enableFilters={true}
       pageSize={10}
       tableId="tellers-table"
-      onRowClick={(teller) => router.push(`/tellers/${teller.id}`)}
+      onRowClick={(teller) => router.push(`/tellers/${teller.fineractTellerId}`)}
       exportFileName="tellers-export"
       emptyMessage="No tellers found. Create your first teller to get started."
     />
