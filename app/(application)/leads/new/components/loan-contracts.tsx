@@ -25,6 +25,7 @@ import { Upload, FileText, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import jsPDF from "jspdf";
 import { generateContractHTML } from "./contract-template";
+import { generateKeyFactsStatementHTML, KeyFactsData } from "./key-facts-statement-template";
 
 interface ContractData {
   // Client Information
@@ -121,8 +122,52 @@ export function LoanContracts({
     Array<{ id: number; name: string; url: string }>
   >([]);
   const [isLoadingSignatures, setIsLoadingSignatures] = useState(false);
+  const [showKeyFacts, setShowKeyFacts] = useState(true); // Toggle between KFS and full contract preview
   const { toast } = useToast();
   const router = useRouter();
+
+  // Transform contract data to Key Facts Statement format
+  const getKeyFactsData = (): KeyFactsData | null => {
+    if (!contractData) return null;
+    
+    return {
+      clientName: contractData.clientName,
+      clientId: contractData.gflNo,
+      nrc: contractData.nrc,
+      applicationNo: contractData.loanId || leadId,
+      loanId: contractData.loanId,
+      loanAmount: contractData.loanAmount,
+      disbursedAmount: contractData.disbursedAmount,
+      interest: contractData.interest,
+      fees: contractData.fees,
+      totalCostOfCredit: contractData.totalCostOfCredit,
+      totalRepayment: contractData.totalRepayment,
+      paymentPerPeriod: contractData.paymentPerPeriod,
+      tenure: contractData.tenure,
+      numberOfPayments: contractData.numberOfPayments,
+      paymentFrequency: contractData.paymentFrequency,
+      firstPaymentDate: contractData.firstPaymentDate,
+      monthlyPercentageRate: contractData.monthlyPercentageRate,
+      charges: contractData.charges.map((charge) => ({
+        name: charge.name,
+        amount: charge.amount,
+        isRecurring: charge.name.toLowerCase().includes("monthly") || 
+                     charge.name.toLowerCase().includes("recurring"),
+        frequency: charge.name.toLowerCase().includes("monthly") ? "month" : undefined,
+      })),
+      lateFeeAmount: undefined, // TODO: Get from loan product template
+      lateFeeDays: 30, // Default
+      defaultInterestRate: 25, // Default
+      defaultInterestDays: 10, // Default
+      collateral: undefined, // TODO: Get from loan terms
+      mandatorySavings: undefined,
+      variableInterestApplies: false,
+      repaymentSchedule: contractData.repaymentSchedule,
+      currency: contractData.currency,
+      preparedDate: format(new Date(), "EEEE, dd MMMM yyyy"),
+      validFor: "30 days",
+    };
+  };
 
   // Refs for contract sections (for PDF generation)
   const keyFactsRef = useRef<HTMLDivElement>(null);
@@ -526,23 +571,48 @@ export function LoanContracts({
     });
   };
 
-  const handlePrint = () => {
-    // Open a new window with the contract HTML template for printing
-    const contractHTML = generateContractHTML(contractData, {
-      borrower: borrowerSignature,
-      guarantor: guarantorSignature,
-      loanOfficer: loanOfficerSignature,
-    });
+  const handlePrint = (printType: "kfs" | "contract" | "both" = "both") => {
     const printWindow = window.open("", "_blank");
-    if (printWindow) {
+    if (!printWindow) return;
+
+    if (printType === "kfs") {
+      // Print only the Key Facts Statement
+      const keyFactsData = getKeyFactsData();
+      if (!keyFactsData) return;
+      const kfsHTML = generateKeyFactsStatementHTML(keyFactsData, {
+        borrower: borrowerSignature,
+        guarantor: guarantorSignature,
+        creditProvider: loanOfficerSignature,
+      });
+      printWindow.document.write(kfsHTML);
+    } else if (printType === "contract") {
+      // Print only the Salary Advance Contract
+      const contractHTML = generateContractHTML(contractData, {
+        borrower: borrowerSignature,
+        guarantor: guarantorSignature,
+        loanOfficer: loanOfficerSignature,
+      });
       printWindow.document.write(contractHTML);
-      printWindow.document.close();
-      printWindow.focus();
-      printWindow.print();
+    } else {
+      // Print both - use the combined contract template
+      const contractHTML = generateContractHTML(contractData, {
+        borrower: borrowerSignature,
+        guarantor: guarantorSignature,
+        loanOfficer: loanOfficerSignature,
+      });
+      printWindow.document.write(contractHTML);
     }
+
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.print();
   };
 
-  // Generate Key Facts Statement PDF
+  const handlePrintKeyFacts = () => handlePrint("kfs");
+  const handlePrintContract = () => handlePrint("contract");
+  const handlePrintBoth = () => handlePrint("both");
+
+  // Generate Key Facts Statement PDF (BOZ Format)
   const generateKeyFactsPDF = async (): Promise<Blob> => {
     const pdf = new jsPDF({
       orientation: "portrait",
@@ -551,120 +621,296 @@ export function LoanContracts({
       compress: true,
     });
 
-    const margin = 15;
-    let yPosition = 20;
-    const lineHeight = 5;
+    const margin = 12;
+    let yPosition = 15;
+    const lineHeight = 4.5;
     const pageHeight = 280;
+    const pageWidth = 210 - 2 * margin;
+    const colWidth = pageWidth / 3 - 2;
 
     const addText = (
       text: string,
-      fontSize: number = 10,
-      bold: boolean = false
+      fontSize: number = 9,
+      bold: boolean = false,
+      x: number = margin
     ) => {
-      if (yPosition > pageHeight - 20) {
+      if (yPosition > pageHeight - 15) {
         pdf.addPage();
-        yPosition = 20;
+        yPosition = 15;
       }
       pdf.setFontSize(fontSize);
       pdf.setFont("helvetica", bold ? "bold" : "normal");
-      const splitLines = pdf.splitTextToSize(text, 180);
+      const splitLines = pdf.splitTextToSize(text, pageWidth);
       splitLines.forEach((line: string) => {
-        pdf.text(line, margin, yPosition);
+        pdf.text(line, x, yPosition);
         yPosition += lineHeight;
       });
     };
 
     const addSection = (title: string) => {
-      yPosition += 3;
-      addText(title, 11, true);
+      yPosition += 4;
+      pdf.setFillColor(240, 240, 240);
+      pdf.rect(margin, yPosition - 3, pageWidth, 6, "F");
+      addText(title, 10, true);
       yPosition += 2;
     };
 
-    // ========== KEY FACTS STATEMENT ==========
-    addText("GOODFELLOW FINANCE LIMITED (GFL)", 14, true);
-    addText("KEY FACTS STATEMENT FOR CONSUMER CREDIT", 12, true);
+    const addTableRow = (cols: string[], widths: number[], header = false) => {
+      if (yPosition > pageHeight - 15) {
+        pdf.addPage();
+        yPosition = 15;
+      }
+      
+      if (header) {
+        pdf.setFillColor(51, 51, 51);
+        pdf.setTextColor(255, 255, 255);
+        pdf.rect(margin, yPosition - 3, pageWidth, 5, "F");
+      } else {
+        pdf.setTextColor(0, 0, 0);
+      }
+      
+      pdf.setFontSize(7);
+      pdf.setFont("helvetica", header ? "bold" : "normal");
+      
+      let x = margin;
+      cols.forEach((col, i) => {
+        const text = pdf.splitTextToSize(col, widths[i] - 2);
+        pdf.text(text[0] || "", x + 1, yPosition);
+        x += widths[i];
+      });
+      
+      pdf.setTextColor(0, 0, 0);
+      yPosition += lineHeight;
+    };
+
+    // ========== HEADER ==========
+    pdf.setFontSize(12);
+    pdf.setFont("helvetica", "bold");
+    pdf.text("KEY FACTS STATEMENT FOR CONSUMER CREDIT", pageWidth / 2 + margin, yPosition, { align: "center" });
+    yPosition += 5;
+    pdf.setFontSize(8);
+    pdf.setFont("helvetica", "italic");
+    pdf.text("*Review carefully before agreeing to a loan.*", pageWidth / 2 + margin, yPosition, { align: "center" });
     yPosition += 3;
+    pdf.text("*You have the right to get a copy of the full loan agreement.*", pageWidth / 2 + margin, yPosition, { align: "center" });
+    yPosition += 4;
+    pdf.setDrawColor(0, 0, 0);
+    pdf.line(margin, yPosition, margin + pageWidth, yPosition);
+    yPosition += 5;
 
+    // ========== SECTION I: KEY TERMS ==========
     addSection("SECTION I: KEY TERMS");
-    addText(
-      `1. Amount of Loan: ${contractData.currency} ${formatCurrency(
-        contractData.loanAmount
-      )}`
-    );
-    addText(`2. Duration of Loan Agreement: ${contractData.tenure}`);
-    addText(
-      `3. Amount Received: ${contractData.currency} ${formatCurrency(
-        contractData.disbursedAmount
-      )}`
-    );
-    addText(
-      `4. Interest: ${contractData.currency} ${formatCurrency(
-        contractData.interest
-      )}`
-    );
-    addText(
-      `5. Other Fees and Charges: ${contractData.currency} ${formatCurrency(
-        contractData.fees
-      )}`
-    );
-    addText(`6. Percentage Rate: ${contractData.monthlyPercentageRate}%`);
-    addText(`7. Date First Payment Due: ${contractData.firstPaymentDate}`);
-    addText(`8. Number of Payments: ${contractData.numberOfPayments}`);
-    addText(`9. Payment Frequency: ${contractData.paymentFrequency}`);
-    addText(
-      `10. Amount Per Payment: ${contractData.currency} ${formatCurrency(
-        contractData.paymentPerPeriod
-      )}`
-    );
-    addText(
-      `11. Total Cost of Credit: ${contractData.currency} ${formatCurrency(
-        contractData.totalCostOfCredit
-      )}`
-    );
-    addText(
-      `12. TOTAL AMOUNT YOU PAY: ${contractData.currency} ${formatCurrency(
-        contractData.totalRepayment
-      )}`
-    );
+    yPosition += 2;
 
+    // Three column layout for key terms
+    const startY = yPosition;
+    
+    // Column 1: LOAN SUMMARY
+    let col1Y = startY;
+    pdf.setFontSize(8);
+    pdf.setFont("helvetica", "bold");
+    pdf.text("LOAN SUMMARY", margin, col1Y);
+    col1Y += 4;
+    pdf.setFont("helvetica", "normal");
+    pdf.setFontSize(7);
+    pdf.text("1. Amount of Loan:", margin, col1Y); col1Y += 3;
+    pdf.text(`${contractData.currency} ${formatCurrency(contractData.loanAmount)}`, margin, col1Y); col1Y += 4;
+    pdf.text("2. Duration of Loan Agreement:", margin, col1Y); col1Y += 3;
+    pdf.text(contractData.tenure, margin, col1Y); col1Y += 4;
+    pdf.text("3. Amount Received:", margin, col1Y); col1Y += 3;
+    pdf.text(`${contractData.currency} ${formatCurrency(contractData.disbursedAmount)}`, margin, col1Y); col1Y += 4;
+
+    // Column 2: COST OF CREDIT
+    let col2Y = startY;
+    const col2X = margin + colWidth + 4;
+    pdf.setFontSize(8);
+    pdf.setFont("helvetica", "bold");
+    pdf.text("COST OF CREDIT", col2X, col2Y);
+    col2Y += 4;
+    pdf.setFont("helvetica", "normal");
+    pdf.setFontSize(7);
+    pdf.text("4. Interest:", col2X, col2Y); col2Y += 3;
+    pdf.text(`${contractData.currency} ${formatCurrency(contractData.interest)}`, col2X, col2Y); col2Y += 4;
+    pdf.text("5. Other Fees and Charges:", col2X, col2Y); col2Y += 3;
+    pdf.text(`${contractData.currency} ${formatCurrency(contractData.fees)}`, col2X, col2Y); col2Y += 4;
+    pdf.text("6. Monthly Percentage Rate:", col2X, col2Y); col2Y += 3;
+    pdf.text(`${contractData.monthlyPercentageRate.toFixed(0)}%`, col2X, col2Y); col2Y += 4;
+    pdf.text("7. Total Cost of Credit:", col2X, col2Y); col2Y += 3;
+    pdf.text(`${contractData.currency} ${formatCurrency(contractData.totalCostOfCredit)}`, col2X, col2Y); col2Y += 4;
+
+    // Column 3: REPAYMENT SCHEDULE
+    let col3Y = startY;
+    const col3X = margin + (colWidth + 4) * 2;
+    pdf.setFontSize(8);
+    pdf.setFont("helvetica", "bold");
+    pdf.text("REPAYMENT SCHEDULE", col3X, col3Y);
+    col3Y += 4;
+    pdf.setFont("helvetica", "normal");
+    pdf.setFontSize(7);
+    pdf.text("7. Date First Payment Due:", col3X, col3Y); col3Y += 3;
+    pdf.text(contractData.firstPaymentDate, col3X, col3Y); col3Y += 4;
+    pdf.text("8. Number of Payments:", col3X, col3Y); col3Y += 3;
+    pdf.text(String(contractData.numberOfPayments), col3X, col3Y); col3Y += 4;
+    pdf.text("9. Payment Frequency:", col3X, col3Y); col3Y += 3;
+    pdf.text(contractData.paymentFrequency, col3X, col3Y); col3Y += 4;
+    pdf.text("10. Amount Per Payment:", col3X, col3Y); col3Y += 3;
+    pdf.text(`${contractData.currency} ${formatCurrency(contractData.paymentPerPeriod)}`, col3X, col3Y); col3Y += 4;
+
+    yPosition = Math.max(col1Y, col2Y, col3Y) + 5;
+
+    // Summary Box
+    pdf.setDrawColor(51, 51, 51);
+    pdf.setLineWidth(0.5);
+    pdf.rect(margin, yPosition, pageWidth, 15);
+    
+    const boxY = yPosition + 3;
+    const boxColWidth = pageWidth / 5;
+    
+    pdf.setFontSize(7);
+    pdf.setFont("helvetica", "bold");
+    pdf.text("Amount of Loan", margin + 5, boxY);
+    pdf.setFont("helvetica", "normal");
+    pdf.text(`${contractData.currency} ${formatCurrency(contractData.loanAmount)}`, margin + 5, boxY + 5);
+    
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(12);
+    pdf.text("+", margin + boxColWidth + 5, boxY + 4);
+    
+    pdf.setFontSize(7);
+    pdf.text("Total Cost of Credit", margin + boxColWidth + 15, boxY);
+    pdf.setFont("helvetica", "normal");
+    pdf.text(`${contractData.currency} ${formatCurrency(contractData.totalCostOfCredit)}`, margin + boxColWidth + 15, boxY + 5);
+    
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(12);
+    pdf.text("=", margin + boxColWidth * 2 + 20, boxY + 4);
+    
+    pdf.setFontSize(7);
+    pdf.text("TOTAL AMOUNT YOU PAY", margin + boxColWidth * 2 + 30, boxY);
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(9);
+    pdf.text(`${contractData.currency} ${formatCurrency(contractData.totalRepayment)}`, margin + boxColWidth * 2 + 30, boxY + 6);
+    
+    yPosition += 20;
+
+    // ========== SECTION II: RISKS ==========
     addSection("SECTION II: RISKS TO YOU");
-    addText(
-      "- Late or missing payments may be reported to a credit reference bureau"
-    );
-    addText("- Interest rates may change based on Bank of Zambia Policy Rate");
+    addText("* Late or missing payments may be reported to a credit reference bureau and may severely affect your financial situation, collateral, and ability to reborrow.");
+    addText("* Your interest rate will change based on changes in the Bank of Zambia's Policy Rate. This change will affect the duration of your loan and your repayment amount.");
 
+    // ========== SECTION III: RIGHTS ==========
     addSection("SECTION III: YOUR RIGHTS AND OBLIGATIONS");
-    addText("Contact: +260 211 238719 | info@goodfellow.co.zm");
-    addText("You may pay off your loan early without penalties");
+    addText("Any questions or complaints? Call +260 211 238719, email info@goodfellow.co.zm or write to P.O. Box 50644 Lusaka.");
+    addText("Unsatisfied with our response? Contact the Bank of Zambia at +260 211 399300 or info@boz.zm. Visit www.boz.zm.");
+    addText("Want to pay off your loan early? You can do so without any penalties or fees.");
 
-    addSection("SECTION IV: FEES AND CHARGES");
+    // ========== SECTION IV: FEES ==========
+    addSection("SECTION IV: UPFRONT AND RECURRING FEES");
+    
+    const feeWidths = [pageWidth / 2, pageWidth / 4, pageWidth / 4];
+    addTableRow(["Fee Description", "Amount", "Type"], feeWidths, true);
+    
     contractData.charges.forEach((charge) => {
-      addText(`${charge.name}: ${formatCurrency(charge.amount)}`);
+      const isRecurring = charge.name.toLowerCase().includes("monthly") || 
+                          charge.name.toLowerCase().includes("recurring");
+      addTableRow([
+        charge.name,
+        `${contractData.currency} ${formatCurrency(charge.amount)}`,
+        isRecurring ? "Recurring" : "Upfront"
+      ], feeWidths);
     });
-    addText(
-      `Total Fees: ${contractData.currency} ${formatCurrency(
-        contractData.fees
-      )}`
-    );
+    
+    addTableRow([
+      "TOTAL FEES (excluding interest)",
+      `${contractData.currency} ${formatCurrency(contractData.fees)}`,
+      ""
+    ], feeWidths);
 
+    // ========== SECTION V: TERMS ==========
+    addSection("SECTION V: IMPORTANT TERMS AND CONDITIONS");
+    addText("Late fees: Applicable if payment is more than 30 days late");
+    addText("Default interest: 25% per month if payment is more than 10 days late");
+
+    // ========== SECTION VI: REPAYMENT SCHEDULE ==========
+    // Check if we need a new page for the schedule
+    if (yPosition > pageHeight - 80) {
+      pdf.addPage();
+      yPosition = 15;
+    }
+    
     addSection("SECTION VI: REPAYMENT SCHEDULE");
-    contractData.repaymentSchedule.forEach((period) => {
-      addText(
-        `#${period.paymentNumber} | ${period.dueDate} | ${formatCurrency(
-          period.paymentAmount
-        )} | Principal: ${formatCurrency(
-          period.principal
-        )} | Int/Fees: ${formatCurrency(
-          period.interestAndFees
-        )} | Bal: ${formatCurrency(period.remainingBalance)}`
-      );
-    });
+    
+    const scheduleWidths = [15, 25, 25, 25, 30, 30];
+    addTableRow(["#", "Due Date", "Payment", "Principal", "Interest/Fees", "Balance"], scheduleWidths, true);
+    
+    // Show first 12 payments and summary if more
+    const maxPayments = Math.min(contractData.repaymentSchedule.length, 12);
+    for (let i = 0; i < maxPayments; i++) {
+      const period = contractData.repaymentSchedule[i];
+      addTableRow([
+        String(period.paymentNumber),
+        period.dueDate,
+        formatCurrency(period.paymentAmount),
+        formatCurrency(period.principal),
+        formatCurrency(period.interestAndFees),
+        `${contractData.currency} ${formatCurrency(period.remainingBalance)}`
+      ], scheduleWidths);
+    }
+    
+    if (contractData.repaymentSchedule.length > 12) {
+      addTableRow(["...", "...", "...", "...", "...", "..."], scheduleWidths);
+    }
+    
+    // Totals row
+    pdf.setFont("helvetica", "bold");
+    addTableRow([
+      "TOTAL",
+      "",
+      formatCurrency(contractData.totalRepayment),
+      formatCurrency(contractData.loanAmount),
+      formatCurrency(contractData.totalCostOfCredit),
+      ""
+    ], scheduleWidths);
 
-    addSection("BORROWER ACKNOWLEDGMENT");
-    addText(`Name: ${contractData.clientName}`);
-    addText(`NRC: ${contractData.nrc}`);
-    addText(`Date: ${format(new Date(), "dd/MM/yyyy")}`);
-    addText("Signature: [Signed electronically]");
+    // ========== SIGNATURES ==========
+    yPosition += 8;
+    if (yPosition > pageHeight - 40) {
+      pdf.addPage();
+      yPosition = 15;
+    }
+    
+    pdf.setFontSize(8);
+    pdf.setFont("helvetica", "italic");
+    pdf.text("* This information is not final until signed by all parties and does not replace the loan agreement. *", pageWidth / 2 + margin, yPosition, { align: "center" });
+    yPosition += 8;
+    
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(8);
+    pdf.text("CERTIFIED CORRECT:", margin, yPosition);
+    yPosition += 10;
+    pdf.setDrawColor(0, 0, 0);
+    pdf.line(margin, yPosition, margin + 60, yPosition);
+    yPosition += 3;
+    pdf.setFont("helvetica", "normal");
+    pdf.setFontSize(7);
+    pdf.text("Credit provider representative", margin, yPosition);
+    
+    yPosition += 8;
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(8);
+    pdf.text("I ACKNOWLEDGE RECEIPT OF THIS STATEMENT PRIOR TO SIGNING THE LOAN AGREEMENT:", margin, yPosition);
+    yPosition += 10;
+    pdf.line(margin, yPosition, margin + 60, yPosition);
+    pdf.line(margin + 90, yPosition, margin + 150, yPosition);
+    yPosition += 3;
+    pdf.setFont("helvetica", "normal");
+    pdf.setFontSize(7);
+    pdf.text("Borrower", margin, yPosition);
+    pdf.text("Guarantor (if applicable)", margin + 90, yPosition);
+    
+    yPosition += 8;
+    pdf.setFontSize(7);
+    pdf.text(`Name of Borrower: ${contractData.clientName}    NRC: ${contractData.nrc}    Date prepared: ${format(new Date(), "dd/MM/yyyy")}`, margin, yPosition);
 
     return pdf.output("blob");
   };
@@ -1366,22 +1612,55 @@ export function LoanContracts({
         {/* Contract Preview using HTML Template */}
         <Card className="mb-6 bg-white text-black border-gray-200">
           <CardHeader>
-            <CardTitle>Contract Preview</CardTitle>
-            <CardDescription>
-              Review the contract before printing or completing
-            </CardDescription>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle>Document Preview</CardTitle>
+                <CardDescription>
+                  Review the documents before printing or completing
+                </CardDescription>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  variant={showKeyFacts ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setShowKeyFacts(true)}
+                >
+                  Key Facts Statement
+                </Button>
+                <Button
+                  variant={!showKeyFacts ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setShowKeyFacts(false)}
+                >
+                  Loan Contract
+                </Button>
+              </div>
+            </div>
           </CardHeader>
           <CardContent className="p-4">
-            <iframe
-              srcDoc={generateContractHTML(contractData, {
-                borrower: borrowerSignature,
-                guarantor: guarantorSignature,
-                loanOfficer: loanOfficerSignature,
-              })}
-              className="w-full border rounded bg-white"
-              style={{ height: "700px", minHeight: "500px" }}
-              title="Loan Contract Preview"
-            />
+            {showKeyFacts ? (
+              <iframe
+                srcDoc={getKeyFactsData() ? generateKeyFactsStatementHTML(getKeyFactsData()!, {
+                  borrower: borrowerSignature,
+                  guarantor: guarantorSignature,
+                  creditProvider: loanOfficerSignature,
+                }) : "<p>Loading...</p>"}
+                className="w-full border rounded bg-white"
+                style={{ height: "700px", minHeight: "500px" }}
+                title="Key Facts Statement Preview"
+              />
+            ) : (
+              <iframe
+                srcDoc={generateContractHTML(contractData, {
+                  borrower: borrowerSignature,
+                  guarantor: guarantorSignature,
+                  loanOfficer: loanOfficerSignature,
+                })}
+                className="w-full border rounded bg-white"
+                style={{ height: "700px", minHeight: "500px" }}
+                title="Loan Contract Preview"
+              />
+            )}
           </CardContent>
         </Card>
 
@@ -2004,9 +2283,17 @@ export function LoanContracts({
               </Button>
             )}
             <div className="flex gap-4 ml-auto">
-              <Button onClick={handlePrint} variant="outline" className="px-6">
+              <Button onClick={handlePrintKeyFacts} variant="outline" size="sm">
                 <FileText className="mr-2 h-4 w-4" />
-                Print Contracts
+                Print Key Facts
+              </Button>
+              <Button onClick={handlePrintContract} variant="outline" size="sm">
+                <FileText className="mr-2 h-4 w-4" />
+                Print Contract
+              </Button>
+              <Button onClick={handlePrintBoth} variant="outline" size="sm">
+                <FileText className="mr-2 h-4 w-4" />
+                Print All
               </Button>
               <Button
                 onClick={handleComplete}

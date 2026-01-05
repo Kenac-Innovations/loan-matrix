@@ -1372,10 +1372,10 @@ export function DynamicDatatableContent({
                     );
                   } else {
                     cellValue = formatCell(
-                      displayValue,
-                      header?.columnType,
-                      header?.columnDisplayType
-                    );
+                    displayValue,
+                    header?.columnType,
+                    header?.columnDisplayType
+                  );
                   }
 
                   return (
