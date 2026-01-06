@@ -165,7 +165,7 @@ export async function POST(
 
     // Check if cashier has an active session - required for cash in/out
     if (cashier) {
-      const activeSession = await prisma.cashierSession.findFirst({
+      let activeSession = await prisma.cashierSession.findFirst({
         where: {
           tellerId: teller.id,
           cashierId: cashier.id,
@@ -173,6 +173,41 @@ export async function POST(
           sessionStatus: "ACTIVE",
         },
       });
+
+      // If no local session found, check Fineract for active session and sync
+      if (!activeSession) {
+        try {
+          const fineractService = await getFineractServiceWithSession();
+          const fineractCashierData = await fineractService.getCashier(
+            teller.fineractTellerId,
+            cashier.fineractCashierId || fineractCashierId
+          );
+          
+          // Check if Fineract shows cashier as having an active session
+          if (fineractCashierData?.isRunning) {
+            console.log(`Fineract shows active session for cashier ${cashier.id}, syncing...`);
+            activeSession = await prisma.cashierSession.create({
+              data: {
+                tenantId: tenant.id,
+                tellerId: teller.id,
+                cashierId: cashier.id,
+                fineractSessionId: fineractCashierData.id || 0,
+                sessionStatus: "ACTIVE",
+                sessionStartTime: new Date(),
+                allocatedBalance: 0,
+                availableBalance: 0,
+                openingFloat: 0,
+                cashIn: 0,
+                cashOut: 0,
+                netCash: 0,
+              },
+            });
+            console.log(`Created local session for cashier ${cashier.id}`);
+          }
+        } catch (error) {
+          console.error("Error checking Fineract session:", error);
+        }
+      }
 
       if (!activeSession) {
         return NextResponse.json(
@@ -401,8 +436,6 @@ export async function POST(
       }
       throw error; // Re-throw if it's a different error
     }
-
-    return NextResponse.json(allocation);
   } catch (error) {
     console.error("Error allocating cash:", error);
     return NextResponse.json(
