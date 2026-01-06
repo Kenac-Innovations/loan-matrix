@@ -21,6 +21,7 @@ export type Loan = {
   approvedOnDate: string;
   disbursedOnDate: string;
   maturityDate: string;
+  payoutStatus?: string; // PENDING, PAID, VOIDED, or undefined
 };
 
 interface LoansDataTableProps {
@@ -110,6 +111,28 @@ export function LoansDataTable({ data }: LoansDataTableProps) {
         value: status,
         };
       }),
+    },
+    {
+      id: "payoutStatus",
+      accessorKey: "payoutStatus",
+      header: "Payout",
+      cell: ({ getValue, row }) => {
+        const payoutStatus = getValue() as string | undefined;
+        const loanStatus = row.original.status;
+        
+        // Only show payout status for disbursed loans
+        if (!loanStatus?.toLowerCase().includes("active")) {
+          return <div className="text-sm text-muted-foreground">-</div>;
+        }
+        
+        if (payoutStatus === "PAID") {
+          return <Badge className="bg-green-100 text-green-800 border-green-200">Paid</Badge>;
+        } else if (payoutStatus === "VOIDED") {
+          return <Badge className="bg-gray-100 text-gray-800 border-gray-200">Voided</Badge>;
+        } else {
+          return <Badge className="bg-yellow-100 text-yellow-800 border-yellow-200">Pending</Badge>;
+        }
+      },
     },
     {
       id: "currency",

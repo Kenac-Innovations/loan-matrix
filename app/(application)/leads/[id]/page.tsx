@@ -48,6 +48,8 @@ interface FineractLoanInfo {
   status: string | null;
   loanId: number | null;
   principal: number | null;
+  accountNo: string | null;
+  currency: string | null;
 }
 
 /**
@@ -65,7 +67,7 @@ async function getFineractLoanInfo(
 
     if (!accessToken) {
       console.warn("No access token available for Fineract API call");
-      return { status: null, loanId: null, principal: null };
+      return { status: null, loanId: null, principal: null, accountNo: null, currency: null };
     }
 
     // Get the mapped Fineract tenant ID (e.g., "goodfellow" -> "goodfellow-training")
@@ -80,13 +82,17 @@ async function getFineractLoanInfo(
         const status = loanData.status?.value || null;
         const principal =
           loanData.principal || loanData.approvedPrincipal || null;
+        const accountNo = loanData.accountNo || null;
+        const currency = loanData.currency?.code || null;
         if (status) {
           console.log("Fineract loan info fetched by ID:", {
             status,
             loanId,
             principal,
+            accountNo,
+            currency,
           });
-          return { status, loanId: Number(loanId), principal };
+          return { status, loanId: Number(loanId), principal, accountNo, currency };
         }
       } catch (error) {
         console.warn(`Failed to fetch Fineract loan by ID ${loanId}:`, error);
@@ -136,13 +142,17 @@ async function getFineractLoanInfo(
           const fineractLoanId = matchingLoan.id || null;
           const principal =
             matchingLoan.principal || matchingLoan.approvedPrincipal || null;
+          const accountNo = matchingLoan.accountNo || null;
+          const currency = matchingLoan.currency?.code || null;
           if (status) {
             console.log("Fineract loan info fetched by external ID:", {
               status,
               loanId: fineractLoanId,
               principal,
+              accountNo,
+              currency,
             });
-            return { status, loanId: fineractLoanId, principal };
+            return { status, loanId: fineractLoanId, principal, accountNo, currency };
           }
         }
       } else {
@@ -155,10 +165,10 @@ async function getFineractLoanInfo(
       console.warn(`Error fetching loan by external ID ${leadId}:`, error);
     }
 
-    return { status: null, loanId: null, principal: null };
+    return { status: null, loanId: null, principal: null, accountNo: null, currency: null };
   } catch (error) {
     console.error("Error fetching Fineract loan info:", error);
-    return { status: null, loanId: null, principal: null };
+    return { status: null, loanId: null, principal: null, accountNo: null, currency: null };
   }
 }
 
@@ -410,6 +420,8 @@ async function getLeadData(leadId: string) {
       fineractLoanStatus: fineractLoanInfo.status,
       fineractLoanId: fineractLoanInfo.loanId,
       fineractLoanPrincipal: fineractLoanInfo.principal,
+      fineractLoanAccountNo: fineractLoanInfo.accountNo,
+      fineractLoanCurrency: fineractLoanInfo.currency,
       cdeResult,
       clientDatatables,
       clientDocuments: fineractDocs.clientDocuments,
@@ -424,6 +436,8 @@ async function getLeadData(leadId: string) {
       fineractLoanStatus: null,
       fineractLoanId: null,
       fineractLoanPrincipal: null,
+      fineractLoanAccountNo: null,
+      fineractLoanCurrency: null,
       cdeResult: null,
       clientDatatables: [],
       datatableData: {},
@@ -445,12 +459,19 @@ export default async function LeadDetailPage({
     fineractLoanStatus,
     fineractLoanId,
     fineractLoanPrincipal,
+    fineractLoanAccountNo,
+    fineractLoanCurrency,
     cdeResult,
     clientDatatables,
     datatableData,
     clientDocuments,
     loanDocuments,
   } = await getLeadData(id);
+  
+  // Construct client name from lead data
+  const clientName = lead 
+    ? [lead.firstname, lead.middlename, lead.lastname].filter(Boolean).join(" ") || "Client"
+    : "Client";
 
   if (!lead) {
     return (
@@ -578,6 +599,9 @@ export default async function LeadDetailPage({
                 loanStatus={fineractLoanStatus}
                 loanId={fineractLoanId}
                 loanPrincipal={fineractLoanPrincipal}
+                loanAccountNo={fineractLoanAccountNo}
+                clientName={clientName}
+                currency={fineractLoanCurrency}
                 assignedToUserId={lead.assignedToUserId}
                 fineractClientId={lead.fineractClientId}
               />

@@ -625,15 +625,19 @@ model CashSettlement {
   varianceResolvedAt   DateTime?
   varianceResolvedBy   String?
   varianceResolutionNotes String? // Explanation of variance resolution
+  transactionType      String     @default("EXPENSE") // EXPENSE, DISBURSEMENT
+  loanPayoutId         String?    // Link to LoanPayout if type is DISBURSEMENT
   createdAt            DateTime   @default(now())
   updatedAt            DateTime   @updatedAt
   teller               Teller     @relation(fields: [tellerId], references: [id], onDelete: Cascade)
   cashier              Cashier    @relation(fields: [cashierId], references: [id], onDelete: Cascade)
+  loanPayout           LoanPayout? @relation(fields: [loanPayoutId], references: [id])
 
   @@index([tenantId, tellerId])
   @@index([tenantId, cashierId])
   @@index([tenantId, settlementDate])
   @@index([tenantId, status])
+  @@index([tenantId, transactionType])
 }
 
 model CashierSession {
@@ -667,4 +671,31 @@ model CashierSession {
   @@index([tenantId, cashierId])
   @@index([tenantId, sessionStatus])
   @@index([sessionStartTime])
+}
+
+model LoanPayout {
+  id               String          @id @default(cuid())
+  tenantId         String
+  fineractLoanId   Int             // Fineract loan ID
+  fineractClientId Int             // Fineract client ID
+  clientName       String
+  loanAccountNo    String
+  amount           Float
+  currency         String          @default("ZMW")
+  status           String          @default("PENDING") // PENDING, PAID, VOIDED
+  paidAt           DateTime?
+  paidBy           String?         // User who processed payout
+  cashierId        String?         // Database cashier ID
+  tellerId         String?         // Database teller ID
+  notes            String?
+  voidedAt         DateTime?
+  voidedBy         String?
+  voidReason       String?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  settlements      CashSettlement[]
+
+  @@unique([tenantId, fineractLoanId])
+  @@index([tenantId, status])
+  @@index([tenantId, fineractClientId])
 }

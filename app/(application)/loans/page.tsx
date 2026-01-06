@@ -10,9 +10,10 @@ import { LoansDataTable, Loan } from "@/components/tables/loans-data-table";
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
-function transformLoanData(rawLoan: any): Loan {
+function transformLoanData(rawLoan: any, payoutStatusMap?: Map<number, string>): Loan {
+  const loanId = rawLoan.id;
   return {
-    id: rawLoan.id?.toString() || "",
+    id: loanId?.toString() || "",
     accountNo: rawLoan.accountNo || "",
     clientName:
       rawLoan.clientName || rawLoan.clientId?.toString() || "Unknown Client",
@@ -28,6 +29,7 @@ function transformLoanData(rawLoan: any): Loan {
     approvedOnDate: rawLoan.approvedOnDate || "",
     disbursedOnDate: rawLoan.disbursedOnDate || "",
     maturityDate: rawLoan.maturityDate || "",
+    payoutStatus: payoutStatusMap?.get(loanId) || undefined,
   };
 }
 
@@ -42,6 +44,24 @@ export default function LoansPage() {
     fetcher,
     { revalidateOnFocus: false }
   );
+
+  // Fetch payout statuses for loans
+  const { data: payoutData } = useSWR(
+    `/api/loans/payout-statuses`,
+    fetcher,
+    { revalidateOnFocus: false }
+  );
+
+  // Create a map of loan ID to payout status
+  const payoutStatusMap = useMemo(() => {
+    const map = new Map<number, string>();
+    if (payoutData?.payouts && Array.isArray(payoutData.payouts)) {
+      payoutData.payouts.forEach((payout: any) => {
+        map.set(payout.fineractLoanId, payout.status);
+      });
+    }
+    return map;
+  }, [payoutData]);
 
   // Server-side search when user types 3+ characters
   const { data: searchData, isLoading: searchLoading } = useSWR(
@@ -85,8 +105,8 @@ export default function LoansPage() {
     return [];
   };
 
-  const initialLoans: Loan[] = parseLoans(initialData).map(transformLoanData);
-  const searchLoans: Loan[] = parseLoans(searchData).map(transformLoanData);
+  const initialLoans: Loan[] = parseLoans(initialData).map((loan) => transformLoanData(loan, payoutStatusMap));
+  const searchLoans: Loan[] = parseLoans(searchData).map((loan) => transformLoanData(loan, payoutStatusMap));
 
   // Combine and deduplicate: search results + initial loans filtered by search
   const loans = useMemo(() => {

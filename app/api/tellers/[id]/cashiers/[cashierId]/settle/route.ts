@@ -27,7 +27,7 @@ export async function POST(
     }
 
     const body = await request.json();
-    const { amount, currency, notes, date } = body;
+    const { amount, currency, notes, date, transactionType, loanPayoutId } = body;
 
     if (!amount || amount <= 0) {
       return NextResponse.json(
@@ -43,6 +43,95 @@ export async function POST(
       );
     }
 
+    // Validate transaction type
+    const txnType = transactionType || "EXPENSE";
+    if (!["EXPENSE", "DISBURSEMENT"].includes(txnType)) {
+      return NextResponse.json(
+        { error: "Invalid transaction type. Must be EXPENSE or DISBURSEMENT" },
+        { status: 400 }
+      );
+    }
+
+    // If DISBURSEMENT, validate and fetch/create the loan payout record
+    let loanPayout = null;
+    if (txnType === "DISBURSEMENT") {
+      if (!loanPayoutId) {
+        return NextResponse.json(
+          { error: "Loan payout ID is required for disbursement transactions" },
+          { status: 400 }
+        );
+      }
+
+      // Check if loanPayoutId is a fineract loan ID (number) or database ID (string)
+      const isNumericId = !isNaN(Number(loanPayoutId));
+      
+      if (isNumericId) {
+        // It's a Fineract loan ID - find or create the payout record
+        loanPayout = await prisma.loanPayout.findUnique({
+          where: {
+            tenantId_fineractLoanId: {
+              tenantId: tenant.id,
+              fineractLoanId: Number(loanPayoutId),
+            },
+          },
+        });
+
+        // If payout record doesn't exist, create it by fetching loan details from Fineract
+        if (!loanPayout) {
+          try {
+            const fineractService = await getFineractServiceWithSession();
+            const loanDetails = await fineractService.getLoan(Number(loanPayoutId));
+            
+            if (loanDetails) {
+              loanPayout = await prisma.loanPayout.create({
+                data: {
+                  tenantId: tenant.id,
+                  fineractLoanId: loanDetails.id,
+                  fineractClientId: loanDetails.clientId,
+                  clientName: loanDetails.clientName || "Unknown Client",
+                  loanAccountNo: loanDetails.accountNo || "",
+                  amount: loanDetails.principal || loanDetails.approvedPrincipal || parseFloat(amount),
+                  currency: loanDetails.currency?.code || currency,
+                  status: "PENDING",
+                },
+              });
+            }
+          } catch (fetchError) {
+            console.error("Error fetching loan details from Fineract:", fetchError);
+          }
+        }
+      } else {
+        // It's a database payout ID
+        loanPayout = await prisma.loanPayout.findFirst({
+          where: {
+            id: loanPayoutId,
+            tenantId: tenant.id,
+          },
+        });
+      }
+
+      if (!loanPayout) {
+        return NextResponse.json(
+          { error: "Loan payout record not found and could not be created" },
+          { status: 404 }
+        );
+      }
+
+      if (loanPayout.status === "PAID") {
+        return NextResponse.json(
+          { error: "This loan has already been paid out" },
+          { status: 400 }
+        );
+      }
+
+      if (loanPayout.status === "VOIDED") {
+        return NextResponse.json(
+          { error: "This loan payout has been voided" },
+          { status: 400 }
+        );
+      }
+    }
+
     // Handle fineract-prefixed IDs
     let dbTellerId = tellerId;
     let fineractTellerIdFromPrefix: number | null = null;
@@ -56,10 +145,15 @@ export async function POST(
     });
 
     // Try by Fineract ID if not found
-    const fineractTellerIdToSearch = fineractTellerIdFromPrefix || (!isNaN(Number(tellerId)) ? Number(tellerId) : null);
+    const fineractTellerIdToSearch =
+      fineractTellerIdFromPrefix ||
+      (!isNaN(Number(tellerId)) ? Number(tellerId) : null);
     if (!teller && fineractTellerIdToSearch) {
       teller = await prisma.teller.findFirst({
-        where: { fineractTellerId: fineractTellerIdToSearch, tenantId: tenant.id },
+        where: {
+          fineractTellerId: fineractTellerIdToSearch,
+          tenantId: tenant.id,
+        },
       });
     }
 
@@ -127,10 +221,16 @@ export async function POST(
             tellerId: teller.id,
             fineractCashierId: fineractCashier.id,
             staffId: fineractCashier.staffId || 0,
-            staffName: fineractCashier.staffName || `Staff ${fineractCashier.staffId}`,
+            staffName:
+              fineractCashier.staffName || `Staff ${fineractCashier.staffId}`,
             startDate: parseFineractDate(fineractCashier.startDate),
-            endDate: fineractCashier.endDate ? parseFineractDate(fineractCashier.endDate) : null,
-            isFullDay: fineractCashier.isFullDay !== undefined ? fineractCashier.isFullDay : true,
+            endDate: fineractCashier.endDate
+              ? parseFineractDate(fineractCashier.endDate)
+              : null,
+            isFullDay:
+              fineractCashier.isFullDay !== undefined
+                ? fineractCashier.isFullDay
+                : true,
             status: "ACTIVE",
           },
         });
@@ -140,10 +240,7 @@ export async function POST(
     }
 
     if (!cashier) {
-      return NextResponse.json(
-        { error: "Cashier not found" },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "Cashier not found" }, { status: 404 });
     }
 
     // Check if cashier has an active session - required for cash out
@@ -160,7 +257,8 @@ export async function POST(
       return NextResponse.json(
         {
           error: "Session required",
-          details: "Cashier must have an active session for cash out. Please start a session first.",
+          details:
+            "Cashier must have an active session for cash out. Please start a session first.",
         },
         { status: 400 }
       );
@@ -185,7 +283,11 @@ export async function POST(
       return NextResponse.json(
         {
           error: "Insufficient balance",
-          details: `Cashier balance: ${cashierBalance.toFixed(2)} ${currency}, Requested: ${parseFloat(amount).toFixed(2)} ${currency}`,
+          details: `Cashier balance: ${cashierBalance.toFixed(
+            2
+          )} ${currency}, Requested: ${parseFloat(amount).toFixed(
+            2
+          )} ${currency}`,
         },
         { status: 400 }
       );
@@ -196,20 +298,32 @@ export async function POST(
       const d = typeof dateInput === "string" ? new Date(dateInput) : dateInput;
       const day = d.getDate();
       const monthNames = [
-        "January", "February", "March", "April", "May", "June",
-        "July", "August", "September", "October", "November", "December",
+        "January",
+        "February",
+        "March",
+        "April",
+        "May",
+        "June",
+        "July",
+        "August",
+        "September",
+        "October",
+        "November",
+        "December",
       ];
       const month = monthNames[d.getMonth()];
       const year = d.getFullYear();
       return `${day.toString().padStart(2, "0")} ${month} ${year}`;
     };
 
-    const txnDate = date ? formatDateForFineract(date) : formatDateForFineract(new Date());
+    const txnDate = date
+      ? formatDateForFineract(date)
+      : formatDateForFineract(new Date());
 
     // Settle cash in Fineract (cash out transaction)
     let fineractSettlementId: number | null = null;
-      try {
-        const fineractService = await getFineractServiceWithSession();
+    try {
+      const fineractService = await getFineractServiceWithSession();
       console.log("Calling Fineract settleCashForCashier with:", {
         tellerId: teller.fineractTellerId,
         cashierId: fineractCashierId,
@@ -217,18 +331,18 @@ export async function POST(
         currencyCode: currency,
         txnAmount: amount.toString(),
       });
-        const result = await fineractService.settleCashForCashier(
-          teller.fineractTellerId,
+      const result = await fineractService.settleCashForCashier(
+        teller.fineractTellerId,
         fineractCashierId,
-          {
+        {
           txnDate,
           currencyCode: currency,
           txnAmount: amount.toString(),
           txnNote: notes || "Cash Out",
           dateFormat: "dd MMMM yyyy",
           locale: "en",
-          }
-        );
+        }
+      );
       fineractSettlementId = result.resourceId || result.id || null;
       console.log("Fineract settle response:", result);
     } catch (error: any) {
@@ -242,9 +356,10 @@ export async function POST(
       return NextResponse.json(
         {
           error: "Failed to settle cash in Fineract",
-          details: error.response?.data?.defaultUserMessage || 
-                   error.response?.data?.errors?.[0]?.defaultUserMessage ||
-                   error.message,
+          details:
+            error.response?.data?.defaultUserMessage ||
+            error.response?.data?.errors?.[0]?.defaultUserMessage ||
+            error.message,
           fineractError: error.response?.data || null,
           debugInfo: {
             tellerId: teller.fineractTellerId,
@@ -276,6 +391,10 @@ export async function POST(
     }
 
     // Create a negative allocation record (cash out)
+    const settlementNotes = txnType === "DISBURSEMENT" 
+      ? `Loan Disbursement: ${loanPayout?.clientName} - ${loanPayout?.loanAccountNo}${notes ? ` - ${notes}` : ""}`
+      : notes || "Expense Cash Out";
+
     const settlement = await prisma.cashAllocation.create({
       data: {
         tenantId: tenant.id,
@@ -285,38 +404,41 @@ export async function POST(
         amount: -parseFloat(amount), // Negative for cash out
         currency: currency,
         allocatedBy: session.user.id,
-        notes: notes || "Settlement to teller safe",
+        notes: settlementNotes,
         status: "ACTIVE",
       },
     });
 
-    // Update the cashier session status to SETTLED
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    
-    await prisma.cashierSession.updateMany({
-        where: {
+    // If this is a disbursement, update the loan payout record
+    if (txnType === "DISBURSEMENT" && loanPayout) {
+      await prisma.loanPayout.update({
+        where: { id: loanPayout.id },
+        data: {
+          status: "PAID",
+          paidAt: new Date(),
+          paidBy: session.user.id,
           cashierId: cashier.id,
-          tenantId: tenant.id,
-        sessionStatus: "CLOSED",
-        sessionDate: {
-          gte: today,
+          tellerId: teller.id,
+          notes: notes || undefined,
         },
-      },
-          data: {
-        sessionStatus: "SETTLED",
-        updatedAt: new Date(),
-          },
-        });
+      });
+    }
+
+    // Update the cashier session status to SETTLED (only for end-of-day settlements)
+    // Don't update for regular cash out transactions
+    // const today = new Date();
+    // today.setHours(0, 0, 0, 0);
+    // await prisma.cashierSession.updateMany({...});
 
     return NextResponse.json({
       success: true,
       transaction: settlement,
       type: "CASH_OUT",
+      transactionType: txnType,
       amount: parseFloat(amount),
       currency,
       fineractSettlementId,
-      sessionStatus: "SETTLED",
+      loanPayoutId: loanPayout?.id || null,
     });
   } catch (error) {
     console.error("Error settling cash:", error);
