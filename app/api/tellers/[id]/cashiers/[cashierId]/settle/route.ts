@@ -293,11 +293,13 @@ export async function POST(
           teller.fineractTellerId,
           fineractCashierId
         );
-        
+
         // Check if Fineract shows cashier as having an active session
         // Fineract returns session data with the cashier
         if (fineractCashierData?.isRunning) {
-          console.log(`Fineract shows active session for cashier ${fineractCashierId}, syncing...`);
+          console.log(
+            `Fineract shows active session for cashier ${fineractCashierId}, syncing...`
+          );
           // Create a local session record to sync with Fineract
           activeSession = await prisma.cashierSession.create({
             data: {
@@ -322,15 +324,43 @@ export async function POST(
       }
     }
 
-    if (!activeSession) {
+    // For disbursements/expenses, require active session
+    // For settlements to vault (after close), allow if there's a recent closed session
+    if (!activeSession && txnType === "DISBURSEMENT") {
       return NextResponse.json(
         {
           error: "Session required",
           details:
-            "Cashier must have an active session for cash out. Please start a session first.",
+            "Cashier must have an active session for disbursements. Please start a session first.",
         },
         { status: 400 }
       );
+    }
+    
+    // For non-disbursement settlements (return to vault), check if there's a closed session
+    if (!activeSession && txnType !== "DISBURSEMENT") {
+      const closedSession = await prisma.cashierSession.findFirst({
+        where: {
+          tellerId: teller.id,
+          cashierId: cashier.id,
+          tenantId: tenant.id,
+          sessionStatus: "CLOSED",
+        },
+        orderBy: { sessionEndTime: "desc" },
+      });
+      
+      if (!closedSession) {
+        return NextResponse.json(
+          {
+            error: "Session required",
+            details:
+              "Cashier must have an active or recently closed session for cash settlement.",
+          },
+          { status: 400 }
+        );
+      }
+      // Allow settlement with closed session (return to vault after close)
+      console.log(`Allowing settlement with closed session ${closedSession.id}`);
     }
 
     // Check cashier's available balance

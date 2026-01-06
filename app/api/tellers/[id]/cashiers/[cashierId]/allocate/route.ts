@@ -56,11 +56,16 @@ export async function POST(
     });
 
     // Try by Fineract ID if not found
-    const fineractTellerIdToSearch = fineractTellerIdFromPrefix || (!isNaN(Number(tellerId)) ? Number(tellerId) : null);
+    const fineractTellerIdToSearch =
+      fineractTellerIdFromPrefix ||
+      (!isNaN(Number(tellerId)) ? Number(tellerId) : null);
     if (!teller && fineractTellerIdToSearch) {
       teller = await prisma.teller.findFirst({
-        where: { fineractTellerId: fineractTellerIdToSearch, tenantId: tenant.id },
-    });
+        where: {
+          fineractTellerId: fineractTellerIdToSearch,
+          tenantId: tenant.id,
+        },
+      });
     }
 
     // Parse cashierId - could be database ID or Fineract ID
@@ -68,9 +73,11 @@ export async function POST(
     const isNumericId = !isNaN(cashierIdNum);
 
     // Try to find cashier by database ID first (using teller.id if found)
-    let cashier = teller ? await prisma.cashier.findFirst({
-      where: { id: cashierId, tellerId: teller.id, tenantId: tenant.id },
-    }) : null;
+    let cashier = teller
+      ? await prisma.cashier.findFirst({
+          where: { id: cashierId, tellerId: teller.id, tenantId: tenant.id },
+        })
+      : null;
 
     // If not found by database ID and cashierId is numeric, try Fineract ID
     if (!cashier && isNumericId && teller) {
@@ -182,10 +189,12 @@ export async function POST(
             teller.fineractTellerId,
             cashier.fineractCashierId || fineractCashierId
           );
-          
+
           // Check if Fineract shows cashier as having an active session
           if (fineractCashierData?.isRunning) {
-            console.log(`Fineract shows active session for cashier ${cashier.id}, syncing...`);
+            console.log(
+              `Fineract shows active session for cashier ${cashier.id}, syncing...`
+            );
             activeSession = await prisma.cashierSession.create({
               data: {
                 tenantId: tenant.id,
@@ -213,7 +222,8 @@ export async function POST(
         return NextResponse.json(
           {
             error: "Session required",
-            details: "Cashier must have an active session to receive cash. Please start a session first.",
+            details:
+              "Cashier must have an active session to receive cash. Please start a session first.",
           },
           { status: 400 }
         );
@@ -333,9 +343,10 @@ export async function POST(
       return NextResponse.json(
         {
           error: "Failed to allocate cash in Fineract",
-          details: error.response?.data?.defaultUserMessage || 
-                   error.response?.data?.errors?.[0]?.defaultUserMessage ||
-                   error.message,
+          details:
+            error.response?.data?.defaultUserMessage ||
+            error.response?.data?.errors?.[0]?.defaultUserMessage ||
+            error.message,
           fineractError: error.response?.data || null,
           debugInfo: {
             tellerId: teller.fineractTellerId,
