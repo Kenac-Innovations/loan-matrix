@@ -25,6 +25,8 @@ export async function GET(
       return NextResponse.json({ error: "Invalid loan ID" }, { status: 400 });
     }
 
+    console.log(`Fetching payout for loan ${fineractLoanId}, tenant ${tenant.id}`);
+
     const payout = await prisma.loanPayout.findUnique({
       where: {
         tenantId_fineractLoanId: {
@@ -33,6 +35,8 @@ export async function GET(
         },
       },
     });
+
+    console.log(`Payout lookup result:`, payout ? { id: payout.id, status: payout.status } : "Not found");
 
     if (!payout) {
       return NextResponse.json({

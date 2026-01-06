@@ -189,14 +189,19 @@ export function PayoutModal({
       );
 
       if (response.ok) {
+        const result = await response.json();
+        console.log("Payout processed successfully:", result);
+        
         setSuccess(
           `Successfully paid out ${formatCurrency(principal, currency)} to ${clientName}`
         );
         setPayoutStatus("PAID");
 
+        // Call onSuccess immediately to trigger SWR revalidation
+        onSuccess?.();
+
         // Refresh and close after delay
         setTimeout(() => {
-          onSuccess?.();
           router.refresh();
           onOpenChange(false);
         }, 2000);

@@ -32,7 +32,9 @@ export async function GET(
     });
 
     // If not found, try by Fineract ID
-    const fineractIdToSearch = fineractIdFromPrefix || (!isNaN(Number(tellerId)) ? Number(tellerId) : null);
+    const fineractIdToSearch =
+      fineractIdFromPrefix ||
+      (!isNaN(Number(tellerId)) ? Number(tellerId) : null);
     if (!teller && fineractIdToSearch) {
       teller = await prisma.teller.findFirst({
         where: { fineractTellerId: fineractIdToSearch, tenantId: tenant.id },
@@ -43,8 +45,10 @@ export async function GET(
     if (!teller && fineractIdToSearch) {
       try {
         const fineractService = await getFineractServiceWithSession();
-        const fineractTeller = await fineractService.getTeller(fineractIdToSearch);
-        
+        const fineractTeller = await fineractService.getTeller(
+          fineractIdToSearch
+        );
+
         if (fineractTeller) {
           // Auto-sync: Create the teller in the database
           teller = await prisma.teller.create({
@@ -52,21 +56,33 @@ export async function GET(
               tenantId: tenant.id,
               fineractTellerId: fineractIdToSearch,
               officeId: fineractTeller.officeId,
-              officeName: fineractTeller.officeName || `Office ${fineractTeller.officeId}`,
+              officeName:
+                fineractTeller.officeName ||
+                `Office ${fineractTeller.officeId}`,
               name: fineractTeller.name,
               description: fineractTeller.description || "",
-              startDate: Array.isArray(fineractTeller.startDate) 
-                ? new Date(fineractTeller.startDate[0], fineractTeller.startDate[1] - 1, fineractTeller.startDate[2])
+              startDate: Array.isArray(fineractTeller.startDate)
+                ? new Date(
+                    fineractTeller.startDate[0],
+                    fineractTeller.startDate[1] - 1,
+                    fineractTeller.startDate[2]
+                  )
                 : new Date(fineractTeller.startDate),
-              endDate: fineractTeller.endDate 
-                ? (Array.isArray(fineractTeller.endDate)
-                    ? new Date(fineractTeller.endDate[0], fineractTeller.endDate[1] - 1, fineractTeller.endDate[2])
-                    : new Date(fineractTeller.endDate))
+              endDate: fineractTeller.endDate
+                ? Array.isArray(fineractTeller.endDate)
+                  ? new Date(
+                      fineractTeller.endDate[0],
+                      fineractTeller.endDate[1] - 1,
+                      fineractTeller.endDate[2]
+                    )
+                  : new Date(fineractTeller.endDate)
                 : null,
               status: fineractTeller.status || "ACTIVE",
             },
           });
-          console.log(`Auto-synced Fineract teller ${fineractIdToSearch} to database as ${teller.id}`);
+          console.log(
+            `Auto-synced Fineract teller ${fineractIdToSearch} to database as ${teller.id}`
+          );
         }
       } catch (syncError) {
         console.error("Error syncing teller from Fineract:", syncError);
@@ -97,7 +113,9 @@ export async function GET(
       teller.fineractTellerId
     );
 
-    console.log(`Fetched ${fineractCashiers.length} cashiers from Fineract for teller ${teller.fineractTellerId}`);
+    console.log(
+      `Fetched ${fineractCashiers.length} cashiers from Fineract for teller ${teller.fineractTellerId}`
+    );
 
     // Look up database cashiers by Fineract ID to get database IDs
     const dbCashiers = await prisma.cashier.findMany({
@@ -131,7 +149,9 @@ export async function GET(
     // Merge Fineract data with database IDs and session status
     const mergedCashiers = fineractCashiers.map((fc: any) => {
       const dbCashier = dbCashiers.find((dc) => dc.fineractCashierId === fc.id);
-      const sessionStatus = dbCashier ? sessionStatusMap.get(dbCashier.id) : null;
+      const sessionStatus = dbCashier
+        ? sessionStatusMap.get(dbCashier.id)
+        : null;
       return {
         ...fc,
         // Include database ID if found, otherwise use Fineract ID as fallback
@@ -202,7 +222,9 @@ export async function POST(
     });
 
     // If not found, try by Fineract ID
-    const fineractIdToSearch = fineractIdFromPrefix || (!isNaN(Number(tellerId)) ? Number(tellerId) : null);
+    const fineractIdToSearch =
+      fineractIdFromPrefix ||
+      (!isNaN(Number(tellerId)) ? Number(tellerId) : null);
     if (!teller && fineractIdToSearch) {
       teller = await prisma.teller.findFirst({
         where: { fineractTellerId: fineractIdToSearch, tenantId: tenant.id },
@@ -213,8 +235,10 @@ export async function POST(
     if (!teller && fineractIdToSearch) {
       try {
         const fineractService = await getFineractServiceWithSession();
-        const fineractTeller = await fineractService.getTeller(fineractIdToSearch);
-        
+        const fineractTeller = await fineractService.getTeller(
+          fineractIdToSearch
+        );
+
         if (fineractTeller) {
           // Auto-sync: Create the teller in the database
           teller = await prisma.teller.create({
@@ -222,21 +246,33 @@ export async function POST(
               tenantId: tenant.id,
               fineractTellerId: fineractIdToSearch,
               officeId: fineractTeller.officeId,
-              officeName: fineractTeller.officeName || `Office ${fineractTeller.officeId}`,
+              officeName:
+                fineractTeller.officeName ||
+                `Office ${fineractTeller.officeId}`,
               name: fineractTeller.name,
               description: fineractTeller.description || "",
-              startDate: Array.isArray(fineractTeller.startDate) 
-                ? new Date(fineractTeller.startDate[0], fineractTeller.startDate[1] - 1, fineractTeller.startDate[2])
+              startDate: Array.isArray(fineractTeller.startDate)
+                ? new Date(
+                    fineractTeller.startDate[0],
+                    fineractTeller.startDate[1] - 1,
+                    fineractTeller.startDate[2]
+                  )
                 : new Date(fineractTeller.startDate),
-              endDate: fineractTeller.endDate 
-                ? (Array.isArray(fineractTeller.endDate)
-                    ? new Date(fineractTeller.endDate[0], fineractTeller.endDate[1] - 1, fineractTeller.endDate[2])
-                    : new Date(fineractTeller.endDate))
+              endDate: fineractTeller.endDate
+                ? Array.isArray(fineractTeller.endDate)
+                  ? new Date(
+                      fineractTeller.endDate[0],
+                      fineractTeller.endDate[1] - 1,
+                      fineractTeller.endDate[2]
+                    )
+                  : new Date(fineractTeller.endDate)
                 : null,
               status: fineractTeller.status || "ACTIVE",
             },
           });
-          console.log(`Auto-synced Fineract teller ${fineractIdToSearch} to database as ${teller.id}`);
+          console.log(
+            `Auto-synced Fineract teller ${fineractIdToSearch} to database as ${teller.id}`
+          );
         }
       } catch (syncError) {
         console.error("Error syncing teller from Fineract:", syncError);
