@@ -77,29 +77,47 @@ export async function getOrCreateDefaultTenant(): Promise<TenantInfo> {
   let tenant = await getTenantBySlug("goodfellow");
 
   if (!tenant) {
-    // Try to find or create default tenant using upsert to avoid race conditions
-    tenant = await prisma.tenant.upsert({
-      where: { slug: "default" },
-      update: {}, // Don't update anything if it exists
-      create: {
-        name: "Default Organization",
-        slug: "default",
-        settings: {
-          theme: "default",
-          features: {
-            statemachine: true,
-            notifications: true,
+    // Fallback to default tenant
+    tenant = await getTenantBySlug("default");
+  }
+
+  if (!tenant) {
+    // Try to create default tenant, handle race condition with retry
+    try {
+      tenant = await prisma.tenant.upsert({
+        where: { slug: "default" },
+        update: {}, // Don't update anything if it exists
+        create: {
+          name: "Default Organization",
+          slug: "default",
+          settings: {
+            theme: "default",
+            features: {
+              statemachine: true,
+              notifications: true,
+            },
           },
         },
-      },
-      select: {
-        id: true,
-        name: true,
-        slug: true,
-        domain: true,
-        settings: true,
-      },
-    });
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          domain: true,
+          settings: true,
+        },
+      });
+    } catch (error: any) {
+      // If unique constraint fails, another request created it - just fetch it
+      if (error.code === "P2002") {
+        tenant = await getTenantBySlug("default");
+      } else {
+        throw error;
+      }
+    }
+  }
+
+  if (!tenant) {
+    throw new Error("Failed to get or create default tenant");
   }
 
   return tenant as TenantInfo;
