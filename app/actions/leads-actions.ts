@@ -353,7 +353,9 @@ export async function getLeadsData(
 
     // Fetch payout statuses for active/disbursed loans
     const disbursedLeads = transformedLeads.filter(
-      (lead) => lead.fineractLoanStatus?.toLowerCase() === "active" && lead.fineractLoanId
+      (lead) =>
+        lead.fineractLoanStatus?.toLowerCase() === "active" &&
+        lead.fineractLoanId
     );
 
     if (disbursedLeads.length > 0) {
@@ -376,13 +378,17 @@ export async function getLeadsData(
 
         // Create a map for quick lookup
         const payoutStatusMap = new Map<number, string>(
-          payoutRecords.map((p: { fineractLoanId: number; status: string }) => [p.fineractLoanId, p.status])
+          payoutRecords.map((p: { fineractLoanId: number; status: string }) => [
+            p.fineractLoanId,
+            p.status,
+          ])
         );
 
         // Update leads with payout status
         disbursedLeads.forEach((lead) => {
           if (lead.fineractLoanId) {
-            lead.payoutStatus = payoutStatusMap.get(lead.fineractLoanId) || "PENDING";
+            lead.payoutStatus =
+              payoutStatusMap.get(lead.fineractLoanId) || "PENDING";
           }
         });
       } catch (error) {

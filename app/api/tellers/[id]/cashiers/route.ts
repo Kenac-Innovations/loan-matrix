@@ -110,13 +110,34 @@ export async function GET(
       },
     });
 
-    // Merge Fineract data with database IDs
+    // Get active sessions for all cashiers
+    const activeSessions = await prisma.cashierSession.findMany({
+      where: {
+        tellerId: teller.id,
+        tenantId: tenant.id,
+        sessionStatus: "ACTIVE",
+      },
+      select: {
+        cashierId: true,
+        sessionStatus: true,
+      },
+    });
+
+    // Create a map of cashier ID to session status
+    const sessionStatusMap = new Map(
+      activeSessions.map((s) => [s.cashierId, s.sessionStatus])
+    );
+
+    // Merge Fineract data with database IDs and session status
     const mergedCashiers = fineractCashiers.map((fc: any) => {
       const dbCashier = dbCashiers.find((dc) => dc.fineractCashierId === fc.id);
+      const sessionStatus = dbCashier ? sessionStatusMap.get(dbCashier.id) : null;
       return {
         ...fc,
         // Include database ID if found, otherwise use Fineract ID as fallback
         dbId: dbCashier?.id || null,
+        // Include session status from local database
+        sessionStatus: sessionStatus || "NOT_STARTED",
       };
     });
 

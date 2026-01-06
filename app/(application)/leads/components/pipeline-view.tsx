@@ -289,32 +289,32 @@ export function PipelineView({ initialData }: PipelineViewProps) {
                   };
 
                   return (
-                  <div
-                    key={lead.id}
+                    <div
+                      key={lead.id}
                       onClick={handleRowClick}
                       className={`relative flex flex-col sm:flex-row sm:items-center justify-between rounded-md border p-3 hover:bg-accent/50 cursor-pointer transition-colors ${
                         isNavigating ? "opacity-70 pointer-events-none" : ""
                       }`}
-                  >
+                    >
                       {isNavigating && (
                         <div className="absolute inset-0 flex items-center justify-center bg-background/50 rounded-md">
                           <Loader2 className="h-5 w-5 animate-spin text-primary" />
                         </div>
                       )}
-                    <div className="flex items-start gap-3 mb-3 sm:mb-0">
-                      <Avatar className="h-10 w-10">
+                      <div className="flex items-start gap-3 mb-3 sm:mb-0">
+                        <Avatar className="h-10 w-10">
                           <AvatarFallback className="bg-primary/10 text-primary">
-                          {lead.client
-                            .split(" ")
-                            .map((n) => n[0])
+                            {lead.client
+                              .split(" ")
+                              .map((n) => n[0])
                               .join("")
                               .slice(0, 2)
                               .toUpperCase()}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <p className="text-sm font-medium">{lead.client}</p>
+                          </AvatarFallback>
+                        </Avatar>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <p className="text-sm font-medium">{lead.client}</p>
                             {/* Fineract Status Indicator */}
                             {lead.loanSubmittedToFineract ||
                             lead.fineractLoanId ? (
@@ -329,27 +329,27 @@ export function PipelineView({ initialData }: PipelineViewProps) {
                                 title="Client created in Fineract"
                               />
                             ) : null}
-                          {lead.status === "overdue" && (
-                            <Badge
-                              variant="outline"
-                              className="border-red-500 bg-red-500/10 text-red-400 text-xs"
-                            >
-                              Overdue
+                            {lead.status === "overdue" && (
+                              <Badge
+                                variant="outline"
+                                className="border-red-500 bg-red-500/10 text-red-400 text-xs"
+                              >
+                                Overdue
+                              </Badge>
+                            )}
+                            {lead.status === "warning" && (
+                              <Badge
+                                variant="outline"
+                                className="border-yellow-500 bg-yellow-500/10 text-yellow-400 text-xs"
+                              >
+                                At Risk
+                              </Badge>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 mt-1">
+                            <Badge variant="outline" className="text-xs">
+                              {lead.type}
                             </Badge>
-                          )}
-                          {lead.status === "warning" && (
-                            <Badge
-                              variant="outline"
-                              className="border-yellow-500 bg-yellow-500/10 text-yellow-400 text-xs"
-                            >
-                              At Risk
-                            </Badge>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-2 mt-1">
-                          <Badge variant="outline" className="text-xs">
-                            {lead.type}
-                          </Badge>
                             {/* Status Badge */}
                             {lead.loanSubmittedToFineract ||
                             lead.fineractLoanId ? (
@@ -377,7 +377,8 @@ export function PipelineView({ initialData }: PipelineViewProps) {
                               </Badge>
                             )}
                             {/* Payout Status Badge for disbursed loans */}
-                            {lead.fineractLoanStatus?.toLowerCase() === "active" && (
+                            {lead.fineractLoanStatus?.toLowerCase() ===
+                              "active" && (
                               <Badge
                                 className={`text-xs ${
                                   lead.payoutStatus === "PAID"
@@ -394,15 +395,15 @@ export function PipelineView({ initialData }: PipelineViewProps) {
                                   : "Pending Payout"}
                               </Badge>
                             )}
-                          <span className="text-xs text-muted-foreground">
-                            {lead.amount}
-                          </span>
+                            <span className="text-xs text-muted-foreground">
+                              {lead.amount}
+                            </span>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-3 justify-between sm:justify-end">
+                      <div className="flex flex-wrap items-center gap-3 justify-between sm:justify-end">
                         {/* Assigned User Display */}
-                      <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2">
                           {lead.loanSubmittedToFineract ||
                           lead.fineractLoanId ? (
                             lead.assignedToUserName ? (
@@ -419,8 +420,8 @@ export function PipelineView({ initialData }: PipelineViewProps) {
                                 </Avatar>
                                 <span className="text-xs text-muted-foreground hidden sm:inline">
                                   {lead.assignedToUserName}
-                          </span>
-                        </div>
+                                </span>
+                              </div>
                             ) : (
                               <Badge
                                 variant="outline"
@@ -433,30 +434,30 @@ export function PipelineView({ initialData }: PipelineViewProps) {
                           ) : (
                             <span className="text-xs text-muted-foreground">
                               -
-                          </span>
+                            </span>
                           )}
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          asChild
-                          className="h-8 w-8"
-                        >
-                          <Link
-                            href={
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            asChild
+                            className="h-8 w-8"
+                          >
+                            <Link
+                              href={
                                 lead.loanSubmittedToFineract ||
                                 lead.fineractLoanId
                                   ? `/leads/${lead.id}`
                                   : `/leads/new?id=${lead.id}`
-                            }
-                          >
-                            <ChevronRight className="h-4 w-4" />
-                          </Link>
-                        </Button>
+                              }
+                            >
+                              <ChevronRight className="h-4 w-4" />
+                            </Link>
+                          </Button>
+                        </div>
                       </div>
                     </div>
-                  </div>
                   );
                 })
               : !isLoading && (
