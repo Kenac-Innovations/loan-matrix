@@ -27,7 +27,8 @@ export async function POST(
     }
 
     const body = await request.json();
-    const { amount, currency, notes, date, transactionType, loanPayoutId } = body;
+    const { amount, currency, notes, date, transactionType, loanPayoutId } =
+      body;
 
     if (!amount || amount <= 0) {
       return NextResponse.json(
@@ -64,9 +65,11 @@ export async function POST(
 
       // Check if loanPayoutId is a fineract loan ID (number) or database ID (string)
       const isNumericId = !isNaN(Number(loanPayoutId));
-      
-      console.log(`Processing disbursement for loanPayoutId: ${loanPayoutId}, isNumeric: ${isNumericId}, tenantId: ${tenant.id}`);
-      
+
+      console.log(
+        `Processing disbursement for loanPayoutId: ${loanPayoutId}, isNumeric: ${isNumericId}, tenantId: ${tenant.id}`
+      );
+
       if (isNumericId) {
         // It's a Fineract loan ID - find or create the payout record
         loanPayout = await prisma.loanPayout.findUnique({
@@ -77,16 +80,23 @@ export async function POST(
             },
           },
         });
-        
-        console.log(`Existing payout lookup result:`, loanPayout ? { id: loanPayout.id, status: loanPayout.status } : "Not found");
+
+        console.log(
+          `Existing payout lookup result:`,
+          loanPayout
+            ? { id: loanPayout.id, status: loanPayout.status }
+            : "Not found"
+        );
 
         // If payout record doesn't exist, create it by fetching loan details from Fineract
         if (!loanPayout) {
           console.log(`Creating new payout record for loan ${loanPayoutId}`);
           try {
             const fineractService = await getFineractServiceWithSession();
-            const loanDetails = await fineractService.getLoan(Number(loanPayoutId));
-            
+            const loanDetails = await fineractService.getLoan(
+              Number(loanPayoutId)
+            );
+
             if (loanDetails) {
               console.log(`Loan details fetched:`, {
                 id: loanDetails.id,
@@ -101,15 +111,25 @@ export async function POST(
                   fineractClientId: loanDetails.clientId,
                   clientName: loanDetails.clientName || "Unknown Client",
                   loanAccountNo: loanDetails.accountNo || "",
-                  amount: loanDetails.principal || loanDetails.approvedPrincipal || parseFloat(amount),
+                  amount:
+                    loanDetails.principal ||
+                    loanDetails.approvedPrincipal ||
+                    parseFloat(amount),
                   currency: loanDetails.currency?.code || currency,
                   status: "PENDING",
                 },
               });
-              console.log(`Payout record created:`, { id: loanPayout.id, tenantId: loanPayout.tenantId, fineractLoanId: loanPayout.fineractLoanId });
+              console.log(`Payout record created:`, {
+                id: loanPayout.id,
+                tenantId: loanPayout.tenantId,
+                fineractLoanId: loanPayout.fineractLoanId,
+              });
             }
           } catch (fetchError) {
-            console.error("Error fetching loan details from Fineract:", fetchError);
+            console.error(
+              "Error fetching loan details from Fineract:",
+              fetchError
+            );
           }
         }
       } else {
@@ -393,8 +413,14 @@ export async function POST(
 
       if (existingSettlement) {
         // Settlement already recorded, but also update loan payout if this is a disbursement
-        if (txnType === "DISBURSEMENT" && loanPayout && loanPayout.status !== "PAID") {
-          console.log(`Updating loan payout ${loanPayout.id} to PAID (existing settlement)`);
+        if (
+          txnType === "DISBURSEMENT" &&
+          loanPayout &&
+          loanPayout.status !== "PAID"
+        ) {
+          console.log(
+            `Updating loan payout ${loanPayout.id} to PAID (existing settlement)`
+          );
           await prisma.loanPayout.update({
             where: { id: loanPayout.id },
             data: {
@@ -406,7 +432,7 @@ export async function POST(
             },
           });
         }
-        
+
         return NextResponse.json({
           success: true,
           transaction: existingSettlement,
@@ -418,9 +444,12 @@ export async function POST(
     }
 
     // Create a negative allocation record (cash out)
-    const settlementNotes = txnType === "DISBURSEMENT" 
-      ? `Loan Disbursement: ${loanPayout?.clientName} - ${loanPayout?.loanAccountNo}${notes ? ` - ${notes}` : ""}`
-      : notes || "Expense Cash Out";
+    const settlementNotes =
+      txnType === "DISBURSEMENT"
+        ? `Loan Disbursement: ${loanPayout?.clientName} - ${
+            loanPayout?.loanAccountNo
+          }${notes ? ` - ${notes}` : ""}`
+        : notes || "Expense Cash Out";
 
     const settlement = await prisma.cashAllocation.create({
       data: {
