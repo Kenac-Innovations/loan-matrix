@@ -13,7 +13,7 @@ export async function POST(
 ) {
   try {
     const params = await context.params;
-    const { id: tellerId, cashierId } = params;
+    const { id: tellerIdParam, cashierId } = params;
     const tenant = await getTenantFromHeaders();
     const session = await getSession();
 
@@ -42,10 +42,21 @@ export async function POST(
       );
     }
 
-    // Get teller and cashier
-    const teller = await prisma.teller.findFirst({
-      where: { id: tellerId, tenantId: tenant.id },
+    // Try to find teller by database ID first, then by Fineract ID
+    let teller = await prisma.teller.findFirst({
+      where: { id: tellerIdParam, tenantId: tenant.id },
     });
+
+    if (!teller) {
+      const fineractTellerId = parseInt(tellerIdParam);
+      if (!isNaN(fineractTellerId)) {
+        teller = await prisma.teller.findFirst({
+          where: { fineractTellerId, tenantId: tenant.id },
+        });
+      }
+    }
+
+    const tellerId = teller?.id || tellerIdParam;
 
     // Try to find cashier by database ID first, then by Fineract ID
     let cashier = await prisma.cashier.findFirst({

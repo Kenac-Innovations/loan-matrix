@@ -13,7 +13,7 @@ export async function PUT(
 ) {
   try {
     const params = await context.params;
-    const { id: tellerId, cashierId } = params;
+    const { id: tellerIdParam, cashierId } = params;
     const tenant = await getTenantFromHeaders();
 
     if (!tenant) {
@@ -23,13 +23,25 @@ export async function PUT(
     const body = await request.json();
     const { endDate, isFullDay, startTime, endTime } = body;
 
-    const teller = await prisma.teller.findFirst({
-      where: { id: tellerId, tenantId: tenant.id },
+    // Try to find teller by database ID first, then by Fineract ID
+    let teller = await prisma.teller.findFirst({
+      where: { id: tellerIdParam, tenantId: tenant.id },
     });
+
+    if (!teller) {
+      const fineractTellerId = parseInt(tellerIdParam);
+      if (!isNaN(fineractTellerId)) {
+        teller = await prisma.teller.findFirst({
+          where: { fineractTellerId, tenantId: tenant.id },
+        });
+      }
+    }
 
     if (!teller) {
       return NextResponse.json({ error: "Teller not found" }, { status: 404 });
     }
+
+    const tellerId = teller.id;
 
     // Try to find cashier by database ID first, then by Fineract ID
     let cashier = await prisma.cashier.findFirst({
