@@ -376,6 +376,24 @@ export function PipelineView({ initialData }: PipelineViewProps) {
                                 Draft
                               </Badge>
                             )}
+                            {/* Payout Status Badge for disbursed loans */}
+                            {lead.fineractLoanStatus?.toLowerCase() === "active" && (
+                              <Badge
+                                className={`text-xs ${
+                                  lead.payoutStatus === "PAID"
+                                    ? "bg-green-100 text-green-800 border-green-200"
+                                    : lead.payoutStatus === "VOIDED"
+                                    ? "bg-gray-100 text-gray-800 border-gray-200"
+                                    : "bg-yellow-100 text-yellow-800 border-yellow-200"
+                                }`}
+                              >
+                                {lead.payoutStatus === "PAID"
+                                  ? "Paid"
+                                  : lead.payoutStatus === "VOIDED"
+                                  ? "Voided"
+                                  : "Pending Payout"}
+                              </Badge>
+                            )}
                           <span className="text-xs text-muted-foreground">
                             {lead.amount}
                           </span>

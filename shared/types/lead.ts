@@ -28,6 +28,8 @@ export interface Lead {
   assignedToUserId?: number | null;
   assignedToUserName?: string | null;
   assignedAt?: Date | null;
+  // Payout status (for disbursed loans)
+  payoutStatus?: string | null; // PENDING, PAID, VOIDED
 }
 
 export interface PipelineStage {

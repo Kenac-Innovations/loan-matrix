@@ -351,6 +351,45 @@ export async function getLeadsData(
       }
     }
 
+    // Fetch payout statuses for active/disbursed loans
+    const disbursedLeads = transformedLeads.filter(
+      (lead) => lead.fineractLoanStatus?.toLowerCase() === "active" && lead.fineractLoanId
+    );
+
+    if (disbursedLeads.length > 0) {
+      try {
+        // Get all payout records for this tenant
+        const payoutRecords = await prisma.loanPayout.findMany({
+          where: {
+            tenantId: tenant.id,
+            fineractLoanId: {
+              in: disbursedLeads
+                .map((l) => l.fineractLoanId)
+                .filter((id): id is number => id !== null && id !== undefined),
+            },
+          },
+          select: {
+            fineractLoanId: true,
+            status: true,
+          },
+        });
+
+        // Create a map for quick lookup
+        const payoutStatusMap = new Map<number, string>(
+          payoutRecords.map((p: { fineractLoanId: number; status: string }) => [p.fineractLoanId, p.status])
+        );
+
+        // Update leads with payout status
+        disbursedLeads.forEach((lead) => {
+          if (lead.fineractLoanId) {
+            lead.payoutStatus = payoutStatusMap.get(lead.fineractLoanId) || "PENDING";
+          }
+        });
+      } catch (error) {
+        console.error("Error fetching payout statuses:", error);
+      }
+    }
+
     // Get total count for pagination
     const totalCount = await prisma.lead.count({ where });
 

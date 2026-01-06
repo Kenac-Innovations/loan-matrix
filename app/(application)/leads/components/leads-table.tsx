@@ -150,6 +150,41 @@ export function LeadsTable({ initialData }: LeadsTableProps) {
       }),
     },
     {
+      id: "payoutStatus",
+      accessorKey: "payoutStatus",
+      header: "Payout",
+      cell: ({ row }) => {
+        const lead = row.original;
+        const loanStatus = lead.fineractLoanStatus;
+        const payoutStatus = lead.payoutStatus;
+
+        // Only show payout status for disbursed loans
+        if (loanStatus?.toLowerCase() !== "active") {
+          return <span className="text-muted-foreground text-xs">-</span>;
+        }
+
+        if (payoutStatus === "PAID") {
+          return (
+            <Badge className="bg-green-100 text-green-800 border-green-200 text-xs">
+              Paid
+            </Badge>
+          );
+        } else if (payoutStatus === "VOIDED") {
+          return (
+            <Badge className="bg-gray-100 text-gray-800 border-gray-200 text-xs">
+              Voided
+            </Badge>
+          );
+        } else {
+          return (
+            <Badge className="bg-yellow-100 text-yellow-800 border-yellow-200 text-xs">
+              Pending
+            </Badge>
+          );
+        }
+      },
+    },
+    {
       id: "amount",
       accessorKey: "amount",
       header: "Amount",
