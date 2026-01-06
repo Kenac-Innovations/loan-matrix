@@ -13,7 +13,7 @@ export async function getTellerFromFineract(id: string) {
   console.log("getTellerFromFineract called with id:", id);
   
   try {
-    // Parse the ID - handle fineract-prefixed IDs or numeric IDs
+    // Parse the ID - handle fineract-prefixed IDs, numeric IDs, or database IDs
     let tellerId: number;
     
     if (id.startsWith("fineract-")) {
@@ -23,8 +23,32 @@ export async function getTellerFromFineract(id: string) {
       tellerId = Number(id);
       console.log("Parsed numeric ID:", tellerId);
     } else {
-      console.error("Invalid teller ID format received:", id);
-      throw new Error("Invalid teller ID format");
+      // Try to look up by database ID (CUID format)
+      console.log("Looking up by database ID:", id);
+      
+      const cookieStore = await cookies();
+      const tenantSlug = cookieStore.get("tenant-slug")?.value || "goodfellow";
+      const tenant = await getTenantBySlug(tenantSlug);
+      
+      if (tenant) {
+        const dbTeller = await prisma.teller.findFirst({
+          where: {
+            id: id,
+            tenantId: tenant.id,
+          },
+        });
+        
+        if (dbTeller?.fineractTellerId) {
+          tellerId = dbTeller.fineractTellerId;
+          console.log("Found fineractTellerId from database:", tellerId);
+        } else {
+          console.error("Teller not found in database or has no fineractTellerId:", id);
+          throw new Error("Teller not found");
+        }
+      } else {
+        console.error("No tenant found");
+        throw new Error("Tenant not found");
+      }
     }
 
     const fineractService = await getFineractServiceWithSession();
