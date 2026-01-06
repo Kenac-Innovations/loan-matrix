@@ -117,7 +117,11 @@ export async function getTellerFromFineract(id: string) {
           },
         });
 
-        console.log("DB Teller found:", dbTeller?.id, "allocations:", dbTeller?.cashAllocations?.length);
+        console.log("=== TELLER BALANCE DEBUG ===");
+        console.log("DB Teller found:", dbTeller?.id);
+        console.log("DB Teller fineractTellerId:", dbTeller?.fineractTellerId);
+        console.log("Vault allocations count:", dbTeller?.cashAllocations?.length);
+        console.log("Vault allocations:", dbTeller?.cashAllocations?.map(a => ({ id: a.id, amount: a.amount, currency: a.currency, status: a.status })));
 
         if (dbTeller) {
           // Calculate vault balance
