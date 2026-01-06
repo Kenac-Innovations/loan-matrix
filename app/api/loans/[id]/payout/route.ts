@@ -4,23 +4,23 @@ import { getTenantFromHeaders } from "@/lib/tenant-service";
 import { getSession } from "@/lib/auth";
 
 /**
- * GET /api/loans/[loanId]/payout
+ * GET /api/loans/[id]/payout
  * Get the payout status for a specific loan
  */
 export async function GET(
   request: NextRequest,
-  context: { params: Promise<{ loanId: string }> }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
     const params = await context.params;
-    const { loanId } = params;
+    const { id } = params;
     const tenant = await getTenantFromHeaders();
 
     if (!tenant) {
       return NextResponse.json({ error: "Tenant not found" }, { status: 404 });
     }
 
-    const fineractLoanId = parseInt(loanId);
+    const fineractLoanId = parseInt(id);
     if (isNaN(fineractLoanId)) {
       return NextResponse.json({ error: "Invalid loan ID" }, { status: 400 });
     }
@@ -55,16 +55,16 @@ export async function GET(
 }
 
 /**
- * POST /api/loans/[loanId]/payout
+ * POST /api/loans/[id]/payout
  * Void a payout (reverse a disbursement)
  */
 export async function POST(
   request: NextRequest,
-  context: { params: Promise<{ loanId: string }> }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
     const params = await context.params;
-    const { loanId } = params;
+    const { id } = params;
     const tenant = await getTenantFromHeaders();
     const session = await getSession();
 
@@ -79,7 +79,7 @@ export async function POST(
     const body = await request.json();
     const { action, reason } = body;
 
-    const fineractLoanId = parseInt(loanId);
+    const fineractLoanId = parseInt(id);
     if (isNaN(fineractLoanId)) {
       return NextResponse.json({ error: "Invalid loan ID" }, { status: 400 });
     }
