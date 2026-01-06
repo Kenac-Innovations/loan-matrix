@@ -116,21 +116,12 @@ export async function GET(request: NextRequest) {
     });
 
     // Calculate balances for database tellers
-    console.log("=== TELLERS LIST BALANCE DEBUG ===");
-    console.log("DB Tellers count:", dbTellers.length);
-    
     const dbTellerBalances = await Promise.all(
       dbTellers.map(async (dbTeller) => {
         const vaultBalance = dbTeller.cashAllocations.reduce(
           (sum, alloc) => sum + alloc.amount,
           0
         );
-
-        console.log(`Teller ${dbTeller.name} (fineract ${dbTeller.fineractTellerId}):`, {
-          dbId: dbTeller.id,
-          vaultAllocations: dbTeller.cashAllocations.length,
-          vaultBalance,
-        });
 
         const cashierAllocations = await prisma.cashAllocation.findMany({
           where: {
@@ -149,8 +140,6 @@ export async function GET(request: NextRequest) {
 
         const availableBalance = vaultBalance - allocatedToCashiers;
         const currency = dbTeller.cashAllocations[0]?.currency || "USD";
-
-        console.log(`  → Available: ${availableBalance}, Allocated to cashiers: ${allocatedToCashiers}`);
 
         return {
           fineractTellerId: dbTeller.fineractTellerId,

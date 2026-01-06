@@ -36,10 +36,16 @@ export function extractTenantSlug(host: string): string {
 export async function getTenantFromHeaders(): Promise<TenantInfo | null> {
   const headersList = await headers();
   const host = headersList.get("host");
+  const xForwardedHost = headersList.get("x-forwarded-host");
+
+  console.log("=== TENANT FROM HEADERS DEBUG ===");
+  console.log("Host header:", host);
+  console.log("X-Forwarded-Host header:", xForwardedHost);
 
   if (!host) return null;
 
   const tenantSlug = extractTenantSlug(host);
+  console.log("Extracted tenant slug:", tenantSlug);
   return await getTenantBySlug(tenantSlug);
 }
 

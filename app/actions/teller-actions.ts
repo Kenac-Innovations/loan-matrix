@@ -2,15 +2,12 @@
 
 import { getFineractServiceWithSession } from "@/lib/fineract-api";
 import { prisma } from "@/lib/prisma";
-import { getTenantBySlug } from "@/lib/tenant-service";
+import { getTenantFromHeaders } from "@/lib/tenant-service";
 import { unstable_noStore as noStore } from "next/cache";
-import { cookies } from "next/headers";
 
 export async function getTellerFromFineract(id: string) {
   // Disable caching to always fetch fresh data from Fineract
   noStore();
-  
-  console.log("getTellerFromFineract called with id:", id);
   
   try {
     // Parse the ID - handle fineract-prefixed IDs, numeric IDs, or database IDs
@@ -18,17 +15,11 @@ export async function getTellerFromFineract(id: string) {
     
     if (id.startsWith("fineract-")) {
       tellerId = parseInt(id.replace("fineract-", ""));
-      console.log("Parsed fineract-prefixed ID:", tellerId);
     } else if (!isNaN(Number(id))) {
       tellerId = Number(id);
-      console.log("Parsed numeric ID:", tellerId);
     } else {
       // Try to look up by database ID (CUID format)
-      console.log("Looking up by database ID:", id);
-      
-      const cookieStore = await cookies();
-      const tenantSlug = cookieStore.get("tenant-slug")?.value || "goodfellow";
-      const tenant = await getTenantBySlug(tenantSlug);
+      const tenant = await getTenantFromHeaders();
       
       if (tenant) {
         const dbTeller = await prisma.teller.findFirst({
@@ -40,7 +31,6 @@ export async function getTellerFromFineract(id: string) {
         
         if (dbTeller?.fineractTellerId) {
           tellerId = dbTeller.fineractTellerId;
-          console.log("Found fineractTellerId from database:", tellerId);
         } else {
           console.error("Teller not found in database or has no fineractTellerId:", id);
           throw new Error("Teller not found");
@@ -55,7 +45,6 @@ export async function getTellerFromFineract(id: string) {
     
     // Fetch teller details from Fineract
     const teller = await fineractService.getTeller(tellerId);
-    console.log("Fineract teller response:", JSON.stringify(teller, null, 2));
 
     if (!teller) {
       return { success: false, error: "Teller not found in Fineract" };
@@ -65,7 +54,6 @@ export async function getTellerFromFineract(id: string) {
     let cashiers: any[] = [];
     try {
       cashiers = await fineractService.getCashiers(tellerId);
-      console.log("Fineract cashiers response:", JSON.stringify(cashiers, null, 2));
     } catch (cashierError) {
       console.error("Error fetching cashiers:", cashierError);
     }
@@ -74,7 +62,6 @@ export async function getTellerFromFineract(id: string) {
     let summary: any = null;
     try {
       summary = await fineractService.getTellerSummary(tellerId);
-      console.log("Fineract teller summary:", JSON.stringify(summary, null, 2));
     } catch (summaryError) {
       console.error("Error fetching teller summary:", summaryError);
     }
@@ -87,16 +74,10 @@ export async function getTellerFromFineract(id: string) {
     let recentSettlements: any[] = [];
 
     try {
-      console.log("Fetching tenant from cookies...");
-      const cookieStore = await cookies();
-      const tenantSlug = cookieStore.get("tenant-slug")?.value || "goodfellow";
-      console.log("Tenant slug from cookies:", tenantSlug);
-      const tenant = await getTenantBySlug(tenantSlug);
-      console.log("Tenant from DB:", tenant?.id, tenant?.slug);
+      const tenant = await getTenantFromHeaders();
       
       if (tenant) {
         // Find the local database teller by Fineract ID
-        console.log("Looking for teller with fineractTellerId:", tellerId, "tenantId:", tenant.id);
         const dbTeller = await prisma.teller.findFirst({
           where: {
             fineractTellerId: tellerId,
@@ -117,12 +98,6 @@ export async function getTellerFromFineract(id: string) {
           },
         });
 
-        console.log("=== TELLER BALANCE DEBUG ===");
-        console.log("DB Teller found:", dbTeller?.id);
-        console.log("DB Teller fineractTellerId:", dbTeller?.fineractTellerId);
-        console.log("Vault allocations count:", dbTeller?.cashAllocations?.length);
-        console.log("Vault allocations:", dbTeller?.cashAllocations?.map(a => ({ id: a.id, amount: a.amount, currency: a.currency, status: a.status })));
-
         if (dbTeller) {
           // Calculate vault balance
           vaultBalance = dbTeller.cashAllocations.reduce(
@@ -130,7 +105,6 @@ export async function getTellerFromFineract(id: string) {
             0
           );
           currency = dbTeller.cashAllocations[0]?.currency || "ZMW";
-          console.log("Vault balance calculated:", vaultBalance, currency);
 
           // Get cashier allocations
           const cashierAllocations = await prisma.cashAllocation.findMany({
@@ -149,12 +123,7 @@ export async function getTellerFromFineract(id: string) {
           );
           availableBalance = vaultBalance - allocatedToCashiers;
           recentSettlements = dbTeller.settlements;
-          console.log("Final balances - vault:", vaultBalance, "available:", availableBalance, "allocated:", allocatedToCashiers);
-        } else {
-          console.log("No DB teller found for fineractTellerId:", tellerId);
         }
-      } else {
-        console.log("No tenant found from cookies");
       }
     } catch (dbError) {
       console.error("Error fetching local database data:", dbError);
@@ -215,4 +184,3 @@ export async function getTellerCashiersFromFineract(tellerId: number) {
     };
   }
 }
-
