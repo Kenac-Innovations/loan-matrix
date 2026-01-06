@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import {
   getOrCreateDefaultTenant,
   getTenantBySlug,
+  getTenantFromHeaders,
 } from "@/lib/tenant-service";
 import { UssdLeadsMetrics, UssdLoanApplication } from "./ussd-leads-actions";
 import { Lead, PipelineStage } from "@/shared/types/lead";
@@ -78,11 +79,14 @@ export async function getLeadsData(
   try {
     const { stage, status, limit = 50, offset = 0 } = options;
 
-    // Get tenant
-    const tenant = await getOrCreateDefaultTenant();
+    // Get tenant - prefer headers for consistency with API routes
+    let tenant = await getTenantFromHeaders();
+    if (!tenant) {
+      tenant = await getOrCreateDefaultTenant();
+    }
     console.log(
-      "==========> log on server side getLeadsData response ::",
-      tenant
+      "==========> log on server side getLeadsData tenant ::",
+      { id: tenant?.id, slug: (tenant as any)?.slug }
     );
     if (!tenant) {
       throw new Error("Tenant not found");
@@ -358,16 +362,22 @@ export async function getLeadsData(
         lead.fineractLoanId
     );
 
+    console.log(`Leads with active loans: ${disbursedLeads.length}, tenant: ${tenant.id}`);
+
     if (disbursedLeads.length > 0) {
       try {
+        const loanIds = disbursedLeads
+          .map((l) => l.fineractLoanId)
+          .filter((id): id is number => id !== null && id !== undefined);
+        
+        console.log(`Looking up payout statuses for loan IDs:`, loanIds);
+        
         // Get all payout records for this tenant
         const payoutRecords = await prisma.loanPayout.findMany({
           where: {
             tenantId: tenant.id,
             fineractLoanId: {
-              in: disbursedLeads
-                .map((l) => l.fineractLoanId)
-                .filter((id): id is number => id !== null && id !== undefined),
+              in: loanIds,
             },
           },
           select: {
@@ -375,6 +385,8 @@ export async function getLeadsData(
             status: true,
           },
         });
+
+        console.log(`Found ${payoutRecords.length} payout records:`, payoutRecords);
 
         // Create a map for quick lookup
         const payoutStatusMap = new Map<number, string>(
