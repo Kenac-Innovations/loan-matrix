@@ -163,6 +163,28 @@ export async function POST(
       );
     }
 
+    // Check if cashier has an active session - required for cash in/out
+    if (cashier) {
+      const activeSession = await prisma.cashierSession.findFirst({
+        where: {
+          tellerId: teller.id,
+          cashierId: cashier.id,
+          tenantId: tenant.id,
+          sessionStatus: "ACTIVE",
+        },
+      });
+
+      if (!activeSession) {
+        return NextResponse.json(
+          {
+            error: "Session required",
+            details: "Cashier must have an active session to receive cash. Please start a session first.",
+          },
+          { status: 400 }
+        );
+      }
+    }
+
     // Check teller vault balance (allocations where cashierId is null)
     const tellerVaultAllocations = await prisma.cashAllocation.findMany({
       where: {

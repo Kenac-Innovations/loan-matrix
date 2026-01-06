@@ -550,9 +550,10 @@ export default function CashiersPage({
                   setSelectedCashier(cashier);
                   setShowCashInModal(true);
                 }}
+                disabled={sessionStatus !== "ACTIVE"}
               >
                 <ArrowDownLeft className="h-4 w-4 mr-2 text-green-600" />
-                Cash In
+                Cash In {sessionStatus !== "ACTIVE" && "(Session Required)"}
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={(e) => {
@@ -560,9 +561,10 @@ export default function CashiersPage({
                   setSelectedCashier(cashier);
                   setShowCashOutModal(true);
                 }}
+                disabled={sessionStatus !== "ACTIVE"}
               >
                 <ArrowUpRight className="h-4 w-4 mr-2 text-red-600" />
-                Cash Out
+                Cash Out {sessionStatus !== "ACTIVE" && "(Session Required)"}
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={(e) => {
