@@ -206,6 +206,8 @@ export const authOptions: NextAuthOptions = {
     async jwt({ token, user }) {
       try {
         // Add user data to the token right after sign in
+        // NOTE: Only store essential data to avoid 431 "Request Header Fields Too Large" error
+        // rawPermissions can be very large and causes the JWT cookie to exceed size limits
         if (user) {
           token.accessToken = user.accessToken;
           token.userId = user.userId;
@@ -213,9 +215,10 @@ export const authOptions: NextAuthOptions = {
             user.base64EncodedAuthenticationKey;
           token.officeId = user.officeId;
           token.officeName = user.officeName;
-          token.roles = user.roles;
+          // Only store role IDs and names to reduce token size
+          token.roles = user.roles?.map((r: any) => ({ id: r.id, name: r.name, disabled: r.disabled })) || [];
           token.permissions = user.permissions;
-          token.rawPermissions = user.rawPermissions;
+          // Don't store rawPermissions - it can contain hundreds of items and causes 431 errors
           token.shouldRenewPassword = user.shouldRenewPassword;
           token.isTwoFactorAuthenticationRequired =
             user.isTwoFactorAuthenticationRequired;
@@ -241,7 +244,8 @@ export const authOptions: NextAuthOptions = {
           session.user.officeName = token.officeName as string;
           session.user.roles = token.roles as any[];
           session.user.permissions = token.permissions as SpecificPermission[];
-          session.user.rawPermissions = token.rawPermissions as string[];
+          // rawPermissions not stored in JWT to avoid 431 errors - use permissions instead
+          session.user.rawPermissions = [];
           session.user.shouldRenewPassword =
             token.shouldRenewPassword as boolean;
           session.user.isTwoFactorAuthenticationRequired =
