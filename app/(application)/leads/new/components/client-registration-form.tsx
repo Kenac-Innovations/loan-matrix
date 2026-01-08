@@ -11046,6 +11046,7 @@ export function ClientRegistrationForm({
                                                             }
                                                           );
                                                         }}
+                                                        clientName={`${firstname || ""} ${lastname || ""}`.trim()}
                                                       />
                                                     )}
                                                   </div>

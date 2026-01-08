@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import { SearchableSelect } from "@/components/searchable-select";
 import {
   getBranchesForBank,
@@ -15,6 +16,7 @@ interface BankDetailsFieldsProps {
   headers: any[];
   editedData: Record<string, any>;
   onFieldChange: (columnName: string, value: any) => void;
+  clientName?: string; // Client's full name for account name field
 }
 
 // Helper to normalize column names for comparison
@@ -49,6 +51,25 @@ function isBranchNameField(columnName: string): boolean {
   );
 }
 
+function isAccountNumberField(columnName: string): boolean {
+  const normalized = normalizeColumnName(columnName);
+  return (
+    normalized === "accountnumber" ||
+    normalized === "bankaccountnumber" ||
+    normalized.includes("accountnumber") ||
+    normalized.includes("accountno")
+  );
+}
+
+function isAccountNameField(columnName: string): boolean {
+  const normalized = normalizeColumnName(columnName);
+  return (
+    normalized === "accountname" ||
+    normalized === "bankaccountname" ||
+    normalized.includes("accountname")
+  );
+}
+
 // Format header name for display
 function formatHeaderName(name: string): string {
   let formatted = name
@@ -76,11 +97,14 @@ export function BankDetailsFields({
   headers,
   editedData,
   onFieldChange,
+  clientName,
 }: BankDetailsFieldsProps) {
   // Find the relevant column headers
   const bankHeader = headers.find((h) => isBankField(h.columnName));
   const branchCodeHeader = headers.find((h) => isBranchCodeField(h.columnName));
   const branchNameHeader = headers.find((h) => isBranchNameField(h.columnName));
+  const accountNumberHeader = headers.find((h) => isAccountNumberField(h.columnName));
+  const accountNameHeader = headers.find((h) => isAccountNameField(h.columnName));
 
   // Local state for available branches based on selected bank
   const [availableBranches, setAvailableBranches] = useState<BankBranch[]>([]);
@@ -96,6 +120,42 @@ export function BankDetailsFields({
   const currentBranchName = branchNameHeader
     ? editedData[branchNameHeader.columnName]
     : undefined;
+  const currentAccountNumber = accountNumberHeader
+    ? editedData[accountNumberHeader.columnName]
+    : undefined;
+  const currentAccountName = accountNameHeader
+    ? editedData[accountNameHeader.columnName]
+    : undefined;
+
+  // Auto-fill account name with client name on mount
+  useEffect(() => {
+    if (accountNameHeader && clientName && !currentAccountName) {
+      onFieldChange(accountNameHeader.columnName, clientName);
+    }
+  }, [accountNameHeader, clientName, currentAccountName, onFieldChange]);
+
+  // Account number validation state
+  const [accountNumberError, setAccountNumberError] = useState<string>("");
+
+  // Handle account number change with 13-digit validation
+  const handleAccountNumberChange = useCallback(
+    (value: string) => {
+      // Only allow digits
+      const digitsOnly = value.replace(/\D/g, "");
+      
+      if (accountNumberHeader) {
+        onFieldChange(accountNumberHeader.columnName, digitsOnly);
+      }
+
+      // Validate 13 digits
+      if (digitsOnly.length > 0 && digitsOnly.length !== 13) {
+        setAccountNumberError("Account number must be exactly 13 digits");
+      } else {
+        setAccountNumberError("");
+      }
+    },
+    [accountNumberHeader, onFieldChange]
+  );
 
   // Get the bank name from the CODELOOKUP value
   const getBankNameFromValue = useCallback(
@@ -300,12 +360,65 @@ export function BankDetailsFields({
         </div>
       )}
 
-      {/* Branch Name Field - Hidden, auto-filled when branch code is selected */}
+      {/* Branch Name Field - Uses our local data, filtered by bank */}
       {branchNameHeader && (
-        <input
-          type="hidden"
-          value={currentBranchName?.toString() ?? ""}
-        />
+        <div className="space-y-1">
+          <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            {formatHeaderName(branchNameHeader.columnName)}
+          </Label>
+          <SearchableSelect
+            options={branchNameOptions}
+            value={currentBranchName?.toString() ?? ""}
+            onValueChange={handleBranchNameChange}
+            placeholder={
+              availableBranches.length > 0
+                ? "Select branch name"
+                : "Select a bank first"
+            }
+            emptyMessage={
+              availableBranches.length > 0
+                ? "No matching branch names"
+                : "Select a bank to see branch names"
+            }
+            disabled={availableBranches.length === 0}
+          />
+        </div>
+      )}
+
+      {/* Account Number Field - 13 digits validation */}
+      {accountNumberHeader && (
+        <div className="space-y-1">
+          <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            {formatHeaderName(accountNumberHeader.columnName)}
+          </Label>
+          <Input
+            type="text"
+            value={currentAccountNumber?.toString() ?? ""}
+            onChange={(e) => handleAccountNumberChange(e.target.value)}
+            placeholder="Enter 13-digit account number"
+            maxLength={13}
+            className={accountNumberError ? "border-red-500" : ""}
+          />
+          {accountNumberError && (
+            <p className="text-xs text-red-500">{accountNumberError}</p>
+          )}
+        </div>
+      )}
+
+      {/* Account Name Field - Auto-filled with client name */}
+      {accountNameHeader && (
+        <div className="space-y-1">
+          <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            {formatHeaderName(accountNameHeader.columnName)}
+          </Label>
+          <Input
+            type="text"
+            value={currentAccountName?.toString() ?? ""}
+            onChange={(e) => onFieldChange(accountNameHeader.columnName, e.target.value)}
+            placeholder="Account holder name"
+            className="text-sm"
+          />
+        </div>
       )}
     </>
   );
@@ -336,10 +449,14 @@ export function getBankDetailColumnNames(headers: any[]): string[] {
   const bankHeader = headers.find((h) => isBankField(h.columnName));
   const branchCodeHeader = headers.find((h) => isBranchCodeField(h.columnName));
   const branchNameHeader = headers.find((h) => isBranchNameField(h.columnName));
+  const accountNumberHeader = headers.find((h) => isAccountNumberField(h.columnName));
+  const accountNameHeader = headers.find((h) => isAccountNameField(h.columnName));
 
   if (bankHeader) names.push(bankHeader.columnName);
   if (branchCodeHeader) names.push(branchCodeHeader.columnName);
   if (branchNameHeader) names.push(branchNameHeader.columnName);
+  if (accountNumberHeader) names.push(accountNumberHeader.columnName);
+  if (accountNameHeader) names.push(accountNameHeader.columnName);
 
   return names;
 }

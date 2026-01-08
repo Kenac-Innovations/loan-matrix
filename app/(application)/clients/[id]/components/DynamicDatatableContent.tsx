@@ -92,6 +92,7 @@ interface DynamicDatatableContentProps {
   initialData?: any;
   onDataChange?: (hasData: boolean) => void; // Callback when data changes (add/edit/delete)
   onEditingChange?: (isEditing: boolean) => void; // Callback when editing state changes
+  clientName?: string; // Client's full name for auto-filling account name
 }
 
 export function DynamicDatatableContent({
@@ -100,6 +101,7 @@ export function DynamicDatatableContent({
   initialData,
   onDataChange,
   onEditingChange,
+  clientName,
 }: DynamicDatatableContentProps) {
   // Initialize state from server-provided data if available
   const [headers, setHeaders] = useState<any[]>(
@@ -1021,6 +1023,7 @@ export function DynamicDatatableContent({
               headers={headers}
               editedData={editedData}
               onFieldChange={handleFieldChange}
+              clientName={clientName}
             />
           )}
           {/* Render other fields normally, skipping bank detail fields */}
@@ -1318,6 +1321,7 @@ export function DynamicDatatableContent({
                     headers={headers}
                     editedData={editedData}
                     onFieldChange={handleFieldChange}
+                    clientName={clientName}
                   />
                 )}
                 {row.map((cell: any, ci: number) => {
