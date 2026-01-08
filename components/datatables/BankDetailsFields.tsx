@@ -243,7 +243,7 @@ export function BankDetailsFields({
   // Build branch code options from our local data
   const branchCodeOptions = availableBranches.map((branch) => ({
     value: branch.branchCode,
-    label: `${branch.branchCode} - ${branch.branchName}`,
+    label: branch.branchCode,
   }));
 
   // Build branch name options from our local data
@@ -300,29 +300,12 @@ export function BankDetailsFields({
         </div>
       )}
 
-      {/* Branch Name Field - Uses our local data, filtered by bank */}
+      {/* Branch Name Field - Hidden, auto-filled when branch code is selected */}
       {branchNameHeader && (
-        <div className="space-y-1">
-          <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            {formatHeaderName(branchNameHeader.columnName)}
-          </Label>
-          <SearchableSelect
-            options={branchNameOptions}
-            value={currentBranchName?.toString() ?? ""}
-            onValueChange={handleBranchNameChange}
-            placeholder={
-              availableBranches.length > 0
-                ? "Select branch name"
-                : "Select a bank first"
-            }
-            emptyMessage={
-              availableBranches.length > 0
-                ? "No matching branch names"
-                : "Select a bank to see branch names"
-            }
-            disabled={availableBranches.length === 0}
-          />
-        </div>
+        <input
+          type="hidden"
+          value={currentBranchName?.toString() ?? ""}
+        />
       )}
     </>
   );
