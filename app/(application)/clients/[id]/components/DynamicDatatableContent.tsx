@@ -30,6 +30,11 @@ import {
   hasBankDetailFields,
   getBankDetailColumnNames,
 } from "@/components/datatables/BankDetailsFields";
+import {
+  EmploymentDetailsFields,
+  hasEmploymentDetailFields,
+  getEmploymentDetailColumnNames,
+} from "@/components/datatables/EmploymentDetailsFields";
 
 // Helper function to check if a column is a phone/mobile number field
 const isPhoneNumberField = (columnName: string): boolean => {
@@ -176,10 +181,18 @@ export function DynamicDatatableContent({
     load();
   }, [datatableName, clientId, initialData]);
 
+  // Helper to check if column is a branch code field (should not format with commas)
+  const isBranchCodeColumn = (columnName?: string): boolean => {
+    if (!columnName) return false;
+    const normalized = columnName.toLowerCase().replace(/[_\s-]+/g, "");
+    return normalized.includes("branchcode") || normalized.includes("bankbranchcode");
+  };
+
   const formatCell = (
     val: any,
     columnType?: string,
-    columnDisplayType?: string
+    columnDisplayType?: string,
+    columnName?: string
   ) => {
     if (val === null || val === undefined || val === "") {
       return <span className="text-muted-foreground italic">—</span>;
@@ -224,6 +237,11 @@ export function DynamicDatatableContent({
           {val ? "Yes" : "No"}
         </Badge>
       );
+    }
+
+    // Branch code fields should display without comma formatting
+    if (isBranchCodeColumn(columnName)) {
+      return <span className="font-medium tabular-nums">{String(val)}</span>;
     }
 
     // Format numbers and decimals
@@ -976,6 +994,12 @@ export function DynamicDatatableContent({
     ? getBankDetailColumnNames(headers)
     : [];
 
+  // Check if this datatable has employment detail fields that need custom rendering
+  const showEmploymentDetailFields = hasEmploymentDetailFields(headers);
+  const employmentDetailColumnNames = showEmploymentDetailFields
+    ? getEmploymentDetailColumnNames(headers)
+    : [];
+
   // Show form for adding new row when editingRowIndex is -1
   if (editingRowIndex === -1) {
     return (
@@ -1026,6 +1050,14 @@ export function DynamicDatatableContent({
               clientName={clientName}
             />
           )}
+          {/* Render custom employment detail fields if applicable */}
+          {showEmploymentDetailFields && (
+            <EmploymentDetailsFields
+              headers={headers}
+              editedData={editedData}
+              onFieldChange={handleFieldChange}
+            />
+          )}
           {/* Render other fields normally, skipping bank detail fields */}
           {headers.map((header, index) => {
             const columnName = header.columnName;
@@ -1041,6 +1073,9 @@ export function DynamicDatatableContent({
 
             // Skip bank detail fields - they're rendered by BankDetailsFields
             if (bankDetailColumnNames.includes(columnName)) return null;
+
+            // Skip employment detail fields - they're rendered by EmploymentDetailsFields
+            if (employmentDetailColumnNames.includes(columnName)) return null;
 
             return renderEditableField(
               header,
@@ -1324,6 +1359,14 @@ export function DynamicDatatableContent({
                     clientName={clientName}
                   />
                 )}
+                {/* Render custom employment detail fields when editing */}
+                {isEditing && showEmploymentDetailFields && (
+                  <EmploymentDetailsFields
+                    headers={headers}
+                    editedData={editedData}
+                    onFieldChange={handleFieldChange}
+                  />
+                )}
                 {row.map((cell: any, ci: number) => {
                   const header = headers[ci];
                   const headerName = formatHeaderName(header?.columnName || "");
@@ -1346,6 +1389,11 @@ export function DynamicDatatableContent({
 
                   // Skip bank detail fields when editing - they're rendered by BankDetailsFields
                   if (isEditing && bankDetailColumnNames.includes(header?.columnName)) {
+                    return null;
+                  }
+
+                  // Skip employment detail fields when editing - they're rendered by EmploymentDetailsFields
+                  if (isEditing && employmentDetailColumnNames.includes(header?.columnName)) {
                     return null;
                   }
 
@@ -1414,7 +1462,8 @@ export function DynamicDatatableContent({
                     cellValue = formatCell(
                     displayValue,
                     header?.columnType,
-                    header?.columnDisplayType
+                    header?.columnDisplayType,
+                    header?.columnName
                   );
                   }
 

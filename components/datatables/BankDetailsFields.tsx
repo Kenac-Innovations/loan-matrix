@@ -33,13 +33,24 @@ function isBankField(columnName: string): boolean {
   return normalized === "bank" || normalized === "bankname";
 }
 
-function isBranchCodeField(columnName: string): boolean {
+// Check if this is the "bank branch code" field (shown as "Branch Code")
+function isBankBranchCodeField(columnName: string): boolean {
   const normalized = normalizeColumnName(columnName);
+  return normalized === "bankbranchcode" || normalized.includes("bankbranchcode");
+}
+
+// Check if this is just "branch code" field (to be hidden)
+function isBranchCodeOnlyField(columnName: string): boolean {
+  const normalized = normalizeColumnName(columnName);
+  // Match "branchcode" but NOT "bankbranchcode"
   return (
-    normalized === "bankbranchcode" ||
-    normalized === "branchcode" ||
-    normalized.includes("branchcode")
+    (normalized === "branchcode" || normalized.includes("branchcode")) &&
+    !normalized.includes("bankbranchcode")
   );
+}
+
+function isBranchCodeField(columnName: string): boolean {
+  return isBankBranchCodeField(columnName) || isBranchCodeOnlyField(columnName);
 }
 
 function isBranchNameField(columnName: string): boolean {
@@ -101,7 +112,12 @@ export function BankDetailsFields({
 }: BankDetailsFieldsProps) {
   // Find the relevant column headers
   const bankHeader = headers.find((h) => isBankField(h.columnName));
-  const branchCodeHeader = headers.find((h) => isBranchCodeField(h.columnName));
+  // "bank branch code" field - shown as "Branch Code"
+  const bankBranchCodeHeader = headers.find((h) => isBankBranchCodeField(h.columnName));
+  // "branch code" field - hidden
+  const branchCodeOnlyHeader = headers.find((h) => isBranchCodeOnlyField(h.columnName));
+  // Use bank branch code if available, otherwise fall back to branch code only
+  const branchCodeHeader = bankBranchCodeHeader || branchCodeOnlyHeader;
   const branchNameHeader = headers.find((h) => isBranchNameField(h.columnName));
   const accountNumberHeader = headers.find((h) => isAccountNumberField(h.columnName));
   const accountNameHeader = headers.find((h) => isAccountNameField(h.columnName));
@@ -330,11 +346,11 @@ export function BankDetailsFields({
         </div>
       )}
 
-      {/* Branch Code Field - Uses our local data, filtered by bank */}
-      {branchCodeHeader && (
+      {/* Bank Branch Code Field - Displayed as "Branch Code", uses our local data */}
+      {bankBranchCodeHeader && (
         <div className="space-y-1">
           <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            {formatHeaderName(branchCodeHeader.columnName)}
+            Branch Code
           </Label>
           <SearchableSelect
             options={branchCodeOptions}
@@ -447,13 +463,16 @@ export function getBankDetailColumnNames(headers: any[]): string[] {
   const names: string[] = [];
 
   const bankHeader = headers.find((h) => isBankField(h.columnName));
-  const branchCodeHeader = headers.find((h) => isBranchCodeField(h.columnName));
+  const bankBranchCodeHeader = headers.find((h) => isBankBranchCodeField(h.columnName));
+  const branchCodeOnlyHeader = headers.find((h) => isBranchCodeOnlyField(h.columnName));
   const branchNameHeader = headers.find((h) => isBranchNameField(h.columnName));
   const accountNumberHeader = headers.find((h) => isAccountNumberField(h.columnName));
   const accountNameHeader = headers.find((h) => isAccountNameField(h.columnName));
 
   if (bankHeader) names.push(bankHeader.columnName);
-  if (branchCodeHeader) names.push(branchCodeHeader.columnName);
+  if (bankBranchCodeHeader) names.push(bankBranchCodeHeader.columnName);
+  // Also include "branch code" only field so it's hidden from default rendering
+  if (branchCodeOnlyHeader) names.push(branchCodeOnlyHeader.columnName);
   if (branchNameHeader) names.push(branchNameHeader.columnName);
   if (accountNumberHeader) names.push(accountNumberHeader.columnName);
   if (accountNameHeader) names.push(accountNameHeader.columnName);
