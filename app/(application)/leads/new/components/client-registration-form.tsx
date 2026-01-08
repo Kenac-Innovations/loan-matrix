@@ -462,347 +462,348 @@ export function ClientRegistrationForm({
     }
   }, [clientCreatedInFineract, fineractClientId]);
 
-  // Fetch additional details (address, data tables) when we have a Fineract client ID
-  useEffect(() => {
-    const fetchAdditionalDetails = async () => {
-      // Use React state fineractClientId first, fallback to window
-      const clientId = fineractClientId || (window as any).fineractClientId;
+  // Function to fetch additional details - can be called directly or from useEffect
+  const fetchAdditionalDetailsForClient = async (clientIdParam?: number) => {
+    // Use provided clientId, or fall back to state, or fall back to window
+    const clientId = clientIdParam || fineractClientId || (window as any).fineractClientId;
 
-      if (!clientId || !clientCreatedInFineract) {
-        return;
+    if (!clientId) {
+      console.log("No clientId available for fetchAdditionalDetailsForClient");
+      return;
+    }
+
+    console.log(">>> fetchAdditionalDetailsForClient called with clientId:", clientId);
+    setIsLoadingAdditionalDetails(true);
+    const numericClientId = Number(clientId);
+    
+    // Ensure fineractClientId state is set
+    if (!fineractClientId && clientId) {
+      setFineractClientId(numericClientId);
+    }
+
+    try {
+      // Fetch address field configuration
+      const fieldConfigResponse = await fetch(
+        `/api/fineract/fieldconfiguration/ADDRESS`
+      );
+      if (fieldConfigResponse.ok) {
+        const fieldConfigData = await fieldConfigResponse.json();
+        // Filter to only enabled fields and exclude system fields
+        const enabledFields = (fieldConfigData || []).filter(
+          (field: any) =>
+            field.isEnabled &&
+            !["createdBy", "createdOn", "updatedBy", "updatedOn"].includes(
+              field.field
+            )
+        );
+        setAddressFieldConfig(enabledFields);
       }
 
-      setIsLoadingAdditionalDetails(true);
-      const numericClientId = Number(clientId);
-      if (!fineractClientId) {
-        setFineractClientId(numericClientId);
+      // Fetch address template for dropdown options
+      const templateResponse = await fetch(
+        `/api/fineract/clients/addresses/template`
+      );
+      let templateData = null;
+      if (templateResponse.ok) {
+        templateData = await templateResponse.json();
+        setAddressTemplate(templateData);
       }
 
+      // Fetch identifiers template for document types
       try {
-        // Fetch address field configuration
-        const fieldConfigResponse = await fetch(
-          `/api/fineract/fieldconfiguration/ADDRESS`
+        console.log(
+          "Fetching identifiers template for client:",
+          numericClientId
         );
-        if (fieldConfigResponse.ok) {
-          const fieldConfigData = await fieldConfigResponse.json();
-          // Filter to only enabled fields and exclude system fields
-          const enabledFields = (fieldConfigData || []).filter(
-            (field: any) =>
-              field.isEnabled &&
-              !["createdBy", "createdOn", "updatedBy", "updatedOn"].includes(
-                field.field
-              )
-          );
-          setAddressFieldConfig(enabledFields);
-        }
-
-        // Fetch address template for dropdown options
-        const templateResponse = await fetch(
-          `/api/fineract/clients/addresses/template`
+        const identifiersTemplateResponse = await fetch(
+          `/api/fineract/clients/${numericClientId}/identifiers/template`
         );
-        let templateData = null;
-        if (templateResponse.ok) {
-          templateData = await templateResponse.json();
-          setAddressTemplate(templateData);
-        }
+        console.log(
+          "Identifiers template response status:",
+          identifiersTemplateResponse.status,
+          identifiersTemplateResponse.statusText
+        );
 
-        // Fetch identifiers template for document types
-        try {
+        if (identifiersTemplateResponse.ok) {
+          const identifiersData = await identifiersTemplateResponse.json();
+          console.log("Identifiers template raw data:", identifiersData);
           console.log(
-            "Fetching identifiers template for client:",
-            numericClientId
-          );
-          const identifiersTemplateResponse = await fetch(
-            `/api/fineract/clients/${numericClientId}/identifiers/template`
+            "Has documentTypeOptions:",
+            !!identifiersData?.documentTypeOptions
           );
           console.log(
-            "Identifiers template response status:",
-            identifiersTemplateResponse.status,
-            identifiersTemplateResponse.statusText
+            "documentTypeOptions length:",
+            identifiersData?.documentTypeOptions?.length
           );
 
-          if (identifiersTemplateResponse.ok) {
-            const identifiersData = await identifiersTemplateResponse.json();
-            console.log("Identifiers template raw data:", identifiersData);
+          // Handle different response structures
+          let templateToSet = null;
+
+          if (identifiersData?.documentTypeOptions) {
+            // Direct structure: { documentTypeOptions: [...] }
+            templateToSet = identifiersData;
+            console.log("Using direct documentTypeOptions structure");
+          } else if (identifiersData?.data?.documentTypeOptions) {
+            // Nested structure: { data: { documentTypeOptions: [...] } }
+            templateToSet = identifiersData.data;
+            console.log("Using nested data.documentTypeOptions structure");
+          } else if (Array.isArray(identifiersData)) {
+            // Array structure: [...]
+            templateToSet = { documentTypeOptions: identifiersData };
             console.log(
-              "Has documentTypeOptions:",
-              !!identifiersData?.documentTypeOptions
+              "Using array structure, wrapped in documentTypeOptions"
             );
-            console.log(
-              "documentTypeOptions length:",
-              identifiersData?.documentTypeOptions?.length
-            );
+          } else if (identifiersData && typeof identifiersData === "object") {
+            // Check for other possible property names
+            const keys = Object.keys(identifiersData);
+            console.log("Template object keys:", keys);
 
-            // Handle different response structures
-            let templateToSet = null;
-
-            if (identifiersData?.documentTypeOptions) {
-              // Direct structure: { documentTypeOptions: [...] }
-              templateToSet = identifiersData;
-              console.log("Using direct documentTypeOptions structure");
-            } else if (identifiersData?.data?.documentTypeOptions) {
-              // Nested structure: { data: { documentTypeOptions: [...] } }
-              templateToSet = identifiersData.data;
-              console.log("Using nested data.documentTypeOptions structure");
-            } else if (Array.isArray(identifiersData)) {
-              // Array structure: [...]
-              templateToSet = { documentTypeOptions: identifiersData };
-              console.log(
-                "Using array structure, wrapped in documentTypeOptions"
-              );
-            } else if (identifiersData && typeof identifiersData === "object") {
-              // Check for other possible property names
-              const keys = Object.keys(identifiersData);
-              console.log("Template object keys:", keys);
-
-              // Look for any array property that might be document types
-              for (const key of keys) {
+            // Look for any array property that might be document types
+            for (const key of keys) {
+              if (
+                Array.isArray(identifiersData[key]) &&
+                identifiersData[key].length > 0
+              ) {
+                const firstItem = identifiersData[key][0];
+                // Check if it looks like a document type option (has id and name/value)
                 if (
-                  Array.isArray(identifiersData[key]) &&
-                  identifiersData[key].length > 0
+                  firstItem &&
+                  firstItem.id !== undefined &&
+                  (firstItem.name || firstItem.value)
                 ) {
-                  const firstItem = identifiersData[key][0];
-                  // Check if it looks like a document type option (has id and name/value)
-                  if (
-                    firstItem &&
-                    firstItem.id !== undefined &&
-                    (firstItem.name || firstItem.value)
-                  ) {
-                    templateToSet = {
-                      documentTypeOptions: identifiersData[key],
-                    };
-                    console.log(`Using array from key: ${key}`);
-                    break;
-                  }
-                }
-              }
-
-              // If still not found, use the data as-is
-              if (!templateToSet) {
-                templateToSet = identifiersData;
-                console.log("Using data as-is (no documentTypeOptions found)");
-              }
-            } else {
-              console.warn(
-                "Unexpected identifiers template structure:",
-                identifiersData
-              );
-              templateToSet = identifiersData;
-            }
-
-            console.log("Setting identifiers template:", templateToSet);
-            setIdentifiersTemplate(templateToSet);
-          } else {
-            const errorData = await identifiersTemplateResponse
-              .json()
-              .catch(() => ({}));
-            console.error(
-              "Error fetching identifiers template:",
-              identifiersTemplateResponse.status,
-              errorData
-            );
-            // Set to empty object so UI shows "No document types available" instead of "Loading..."
-            setIdentifiersTemplate({ documentTypeOptions: [] });
-          }
-        } catch (templateError) {
-          console.error(
-            "Exception fetching identifiers template:",
-            templateError
-          );
-          // Set to empty object so UI shows "No document types available" instead of "Loading..."
-          setIdentifiersTemplate({ documentTypeOptions: [] });
-        }
-
-        // Fetch existing identifiers
-        setIsLoadingKYC(true);
-        try {
-          const identifiersResponse = await fetch(
-            `/api/fineract/clients/${numericClientId}/identifiers`
-          );
-          console.log(
-            "Identifiers response status:",
-            identifiersResponse.status
-          );
-
-          if (identifiersResponse.ok) {
-            const identifiersData = await identifiersResponse.json();
-            console.log("Identifiers raw data:", identifiersData);
-
-            // Handle both array and object with array property
-            let identifiers = [];
-            if (Array.isArray(identifiersData)) {
-              identifiers = identifiersData;
-            } else if (identifiersData?.pageItems) {
-              identifiers = identifiersData.pageItems;
-            } else if (identifiersData?.identifiers) {
-              identifiers = identifiersData.identifiers;
-            } else if (identifiersData?.data) {
-              identifiers = Array.isArray(identifiersData.data)
-                ? identifiersData.data
-                : [];
-            } else if (identifiersData && typeof identifiersData === "object") {
-              // If it's an object but not an array, try to extract any array property
-              const keys = Object.keys(identifiersData);
-              for (const key of keys) {
-                if (Array.isArray(identifiersData[key])) {
-                  identifiers = identifiersData[key];
+                  templateToSet = {
+                    documentTypeOptions: identifiersData[key],
+                  };
+                  console.log(`Using array from key: ${key}`);
                   break;
                 }
               }
             }
 
-            console.log("Processed identifiers:", identifiers);
-            setExistingIdentifiers(identifiers);
+            // If still not found, use the data as-is
+            if (!templateToSet) {
+              templateToSet = identifiersData;
+              console.log("Using data as-is (no documentTypeOptions found)");
+            }
+          } else {
+            console.warn(
+              "Unexpected identifiers template structure:",
+              identifiersData
+            );
+            templateToSet = identifiersData;
+          }
 
-            // Fetch documents for each identifier
-            const documentsMap = new Map<number, any[]>();
+          console.log("Setting identifiers template:", templateToSet);
+          setIdentifiersTemplate(templateToSet);
+        } else {
+          const errorData = await identifiersTemplateResponse
+            .json()
+            .catch(() => ({}));
+          console.error(
+            "Error fetching identifiers template:",
+            identifiersTemplateResponse.status,
+            errorData
+          );
+          // Set to empty object so UI shows "No document types available" instead of "Loading..."
+          setIdentifiersTemplate({ documentTypeOptions: [] });
+        }
+      } catch (templateError) {
+        console.error(
+          "Exception fetching identifiers template:",
+          templateError
+        );
+        // Set to empty object so UI shows "No document types available" instead of "Loading..."
+        setIdentifiersTemplate({ documentTypeOptions: [] });
+      }
 
-            // Safety check: ensure identifiers is an array
-            if (Array.isArray(identifiers) && identifiers.length > 0) {
-              const fetchPromises = identifiers.map(async (identifier: any) => {
-                const identifierId = identifier.id;
-                if (!identifierId) return;
+      // Fetch existing identifiers
+      setIsLoadingKYC(true);
+      try {
+        const identifiersResponse = await fetch(
+          `/api/fineract/clients/${numericClientId}/identifiers`
+        );
+        console.log(
+          "Identifiers response status:",
+          identifiersResponse.status
+        );
 
-                try {
-                  const docsResponse = await fetch(
-                    `/api/fineract/client_identifiers/${identifierId}/documents`
-                  );
-                  if (docsResponse.ok) {
-                    const docsData = await docsResponse.json();
-                    // Handle different response structures
-                    let docs = [];
-                    if (Array.isArray(docsData)) {
-                      docs = docsData;
-                    } else if (docsData?.pageItems) {
-                      docs = docsData.pageItems;
-                    } else if (docsData?.content) {
-                      docs = docsData.content;
-                    } else if (docsData?.documents) {
-                      docs = docsData.documents;
-                    }
-                    documentsMap.set(identifierId, docs);
-                  } else if (docsResponse.status !== 404) {
-                    console.error(
-                      `Error fetching documents for identifier ${identifierId}:`,
-                      docsResponse.status
-                    );
-                    documentsMap.set(identifierId, []);
-                  } else {
-                    documentsMap.set(identifierId, []);
-                  }
-                } catch (error) {
-                  console.error(
-                    `Exception fetching documents for identifier ${identifierId}:`,
-                    error
-                  );
-                  documentsMap.set(identifierId, []);
-                }
-              });
+        if (identifiersResponse.ok) {
+          const identifiersData = await identifiersResponse.json();
+          console.log("Identifiers raw data:", identifiersData);
 
-              try {
-                await Promise.all(fetchPromises);
-              } catch (promiseError) {
-                console.error(
-                  "Error in Promise.all for document fetching:",
-                  promiseError
-                );
+          // Handle both array and object with array property
+          let identifiers = [];
+          if (Array.isArray(identifiersData)) {
+            identifiers = identifiersData;
+          } else if (identifiersData?.pageItems) {
+            identifiers = identifiersData.pageItems;
+          } else if (identifiersData?.identifiers) {
+            identifiers = identifiersData.identifiers;
+          } else if (identifiersData?.data) {
+            identifiers = Array.isArray(identifiersData.data)
+              ? identifiersData.data
+              : [];
+          } else if (identifiersData && typeof identifiersData === "object") {
+            // If it's an object but not an array, try to extract any array property
+            const keys = Object.keys(identifiersData);
+            for (const key of keys) {
+              if (Array.isArray(identifiersData[key])) {
+                identifiers = identifiersData[key];
+                break;
               }
             }
-
-            setIdentifierDocuments(documentsMap);
-          } else if (identifiersResponse.status === 404) {
-            console.log("No identifiers found (404)");
-            setExistingIdentifiers([]);
-            setIdentifierDocuments(new Map());
-          } else {
-            const errorData = await identifiersResponse
-              .json()
-              .catch(() => ({}));
-            console.error(
-              "Error fetching identifiers:",
-              identifiersResponse.status,
-              errorData
-            );
-            setExistingIdentifiers([]);
-            setIdentifierDocuments(new Map());
           }
-        } catch (error) {
-          console.error("Exception fetching identifiers:", error);
-          setExistingIdentifiers([]);
-          setIdentifierDocuments(new Map());
-        } finally {
-          setIsLoadingKYC(false);
-        }
 
-        // Fetch client documents to link with identifiers
-        try {
-          const documentsResponse = await fetch(
-            `/api/fineract/clients/${numericClientId}/documents`
-          );
-          console.log("Documents response status:", documentsResponse.status);
+          console.log("Processed identifiers:", identifiers);
+          setExistingIdentifiers(identifiers);
 
-          if (documentsResponse.ok) {
-            const documentsData = await documentsResponse.json();
-            console.log("Documents raw data:", documentsData);
+          // Fetch documents for each identifier
+          const documentsMap = new Map<number, any[]>();
 
-            // Handle different response structures
-            let documents = [];
-            if (Array.isArray(documentsData)) {
-              documents = documentsData;
-            } else if (documentsData?.pageItems) {
-              documents = documentsData.pageItems;
-            } else if (documentsData?.content) {
-              documents = documentsData.content;
-            } else if (documentsData?.documents) {
-              documents = documentsData.documents;
-            }
+          // Safety check: ensure identifiers is an array
+          if (Array.isArray(identifiers) && identifiers.length > 0) {
+            const fetchPromises = identifiers.map(async (identifier: any) => {
+              const identifierId = identifier.id;
+              if (!identifierId) return;
 
-            console.log("Processed documents:", documents);
-            setClientDocuments(documents);
-          } else if (documentsResponse.status !== 404) {
-            const errorData = await documentsResponse.json().catch(() => ({}));
-            console.error(
-              "Error fetching documents:",
-              documentsResponse.status,
-              errorData
-            );
-          }
-        } catch (error) {
-          console.error("Exception fetching documents:", error);
-        }
-
-        // Fetch existing client image with maxHeight parameter
-        try {
-          const imageResponse = await fetch(
-            `/api/fineract/clients/${numericClientId}/images?maxHeight=150`
-          );
-
-          console.log("Image fetch response status:", imageResponse.status);
-
-          if (imageResponse.ok) {
-            const imageData = await imageResponse.json();
-
-            console.log("Image data received:", {
-              type: typeof imageData,
-              isNull: imageData === null,
-              isString: typeof imageData === "string",
-              hasImageData: !!imageData?.imageData,
-              hasBase64EncodedImage: !!imageData?.base64EncodedImage,
-              isArray: Array.isArray(imageData),
-              preview:
-                typeof imageData === "string"
-                  ? imageData.substring(0, 50) + "..."
-                  : JSON.stringify(imageData).substring(0, 100),
+              try {
+                const docsResponse = await fetch(
+                  `/api/fineract/client_identifiers/${identifierId}/documents`
+                );
+                if (docsResponse.ok) {
+                  const docsData = await docsResponse.json();
+                  // Handle different response structures
+                  let docs = [];
+                  if (Array.isArray(docsData)) {
+                    docs = docsData;
+                  } else if (docsData?.pageItems) {
+                    docs = docsData.pageItems;
+                  } else if (docsData?.content) {
+                    docs = docsData.content;
+                  } else if (docsData?.documents) {
+                    docs = docsData.documents;
+                  }
+                  documentsMap.set(identifierId, docs);
+                } else if (docsResponse.status !== 404) {
+                  console.error(
+                    `Error fetching documents for identifier ${identifierId}:`,
+                    docsResponse.status
+                  );
+                  documentsMap.set(identifierId, []);
+                } else {
+                  documentsMap.set(identifierId, []);
+                }
+              } catch (error) {
+                console.error(
+                  `Exception fetching documents for identifier ${identifierId}:`,
+                  error
+                );
+                documentsMap.set(identifierId, []);
+              }
             });
 
-            // Handle null response (no image found)
-            if (imageData === null || imageData === undefined) {
-              console.log("No image found for client");
-              setExistingClientImage(null);
-              setSelfieImageLoading(false);
-              return;
+            try {
+              await Promise.all(fetchPromises);
+            } catch (promiseError) {
+              console.error(
+                "Error in Promise.all for document fetching:",
+                promiseError
+              );
             }
+          }
 
+          setIdentifierDocuments(documentsMap);
+        } else if (identifiersResponse.status === 404) {
+          console.log("No identifiers found (404)");
+          setExistingIdentifiers([]);
+          setIdentifierDocuments(new Map());
+        } else {
+          const errorData = await identifiersResponse
+            .json()
+            .catch(() => ({}));
+          console.error(
+            "Error fetching identifiers:",
+            identifiersResponse.status,
+            errorData
+          );
+          setExistingIdentifiers([]);
+          setIdentifierDocuments(new Map());
+        }
+      } catch (error) {
+        console.error("Exception fetching identifiers:", error);
+        setExistingIdentifiers([]);
+        setIdentifierDocuments(new Map());
+      } finally {
+        setIsLoadingKYC(false);
+      }
+
+      // Fetch client documents to link with identifiers
+      try {
+        const documentsResponse = await fetch(
+          `/api/fineract/clients/${numericClientId}/documents`
+        );
+        console.log("Documents response status:", documentsResponse.status);
+
+        if (documentsResponse.ok) {
+          const documentsData = await documentsResponse.json();
+          console.log("Documents raw data:", documentsData);
+
+          // Handle different response structures
+          let documents = [];
+          if (Array.isArray(documentsData)) {
+            documents = documentsData;
+          } else if (documentsData?.pageItems) {
+            documents = documentsData.pageItems;
+          } else if (documentsData?.content) {
+            documents = documentsData.content;
+          } else if (documentsData?.documents) {
+            documents = documentsData.documents;
+          }
+
+          console.log("Processed documents:", documents);
+          setClientDocuments(documents);
+        } else if (documentsResponse.status !== 404) {
+          const errorData = await documentsResponse.json().catch(() => ({}));
+          console.error(
+            "Error fetching documents:",
+            documentsResponse.status,
+            errorData
+          );
+        }
+      } catch (error) {
+        console.error("Exception fetching documents:", error);
+      }
+
+      // Fetch existing client image with maxHeight parameter
+      try {
+        const imageResponse = await fetch(
+          `/api/fineract/clients/${numericClientId}/images?maxHeight=150`
+        );
+
+        console.log("Image fetch response status:", imageResponse.status);
+
+        if (imageResponse.ok) {
+          const imageData = await imageResponse.json();
+
+          console.log("Image data received:", {
+            type: typeof imageData,
+            isNull: imageData === null,
+            isString: typeof imageData === "string",
+            hasImageData: !!imageData?.imageData,
+            hasBase64EncodedImage: !!imageData?.base64EncodedImage,
+            isArray: Array.isArray(imageData),
+            preview:
+              typeof imageData === "string"
+                ? imageData.substring(0, 50) + "..."
+                : JSON.stringify(imageData).substring(0, 100),
+          });
+
+          // Handle null response (no image found)
+          if (imageData === null || imageData === undefined) {
+            console.log("No image found for client");
+            setExistingClientImage(null);
+            setSelfieImageLoading(false);
+          } else {
             // Helper function to check if a string looks like base64
             const isBase64Like = (str: string): boolean => {
               // Base64 can contain A-Z, a-z, 0-9, +, /, and = for padding
@@ -888,161 +889,164 @@ export function ClientRegistrationForm({
               setExistingClientImage(null);
               setSelfieImageLoading(false);
             }
+          }
+        } else {
+          // Handle error responses
+          if (imageResponse.status === 404) {
+            console.log("No image found (404)");
+            setExistingClientImage(null);
+            setSelfieImageLoading(false);
           } else {
-            // Handle error responses
-            if (imageResponse.status === 404) {
-              console.log("No image found (404)");
-              setExistingClientImage(null);
-              setSelfieImageLoading(false);
-            } else {
-              const errorData = await imageResponse.json().catch(() => ({}));
-              console.error(
-                "Error fetching client image:",
-                imageResponse.status,
-                errorData
-              );
-            }
-          }
-        } catch (imageError) {
-          console.error("Exception while fetching client image:", imageError);
-        }
-
-        // Fetch addresses for the client
-        const addressesResponse = await fetch(
-          `/api/fineract/clients/${clientId}/addresses`
-        );
-        if (addressesResponse.ok) {
-          const addressesData = await addressesResponse.json();
-          // Fineract returns an array of addresses, get the first one or null
-          let address = Array.isArray(addressesData)
-            ? addressesData[0] || null
-            : addressesData || null;
-
-          // Convert addressType string to ID if needed (Fineract returns addressType as string like "Home ")
-          if (
-            address &&
-            address.addressType &&
-            typeof address.addressType === "string" &&
-            templateData
-          ) {
-            const addressTypeOptions = templateData?.addressTypeIdOptions || [];
-            const matchingType = addressTypeOptions.find(
-              (opt: any) => opt.name?.trim() === address.addressType?.trim()
+            const errorData = await imageResponse.json().catch(() => ({}));
+            console.error(
+              "Error fetching client image:",
+              imageResponse.status,
+              errorData
             );
-            if (matchingType && matchingType.id) {
-              address = {
-                ...address,
-                addressType: matchingType.id, // Convert string to numeric ID
-              };
-              console.log(
-                "Converted addressType from string to ID on load:",
-                matchingType.id,
-                "for:",
-                matchingType.name
-              );
-            }
           }
+        }
+      } catch (imageError) {
+        console.error("Exception while fetching client image:", imageError);
+      }
 
-          setClientAddress(address);
+      // Fetch addresses for the client
+      const addressesResponse = await fetch(
+        `/api/fineract/clients/${numericClientId}/addresses`
+      );
+      if (addressesResponse.ok) {
+        const addressesData = await addressesResponse.json();
+        // Fineract returns an array of addresses, get the first one or null
+        let address = Array.isArray(addressesData)
+          ? addressesData[0] || null
+          : addressesData || null;
+
+        // Convert addressType string to ID if needed (Fineract returns addressType as string like "Home ")
+        if (
+          address &&
+          address.addressType &&
+          typeof address.addressType === "string" &&
+          templateData
+        ) {
+          const addressTypeOptions = templateData?.addressTypeIdOptions || [];
+          const matchingType = addressTypeOptions.find(
+            (opt: any) => opt.name?.trim() === address.addressType?.trim()
+          );
+          if (matchingType && matchingType.id) {
+            address = {
+              ...address,
+              addressType: matchingType.id, // Convert string to numeric ID
+            };
+            console.log(
+              "Converted addressType from string to ID on load:",
+              matchingType.id,
+              "for:",
+              matchingType.name
+            );
+          }
         }
 
-        // Fetch available data tables for this client
-        const datatablesResponse = await fetch(
-          `/api/fineract/datatables?apptable=m_client`,
-          { credentials: 'include' }
-        );
-        if (datatablesResponse.ok) {
-          const datatablesData = await datatablesResponse.json();
-          console.log("Fetched data tables:", datatablesData);
+        setClientAddress(address);
+      }
 
-          // Handle different response formats - could be array or object with array property
-          const tablesList = Array.isArray(datatablesData)
-            ? datatablesData
-            : datatablesData?.data || datatablesData?.pageItems || [];
+      // Fetch available data tables for this client
+      const datatablesResponse = await fetch(
+        `/api/fineract/datatables?apptable=m_client`,
+        { credentials: 'include' }
+      );
+      if (datatablesResponse.ok) {
+        const datatablesData = await datatablesResponse.json();
+        console.log("Fetched data tables:", datatablesData);
 
-          console.log("Data tables list:", tablesList);
+        // Handle different response formats - could be array or object with array property
+        const tablesList = Array.isArray(datatablesData)
+          ? datatablesData
+          : datatablesData?.data || datatablesData?.pageItems || [];
 
-          // Filter to only get datatables that have data for this client
-          const tablesWithData = await Promise.all(
-            (tablesList || []).map(async (table: any) => {
-              try {
-                // Use registeredTableName as the table name (this is what Fineract uses in the API)
-                const tableName = table.registeredTableName;
-                if (!tableName) {
-                  console.warn("Table missing registeredTableName:", table);
-                  return { ...table, hasData: false };
-                }
+        console.log("Data tables list:", tablesList);
 
-                const tableDataResponse = await fetch(
-                  `/api/fineract/datatables/${encodeURIComponent(
-                    tableName
-                  )}/${clientId}?genericResultSet=true`,
-                  { credentials: 'include' }
-                );
-                if (tableDataResponse.ok) {
-                  const tableData = await tableDataResponse.json();
-                  const hasData = tableData.data && tableData.data.length > 0;
-                  console.log(`Table ${tableName} has data:`, hasData);
-                  return {
-                    ...table,
-                    datatableName: tableName, // Store for use in DynamicDatatableContent
-                    displayName: table.registeredTableName, // Display name
-                    hasData: hasData,
-                  };
-                }
-                return {
-                  ...table,
-                  datatableName: tableName,
-                  displayName: table.registeredTableName,
-                  hasData: false,
-                };
-              } catch (error) {
-                console.error(
-                  `Error checking table ${table.registeredTableName}:`,
-                  error
-                );
+        // Filter to only get datatables that have data for this client
+        const tablesWithData = await Promise.all(
+          (tablesList || []).map(async (table: any) => {
+            try {
+              // Use registeredTableName as the table name (this is what Fineract uses in the API)
+              const tableName = table.registeredTableName;
+              if (!tableName) {
+                console.warn("Table missing registeredTableName:", table);
                 return { ...table, hasData: false };
               }
-            })
-          );
 
-          // Filter out hidden datatables (Blacklisting, Credit Limits, Legacy Data)
-          // TODO: Make hidden datatables configurable via tenant settings
-          const hiddenDatatables = [
-            "Blacklisting",
-            "Credit Limits",
-            "Legacy Data",
-          ];
-          const filteredTables = tablesWithData.filter((table: any) => {
-            const tableName =
-              table.registeredTableName || table.displayName || "";
-            return !hiddenDatatables.some((hidden) =>
-              tableName.toLowerCase().includes(hidden.toLowerCase())
-            );
-          });
+              const tableDataResponse = await fetch(
+                `/api/fineract/datatables/${encodeURIComponent(
+                  tableName
+                )}/${numericClientId}?genericResultSet=true`,
+                { credentials: 'include' }
+              );
+              if (tableDataResponse.ok) {
+                const tableData = await tableDataResponse.json();
+                const hasData = tableData.data && tableData.data.length > 0;
+                console.log(`Table ${tableName} has data:`, hasData);
+                return {
+                  ...table,
+                  datatableName: tableName, // Store for use in DynamicDatatableContent
+                  displayName: table.registeredTableName, // Display name
+                  hasData: hasData,
+                };
+              }
+              return {
+                ...table,
+                datatableName: tableName,
+                displayName: table.registeredTableName,
+                hasData: false,
+              };
+            } catch (error) {
+              console.error(
+                `Error checking table ${table.registeredTableName}:`,
+                error
+              );
+              return { ...table, hasData: false };
+            }
+          })
+        );
 
-          console.log("All available tables:", tablesWithData);
-          console.log("Filtered tables (hidden removed):", filteredTables);
-          setDataTables(filteredTables);
-        } else {
-          console.error(
-            "Failed to fetch data tables:",
-            datatablesResponse.status,
-            datatablesResponse.statusText
+        // Filter out hidden datatables (Blacklisting, Credit Limits, Legacy Data)
+        // TODO: Make hidden datatables configurable via tenant settings
+        const hiddenDatatables = [
+          "Blacklisting",
+          "Credit Limits",
+          "Legacy Data",
+        ];
+        const filteredTables = tablesWithData.filter((table: any) => {
+          const tableName =
+            table.registeredTableName || table.displayName || "";
+          return !hiddenDatatables.some((hidden) =>
+            tableName.toLowerCase().includes(hidden.toLowerCase())
           );
-        }
-      } catch (error) {
-        console.error("Error fetching additional details:", error);
-        // Don't let this error break the page - set sensible defaults
-        setExistingIdentifiers([]);
-        setIdentifierDocuments(new Map());
-        setClientDocuments([]);
-        setDataTables([]);
-      } finally {
-        setIsLoadingAdditionalDetails(false);
+        });
+
+        console.log("All available tables:", tablesWithData);
+        console.log("Filtered tables (hidden removed):", filteredTables);
+        setDataTables(filteredTables);
+      } else {
+        console.error(
+          "Failed to fetch data tables:",
+          datatablesResponse.status,
+          datatablesResponse.statusText
+        );
       }
-    };
+    } catch (error) {
+      console.error("Error fetching additional details:", error);
+      // Don't let this error break the page - set sensible defaults
+      setExistingIdentifiers([]);
+      setIdentifierDocuments(new Map());
+      setClientDocuments([]);
+      setDataTables([]);
+    } finally {
+      setIsLoadingAdditionalDetails(false);
+    }
+  };
 
+  // useEffect to trigger fetch when client is created/found
+  useEffect(() => {
     console.log("useEffect check for datatables fetch:", {
       clientCreatedInFineract,
       fineractClientId,
@@ -1051,10 +1055,9 @@ export function ClientRegistrationForm({
     });
     
     if (clientCreatedInFineract && (fineractClientId || (window as any).fineractClientId)) {
-      console.log(">>> Triggering fetchAdditionalDetails for datatables...");
-      // Wrap in try-catch to prevent unhandled promise rejections
-      fetchAdditionalDetails().catch((error) => {
-        console.error("Unhandled error in fetchAdditionalDetails:", error);
+      console.log(">>> Triggering fetchAdditionalDetailsForClient from useEffect...");
+      fetchAdditionalDetailsForClient().catch((error) => {
+        console.error("Unhandled error in fetchAdditionalDetailsForClient:", error);
         setIsLoadingAdditionalDetails(false);
       });
     }
@@ -2407,6 +2410,14 @@ export function ClientRegistrationForm({
                     if (setClientCreatedInFineract) {
                       setClientCreatedInFineract(true);
                     }
+
+                    // Directly fetch additional details for the existing client
+                    if (fineractData?.id) {
+                      console.log(">>> Directly calling fetchAdditionalDetailsForClient for existing client...");
+                      fetchAdditionalDetailsForClient(Number(fineractData.id)).catch((err) => {
+                        console.error("Error fetching additional details for existing client:", err);
+                      });
+                    }
                   } else if (localData) {
                     // Client exists locally but not in Fineract yet
                     console.log(
@@ -3678,6 +3689,14 @@ export function ClientRegistrationForm({
             interlacedData.emailAddress || "Not provided"
           }). You can now update client details or proceed to Step 2: Affordability.`,
         });
+
+        // Directly fetch additional details for the found client
+        if (fineractData?.id) {
+          console.log(">>> Directly calling fetchAdditionalDetailsForClient after client lookup...");
+          fetchAdditionalDetailsForClient(Number(fineractData.id)).catch((err) => {
+            console.error("Error fetching additional details after client lookup:", err);
+          });
+        }
 
         console.log(
           "==========> Client lookup completed successfully, returning"
@@ -7469,6 +7488,15 @@ export function ClientRegistrationForm({
                                           result.fineractAccountNo || "N/A"
                                         }`,
                                       });
+
+                                      // Directly fetch additional details (datatables, etc.) for the new client
+                                      // This ensures immediate loading without relying on useEffect timing
+                                      if (result.fineractClientId) {
+                                        console.log(">>> Directly calling fetchAdditionalDetailsForClient after client creation...");
+                                        fetchAdditionalDetailsForClient(Number(result.fineractClientId)).catch((err) => {
+                                          console.error("Error fetching additional details after client creation:", err);
+                                        });
+                                      }
                                     } catch (createError: any) {
                                       console.error(
                                         "Error creating client in Fineract:",
