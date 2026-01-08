@@ -437,6 +437,13 @@ export function ClientRegistrationForm({
       setClientLookupStatus("found");
       setIsFormDisabled(false);
 
+      // Sync fineractClientId from window if not already set (handles race condition)
+      const windowClientId = (window as any).fineractClientId;
+      if (windowClientId && !fineractClientId) {
+        console.log("Syncing fineractClientId from window:", windowClientId);
+        setFineractClientId(Number(windowClientId));
+      }
+
       // Mark all completed sections as saved when client is created/updated in Fineract
       setSectionCompletion((prevCompletion) => {
         setSectionSaved({
@@ -453,7 +460,7 @@ export function ClientRegistrationForm({
         return prevCompletion;
       });
     }
-  }, [clientCreatedInFineract]);
+  }, [clientCreatedInFineract, fineractClientId]);
 
   // Fetch additional details (address, data tables) when we have a Fineract client ID
   useEffect(() => {
@@ -5659,10 +5666,10 @@ export function ClientRegistrationForm({
                         setActiveClientTab(newTab);
 
                         // Refetch data when switching tabs to ensure latest data is loaded
-                        if (newTab === "account" && fineractClientId) {
+                        if (newTab === "account" && (fineractClientId || (window as any).fineractClientId)) {
                           refetchKYCData();
                         }
-                        if (newTab === "additional" && fineractClientId) {
+                        if (newTab === "additional" && (fineractClientId || (window as any).fineractClientId)) {
                           refetchAdditionalDetailsData();
                         }
                       }}
@@ -9261,7 +9268,7 @@ export function ClientRegistrationForm({
                       </TabsContent>
 
                       {/* Additional Details Tab */}
-                      {clientCreatedInFineract && fineractClientId && (
+                      {clientCreatedInFineract && (fineractClientId || (window as any).fineractClientId) && (
                         <TabsContent value="additional" className="mt-4">
                           <Card
                             className={`border-${colors.borderColor} ${colors.cardBg}`}
@@ -10863,14 +10870,14 @@ export function ClientRegistrationForm({
                                                     </h4>
                                                   </div>
                                                   <div className="p-6">
-                                                    {fineractClientId && (
+                                                    {(fineractClientId || (window as any).fineractClientId) && (
                                                       <DynamicDatatableContent
                                                         datatableName={
                                                           table.registeredTableName ||
                                                           table.datatableName
                                                         }
                                                         clientId={
-                                                          fineractClientId
+                                                          fineractClientId || (window as any).fineractClientId
                                                         }
                                                         onDataChange={(
                                                           newHasData
