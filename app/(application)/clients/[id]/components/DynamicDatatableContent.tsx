@@ -25,6 +25,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  BankDetailsFields,
+  hasBankDetailFields,
+  getBankDetailColumnNames,
+} from "@/components/datatables/BankDetailsFields";
 
 // Helper function to check if a column is a phone/mobile number field
 const isPhoneNumberField = (columnName: string): boolean => {
@@ -963,6 +968,12 @@ export function DynamicDatatableContent({
     }
   };
 
+  // Check if this datatable has bank detail fields that need custom rendering
+  const showBankDetailFields = hasBankDetailFields(headers);
+  const bankDetailColumnNames = showBankDetailFields
+    ? getBankDetailColumnNames(headers)
+    : [];
+
   // Show form for adding new row when editingRowIndex is -1
   if (editingRowIndex === -1) {
     return (
@@ -1004,6 +1015,15 @@ export function DynamicDatatableContent({
           </div>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Render custom bank detail fields if applicable */}
+          {showBankDetailFields && (
+            <BankDetailsFields
+              headers={headers}
+              editedData={editedData}
+              onFieldChange={handleFieldChange}
+            />
+          )}
+          {/* Render other fields normally, skipping bank detail fields */}
           {headers.map((header, index) => {
             const columnName = header.columnName;
             if (!columnName) return null;
@@ -1015,6 +1035,9 @@ export function DynamicDatatableContent({
               columnName.toLowerCase() === "updated_at";
 
             if (isSystemColumn) return null;
+
+            // Skip bank detail fields - they're rendered by BankDetailsFields
+            if (bankDetailColumnNames.includes(columnName)) return null;
 
             return renderEditableField(
               header,
@@ -1289,6 +1312,14 @@ export function DynamicDatatableContent({
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {/* Render custom bank detail fields when editing */}
+                {isEditing && showBankDetailFields && (
+                  <BankDetailsFields
+                    headers={headers}
+                    editedData={editedData}
+                    onFieldChange={handleFieldChange}
+                  />
+                )}
                 {row.map((cell: any, ci: number) => {
                   const header = headers[ci];
                   const headerName = formatHeaderName(header?.columnName || "");
@@ -1306,6 +1337,11 @@ export function DynamicDatatableContent({
                     (!isEditing &&
                       (cell === null || cell === undefined || cell === ""))
                   ) {
+                    return null;
+                  }
+
+                  // Skip bank detail fields when editing - they're rendered by BankDetailsFields
+                  if (isEditing && bankDetailColumnNames.includes(header?.columnName)) {
                     return null;
                   }
 
