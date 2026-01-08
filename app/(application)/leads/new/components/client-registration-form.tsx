@@ -2872,7 +2872,7 @@ export function ClientRegistrationForm({
     }
   };
 
-  // Refetch Additional Details data (datatables, address) - used when switching to additional tab
+  // Refetch Additional Details data (datatables, address, and full client) - used when switching to additional tab
   const refetchAdditionalDetailsData = async () => {
     const clientId = fineractClientId || (window as any).fineractClientId;
     if (!clientId) {
@@ -2883,10 +2883,98 @@ export function ClientRegistrationForm({
     }
 
     const numericClientId = Number(clientId);
-    console.log("Refetching additional details for client:", numericClientId);
+    console.log("Refetching additional details and client data for client:", numericClientId);
 
     setIsLoadingAdditionalDetails(true);
     try {
+      // Fetch full Fineract client data first to refresh all client information
+      try {
+        console.log("Fetching full Fineract client data...");
+        const clientResponse = await fetch(
+          `/api/fineract/clients/${numericClientId}`,
+          { credentials: 'include' }
+        );
+        if (clientResponse.ok) {
+          const fineractData = await clientResponse.json();
+          console.log("Refetched Fineract client data:", fineractData);
+
+          // Update form with refreshed client data
+          if (fineractData) {
+            // Helper function to check if a value is meaningful
+            const hasValue = (value: any): boolean => {
+              return value !== null && value !== undefined && value !== "";
+            };
+
+            // Update key form fields with fresh data from Fineract
+            if (hasValue(fineractData.firstname)) {
+              form.setValue("firstname", fineractData.firstname);
+            }
+            if (hasValue(fineractData.middlename)) {
+              form.setValue("middlename", fineractData.middlename);
+            }
+            if (hasValue(fineractData.lastname)) {
+              form.setValue("lastname", fineractData.lastname);
+            }
+            if (hasValue(fineractData.externalId)) {
+              form.setValue("externalId", fineractData.externalId);
+            }
+            if (hasValue(fineractData.emailAddress)) {
+              form.setValue("emailAddress", fineractData.emailAddress);
+            }
+            if (fineractData.mobileNo) {
+              const parsed = parsePhoneNumber(fineractData.mobileNo);
+              form.setValue("mobileNo", formatPhoneNumber(parsed.number));
+              form.setValue("countryCode", parsed.countryCode);
+            }
+            if (fineractData.dateOfBirth) {
+              const dob = Array.isArray(fineractData.dateOfBirth)
+                ? new Date(Date.UTC(fineractData.dateOfBirth[0], fineractData.dateOfBirth[1] - 1, fineractData.dateOfBirth[2]))
+                : new Date(fineractData.dateOfBirth);
+              form.setValue("dateOfBirth", dob);
+            }
+            if (fineractData.gender?.id) {
+              form.setValue("genderId", fineractData.gender.id.toString());
+            }
+            if (fineractData.officeId) {
+              form.setValue("officeId", fineractData.officeId.toString());
+            }
+            if (fineractData.legalForm?.id) {
+              form.setValue("legalFormId", fineractData.legalForm.id.toString());
+            }
+            if (fineractData.clientType?.id) {
+              form.setValue("clientTypeId", fineractData.clientType.id.toString());
+            }
+            if (fineractData.clientClassification?.id) {
+              form.setValue("clientClassificationId", fineractData.clientClassification.id.toString());
+            }
+            if (fineractData.active !== undefined) {
+              form.setValue("active", fineractData.active);
+            }
+            if (fineractData.activationDate) {
+              const activationDate = Array.isArray(fineractData.activationDate)
+                ? new Date(Date.UTC(fineractData.activationDate[0], fineractData.activationDate[1] - 1, fineractData.activationDate[2]))
+                : fineractData.timeline?.activatedOnDate
+                  ? Array.isArray(fineractData.timeline.activatedOnDate)
+                    ? new Date(Date.UTC(fineractData.timeline.activatedOnDate[0], fineractData.timeline.activatedOnDate[1] - 1, fineractData.timeline.activatedOnDate[2]))
+                    : new Date(fineractData.timeline.activatedOnDate)
+                  : new Date(fineractData.activationDate);
+              form.setValue("activationDate", activationDate);
+            }
+
+            // Update family members if available
+            if (fineractData.familyMembers && fineractData.familyMembers.length > 0) {
+              setFamilyMembers(fineractData.familyMembers);
+            }
+
+            console.log("Form updated with refreshed Fineract client data");
+          }
+        } else {
+          console.warn("Failed to fetch Fineract client:", clientResponse.status);
+        }
+      } catch (clientError) {
+        console.error("Error fetching Fineract client:", clientError);
+      }
+
       // Fetch available data tables for this client
       const datatablesResponse = await fetch(
         `/api/fineract/datatables?apptable=m_client`,
@@ -2968,14 +3056,25 @@ export function ClientRegistrationForm({
             ? addressData
             : addressData?.addresses || [];
           if (addresses.length > 0) {
-            setClientAddress(addresses[0]);
+            // Convert addressType string to ID if needed
+            let address = addresses[0];
+            if (address && address.addressType && typeof address.addressType === "string" && addressTemplate) {
+              const addressTypeOptions = addressTemplate?.addressTypeIdOptions || [];
+              const matchingType = addressTypeOptions.find(
+                (opt: any) => opt.name?.trim() === address.addressType?.trim()
+              );
+              if (matchingType && matchingType.id) {
+                address = { ...address, addressType: matchingType.id };
+              }
+            }
+            setClientAddress(address);
           }
         }
       } catch {
         console.log("No address found for client");
       }
 
-      console.log("Additional details refetch completed");
+      console.log("Additional details refetch completed (including full client data)");
     } catch (err) {
       console.error("Error refetching additional details:", err);
     } finally {
