@@ -336,7 +336,7 @@ export async function POST(
         { status: 400 }
       );
     }
-    
+
     // For non-disbursement settlements (return to vault), check if there's a closed session
     if (!activeSession && txnType !== "DISBURSEMENT") {
       const closedSession = await prisma.cashierSession.findFirst({
@@ -348,7 +348,7 @@ export async function POST(
         },
         orderBy: { sessionEndTime: "desc" },
       });
-      
+
       if (!closedSession) {
         return NextResponse.json(
           {
@@ -360,7 +360,9 @@ export async function POST(
         );
       }
       // Allow settlement with closed session (return to vault after close)
-      console.log(`Allowing settlement with closed session ${closedSession.id}`);
+      console.log(
+        `Allowing settlement with closed session ${closedSession.id}`
+      );
     }
 
     // Check cashier's available balance
@@ -500,23 +502,38 @@ export async function POST(
           });
         }
 
+        // Determine if return to vault for existing settlement
+        const existingIsReturnToVault = txnType !== "DISBURSEMENT" && 
+          (existingSettlement.notes?.toLowerCase().includes("vault") || 
+           existingSettlement.notes?.toLowerCase().includes("safe") || 
+           existingSettlement.notes?.toLowerCase().includes("settlement") ||
+           existingSettlement.notes?.toLowerCase().includes("return"));
+
         return NextResponse.json({
           success: true,
           transaction: existingSettlement,
-          type: "CASH_OUT",
+          type: existingIsReturnToVault ? "RETURN_TO_VAULT" : "CASH_OUT",
           message: "Settlement already recorded",
           loanPayoutId: loanPayout?.id || null,
         });
       }
     }
 
-    // Create a negative allocation record (cash out)
+    // Determine if this is a "return to vault" or external cash out
+    const isReturnToVault = txnType !== "DISBURSEMENT" && 
+      (notes?.toLowerCase().includes("vault") || 
+       notes?.toLowerCase().includes("safe") || 
+       notes?.toLowerCase().includes("settlement") ||
+       notes?.toLowerCase().includes("return") ||
+       !notes); // Default to return to vault if no notes
+    
+    // Create a negative allocation record (cash out from cashier)
     const settlementNotes =
       txnType === "DISBURSEMENT"
         ? `Loan Disbursement: ${loanPayout?.clientName} - ${
             loanPayout?.loanAccountNo
           }${notes ? ` - ${notes}` : ""}`
-        : notes || "Expense Cash Out";
+        : notes || "Return to Vault";
 
     const settlement = await prisma.cashAllocation.create({
       data: {
@@ -531,6 +548,25 @@ export async function POST(
         status: "ACTIVE",
       },
     });
+
+    // If this is a return to vault (not a disbursement/external expense), 
+    // also create a positive allocation for the vault
+    if (isReturnToVault) {
+      await prisma.cashAllocation.create({
+        data: {
+          tenantId: tenant.id,
+          tellerId: teller.id,
+          cashierId: null, // null = vault allocation
+          fineractAllocationId: null, // Vault allocations don't have Fineract IDs
+          amount: parseFloat(amount), // Positive for vault
+          currency: currency,
+          allocatedBy: session.user.id,
+          notes: `Return from ${cashier.staffName || "Cashier"}: ${settlementNotes}`,
+          status: "ACTIVE",
+        },
+      });
+      console.log(`Created vault allocation of +${amount} ${currency} (return from cashier)`);
+    }
 
     // If this is a disbursement, update the loan payout record
     if (txnType === "DISBURSEMENT" && loanPayout) {
@@ -563,12 +599,13 @@ export async function POST(
     return NextResponse.json({
       success: true,
       transaction: settlement,
-      type: "CASH_OUT",
+      type: isReturnToVault ? "RETURN_TO_VAULT" : "CASH_OUT",
       transactionType: txnType,
       amount: parseFloat(amount),
       currency,
       fineractSettlementId,
       loanPayoutId: loanPayout?.id || null,
+      vaultUpdated: isReturnToVault,
     });
   } catch (error) {
     console.error("Error settling cash:", error);

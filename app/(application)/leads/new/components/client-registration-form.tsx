@@ -941,7 +941,8 @@ export function ClientRegistrationForm({
 
         // Fetch available data tables for this client
         const datatablesResponse = await fetch(
-          `/api/fineract/datatables?apptable=m_client`
+          `/api/fineract/datatables?apptable=m_client`,
+          { credentials: 'include' }
         );
         if (datatablesResponse.ok) {
           const datatablesData = await datatablesResponse.json();
@@ -968,7 +969,8 @@ export function ClientRegistrationForm({
                 const tableDataResponse = await fetch(
                   `/api/fineract/datatables/${encodeURIComponent(
                     tableName
-                  )}/${clientId}?genericResultSet=true`
+                  )}/${clientId}?genericResultSet=true`,
+                  { credentials: 'include' }
                 );
                 if (tableDataResponse.ok) {
                   const tableData = await tableDataResponse.json();
@@ -2880,7 +2882,8 @@ export function ClientRegistrationForm({
     try {
       // Fetch available data tables for this client
       const datatablesResponse = await fetch(
-        `/api/fineract/datatables?apptable=m_client`
+        `/api/fineract/datatables?apptable=m_client`,
+        { credentials: 'include' }
       );
       if (datatablesResponse.ok) {
         const datatablesData = await datatablesResponse.json();
@@ -2903,7 +2906,8 @@ export function ClientRegistrationForm({
               const tableDataResponse = await fetch(
                 `/api/fineract/datatables/${encodeURIComponent(
                   tableName
-                )}/${numericClientId}?genericResultSet=true`
+                )}/${numericClientId}?genericResultSet=true`,
+                { credentials: 'include' }
               );
               if (tableDataResponse.ok) {
                 const tableData = await tableDataResponse.json();

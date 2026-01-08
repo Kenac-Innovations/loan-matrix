@@ -43,7 +43,8 @@ export function LeadAdditionalInfo({
       try {
         // Fetch list of datatables
         const listRes = await fetch(
-          `/api/fineract/datatables?apptable=m_client`
+          `/api/fineract/datatables?apptable=m_client`,
+          { credentials: 'include' }
         );
         if (!listRes.ok) {
           console.warn("Failed to fetch datatables list:", listRes.status);
@@ -62,7 +63,8 @@ export function LeadAdditionalInfo({
             const dataRes = await fetch(
               `/api/fineract/datatables/${encodeURIComponent(
                 dt.registeredTableName
-              )}/${clientId}?genericResultSet=true`
+              )}/${clientId}?genericResultSet=true`,
+              { credentials: 'include' }
             );
             if (dataRes.ok) {
               const data = await dataRes.json();
