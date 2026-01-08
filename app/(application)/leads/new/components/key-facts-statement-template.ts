@@ -5,11 +5,11 @@ interface KeyFactsData {
   clientName: string;
   clientId?: string;
   nrc?: string;
-  
+
   // Loan identifiers
   applicationNo?: string;
   loanId?: string;
-  
+
   // Loan amounts
   loanAmount: number;
   disbursedAmount: number;
@@ -18,14 +18,14 @@ interface KeyFactsData {
   totalCostOfCredit: number;
   totalRepayment: number;
   paymentPerPeriod: number;
-  
+
   // Loan terms
   tenure: string;
   numberOfPayments: number;
   paymentFrequency: string;
   firstPaymentDate: string;
   monthlyPercentageRate: number;
-  
+
   // Fees breakdown
   charges: Array<{
     name: string;
@@ -33,18 +33,18 @@ interface KeyFactsData {
     isRecurring?: boolean;
     frequency?: string;
   }>;
-  
+
   // Late payment penalties
   lateFeeAmount?: number;
   lateFeeDays?: number;
   defaultInterestRate?: number;
   defaultInterestDays?: number;
-  
+
   // Collateral
   collateral?: string;
   mandatorySavings?: number;
   variableInterestApplies?: boolean;
-  
+
   // Repayment schedule
   repaymentSchedule: Array<{
     paymentNumber: number;
@@ -54,7 +54,7 @@ interface KeyFactsData {
     interestAndFees: number;
     remainingBalance: number;
   }>;
-  
+
   // Currency and dates
   currency: string;
   preparedDate?: string;
@@ -84,7 +84,7 @@ export function generateKeyFactsStatementHTML(
 ): string {
   const preparedDate = data.preparedDate || formatDate(new Date());
   const signatureTimestamp = format(new Date(), "dd/MM/yyyy HH:mm");
-  
+
   // Generate repayment schedule rows
   const repaymentScheduleRows = data.repaymentSchedule
     .map(
@@ -95,25 +95,47 @@ export function generateKeyFactsStatementHTML(
           <td class="text-right">${formatCurrency(period.paymentAmount)}</td>
           <td class="text-right">${formatCurrency(period.principal)}</td>
           <td class="text-right">${formatCurrency(period.interestAndFees)}</td>
-          <td class="text-right">${data.currency} ${formatCurrency(period.remainingBalance)}</td>
+          <td class="text-right">${data.currency} ${formatCurrency(
+          period.remainingBalance
+        )}</td>
         </tr>`
     )
     .join("");
-  
+
   // Calculate totals for repayment schedule
-  const totalPayment = data.repaymentSchedule.reduce((sum, p) => sum + p.paymentAmount, 0);
-  const totalPrincipal = data.repaymentSchedule.reduce((sum, p) => sum + p.principal, 0);
-  const totalInterestAndFees = data.repaymentSchedule.reduce((sum, p) => sum + p.interestAndFees, 0);
-  
+  const totalPayment = data.repaymentSchedule.reduce(
+    (sum, p) => sum + p.paymentAmount,
+    0
+  );
+  const totalPrincipal = data.repaymentSchedule.reduce(
+    (sum, p) => sum + p.principal,
+    0
+  );
+  const totalInterestAndFees = data.repaymentSchedule.reduce(
+    (sum, p) => sum + p.interestAndFees,
+    0
+  );
+
   // Separate upfront and recurring fees
-  const upfrontFees = data.charges.filter(c => !c.isRecurring);
-  const recurringFees = data.charges.filter(c => c.isRecurring);
+  const upfrontFees = data.charges.filter((c) => !c.isRecurring);
+  const recurringFees = data.charges.filter((c) => c.isRecurring);
   const totalUpfrontFees = upfrontFees.reduce((sum, c) => sum + c.amount, 0);
-  const totalRecurringFees = recurringFees.reduce((sum, c) => sum + c.amount, 0);
+  const totalRecurringFees = recurringFees.reduce(
+    (sum, c) => sum + c.amount,
+    0
+  );
 
   // Generate fee rows
-  const generateFeeRow = (name: string, amount: number | undefined, isNA: boolean = false) => {
-    const displayAmount = isNA ? "N/A" : (amount !== undefined ? formatCurrency(amount) : "N/A");
+  const generateFeeRow = (
+    name: string,
+    amount: number | undefined,
+    isNA: boolean = false
+  ) => {
+    const displayAmount = isNA
+      ? "N/A"
+      : amount !== undefined
+      ? formatCurrency(amount)
+      : "N/A";
     const valueClass = isNA || amount === undefined ? "value-na" : "";
     return `<div class="fee-item">
       <span class="fee-label">${name}</span>
@@ -551,7 +573,9 @@ export function generateKeyFactsStatementHTML(
             <div class="term-item">
               <div class="term-label">1. Amount of Loan:</div>
               <div class="term-sublabel">Amount you are borrowing</div>
-              <div class="term-value">${data.currency} ${formatCurrency(data.loanAmount)}</div>
+              <div class="term-value">${data.currency} ${formatCurrency(
+    data.loanAmount
+  )}</div>
             </div>
             
             <div class="term-item">
@@ -562,7 +586,9 @@ export function generateKeyFactsStatementHTML(
             <div class="term-item">
               <div class="term-label">3. Amount Received:</div>
               <div class="term-sublabel">Amount you actually receive from the lender</div>
-              <div class="term-value">${data.currency} ${formatCurrency(data.disbursedAmount)}</div>
+              <div class="term-value">${data.currency} ${formatCurrency(
+    data.disbursedAmount
+  )}</div>
             </div>
           </div>
           
@@ -573,25 +599,33 @@ export function generateKeyFactsStatementHTML(
             <div class="term-item">
               <div class="term-label">4. Interest:</div>
               <div class="term-sublabel">Interest you will be charged on the loan</div>
-              <div class="term-value">${data.currency} ${formatCurrency(data.interest)}</div>
+              <div class="term-value">${data.currency} ${formatCurrency(
+    data.interest
+  )}</div>
             </div>
             
             <div class="term-item">
               <div class="term-label">5. Other Fees and Charges:</div>
               <div class="term-sublabel">See details in Section III</div>
-              <div class="term-value">${data.currency} ${formatCurrency(data.fees)}</div>
+              <div class="term-value">${data.currency} ${formatCurrency(
+    data.fees
+  )}</div>
             </div>
             
             <div class="term-item">
               <div class="term-label">6. Monthly percentage Rate:</div>
               <div class="term-sublabel">Total Cost of Credit as a comparable monthly percentage</div>
-              <div class="term-value">${data.monthlyPercentageRate.toFixed(0)}%</div>
+              <div class="term-value">${data.monthlyPercentageRate.toFixed(
+                0
+              )}%</div>
             </div>
             
             <div class="term-item">
               <div class="term-label">7. Total Cost of Credit:</div>
               <div class="term-sublabel">All costs for the loan, including interest and fees</div>
-              <div class="term-value">${data.currency} ${formatCurrency(data.totalCostOfCredit)}</div>
+              <div class="term-value">${data.currency} ${formatCurrency(
+    data.totalCostOfCredit
+  )}</div>
             </div>
           </div>
           
@@ -617,7 +651,9 @@ export function generateKeyFactsStatementHTML(
             <div class="term-item">
               <div class="term-label">10. Amount Per Payment:</div>
               <div class="term-sublabel">Includes capital, interest, and recurring fees</div>
-              <div class="term-value">${data.currency} ${formatCurrency(data.paymentPerPeriod)}</div>
+              <div class="term-value">${data.currency} ${formatCurrency(
+    data.paymentPerPeriod
+  )}</div>
             </div>
           </div>
         </div>
@@ -629,19 +665,25 @@ export function generateKeyFactsStatementHTML(
           <div class="summary-cell">
             <div class="summary-label">Amount of Loan</div>
             <div class="summary-sublabel">Amount you are borrowing</div>
-            <div class="summary-value">${data.currency} ${formatCurrency(data.loanAmount)}</div>
+            <div class="summary-value">${data.currency} ${formatCurrency(
+    data.loanAmount
+  )}</div>
           </div>
           <div class="summary-operator">+</div>
           <div class="summary-cell">
             <div class="summary-label">Total Cost of Credit:</div>
             <div class="summary-sublabel">All costs for the loan, including interest and fees:</div>
-            <div class="summary-value">${data.currency} ${formatCurrency(data.totalCostOfCredit)}</div>
+            <div class="summary-value">${data.currency} ${formatCurrency(
+    data.totalCostOfCredit
+  )}</div>
           </div>
           <div class="summary-operator">=</div>
           <div class="summary-cell highlight">
             <div class="summary-label">TOTAL AMOUNT YOU PAY:</div>
             <div class="summary-sublabel">Total amount you pay after making all payments</div>
-            <div class="summary-value">${data.currency} ${formatCurrency(data.totalRepayment)}</div>
+            <div class="summary-value">${data.currency} ${formatCurrency(
+    data.totalRepayment
+  )}</div>
           </div>
         </div>
       </div>
@@ -659,12 +701,12 @@ export function generateKeyFactsStatementHTML(
     <!-- SECTION III: YOUR RIGHTS AND OBLIGATIONS -->
     <div class="section">
       <div class="section-title">SECTION III: YOUR RIGHTS AND OBLIGATIONS</div>
-      <div class="contact-info">
-        <p><strong>Any questions or complaints?</strong> Call <strong>+260 211 238719</strong>, email <strong>info@goodfellow.co.zm</strong> or write to <strong>P.O. Box 50644 Lusaka</strong> to contact us regarding your question or complaint.</p>
-        <p><strong>Unsatisfied with our response to your question or complaint?</strong> Contact the Bank of Zambia for help at <strong>+260 211 399300</strong> or <strong>info@boz.zm</strong> write <strong>BOZ Square Cairo Road Lusaka</strong> or visit <strong>www.boz.zm</strong>.</p>
-        <p><strong>Want to pay off your loan early?</strong> You can do so without any penalties or fees. For more information, please call +260 211 238719.</p>
-        <p>You are required to make payments on your loan according to your loan agreement and to notify us of any important changes in your situation.</p>
-      </div>
+      <ul class="risks-list">
+        <li><strong>Any questions or complaints?</strong> Call <strong>+260 211 238719</strong>, email <strong>info@goodfellow.co.zm</strong> or write to <strong>P.O. Box 50644 Lusaka</strong> to contact us regarding your question or complaint.</li>
+        <li><strong>Unsatisfied with our response to your question or complaint?</strong> Contact the Bank of Zambia for help at <strong>+260 211 399300</strong> or <strong>info@boz.zm</strong> write <strong>BOZ Square Cairo Road Lusaka</strong> or visit <strong>www.boz.zm</strong>.</li>
+        <li><strong>Want to pay off your loan early?</strong> You can do so without any penalties or fees. For more information, please call +260 211 238719.</li>
+        <li>You are required to make payments on your loan according to your loan agreement and to notify us of any important changes in your situation.</li>
+      </ul>
     </div>
 
     <!-- SECTION IV: UPFRONT AND RECURRING FEES -->
@@ -686,12 +728,16 @@ export function generateKeyFactsStatementHTML(
               <span>Other (list all):</span>
               <span></span>
             </div>
-            ${upfrontFees.map(fee => `
+            ${upfrontFees
+              .map(
+                (fee) => `
             <div class="fee-item">
               <span>${fee.name}</span>
               <span>${data.currency} ${formatCurrency(fee.amount)}</span>
             </div>
-            `).join('')}
+            `
+              )
+              .join("")}
           </div>
           
           <div class="fees-col">
@@ -716,12 +762,18 @@ export function generateKeyFactsStatementHTML(
               <span>Management fee</span>
               <span>${data.currency}_N/A per ________</span>
             </div>
-            ${recurringFees.map(fee => `
+            ${recurringFees
+              .map(
+                (fee) => `
             <div class="fee-item">
               <span>${fee.name}</span>
-              <span>${data.currency} ${formatCurrency(fee.amount)} per ${fee.frequency || 'month'}</span>
+              <span>${data.currency} ${formatCurrency(fee.amount)} per ${
+                  fee.frequency || "month"
+                }</span>
             </div>
-            `).join('')}
+            `
+              )
+              .join("")}
           </div>
         </div>
       </div>
@@ -729,7 +781,9 @@ export function generateKeyFactsStatementHTML(
       <div class="fees-total">
         <div style="display: flex; justify-content: space-between;">
           <span>TOTAL UPFRONT AND RECURRING FEES AND CHARGES (EXCLUDING INTEREST)</span>
-          <span>${data.currency}____${data.fees > 0 ? formatCurrency(data.fees) : 'N/A'}__</span>
+          <span>${data.currency}____${
+    data.fees > 0 ? formatCurrency(data.fees) : "N/A"
+  }__</span>
         </div>
       </div>
     </div>
@@ -742,22 +796,32 @@ export function generateKeyFactsStatementHTML(
           <div class="terms-col">
             <h5>LATE PAYMENT PENALTIES</h5>
             <div class="term-row">
-              Late fees if payment is more than [${data.lateFeeDays || '__'}] days late:
-              <strong>${data.currency}_${data.lateFeeAmount ? formatCurrency(data.lateFeeAmount) : 'N/A'}_</strong>
+              Late fees if payment is more than [${
+                data.lateFeeDays || "__"
+              }] days late:
+              <strong>${data.currency}_${
+    data.lateFeeAmount ? formatCurrency(data.lateFeeAmount) : "N/A"
+  }_</strong>
             </div>
             <div class="term-row">
-              Default interest if payment is more than <strong>${data.defaultInterestDays || '10'}</strong> days late
-              <strong>${data.defaultInterestRate || '25'}%</strong> per Month
+              Default interest if payment is more than <strong>${
+                data.defaultInterestDays || "10"
+              }</strong> days late
+              <strong>${data.defaultInterestRate || "25"}%</strong> per Month
             </div>
           </div>
           
           <div class="terms-col">
             <h5>TERMS AND CONDITIONS</h5>
             <div class="term-row">
-              Cash deposit/ mandatory savings: <strong>${data.currency}_${data.mandatorySavings ? formatCurrency(data.mandatorySavings) : 'N/A'}_</strong>
+              Cash deposit/ mandatory savings: <strong>${data.currency}_${
+    data.mandatorySavings ? formatCurrency(data.mandatorySavings) : "N/A"
+  }_</strong>
             </div>
             <div class="term-row">
-              Variable interest rate applies: <strong>_${data.variableInterestApplies ? 'Yes' : 'N/A'}_</strong>
+              Variable interest rate applies: <strong>_${
+                data.variableInterestApplies ? "Yes" : "N/A"
+              }_</strong>
             </div>
           </div>
           
@@ -767,7 +831,7 @@ export function generateKeyFactsStatementHTML(
               <strong>COLLATERAL:</strong> You are committing the following as collateral:
             </div>
             <div class="term-row">
-              __${data.collateral || 'N/A'}__
+              __${data.collateral || "N/A"}__
             </div>
             <div class="term-row">
               Other:___________________________________
@@ -807,7 +871,7 @@ export function generateKeyFactsStatementHTML(
     <!-- Disclaimer and validity -->
     <div class="disclaimer" style="text-align: center; margin: 15px 0;">
       <p>* This information is not final until signed by all parties and does not replace the loan agreement. *</p>
-      <p>* This information is valid for ${data.validFor || '………………………'}*</p>
+      <p>* This information is valid for ${data.validFor || "………………………"}*</p>
     </div>
 
     <!-- Certification and Signatures -->
@@ -852,8 +916,12 @@ export function generateKeyFactsStatementHTML(
     <!-- Footer Info -->
     <div class="footer-info">
       <div class="row">
-        <span><strong>Name of Borrower:</strong> ${data.clientName} ${data.clientId ? `(${data.clientId})` : ''}</span>
-        <span><strong>Application No:</strong> ${data.applicationNo || data.loanId || 'N/A'}</span>
+        <span><strong>Name of Borrower:</strong> ${data.clientName} ${
+    data.clientId ? `(${data.clientId})` : ""
+  }</span>
+        <span><strong>Application No:</strong> ${
+          data.applicationNo || data.loanId || "N/A"
+        }</span>
         <span><strong>Date prepared:</strong> ${preparedDate}</span>
       </div>
     </div>
@@ -863,4 +931,3 @@ export function generateKeyFactsStatementHTML(
 }
 
 export type { KeyFactsData, SignatureData };
-

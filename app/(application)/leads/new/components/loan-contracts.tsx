@@ -156,7 +156,7 @@ export function LoanContracts({
         frequency: charge.name.toLowerCase().includes("monthly") ? "month" : undefined,
       })),
       lateFeeAmount: undefined, // TODO: Get from loan product template
-      lateFeeDays: 30, // Default
+      lateFeeDays: 10, // Default
       defaultInterestRate: 25, // Default
       defaultInterestDays: 10, // Default
       collateral: undefined, // TODO: Get from loan terms
