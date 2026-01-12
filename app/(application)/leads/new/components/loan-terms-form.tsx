@@ -1512,7 +1512,7 @@ export function LoanTermsForm({
                   {...form.register("principal", { valueAsNumber: true })}
                 />
                 {/* <div className="absolute inset-y-0 right-0 flex items-center pr-3">
-                <span className="text-sm text-muted-foreground">ZMK</span>
+                <span className="text-sm text-muted-foreground">ZMW</span>
               </div> */}
               </div>
               {form.formState.errors.principal && (

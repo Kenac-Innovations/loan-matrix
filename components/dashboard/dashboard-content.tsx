@@ -44,7 +44,7 @@ export function DashboardContent({ data }: DashboardContentProps) {
     // Fallback to USD if no currency provided
     return new Intl.NumberFormat("en-US", {
       style: "currency",
-      currency: "USD",
+      currency: "ZMW",
     }).format(amount);
   };
 

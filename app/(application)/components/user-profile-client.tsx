@@ -3,6 +3,7 @@
 import { useState, useRef } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
+import { useCurrency } from "@/contexts/currency-context";
 import { useTheme } from "next-themes";
 import { UserProfileData } from "./user-profile-data";
 import { useMobileMenu } from "./mobile-menu-context";
@@ -33,6 +34,7 @@ export function UserProfileClient({ userProfileData }: UserProfileClientProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { logout } = useAuth();
+  const { formatAmount } = useCurrency();
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const { mobileMenuOpen, setMobileMenuOpen } = useMobileMenu();
@@ -173,7 +175,7 @@ export function UserProfileClient({ userProfileData }: UserProfileClientProps) {
                             Loan ready for final approval
                           </p>
                           <p className="text-xs text-muted-foreground">
-                            $245,000 Mortgage for Robert Johnson
+                            {formatAmount(245000)} Mortgage for Robert Johnson
                           </p>
                           <p className="text-xs text-gray-500">
                             30 minutes ago
@@ -191,7 +193,7 @@ export function UserProfileClient({ userProfileData }: UserProfileClientProps) {
                             Risk assessment needed
                           </p>
                           <p className="text-xs text-muted-foreground">
-                            $125,000 Mortgage for Michael Chen
+                            {formatAmount(125000)} Mortgage for Michael Chen
                           </p>
                           <p className="text-xs text-gray-500">2 hours ago</p>
                         </div>
@@ -215,7 +217,7 @@ export function UserProfileClient({ userProfileData }: UserProfileClientProps) {
                             Disbursement ready
                           </p>
                           <p className="text-xs text-muted-foreground">
-                            $50,000 Business loan for Sarah Williams
+                            {formatAmount(50000)} Business loan for Sarah Williams
                           </p>
                           <p className="text-xs text-gray-500">Just now</p>
                         </div>
@@ -231,7 +233,7 @@ export function UserProfileClient({ userProfileData }: UserProfileClientProps) {
                             Disbursement scheduled
                           </p>
                           <p className="text-xs text-muted-foreground">
-                            $75,000 Personal loan for Emily Rodriguez
+                            {formatAmount(75000)} Personal loan for Emily Rodriguez
                           </p>
                           <p className="text-xs text-gray-500">5 hours ago</p>
                         </div>

@@ -4832,7 +4832,7 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                 <div className="space-y-2">
                   <Label htmlFor="prepayTransactionAmount">Transaction Amount * {prepayLoanTemplate?.currency?.code || 'USD'}</Label>
                   <div className="flex items-center space-x-2">
-                    <span className="text-lg font-semibold">{prepayLoanTemplate?.currency?.displaySymbol || '$'}</span>
+                    <span className="text-lg font-semibold">{prepayLoanTemplate?.currency?.displaySymbol || 'K'}</span>
                     <Input
                       id="prepayTransactionAmount"
                       type="number"

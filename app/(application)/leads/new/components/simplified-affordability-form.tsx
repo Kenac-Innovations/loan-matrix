@@ -386,7 +386,7 @@ export function SimplifiedAffordabilityForm({
             </Label>
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">
-                ZMK
+                ZMW
               </span>
               <Controller
                 control={form.control}
@@ -436,7 +436,7 @@ export function SimplifiedAffordabilityForm({
             </Label>
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">
-                ZMK
+                ZMW
               </span>
               <Controller
                 control={form.control}

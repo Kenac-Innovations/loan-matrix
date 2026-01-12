@@ -195,10 +195,10 @@ export function CloseSessionModal({
     try {
       return new Intl.NumberFormat("en-US", {
         style: "currency",
-        currency: currencyCode || "USD",
+        currency: currencyCode || "ZMW",
       }).format(amount);
     } catch {
-      return `${currencyCode || "USD"} ${amount.toFixed(2)}`;
+      return `${currencyCode || "ZMW"} ${amount.toFixed(2)}`;
     }
   };
 

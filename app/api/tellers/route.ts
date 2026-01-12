@@ -139,7 +139,7 @@ export async function GET(request: NextRequest) {
         );
 
         const availableBalance = vaultBalance - allocatedToCashiers;
-        const currency = dbTeller.cashAllocations[0]?.currency || "USD";
+        const currency = dbTeller.cashAllocations[0]?.currency || "ZMW";
 
         return {
           fineractTellerId: dbTeller.fineractTellerId,

@@ -584,7 +584,7 @@ model CashAllocation {
   cashierId             String? // null for teller vault allocations, set for cashier allocations
   fineractAllocationId Int?     @unique
   amount               Float
-  currency             String   @default("USD")
+  currency             String   @default("ZMW")
   allocatedDate        DateTime @default(now())
   allocatedBy          String
   notes                String?

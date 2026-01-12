@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { getFineractTenantId } from "@/lib/fineract-tenant-service";
 import { getAccessToken } from "@/lib/api";
+import { normalizeCurrencyCode } from "@/lib/format-currency";
 
 /**
  * Build CDE evaluation payload from lead data
@@ -71,9 +72,10 @@ export function buildCDEPayload(
     lead.externalId ||
     lead.id;
 
-  // Get currency from Fineract loan, default to ZMK
-  const currency =
-    fineractLoan?.currency?.code || fineractLoan?.currency?.nameCode || "ZMK";
+  // Get currency from Fineract loan, default to ZMW (normalize ZMK to ZMW)
+  const currency = normalizeCurrencyCode(
+    fineractLoan?.currency?.code || fineractLoan?.currency?.nameCode
+  );
 
   // Get requested amount from Fineract loan (principal) if available, otherwise from lead
   const requestedAmount =

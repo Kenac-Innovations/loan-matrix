@@ -170,7 +170,7 @@ export function ClientLoans({ clientId }: ClientLoansProps) {
     
     return new Intl.NumberFormat("en-US", {
       style: "currency",
-      currency: "USD",
+      currency: "ZMW",
       minimumFractionDigits: 0,
       maximumFractionDigits: 0,
     }).format(amount);

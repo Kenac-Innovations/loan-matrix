@@ -177,10 +177,10 @@ export default function CashierTransactionsPage({
     try {
       return new Intl.NumberFormat("en-US", {
         style: "currency",
-        currency: currency || "USD",
+        currency: currency || "ZMW",
       }).format(amount);
     } catch {
-      return `${currency || "USD"} ${amount.toFixed(2)}`;
+      return `${currency || "ZMW"} ${amount.toFixed(2)}`;
     }
   };
 

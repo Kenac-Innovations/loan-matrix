@@ -176,7 +176,7 @@ export function TransactionsModal({
   const formatAmount = (amount: number, currency?: string) => {
     return new Intl.NumberFormat("en-US", {
       style: "currency",
-      currency: currency || "USD",
+      currency: currency || "ZMW",
     }).format(amount);
   };
 

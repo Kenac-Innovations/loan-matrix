@@ -1216,7 +1216,6 @@ export function LoanContracts({
         charges: (loanTerms.charges || []).map((charge: any) => ({
           chargeId: charge.chargeId,
           amount: charge.amount,
-          dueDate: charge.dueDate,
         })),
         collateral:
           loanTerms.collaterals?.map((coll: any) => ({

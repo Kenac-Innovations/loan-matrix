@@ -111,7 +111,7 @@ export function AllocateCashModal({
         // Set default currency if available
         if (currencyList.length > 0 && !formData.currency) {
           const defaultCurrency =
-            currencyList.find((c: Currency) => c.code === "USD") ||
+            currencyList.find((c: Currency) => c.code === "ZMW") ||
             currencyList[0];
           setFormData((prev) => ({ ...prev, currency: defaultCurrency.code }));
         }
@@ -324,7 +324,7 @@ export function AllocateCashModal({
                       onChange={(e) =>
                         setNewCurrencyCode(e.target.value.toUpperCase())
                       }
-                      placeholder="USD"
+                      placeholder="ZMW"
                       maxLength={3}
                       className="flex-1"
                     />

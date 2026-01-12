@@ -194,7 +194,7 @@ export function RepaymentModal({ isOpen, onClose, loanId, onSuccess }: Repayment
     setSuccess(false);
   };
 
-  const formatCurrency = (amount: number, currencyCode: string = "USD"): string => {
+  const formatCurrency = (amount: number, currencyCode: string = "ZMW"): string => {
     return new Intl.NumberFormat("en-US", {
       style: "currency",
       currency: currencyCode,

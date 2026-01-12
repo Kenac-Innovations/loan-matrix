@@ -22,7 +22,7 @@ function transformLoanData(rawLoan: any, payoutStatusMap?: Map<number, string>):
       rawLoan.productName || rawLoan.loanProductName || "Unknown Product",
     status: rawLoan.status?.value || rawLoan.status || "Unknown",
     principal: parseFloat(rawLoan.principal || rawLoan.principalAmount || "0"),
-    currency: rawLoan.currency?.code || rawLoan.currency || "USD",
+    currency: rawLoan.currency?.code || rawLoan.currency || "ZMW",
     disbursedAmount: parseFloat(rawLoan.disbursedAmount || "0"),
     outstandingBalance: parseFloat(rawLoan.outstandingBalance || "0"),
     daysInArrears: parseInt(rawLoan.daysInArrears || "0"),

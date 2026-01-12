@@ -62,7 +62,7 @@ export async function POST(
         cashierId: null, // null = teller vault allocation
         fineractAllocationId: null, // No Fineract allocation for teller-level
         amount: parseFloat(amount),
-        currency: currency || "USD",
+        currency: currency || "ZMW",
         allocatedBy: session.user.id,
         notes,
         status: "ACTIVE",

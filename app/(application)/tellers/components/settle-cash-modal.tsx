@@ -40,7 +40,7 @@ export function SettleCashModal({
   cashierId,
   cashierName,
   openingBalance = 0,
-  currency = "USD",
+  currency = "ZMW",
 }: SettleCashModalProps) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);

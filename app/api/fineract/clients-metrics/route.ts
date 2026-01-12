@@ -92,7 +92,7 @@ export async function GET() {
     let totalOutstanding = 0;
     let averageLoanAmount = 0;
     let riskClients = 0;
-    let currency = "USD";
+    let currency = "ZMW";
     let loansCount = 0;
     let activeLoansCount = 0;
 
@@ -103,7 +103,7 @@ export async function GET() {
 
       // Get currency from first loan
       if (loans.length > 0 && loans[0].currency) {
-        currency = loans[0].currency.code || loans[0].currency || "USD";
+        currency = loans[0].currency.code || loans[0].currency || "ZMW";
       }
 
       // Calculate portfolio metrics
@@ -197,7 +197,7 @@ export async function GET() {
       averageLoanAmount: 0,
       clientGrowthRate: 0,
       riskClients: 0,
-      currency: "USD",
+      currency: "ZMW",
       loansCount: 0,
       activeLoansCount: 0,
     };

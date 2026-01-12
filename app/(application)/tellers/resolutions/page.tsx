@@ -25,6 +25,7 @@ import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { CheckCircle, Loader2, AlertCircle } from "lucide-react";
 import { formatDate } from "@/lib/format-date";
+import { useCurrency } from "@/contexts/currency-context";
 
 interface PendingResolution {
   id: string;
@@ -131,11 +132,10 @@ export default function ResolutionsPage() {
     }
   };
 
+  const { formatAmount } = useCurrency();
+  
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-    }).format(amount);
+    return formatAmount(amount);
   };
 
   const columns: DataTableColumn<PendingResolution>[] = [

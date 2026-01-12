@@ -104,7 +104,7 @@ export default function CashiersPage({
   const [staff, setStaff] = useState<Staff[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingStaff, setLoadingStaff] = useState(true);
-  const [systemCurrency, setSystemCurrency] = useState<string>("USD");
+  const [systemCurrency, setSystemCurrency] = useState<string>("ZMW");
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [creating, setCreating] = useState(false);
   const [showAllocateModal, setShowAllocateModal] = useState(false);
@@ -153,7 +153,7 @@ export default function CashiersPage({
         // Get the first currency (usually the default/system currency)
         if (currencyList.length > 0) {
           const defaultCurrency = currencyList[0];
-          setSystemCurrency(defaultCurrency.code || "USD");
+          setSystemCurrency(defaultCurrency.code || "ZMW");
         }
       }
     } catch (error) {
@@ -199,7 +199,7 @@ export default function CashiersPage({
             // Fetch Fineract balance (use first available currency)
             const currencyResponse = await fetch("/api/fineract/currencies");
             let fineractBalance = 0;
-            let currencyCode = "USD";
+            let currencyCode = "ZMW";
             
             if (currencyResponse.ok) {
               const currencyData = await currencyResponse.json();
@@ -426,7 +426,7 @@ export default function CashiersPage({
       cell: ({ row }: { row: any }) => {
         const cashier = row.original as Cashier;
         const balance = cashier.netCash || 0;
-        const currency = cashier.currencyCode || "USD";
+        const currency = cashier.currencyCode || systemCurrency;
         
         const formatAmount = (amount: number) => {
           try {

@@ -223,8 +223,8 @@ export async function getLeadsData(
         amountNum = lead.requestedAmount;
       }
 
-      // Format amount with currency (default to ZMK)
-      const currency = stateMetadata.currency || "ZMK";
+      // Format amount with currency (default to ZMW)
+      const currency = stateMetadata.currency || "ZMW";
       const amount =
         amountNum > 0
           ? `${currency} ${amountNum

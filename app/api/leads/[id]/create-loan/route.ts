@@ -80,7 +80,10 @@ export async function POST(
       externalId: leadId,
       allowPartialPeriodInterestCalcualtion: false,
       isEqualAmortization: false,
-      charges: [],
+      charges: (loanData.charges || []).map((charge: any) => ({
+        chargeId: charge.chargeId,
+        amount: charge.amount,
+      })),
       collateral: [],
       loanType: "individual",
     };

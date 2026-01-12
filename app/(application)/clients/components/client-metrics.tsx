@@ -88,7 +88,7 @@ export function ClientMetrics() {
   const formatCurrency = (amount: number, currencyCode?: string) => {
     return new Intl.NumberFormat("en-US", {
       style: "currency",
-      currency: currencyCode || metrics.currency || "USD",
+      currency: currencyCode || metrics.currency || "ZMW",
       minimumFractionDigits: 0,
       maximumFractionDigits: 0,
     }).format(amount);

@@ -846,7 +846,7 @@ export async function POST(
             },
             orderBy: { allocatedDate: "desc" },
           });
-          const currency = cashierAllocations?.currency || "USD";
+          const currency = cashierAllocations?.currency || "ZMW";
 
           // Create a variance allocation record for audit trail
           // This is tracked separately and excluded from balance calculations

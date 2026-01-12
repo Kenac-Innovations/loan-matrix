@@ -156,7 +156,7 @@ export default function JournalEntriesPage() {
     }) + " 00:00:00";
   };
 
-  const formatCurrency = (amount: number, currencyCode: string = "USD"): string => {
+  const formatCurrency = (amount: number, currencyCode: string = "ZMW"): string => {
     return new Intl.NumberFormat("en-US", {
       style: "currency",
       currency: currencyCode,

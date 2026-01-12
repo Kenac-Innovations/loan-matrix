@@ -132,7 +132,7 @@ export async function POST(
     const variance = parseFloat(returnedAmount) - expectedReturn;
 
     // Get currency from first allocation or default
-    const currency = activeAllocations[0]?.currency || "USD";
+    const currency = activeAllocations[0]?.currency || "ZMW";
 
     // Calculate balances BEFORE reconciliation to show current state
     // Get current vault balance (before adding returned cash)

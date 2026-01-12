@@ -8,6 +8,7 @@ import { z } from "zod";
 import useSWR from "swr";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { useCurrency } from "@/contexts/currency-context";
 import {
   Card,
   CardContent,
@@ -136,6 +137,7 @@ export function NewLeadForm() {
   // ALL HOOKS MUST BE CALLED FIRST, BEFORE ANY CONDITIONAL RETURNS
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { currencyCode, currencySymbol } = useCurrency();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [affordabilityResult, setAffordabilityResult] =
     useState<AffordabilityResult | null>(null);
@@ -898,18 +900,22 @@ export function NewLeadForm() {
     // The loan details will be handled in a separate loan application form
   };
 
-  // Format currency
-  const formatCurrency = (amount: number | string) => {
+  // Format currency - uses currency from context
+  const formatCurrencyLocal = (amount: number | string) => {
     const numAmount =
       typeof amount === "string" ? Number.parseFloat(amount) : amount;
-    if (isNaN(numAmount)) return "$0";
+    if (isNaN(numAmount)) return `${currencySymbol}0`;
 
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(numAmount);
+    try {
+      return new Intl.NumberFormat("en-US", {
+        style: "currency",
+        currency: currencyCode,
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0,
+      }).format(numAmount);
+    } catch {
+      return `${currencySymbol}${numAmount.toLocaleString()}`;
+    }
   };
 
   // Handle step navigation

@@ -156,7 +156,7 @@ export async function GET(
     );
 
     const availableBalance = vaultBalance - allocatedToCashiers;
-    const currency = dbTeller.cashAllocations[0]?.currency || "USD";
+    const currency = dbTeller.cashAllocations[0]?.currency || "ZMW";
 
     // Prepare base response with database data
     const baseResponse = {

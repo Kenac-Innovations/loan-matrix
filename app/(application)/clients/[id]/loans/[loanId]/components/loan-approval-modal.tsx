@@ -517,7 +517,7 @@ export function LoanApprovalModal({ isOpen, onClose, loanId, onApprovalSuccess }
                 className="pr-20"
               />
               <div className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
-                {approvalTemplate?.currency?.displaySymbol || '$'}
+                {approvalTemplate?.currency?.displaySymbol || 'K'}
               </div>
             </div>
             {approvalTemplate && (

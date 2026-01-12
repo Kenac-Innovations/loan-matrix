@@ -36,6 +36,7 @@ import {
   Download,
 } from "lucide-react";
 import { format } from "date-fns";
+import { useCurrency } from "@/contexts/currency-context";
 
 interface ComprehensiveLeadDetailsProps {
   leadId: string;
@@ -44,6 +45,7 @@ interface ComprehensiveLeadDetailsProps {
 export function ComprehensiveLeadDetails({
   leadId,
 }: ComprehensiveLeadDetailsProps) {
+  const { getCurrencySymbol } = useCurrency();
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -747,7 +749,7 @@ export function ComprehensiveLeadDetails({
                     <div>
                       <p className="text-sm text-muted-foreground">Principal</p>
                       <p className="text-2xl font-bold text-green-600">
-                        {fineractLoan.currency?.displaySymbol || "$"}
+                        {fineractLoan.currency?.displaySymbol || getCurrencySymbol()}
                         {(fineractLoan.principal || 0).toLocaleString()}
                       </p>
                     </div>
@@ -821,7 +823,7 @@ export function ComprehensiveLeadDetails({
                                 Disbursed
                               </p>
                               <p className="text-lg font-semibold text-green-600">
-                                {fineractLoan.currency?.displaySymbol || "$"}
+                                {fineractLoan.currency?.displaySymbol || getCurrencySymbol()}
                                 {(
                                   fineractLoan.summary.principalDisbursed || 0
                                 ).toLocaleString()}
@@ -832,7 +834,7 @@ export function ComprehensiveLeadDetails({
                                 Paid
                               </p>
                               <p className="text-lg font-semibold text-blue-600">
-                                {fineractLoan.currency?.displaySymbol || "$"}
+                                {fineractLoan.currency?.displaySymbol || getCurrencySymbol()}
                                 {(
                                   fineractLoan.summary.principalPaid || 0
                                 ).toLocaleString()}
@@ -843,7 +845,7 @@ export function ComprehensiveLeadDetails({
                                 Outstanding
                               </p>
                               <p className="text-lg font-semibold text-orange-600">
-                                {fineractLoan.currency?.displaySymbol || "$"}
+                                {fineractLoan.currency?.displaySymbol || getCurrencySymbol()}
                                 {(
                                   fineractLoan.summary.principalOutstanding || 0
                                 ).toLocaleString()}
@@ -855,7 +857,7 @@ export function ComprehensiveLeadDetails({
                                   Overdue
                                 </p>
                                 <p className="text-lg font-semibold text-red-600">
-                                  {fineractLoan.currency?.displaySymbol || "$"}
+                                  {fineractLoan.currency?.displaySymbol || getCurrencySymbol()}
                                   {(
                                     fineractLoan.summary.principalOverdue || 0
                                   ).toLocaleString()}
@@ -876,7 +878,7 @@ export function ComprehensiveLeadDetails({
                                 Charged
                               </p>
                               <p className="text-lg font-semibold">
-                                {fineractLoan.currency?.displaySymbol || "$"}
+                                {fineractLoan.currency?.displaySymbol || getCurrencySymbol()}
                                 {(
                                   fineractLoan.summary.interestCharged || 0
                                 ).toLocaleString()}
@@ -887,7 +889,7 @@ export function ComprehensiveLeadDetails({
                                 Paid
                               </p>
                               <p className="text-lg font-semibold text-blue-600">
-                                {fineractLoan.currency?.displaySymbol || "$"}
+                                {fineractLoan.currency?.displaySymbol || getCurrencySymbol()}
                                 {(
                                   fineractLoan.summary.interestPaid || 0
                                 ).toLocaleString()}
@@ -899,7 +901,7 @@ export function ComprehensiveLeadDetails({
                                   Outstanding
                                 </p>
                                 <p className="text-lg font-semibold text-orange-600">
-                                  {fineractLoan.currency?.displaySymbol || "$"}
+                                  {fineractLoan.currency?.displaySymbol || getCurrencySymbol()}
                                   {(
                                     fineractLoan.summary.interestOutstanding ||
                                     0
@@ -913,7 +915,7 @@ export function ComprehensiveLeadDetails({
                                   Overdue
                                 </p>
                                 <p className="text-lg font-semibold text-red-600">
-                                  {fineractLoan.currency?.displaySymbol || "$"}
+                                  {fineractLoan.currency?.displaySymbol || getCurrencySymbol()}
                                   {(
                                     fineractLoan.summary.interestOverdue || 0
                                   ).toLocaleString()}
@@ -939,7 +941,7 @@ export function ComprehensiveLeadDetails({
                                     </p>
                                     <p className="text-lg font-semibold">
                                       {fineractLoan.currency?.displaySymbol ||
-                                        "$"}
+                                        "K"}
                                       {(
                                         fineractLoan.summary
                                           .feeChargesCharged || 0
@@ -953,7 +955,7 @@ export function ComprehensiveLeadDetails({
                                       </p>
                                       <p className="text-lg font-semibold text-blue-600">
                                         {fineractLoan.currency?.displaySymbol ||
-                                          "$"}
+                                          "K"}
                                         {(
                                           fineractLoan.summary.feeChargesPaid ||
                                           0
@@ -972,7 +974,7 @@ export function ComprehensiveLeadDetails({
                                     </p>
                                     <p className="text-lg font-semibold text-red-600">
                                       {fineractLoan.currency?.displaySymbol ||
-                                        "$"}
+                                        "K"}
                                       {(
                                         fineractLoan.summary
                                           .penaltyChargesCharged || 0
@@ -987,7 +989,7 @@ export function ComprehensiveLeadDetails({
                                       </p>
                                       <p className="text-lg font-semibold text-blue-600">
                                         {fineractLoan.currency?.displaySymbol ||
-                                          "$"}
+                                          "K"}
                                         {(
                                           fineractLoan.summary
                                             .penaltyChargesPaid || 0
@@ -1012,7 +1014,7 @@ export function ComprehensiveLeadDetails({
                                 Total Outstanding
                               </p>
                               <p className="text-2xl font-bold text-red-600">
-                                {fineractLoan.currency?.displaySymbol || "$"}
+                                {fineractLoan.currency?.displaySymbol || getCurrencySymbol()}
                                 {(
                                   fineractLoan.summary.totalOutstanding || 0
                                 ).toLocaleString()}
@@ -1024,7 +1026,7 @@ export function ComprehensiveLeadDetails({
                                   Total Overdue
                                 </p>
                                 <p className="text-xl font-semibold text-red-600">
-                                  {fineractLoan.currency?.displaySymbol || "$"}
+                                  {fineractLoan.currency?.displaySymbol || getCurrencySymbol()}
                                   {(
                                     fineractLoan.summary.totalOverdue || 0
                                   ).toLocaleString()}
@@ -1037,7 +1039,7 @@ export function ComprehensiveLeadDetails({
                                   Total Repaid
                                 </p>
                                 <p className="text-xl font-semibold text-green-600">
-                                  {fineractLoan.currency?.displaySymbol || "$"}
+                                  {fineractLoan.currency?.displaySymbol || getCurrencySymbol()}
                                   {(
                                     fineractLoan.summary.totalRepayment || 0
                                   ).toLocaleString()}
@@ -1051,7 +1053,7 @@ export function ComprehensiveLeadDetails({
                                   Total Expected
                                 </p>
                                 <p className="text-lg font-semibold">
-                                  {fineractLoan.currency?.displaySymbol || "$"}
+                                  {fineractLoan.currency?.displaySymbol || getCurrencySymbol()}
                                   {(
                                     fineractLoan.summary
                                       .totalExpectedRepayment || 0

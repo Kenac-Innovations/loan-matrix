@@ -27,7 +27,7 @@ export default function TransactionDetailsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [transaction, setTransaction] = useState<any | null>(null);
-  const [loanCurrency, setLoanCurrency] = useState<string>("USD");
+  const [loanCurrency, setLoanCurrency] = useState<string>("ZMW");
   const [showChargeback, setShowChargeback] = useState(false);
   const [showUndo, setShowUndo] = useState(false);
   const [paymentTypes, setPaymentTypes] = useState<Array<{ id: number; name: string }>>([]);
@@ -44,7 +44,7 @@ export default function TransactionDetailsPage() {
         const res = await fetch(`/api/fineract/loans/${loanId}?associations=all&exclude=guarantors,futureSchedule`);
         if (!res.ok) throw new Error(`Failed to fetch loan: ${res.statusText}`);
         const data: LoanResponse = await res.json();
-        setLoanCurrency(data.currency?.code || "USD");
+        setLoanCurrency(data.currency?.code || "ZMW");
         const tx = (data.transactions || []).find((t: any) => Number(t.id) === transactionId);
         setTransaction(tx || null);
         if (!tx) setError("Transaction not found");

@@ -16,6 +16,7 @@ import Link from "next/link";
 import { GenericDataTable } from "@/components/tables/generic-data-table";
 import { DataTableColumn } from "@/shared/types/data-table";
 import { formatDate } from "@/lib/format-date";
+import { useCurrency } from "@/contexts/currency-context";
 
 interface Session {
   id: string;
@@ -42,6 +43,7 @@ export default function SessionsHistoryPage({
   params: Promise<{ id: string; cashierId: string }>;
 }) {
   const router = useRouter();
+  const { formatAmount } = useCurrency();
   const [tellerId, setTellerId] = useState<string>("");
   const [cashierId, setCashierId] = useState<string>("");
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -159,10 +161,7 @@ export default function SessionsHistoryPage({
       header: "Opening Float",
       cell: ({ row }: { row: any }) => (
         <span className="font-medium">
-          {new Intl.NumberFormat("en-US", {
-            style: "currency",
-            currency: "USD",
-          }).format(row.original.openingFloat)}
+          {formatAmount(row.original.openingFloat)}
         </span>
       ),
     },
@@ -171,10 +170,7 @@ export default function SessionsHistoryPage({
       header: "Cash In",
       cell: ({ row }: { row: any }) => (
         <span className="text-green-600 font-medium">
-          {new Intl.NumberFormat("en-US", {
-            style: "currency",
-            currency: "USD",
-          }).format(row.original.cashIn)}
+          {formatAmount(row.original.cashIn)}
         </span>
       ),
     },
@@ -183,10 +179,7 @@ export default function SessionsHistoryPage({
       header: "Cash Out",
       cell: ({ row }: { row: any }) => (
         <span className="text-red-600 font-medium">
-          {new Intl.NumberFormat("en-US", {
-            style: "currency",
-            currency: "USD",
-          }).format(row.original.cashOut)}
+          {formatAmount(row.original.cashOut)}
         </span>
       ),
     },
@@ -199,10 +192,7 @@ export default function SessionsHistoryPage({
           return <span className="text-muted-foreground">—</span>;
         return (
           <span className="font-medium">
-            {new Intl.NumberFormat("en-US", {
-              style: "currency",
-              currency: "USD",
-            }).format(expected)}
+            {formatAmount(expected)}
           </span>
         );
       },
@@ -216,10 +206,7 @@ export default function SessionsHistoryPage({
           return <span className="text-muted-foreground">—</span>;
         return (
           <span className="font-medium">
-            {new Intl.NumberFormat("en-US", {
-              style: "currency",
-              currency: "USD",
-            }).format(actual)}
+            {formatAmount(actual)}
           </span>
         );
       },
@@ -245,10 +232,7 @@ export default function SessionsHistoryPage({
           >
             {isBalanced
               ? "Balanced"
-              : `${isOver ? "+" : ""}${new Intl.NumberFormat("en-US", {
-                  style: "currency",
-                  currency: "USD",
-                }).format(diff)}`}
+              : `${isOver ? "+" : ""}${formatAmount(diff)}`}
           </span>
         );
       },

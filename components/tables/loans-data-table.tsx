@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { GenericDataTable } from "@/components/tables/generic-data-table";
 import { DataTableColumn, DataTableFilter } from "@/shared/types/data-table";
 import { useState, useMemo } from "react";
+import { normalizeCurrencyCode } from "@/lib/format-currency";
 
 export type Loan = {
   id: string;
@@ -60,7 +61,7 @@ export function LoansDataTable({ data }: LoansDataTableProps) {
         if (typeof loan.currency === "object" && loan.currency !== null) {
         return (loan.currency as any).code || String(loan.currency);
       }
-        return String(loan.currency || "USD");
+        return String(loan.currency || "ZMW");
       })
       .filter(Boolean);
     return Array.from(new Set(currencies));
@@ -140,8 +141,9 @@ export function LoansDataTable({ data }: LoansDataTableProps) {
       header: "Currency",
       cell: ({ getValue }) => {
         const currency = getValue() as any;
+        const code = normalizeCurrencyCode(currency?.code || currency);
         return (
-          <div className="text-sm">{currency?.code || currency || "USD"}</div>
+          <div className="text-sm">{code}</div>
         );
       },
       filterOptions: uniqueCurrencies.map((currency) => {
@@ -149,7 +151,7 @@ export function LoansDataTable({ data }: LoansDataTableProps) {
           const loanCurrency =
             typeof loan.currency === "object" && loan.currency !== null
               ? (loan.currency as any).code || String(loan.currency)
-              : String(loan.currency || "USD");
+              : String(loan.currency || "ZMW");
           return loanCurrency === currency;
         }).length;
         return {
@@ -164,7 +166,7 @@ export function LoansDataTable({ data }: LoansDataTableProps) {
       header: "Principal",
       cell: ({ getValue, row }) => {
         const amount = parseFloat(getValue()) || 0;
-        const currency = row.original.currency || "USD";
+        const currency = row.original.currency || "ZMW";
         const formatted = formatCurrency(amount, currency);
         return <div className="text-right font-medium">{formatted}</div>;
       },
@@ -175,7 +177,7 @@ export function LoansDataTable({ data }: LoansDataTableProps) {
       header: "Outstanding",
       cell: ({ getValue, row }) => {
         const amount = parseFloat(getValue()) || 0;
-        const currency = row.original.currency || "USD";
+        const currency = row.original.currency || "ZMW";
         const formatted = formatCurrency(amount, currency);
         return <div className="text-right font-medium">{formatted}</div>;
       },

@@ -112,7 +112,7 @@ export async function POST(
     }
 
     const variance = settlement.difference;
-    const currency = "USD"; // TODO: Get from settlement or teller
+    const currency = settlement.currency || "ZMW"; // Get from settlement or default to ZMW
 
     // Create vault allocation adjustment for the variance
     // Positive variance (surplus) = add to vault

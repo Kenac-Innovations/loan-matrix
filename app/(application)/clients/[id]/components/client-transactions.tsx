@@ -108,7 +108,7 @@ export function ClientTransactions({ clientId, loanId }: ClientTransactionsProps
 
   const { data, error, isLoading } = useSWR(endpoint, fetcher);
 
-  const formatCurrency = (amount: number | undefined | null, currencyCode: string = "USD") => {
+  const formatCurrency = (amount: number | undefined | null, currencyCode: string = "ZMW") => {
     // Return blank if amount is undefined, null, NaN, or 0
     if (amount === undefined || amount === null || isNaN(amount) || amount === 0) {
       return "";
