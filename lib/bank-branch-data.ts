@@ -1882,16 +1882,37 @@ export function matchFineractBankName(fineractBankName: string): string | null {
   const normalized = fineractBankName.toLowerCase().trim();
   const banks = getUniqueBanks();
 
-  // Try exact match
+  // Try exact match first
   const exactMatch = banks.find((b) => b.toLowerCase() === normalized);
   if (exactMatch) return exactMatch;
 
-  // Try contains match
-  const containsMatch = banks.find(
-    (b) =>
-      b.toLowerCase().includes(normalized) ||
-      normalized.includes(b.toLowerCase())
+  // Try exact match with "BANK" suffix added/removed
+  const withBank = normalized.endsWith(" bank") ? normalized : normalized + " bank";
+  const withoutBank = normalized.replace(/ bank$/i, "").trim();
+  
+  const bankSuffixMatch = banks.find(
+    (b) => b.toLowerCase() === withBank || b.toLowerCase() === withoutBank
   );
+  if (bankSuffixMatch) return bankSuffixMatch;
+
+  // Try "starts with" match for abbreviated names (e.g., "ABSA" matches "ABSA BANK")
+  const startsWithMatch = banks.find(
+    (b) => b.toLowerCase().startsWith(normalized) || normalized.startsWith(b.toLowerCase())
+  );
+  if (startsWithMatch) return startsWithMatch;
+
+  // Try contains match - but be more strict to avoid false positives
+  // Only match if the normalized name is a significant portion of the bank name
+  const containsMatch = banks.find((b) => {
+    const bLower = b.toLowerCase();
+    // Check if one contains the other AND they share significant characters
+    if (bLower.includes(normalized) || normalized.includes(bLower)) {
+      // Ensure it's not a coincidental match (at least 4 chars match)
+      const shorter = bLower.length < normalized.length ? bLower : normalized;
+      return shorter.length >= 4 || bLower === normalized;
+    }
+    return false;
+  });
   if (containsMatch) return containsMatch;
 
   // Try keyword match (match first significant word)
@@ -1900,12 +1921,18 @@ export function matchFineractBankName(fineractBankName: string): string | null {
     .filter(
       (k) =>
         k.length > 2 &&
-        !["the", "and", "ltd", "plc", "limited", "bank"].includes(k)
+        !["the", "and", "ltd", "plc", "limited", "bank", "zambia"].includes(k)
     );
 
+  // Sort keywords by length (longest first) to get more specific matches
+  keywords.sort((a, b) => b.length - a.length);
+
   for (const keyword of keywords) {
-    const keywordMatch = banks.find((b) => b.toLowerCase().includes(keyword));
-    if (keywordMatch) return keywordMatch;
+    // Only match if keyword is at least 4 chars for safety
+    if (keyword.length >= 4) {
+      const keywordMatch = banks.find((b) => b.toLowerCase().includes(keyword));
+      if (keywordMatch) return keywordMatch;
+    }
   }
 
   return null;

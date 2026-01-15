@@ -220,15 +220,23 @@ export function BankDetailsFields({
     }
 
     const bankName = getBankNameFromValue(currentBankValue);
+    console.log("=== Bank Branch Filtering Debug ===");
+    console.log("Current bank value:", currentBankValue);
+    console.log("Extracted bank name:", bankName);
+    
     if (bankName) {
       setSelectedBankName(bankName);
       const matchedBankName = matchFineractBankName(bankName);
+      console.log("Matched bank name in our data:", matchedBankName);
+      
       if (matchedBankName) {
         const branches = getBranchesForBank(matchedBankName);
+        console.log(`Found ${branches.length} branches for ${matchedBankName}`);
         setAvailableBranches(branches);
       } else {
         // Try direct match with the name
         const branches = getBranchesForBank(bankName);
+        console.log(`Direct match: Found ${branches.length} branches for ${bankName}`);
         setAvailableBranches(branches);
       }
     }
