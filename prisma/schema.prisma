@@ -524,9 +524,52 @@ model UssdLoanApplication {
   @@index([status, createdAt])
 }
 
+// Bank is the top level of the cash management hierarchy
+// Banks receive fund allocations which can then be distributed to tellers
+model Bank {
+  id              String           @id @default(cuid())
+  tenantId        String
+  name            String
+  code            String           // Unique code for the bank (e.g., "MAIN-VAULT", "HQ-BANK")
+  description     String?
+  officeId        Int?             // Optional link to Fineract office
+  officeName      String?
+  status          String           @default("ACTIVE") // ACTIVE, INACTIVE, CLOSED
+  isActive        Boolean          @default(true)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  allocations     BankAllocation[]
+  tellers         Teller[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId, status])
+  @@index([tenantId, isActive])
+}
+
+// Tracks funds allocated to banks (the vault at bank level)
+model BankAllocation {
+  id            String   @id @default(cuid())
+  tenantId      String
+  bankId        String
+  amount        Float
+  currency      String   @default("ZMW")
+  allocatedDate DateTime @default(now())
+  allocatedBy   String
+  notes         String?
+  status        String   @default("ACTIVE") // ACTIVE, REVERSED
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  bank          Bank     @relation(fields: [bankId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, bankId])
+  @@index([tenantId, status])
+  @@index([allocatedDate])
+}
+
 model Teller {
   id               String           @id @default(cuid())
   tenantId         String
+  bankId           String?          // Link to parent bank (required for fund allocation hierarchy)
   fineractTellerId Int?
   officeId         Int
   officeName       String
@@ -538,12 +581,14 @@ model Teller {
   isActive         Boolean          @default(true)
   createdAt        DateTime         @default(now())
   updatedAt        DateTime         @updatedAt
+  bank             Bank?            @relation(fields: [bankId], references: [id])
   cashAllocations  CashAllocation[]
   cashiers         Cashier[]
   settlements      CashSettlement[]
   sessions         CashierSession[]
 
   @@unique([tenantId, fineractTellerId])
+  @@index([tenantId, bankId])
   @@index([tenantId, officeId])
   @@index([tenantId, status])
   @@index([tenantId, isActive])

@@ -22,21 +22,31 @@ interface Office {
   name: string;
 }
 
+interface Bank {
+  id: string;
+  name: string;
+  code: string;
+}
+
 export default function NewTellerPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [offices, setOffices] = useState<Office[]>([]);
+  const [banks, setBanks] = useState<Bank[]>([]);
   const [loadingOffices, setLoadingOffices] = useState(true);
+  const [loadingBanks, setLoadingBanks] = useState(true);
   const [formData, setFormData] = useState({
     name: "",
     description: "",
     officeId: "",
+    bankId: "",
     startDate: new Date().toISOString().split("T")[0],
     endDate: "",
   });
 
   useEffect(() => {
     fetchOffices();
+    fetchBanks();
   }, []);
 
   const fetchOffices = async () => {
@@ -53,6 +63,20 @@ export default function NewTellerPage() {
     }
   };
 
+  const fetchBanks = async () => {
+    try {
+      const response = await fetch("/api/banks?status=ACTIVE");
+      if (response.ok) {
+        const data = await response.json();
+        setBanks(data || []);
+      }
+    } catch (error) {
+      console.error("Error fetching banks:", error);
+    } finally {
+      setLoadingBanks(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -66,6 +90,7 @@ export default function NewTellerPage() {
           officeId: parseInt(formData.officeId),
           officeName: offices.find((o) => o.id === parseInt(formData.officeId))
             ?.name,
+          bankId: formData.bankId || null,
         }),
       });
 
@@ -152,6 +177,33 @@ export default function NewTellerPage() {
                   disabled={loadingOffices}
                 />
               </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="bankId">
+                Parent Bank (Optional)
+              </Label>
+              <SearchableSelect
+                options={banks.map((bank) => ({
+                  value: bank.id,
+                  label: `${bank.name} (${bank.code})`,
+                }))}
+                value={formData.bankId}
+                onValueChange={(value) =>
+                  setFormData({ ...formData, bankId: value })
+                }
+                placeholder={
+                  loadingBanks
+                    ? "Loading banks..."
+                    : "Select parent bank (optional)"
+                }
+                emptyMessage="No banks found. Create a bank first."
+                disabled={loadingBanks}
+              />
+              <p className="text-xs text-muted-foreground">
+                Link this teller to a bank to manage fund allocation hierarchy.
+                Teller allocations will be limited by the bank's available balance.
+              </p>
             </div>
 
             <div className="space-y-2">

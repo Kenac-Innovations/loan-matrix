@@ -108,15 +108,24 @@ export function ClientTransactions({ clientId, loanId }: ClientTransactionsProps
 
   const { data, error, isLoading } = useSWR(endpoint, fetcher);
 
+  // Normalize currency code - converts deprecated ZMK to ZMW
+  const normalizeCurrencyCode = (code: string | undefined | null): string => {
+    if (!code) return "ZMW";
+    if (code.toUpperCase() === "ZMK") return "ZMW";
+    return code;
+  };
+
   const formatCurrency = (amount: number | undefined | null, currencyCode: string = "ZMW") => {
     // Return blank if amount is undefined, null, NaN, or 0
     if (amount === undefined || amount === null || isNaN(amount) || amount === 0) {
       return "";
     }
 
+    const normalizedCode = normalizeCurrencyCode(currencyCode);
+
     return new Intl.NumberFormat("en-US", {
       style: "currency",
-      currency: currencyCode,
+      currency: normalizedCode,
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     }).format(amount);
@@ -229,7 +238,7 @@ export function ClientTransactions({ clientId, loanId }: ClientTransactionsProps
           ['Total Interest', formatCurrency(repaymentSchedule.totalInterestCharged, currencyCode)],
           ['Total Fees & Penalties', formatCurrency((repaymentSchedule.totalFeeChargesCharged || 0) + (repaymentSchedule.totalPenaltyChargesCharged || 0), currencyCode)],
           ['Total Repayment', formatCurrency(repaymentSchedule.totalRepaymentExpected, currencyCode)],
-          ['Currency', currencyCode]
+          ['Currency', normalizeCurrencyCode(currencyCode)]
         ];
 
         autoTable.default(pdf, {

@@ -119,10 +119,17 @@ export default function GuarantorsModal({ isOpen, onClose, loanId }: GuarantorsM
     });
   };
 
+  // Normalize currency code - converts deprecated ZMK to ZMW
+  const normalizeCurrencyCode = (code: string | undefined | null): string => {
+    if (!code) return "ZMW";
+    if (code.toUpperCase() === "ZMK") return "ZMW";
+    return code;
+  };
+
   const formatCurrency = (amount: number, currencyCode: string = "ZMW"): string => {
     return new Intl.NumberFormat("en-US", {
       style: "currency",
-      currency: currencyCode,
+      currency: normalizeCurrencyCode(currencyCode),
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     }).format(amount);

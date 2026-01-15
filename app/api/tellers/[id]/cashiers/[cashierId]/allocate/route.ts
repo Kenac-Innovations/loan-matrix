@@ -170,65 +170,8 @@ export async function POST(
       );
     }
 
-    // Check if cashier has an active session - required for cash in/out
-    if (cashier) {
-      let activeSession = await prisma.cashierSession.findFirst({
-        where: {
-          tellerId: teller.id,
-          cashierId: cashier.id,
-          tenantId: tenant.id,
-          sessionStatus: "ACTIVE",
-        },
-      });
-
-      // If no local session found, check Fineract for active session and sync
-      if (!activeSession) {
-        try {
-          const fineractService = await getFineractServiceWithSession();
-          const fineractCashierData = await fineractService.getCashier(
-            teller.fineractTellerId,
-            cashier.fineractCashierId || fineractCashierId
-          );
-
-          // Check if Fineract shows cashier as having an active session
-          if (fineractCashierData?.isRunning) {
-            console.log(
-              `Fineract shows active session for cashier ${cashier.id}, syncing...`
-            );
-            activeSession = await prisma.cashierSession.create({
-              data: {
-                tenantId: tenant.id,
-                tellerId: teller.id,
-                cashierId: cashier.id,
-                fineractSessionId: fineractCashierData.id || 0,
-                sessionStatus: "ACTIVE",
-                sessionStartTime: new Date(),
-                allocatedBalance: 0,
-                availableBalance: 0,
-                openingFloat: 0,
-                cashIn: 0,
-                cashOut: 0,
-                netCash: 0,
-              },
-            });
-            console.log(`Created local session for cashier ${cashier.id}`);
-          }
-        } catch (error) {
-          console.error("Error checking Fineract session:", error);
-        }
-      }
-
-      if (!activeSession) {
-        return NextResponse.json(
-          {
-            error: "Session required",
-            details:
-              "Cashier must have an active session to receive cash. Please start a session first.",
-          },
-          { status: 400 }
-        );
-      }
-    }
+    // Note: No session required for allocating cash to cashier
+    // Cash allocation happens BEFORE starting a session - the allocated cash becomes the opening float
 
     // Check teller vault balance (allocations where cashierId is null)
     const tellerVaultAllocations = await prisma.cashAllocation.findMany({

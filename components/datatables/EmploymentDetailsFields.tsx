@@ -5,11 +5,17 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { SearchableSelect } from "@/components/searchable-select";
 import { differenceInYears, differenceInMonths, parseISO } from "date-fns";
+import {
+  getEmployersByClientType,
+  getOccupationsByEmployer,
+  isMinistryOfDefence,
+} from "@/shared/defaults/employer-options";
 
 interface EmploymentDetailsFieldsProps {
   headers: any[];
   editedData: Record<string, any>;
   onFieldChange: (columnName: string, value: any) => void;
+  clientType?: string; // PDA, GRZ, etc. for employer filtering
 }
 
 // Helper to normalize column names for comparison
@@ -65,6 +71,31 @@ function isYearsOfServiceField(columnName: string): boolean {
     normalized === "tenure" ||
     normalized.includes("yearsofservice") ||
     normalized.includes("serviceyears")
+  );
+}
+
+// Check if column is employer field
+function isEmployerField(columnName: string): boolean {
+  const normalized = normalizeColumnName(columnName);
+  return (
+    normalized === "employer" ||
+    normalized === "employername" ||
+    normalized === "companyname" ||
+    normalized === "organization" ||
+    normalized.includes("employer")
+  );
+}
+
+// Check if column is occupation field
+function isOccupationField(columnName: string): boolean {
+  const normalized = normalizeColumnName(columnName);
+  return (
+    normalized === "occupation" ||
+    normalized === "position" ||
+    normalized === "jobtitle" ||
+    normalized === "designation" ||
+    normalized.includes("occupation") ||
+    normalized.includes("position")
   );
 }
 
@@ -133,12 +164,15 @@ export function EmploymentDetailsFields({
   headers,
   editedData,
   onFieldChange,
+  clientType,
 }: EmploymentDetailsFieldsProps) {
   // Find the relevant column headers
   const employmentTypeHeader = headers.find((h) => isEmploymentTypeField(h.columnName));
   const contractDateHeader = headers.find((h) => isContractDateField(h.columnName));
   const appointmentDateHeader = headers.find((h) => isAppointmentDateField(h.columnName));
   const yearsOfServiceHeader = headers.find((h) => isYearsOfServiceField(h.columnName));
+  const employerHeader = headers.find((h) => isEmployerField(h.columnName));
+  const occupationHeader = headers.find((h) => isOccupationField(h.columnName));
 
   // Get current values
   const currentEmploymentType = employmentTypeHeader
@@ -150,6 +184,30 @@ export function EmploymentDetailsFields({
   const currentAppointmentDate = appointmentDateHeader
     ? editedData[appointmentDateHeader.columnName]
     : undefined;
+  const currentEmployer = employerHeader
+    ? editedData[employerHeader.columnName]
+    : undefined;
+  const currentOccupation = occupationHeader
+    ? editedData[occupationHeader.columnName]
+    : undefined;
+
+  // Get employer options based on client type
+  const employerOptions = useMemo(() => {
+    return getEmployersByClientType(clientType).map((emp) => ({
+      value: emp,
+      label: emp,
+    }));
+  }, [clientType]);
+
+  // Get occupation options based on selected employer
+  const occupationOptions = useMemo(() => {
+    return getOccupationsByEmployer(currentEmployer);
+  }, [currentEmployer]);
+
+  // Check if selected employer is Ministry of Defence
+  const isMODEmployer = useMemo(() => {
+    return isMinistryOfDefence(currentEmployer);
+  }, [currentEmployer]);
 
   // Check if employment type is CONTRACT
   const isContract = useMemo(() => {
@@ -315,6 +373,64 @@ export function EmploymentDetailsFields({
           </p>
         </div>
       )}
+
+      {/* Employer Field - Options filtered by client type (PDA/GRZ) */}
+      {employerHeader && (
+        <div className="space-y-1">
+          <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            {formatHeaderName(employerHeader.columnName)}
+            {clientType && (
+              <span className="ml-2 text-xs font-normal text-blue-500">
+                ({clientType} employers)
+              </span>
+            )}
+          </Label>
+          <SearchableSelect
+            options={employerOptions}
+            value={currentEmployer?.toString() ?? ""}
+            onValueChange={(value) => {
+              onFieldChange(employerHeader.columnName, value);
+              // Clear occupation when employer changes if it's MOD
+              if (occupationHeader && isMinistryOfDefence(value) !== isMODEmployer) {
+                onFieldChange(occupationHeader.columnName, "");
+              }
+            }}
+            placeholder={`Select ${clientType || ""} employer`}
+            emptyMessage="No employers available"
+          />
+          {clientType && (
+            <p className="text-xs text-muted-foreground">
+              Showing {clientType === "GRZ" ? "government" : "private sector"} employers
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Occupation Field - Options change based on employer (MOD shows Soldier/Confidential) */}
+      {occupationHeader && (
+        <div className="space-y-1">
+          <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            {formatHeaderName(occupationHeader.columnName)}
+            {isMODEmployer && (
+              <span className="ml-2 text-xs font-normal text-orange-500">
+                (Defence personnel)
+              </span>
+            )}
+          </Label>
+          <SearchableSelect
+            options={occupationOptions}
+            value={currentOccupation?.toString() ?? ""}
+            onValueChange={(value) => onFieldChange(occupationHeader.columnName, value)}
+            placeholder="Select occupation"
+            emptyMessage="No occupations available"
+          />
+          {isMODEmployer && (
+            <p className="text-xs text-orange-500 mt-1">
+              Ministry of Defence employees: Select Soldier or Confidential
+            </p>
+          )}
+        </div>
+      )}
     </>
   );
 }
@@ -325,9 +441,11 @@ export function EmploymentDetailsFields({
 export function hasEmploymentDetailFields(headers: any[]): boolean {
   const hasEmploymentType = headers.some((h) => isEmploymentTypeField(h.columnName));
   const hasAppointmentDate = headers.some((h) => isAppointmentDateField(h.columnName));
+  const hasEmployer = headers.some((h) => isEmployerField(h.columnName));
+  const hasOccupation = headers.some((h) => isOccupationField(h.columnName));
   
-  // Must have at least employment type or appointment date
-  return hasEmploymentType || hasAppointmentDate;
+  // Must have at least employment type, appointment date, employer, or occupation
+  return hasEmploymentType || hasAppointmentDate || hasEmployer || hasOccupation;
 }
 
 /**
@@ -340,11 +458,15 @@ export function getEmploymentDetailColumnNames(headers: any[]): string[] {
   const contractDateHeader = headers.find((h) => isContractDateField(h.columnName));
   const appointmentDateHeader = headers.find((h) => isAppointmentDateField(h.columnName));
   const yearsOfServiceHeader = headers.find((h) => isYearsOfServiceField(h.columnName));
+  const employerHeader = headers.find((h) => isEmployerField(h.columnName));
+  const occupationHeader = headers.find((h) => isOccupationField(h.columnName));
 
   if (employmentTypeHeader) names.push(employmentTypeHeader.columnName);
   if (contractDateHeader) names.push(contractDateHeader.columnName);
   if (appointmentDateHeader) names.push(appointmentDateHeader.columnName);
   if (yearsOfServiceHeader) names.push(yearsOfServiceHeader.columnName);
+  if (employerHeader) names.push(employerHeader.columnName);
+  if (occupationHeader) names.push(occupationHeader.columnName);
 
   return names;
 }

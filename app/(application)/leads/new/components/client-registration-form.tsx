@@ -4074,23 +4074,81 @@ export function ClientRegistrationForm({
   };
 
   const handleStartCamera = async () => {
+    // Check if we're in a secure context (HTTPS or localhost)
+    if (!window.isSecureContext) {
+      error({
+        title: "Camera Not Available",
+        description: "Camera access requires a secure connection (HTTPS). Please access the site via HTTPS.",
+      });
+      return;
+    }
+
+    // Check if mediaDevices API is available
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      error({
+        title: "Camera Not Supported",
+        description: "Your browser does not support camera access. Please use a modern browser like Chrome, Firefox, or Safari.",
+      });
+      return;
+    }
+
     setShowCameraModal(true);
     setCapturedImage(null);
 
     // Wait for modal to open before accessing camera
     setTimeout(async () => {
       try {
+        // First check permission status if available
+        if (navigator.permissions) {
+          try {
+            const permissionStatus = await navigator.permissions.query({ name: "camera" as PermissionName });
+            if (permissionStatus.state === "denied") {
+              error({
+                title: "Camera Permission Denied",
+                description: "Camera access was denied. Please allow camera access in your browser settings and try again.",
+              });
+              setShowCameraModal(false);
+              return;
+            }
+          } catch {
+            // permissions.query might not be supported for camera in some browsers, continue anyway
+          }
+        }
+
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "user" },
+          video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
         });
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error("Error accessing camera:", err);
+        
+        let errorMessage = "Could not access camera. Please check permissions.";
+        
+        if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
+          errorMessage = "Camera permission was denied. Please click the camera icon in your browser's address bar to allow access, then try again.";
+        } else if (err.name === "NotFoundError" || err.name === "DevicesNotFoundError") {
+          errorMessage = "No camera found on this device. Please connect a camera and try again.";
+        } else if (err.name === "NotReadableError" || err.name === "TrackStartError") {
+          errorMessage = "Camera is in use by another application. Please close other apps using the camera and try again.";
+        } else if (err.name === "OverconstrainedError") {
+          errorMessage = "Camera does not support the required settings. Trying with default settings...";
+          // Try again with basic constraints
+          try {
+            const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+            if (videoRef.current) {
+              videoRef.current.srcObject = stream;
+            }
+            return; // Success with basic constraints
+          } catch {
+            errorMessage = "Could not access camera with any settings.";
+          }
+        }
+        
         error({
           title: "Camera Error",
-          description: "Could not access camera. Please check permissions.",
+          description: errorMessage,
         });
         setShowCameraModal(false);
       }
@@ -4119,16 +4177,27 @@ export function ClientRegistrationForm({
     // Restart camera
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "user" },
+        video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
       });
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Error accessing camera:", err);
+      
+      let errorMessage = "Could not access camera. Please check permissions.";
+      
+      if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
+        errorMessage = "Camera permission was denied. Please allow camera access in your browser settings.";
+      } else if (err.name === "NotFoundError") {
+        errorMessage = "No camera found on this device.";
+      } else if (err.name === "NotReadableError") {
+        errorMessage = "Camera is in use by another application.";
+      }
+      
       error({
         title: "Camera Error",
-        description: "Could not access camera. Please check permissions.",
+        description: errorMessage,
       });
     }
   };
@@ -11047,6 +11116,11 @@ export function ClientRegistrationForm({
                                                           );
                                                         }}
                                                         clientName={`${firstname || ""} ${lastname || ""}`.trim()}
+                                                        clientType={
+                                                          clientTypeId
+                                                            ? clientTypes.find((ct: any) => ct.id?.toString() === clientTypeId)?.name
+                                                            : undefined
+                                                        }
                                                       />
                                                     )}
                                                   </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Loader2, AlertCircle, Edit2, Save, X, Plus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -18,17 +18,24 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  getEmployersByClientType,
+  getOccupationsByEmployer,
+  isMinistryOfDefence,
+} from "@/shared/defaults/employer-options";
 
 interface DatatableDisplayProps {
   datatableName: string;
   clientId: number;
   initialData?: any;
+  clientType?: string; // PDA, GRZ, etc.
 }
 
 export function DatatableDisplay({
   datatableName,
   clientId,
   initialData,
+  clientType,
 }: DatatableDisplayProps) {
   const [headers, setHeaders] = useState<any[]>(
     initialData?.columnHeaders || []
@@ -49,7 +56,25 @@ export function DatatableDisplay({
   const [newCodeValueName, setNewCodeValueName] = useState("");
   const [newCodeValueDescription, setNewCodeValueDescription] = useState("");
   const [addingCodeValue, setAddingCodeValue] = useState(false);
+  const [selectedEmployer, setSelectedEmployer] = useState<string>("");
   const { toast } = useToast();
+
+  // Get employer options based on client type
+  const employerOptions = getEmployersByClientType(clientType).map((emp) => ({
+    value: emp,
+    label: emp,
+  }));
+
+  // Get occupation options based on selected employer
+  const occupationOptions = getOccupationsByEmployer(selectedEmployer);
+
+  // Track selected employer from edited data
+  useEffect(() => {
+    const employer = editedData["employer_cd_employer"] || editedData["employer"] || editedData["Employer"];
+    if (employer && typeof employer === "string") {
+      setSelectedEmployer(employer);
+    }
+  }, [editedData]);
 
   const formatCell = (
     val: any,
@@ -462,6 +487,70 @@ export function DatatableDisplay({
             }
             className="text-sm"
           />
+        </div>
+      );
+    }
+
+    // Check if this is an employer field - use custom employer list based on client type
+    const isEmployerField =
+      columnName?.toLowerCase().includes("employer") ||
+      header?.columnCode?.toLowerCase().includes("employer");
+
+    if (isEmployerField) {
+      return (
+        <div className="space-y-1">
+          <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            {formatHeaderName(columnName)}
+            {clientType && (
+              <span className="ml-2 text-xs font-normal text-blue-500">
+                ({clientType} employers)
+              </span>
+            )}
+          </Label>
+          <SearchableSelect
+            options={employerOptions}
+            value={currentValue?.toString() ?? ""}
+            onValueChange={(value) => {
+              handleFieldChange(columnName, value);
+              setSelectedEmployer(value);
+            }}
+            placeholder={`Select ${clientType || ""} employer`}
+            emptyMessage="No employers available"
+          />
+        </div>
+      );
+    }
+
+    // Check if this is an occupation field - use conditional options based on employer
+    const isOccupationField =
+      columnName?.toLowerCase().includes("occupation") ||
+      columnName?.toLowerCase().includes("position") ||
+      header?.columnCode?.toLowerCase().includes("occupation");
+
+    if (isOccupationField) {
+      const isMOD = isMinistryOfDefence(selectedEmployer);
+      return (
+        <div className="space-y-1">
+          <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            {formatHeaderName(columnName)}
+            {isMOD && (
+              <span className="ml-2 text-xs font-normal text-orange-500">
+                (Defence personnel)
+              </span>
+            )}
+          </Label>
+          <SearchableSelect
+            options={occupationOptions}
+            value={currentValue?.toString() ?? ""}
+            onValueChange={(value) => handleFieldChange(columnName, value)}
+            placeholder="Select occupation"
+            emptyMessage="No occupations available"
+          />
+          {isMOD && (
+            <p className="text-xs text-orange-500 mt-1">
+              Ministry of Defence employees: Select Soldier or Confidential
+            </p>
+          )}
         </div>
       );
     }

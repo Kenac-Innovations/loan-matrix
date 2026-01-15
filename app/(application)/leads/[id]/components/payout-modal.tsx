@@ -147,8 +147,15 @@ export function PayoutModal({
     }
   };
 
+  // Normalize currency code - converts deprecated ZMK to ZMW
+  const normalizeCurrencyCode = (code: string | undefined | null): string => {
+    if (!code) return "ZMW";
+    if (code.toUpperCase() === "ZMK") return "ZMW";
+    return code;
+  };
+
   const formatCurrency = (amount: number, curr: string) => {
-    return `${curr} ${amount.toLocaleString(undefined, {
+    return `${normalizeCurrencyCode(curr)} ${amount.toLocaleString(undefined, {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     })}`;

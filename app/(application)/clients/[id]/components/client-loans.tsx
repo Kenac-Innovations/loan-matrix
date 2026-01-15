@@ -162,7 +162,14 @@ export function ClientLoans({ clientId }: ClientLoansProps) {
     );
   };
 
-  const formatCurrency = (amount: number) => {
+  // Normalize currency code - converts deprecated ZMK to ZMW
+  const normalizeCurrencyCode = (code: string | undefined | null): string => {
+    if (!code) return "ZMW";
+    if (code.toUpperCase() === "ZMK") return "ZMW";
+    return code;
+  };
+
+  const formatCurrency = (amount: number, currencyCode: string = "ZMW") => {
     // Return empty string if amount is undefined, null, NaN, or 0
     if (amount === undefined || amount === null || isNaN(amount) || amount === 0) {
       return "";
@@ -170,7 +177,7 @@ export function ClientLoans({ clientId }: ClientLoansProps) {
     
     return new Intl.NumberFormat("en-US", {
       style: "currency",
-      currency: "ZMW",
+      currency: normalizeCurrencyCode(currencyCode),
       minimumFractionDigits: 0,
       maximumFractionDigits: 0,
     }).format(amount);

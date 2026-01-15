@@ -891,15 +891,26 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
     return "N/A";
   };
 
-  const formatCurrency = (amount: number | undefined | null, currencyCode: string = "KES"): string => {
+  // Normalize currency code - converts deprecated ZMK to ZMW
+  const normalizeCurrencyCode = (code: string | undefined | null): string => {
+    if (!code) return "ZMW";
+    if (code.toUpperCase() === "ZMK") return "ZMW";
+    return code;
+  };
+
+  const formatCurrency = (amount: number | undefined | null, currencyCode: string = "ZMW"): string => {
     // Return blank if amount is undefined, null, NaN, or 0
     if (amount === undefined || amount === null || isNaN(amount) || amount === 0) {
       return "";
     }
     
-    return new Intl.NumberFormat("en-KE", {
+    const normalizedCode = normalizeCurrencyCode(currencyCode);
+    
+    return new Intl.NumberFormat("en-US", {
       style: "currency",
-      currency: currencyCode,
+      currency: normalizedCode,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
     }).format(amount);
   };
 
@@ -1835,7 +1846,7 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
           ['Total Interest', formatCurrency(totalInterest, currencyCode)],
           ['Total Fees', formatCurrency(totalFees, currencyCode)],
           ['Total Penalties', formatCurrency(totalPenalties, currencyCode)],
-          ['Currency', currencyCode]
+          ['Currency', normalizeCurrencyCode(currencyCode)]
         ];
 
         autoTable.default(pdf, {

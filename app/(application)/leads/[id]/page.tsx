@@ -652,6 +652,7 @@ export default async function LeadDetailPage({
                 clientId={lead.fineractClientId || null}
                 datatables={clientDatatables}
                 datatableData={datatableData}
+                clientType={lead.clientTypeName || undefined}
               />
             </TabsContent>
             <TabsContent value="timeline" className="mt-4">

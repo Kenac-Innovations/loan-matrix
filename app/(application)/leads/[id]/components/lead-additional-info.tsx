@@ -17,6 +17,7 @@ interface LeadAdditionalInfoProps {
   clientId: number | null;
   datatables: any[];
   datatableData: Record<string, any>;
+  clientType?: string; // PDA, GRZ, etc. for employer filtering
 }
 
 export function LeadAdditionalInfo({
@@ -24,6 +25,7 @@ export function LeadAdditionalInfo({
   clientId,
   datatables: initialDatatables,
   datatableData: initialDatatableData,
+  clientType,
 }: LeadAdditionalInfoProps) {
   const [datatables, setDatatables] = useState<any[]>(initialDatatables || []);
   const [datatableData, setDatatableData] = useState<Record<string, any>>(
@@ -206,6 +208,7 @@ export function LeadAdditionalInfo({
                     datatableName={dt.registeredTableName}
                     clientId={clientId}
                     initialData={datatableData[dt.registeredTableName]}
+                    clientType={clientType}
                   />
                 </CardContent>
               </Card>

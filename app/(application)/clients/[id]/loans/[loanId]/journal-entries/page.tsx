@@ -156,10 +156,18 @@ export default function JournalEntriesPage() {
     }) + " 00:00:00";
   };
 
+  // Normalize currency code - converts deprecated ZMK to ZMW
+  const normalizeCurrencyCode = (code: string | undefined | null): string => {
+    if (!code) return "ZMW";
+    if (code.toUpperCase() === "ZMK") return "ZMW";
+    return code;
+  };
+
   const formatCurrency = (amount: number, currencyCode: string = "ZMW"): string => {
+    const normalizedCode = normalizeCurrencyCode(currencyCode);
     return new Intl.NumberFormat("en-US", {
       style: "currency",
-      currency: currencyCode,
+      currency: normalizedCode,
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     }).format(amount);

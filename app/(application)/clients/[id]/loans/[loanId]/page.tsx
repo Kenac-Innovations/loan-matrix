@@ -1,8 +1,8 @@
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
-import { ArrowLeft, CreditCard, User } from "lucide-react";
+import { CreditCard } from "lucide-react";
 import Link from "next/link";
-import { Button } from "@/components/ui/button";
+import { BackButton } from "@/components/ui/back-button";
 import { ClientLoanDetails } from "./components/client-loan-details";
 
 interface PageProps {
@@ -38,11 +38,7 @@ export default async function ClientLoanDetailsPage({ params }: PageProps) {
 
       {/* Enhanced Header */}
       <div className="flex items-center gap-6">
-        <Link href={`/clients/${clientId}`}>
-          <Button variant="outline" size="sm" className="shadow-sm">
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-        </Link>
+        <BackButton className="shadow-sm" />
         <div className="flex-1">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">

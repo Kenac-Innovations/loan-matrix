@@ -263,8 +263,15 @@ export function CashOutModal({
     return cleaned;
   };
 
+  // Normalize currency code - converts deprecated ZMK to ZMW
+  const normalizeCurrencyCode = (code: string | undefined | null): string => {
+    if (!code) return "ZMW";
+    if (code.toUpperCase() === "ZMK") return "ZMW";
+    return code;
+  };
+
   const formatCurrency = (amount: number, currency: string) => {
-    return `${currency} ${amount.toLocaleString(undefined, {
+    return `${normalizeCurrencyCode(currency)} ${amount.toLocaleString(undefined, {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     })}`;

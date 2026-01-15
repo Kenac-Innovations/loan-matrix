@@ -85,10 +85,17 @@ export function ClientMetrics() {
     );
   }
 
+  // Normalize currency code - converts deprecated ZMK to ZMW
+  const normalizeCurrencyCode = (code: string | undefined | null): string => {
+    if (!code) return "ZMW";
+    if (code.toUpperCase() === "ZMK") return "ZMW";
+    return code;
+  };
+
   const formatCurrency = (amount: number, currencyCode?: string) => {
     return new Intl.NumberFormat("en-US", {
       style: "currency",
-      currency: currencyCode || metrics.currency || "ZMW",
+      currency: normalizeCurrencyCode(currencyCode || metrics.currency),
       minimumFractionDigits: 0,
       maximumFractionDigits: 0,
     }).format(amount);

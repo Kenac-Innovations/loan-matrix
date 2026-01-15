@@ -97,6 +97,13 @@ export async function GET(request: NextRequest) {
         isActive: true,
       },
       include: {
+        bank: {
+          select: {
+            id: true,
+            name: true,
+            code: true,
+          },
+        },
         cashAllocations: {
           where: {
             status: "ACTIVE",
@@ -144,6 +151,8 @@ export async function GET(request: NextRequest) {
         return {
           fineractTellerId: dbTeller.fineractTellerId,
           dbId: dbTeller.id,
+          bankId: dbTeller.bankId,
+          bank: dbTeller.bank,
           vaultBalance,
           availableBalance,
           allocatedToCashiers,
@@ -179,6 +188,8 @@ export async function GET(request: NextRequest) {
         id: dbData?.dbId, // Use database ID
         fineractTellerId: ft.id,
         ...(dbData && {
+          bankId: dbData.bankId,
+          bank: dbData.bank,
           currentAllocation: dbData.currentAllocation,
           vaultBalance: dbData.vaultBalance,
           availableBalance: dbData.availableBalance,
@@ -215,7 +226,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { officeId, name, description, startDate, endDate } = body;
+    const { officeId, name, description, startDate, endDate, bankId } = body;
 
     if (!officeId || !name || !startDate) {
       return NextResponse.json(
@@ -273,6 +284,7 @@ export async function POST(request: NextRequest) {
         startDate: new Date(startDate),
         endDate: endDate ? new Date(endDate) : null,
         status: "PENDING",
+        bankId: bankId || null, // Link to parent bank if provided
       },
     });
 

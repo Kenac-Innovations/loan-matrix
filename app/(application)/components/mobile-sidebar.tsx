@@ -20,6 +20,7 @@ import {
   TrendingUp,
   X,
   Menu,
+  Landmark,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { TenantDisplayClient } from "@/components/tenant-display-client";
@@ -230,6 +231,50 @@ export function MobileSidebar({ userProfileData }: MobileSidebarProps) {
               <Users className={`h-5 w-5 ${iconColor}`} />
               Clients
             </Link>
+            <div className="space-y-1">
+              <Link
+                href="/banks"
+                className={`flex items-center gap-3 rounded-md px-3 py-3 text-sm font-medium ${
+                  pathname.startsWith("/banks") || pathname.startsWith("/tellers")
+                    ? `${activeBgColor} ${textColor}`
+                    : `${textColorMuted} ${hoverBgColor} hover:${textColor}`
+                }`}
+              >
+                <Landmark
+                  className={`h-5 w-5 ${
+                    pathname.startsWith("/banks") || pathname.startsWith("/tellers") ? iconColorActive : iconColor
+                  }`}
+                />
+                Cash Management
+              </Link>
+
+              {/* Sub-menu items for Cash Management */}
+              {(pathname.startsWith("/banks") ||
+                pathname.startsWith("/tellers")) && (
+                <div className="pl-10 space-y-1">
+                  <Link
+                    href="/banks"
+                    className={`flex items-center gap-3 rounded-md px-3 py-2 text-xs font-medium ${
+                      pathname.startsWith("/banks")
+                        ? iconColorActive
+                        : `${iconColor} hover:${textColor}`
+                    }`}
+                  >
+                    Banks
+                  </Link>
+                  <Link
+                    href="/tellers"
+                    className={`flex items-center gap-3 rounded-md px-3 py-2 text-xs font-medium ${
+                      pathname.startsWith("/tellers")
+                        ? iconColorActive
+                        : `${iconColor} hover:${textColor}`
+                    }`}
+                  >
+                    Tellers
+                  </Link>
+                </div>
+              )}
+            </div>
             <Link
               href="/reports"
               className={`flex items-center gap-3 rounded-md px-3 py-3 text-sm font-medium ${

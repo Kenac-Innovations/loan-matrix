@@ -12,7 +12,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { MoreHorizontal, DollarSign, Users, CheckCircle } from "lucide-react";
+import { MoreHorizontal, DollarSign, Users, CheckCircle, Building2 } from "lucide-react";
 import { formatCurrency } from "@/lib/format-currency";
 import { formatDate } from "@/lib/format-date";
 
@@ -26,6 +26,12 @@ interface Teller {
   status: string;
   startDate: string;
   endDate?: string;
+  bankId?: string;
+  bank?: {
+    id: string;
+    name: string;
+    code: string;
+  };
   currentAllocation?: {
     amount: number;
     currency: string;
@@ -98,6 +104,22 @@ export function TellersTable() {
                 {teller.description}
               </div>
             )}
+          </div>
+        );
+      },
+    },
+    {
+      id: "bank",
+      header: "Bank",
+      cell: ({ row }) => {
+        const bank = row.original.bank;
+        if (!bank) {
+          return <span className="text-muted-foreground text-sm">Unassigned</span>;
+        }
+        return (
+          <div className="flex items-center gap-1">
+            <Building2 className="h-3 w-3 text-muted-foreground" />
+            <span>{bank.name}</span>
           </div>
         );
       },

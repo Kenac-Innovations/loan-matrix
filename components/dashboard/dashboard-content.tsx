@@ -29,6 +29,13 @@ interface DashboardContentProps {
 }
 
 export function DashboardContent({ data }: DashboardContentProps) {
+  // Normalize currency code - converts deprecated ZMK to ZMW
+  const normalizeCurrencyCode = (code: string | undefined | null): string => {
+    if (!code) return "ZMW";
+    if (code.toUpperCase() === "ZMK") return "ZMW";
+    return code;
+  };
+
   const formatCurrency = (
     amount: number,
     currency?: { code: string; displaySymbol: string; decimalPlaces?: number }
@@ -36,7 +43,7 @@ export function DashboardContent({ data }: DashboardContentProps) {
     if (currency) {
       return new Intl.NumberFormat("en-US", {
         style: "currency",
-        currency: currency.code,
+        currency: normalizeCurrencyCode(currency.code),
         minimumFractionDigits: currency.decimalPlaces || 2,
         maximumFractionDigits: currency.decimalPlaces || 2,
       }).format(amount);

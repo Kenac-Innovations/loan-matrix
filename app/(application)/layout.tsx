@@ -19,6 +19,8 @@ import {
   Users,
   TrendingUp,
   Wallet,
+  Building2,
+  Landmark,
 } from "lucide-react";
 import AIAssistant from "@/components/ai-assistant";
 import { Suspense } from "react";
@@ -117,13 +119,15 @@ export default async function DashboardLayout({
                   />
                 </div>
 
-                <Link
-                  href="/tellers"
-                  className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                >
-                  <Wallet className="h-4 w-4" />
-                  Tellers
-                </Link>
+                <MenuItemWithSubmenu
+                  icon={<Landmark />}
+                  label="Cash Management"
+                  href="/banks"
+                  subMenuItems={[
+                    { label: "Banks", href: "/banks" },
+                    { label: "Tellers", href: "/tellers" },
+                  ]}
+                />
 
                 <MenuItemWithSubmenu
                   icon={<BarChart3 />}
