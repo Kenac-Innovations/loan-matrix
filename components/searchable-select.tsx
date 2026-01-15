@@ -51,17 +51,22 @@ export function SearchableSelect({
   const [open, setOpen] = React.useState(false);
   const [searchQuery, setSearchQuery] = React.useState("");
 
-  const filteredOptions = React.useMemo(() => {
-    if (!searchQuery) return options;
+  // Ensure options is always an array
+  const safeOptions = React.useMemo(() => {
+    return Array.isArray(options) ? options : [];
+  }, [options]);
 
-    return options.filter((option) =>
-      option.label.toLowerCase().includes(searchQuery.toLowerCase())
+  const filteredOptions = React.useMemo(() => {
+    if (!searchQuery) return safeOptions;
+
+    return safeOptions.filter((option) =>
+      option?.label?.toLowerCase().includes(searchQuery.toLowerCase())
     );
-  }, [options, searchQuery]);
+  }, [safeOptions, searchQuery]);
 
   const selectedOption = React.useMemo(() => {
-    return options.find((option) => option.value === value);
-  }, [options, value]);
+    return safeOptions.find((option) => option?.value === value);
+  }, [safeOptions, value]);
 
   const handleAddNew = () => {
     setOpen(false);
