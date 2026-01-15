@@ -570,13 +570,13 @@ export function ComprehensiveLeadDetails({
             <div>
               <p className="text-xs text-muted-foreground">Requested Amount</p>
               <p className="text-2xl font-bold">
-                ${requestedAmount.toLocaleString()}
+                ZMW {requestedAmount.toLocaleString()}
               </p>
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Monthly Income</p>
               <p className="text-2xl font-bold">
-                ${(lead.monthlyIncome || 0).toLocaleString()}
+                ZMW {(lead.monthlyIncome || 0).toLocaleString()}
               </p>
             </div>
           </CardContent>
