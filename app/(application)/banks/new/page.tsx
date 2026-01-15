@@ -171,7 +171,7 @@ export default function NewBankPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="officeId">Office/Branch (Optional)</Label>
+              <Label htmlFor="officeId">Office/Branch</Label>
               <SearchableSelect
                 options={offices.map((office) => ({
                   value: office.id.toString(),
@@ -184,7 +184,7 @@ export default function NewBankPage() {
                 placeholder={
                   loadingOffices
                     ? "Loading offices..."
-                    : "Search and select office (optional)"
+                    : "Search and select office"
                 }
                 emptyMessage="No offices found"
                 disabled={loadingOffices}
@@ -223,4 +223,3 @@ export default function NewBankPage() {
     </div>
   );
 }
-

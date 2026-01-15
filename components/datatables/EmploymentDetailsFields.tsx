@@ -36,14 +36,22 @@ function isEmploymentTypeField(columnName: string): boolean {
   );
 }
 
-// Check if column is contract date field
-function isContractDateField(columnName: string): boolean {
+// Check if column is contract start date field
+function isContractStartDateField(columnName: string): boolean {
   const normalized = normalizeColumnName(columnName);
   return (
     normalized === "contractdate" ||
+    normalized === "contractstartdate" ||
+    normalized.includes("contractstart")
+  );
+}
+
+// Check if column is contract end date field
+function isContractEndDateField(columnName: string): boolean {
+  const normalized = normalizeColumnName(columnName);
+  return (
     normalized === "contractenddate" ||
     normalized === "contractexpirydate" ||
-    normalized.includes("contractdate") ||
     normalized.includes("contractend") ||
     normalized.includes("contractexpiry")
   );
@@ -168,7 +176,8 @@ export function EmploymentDetailsFields({
 }: EmploymentDetailsFieldsProps) {
   // Find the relevant column headers
   const employmentTypeHeader = headers.find((h) => isEmploymentTypeField(h.columnName));
-  const contractDateHeader = headers.find((h) => isContractDateField(h.columnName));
+  const contractStartDateHeader = headers.find((h) => isContractStartDateField(h.columnName));
+  const contractEndDateHeader = headers.find((h) => isContractEndDateField(h.columnName));
   const appointmentDateHeader = headers.find((h) => isAppointmentDateField(h.columnName));
   const yearsOfServiceHeader = headers.find((h) => isYearsOfServiceField(h.columnName));
   const employerHeader = headers.find((h) => isEmployerField(h.columnName));
@@ -178,8 +187,11 @@ export function EmploymentDetailsFields({
   const currentEmploymentType = employmentTypeHeader
     ? editedData[employmentTypeHeader.columnName]
     : undefined;
-  const currentContractDate = contractDateHeader
-    ? editedData[contractDateHeader.columnName]
+  const currentContractStartDate = contractStartDateHeader
+    ? editedData[contractStartDateHeader.columnName]
+    : undefined;
+  const currentContractEndDate = contractEndDateHeader
+    ? editedData[contractEndDateHeader.columnName]
     : undefined;
   const currentAppointmentDate = appointmentDateHeader
     ? editedData[appointmentDateHeader.columnName]
@@ -197,6 +209,13 @@ export function EmploymentDetailsFields({
       value: emp,
       label: emp,
     }));
+  }, [clientType]);
+
+  // Check if this is an SME client (no predefined employers)
+  const isSMEClient = useMemo(() => {
+    if (!clientType) return false;
+    const upperType = clientType.toUpperCase();
+    return upperType.includes("SME") || upperType.includes("ENTERPRISE") || upperType.includes("BUSINESS");
   }, [clientType]);
 
   // Get occupation options based on selected employer
@@ -340,16 +359,31 @@ export function EmploymentDetailsFields({
         </div>
       )}
 
-      {/* Contract Date Field - Only shown if employment type is CONTRACT */}
-      {contractDateHeader && isContract && (
+      {/* Contract Date Fields - Only shown if employment type is CONTRACT */}
+      {contractStartDateHeader && isContract && (
         <div className="space-y-1">
           <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            {formatHeaderName(contractDateHeader.columnName)}
+            {formatHeaderName(contractStartDateHeader.columnName)}
           </Label>
           <Input
             type="date"
-            value={formatDateForInput(currentContractDate)}
-            onChange={(e) => onFieldChange(contractDateHeader.columnName, e.target.value)}
+            value={formatDateForInput(currentContractStartDate)}
+            onChange={(e) => onFieldChange(contractStartDateHeader.columnName, e.target.value)}
+            className="text-sm"
+          />
+        </div>
+      )}
+
+      {/* Contract End Date Field - Only shown if employment type is CONTRACT */}
+      {contractEndDateHeader && isContract && (
+        <div className="space-y-1">
+          <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            {formatHeaderName(contractEndDateHeader.columnName)}
+          </Label>
+          <Input
+            type="date"
+            value={formatDateForInput(currentContractEndDate)}
+            onChange={(e) => onFieldChange(contractEndDateHeader.columnName, e.target.value)}
             className="text-sm"
           />
         </div>
@@ -374,8 +408,8 @@ export function EmploymentDetailsFields({
         </div>
       )}
 
-      {/* Employer Field - Options filtered by client type (PDA/GRZ) */}
-      {employerHeader && (
+      {/* Employer Field - Options filtered by client type (PDA/GRZ), free text for SME */}
+      {employerHeader && !isSMEClient && (
         <div className="space-y-1">
           <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             {formatHeaderName(employerHeader.columnName)}
@@ -406,8 +440,19 @@ export function EmploymentDetailsFields({
         </div>
       )}
 
+      {/* SME Client - No employer/occupation fields needed (they are the business) */}
+      {isSMEClient && (employerHeader || occupationHeader) && (
+        <div className="space-y-1 col-span-2">
+          <div className="p-3 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-md">
+            <p className="text-sm text-blue-700 dark:text-blue-300">
+              <strong>SME Client:</strong> Employment details are not required for business/enterprise clients.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Occupation Field - Options change based on employer (MOD shows Soldier/Confidential) */}
-      {occupationHeader && (
+      {occupationHeader && !isSMEClient && (
         <div className="space-y-1">
           <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             {formatHeaderName(occupationHeader.columnName)}
@@ -455,14 +500,16 @@ export function getEmploymentDetailColumnNames(headers: any[]): string[] {
   const names: string[] = [];
 
   const employmentTypeHeader = headers.find((h) => isEmploymentTypeField(h.columnName));
-  const contractDateHeader = headers.find((h) => isContractDateField(h.columnName));
+  const contractStartDateHeader = headers.find((h) => isContractStartDateField(h.columnName));
+  const contractEndDateHeader = headers.find((h) => isContractEndDateField(h.columnName));
   const appointmentDateHeader = headers.find((h) => isAppointmentDateField(h.columnName));
   const yearsOfServiceHeader = headers.find((h) => isYearsOfServiceField(h.columnName));
   const employerHeader = headers.find((h) => isEmployerField(h.columnName));
   const occupationHeader = headers.find((h) => isOccupationField(h.columnName));
 
   if (employmentTypeHeader) names.push(employmentTypeHeader.columnName);
-  if (contractDateHeader) names.push(contractDateHeader.columnName);
+  if (contractStartDateHeader) names.push(contractStartDateHeader.columnName);
+  if (contractEndDateHeader) names.push(contractEndDateHeader.columnName);
   if (appointmentDateHeader) names.push(appointmentDateHeader.columnName);
   if (yearsOfServiceHeader) names.push(yearsOfServiceHeader.columnName);
   if (employerHeader) names.push(employerHeader.columnName);

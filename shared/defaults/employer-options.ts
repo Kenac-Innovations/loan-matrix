@@ -117,6 +117,7 @@ export const DEFAULT_OCCUPATIONS = [
 export const CLIENT_TYPES = {
   PDA: "PDA", // Private Direct Access
   GRZ: "GRZ", // Government Republic of Zambia
+  SME: "SME", // Small and Medium Enterprise (no employers - they are the business)
 };
 
 // Helper function to get employers by client type
@@ -124,6 +125,12 @@ export function getEmployersByClientType(clientType: string | undefined): string
   if (!clientType) return [...PDA_EMPLOYERS, ...GRZ_EMPLOYERS];
   
   const upperType = clientType.toUpperCase();
+  
+  // SME clients are businesses themselves - they don't have employers
+  if (upperType === CLIENT_TYPES.SME || upperType.includes("SME") || upperType.includes("ENTERPRISE") || upperType.includes("BUSINESS")) {
+    return [];
+  }
+  
   if (upperType === CLIENT_TYPES.PDA || upperType.includes("PDA") || upperType.includes("PRIVATE")) {
     return PDA_EMPLOYERS;
   }

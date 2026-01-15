@@ -3044,7 +3044,7 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="flex justify-between">
                     <span className="text-sm font-medium text-muted-foreground">Repayment Strategy:</span>
-                    <span className="text-sm">Penalties, Fees, Interest, Principal order</span>
+                    <span className="text-sm">Interest on Unpaid Balance, Fees, Interest, Principal order</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-sm font-medium text-muted-foreground">Repayments:</span>
