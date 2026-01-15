@@ -150,13 +150,15 @@ export function ReconcileCashModal({
   };
 
   const formatAmount = (amount: number) => {
+    // Normalize ZMK to ZMW (Fineract uses legacy ZMK code)
+    const normalizedCurrency = currencyCode === "ZMK" ? "ZMW" : (currencyCode || "ZMW");
     try {
       return new Intl.NumberFormat("en-US", {
         style: "currency",
-        currency: currencyCode || "ZMW",
+        currency: normalizedCurrency,
       }).format(amount);
     } catch {
-      return `${currencyCode || "ZMW"} ${amount.toFixed(2)}`;
+      return `${normalizedCurrency} ${amount.toFixed(2)}`;
     }
   };
 

@@ -174,13 +174,15 @@ export default function CashierTransactionsPage({
   };
 
   const formatAmount = (amount: number, currency?: string) => {
+    // Normalize ZMK to ZMW (Fineract uses legacy ZMK code)
+    const normalizedCurrency = currency === "ZMK" ? "ZMW" : (currency || "ZMW");
     try {
       return new Intl.NumberFormat("en-US", {
         style: "currency",
-        currency: currency || "ZMW",
+        currency: normalizedCurrency,
       }).format(amount);
     } catch {
-      return `${currency || "ZMW"} ${amount.toFixed(2)}`;
+      return `${normalizedCurrency} ${amount.toFixed(2)}`;
     }
   };
 

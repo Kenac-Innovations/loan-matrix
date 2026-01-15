@@ -153,7 +153,9 @@ export default function CashiersPage({
         // Get the first currency (usually the default/system currency)
         if (currencyList.length > 0) {
           const defaultCurrency = currencyList[0];
-          setSystemCurrency(defaultCurrency.code || "ZMW");
+          // Normalize ZMK to ZMW (Fineract uses legacy ZMK code)
+          const code = defaultCurrency.code || "ZMW";
+          setSystemCurrency(code === "ZMK" ? "ZMW" : code);
         }
       }
     } catch (error) {
@@ -426,7 +428,9 @@ export default function CashiersPage({
       cell: ({ row }: { row: any }) => {
         const cashier = row.original as Cashier;
         const balance = cashier.netCash || 0;
-        const currency = cashier.currencyCode || systemCurrency;
+        // Normalize ZMK to ZMW (Fineract uses legacy ZMK code)
+        const rawCurrency = cashier.currencyCode || systemCurrency;
+        const currency = rawCurrency === "ZMK" ? "ZMW" : rawCurrency;
         
         const formatAmount = (amount: number) => {
           try {
