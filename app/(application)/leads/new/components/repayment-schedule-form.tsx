@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { normalizeCurrencyCode } from "@/lib/format-currency";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -646,28 +647,28 @@ export function RepaymentScheduleForm({
                     Principal
                   </p>
                   <p className="text-lg font-semibold">
-                    {repaymentSchedule.currency?.code || ""}{" "}
+                    {normalizeCurrencyCode(repaymentSchedule.currency?.code) || "ZMW"}{" "}
                     {formatCurrency(repaymentSchedule.totalPrincipalExpected)}
                   </p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground mb-1">Interest</p>
                   <p className="text-lg font-semibold">
-                    {repaymentSchedule.currency?.code || ""}{" "}
+                    {normalizeCurrencyCode(repaymentSchedule.currency?.code) || "ZMW"}{" "}
                     {formatCurrency(repaymentSchedule.totalInterestCharged)}
                   </p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground mb-1">Fees</p>
                   <p className="text-lg font-semibold">
-                    {repaymentSchedule.currency?.code || ""}{" "}
+                    {normalizeCurrencyCode(repaymentSchedule.currency?.code) || "ZMW"}{" "}
                     {formatCurrency(repaymentSchedule.totalFeeChargesCharged)}
                   </p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground mb-1">Total</p>
                   <p className="text-lg font-semibold">
-                    {repaymentSchedule.currency?.code || ""}{" "}
+                    {normalizeCurrencyCode(repaymentSchedule.currency?.code) || "ZMW"}{" "}
                     {formatCurrency(repaymentSchedule.totalRepaymentExpected)}
                   </p>
                 </div>
