@@ -1253,6 +1253,8 @@ export function NewLeadForm() {
                       leadId={currentLeadId || undefined}
                       onSubmit={(data) => {
                         console.log("Loan terms submitted:", data);
+                        // Update loanTerms state with submitted data including charges
+                        setLoanTerms(data);
                         // Handle loan terms submission
                         form.handleSubmit(onSubmit)();
                       }}

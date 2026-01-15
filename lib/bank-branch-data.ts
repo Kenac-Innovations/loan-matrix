@@ -12,1777 +12,1925 @@ export interface BankBranch {
 // Bank branch data from Zambian banks - exact data from official list
 export const bankBranchData: BankBranch[] = [
   {
-    bankName: "AB BANK",
-    branchCode: "211109",
-    branchName: "Chipata",
-  },
-  {
-    bankName: "AB BANK",
-    branchCode: "210108",
-    branchName: "Ndola",
-  },
-  {
-    bankName: "AB BANK",
-    branchCode: "210207",
-    branchName: "Kitwe",
-  },
-  {
-    bankName: "AB BANK",
-    branchCode: "210010",
-    branchName: "Corporate",
-  },
-  {
-    bankName: "AB BANK",
-    branchCode: "210006",
-    branchName: "Garden Branch",
-  },
-  {
-    bankName: "AB BANK",
-    branchCode: "210005",
-    branchName: "Chelston",
-  },
-  {
-    bankName: "AB BANK",
-    branchCode: "210004",
-    branchName: "Kalingalinga Branch",
-  },
-  {
-    bankName: "AB BANK",
-    branchCode: "210003",
-    branchName: "Matero",
-  },
-  {
-    bankName: "AB BANK",
-    branchCode: "210000",
+    bankName: "BAYPORT",
     branchName: "Head Office",
+    branchCode: "550099",
   },
   {
-    bankName: "AB BANK",
-    branchCode: "210002",
-    branchName: "Chilenje",
-  },
-  {
-    bankName: "AB BANK",
-    branchCode: "210001",
-    branchName: "Cairo Main Branch",
-  },
-  {
-    bankName: "ABSA BANK",
-    branchCode: "025247",
-    branchName: "Chambishi",
-  },
-  {
-    bankName: "ABSA BANK",
-    branchCode: "025334",
-    branchName: "Mumbwa",
-  },
-  {
-    bankName: "ABSA BANK",
-    branchCode: "024928",
-    branchName: "Katete",
-  },
-  {
-    bankName: "ABSA BANK",
-    branchCode: "024637",
-    branchName: "Chongwe",
-  },
-  {
-    bankName: "ABSA BANK",
-    branchCode: "024330",
-    branchName: "Petauke",
-  },
-  {
-    bankName: "ABSA BANK",
-    branchCode: "023724",
-    branchName: "Monze",
-  },
-  {
-    bankName: "ABSA BANK",
-    branchCode: "024127",
-    branchName: "Kalumbila",
-  },
-  {
-    bankName: "ABSA BANK",
-    branchCode: "023621",
-    branchName: "Mazabuka",
-  },
-  {
-    bankName: "ABSA BANK",
-    branchCode: "023542",
-    branchName: "Chirundu",
-  },
-  {
-    bankName: "ABSA BANK",
-    branchCode: "023407",
-    branchName: "Kafue",
-  },
-  {
-    bankName: "ABSA BANK",
-    branchCode: "022829",
-    branchName: "Solwezi",
-  },
-  {
-    bankName: "ABSA BANK",
-    branchCode: "023135",
-    branchName: "Mongu",
-  },
-  {
-    bankName: "ABSA BANK",
-    branchCode: "022622",
-    branchName: "Mfuwe",
-  },
-  {
-    bankName: "ABSA BANK",
-    branchCode: "022531",
-    branchName: "Lundazi",
-  },
-  {
-    bankName: "ABSA BANK",
-    branchCode: "022338",
-    branchName: "Mkushi",
-  },
-  {
-    bankName: "ABSA BANK",
-    branchCode: "022411",
-    branchName: "Kapiri Mposhi",
-  },
-  {
-    bankName: "ABSA BANK",
-    branchCode: "021920",
-    branchName: "Mansa",
-  },
-  {
-    bankName: "ABSA BANK",
-    branchCode: "021845",
-    branchName: "Mpika",
-  },
-  {
-    bankName: "ABSA BANK",
-    branchCode: "021540",
-    branchName: "Nakonde",
-  },
-  {
-    bankName: "ABSA BANK",
-    branchCode: "021451",
-    branchName: "Cosmopolitan",
-  },
-  {
-    bankName: "ABSA BANK",
-    branchCode: "021205",
-    branchName: "Choma",
-  },
-  {
-    bankName: "ABSA BANK",
-    branchCode: "021104",
-    branchName: "Chipata, Katete & Petauke",
-  },
-  {
-    bankName: "ABSA BANK",
-    branchCode: "020906",
-    branchName: "Kabwe & Prestige",
-  },
-  {
-    bankName: "ABSA BANK",
-    branchCode: "021012",
-    branchName: "Livingstone",
-  },
-  {
-    bankName: "ABSA BANK",
-    branchCode: "020832",
-    branchName: "Kasama",
-  },
-  // Additional ABSA BANK branches
-  {
-    bankName: "ABSA BANK",
-    branchCode: "020009",
-    branchName: "Head Office",
-  },
-  {
-    bankName: "ABSA BANK",
-    branchCode: "020108",
-    branchName: "Manda Hill",
-  },
-  {
-    bankName: "ABSA BANK",
-    branchCode: "020205",
+    bankName: "BAYPORT",
     branchName: "Ndola",
+    branchCode: "550105",
   },
   {
-    bankName: "ABSA BANK",
-    branchCode: "020302",
+    bankName: "BAYPORT",
+    branchName: "Luanshya",
+    branchCode: "550706",
+  },
+  {
+    bankName: "BAYPORT",
+    branchName: "Mufulira",
+    branchCode: "550508",
+  },
+  {
+    bankName: "BAYPORT",
+    branchName: "Konkola",
+    branchCode: "550309",
+  },
+  {
+    bankName: "BAYPORT",
+    branchName: "Chingola",
+    branchCode: "550307",
+  },
+  {
+    bankName: "BAYPORT",
     branchName: "Kitwe",
+    branchCode: "550202",
   },
   {
-    bankName: "ABSA BANK",
-    branchCode: "020620",
-    branchName: "Mufulira",
-  },
-  {
-    bankName: "ABSA BANK",
-    branchCode: "020717",
-    branchName: "Luanshya",
-  },
-  {
-    bankName: "ABSA BANK",
-    branchCode: "021306",
-    branchName: "Chingola",
-  },
-  {
-    bankName: "ABSA BANK",
-    branchCode: "021630",
-    branchName: "Nkana Mall Branch",
-  },
-  {
-    bankName: "ABSA BANK",
-    branchCode: "021736",
-    branchName: "Twin Palm",
-  },
-  {
-    bankName: "ABSA BANK",
-    branchCode: "022016",
-    branchName: "Town Centre Branch",
-  },
-  {
-    bankName: "ABSA BANK",
-    branchCode: "022145",
-    branchName: "Woodlands Branch",
-  },
-  {
-    bankName: "ABSA BANK",
-    branchCode: "023028",
-    branchName: "Industrial Branch",
-  },
-  {
-    bankName: "ABSA BANK",
-    branchCode: "023231",
-    branchName: "Copperhill/Chawama",
-  },
-  {
-    bankName: "ABSA BANK",
-    branchCode: "025045",
-    branchName: "Nyimba Branch",
-  },
-  {
-    bankName: "ABSA BANK",
-    branchCode: "025150",
-    branchName: "Samfya Branch",
-  },
-  {
-    bankName: "ABSA BANK",
-    branchCode: "023927",
-    branchName: "Arcades Branch",
-  },
-  {
-    bankName: "ABSA BANK",
-    branchCode: "024024",
-    branchName: "EBS Branch",
-  },
-  {
-    bankName: "ABSA BANK",
-    branchCode: "024229",
-    branchName: "Electronic Banking Branch",
-  },
-  {
-    bankName: "ABSA BANK",
-    branchCode: "024432",
-    branchName: "Mansa Mall",
-  },
-  {
-    bankName: "ABSA BANK",
-    branchCode: "024535",
-    branchName: "PHI - Head Office",
-  },
-  {
-    bankName: "ABSA BANK",
-    branchCode: "024834",
-    branchName: "Matero Mall",
-  },
-  {
-    bankName: "ABSA BANK",
-    branchCode: "025346",
-    branchName: "PDC- POS Card",
-  },
-  {
-    bankName: "ABSA BANK",
-    branchCode: "025443",
-    branchName: "POS",
-  },
-  {
-    bankName: "ABSA BANK",
-    branchCode: "025540",
-    branchName: "Government/Public Sector",
-  },
-  {
-    bankName: "ABSA BANK",
-    branchCode: "025639",
-    branchName: "Business Evaluation",
-  },
-  {
-    bankName: "ABSA BANK",
-    branchCode: "025754",
-    branchName: "East Park Mall Branch",
-  },
-  {
-    bankName: "ABSA BANK",
-    branchCode: "025851",
-    branchName: "Makeni Mall",
-  },
-  {
-    bankName: "ABSA BANK",
-    branchCode: "025958",
-    branchName: "Waterfalls Mall",
-  },
-  {
-    bankName: "ABSA BANK",
-    branchCode: "026055",
-    branchName: "FNB Main Private Suite",
-  },
-  {
-    bankName: "ABSA BANK",
-    branchCode: "026152",
-    branchName: "ATM",
-  },
-  {
-    bankName: "ABSA BANK",
-    branchCode: "026249",
-    branchName: "Mukuba Branch",
-  },
-  {
-    bankName: "ABSA BANK",
-    branchCode: "026346",
-    branchName: "FNB Lusaka Private Suite",
-  },
-  {
-    bankName: "ABSA BANK",
-    branchCode: "026443",
-    branchName: "Card",
-  },
-  {
-    bankName: "ABSA BANK",
-    branchCode: "026540",
-    branchName: "Corporate Investment Banking",
-  },
-  {
-    bankName: "ABSA BANK",
-    branchCode: "026841",
-    branchName: "Agriculture Zambia",
-  },
-  {
-    bankName: "ABSA BANK",
-    branchCode: "027231",
-    branchName: "Chilanga",
-  },
-  {
-    bankName: "ABSA BANK",
-    branchCode: "027328",
-    branchName: "Kazungula Branch",
-  },
-  {
-    bankName: "ABSA BANK",
-    branchCode: "027425",
-    branchName: "Avondale Branch",
-  },
-  {
-    bankName: "ABSA BANK",
-    branchCode: "027522",
-    branchName: "Patriot Branch",
-  },
-  {
-    bankName: "ABSA BANK",
-    branchCode: "027619",
-    branchName: "Maramba",
-  },
-  {
-    bankName: "ABSA BANK",
-    branchCode: "027716",
-    branchName: "Sesheke",
-  },
-  // ACCESS BANK branches
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "360001",
-    branchName: "Lusaka Agency",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "360108",
-    branchName: "Longacres Branch",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "360205",
-    branchName: "Levy Mwanawasa Medical University Agency",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "360302",
-    branchName: "Mansa Branch",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "360409",
-    branchName: "Ndola Mall Branch",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "360506",
-    branchName: "Chingwere Branch",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "360603",
-    branchName: "Kitwe Mall Branch",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "360700",
-    branchName: "Head Office",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "360807",
-    branchName: "Chipata Branch",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "360904",
-    branchName: "Copperbelt Branch",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "361001",
-    branchName: "Solwezi",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "361108",
-    branchName: "Kabwe",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "361205",
-    branchName: "Mukuba",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "361302",
-    branchName: "Lusaka Main",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "361409",
-    branchName: "Matero",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "361506",
-    branchName: "Mufulira",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "361603",
-    branchName: "Mazabuka",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "361700",
-    branchName: "Livingstone",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "361807",
-    branchName: "Chipata",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "361904",
-    branchName: "Kasama",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "362001",
-    branchName: "Choma",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "362108",
-    branchName: "Avondale",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "362205",
-    branchName: "Kapiri Mposhi",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "362302",
-    branchName: "Luanshya",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "362409",
-    branchName: "Chingola",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "362506",
-    branchName: "Rufunsa",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "362603",
-    branchName: "Kafue",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "362700",
-    branchName: "Mongu",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "362807",
-    branchName: "Lundazi",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "362904",
-    branchName: "Isoka",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "363001",
-    branchName: "Chavuma",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "363108",
-    branchName: "Kalumbila",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "363205",
-    branchName: "Chililabombwe",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "363302",
-    branchName: "Mpika",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "363409",
-    branchName: "Samfya",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "363506",
-    branchName: "Lusaka Main",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "363603",
-    branchName: "East Park Main",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "363700",
-    branchName: "Manda Hill",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "363807",
-    branchName: "Woodlands Branch",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "363904",
-    branchName: "Makeni Branch",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "364001",
-    branchName: "Levy Mall",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "364108",
-    branchName: "Head Office Branch",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "364205",
-    branchName: "Cosmopolitan Branch",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "364302",
-    branchName: "Digital",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "364409",
-    branchName: "Card Acquirers",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "364506",
-    branchName: "Lusaka Provincial House",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "364603",
-    branchName: "Lusaka Civic Centre",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "364700",
-    branchName: "Finance House",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "364807",
-    branchName: "Freedom House",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "364904",
-    branchName: "ZAF Headquarters",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "365001",
-    branchName: "Kamwala Main",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "365108",
-    branchName: "High Court",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "365205",
-    branchName: "Mwembeshi/Lusaka",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "365302",
-    branchName: "Intercontinental",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "365409",
-    branchName: "Cairns Business centre",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "365506",
-    branchName: "Cairo Business centre",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "365603",
-    branchName: "Government Complex",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "365700",
-    branchName: "Mukuni Park Branch",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "365807",
-    branchName: "Mass Industrial",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "365904",
-    branchName: "PHI Industrial",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "366001",
-    branchName: "Kabulonga",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "366108",
-    branchName: "Alton House",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "366205",
-    branchName: "Roma",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "366302",
-    branchName: "International Bank",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "366409",
-    branchName: "Head Office Processing Centre",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "366506",
-    branchName: "Lusaka Business centre",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "366603",
-    branchName: "Emmasdale",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "366700",
-    branchName: "PTA",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "366807",
-    branchName: "Crossroads",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "366904",
-    branchName: "Kanyama",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "367001",
-    branchName: "Leopards Hill - Garden",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "367108",
-    branchName: "Chinika",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "367205",
-    branchName: "Acacia Park",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "367302",
-    branchName: "Arcades",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "367409",
-    branchName: "Mwembeshi",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "367506",
-    branchName: "Waterfalls",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "367603",
-    branchName: "Chainda",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "367700",
-    branchName: "Lusaka Main Branch",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "367807",
-    branchName: "Ndola Main Branch",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "367904",
-    branchName: "DDL Hub Main Agency",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "368001",
-    branchName: "Ndola Post Office Agency",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "368108",
-    branchName: "Freedom Way Branch",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "368205",
-    branchName: "Industrial Branch",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "368302",
-    branchName: "Jacaranda Mall Branch",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "368409",
-    branchName: "Kafubu Mall Branch",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "368506",
-    branchName: "Cosmopolitan Mall Branch",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "368603",
-    branchName: "Trade Kings",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "368700",
-    branchName: "Ndeke Branch",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "368807",
-    branchName: "Kabwe Branch",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "368904",
-    branchName: "Harmoney Real Agency Branch",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "369001",
-    branchName: "Longacres Branch",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "369108",
-    branchName: "Solwezi Branch",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "369205",
-    branchName: "Ndola Branch",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "369302",
-    branchName: "Absa Branch",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "369409",
-    branchName: "Chipata Mall",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "369506",
-    branchName: "Banking for Business Park",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "369603",
-    branchName: "Kasama",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "369700",
-    branchName: "Kapa",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "369807",
-    branchName: "Main",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "369904",
-    branchName: "Senanga",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "370001",
-    branchName: "Chinsali",
-  },
-  {
-    bankName: "ACCESS BANK",
-    branchCode: "370108",
-    branchName: "Zambezi",
-  },
-  // ATLAS MARA branches
-  {
-    bankName: "ATLAS MARA",
-    branchCode: "080007",
-    branchName: "Cairo Road",
-  },
-  {
-    bankName: "ATLAS MARA",
-    branchCode: "080209",
-    branchName: "Ndola",
-  },
-  {
-    bankName: "ATLAS MARA",
-    branchCode: "080306",
-    branchName: "Kitwe",
-  },
-  {
-    bankName: "ATLAS MARA",
-    branchCode: "080102",
-    branchName: "Industrial",
-  },
-  {
-    bankName: "ATLAS MARA",
-    branchCode: "080410",
-    branchName: "Livingstone",
-  },
-  {
-    bankName: "ATLAS MARA",
-    branchCode: "080514",
-    branchName: "Chipata",
-  },
-  {
-    bankName: "ATLAS MARA",
-    branchCode: "080618",
-    branchName: "Chingola",
-  },
-  {
-    bankName: "ATLAS MARA",
-    branchCode: "080722",
-    branchName: "Solwezi",
-  },
-  {
-    bankName: "ATLAS MARA",
-    branchCode: "080826",
-    branchName: "Kabwe",
-  },
-  {
-    bankName: "ATLAS MARA",
-    branchCode: "080930",
-    branchName: "Manda Hill",
-  },
-  {
-    bankName: "ATLAS MARA",
-    branchCode: "081034",
-    branchName: "Mazabuka",
-  },
-  {
-    bankName: "ATLAS MARA",
-    branchCode: "081138",
-    branchName: "Luanshya",
-  },
-  {
-    bankName: "ATLAS MARA",
-    branchCode: "081242",
-    branchName: "Mufulira",
-  },
-  {
-    bankName: "ATLAS MARA",
-    branchCode: "081346",
-    branchName: "Kasama",
-  },
-  {
-    bankName: "ATLAS MARA",
-    branchCode: "081450",
-    branchName: "Mansa",
-  },
-  {
-    bankName: "ATLAS MARA",
-    branchCode: "081554",
-    branchName: "Kapiri Mposhi",
-  },
-  {
-    bankName: "ATLAS MARA",
-    branchCode: "081658",
-    branchName: "Mongu",
-  },
-  {
-    bankName: "ATLAS MARA",
-    branchCode: "081762",
-    branchName: "Choma",
-  },
-  {
-    bankName: "ATLAS MARA",
-    branchCode: "081866",
-    branchName: "Kafue",
-  },
-  {
-    bankName: "ATLAS MARA",
-    branchCode: "081970",
-    branchName: "Woodlands",
-  },
-  {
-    bankName: "ATLAS MARA",
-    branchCode: "082074",
-    branchName: "Kalumbila",
-  },
-  //
-  // BANK OF CHINA branches
-  {
-    bankName: "BANK OF CHINA",
-    branchCode: "310007",
+    bankName: "BAYPORT",
     branchName: "Lusaka",
-  },
-  // BAYPORT branches
-  { bankName: "BAYPORT", branchCode: "550099", branchName: "Head Office" },
-  { bankName: "BAYPORT", branchCode: "550105", branchName: "Ndola" },
-  { bankName: "BAYPORT", branchCode: "550706", branchName: "Luanshya" },
-  { bankName: "BAYPORT", branchCode: "550508", branchName: "Mufulira" },
-  { bankName: "BAYPORT", branchCode: "550309", branchName: "Konkola" },
-  { bankName: "BAYPORT", branchCode: "550307", branchName: "Chingola" },
-  { bankName: "BAYPORT", branchCode: "550202", branchName: "Kitwe" },
-  { bankName: "BAYPORT", branchCode: "550001", branchName: "Lusaka" },
-  { bankName: "BAYPORT", branchCode: "550003", branchName: "Heroes" },
-  { bankName: "BAYPORT", branchCode: "550004", branchName: "UTH" },
-  { bankName: "BAYPORT", branchCode: "553618", branchName: "Mazabuka" },
-  { bankName: "BAYPORT", branchCode: "553416", branchName: "Kafue" },
-  { bankName: "BAYPORT", branchCode: "550911", branchName: "Kabwe" },
-  { bankName: "BAYPORT", branchCode: "551019", branchName: "Livingstone" },
-  { bankName: "BAYPORT", branchCode: "550817", branchName: "Kasama" },
-  { bankName: "BAYPORT", branchCode: "551112", branchName: "Chipata" },
-  { bankName: "BAYPORT", branchCode: "551913", branchName: "Mansa" },
-  { bankName: "BAYPORT", branchCode: "551815", branchName: "Mpika" },
-  { bankName: "BAYPORT", branchCode: "553114", branchName: "Mongu" },
-  { bankName: "BAYPORT", branchCode: "552810", branchName: "Solwezi" },
-  // CITIBANK branches
-  {
-    bankName: "CITIBANK",
-    branchCode: "160006",
-    branchName: "Main",
-  },
-  // ECOBANK branches
-  {
-    bankName: "ECOBANK",
-    branchCode: "200000",
-    branchName: "Head Office",
+    branchCode: "550001",
   },
   {
-    bankName: "ECOBANK",
-    branchCode: "200107",
-    branchName: "Main Branch",
+    bankName: "BAYPORT",
+    branchName: "Heroes",
+    branchCode: "550003",
   },
   {
-    bankName: "ECOBANK",
-    branchCode: "200204",
-    branchName: "Ndola",
+    bankName: "BAYPORT",
+    branchName: "UTH",
+    branchCode: "550004",
   },
   {
-    bankName: "ECOBANK",
-    branchCode: "200301",
-    branchName: "Kitwe",
+    bankName: "BAYPORT",
+    branchName: "Mazabuka",
+    branchCode: "553618",
   },
   {
-    bankName: "ECOBANK",
-    branchCode: "200408",
+    bankName: "BAYPORT",
+    branchName: "Kafue",
+    branchCode: "553416",
+  },
+  {
+    bankName: "BAYPORT",
+    branchName: "Kabwe",
+    branchCode: "550911",
+  },
+  {
+    bankName: "BAYPORT",
     branchName: "Livingstone",
+    branchCode: "551019",
   },
   {
-    bankName: "ECOBANK",
-    branchCode: "200505",
+    bankName: "BAYPORT",
+    branchName: "Kasama",
+    branchCode: "550817",
+  },
+  {
+    bankName: "BAYPORT",
     branchName: "Chipata",
+    branchCode: "551112",
   },
   {
-    bankName: "ECOBANK",
-    branchCode: "200602",
+    bankName: "BAYPORT",
+    branchName: "Mansa",
+    branchCode: "551913",
+  },
+  {
+    bankName: "BAYPORT",
+    branchName: "Mpika",
+    branchCode: "551815",
+  },
+  {
+    bankName: "BAYPORT",
+    branchName: "Mongu",
+    branchCode: "553114",
+  },
+  {
+    bankName: "BAYPORT",
     branchName: "Solwezi",
+    branchCode: "552810",
   },
   {
     bankName: "ECOBANK",
-    branchCode: "200709",
-    branchName: "Manda Hill",
+    branchName: "Mazabuka Branch",
+    branchCode: "363611",
   },
-  // FNB branches
+  {
+    bankName: "ECOBANK",
+    branchName: "Chibombo",
+    branchCode: "365506",
+  },
+  {
+    bankName: "ECOBANK",
+    branchName: "Lumumba Branch",
+    branchCode: "360010",
+  },
+  {
+    bankName: "ECOBANK",
+    branchName: "Thabo Mbeki",
+    branchCode: "360002",
+  },
+  {
+    bankName: "ECOBANK",
+    branchName: "Head Office",
+    branchCode: "360001",
+  },
+  {
+    bankName: "ECOBANK",
+    branchName: "Cairo Road",
+    branchCode: "360003",
+  },
+  {
+    bankName: "ECOBANK",
+    branchName: "Woodlands",
+    branchCode: "360004",
+  },
+  {
+    bankName: "ECOBANK",
+    branchName: "Industrial Branch",
+    branchCode: "360007",
+  },
+  {
+    bankName: "ECOBANK",
+    branchName: "Kitwe",
+    branchCode: "360205",
+  },
+  {
+    bankName: "ECOBANK",
+    branchName: "Copperbelt University ",
+    branchCode: "360208",
+  },
+  {
+    bankName: "ECOBANK",
+    branchName: "Ndola Branch",
+    branchCode: "360109",
+  },
   {
     bankName: "FNB",
+    branchName: "Commercial Suite",
     branchCode: "260001",
-    branchName: "Main Branch",
   },
   {
     bankName: "FNB",
-    branchCode: "260108",
-    branchName: "Industrial Area",
+    branchName: "Industrial Branch",
+    branchCode: "260002",
   },
   {
     bankName: "FNB",
-    branchCode: "260205",
+    branchName: "FNB Operation Centre",
+    branchCode: "260004",
+  },
+  {
+    bankName: "FNB",
+    branchName: "Headoffice",
+    branchCode: "260005",
+  },
+  {
+    bankName: "FNB",
+    branchName: "Electronic Banking Branch",
+    branchCode: "260006",
+  },
+  {
+    bankName: "FNB",
+    branchName: "Treasury",
+    branchCode: "260011",
+  },
+  {
+    bankName: "FNB",
     branchName: "Manda Hill",
+    branchCode: "260014",
   },
   {
     bankName: "FNB",
-    branchCode: "260302",
-    branchName: "Ndola",
+    branchName: "Bank on Wheels",
+    branchCode: "260017",
   },
   {
     bankName: "FNB",
-    branchCode: "260409",
+    branchName: "Makeni Mall ",
+    branchCode: "260016",
+  },
+  {
+    bankName: "FNB",
+    branchName: "Vechicle and Asset Finance",
+    branchCode: "260015",
+  },
+  {
+    bankName: "FNB",
+    branchName: "POS- MasterCard",
+    branchCode: "260032",
+  },
+  {
+    bankName: "FNB",
+    branchName: "POS-Visa",
+    branchCode: "260031",
+  },
+  {
+    bankName: "FNB",
+    branchName: "POS-FNB",
+    branchCode: "260033",
+  },
+  {
+    bankName: "FNB",
+    branchName: "Government and Public Sector",
+    branchCode: "260036",
+  },
+  {
+    bankName: "FNB",
+    branchName: "Branchless Banking",
+    branchCode: "260025",
+  },
+  {
+    bankName: "FNB",
+    branchName: "Home Loan",
+    branchCode: "260020",
+  },
+  {
+    bankName: "FNB",
+    branchName: "CIB Corporate",
+    branchCode: "260029",
+  },
+  {
+    bankName: "FNB",
+    branchName: "Electronic Wallet",
+    branchCode: "260027",
+  },
+  {
+    bankName: "FNB",
+    branchName: "Mukuba Mall ",
+    branchCode: "260243",
+  },
+  {
+    bankName: "FNB",
+    branchName: "Kitwe Industrial",
+    branchCode: "260247",
+  },
+  {
+    bankName: "FNB",
     branchName: "Kitwe",
+    branchCode: "260212",
   },
   {
     bankName: "FNB",
-    branchCode: "260506",
-    branchName: "Livingstone",
+    branchName: "FNB Kitwe Private Suite",
+    branchCode: "260261",
   },
   {
     bankName: "FNB",
-    branchCode: "260603",
-    branchName: "Kabwe",
-  },
-  {
-    bankName: "FNB",
-    branchCode: "260700",
-    branchName: "Solwezi",
-  },
-  {
-    bankName: "FNB",
-    branchCode: "260807",
-    branchName: "Chipata",
-  },
-  {
-    bankName: "FNB",
-    branchCode: "260904",
-    branchName: "Woodlands",
-  },
-  {
-    bankName: "FNB",
-    branchCode: "261001",
-    branchName: "Makeni",
-  },
-  {
-    bankName: "FNB",
-    branchCode: "261108",
-    branchName: "East Park",
-  },
-  {
-    bankName: "FNB",
-    branchCode: "261205",
-    branchName: "Kafue",
-  },
-  {
-    bankName: "FNB",
-    branchCode: "261302",
     branchName: "Chingola",
+    branchCode: "260322",
   },
   {
     bankName: "FNB",
-    branchCode: "261409",
-    branchName: "Mufulira",
+    branchName: "Mufulira Branch",
+    branchCode: "260544",
   },
   {
     bankName: "FNB",
-    branchCode: "261506",
-    branchName: "Luanshya",
+    branchName: "Jacaranda Mall",
+    branchCode: "260118",
   },
   {
     bankName: "FNB",
-    branchCode: "261603",
-    branchName: "Mazabuka",
+    branchName: "Ndola Branch",
+    branchCode: "260103",
   },
   {
     bankName: "FNB",
-    branchCode: "261700",
-    branchName: "Mongu",
+    branchName: "FNB Zambia Lusaka Private Suite",
+    branchCode: "260061",
   },
   {
     bankName: "FNB",
-    branchCode: "261807",
-    branchName: "Kasama",
-  },
-  {
-    bankName: "FNB",
-    branchCode: "261904",
-    branchName: "Mansa",
-  },
-  {
-    bankName: "FNB",
-    branchCode: "262001",
-    branchName: "Choma",
-  },
-  {
-    bankName: "FNB",
-    branchCode: "262108",
-    branchName: "Kapiri Mposhi",
-  },
-  {
-    bankName: "FNB",
-    branchCode: "262205",
-    branchName: "Kalumbila",
-  },
-  // INDO ZAMBIA BANK branches
-  {
-    bankName: "INDO ZAMBIA BANK",
-    branchCode: "100000",
-    branchName: "Head Office",
-  },
-  {
-    bankName: "INDO ZAMBIA BANK",
-    branchCode: "100107",
-    branchName: "Cairo Road",
-  },
-  {
-    bankName: "INDO ZAMBIA BANK",
-    branchCode: "100204",
-    branchName: "Ndola",
-  },
-  {
-    bankName: "INDO ZAMBIA BANK",
-    branchCode: "100301",
-    branchName: "Kitwe",
-  },
-  {
-    bankName: "INDO ZAMBIA BANK",
-    branchCode: "100408",
-    branchName: "Livingstone",
-  },
-  {
-    bankName: "INDO ZAMBIA BANK",
-    branchCode: "100505",
-    branchName: "Chipata",
-  },
-  {
-    bankName: "INDO ZAMBIA BANK",
-    branchCode: "100602",
-    branchName: "Kabwe",
-  },
-  {
-    bankName: "INDO ZAMBIA BANK",
-    branchCode: "100709",
-    branchName: "Chingola",
-  },
-  {
-    bankName: "INDO ZAMBIA BANK",
-    branchCode: "100806",
-    branchName: "Luanshya",
-  },
-  {
-    bankName: "INDO ZAMBIA BANK",
-    branchCode: "100903",
-    branchName: "Mufulira",
-  },
-  {
-    bankName: "INDO ZAMBIA BANK",
-    branchCode: "101000",
-    branchName: "Solwezi",
-  },
-  {
-    bankName: "INDO ZAMBIA BANK",
-    branchCode: "101107",
-    branchName: "Manda Hill",
-  },
-  {
-    bankName: "INDO ZAMBIA BANK",
-    branchCode: "101204",
-    branchName: "Industrial Area",
-  },
-  // INVESTRUST BANK branches
-  {
-    bankName: "INVESTRUST BANK",
-    branchCode: "110000",
-    branchName: "Head Office",
-  },
-  {
-    bankName: "INVESTRUST BANK",
-    branchCode: "110107",
-    branchName: "Cairo Road",
-  },
-  {
-    bankName: "INVESTRUST BANK",
-    branchCode: "110204",
-    branchName: "Ndola",
-  },
-  {
-    bankName: "INVESTRUST BANK",
-    branchCode: "110301",
-    branchName: "Kitwe",
-  },
-  {
-    bankName: "INVESTRUST BANK",
-    branchCode: "110408",
-    branchName: "Livingstone",
-  },
-  {
-    bankName: "INVESTRUST BANK",
-    branchCode: "110505",
-    branchName: "Kabwe",
-  },
-  {
-    bankName: "INVESTRUST BANK",
-    branchCode: "110602",
-    branchName: "Solwezi",
-  },
-  {
-    bankName: "INVESTRUST BANK",
-    branchCode: "110709",
-    branchName: "Manda Hill",
-  },
-  {
-    bankName: "INVESTRUST BANK",
-    branchCode: "110806",
-    branchName: "Industrial",
-  },
-  {
-    bankName: "INVESTRUST BANK",
-    branchCode: "110903",
-    branchName: "Chingola",
-  },
-  // NATSAVE BANK branches
-  { bankName: "NATSAVE", branchCode: "583113", branchName: "Mongu" },
-  { bankName: "NATSAVE", branchCode: "582831", branchName: "Solwezi" },
-  { bankName: "NATSAVE", branchCode: "582836", branchName: "Lumwana" },
-  { bankName: "NATSAVE", branchCode: "583032", branchName: "Zambezi" },
-  { bankName: "NATSAVE", branchCode: "581837", branchName: "Mpika" },
-  { bankName: "NATSAVE", branchCode: "581739", branchName: "Chinsali" },
-  { bankName: "NATSAVE", branchCode: "581927", branchName: "Mansa" },
-  { bankName: "NATSAVE", branchCode: "581104", branchName: "Chipata" },
-  { bankName: "NATSAVE", branchCode: "581219", branchName: "Choma" },
-  { bankName: "NATSAVE", branchCode: "580822", branchName: "Kasama" },
-  { bankName: "NATSAVE", branchCode: "580725", branchName: "Luanshya" },
-  { bankName: "NATSAVE", branchCode: "581007", branchName: "Livingstone" },
-  { bankName: "NATSAVE", branchCode: "580906", branchName: "Kabwe" },
-  { bankName: "NATSAVE", branchCode: "584315", branchName: "Petauke" },
-  { bankName: "NATSAVE", branchCode: "585634", branchName: "Mpongwe" },
-  { bankName: "NATSAVE", branchCode: "585903", branchName: "Chama" },
-  { bankName: "NATSAVE", branchCode: "586338", branchName: "Mwense" },
-  { bankName: "NATSAVE", branchCode: "586529", branchName: "Nchelenge" },
-  { bankName: "NATSAVE", branchCode: "586721", branchName: "Kaputa" },
-  { bankName: "NATSAVE", branchCode: "586926", branchName: "Luwingu" },
-  { bankName: "NATSAVE", branchCode: "587033", branchName: "Chilubi" },
-  { bankName: "NATSAVE", branchCode: "587128", branchName: "Mporokoso" },
-  { bankName: "NATSAVE", branchCode: "587223", branchName: "Kasempa" },
-  { bankName: "NATSAVE", branchCode: "587518", branchName: "Kazungula" },
-  { bankName: "NATSAVE", branchCode: "587740", branchName: "Chavuma" },
-  { bankName: "NATSAVE", branchCode: "585435", branchName: "Lufwanyama" },
-  { bankName: "NATSAVE", branchCode: "585214", branchName: "Mumbwa" },
-  { bankName: "NATSAVE", branchCode: "584605", branchName: "Chongwe" },
-  { bankName: "NATSAVE", branchCode: "584817", branchName: "Kalabo" },
-  { bankName: "NATSAVE", branchCode: "585116", branchName: "Lukulu" },
-
-  { bankName: "NATSAVE", branchCode: "580008", branchName: "Cosmopolitan" },
-  { bankName: "NATSAVE", branchCode: "580001", branchName: "Head Office" },
-  { bankName: "NATSAVE", branchCode: "580002", branchName: "Credit Center" },
-  { bankName: "NATSAVE", branchCode: "580009", branchName: "Chilenje" },
-  { bankName: "NATSAVE", branchCode: "580012", branchName: "Northend" },
-  { bankName: "NATSAVE", branchCode: "580010", branchName: "Lusaka Main" },
-  { bankName: "NATSAVE", branchCode: "580011", branchName: "Matero" },
-
-  { bankName: "NATSAVE", branchCode: "580224", branchName: "Kitwe" },
-  { bankName: "NATSAVE", branchCode: "580220", branchName: "Chimwemwe" },
-  { bankName: "NATSAVE", branchCode: "580130", branchName: "Ndola" },
-  // STANBIC BANK branches
-  {
-    bankName: "STANBIC BANK",
-    branchCode: "040001",
-    branchName: "Head Office",
-  },
-  {
-    bankName: "STANBIC BANK",
-    branchCode: "040108",
-    branchName: "Cairo Road",
-  },
-  {
-    bankName: "STANBIC BANK",
-    branchCode: "040205",
-    branchName: "Manda Hill",
-  },
-  {
-    bankName: "STANBIC BANK",
-    branchCode: "040302",
-    branchName: "Ndola",
-  },
-  {
-    bankName: "STANBIC BANK",
-    branchCode: "040409",
-    branchName: "Kitwe",
-  },
-  {
-    bankName: "STANBIC BANK",
-    branchCode: "040506",
-    branchName: "Livingstone",
-  },
-  {
-    bankName: "STANBIC BANK",
-    branchCode: "040603",
-    branchName: "Chipata",
-  },
-  {
-    bankName: "STANBIC BANK",
-    branchCode: "040700",
-    branchName: "Kabwe",
-  },
-  {
-    bankName: "STANBIC BANK",
-    branchCode: "040807",
-    branchName: "Solwezi",
-  },
-  {
-    bankName: "STANBIC BANK",
-    branchCode: "040904",
-    branchName: "Chingola",
-  },
-  {
-    bankName: "STANBIC BANK",
-    branchCode: "041001",
-    branchName: "Industrial Area",
-  },
-  {
-    bankName: "STANBIC BANK",
-    branchCode: "041108",
-    branchName: "Woodlands",
-  },
-  {
-    bankName: "STANBIC BANK",
-    branchCode: "041205",
-    branchName: "Makeni",
-  },
-  {
-    bankName: "STANBIC BANK",
-    branchCode: "041302",
-    branchName: "Mufulira",
-  },
-  {
-    bankName: "STANBIC BANK",
-    branchCode: "041409",
-    branchName: "Luanshya",
-  },
-  {
-    bankName: "STANBIC BANK",
-    branchCode: "041506",
-    branchName: "Mazabuka",
-  },
-  {
-    bankName: "STANBIC BANK",
-    branchCode: "041603",
-    branchName: "Kasama",
-  },
-  {
-    bankName: "STANBIC BANK",
-    branchCode: "041700",
-    branchName: "Mongu",
-  },
-  {
-    bankName: "STANBIC BANK",
-    branchCode: "041807",
-    branchName: "Mansa",
-  },
-  {
-    bankName: "STANBIC BANK",
-    branchCode: "041904",
-    branchName: "Choma",
-  },
-  {
-    bankName: "STANBIC BANK",
-    branchCode: "042001",
-    branchName: "Kafue",
-  },
-  {
-    bankName: "STANBIC BANK",
-    branchCode: "042108",
-    branchName: "Kapiri Mposhi",
-  },
-  {
-    bankName: "STANBIC BANK",
-    branchCode: "042205",
-    branchName: "Kalumbila",
-  },
-  {
-    bankName: "STANBIC BANK",
-    branchCode: "042302",
-    branchName: "East Park Mall",
-  },
-  // STANDARD CHARTERED BANK branches
-  {
-    bankName: "STANDARD CHARTERED BANK",
-    branchCode: "020001",
-    branchName: "Head Office",
-  },
-  {
-    bankName: "STANDARD CHARTERED BANK",
-    branchCode: "020108",
-    branchName: "Cairo Road",
-  },
-  {
-    bankName: "STANDARD CHARTERED BANK",
-    branchCode: "020205",
-    branchName: "Ndola",
-  },
-  {
-    bankName: "STANDARD CHARTERED BANK",
-    branchCode: "020302",
-    branchName: "Kitwe",
-  },
-  {
-    bankName: "STANDARD CHARTERED BANK",
-    branchCode: "020409",
-    branchName: "Livingstone",
-  },
-  {
-    bankName: "STANDARD CHARTERED BANK",
-    branchCode: "020506",
-    branchName: "Manda Hill",
-  },
-  {
-    bankName: "STANDARD CHARTERED BANK",
-    branchCode: "020603",
-    branchName: "Industrial Area",
-  },
-  {
-    bankName: "STANDARD CHARTERED BANK",
-    branchCode: "020700",
-    branchName: "Kabwe",
-  },
-  {
-    bankName: "STANDARD CHARTERED BANK",
-    branchCode: "020807",
-    branchName: "Chingola",
-  },
-  {
-    bankName: "STANDARD CHARTERED BANK",
-    branchCode: "020904",
-    branchName: "Woodlands",
-  },
-  // UNITED BANK FOR AFRICA (UBA) branches
-  {
-    bankName: "UBA ZAMBIA",
-    branchCode: "330001",
-    branchName: "Lusaka Main",
-  },
-  {
-    bankName: "UBA ZAMBIA",
-    branchCode: "330108",
-    branchName: "Ndola",
-  },
-  {
-    bankName: "UBA ZAMBIA",
-    branchCode: "330205",
-    branchName: "Kitwe",
-  },
-  {
-    bankName: "UBA ZAMBIA",
-    branchCode: "330302",
-    branchName: "Manda Hill",
-  },
-  // ZANACO branches
-  {
-    bankName: "ZANACO",
-    branchCode: "060001",
-    branchName: "Head Office",
-  },
-  {
-    bankName: "ZANACO",
-    branchCode: "060108",
-    branchName: "Cairo Road",
-  },
-  {
-    bankName: "ZANACO",
-    branchCode: "060205",
-    branchName: "Industrial Area",
-  },
-  {
-    bankName: "ZANACO",
-    branchCode: "060302",
-    branchName: "Ndola",
-  },
-  {
-    bankName: "ZANACO",
-    branchCode: "060409",
-    branchName: "Kitwe",
-  },
-  {
-    bankName: "ZANACO",
-    branchCode: "060506",
-    branchName: "Livingstone",
-  },
-  {
-    bankName: "ZANACO",
-    branchCode: "060603",
-    branchName: "Chipata",
-  },
-  {
-    bankName: "ZANACO",
-    branchCode: "060700",
-    branchName: "Kabwe",
-  },
-  {
-    bankName: "ZANACO",
-    branchCode: "060807",
-    branchName: "Solwezi",
-  },
-  {
-    bankName: "ZANACO",
-    branchCode: "060904",
-    branchName: "Manda Hill",
-  },
-  {
-    bankName: "ZANACO",
-    branchCode: "061001",
-    branchName: "Makeni",
-  },
-  {
-    bankName: "ZANACO",
-    branchCode: "061108",
-    branchName: "Woodlands",
-  },
-  {
-    bankName: "ZANACO",
-    branchCode: "061205",
-    branchName: "Chingola",
-  },
-  {
-    bankName: "ZANACO",
-    branchCode: "061302",
-    branchName: "Mufulira",
-  },
-  {
-    bankName: "ZANACO",
-    branchCode: "061409",
-    branchName: "Luanshya",
-  },
-  {
-    bankName: "ZANACO",
-    branchCode: "061506",
-    branchName: "Mazabuka",
-  },
-  {
-    bankName: "ZANACO",
-    branchCode: "061603",
-    branchName: "Mongu",
-  },
-  {
-    bankName: "ZANACO",
-    branchCode: "061700",
-    branchName: "Kasama",
-  },
-  {
-    bankName: "ZANACO",
-    branchCode: "061807",
-    branchName: "Mansa",
-  },
-  {
-    bankName: "ZANACO",
-    branchCode: "061904",
-    branchName: "Choma",
-  },
-  {
-    bankName: "ZANACO",
-    branchCode: "062001",
-    branchName: "Kafue",
-  },
-  {
-    bankName: "ZANACO",
-    branchCode: "062108",
-    branchName: "Kapiri Mposhi",
-  },
-  {
-    bankName: "ZANACO",
-    branchCode: "062205",
-    branchName: "Kalumbila",
-  },
-  {
-    bankName: "ZANACO",
-    branchCode: "062302",
-    branchName: "East Park Mall",
-  },
-  {
-    bankName: "ZANACO",
-    branchCode: "062409",
-    branchName: "Matero",
-  },
-  {
-    bankName: "ZANACO",
-    branchCode: "062506",
-    branchName: "Chilenje",
-  },
-  {
-    bankName: "ZANACO",
-    branchCode: "062603",
-    branchName: "Kamwala",
-  },
-  {
-    bankName: "ZANACO",
-    branchCode: "062700",
-    branchName: "Kalingalinga",
-  },
-  {
-    bankName: "ZANACO",
-    branchCode: "062807",
-    branchName: "Chelston",
-  },
-  {
-    bankName: "ZANACO",
-    branchCode: "062904",
-    branchName: "Northmead",
-  },
-  {
-    bankName: "ZANACO",
-    branchCode: "063001",
     branchName: "Kabulonga",
-  },
-  // ZAMBIA INDUSTRIAL COMMERCIAL BANK (ZICB) branches
-  {
-    bankName: "ZICB",
-    branchCode: "090001",
-    branchName: "Head Office",
+    branchCode: "260072",
   },
   {
-    bankName: "ZICB",
-    branchCode: "090108",
-    branchName: "Cairo Road",
+    bankName: "FNB",
+    branchName: "PHI Branch",
+    branchCode: "260049",
   },
   {
-    bankName: "ZICB",
-    branchCode: "090205",
-    branchName: "Ndola",
+    bankName: "FNB",
+    branchName: "Commercial Trade",
+    branchCode: "260087",
   },
   {
-    bankName: "ZICB",
-    branchCode: "090302",
-    branchName: "Kitwe",
+    bankName: "FNB",
+    branchName: "Cairo",
+    branchCode: "260050",
   },
   {
-    bankName: "ZICB",
-    branchCode: "090409",
+    bankName: "FNB",
+    branchName: "Chilenje",
+    branchCode: "260046",
+  },
+  {
+    bankName: "FNB",
+    branchName: "Cash centre",
+    branchCode: "260048",
+  },
+  {
+    bankName: "FNB",
+    branchName: "Corporate Investment Banking",
+    branchCode: "260042",
+  },
+  {
+    bankName: "FNB",
+    branchName: "Premier Banking",
+    branchCode: "260039",
+  },
+  {
+    bankName: "FNB",
+    branchName: "Agriculture Centre",
+    branchCode: "260040",
+  },
+  {
+    bankName: "FNB",
+    branchName: "Choma Branch",
+    branchCode: "261238",
+  },
+  {
+    bankName: "FNB",
+    branchName: "Chipata",
+    branchCode: "261121",
+  },
+  {
+    bankName: "FNB",
     branchName: "Livingstone",
+    branchCode: "261061",
   },
   {
-    bankName: "ZICB",
-    branchCode: "090506",
-    branchName: "Kabwe",
+    bankName: "FNB",
+    branchName: "Luanshya Branch",
+    branchCode: "260741",
   },
   {
-    bankName: "ZICB",
-    branchCode: "090603",
-    branchName: "Chingola",
+    bankName: "FNB",
+    branchName: "Kabwe Branch",
+    branchCode: "260937",
   },
   {
-    bankName: "ZICB",
-    branchCode: "090700",
+    bankName: "FNB",
+    branchName: "Mkushi",
+    branchCode: "262319",
+  },
+  {
+    bankName: "FNB",
     branchName: "Solwezi",
+    branchCode: "262823",
   },
-  // ZNBS branches
-  { bankName: "ZNBS", branchCode: "512871", branchName: "Solwezi" },
-  { bankName: "ZNBS", branchCode: "513134", branchName: "Mongu" },
-  { bankName: "ZNBS", branchCode: "511872", branchName: "Mpika" },
-  { bankName: "ZNBS", branchCode: "511970", branchName: "Mansa" },
-  { bankName: "ZNBS", branchCode: "512439", branchName: "Kapiri Mposhi" },
-  { bankName: "ZNBS", branchCode: "511136", branchName: "Chipata" },
-  { bankName: "ZNBS", branchCode: "511037", branchName: "Livingstone" },
-  { bankName: "ZNBS", branchCode: "511235", branchName: "Choma" },
-  { bankName: "ZNBS", branchCode: "510869", branchName: "Kasama" },
-  { bankName: "ZNBS", branchCode: "510767", branchName: "Luanshya" },
-  { bankName: "ZNBS", branchCode: "510963", branchName: "Kabwe" },
-  { bankName: "ZNBS", branchCode: "515441", branchName: "Nyimba" },
-  { bankName: "ZNBS", branchCode: "513638", branchName: "Mazabuka" },
+  {
+    bankName: "FNB",
+    branchName: "Kalumbila Branch",
+    branchCode: "262874",
+  },
+  {
+    bankName: "FNB",
+    branchName: "Mazabuka",
+    branchCode: "263613",
+  },
+  {
+    bankName: "INDO ZAMBIA",
+    branchName: "Kafue Branch",
+    branchCode: "093427",
+  },
+  {
+    bankName: "INDO ZAMBIA",
+    branchName: "Zimba",
+    branchCode: "094229",
+  },
+  {
+    bankName: "INDO ZAMBIA",
+    branchName: "Mungwi",
+    branchCode: "095632",
+  },
+  {
+    bankName: "INDO ZAMBIA",
+    branchName: "Nyimba Branch ",
+    branchCode: "095415",
+  },
+  {
+    bankName: "INDO ZAMBIA",
+    branchName: "Solwezi",
+    branchCode: "092819",
+  },
+  {
+    bankName: "INDO ZAMBIA",
+    branchName: "Lundazi Agency",
+    branchCode: "092531",
+  },
+  {
+    bankName: "INDO ZAMBIA",
+    branchName: "Mongu Branch",
+    branchCode: "093126",
+  },
+  {
+    bankName: "INDO ZAMBIA",
+    branchName: "Mansa Branch",
+    branchCode: "091924",
+  },
+  {
+    bankName: "INDO ZAMBIA",
+    branchName: "Serenje Branch",
+    branchCode: "092230",
+  },
+  {
+    bankName: "INDO ZAMBIA",
+    branchName: "Chinsali",
+    branchCode: "091721",
+  },
+  {
+    bankName: "INDO ZAMBIA",
+    branchName: "Choma",
+    branchCode: "091218",
+  },
+  {
+    bankName: "INDO ZAMBIA",
+    branchName: "Chipata",
+    branchCode: "091112",
+  },
+  {
+    bankName: "INDO ZAMBIA",
+    branchName: "Kasama",
+    branchCode: "090820",
+  },
+  {
+    bankName: "INDO ZAMBIA",
+    branchName: "Livingstone",
+    branchCode: "091010",
+  },
+  {
+    bankName: "INDO ZAMBIA",
+    branchName: "Kabwe",
+    branchCode: "090906",
+  },
+  {
+    bankName: "INDO ZAMBIA",
+    branchName: "Levy Mwanawasa Medical University Agency",
+    branchCode: "090033",
+  },
+  {
+    bankName: "INDO ZAMBIA",
+    branchName: "Longacres Branch",
+    branchCode: "090034",
+  },
+  {
+    bankName: "INDO ZAMBIA",
+    branchName: "Indo Premier",
+    branchCode: "090035",
+  },
+  {
+    bankName: "INDO ZAMBIA",
+    branchName: "Crossroads Shopping Maill",
+    branchCode: "090023",
+  },
+  {
+    bankName: "INDO ZAMBIA",
+    branchName: "Chawama",
+    branchCode: "090013",
+  },
+  {
+    bankName: "INDO ZAMBIA",
+    branchName: "Chilenje Branch",
+    branchCode: "090028",
+  },
+  {
+    bankName: "INDO ZAMBIA",
+    branchName: "Manda Hill Branch",
+    branchCode: "090014",
+  },
+  {
+    bankName: "INDO ZAMBIA",
+    branchName: "Lusaka Industrial",
+    branchCode: "090011",
+  },
+  {
+    bankName: "INDO ZAMBIA",
+    branchName: "Chandwe Musonda",
+    branchCode: "090016",
+  },
+  {
+    bankName: "INDO ZAMBIA",
+    branchName: "Head office",
+    branchCode: "090000",
+  },
+  {
+    bankName: "INDO ZAMBIA",
+    branchName: "Lusaka Main",
+    branchCode: "090001",
+  },
+  {
+    bankName: "INDO ZAMBIA",
+    branchName: "Chilanga",
+    branchCode: "090003",
+  },
+  {
+    bankName: "INDO ZAMBIA",
+    branchName: "Kamwala",
+    branchCode: "090004",
+  },
+  {
+    bankName: "INDO ZAMBIA",
+    branchName: "North End",
+    branchCode: "090005",
+  },
+  {
+    bankName: "INDO ZAMBIA",
+    branchName: "Kasumbalesa Branch",
+    branchCode: "090417",
+  },
+  {
+    bankName: "INDO ZAMBIA",
+    branchName: "Chingola",
+    branchCode: "090309",
+  },
+  {
+    bankName: "INDO ZAMBIA",
+    branchName: "Copperhill Branch",
+    branchCode: "090225",
+  },
+  {
+    bankName: "INDO ZAMBIA",
+    branchName: "Kitwe",
+    branchCode: "090208",
+  },
+  {
+    bankName: "INDO ZAMBIA",
+    branchName: "Jacranda Mall",
+    branchCode: "090122",
+  },
+  {
+    bankName: "INDO ZAMBIA",
+    branchName: "Ndola",
+    branchCode: "090107",
+  },
+  {
+    bankName: "NATSAVE",
+    branchName: "Mongu",
+    branchCode: "583113",
+  },
+  {
+    bankName: "NATSAVE",
+    branchName: "Solwezi",
+    branchCode: "582831",
+  },
+  {
+    bankName: "NATSAVE",
+    branchName: "Lumwana",
+    branchCode: "582836",
+  },
+  {
+    bankName: "NATSAVE",
+    branchName: "Zambezi",
+    branchCode: "583032",
+  },
+  {
+    bankName: "NATSAVE",
+    branchName: "Mpika",
+    branchCode: "581837",
+  },
+  {
+    bankName: "NATSAVE",
+    branchName: "Chinsali",
+    branchCode: "581739",
+  },
+  {
+    bankName: "NATSAVE",
+    branchName: "Mansa",
+    branchCode: "581927",
+  },
+  {
+    bankName: "NATSAVE",
+    branchName: "Chipata",
+    branchCode: "581104",
+  },
+  {
+    bankName: "NATSAVE",
+    branchName: "Choma",
+    branchCode: "581219",
+  },
+  {
+    bankName: "NATSAVE",
+    branchName: "Kasama",
+    branchCode: "580822",
+  },
+  {
+    bankName: "NATSAVE",
+    branchName: "Luanshya",
+    branchCode: "580725",
+  },
+  {
+    bankName: "NATSAVE",
+    branchName: "Livingstone",
+    branchCode: "581007",
+  },
+  {
+    bankName: "NATSAVE",
+    branchName: "Kabwe",
+    branchCode: "580906",
+  },
+  {
+    bankName: "NATSAVE",
+    branchName: "Petauke",
+    branchCode: "584315",
+  },
+  {
+    bankName: "NATSAVE",
+    branchName: "Mpongwe",
+    branchCode: "585634",
+  },
+  {
+    bankName: "NATSAVE",
+    branchName: "Chama",
+    branchCode: "585903",
+  },
+  {
+    bankName: "NATSAVE",
+    branchName: "Mwense",
+    branchCode: "586338",
+  },
+  {
+    bankName: "NATSAVE",
+    branchName: "Nchelenge",
+    branchCode: "586529",
+  },
+  {
+    bankName: "NATSAVE",
+    branchName: "Kaputa",
+    branchCode: "586721",
+  },
+  {
+    bankName: "NATSAVE",
+    branchName: "Luwingu",
+    branchCode: "586926",
+  },
+  {
+    bankName: "NATSAVE",
+    branchName: "Chilubi",
+    branchCode: "587033",
+  },
+  {
+    bankName: "NATSAVE",
+    branchName: "Mporokoso",
+    branchCode: "587128",
+  },
+  {
+    bankName: "NATSAVE",
+    branchName: "Kasempa",
+    branchCode: "587223",
+  },
+  {
+    bankName: "NATSAVE",
+    branchName: "Kazungula",
+    branchCode: "587518",
+  },
+  {
+    bankName: "NATSAVE",
+    branchName: "Chavuma",
+    branchCode: "587740",
+  },
+  {
+    bankName: "NATSAVE",
+    branchName: "Lufwanyama",
+    branchCode: "585435",
+  },
+  {
+    bankName: "NATSAVE",
+    branchName: "Mumbwa",
+    branchCode: "585214",
+  },
+  {
+    bankName: "NATSAVE",
+    branchName: "Chongwe",
+    branchCode: "584605",
+  },
+  {
+    bankName: "NATSAVE",
+    branchName: "Kalabo",
+    branchCode: "584817",
+  },
+  {
+    bankName: "NATSAVE",
+    branchName: "Lukulu",
+    branchCode: "585116",
+  },
+  {
+    bankName: "NATSAVE",
+    branchName: "Cosmopolitan",
+    branchCode: "580008",
+  },
+  {
+    bankName: "NATSAVE",
+    branchName: "Head Office",
+    branchCode: "580001",
+  },
+  {
+    bankName: "NATSAVE",
+    branchName: "Credit Center",
+    branchCode: "580002",
+  },
+  {
+    bankName: "NATSAVE",
+    branchName: "Chilenje",
+    branchCode: "580009",
+  },
+  {
+    bankName: "NATSAVE",
+    branchName: "Northend",
+    branchCode: "580012",
+  },
+  {
+    bankName: "NATSAVE",
+    branchName: "Lusaka Main",
+    branchCode: "580010",
+  },
+  {
+    bankName: "NATSAVE",
+    branchName: "Matero",
+    branchCode: "580011",
+  },
+  {
+    bankName: "NATSAVE",
+    branchName: "Kitwe",
+    branchCode: "580224",
+  },
+  {
+    bankName: "NATSAVE",
+    branchName: "Chimwemwe",
+    branchCode: "580220",
+  },
+  {
+    bankName: "NATSAVE",
+    branchName: "Ndola",
+    branchCode: "580130",
+  },
+  {
+    bankName: "UBA",
+    branchName: "Lusaka",
+    branchCode: "180001",
+  },
+  {
+    bankName: "UBA",
+    branchName: "Kitwe",
+    branchCode: "180202",
+  },
+  {
+    bankName: "UBA",
+    branchName: "Ndola",
+    branchCode: "370105",
+  },
+  {
+    bankName: "UBA",
+    branchName: "Head Office",
+    branchCode: "370099",
+  },
+  {
+    bankName: "UBA",
+    branchName: "Kitwe",
+    branchCode: "370204",
+  },
+  {
+    bankName: "UBA",
+    branchName: "Lewanika Branch",
+    branchCode: "370006",
+  },
+  {
+    bankName: "UBA",
+    branchName: "Cairo",
+    branchCode: "370003",
+  },
+  {
+    bankName: "UBA",
+    branchName: "Head Office Branch",
+    branchCode: "370001",
+  },
+  {
+    bankName: "UBA",
+    branchName: "Kamwala",
+    branchCode: "370002",
+  },
+  {
+    bankName: "UBA",
+    branchName: "Industrial",
+    branchCode: "370009",
+  },
+  {
+    bankName: "UBA",
+    branchName: "Chipata",
+    branchCode: "371108",
+  },
+  {
+    bankName: "UBA",
+    branchName: "Solwezi",
+    branchCode: "372807",
+  },
+  {
+    bankName: "ZANACO",
+    branchName: "Digital",
+    branchCode: "010093",
+  },
+  {
+    bankName: "ZANACO",
+    branchName: "Debt  Recovery",
+    branchCode: "010055",
+  },
+  {
+    bankName: "ZANACO",
+    branchName: "Lusaka Premium House",
+    branchCode: "010066",
+  },
+  {
+    bankName: "ZANACO",
+    branchName: "Lusaka Civic Centre",
+    branchCode: "010067",
+  },
+  {
+    bankName: "ZANACO",
+    branchName: "Waterfalls",
+    branchCode: "010099",
+  },
+  {
+    bankName: "ZANACO",
+    branchName: "Cairo Business centre",
+    branchCode: "010040",
+  },
+  {
+    bankName: "ZANACO",
+    branchName: "Lusaka north end",
+    branchCode: "010041",
+  },
+  {
+    bankName: "ZANACO",
+    branchName: "Findeco House",
+    branchCode: "010050",
+  },
+  {
+    bankName: "ZANACO",
+    branchName: "Lusaka centre",
+    branchCode: "010052",
+  },
+  {
+    bankName: "ZANACO",
+    branchName: "Lusaka kwacha",
+    branchCode: "010053",
+  },
+  {
+    bankName: "ZANACO",
+    branchName: "Twin Palms Mall",
+    branchCode: "010073",
+  },
+  {
+    bankName: "ZANACO",
+    branchName: "Lusaka City market",
+    branchCode: "010074",
+  },
+  {
+    bankName: "ZANACO",
+    branchName: "Northmead branch",
+    branchCode: "010075",
+  },
+  {
+    bankName: "ZANACO",
+    branchName: "Manda Hill",
+    branchCode: "010078",
+  },
+  {
+    bankName: "ZANACO",
+    branchName: "Xapit",
+    branchCode: "010083",
+  },
+  {
+    bankName: "ZANACO",
+    branchName: "Government Comlpex",
+    branchCode: "010084",
+  },
+  {
+    bankName: "ZANACO",
+    branchName: "Woodlands",
+    branchCode: "010085",
+  },
+  {
+    bankName: "ZANACO",
+    branchName: "Acacia Park Branch",
+    branchCode: "010086",
+  },
+  {
+    bankName: "ZANACO",
+    branchName: "Ndola Business Centre",
+    branchCode: "010142",
+  },
+  {
+    bankName: "ZANACO",
+    branchName: "Ndola west",
+    branchCode: "010154",
+  },
+  {
+    bankName: "ZANACO",
+    branchName: "Ndola Industrial",
+    branchCode: "010164",
+  },
+  {
+    bankName: "ZANACO",
+    branchName: "Kitwe Clearing centre",
+    branchCode: "010217",
+  },
+  {
+    bankName: "ZANACO",
+    branchName: "Kitwe Obote",
+    branchCode: "010245",
+  },
+  {
+    bankName: "ZANACO",
+    branchName: "Kitwe Industrial",
+    branchCode: "010256",
+  },
+  {
+    bankName: "ZANACO",
+    branchName: "Mukuba",
+    branchCode: "010298",
+  },
+  {
+    bankName: "ZANACO",
+    branchName: "Chingola",
+    branchCode: "010349",
+  },
+  {
+    bankName: "ZANACO",
+    branchName: "Mufulira",
+    branchCode: "010543",
+  },
+  {
+    bankName: "ZANACO",
+    branchName: "Head office",
+    branchCode: "010001",
+  },
+  {
+    bankName: "ZANACO",
+    branchName: "International Bank",
+    branchCode: "010002",
+  },
+  {
+    bankName: "ZANACO",
+    branchName: "Lusaka Business centre",
+    branchCode: "010003",
+  },
+  {
+    bankName: "ZANACO",
+    branchName: "Human Resources",
+    branchCode: "010007",
+  },
+  {
+    bankName: "ZANACO",
+    branchName: "Longacres",
+    branchCode: "010010",
+  },
+  {
+    bankName: "ZANACO",
+    branchName: "Head Office Processing Centre",
+    branchCode: "010016",
+  },
+  {
+    bankName: "ZANACO",
+    branchName: "Treasury",
+    branchCode: "010018",
+  },
+  {
+    bankName: "ZANACO",
+    branchName: "Luanshya",
+    branchCode: "010763",
+  },
+  {
+    bankName: "ZANACO",
+    branchName: "Kasama",
+    branchCode: "010862",
+  },
+  {
+    bankName: "ZANACO",
+    branchName: "Kabwe",
+    branchCode: "010946",
+  },
+  {
+    bankName: "ZANACO",
+    branchName: "Livingstone",
+    branchCode: "011044",
+  },
+  {
+    bankName: "ZANACO",
+    branchName: "Chipata",
+    branchCode: "011160",
+  },
+  {
+    bankName: "ZANACO",
+    branchName: "Choma",
+    branchCode: "011259",
+  },
+  {
+    bankName: "ZANACO",
+    branchName: "Nakonde",
+    branchCode: "011596",
+  },
+  {
+    bankName: "ZANACO",
+    branchName: "Chinsali",
+    branchCode: "011707",
+  },
+  {
+    bankName: "ZANACO",
+    branchName: "Mpika",
+    branchCode: "011865",
+  },
+  {
+    bankName: "ZANACO",
+    branchName: "Mansa",
+    branchCode: "011948",
+  },
+  {
+    bankName: "ZANACO",
+    branchName: "Kawambwa",
+    branchCode: "012104",
+  },
+  {
+    bankName: "ZANACO",
+    branchName: "Mkushi",
+    branchCode: "012309",
+  },
+  {
+    bankName: "ZANACO",
+    branchName: "Kapiri Mposhi",
+    branchCode: "012461",
+  },
+  {
+    bankName: "ZANACO",
+    branchName: "Namwala",
+    branchCode: "012571",
+  },
+  {
+    bankName: "ZANACO",
+    branchName: "Mfuwe",
+    branchCode: "012606",
+  },
+  {
+    bankName: "ZANACO",
+    branchName: "Siavonga",
+    branchCode: "012868",
+  },
+  {
+    bankName: "ZANACO",
+    branchName: "Mongu",
+    branchCode: "013151",
+  },
+  {
+    bankName: "ZANACO",
+    branchName: "Avondale",
+    branchCode: "013372",
+  },
+  {
+    bankName: "ZANACO",
+    branchName: "Kafue",
+    branchCode: "013458",
+  },
+  {
+    bankName: "ZANACO",
+    branchName: "Chirundu",
+    branchCode: "013582",
+  },
+  {
+    bankName: "ZANACO",
+    branchName: "Mazabuka",
+    branchCode: "013647",
+  },
+  {
+    bankName: "ZANACO",
+    branchName: "Monza",
+    branchCode: "013757",
+  },
+  {
+    bankName: "ZANACO",
+    branchName: "Maamba",
+    branchCode: "013869",
+  },
+  {
+    bankName: "ZANACO",
+    branchName: "Lundazi",
+    branchCode: "014070",
+  },
+  {
+    bankName: "ZANACO",
+    branchName: "Petauke",
+    branchCode: "014305",
+  },
+  {
+    bankName: "ZANACO",
+    branchName: "Chisamba",
+    branchCode: "014508",
+  },
+  {
+    bankName: "ZANACO",
+    branchName: "Itezhi Tezhi",
+    branchCode: "014779",
+  },
+  {
+    bankName: "ZANACO",
+    branchName: "Senanga",
+    branchCode: "015181",
+  },
+  {
+    bankName: "ZICB",
+    branchName: "Head Office",
+    branchCode: "140000",
+  },
+  {
+    bankName: "ZICB",
+    branchName: "Lusaka Main Branch",
+    branchCode: "140001",
+  },
+  {
+    bankName: "ZICB",
+    branchName: "ECL Mall Branch",
+    branchCode: "140202",
+  },
+  {
+    bankName: "ZICB",
+    branchName: "KK Mall Branch",
+    branchCode: "140004",
+  },
+  {
+    bankName: "ZICB",
+    branchName: "KIntercity Agency Branch",
+    branchCode: "140003",
+  },
+  {
+    bankName: "ZICB",
+    branchName: "Solwezi Branch",
+    branchCode: "142807",
+  },
+  {
+    bankName: "ZICB",
+    branchName: "Ndola Post Office Agency",
+    branchCode: "140106",
+  },
+  {
+    bankName: "ZICB",
+    branchName: "Livingstone Post Office Agency",
+    branchCode: "141005",
+  },
+  {
+    bankName: "ZICB",
+    branchName: "Freedom Way Branch",
+    branchCode: "140048",
+  },
+  {
+    bankName: "ZICB",
+    branchName: "Livingstone Branch",
+    branchCode: "141010",
+  },
+  {
+    bankName: "ZICB",
+    branchName: "Chililabombwe Branch",
+    branchCode: "140411",
+  },
+  {
+    bankName: "ZICB",
+    branchName: "Industrial Branch",
+    branchCode: "140012",
+  },
+  {
+    bankName: "ZICB",
+    branchName: "Soweto Branch",
+    branchCode: "140013",
+  },
+  {
+    bankName: "ZICB",
+    branchName: "Cosmopolitan Mall Branch",
+    branchCode: "140014",
+  },
+  {
+    bankName: "ZICB",
+    branchName: "Luangwa Branch",
+    branchCode: "141115",
+  },
+  {
+    bankName: "ZICB",
+    branchName: "Kitwe Obote Branch",
+    branchCode: "140216",
+  },
+  {
+    bankName: "ZICB",
+    branchName: "Mulungushi Branch",
+    branchCode: "140016",
+  },
+  {
+    bankName: "ZICB",
+    branchName: "Levy Branch",
+    branchCode: "140017",
+  },
+  {
+    bankName: "ZICB",
+    branchName: "Kabwe Branch",
+    branchCode: "140919",
+  },
+  {
+    bankName: "ZICB",
+    branchName: "Choma Branch",
+    branchCode: "141220",
+  },
+  {
+    bankName: "ZICB",
+    branchName: "Ndola Branch",
+    branchCode: "140121",
+  },
+  {
+    bankName: "ZICB",
+    branchName: "Mumbwa Road Agency Branch",
+    branchCode: "145322",
+  },
+  {
+    bankName: "ZICB",
+    branchName: "Chipata Branch",
+    branchCode: "141123",
+  },
+  {
+    bankName: "ZICB",
+    branchName: "Kasama Branch",
+    branchCode: "140825",
+  },
   {
     bankName: "ZNBS",
-    branchCode: "510019",
-    branchName: "Banking Society Business Park",
+    branchName: "Solwezi",
+    branchCode: "512871",
   },
-  { bankName: "ZNBS", branchCode: "510031", branchName: "Society House" },
-  { bankName: "ZNBS", branchCode: "510032", branchName: "Permanent House" },
-  { bankName: "ZNBS", branchCode: "510162", branchName: "Ndola" },
-  { bankName: "ZNBS", branchCode: "510366", branchName: "Chingola" },
-  { bankName: "ZNBS", branchCode: "510264", branchName: "Kitwe" },
-  { bankName: "ZNBS", branchCode: "510468", branchName: "Chililabombwe" },
-  { bankName: "ZNBS", branchCode: "510565", branchName: "Mufulira" },
-  { bankName: "ZNBS", branchCode: "510040", branchName: "Soweto" },
-  { bankName: "ZNBS", branchCode: "510042", branchName: "Cosmopolitan" },
+  {
+    bankName: "ZNBS",
+    branchName: "Mongu",
+    branchCode: "513134",
+  },
+  {
+    bankName: "ZNBS",
+    branchName: "Mpika",
+    branchCode: "511872",
+  },
+  {
+    bankName: "ZNBS",
+    branchName: "Mansa",
+    branchCode: "511970",
+  },
+  {
+    bankName: "ZNBS",
+    branchName: "Kapiri Mposhi",
+    branchCode: "512439",
+  },
+  {
+    bankName: "ZNBS",
+    branchName: "Chipata",
+    branchCode: "511136",
+  },
+  {
+    bankName: "ZNBS",
+    branchName: "Livingstone",
+    branchCode: "511037",
+  },
+  {
+    bankName: "ZNBS",
+    branchName: "Choma",
+    branchCode: "511235",
+  },
+  {
+    bankName: "ZNBS",
+    branchName: "Kasama",
+    branchCode: "510869",
+  },
+  {
+    bankName: "ZNBS",
+    branchName: "Luanshya",
+    branchCode: "510767",
+  },
+  {
+    bankName: "ZNBS",
+    branchName: "Kabwe",
+    branchCode: "510963",
+  },
+  {
+    bankName: "ZNBS",
+    branchName: "Nyimba",
+    branchCode: "515441",
+  },
+  {
+    bankName: "ZNBS",
+    branchName: "Mazabuka",
+    branchCode: "513638",
+  },
+  {
+    bankName: "ZNBS",
+    branchName: "Banking Society Business Park",
+    branchCode: "510019",
+  },
+  {
+    bankName: "ZNBS",
+    branchName: "Society House",
+    branchCode: "510031",
+  },
+  {
+    bankName: "ZNBS",
+    branchName: "Permanent House",
+    branchCode: "510032",
+  },
+  {
+    bankName: "ZNBS",
+    branchName: "Ndola",
+    branchCode: "510162",
+  },
+  {
+    bankName: "ZNBS",
+    branchName: "Chingola",
+    branchCode: "510366",
+  },
+  {
+    bankName: "ZNBS",
+    branchName: "Kitwe",
+    branchCode: "510264",
+  },
+  {
+    bankName: "ZNBS",
+    branchName: "Chililabombwe",
+    branchCode: "510468",
+  },
+  {
+    bankName: "ZNBS",
+    branchName: "Mufulira",
+    branchCode: "510565",
+  },
+  {
+    bankName: "ZNBS",
+    branchName: "Soweto",
+    branchCode: "510040",
+  },
+  {
+    bankName: "ZNBS",
+    branchName: "Cosmopolitan",
+    branchCode: "510042",
+  },
+  {
+    bankName: "AB BANK",
+    branchName: "Chipata",
+    branchCode: "211109",
+  },
+  {
+    bankName: "AB BANK",
+    branchName: "Ndola",
+    branchCode: "210108",
+  },
+  {
+    bankName: "AB BANK",
+    branchName: "Kitwe",
+    branchCode: "210207",
+  },
+  {
+    bankName: "AB BANK",
+    branchName: "Corporate",
+    branchCode: "210010",
+  },
+  {
+    bankName: "AB BANK",
+    branchName: "Garden Branch",
+    branchCode: "210006",
+  },
+  {
+    bankName: "AB BANK",
+    branchName: "Chelston",
+    branchCode: "210005",
+  },
+  {
+    bankName: "AB BANK",
+    branchName: "Kalingalinga Branch",
+    branchCode: "210004",
+  },
+  {
+    bankName: "AB BANK",
+    branchName: "Matero",
+    branchCode: "210003",
+  },
+  {
+    bankName: "AB BANK",
+    branchName: "Head Office",
+    branchCode: "210000",
+  },
+  {
+    bankName: "AB BANK",
+    branchName: "Chilenje",
+    branchCode: "210002",
+  },
+  {
+    bankName: "AB BANK",
+    branchName: "Cairo Main Branch",
+    branchCode: "210001",
+  },
+  {
+    bankName: "ABSA BANK",
+    branchName: "Chambishi",
+    branchCode: "025247",
+  },
+  {
+    bankName: "ABSA BANK",
+    branchName: "Mumbwa",
+    branchCode: "025334",
+  },
+  {
+    bankName: "ABSA BANK",
+    branchName: "Katete",
+    branchCode: "024928",
+  },
+  {
+    bankName: "ABSA BANK",
+    branchName: "Chongwe",
+    branchCode: "024637",
+  },
+  {
+    bankName: "ABSA BANK",
+    branchName: "Petauke",
+    branchCode: "024330",
+  },
+  {
+    bankName: "ABSA BANK",
+    branchName: "Monze",
+    branchCode: "023724",
+  },
+  {
+    bankName: "ABSA BANK",
+    branchName: "Kalumbila",
+    branchCode: "024127",
+  },
+  {
+    bankName: "ABSA BANK",
+    branchName: "Mazabuka",
+    branchCode: "023621",
+  },
+  {
+    bankName: "ABSA BANK",
+    branchName: "Chirundu",
+    branchCode: "023542",
+  },
+  {
+    bankName: "ABSA BANK",
+    branchName: "Kafue",
+    branchCode: "023407",
+  },
+  {
+    bankName: "ABSA BANK",
+    branchName: "Solwezi",
+    branchCode: "022829",
+  },
+  {
+    bankName: "ABSA BANK",
+    branchName: "Mongu",
+    branchCode: "023135",
+  },
+  {
+    bankName: "ABSA BANK",
+    branchName: "Mfuwe",
+    branchCode: "022622",
+  },
+  {
+    bankName: "ABSA BANK",
+    branchName: "Lundazi",
+    branchCode: "022531",
+  },
+  {
+    bankName: "ABSA BANK",
+    branchName: "Mkushi",
+    branchCode: "022338",
+  },
+  {
+    bankName: "ABSA BANK",
+    branchName: "Kapiri Mposhi",
+    branchCode: "022411",
+  },
+  {
+    bankName: "ABSA BANK",
+    branchName: "Mansa",
+    branchCode: "021920",
+  },
+  {
+    bankName: "ABSA BANK",
+    branchName: "Mpika",
+    branchCode: "021845",
+  },
+  {
+    bankName: "ABSA BANK",
+    branchName: "Nakonde",
+    branchCode: "021540",
+  },
+  {
+    bankName: "ABSA BANK",
+    branchName: "Cosmopolitan",
+    branchCode: "021451",
+  },
+  {
+    bankName: "ABSA BANK",
+    branchName: "Choma",
+    branchCode: "021205",
+  },
+  {
+    bankName: "ABSA BANK",
+    branchName: "Chipata,Katete & Petauke",
+    branchCode: "021104",
+  },
+  {
+    bankName: "ABSA BANK",
+    branchName: "Kabwe & prestige",
+    branchCode: "020906",
+  },
+  {
+    bankName: "ABSA BANK",
+    branchName: "Livingstone",
+    branchCode: "021012",
+  },
+  {
+    bankName: "ABSA BANK",
+    branchName: "Kasama",
+    branchCode: "020832",
+  },
+  {
+    bankName: "ABSA BANK",
+    branchName: "Luanshya",
+    branchCode: "020713",
+  },
+  {
+    bankName: "ABSA BANK",
+    branchName: "Chilenje",
+    branchCode: "020018",
+  },
+  {
+    bankName: "ABSA BANK",
+    branchName: "Lusaka  longacres",
+    branchCode: "020017",
+  },
+  {
+    bankName: "ABSA BANK",
+    branchName: "Lusaka business centre",
+    branchCode: "020016",
+  },
+  {
+    bankName: "ABSA BANK",
+    branchName: "Lusaka-Matero",
+    branchCode: "020015",
+  },
+  {
+    bankName: "ABSA BANK",
+    branchName: "Lusaka - Northend",
+    branchCode: "020014",
+  },
+  {
+    bankName: "ABSA BANK",
+    branchName: "Lusaka industrial",
+    branchCode: "020019",
+  },
+  {
+    bankName: "ABSA BANK",
+    branchName: "University of Zambia Lusaka",
+    branchCode: "020026",
+  },
+  {
+    bankName: "ABSA BANK",
+    branchName: "Central Mall",
+    branchCode: "020033",
+  },
+  {
+    bankName: "ABSA BANK",
+    branchName: "Garden City",
+    branchCode: "020036",
+  },
+  {
+    bankName: "ABSA BANK",
+    branchName: "Lusaka - Kamwala",
+    branchCode: "020008",
+  },
+  {
+    bankName: "ABSA BANK",
+    branchName: "HeadOffice - Elunda",
+    branchCode: "020002",
+  },
+  {
+    bankName: "ABSA BANK",
+    branchName: "Kalulushi",
+    branchCode: "020648",
+  },
+  {
+    bankName: "ABSA BANK",
+    branchName: "Mufulira & prestige",
+    branchCode: "020523",
+  },
+  {
+    bankName: "ABSA BANK",
+    branchName: "Chililabomwe",
+    branchCode: "020453",
+  },
+  {
+    bankName: "ABSA BANK",
+    branchName: "Chingola & prestige",
+    branchCode: "020303",
+  },
+  {
+    bankName: "ABSA BANK",
+    branchName: "Kitwe operation processing centre",
+    branchCode: "020252",
+  },
+  {
+    bankName: "ABSA BANK",
+    branchName: "Kitwe Parklands Center",
+    branchCode: "020241",
+  },
+  {
+    bankName: "ABSA BANK",
+    branchName: "Kitwe",
+    branchCode: "020209",
+  },
+  {
+    bankName: "ABSA BANK",
+    branchName: "Kitwe Chimwemwe",
+    branchCode: "020210",
+  },
+  {
+    bankName: "ABSA BANK",
+    branchName: "Ndola - Masala",
+    branchCode: "020146",
+  },
+  {
+    bankName: "ABSA BANK",
+    branchName: "Kabelanga",
+    branchCode: "020054",
+  },
+  {
+    bankName: "ABSA BANK",
+    branchName: "East Park",
+    branchCode: "020049",
+  },
+  {
+    bankName: "ABSA BANK",
+    branchName: "Lusaka operation processing centre",
+    branchCode: "020050",
+  },
+  {
+    bankName: "ABSA BANK",
+    branchName: "Lusaka - Chawama",
+    branchCode: "020044",
+  },
+  {
+    bankName: "ABSA BANK",
+    branchName: "Kabwata",
+    branchCode: "020043",
+  },
+  {
+    bankName: "ABSA BANK",
+    branchName: "Elunda Premium Banking Centre",
+    branchCode: "020055",
+  },
+  {
+    bankName: "ABSA BANK",
+    branchName: "Ndola",
+    branchCode: "020125",
+  },
+  {
+    bankName: "ABSA BANK",
+    branchName: "Ndola Operations Processing Centre",
+    branchCode: "020139",
+  },
+  {
+    bankName: "FIRST ALLIANCE BANK",
+    branchName: "Lusaka Main",
+    branchCode: "340001",
+  },
+  {
+    bankName: "FIRST ALLIANCE BANK",
+    branchName: "Lusaka Head Office",
+    branchCode: "340005",
+  },
+  {
+    bankName: "FIRST ALLIANCE BANK",
+    branchName: "Industrial Branch",
+    branchCode: "340006",
+  },
+  {
+    bankName: "FIRST ALLIANCE BANK",
+    branchName: "East Park Branch",
+    branchCode: "340007",
+  },
+  {
+    bankName: "FIRST ALLIANCE BANK",
+    branchName: "Kitwe",
+    branchCode: "340204",
+  },
+  {
+    bankName: "FIRST ALLIANCE BANK",
+    branchName: "Ndola",
+    branchCode: "340103",
+  },
+  {
+    bankName: "FIRST CAPITAL BANK",
+    branchName: "Ndola Branch",
+    branchCode: "280105",
+  },
+  {
+    bankName: "FIRST CAPITAL BANK",
+    branchName: "Kitwe Branch",
+    branchCode: "280207",
+  },
+  {
+    bankName: "FIRST CAPITAL BANK",
+    branchName: "Kamwala Branch",
+    branchCode: "280006",
+  },
+  {
+    bankName: "FIRST CAPITAL BANK",
+    branchName: "Makeni Branch",
+    branchCode: "280004",
+  },
+  {
+    bankName: "FIRST CAPITAL BANK",
+    branchName: "Lusaka Main",
+    branchCode: "280003",
+  },
+  {
+    bankName: "FIRST CAPITAL BANK",
+    branchName: "Cairo Branch ",
+    branchCode: "280002",
+  },
+  {
+    bankName: "FIRST CAPITAL BANK",
+    branchName: "Head Office",
+    branchCode: "280000",
+  },
+  {
+    bankName: "FIRST CAPITAL BANK",
+    branchName: "Industrial Branch",
+    branchCode: "280001",
+  },
+  {
+    bankName: "STANBIC BANK",
+    branchName: "Lumwana",
+    branchCode: "044821",
+  },
+  {
+    bankName: "STANBIC BANK",
+    branchName: "Chambishi",
+    branchCode: "045225",
+  },
+  {
+    bankName: "STANBIC BANK",
+    branchName: "Kafue",
+    branchCode: "043419",
+  },
+  {
+    bankName: "STANBIC BANK",
+    branchName: "Mazabuka",
+    branchCode: "043613",
+  },
+  {
+    bankName: "STANBIC BANK",
+    branchName: "Mkushi",
+    branchCode: "042308",
+  },
+  {
+    bankName: "STANBIC BANK",
+    branchName: "Solwezi",
+    branchCode: "042812",
+  },
+  {
+    bankName: "STANBIC BANK",
+    branchName: "Choma",
+    branchCode: "041218",
+  },
+  {
+    bankName: "STANBIC BANK",
+    branchName: "Chipata",
+    branchCode: "041116",
+  },
+  {
+    bankName: "STANBIC BANK",
+    branchName: "Livingstone",
+    branchCode: "041017",
+  },
+  {
+    bankName: "STANBIC BANK",
+    branchName: "Kabwe",
+    branchCode: "040922",
+  },
+  {
+    bankName: "STANBIC BANK",
+    branchName: "Woodlands",
+    branchCode: "040030",
+  },
+  {
+    bankName: "STANBIC BANK",
+    branchName: "Kabwata",
+    branchCode: "040026",
+  },
+  {
+    bankName: "STANBIC BANK",
+    branchName: "Private Banking",
+    branchCode: "040027",
+  },
+  {
+    bankName: "STANBIC BANK",
+    branchName: "Kabulonga",
+    branchCode: "040029",
+  },
+  {
+    bankName: "STANBIC BANK",
+    branchName: "Soweto",
+    branchCode: "040023",
+  },
+  {
+    bankName: "STANBIC BANK",
+    branchName: "Arcades",
+    branchCode: "040010",
+  },
+  {
+    bankName: "STANBIC BANK",
+    branchName: "Matero",
+    branchCode: "040011",
+  },
+  {
+    bankName: "STANBIC BANK",
+    branchName: "Mulungushi",
+    branchCode: "040015",
+  },
+  {
+    bankName: "STANBIC BANK",
+    branchName: "Lusaka industrial",
+    branchCode: "040007",
+  },
+  {
+    bankName: "STANBIC BANK",
+    branchName: "Lusaka",
+    branchCode: "040002",
+  },
+  {
+    bankName: "STANBIC BANK",
+    branchName: "Head office",
+    branchCode: "040000",
+  },
+  {
+    bankName: "STANBIC BANK",
+    branchName: "Mufulira",
+    branchCode: "040514",
+  },
+  {
+    bankName: "STANBIC BANK",
+    branchName: "Mukuba Mall",
+    branchCode: "040296",
+  },
+  {
+    bankName: "STANBIC BANK",
+    branchName: "Chingola",
+    branchCode: "040309",
+  },
+  {
+    bankName: "STANBIC BANK",
+    branchName: "Chisokone",
+    branchCode: "040224",
+  },
+  {
+    bankName: "STANBIC BANK",
+    branchName: "Kafubu Mall",
+    branchCode: "040195",
+  },
+  {
+    bankName: "STANBIC BANK",
+    branchName: "Kitwe",
+    branchCode: "040206",
+  },
+  {
+    bankName: "STANBIC BANK",
+    branchName: "Cosmopolitan Mall",
+    branchCode: "040093",
+  },
+  {
+    bankName: "STANBIC BANK",
+    branchName: "East Park Mall",
+    branchCode: "040094",
+  },
+  {
+    bankName: "STANBIC BANK",
+    branchName: "Ndola Main",
+    branchCode: "040103",
+  },
+  {
+    bankName: "STANBIC BANK",
+    branchName: "Arcades",
+    branchCode: "040104",
+  },
+  {
+    bankName: "STANBIC BANK",
+    branchName: "Ndola South",
+    branchCode: "040105",
+  },
+  {
+    bankName: "STANBIC BANK",
+    branchName: "Waterfall",
+    branchCode: "040039",
+  },
 ];
 
 /**
@@ -1887,9 +2035,11 @@ export function matchFineractBankName(fineractBankName: string): string | null {
   if (exactMatch) return exactMatch;
 
   // Try exact match with "BANK" suffix added/removed
-  const withBank = normalized.endsWith(" bank") ? normalized : normalized + " bank";
+  const withBank = normalized.endsWith(" bank")
+    ? normalized
+    : normalized + " bank";
   const withoutBank = normalized.replace(/ bank$/i, "").trim();
-  
+
   const bankSuffixMatch = banks.find(
     (b) => b.toLowerCase() === withBank || b.toLowerCase() === withoutBank
   );
@@ -1897,7 +2047,9 @@ export function matchFineractBankName(fineractBankName: string): string | null {
 
   // Try "starts with" match for abbreviated names (e.g., "ABSA" matches "ABSA BANK")
   const startsWithMatch = banks.find(
-    (b) => b.toLowerCase().startsWith(normalized) || normalized.startsWith(b.toLowerCase())
+    (b) =>
+      b.toLowerCase().startsWith(normalized) ||
+      normalized.startsWith(b.toLowerCase())
   );
   if (startsWithMatch) return startsWithMatch;
 

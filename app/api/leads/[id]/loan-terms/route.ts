@@ -65,8 +65,12 @@ export async function POST(
         interestChargedFrom: data.interestChargedFrom,
         balloonRepaymentAmount: data.balloonRepaymentAmount,
         collaterals: data.collaterals,
+        // Include charges in saved loan terms
+        charges: data.charges || [],
       },
     };
+    
+    console.log("Saving loan terms with charges:", data.charges);
 
     const updatedLead = await prisma.lead.update({
       where: { id: leadId },
