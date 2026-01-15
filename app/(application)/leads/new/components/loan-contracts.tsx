@@ -303,7 +303,9 @@ export function LoanContracts({
 
       // Override the schedule-dependent fields with our already-calculated schedule
 
-      const currency = repaymentSchedule.currency?.code || "ZMW";
+      // Normalize ZMK to ZMW (Fineract uses legacy ZMK code)
+      const rawCurrency = repaymentSchedule.currency?.code || "ZMW";
+      const currency = rawCurrency === "ZMK" ? "ZMW" : rawCurrency;
       const principal = loanTerms?.principal || 0;
       const interest = repaymentSchedule?.totalInterestCharged || 0;
       const fees = repaymentSchedule?.totalFeeChargesCharged || 0;

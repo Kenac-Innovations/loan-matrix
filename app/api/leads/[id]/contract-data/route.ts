@@ -310,10 +310,12 @@ export async function GET(
       .filter(Boolean)
       .join(" ");
 
-    const currency =
+    // Normalize ZMK to ZMW (Fineract uses legacy ZMK code)
+    const rawCurrency =
       loanTemplate?.currency?.code ||
       repaymentSchedule?.currency?.code ||
       "ZMW";
+    const currency = rawCurrency === "ZMK" ? "ZMW" : rawCurrency;
     const principal = loanTerms?.principal || 0;
     const interest = repaymentSchedule?.totalInterestCharged || 0;
     const fees = repaymentSchedule?.totalFeeChargesCharged || 0;
