@@ -95,10 +95,12 @@ export const GRZ_EMPLOYERS = [
   "Public Protector",
 ];
 
-// Occupation options for Ministry of Defence employees
-export const MOD_OCCUPATIONS = [
-  { value: "SOLDIER", label: "Soldier" },
+// Occupation options for Zambia Army employees (under PDA)
+export const ARMY_OCCUPATIONS = [
+  { value: "ARMY_SOLDIER", label: "Army Soldier" },
+  { value: "ARMY_OFFICER", label: "Army Officer" },
   { value: "CONFIDENTIAL", label: "Confidential" },
+  { value: "NON_MILITARY_PERSONNEL", label: "Non Military Personnel" },
 ];
 
 // Default occupations for non-MOD employees
@@ -147,25 +149,30 @@ export function getOccupationsByEmployer(employer: string | undefined): { value:
   if (!employer) return DEFAULT_OCCUPATIONS;
   
   const upperEmployer = employer.toUpperCase();
+  // Check for Zambia Army (under PDA employers)
   if (
-    upperEmployer.includes("MINISTRY OF DEFENCE") ||
-    upperEmployer.includes("MINISTRY OF DEFENSE") ||
-    upperEmployer === "MOD"
+    upperEmployer.includes("ZAMBIA ARMY") ||
+    upperEmployer === "ARMY" ||
+    upperEmployer.includes("ZA ") // Common abbreviation
   ) {
-    return MOD_OCCUPATIONS;
+    return ARMY_OCCUPATIONS;
   }
   
   return DEFAULT_OCCUPATIONS;
 }
 
-// Check if employer is Ministry of Defence
-export function isMinistryOfDefence(employer: string | undefined): boolean {
+// Check if employer is Zambia Army
+export function isZambiaArmy(employer: string | undefined): boolean {
   if (!employer) return false;
   const upperEmployer = employer.toUpperCase();
   return (
-    upperEmployer.includes("MINISTRY OF DEFENCE") ||
-    upperEmployer.includes("MINISTRY OF DEFENSE") ||
-    upperEmployer === "MOD"
+    upperEmployer.includes("ZAMBIA ARMY") ||
+    upperEmployer === "ARMY" ||
+    upperEmployer.includes("ZA ")
   );
 }
+
+// Legacy alias for backwards compatibility
+export const isMinistryOfDefence = isZambiaArmy;
+export const MOD_OCCUPATIONS = ARMY_OCCUPATIONS;
 

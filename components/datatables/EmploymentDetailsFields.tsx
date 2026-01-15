@@ -8,7 +8,7 @@ import { differenceInYears, differenceInMonths, parseISO } from "date-fns";
 import {
   getEmployersByClientType,
   getOccupationsByEmployer,
-  isMinistryOfDefence,
+  isZambiaArmy,
 } from "@/shared/defaults/employer-options";
 
 interface EmploymentDetailsFieldsProps {
@@ -229,9 +229,9 @@ export function EmploymentDetailsFields({
     return getOccupationsByEmployer(currentEmployer);
   }, [currentEmployer]);
 
-  // Check if selected employer is Ministry of Defence
-  const isMODEmployer = useMemo(() => {
-    return isMinistryOfDefence(currentEmployer);
+  // Check if selected employer is Zambia Army (under PDA)
+  const isArmyEmployer = useMemo(() => {
+    return isZambiaArmy(currentEmployer);
   }, [currentEmployer]);
 
   // Check if employment type is CONTRACT
@@ -430,8 +430,8 @@ export function EmploymentDetailsFields({
             value={currentEmployer?.toString() ?? ""}
             onValueChange={(value) => {
               onFieldChange(employerHeader.columnName, value);
-              // Clear occupation when employer changes if it's MOD
-              if (occupationHeader && isMinistryOfDefence(value) !== isMODEmployer) {
+              // Clear occupation when employer changes if it's Zambia Army
+              if (occupationHeader && isZambiaArmy(value) !== isArmyEmployer) {
                 onFieldChange(occupationHeader.columnName, "");
               }
             }}
@@ -462,9 +462,9 @@ export function EmploymentDetailsFields({
         <div className="space-y-1">
           <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             {formatHeaderName(occupationHeader.columnName)}
-            {isMODEmployer && (
+            {isArmyEmployer && (
               <span className="ml-2 text-xs font-normal text-orange-500">
-                (Defence personnel)
+                (Army personnel)
               </span>
             )}
           </Label>
@@ -475,9 +475,9 @@ export function EmploymentDetailsFields({
             placeholder="Select occupation"
             emptyMessage="No occupations available"
           />
-          {isMODEmployer && (
+          {isArmyEmployer && (
             <p className="text-xs text-orange-500 mt-1">
-              Ministry of Defence employees: Select Soldier or Confidential
+              Zambia Army personnel: Select Army Soldier, Army Officer, Confidential, or Non Military Personnel
             </p>
           )}
         </div>
