@@ -108,8 +108,37 @@ function isOccupationField(columnName: string): boolean {
   );
 }
 
+// Check if column is pay date field (to hide)
+function isPayDateField(columnName: string): boolean {
+  const normalized = normalizeColumnName(columnName);
+  return (
+    normalized === "paydate" ||
+    normalized === "payday" ||
+    normalized === "salarydate" ||
+    normalized.includes("paydate")
+  );
+}
+
+// Check if column is employer name field (to hide - we use employer/employerId instead)
+function isEmployerNameField(columnName: string): boolean {
+  const normalized = normalizeColumnName(columnName);
+  // Only match exact "employername" - not "employer" alone
+  return normalized === "employername";
+}
+
+// Check if column is employer ID field (to rename to "Employer Name")
+function isEmployerIdField(columnName: string): boolean {
+  const normalized = normalizeColumnName(columnName);
+  return normalized === "employerid" || normalized === "employer";
+}
+
 // Format header name for display
 function formatHeaderName(name: string): string {
+  // Check if this is an employer ID field - rename to "Employer Name"
+  if (isEmployerIdField(name)) {
+    return "Employer Name";
+  }
+
   let formatted = name
     .replace(/([A-Z])/g, " $1")
     .replace(/_/g, " ")
@@ -516,6 +545,9 @@ export function getEmploymentDetailColumnNames(headers: any[] | undefined | null
   const yearsOfServiceHeader = headers.find((h) => h?.columnName && isYearsOfServiceField(h.columnName));
   const employerHeader = headers.find((h) => h?.columnName && isEmployerField(h.columnName));
   const occupationHeader = headers.find((h) => h?.columnName && isOccupationField(h.columnName));
+  // Hidden fields
+  const payDateHeader = headers.find((h) => h?.columnName && isPayDateField(h.columnName));
+  const employerNameHeader = headers.find((h) => h?.columnName && isEmployerNameField(h.columnName));
 
   if (employmentTypeHeader) names.push(employmentTypeHeader.columnName);
   if (contractStartDateHeader) names.push(contractStartDateHeader.columnName);
@@ -524,6 +556,9 @@ export function getEmploymentDetailColumnNames(headers: any[] | undefined | null
   if (yearsOfServiceHeader) names.push(yearsOfServiceHeader.columnName);
   if (employerHeader) names.push(employerHeader.columnName);
   if (occupationHeader) names.push(occupationHeader.columnName);
+  // Include hidden fields so they're not rendered by generic renderer
+  if (payDateHeader) names.push(payDateHeader.columnName);
+  if (employerNameHeader) names.push(employerNameHeader.columnName);
 
   return names;
 }
