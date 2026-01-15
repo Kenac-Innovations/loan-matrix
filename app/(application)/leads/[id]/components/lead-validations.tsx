@@ -129,7 +129,7 @@ export function LeadValidations({ leadId, stage }: LeadValidationsProps) {
     );
   }
 
-  const { validations: validationResults, summary } = validationData;
+  const { validations: validationResults = [], summary } = validationData;
   const {
     passed: passedCount,
     warnings: warningCount,

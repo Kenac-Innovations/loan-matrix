@@ -203,7 +203,7 @@ export function LeadSidebar({ leadId }: LeadSidebarProps) {
                 </span>
               </div>
             </div>
-            {data.stageTimes.length > 0 && (
+            {data.stageTimes?.length > 0 && (
               <div className="pt-2 border-t">
                 <h4 className="text-xs font-semibold mb-2">
                   Stage TAT Performance
@@ -248,7 +248,7 @@ export function LeadSidebar({ leadId }: LeadSidebarProps) {
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
-            {data.validations.length > 0 ? (
+            {data.validations?.length > 0 ? (
               <>
                 {data.validations.map((validation, index) => (
                   <div

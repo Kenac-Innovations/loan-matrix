@@ -135,7 +135,7 @@ export function PayoutModal({
       if (response.ok) {
         const data = await response.json();
         // Filter to only show cashiers with active sessions
-        const activeCashiers = data.filter(
+        const activeCashiers = (Array.isArray(data) ? data : []).filter(
           (c: Cashier) => c.sessionStatus === "ACTIVE"
         );
         setCashiers(activeCashiers);
