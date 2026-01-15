@@ -102,7 +102,7 @@ export function LeadTimeline({ leadId }: LeadTimelineProps) {
     type: "stage-change",
     title: "Lead Created",
     description: `Lead was created for ${
-      leadData.computed.fullName || "Unknown Lead"
+      leadData.computed?.fullName || "Unknown Lead"
     }`,
     timestamp: new Date(leadData.createdAt).toLocaleString(),
     user: "System",
@@ -139,7 +139,7 @@ export function LeadTimeline({ leadId }: LeadTimelineProps) {
       id: "current-stage",
       type: "current",
       title: `Currently in ${leadData.currentStage.name}`,
-      description: `Lead has been in this stage for ${leadData.computed.timeInCurrentStage} day(s). Total time in pipeline: ${leadData.computed.totalTime} day(s).`,
+      description: `Lead has been in this stage for ${leadData.computed?.timeInCurrentStage || 0} day(s). Total time in pipeline: ${leadData.computed?.totalTime || 0} day(s).`,
       timestamp: "Current Stage",
       user: "Active",
       icon: <Clock className="h-4 w-4 text-white" />,

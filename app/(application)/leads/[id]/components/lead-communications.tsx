@@ -126,7 +126,7 @@ export function LeadCommunications({ leadId }: LeadCommunicationsProps) {
       }
 
       const data = await response.json();
-      setCommunications(data.communications);
+      setCommunications(data.communications || []);
       setSummary(data.summary);
       setLeadInfo(data.leadInfo);
 
