@@ -1804,8 +1804,8 @@ export function ComprehensiveLeadDetails({
                           </tr>
                         </thead>
                         <tbody>
-                          {fineractLoan.repaymentSchedule.periods
-                            .filter((period: any) => period.period > 0)
+                          {(fineractLoan.repaymentSchedule.periods || [])
+                            .filter((period: any) => period?.period > 0)
                             .map((period: any) => (
                               <tr key={period.period} className="border-t">
                                 <td className="px-4 py-2">{period.period}</td>

@@ -94,6 +94,7 @@ export function LeadAdditionalInfo({
 
   // Format table name for display
   const formatTableName = (name: string) => {
+    if (!name) return "";
     let formatted = name
       .replace(/^m_|^dt_|^cd_/i, "") // Remove common prefixes
       .replace(/_/g, " ") // Replace underscores with spaces
