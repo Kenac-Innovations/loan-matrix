@@ -1215,10 +1215,17 @@ export function LoanContracts({
           ? parseInt(loanTerms.interestRateFrequency)
           : 2,
         interestRatePerPeriod: loanTerms.nominalInterestRate || 0,
-        charges: (loanTerms.charges || []).map((charge: any) => ({
-          chargeId: charge.chargeId,
-          amount: charge.amount,
-        })),
+        charges: (loanTerms.charges || []).map((charge: any) => {
+          const chargeData: any = {
+            chargeId: charge.chargeId,
+            amount: charge.amount,
+          };
+          // Include dueDate if present (required for "Specified Due Date" charges)
+          if (charge.dueDate) {
+            chargeData.dueDate = charge.dueDate;
+          }
+          return chargeData;
+        }),
         collateral:
           loanTerms.collaterals?.map((coll: any) => ({
             collateralTypeId: coll.id || 0,
@@ -1234,6 +1241,8 @@ export function LoanContracts({
       };
 
       console.log("Creating loan with payload:", loanPayload);
+      console.log("Loan charges being sent:", loanPayload.charges);
+      console.log("Raw loanTerms.charges:", loanTerms.charges);
 
       const loanResponse = await fetch("/api/fineract/loans", {
         method: "POST",
