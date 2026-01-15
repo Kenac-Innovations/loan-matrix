@@ -35,6 +35,15 @@ import { CheckCircle2, AlertCircle } from "lucide-react";
 import { Calendar } from "@/components/ui/calender";
 import { cn } from "@/lib/utils";
 
+// Helper function to format repayment strategy name
+// Replaces "Penalties" with "Interest on Unpaid Balance" for display
+function formatRepaymentStrategyName(name: string): string {
+  if (!name) return name;
+  return name
+    .replace(/Penalties/gi, "Interest on Unpaid Balance")
+    .replace(/Penalty/gi, "Interest on Unpaid Balance");
+}
+
 // Form validation schema for loan terms
 const loanTermsSchema = z.object({
   // Principal
@@ -2115,7 +2124,7 @@ export function LoanTermsForm({
                       {loanTemplate.transactionProcessingStrategyOptions?.map(
                         (option) => (
                           <SelectItem key={option.code} value={option.code}>
-                            {option.name}
+                            {formatRepaymentStrategyName(option.name)}
                           </SelectItem>
                         )
                       )}
