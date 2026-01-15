@@ -20,7 +20,8 @@ interface BankDetailsFieldsProps {
 }
 
 // Helper to normalize column names for comparison
-function normalizeColumnName(name: string): string {
+function normalizeColumnName(name: string | undefined | null): string {
+  if (!name) return "";
   return name
     .toLowerCase()
     .replace(/[_\s-]+/g, "") // Remove underscores, spaces, hyphens
@@ -110,17 +111,22 @@ export function BankDetailsFields({
   onFieldChange,
   clientName,
 }: BankDetailsFieldsProps) {
-  // Find the relevant column headers
-  const bankHeader = headers.find((h) => isBankField(h.columnName));
+  // Early return if headers is not valid
+  if (!headers || !Array.isArray(headers)) {
+    return null;
+  }
+
+  // Find the relevant column headers (with null-safe checks)
+  const bankHeader = headers.find((h) => h?.columnName && isBankField(h.columnName));
   // "bank branch code" field - shown as "Branch Code"
-  const bankBranchCodeHeader = headers.find((h) => isBankBranchCodeField(h.columnName));
+  const bankBranchCodeHeader = headers.find((h) => h?.columnName && isBankBranchCodeField(h.columnName));
   // "branch code" field - hidden
-  const branchCodeOnlyHeader = headers.find((h) => isBranchCodeOnlyField(h.columnName));
+  const branchCodeOnlyHeader = headers.find((h) => h?.columnName && isBranchCodeOnlyField(h.columnName));
   // Use bank branch code if available, otherwise fall back to branch code only
   const branchCodeHeader = bankBranchCodeHeader || branchCodeOnlyHeader;
-  const branchNameHeader = headers.find((h) => isBranchNameField(h.columnName));
-  const accountNumberHeader = headers.find((h) => isAccountNumberField(h.columnName));
-  const accountNameHeader = headers.find((h) => isAccountNameField(h.columnName));
+  const branchNameHeader = headers.find((h) => h?.columnName && isBranchNameField(h.columnName));
+  const accountNumberHeader = headers.find((h) => h?.columnName && isAccountNumberField(h.columnName));
+  const accountNameHeader = headers.find((h) => h?.columnName && isAccountNameField(h.columnName));
 
   // Local state for available branches based on selected bank
   const [availableBranches, setAvailableBranches] = useState<BankBranch[]>([]);
@@ -443,13 +449,15 @@ export function BankDetailsFields({
 /**
  * Check if the datatable has bank detail fields that should use custom rendering
  */
-export function hasBankDetailFields(headers: any[]): boolean {
-  const hasBankField = headers.some((h) => isBankField(h.columnName));
+export function hasBankDetailFields(headers: any[] | undefined | null): boolean {
+  if (!headers || !Array.isArray(headers)) return false;
+  
+  const hasBankField = headers.some((h) => h?.columnName && isBankField(h.columnName));
   const hasBranchCodeField = headers.some((h) =>
-    isBranchCodeField(h.columnName)
+    h?.columnName && isBranchCodeField(h.columnName)
   );
   const hasBranchNameField = headers.some((h) =>
-    isBranchNameField(h.columnName)
+    h?.columnName && isBranchNameField(h.columnName)
   );
 
   // Must have at least bank and one of branch code/name
@@ -459,15 +467,17 @@ export function hasBankDetailFields(headers: any[]): boolean {
 /**
  * Get the column names that are handled by BankDetailsFields
  */
-export function getBankDetailColumnNames(headers: any[]): string[] {
+export function getBankDetailColumnNames(headers: any[] | undefined | null): string[] {
+  if (!headers || !Array.isArray(headers)) return [];
+  
   const names: string[] = [];
 
-  const bankHeader = headers.find((h) => isBankField(h.columnName));
-  const bankBranchCodeHeader = headers.find((h) => isBankBranchCodeField(h.columnName));
-  const branchCodeOnlyHeader = headers.find((h) => isBranchCodeOnlyField(h.columnName));
-  const branchNameHeader = headers.find((h) => isBranchNameField(h.columnName));
-  const accountNumberHeader = headers.find((h) => isAccountNumberField(h.columnName));
-  const accountNameHeader = headers.find((h) => isAccountNameField(h.columnName));
+  const bankHeader = headers.find((h) => h?.columnName && isBankField(h.columnName));
+  const bankBranchCodeHeader = headers.find((h) => h?.columnName && isBankBranchCodeField(h.columnName));
+  const branchCodeOnlyHeader = headers.find((h) => h?.columnName && isBranchCodeOnlyField(h.columnName));
+  const branchNameHeader = headers.find((h) => h?.columnName && isBranchNameField(h.columnName));
+  const accountNumberHeader = headers.find((h) => h?.columnName && isAccountNumberField(h.columnName));
+  const accountNameHeader = headers.find((h) => h?.columnName && isAccountNameField(h.columnName));
 
   if (bankHeader) names.push(bankHeader.columnName);
   if (bankBranchCodeHeader) names.push(bankBranchCodeHeader.columnName);

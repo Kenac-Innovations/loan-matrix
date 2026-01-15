@@ -19,7 +19,8 @@ interface EmploymentDetailsFieldsProps {
 }
 
 // Helper to normalize column names for comparison
-function normalizeColumnName(name: string): string {
+function normalizeColumnName(name: string | undefined | null): string {
+  if (!name) return "";
   return name
     .toLowerCase()
     .replace(/[_\s-]+/g, "") // Remove underscores, spaces, hyphens
@@ -174,14 +175,19 @@ export function EmploymentDetailsFields({
   onFieldChange,
   clientType,
 }: EmploymentDetailsFieldsProps) {
-  // Find the relevant column headers
-  const employmentTypeHeader = headers.find((h) => isEmploymentTypeField(h.columnName));
-  const contractStartDateHeader = headers.find((h) => isContractStartDateField(h.columnName));
-  const contractEndDateHeader = headers.find((h) => isContractEndDateField(h.columnName));
-  const appointmentDateHeader = headers.find((h) => isAppointmentDateField(h.columnName));
-  const yearsOfServiceHeader = headers.find((h) => isYearsOfServiceField(h.columnName));
-  const employerHeader = headers.find((h) => isEmployerField(h.columnName));
-  const occupationHeader = headers.find((h) => isOccupationField(h.columnName));
+  // Early return if headers is not valid
+  if (!headers || !Array.isArray(headers)) {
+    return null;
+  }
+
+  // Find the relevant column headers (with null-safe checks)
+  const employmentTypeHeader = headers.find((h) => h?.columnName && isEmploymentTypeField(h.columnName));
+  const contractStartDateHeader = headers.find((h) => h?.columnName && isContractStartDateField(h.columnName));
+  const contractEndDateHeader = headers.find((h) => h?.columnName && isContractEndDateField(h.columnName));
+  const appointmentDateHeader = headers.find((h) => h?.columnName && isAppointmentDateField(h.columnName));
+  const yearsOfServiceHeader = headers.find((h) => h?.columnName && isYearsOfServiceField(h.columnName));
+  const employerHeader = headers.find((h) => h?.columnName && isEmployerField(h.columnName));
+  const occupationHeader = headers.find((h) => h?.columnName && isOccupationField(h.columnName));
 
   // Get current values
   const currentEmploymentType = employmentTypeHeader
@@ -483,11 +489,13 @@ export function EmploymentDetailsFields({
 /**
  * Check if the datatable has employment detail fields that should use custom rendering
  */
-export function hasEmploymentDetailFields(headers: any[]): boolean {
-  const hasEmploymentType = headers.some((h) => isEmploymentTypeField(h.columnName));
-  const hasAppointmentDate = headers.some((h) => isAppointmentDateField(h.columnName));
-  const hasEmployer = headers.some((h) => isEmployerField(h.columnName));
-  const hasOccupation = headers.some((h) => isOccupationField(h.columnName));
+export function hasEmploymentDetailFields(headers: any[] | undefined | null): boolean {
+  if (!headers || !Array.isArray(headers)) return false;
+  
+  const hasEmploymentType = headers.some((h) => h?.columnName && isEmploymentTypeField(h.columnName));
+  const hasAppointmentDate = headers.some((h) => h?.columnName && isAppointmentDateField(h.columnName));
+  const hasEmployer = headers.some((h) => h?.columnName && isEmployerField(h.columnName));
+  const hasOccupation = headers.some((h) => h?.columnName && isOccupationField(h.columnName));
   
   // Must have at least employment type, appointment date, employer, or occupation
   return hasEmploymentType || hasAppointmentDate || hasEmployer || hasOccupation;
@@ -496,16 +504,18 @@ export function hasEmploymentDetailFields(headers: any[]): boolean {
 /**
  * Get the column names that are handled by EmploymentDetailsFields
  */
-export function getEmploymentDetailColumnNames(headers: any[]): string[] {
+export function getEmploymentDetailColumnNames(headers: any[] | undefined | null): string[] {
+  if (!headers || !Array.isArray(headers)) return [];
+  
   const names: string[] = [];
 
-  const employmentTypeHeader = headers.find((h) => isEmploymentTypeField(h.columnName));
-  const contractStartDateHeader = headers.find((h) => isContractStartDateField(h.columnName));
-  const contractEndDateHeader = headers.find((h) => isContractEndDateField(h.columnName));
-  const appointmentDateHeader = headers.find((h) => isAppointmentDateField(h.columnName));
-  const yearsOfServiceHeader = headers.find((h) => isYearsOfServiceField(h.columnName));
-  const employerHeader = headers.find((h) => isEmployerField(h.columnName));
-  const occupationHeader = headers.find((h) => isOccupationField(h.columnName));
+  const employmentTypeHeader = headers.find((h) => h?.columnName && isEmploymentTypeField(h.columnName));
+  const contractStartDateHeader = headers.find((h) => h?.columnName && isContractStartDateField(h.columnName));
+  const contractEndDateHeader = headers.find((h) => h?.columnName && isContractEndDateField(h.columnName));
+  const appointmentDateHeader = headers.find((h) => h?.columnName && isAppointmentDateField(h.columnName));
+  const yearsOfServiceHeader = headers.find((h) => h?.columnName && isYearsOfServiceField(h.columnName));
+  const employerHeader = headers.find((h) => h?.columnName && isEmployerField(h.columnName));
+  const occupationHeader = headers.find((h) => h?.columnName && isOccupationField(h.columnName));
 
   if (employmentTypeHeader) names.push(employmentTypeHeader.columnName);
   if (contractStartDateHeader) names.push(contractStartDateHeader.columnName);
