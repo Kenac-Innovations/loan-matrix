@@ -89,12 +89,13 @@ export function UserProfileClient({ userProfileData }: UserProfileClientProps) {
   const profileRef = useRef<HTMLDivElement>(null);
   const { theme } = useTheme();
 
-  // Use the notifications hook
+  // Use the notifications hook with SSE
   const {
     notifications,
     unreadCount,
     isLoading,
     error,
+    isConnected,
     onViewNotifications,
     onCloseNotifications,
     refresh,
@@ -211,7 +212,16 @@ export function UserProfileClient({ userProfileData }: UserProfileClientProps) {
             <div className="absolute right-0 mt-2 w-80 rounded-md border border-border bg-background shadow-lg z-50 max-w-[calc(100vw-2rem)] sm:max-w-sm">
               <div className="p-3 border-b border-border">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-medium">Notifications</h3>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-medium">Notifications</h3>
+                    {/* SSE Connection indicator */}
+                    <span
+                      className={`h-2 w-2 rounded-full ${
+                        isConnected ? "bg-green-500" : "bg-yellow-500 animate-pulse"
+                      }`}
+                      title={isConnected ? "Connected (live updates)" : "Connecting..."}
+                    />
+                  </div>
                   <Button
                     variant="ghost"
                     size="icon"
@@ -221,6 +231,7 @@ export function UserProfileClient({ userProfileData }: UserProfileClientProps) {
                       refresh();
                     }}
                     disabled={isLoading}
+                    title="Reconnect"
                   >
                     {isLoading ? (
                       <Loader2 className="h-3 w-3 animate-spin" />

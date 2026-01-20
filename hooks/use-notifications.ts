@@ -3,19 +3,15 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import {
   FineractNotification,
-  NotificationsResponse,
   NotificationState,
 } from "@/shared/types/notification";
 
-const POLLING_INTERVAL = 30000; // 30 seconds
-
 interface UseNotificationsOptions {
   enabled?: boolean;
-  pollingInterval?: number;
 }
 
 export function useNotifications(options: UseNotificationsOptions = {}) {
-  const { enabled = true, pollingInterval = POLLING_INTERVAL } = options;
+  const { enabled = true } = options;
 
   const [state, setState] = useState<NotificationState>({
     notifications: [],
@@ -25,56 +21,12 @@ export function useNotifications(options: UseNotificationsOptions = {}) {
   });
 
   const [hasViewed, setHasViewed] = useState(false);
-  const pollingRef = useRef<NodeJS.Timeout | null>(null);
+  const [isConnected, setIsConnected] = useState(false);
+  const eventSourceRef = useRef<EventSource | null>(null);
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isMountedRef = useRef(true);
 
-  // Fetch notifications from the API
-  const fetchNotifications = useCallback(async () => {
-    if (!isMountedRef.current) return;
-
-    try {
-      const response = await fetch("/api/fineract/notifications");
-
-      if (!response.ok) {
-        throw new Error(`Failed to fetch notifications: ${response.statusText}`);
-      }
-
-      const data = await response.json();
-
-      if (!isMountedRef.current) return;
-
-      // Handle different response structures
-      let notifications: FineractNotification[] = [];
-
-      if (Array.isArray(data)) {
-        notifications = data;
-      } else if (data?.pageItems && Array.isArray(data.pageItems)) {
-        notifications = data.pageItems;
-      } else if (data?.notifications && Array.isArray(data.notifications)) {
-        notifications = data.notifications;
-      }
-
-      const unreadCount = notifications.filter((n) => !n.isRead).length;
-
-      setState({
-        notifications,
-        unreadCount,
-        isLoading: false,
-        error: null,
-      });
-    } catch (error) {
-      if (!isMountedRef.current) return;
-
-      console.error("Error fetching notifications:", error);
-      setState((prev) => ({
-        ...prev,
-        isLoading: false,
-        error: error instanceof Error ? error.message : "Failed to fetch notifications",
-      }));
-    }
-  }, []);
-
-  // Mark notifications as read
+  // Mark notifications as read via API
   const markAsRead = useCallback(async (notificationIds?: number[]) => {
     try {
       const body = notificationIds ? { notificationIds } : {};
@@ -122,39 +74,136 @@ export function useNotifications(options: UseNotificationsOptions = {}) {
     }
   }, [hasViewed, state.unreadCount, markAsRead]);
 
-  // Reset viewed state when dropdown closes and notifications are fetched again
+  // Reset viewed state when dropdown closes
   const onCloseNotifications = useCallback(() => {
     setHasViewed(false);
   }, []);
 
-  // Refresh notifications manually
-  const refresh = useCallback(() => {
-    fetchNotifications();
-  }, [fetchNotifications]);
+  // Connect to SSE stream
+  const connectSSE = useCallback(() => {
+    if (!enabled || eventSourceRef.current) return;
 
-  // Set up polling
+    try {
+      const eventSource = new EventSource("/api/fineract/notifications/stream");
+      eventSourceRef.current = eventSource;
+
+      eventSource.addEventListener("connected", (event) => {
+        if (!isMountedRef.current) return;
+        console.log("SSE connected:", JSON.parse(event.data));
+        setIsConnected(true);
+        setState((prev) => ({ ...prev, isLoading: false, error: null }));
+      });
+
+      eventSource.addEventListener("notifications", (event) => {
+        if (!isMountedRef.current) return;
+        try {
+          const data = JSON.parse(event.data);
+          setState((prev) => ({
+            ...prev,
+            notifications: data.notifications || [],
+            unreadCount: data.unreadCount || 0,
+            isLoading: false,
+            error: null,
+          }));
+        } catch (error) {
+          console.error("Error parsing notifications:", error);
+        }
+      });
+
+      eventSource.addEventListener("error", (event: Event) => {
+        if (!isMountedRef.current) return;
+        
+        // Check if this is an SSE error event with data
+        if (event instanceof MessageEvent) {
+          try {
+            const data = JSON.parse(event.data);
+            console.error("SSE error event:", data);
+            setState((prev) => ({
+              ...prev,
+              error: data.message || "Connection error",
+              isLoading: false,
+            }));
+          } catch {
+            // Not a JSON error event
+          }
+        }
+      });
+
+      eventSource.onerror = () => {
+        if (!isMountedRef.current) return;
+        
+        console.error("SSE connection error, will reconnect...");
+        setIsConnected(false);
+        
+        // Close the current connection
+        eventSource.close();
+        eventSourceRef.current = null;
+
+        // Attempt to reconnect after 5 seconds
+        if (reconnectTimeoutRef.current) {
+          clearTimeout(reconnectTimeoutRef.current);
+        }
+        
+        reconnectTimeoutRef.current = setTimeout(() => {
+          if (isMountedRef.current && enabled) {
+            console.log("Attempting to reconnect SSE...");
+            connectSSE();
+          }
+        }, 5000);
+      };
+
+    } catch (error) {
+      console.error("Error creating EventSource:", error);
+      setState((prev) => ({
+        ...prev,
+        isLoading: false,
+        error: "Failed to connect to notification stream",
+      }));
+    }
+  }, [enabled]);
+
+  // Disconnect SSE stream
+  const disconnectSSE = useCallback(() => {
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+      eventSourceRef.current = null;
+    }
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
+    }
+    setIsConnected(false);
+  }, []);
+
+  // Manual refresh - reconnect to SSE
+  const refresh = useCallback(() => {
+    setState((prev) => ({ ...prev, isLoading: true }));
+    disconnectSSE();
+    // Small delay before reconnecting
+    setTimeout(() => {
+      if (isMountedRef.current) {
+        connectSSE();
+      }
+    }, 100);
+  }, [connectSSE, disconnectSSE]);
+
+  // Set up SSE connection on mount
   useEffect(() => {
     isMountedRef.current = true;
 
     if (enabled) {
-      // Initial fetch
-      fetchNotifications();
-
-      // Set up polling interval
-      pollingRef.current = setInterval(fetchNotifications, pollingInterval);
+      connectSSE();
     }
 
     return () => {
       isMountedRef.current = false;
-      if (pollingRef.current) {
-        clearInterval(pollingRef.current);
-        pollingRef.current = null;
-      }
+      disconnectSSE();
     };
-  }, [enabled, pollingInterval, fetchNotifications]);
+  }, [enabled, connectSSE, disconnectSSE]);
 
   return {
     ...state,
+    isConnected,
     markAsRead,
     onViewNotifications,
     onCloseNotifications,
