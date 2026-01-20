@@ -1,12 +1,18 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { useCurrency } from "@/contexts/currency-context";
 import { useTheme } from "next-themes";
 import { UserProfileData } from "./user-profile-data";
 import { useMobileMenu } from "./mobile-menu-context";
+import { useNotifications } from "@/hooks/use-notifications";
+import {
+  FineractNotification,
+  getNotificationCategory,
+  formatNotificationDate,
+} from "@/shared/types/notification";
 import {
   Bell,
   Search,
@@ -20,6 +26,9 @@ import {
   DollarSign,
   Shield,
   AlertCircle,
+  RefreshCw,
+  Loader2,
+  Inbox,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -28,6 +37,44 @@ import { ThemeToggle } from "@/components/theme-toggle";
 
 interface UserProfileClientProps {
   userProfileData: UserProfileData;
+}
+
+// Helper function to get icon and color based on notification category
+function getNotificationIcon(notification: FineractNotification) {
+  const category = getNotificationCategory(notification);
+
+  switch (category) {
+    case "CLIENT":
+      return {
+        icon: <Users className="h-3 w-3 text-blue-500" />,
+        bgColor: "bg-blue-500/20",
+      };
+    case "LOAN":
+      return {
+        icon: <CreditCard className="h-3 w-3 text-green-500" />,
+        bgColor: "bg-green-500/20",
+      };
+    case "DISBURSEMENT":
+      return {
+        icon: <DollarSign className="h-3 w-3 text-purple-500" />,
+        bgColor: "bg-purple-500/20",
+      };
+    case "REPAYMENT":
+      return {
+        icon: <DollarSign className="h-3 w-3 text-emerald-500" />,
+        bgColor: "bg-emerald-500/20",
+      };
+    case "SYSTEM":
+      return {
+        icon: <Shield className="h-3 w-3 text-red-500" />,
+        bgColor: "bg-red-500/20",
+      };
+    default:
+      return {
+        icon: <AlertCircle className="h-3 w-3 text-yellow-500" />,
+        bgColor: "bg-yellow-500/20",
+      };
+  }
 }
 
 export function UserProfileClient({ userProfileData }: UserProfileClientProps) {
@@ -42,6 +89,17 @@ export function UserProfileClient({ userProfileData }: UserProfileClientProps) {
   const profileRef = useRef<HTMLDivElement>(null);
   const { theme } = useTheme();
 
+  // Use the notifications hook
+  const {
+    notifications,
+    unreadCount,
+    isLoading,
+    error,
+    onViewNotifications,
+    onCloseNotifications,
+    refresh,
+  } = useNotifications();
+
   // Get user details and login status
   const { user, isLoggedIn } = userProfileData;
   const userFullName = user.name;
@@ -55,6 +113,43 @@ export function UserProfileClient({ userProfileData }: UserProfileClientProps) {
     nameParts.length > 1
       ? `${nameParts[0].charAt(0)}${nameParts[1].charAt(0)}`
       : user.name.substring(0, 2).toUpperCase();
+
+  // Handle notification dropdown toggle
+  const handleNotificationToggle = () => {
+    if (!notificationsOpen) {
+      // Opening the dropdown - mark as read
+      onViewNotifications();
+    } else {
+      // Closing the dropdown
+      onCloseNotifications();
+    }
+    setNotificationsOpen(!notificationsOpen);
+    setProfileOpen(false);
+  };
+
+  // Close dropdowns when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (
+        notificationRef.current &&
+        !notificationRef.current.contains(event.target as Node)
+      ) {
+        if (notificationsOpen) {
+          onCloseNotifications();
+        }
+        setNotificationsOpen(false);
+      }
+      if (
+        profileRef.current &&
+        !profileRef.current.contains(event.target as Node)
+      ) {
+        setProfileOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [notificationsOpen, onCloseNotifications]);
 
   return (
     <header className="flex h-16 items-center justify-between border-border border-b bg-background px-4 lg:px-6 sticky top-0 z-20">
@@ -81,7 +176,7 @@ export function UserProfileClient({ userProfileData }: UserProfileClientProps) {
           className="w-full rounded-md border border-border bg-background py-2 pl-8 pr-4 text-sm placeholder-muted-foreground focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
         />
       </div>
-      
+
       {/* Desktop search - hidden on mobile */}
       <div className="hidden lg:block relative w-full max-w-sm mx-4">
         <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -100,12 +195,15 @@ export function UserProfileClient({ userProfileData }: UserProfileClientProps) {
             variant="ghost"
             size="icon"
             className="relative"
-            onClick={() => {
-              setNotificationsOpen(!notificationsOpen);
-              setProfileOpen(false);
-            }}
+            onClick={handleNotificationToggle}
           >
             <Bell className="h-5 w-5" />
+            {/* Unread count badge */}
+            {unreadCount > 0 && (
+              <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
+                {unreadCount > 99 ? "99+" : unreadCount}
+              </span>
+            )}
             <span className="sr-only">Notifications</span>
           </Button>
 
@@ -114,164 +212,104 @@ export function UserProfileClient({ userProfileData }: UserProfileClientProps) {
               <div className="p-3 border-b border-border">
                 <div className="flex items-center justify-between">
                   <h3 className="text-sm font-medium">Notifications</h3>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      refresh();
+                    }}
+                    disabled={isLoading}
+                  >
+                    {isLoading ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-3 w-3" />
+                    )}
+                  </Button>
                 </div>
               </div>
 
               <div className="max-h-[400px] overflow-y-auto">
-                <div className="p-2">
-                  <h4 className="text-xs font-semibold text-muted-foreground px-2 py-1">
-                    CLIENT APPROVALS
-                  </h4>
-                  <div className="mt-1 space-y-1">
-                    <button className="w-full text-left rounded-md p-2 hover:bg-accent transition-colors">
-                      <div className="flex items-start gap-2">
-                        <div className="rounded-full bg-blue-500/20 p-1 mt-0.5">
-                          <Users className="h-3 w-3 text-blue-500" />
-                        </div>
-                        <div>
-                          <p className="text-xs font-medium">
-                            New client verification needed
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            Robert Johnson submitted KYC documents
-                          </p>
-                          <p className="text-xs text-gray-500">
-                            10 minutes ago
-                          </p>
-                        </div>
-                      </div>
-                    </button>
-                    <button className="w-full text-left rounded-md p-2 hover:bg-accent transition-colors">
-                      <div className="flex items-start gap-2">
-                        <div className="rounded-full bg-blue-500/20 p-1 mt-0.5">
-                          <Users className="h-3 w-3 text-blue-500" />
-                        </div>
-                        <div>
-                          <p className="text-xs font-medium">
-                            Client information updated
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            Sarah Williams updated contact details
-                          </p>
-                          <p className="text-xs text-gray-500">1 hour ago</p>
-                        </div>
-                      </div>
-                    </button>
+                {isLoading && notifications.length === 0 ? (
+                  <div className="flex items-center justify-center p-8">
+                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                   </div>
-                </div>
-
-                <div className="p-2 border-t border-border">
-                  <h4 className="text-xs font-semibold text-muted-foreground px-2 py-1">
-                    LOAN APPROVALS
-                  </h4>
-                  <div className="mt-1 space-y-1">
-                    <button className="w-full text-left rounded-md p-2 hover:bg-accent transition-colors">
-                      <div className="flex items-start gap-2">
-                        <div className="rounded-full bg-green-500/20 p-1 mt-0.5">
-                          <CreditCard className="h-3 w-3 text-green-500" />
-                        </div>
-                        <div>
-                          <p className="text-xs font-medium">
-                            Loan ready for final approval
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {formatAmount(245000)} Mortgage for Robert Johnson
-                          </p>
-                          <p className="text-xs text-gray-500">
-                            30 minutes ago
-                          </p>
-                        </div>
-                      </div>
-                    </button>
-                    <button className="w-full text-left rounded-md p-2 hover:bg-accent transition-colors">
-                      <div className="flex items-start gap-2">
-                        <div className="rounded-full bg-yellow-500/20 p-1 mt-0.5">
-                          <AlertCircle className="h-3 w-3 text-yellow-500" />
-                        </div>
-                        <div>
-                          <p className="text-xs font-medium">
-                            Risk assessment needed
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {formatAmount(125000)} Mortgage for Michael Chen
-                          </p>
-                          <p className="text-xs text-gray-500">2 hours ago</p>
-                        </div>
-                      </div>
-                    </button>
+                ) : error ? (
+                  <div className="p-4 text-center">
+                    <AlertCircle className="h-8 w-8 text-red-500 mx-auto mb-2" />
+                    <p className="text-xs text-muted-foreground">{error}</p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="mt-2"
+                      onClick={refresh}
+                    >
+                      Retry
+                    </Button>
                   </div>
-                </div>
-
-                <div className="p-2 border-t border-border">
-                  <h4 className="text-xs font-semibold text-muted-foreground px-2 py-1">
-                    DISBURSEMENTS
-                  </h4>
-                  <div className="mt-1 space-y-1">
-                    <button className="w-full text-left rounded-md p-2 hover:bg-accent transition-colors">
-                      <div className="flex items-start gap-2">
-                        <div className="rounded-full bg-purple-500/20 p-1 mt-0.5">
-                          <DollarSign className="h-3 w-3 text-purple-500" />
-                        </div>
-                        <div>
-                          <p className="text-xs font-medium">
-                            Disbursement ready
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {formatAmount(50000)} Business loan for Sarah Williams
-                          </p>
-                          <p className="text-xs text-gray-500">Just now</p>
-                        </div>
-                      </div>
-                    </button>
-                    <button className="w-full text-left rounded-md p-2 hover:bg-accent transition-colors">
-                      <div className="flex items-start gap-2">
-                        <div className="rounded-full bg-purple-500/20 p-1 mt-0.5">
-                          <DollarSign className="h-3 w-3 text-purple-500" />
-                        </div>
-                        <div>
-                          <p className="text-xs font-medium">
-                            Disbursement scheduled
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {formatAmount(75000)} Personal loan for Emily Rodriguez
-                          </p>
-                          <p className="text-xs text-gray-500">5 hours ago</p>
-                        </div>
-                      </div>
-                    </button>
+                ) : notifications.length === 0 ? (
+                  <div className="p-8 text-center">
+                    <Inbox className="h-12 w-12 text-muted-foreground/50 mx-auto mb-3" />
+                    <p className="text-sm text-muted-foreground">
+                      No notifications
+                    </p>
+                    <p className="text-xs text-muted-foreground/70 mt-1">
+                      You&apos;re all caught up!
+                    </p>
                   </div>
-                </div>
-
-                <div className="p-2 border-t border-border">
-                  <h4 className="text-xs font-semibold text-muted-foreground px-2 py-1">
-                    SECURITY
-                  </h4>
-                  <div className="mt-1 space-y-1">
-                    <button className="w-full text-left rounded-md p-2 hover:bg-accent transition-colors">
-                      <div className="flex items-start gap-2">
-                        <div className="rounded-full bg-red-500/20 p-1 mt-0.5">
-                          <Shield className="h-3 w-3 text-red-500" />
-                        </div>
-                        <div>
-                          <p className="text-xs font-medium">Security alert</p>
-                          <p className="text-xs text-muted-foreground">
-                            Multiple failed login attempts detected
-                          </p>
-                          <p className="text-xs text-gray-500">
-                            45 minutes ago
-                          </p>
-                        </div>
-                      </div>
-                    </button>
+                ) : (
+                  <div className="p-2">
+                    <div className="space-y-1">
+                      {notifications.map((notification) => {
+                        const { icon, bgColor } =
+                          getNotificationIcon(notification);
+                        return (
+                          <button
+                            key={notification.id}
+                            className={`w-full text-left rounded-md p-2 hover:bg-accent transition-colors ${
+                              !notification.isRead ? "bg-accent/50" : ""
+                            }`}
+                          >
+                            <div className="flex items-start gap-2">
+                              <div
+                                className={`rounded-full ${bgColor} p-1 mt-0.5`}
+                              >
+                                {icon}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs font-medium truncate">
+                                  {notification.action || "Notification"}
+                                </p>
+                                <p className="text-xs text-muted-foreground line-clamp-2">
+                                  {notification.content}
+                                </p>
+                                <p className="text-xs text-gray-500 mt-0.5">
+                                  {formatNotificationDate(
+                                    notification.createdAt
+                                  )}
+                                </p>
+                              </div>
+                              {!notification.isRead && (
+                                <div className="w-2 h-2 rounded-full bg-blue-500 mt-1.5 flex-shrink-0" />
+                              )}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
 
-              <div className="p-2 border-t border-border">
-                <Button variant="outline" size="sm" className="w-full">
-                  View All Notifications
-                </Button>
-              </div>
+              {notifications.length > 0 && (
+                <div className="p-2 border-t border-border">
+                  <Button variant="outline" size="sm" className="w-full">
+                    View All Notifications
+                  </Button>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -295,7 +333,7 @@ export function UserProfileClient({ userProfileData }: UserProfileClientProps) {
                     <AvatarFallback>{initials}</AvatarFallback>
                   </Avatar>
                 </div>
-                
+
                 {/* Desktop: Full profile with username */}
                 <div className="hidden lg:flex items-center gap-2 bg-blue-500/10 border border-blue-500/20 rounded-full px-3 py-1">
                   <span className="text-sm font-medium text-blue-600 dark:text-blue-400">
