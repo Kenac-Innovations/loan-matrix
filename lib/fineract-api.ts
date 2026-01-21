@@ -1341,40 +1341,17 @@ export function getFineractService(
   return fineractService;
 }
 
+// Hardcoded service token for all API calls
+// TODO: Move to environment variable
+const SERVICE_TOKEN = "bWlmb3M6cGFzc3dvcmQ=";
+
 export async function getFineractServiceWithSession(): Promise<FineractAPIService> {
   try {
-    const { getSession } = await import("./auth");
     const { getFineractTenantId } = await import("./fineract-tenant-service");
-
-    const session = await getSession();
     const fineractTenantId = await getFineractTenantId();
 
-    console.log("Fineract Service Debug:", {
-      hasSession: !!session,
-      hasAuthKey: !!session?.base64EncodedAuthenticationKey,
-      fineractTenantId,
-      sessionKeys: session ? Object.keys(session) : null,
-    });
-
-    if (session?.base64EncodedAuthenticationKey) {
-      return getFineractService(
-        session.base64EncodedAuthenticationKey,
-        fineractTenantId
-      );
-    }
-
-    // Fallback: try to create service with environment credentials
-    console.warn(
-      "No session auth key found, falling back to environment credentials"
-    );
-    const config: FineractConfig = {
-      baseUrl: process.env.FINERACT_BASE_URL || "https://demo.fineract.dev",
-      username: process.env.FINERACT_USERNAME || "mifos",
-      password: process.env.FINERACT_PASSWORD || "password",
-      tenantId: fineractTenantId || process.env.FINERACT_TENANT_ID || "default",
-    };
-
-    return new FineractAPIService(config);
+    // Use hardcoded service token for all API calls
+    return getFineractService(SERVICE_TOKEN, fineractTenantId);
   } catch (error) {
     console.error("Error in getFineractServiceWithSession:", error);
     throw new Error(

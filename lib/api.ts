@@ -1,39 +1,21 @@
-import { getSession } from "./auth";
-import { getSession as getCustomSession } from "../app/actions/auth";
 import { getFineractTenantId as getFineractTenantIdFromService } from "./fineract-tenant-service";
 
 // Re-export for convenience
 export { getFineractTenantIdFromService as getFineractTenantId };
 
 // Get base URL from environment variable with fallback
-// If FINERACT_BASE_URL doesn't include /fineract-provider, we'll add it
 const baseUrl = process.env.FINERACT_BASE_URL || "http://10.10.0.143:8443";
 
+// Hardcoded service token for all API calls
+// TODO: Move to environment variable
+const SERVICE_TOKEN = "bWlmb3M6cGFzc3dvcmQ=";
+
 /**
- * Get access token from either NextAuth session or custom JWT session
+ * Get access token - returns hardcoded service token
+ * TODO: Restore session-based token when needed
  */
-export async function getAccessToken(): Promise<string | undefined> {
-  try {
-    // Try NextAuth session first
-    const nextAuthSession = await getSession();
-    if (nextAuthSession?.accessToken) {
-      console.log("Using NextAuth session token");
-      return nextAuthSession.accessToken;
-    }
-
-    // Fallback to custom JWT session
-    const customSession = await getCustomSession();
-    if (customSession?.accessToken) {
-      console.log("Using custom JWT session token");
-      return customSession.accessToken;
-    }
-
-    console.log("No access token found in either session");
-    return undefined;
-  } catch (error) {
-    console.error("Error getting access token:", error);
-    return undefined;
-  }
+export async function getAccessToken(): Promise<string> {
+  return SERVICE_TOKEN;
 }
 
 /**
@@ -50,17 +32,6 @@ export async function fetchFineractAPI(
 ) {
   const accessToken = await getAccessToken();
   const fineractTenantId = await getFineractTenantIdFromService();
-
-  console.log("Session debug:", {
-    accessToken: !!accessToken,
-    fineractTenantId,
-  });
-
-  if (!accessToken) {
-    throw new Error(
-      "No access token available - user may not be authenticated"
-    );
-  }
 
   const url = `${baseUrl}/fineract-provider/api/${version}${
     endpoint.startsWith("/") ? endpoint : `/${endpoint}`
@@ -93,7 +64,6 @@ export async function fetchFineractAPI(
       // In production, you should use proper SSL certificates
       const https = require("https");
       const agent = new https.Agent({ rejectUnauthorized: false });
-      console.log("==========> URL:", url);
 
       response = await fetch(url, {
         ...options,
@@ -158,7 +128,6 @@ export async function fetchFineractAPI(
         url: url,
         errorData: JSON.stringify(errorData, null, 2),
         specificErrorMessage: specificErrorMessage,
-        fullErrorResponse: errorData,
       });
 
       throw error;
@@ -234,6 +203,7 @@ export async function fetchClientByExternalId(externalId: string) {
     throw error;
   }
 }
+
 /**
  * Makes an authenticated request to the Fineract API v2
  * @param endpoint - The API endpoint to call (without the base URL)
@@ -248,24 +218,23 @@ export async function fetchFineractAPIV2(
 }
 
 /**
- * Client-side API fetcher that includes the access token from the auth context
+ * Client-side API fetcher - uses hardcoded token
+ * TODO: Restore token parameter when needed
  */
-export function createClientFineractAPI(accessToken: string) {
+export function createClientFineractAPI(accessToken?: string) {
+  const token = SERVICE_TOKEN; // Use hardcoded token for now
+  
   return async (endpoint: string, options: RequestInit = {}) => {
-    if (!accessToken) {
-      throw new Error(
-        "No access token available - user may not be authenticated"
-      );
-    }
-
+    const fineractTenantId = await getFineractTenantIdFromService();
+    
     const url = `${baseUrl}/fineract-provider/api/v1${
       endpoint.startsWith("/") ? endpoint : `/${endpoint}`
     }`;
 
     const headers = {
       ...options.headers,
-      Authorization: `Basic ${accessToken}`,
-      "Fineract-Platform-TenantId": "goodfellow",
+      Authorization: `Basic ${token}`,
+      "Fineract-Platform-TenantId": fineractTenantId,
       "Content-Type": "application/json",
     };
 
