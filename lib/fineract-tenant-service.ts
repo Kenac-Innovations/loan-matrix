@@ -6,7 +6,7 @@ import { getTenantFromHeaders } from "./tenant-service";
  * Add entries here when the Fineract tenant ID differs from the app tenant slug
  */
 const TENANT_TO_FINERACT_MAPPING: Record<string, string> = {
-  goodfellow: "goodfellow-training",
+  // goodfellow maps directly (no transformation needed)
   // Add more mappings as needed, e.g.:
   // "another-tenant": "another-fineract-id",
 };
@@ -25,19 +25,19 @@ export async function getFineractTenantId(): Promise<string> {
       tenantName: tenant?.name,
     });
 
-    if (!tenant) {
-      console.warn(
-        "No tenant found, using goodfellow-training Fineract tenant"
-      );
-      return process.env.FINERACT_TENANT_ID || "goodfellow-training";
-    }
+  if (!tenant) {
+    console.warn(
+      "No tenant found, using goodfellow Fineract tenant"
+    );
+    return process.env.FINERACT_TENANT_ID || "goodfellow";
+  }
 
-    // Check if there's a specific mapping for this tenant
-    // Otherwise use tenant slug directly, or "goodfellow-training" as fallback
-    const fineractTenantId =
-      TENANT_TO_FINERACT_MAPPING[tenant.slug] ||
-      tenant.slug ||
-      "goodfellow-training";
+  // Check if there's a specific mapping for this tenant
+  // Otherwise use tenant slug directly, or "goodfellow" as fallback
+  const fineractTenantId =
+    TENANT_TO_FINERACT_MAPPING[tenant.slug] ||
+    tenant.slug ||
+    "goodfellow";
 
     console.log(
       `Mapped tenant ${tenant.slug} to Fineract tenant: ${fineractTenantId}`
@@ -46,7 +46,7 @@ export async function getFineractTenantId(): Promise<string> {
     return fineractTenantId;
   } catch (error) {
     console.error("Error getting Fineract tenant ID:", error);
-    return process.env.FINERACT_TENANT_ID || "goodfellow-training";
+    return process.env.FINERACT_TENANT_ID || "goodfellow";
   }
 }
 
