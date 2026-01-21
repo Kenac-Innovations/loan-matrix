@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server';
-import { fetchFineractAPI } from '@/lib/api';
+import { fetchFineractSearch } from '@/lib/fineract-search-auth';
 import { ClientSearchRequest, ClientSearchResponse } from '@/shared/types/client';
 
 /**
  * POST /api/fineract/clients/search-v2
  * Searches for clients using the v2 API with proper payload structure
+ * Uses service account auth for broader search permissions
  */
 export async function POST(request: Request) {
   try {
@@ -27,8 +28,8 @@ export async function POST(request: Request) {
       size
     };
 
-    // Make the request to the v2 API endpoint using the unified function
-    const data: ClientSearchResponse = await fetchFineractAPI('/clients/search', {
+    // Make the request with service account auth
+    const data: ClientSearchResponse = await fetchFineractSearch('/clients/search', {
       method: 'POST',
       body: JSON.stringify(searchPayload),
     }, 'v2');

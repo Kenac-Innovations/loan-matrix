@@ -2,11 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { getSession as getCustomSession } from "@/app/actions/auth";
 import { getFineractTenantId } from "@/lib/fineract-tenant-service";
+import { getSearchHeaders } from "@/lib/fineract-search-auth";
 
 const baseUrl = process.env.FINERACT_BASE_URL || "http://10.10.0.143:8443";
 
 /**
  * Get access token from either NextAuth session or custom JWT session
+ * Used for operations that require user-specific auth (create, update, etc.)
  */
 async function getAccessToken(): Promise<string | undefined> {
   try {
@@ -37,22 +39,18 @@ async function getAccessToken(): Promise<string | undefined> {
 /**
  * GET /api/fineract/loans
  * Fetches all loans from Fineract
+ * Uses service account auth for search operations
  */
 export async function GET(request: NextRequest) {
   try {
-    const accessToken = await getAccessToken();
     const fineractTenantId = await getFineractTenantId();
 
     console.log("=== LOANS API - Tenant Information ===");
     console.log("Using Fineract Tenant ID:", fineractTenantId);
     console.log("=======================================");
 
-    if (!accessToken) {
-      return NextResponse.json(
-        { success: false, error: "Unauthorized" },
-        { status: 401 }
-      );
-    }
+    // Use service account headers for search/listing operations
+    const headers = getSearchHeaders(fineractTenantId);
 
     // Get query parameters for filtering
     const { searchParams } = new URL(request.url);
@@ -76,11 +74,7 @@ export async function GET(request: NextRequest) {
 
       const searchResponse = await fetch(searchUrl, {
         method: "GET",
-        headers: {
-          Authorization: `Basic ${accessToken}`,
-          "Fineract-Platform-TenantId": fineractTenantId,
-          Accept: "application/json",
-        },
+        headers,
         cache: "no-store",
       });
 
@@ -111,11 +105,7 @@ export async function GET(request: NextRequest) {
           
           const clientLoansResponse = await fetch(clientLoansUrl, {
             method: "GET",
-            headers: {
-              Authorization: `Basic ${accessToken}`,
-              "Fineract-Platform-TenantId": fineractTenantId,
-              Accept: "application/json",
-            },
+            headers,
             cache: "no-store",
           });
           
@@ -136,11 +126,7 @@ export async function GET(request: NextRequest) {
           
           const loansResponse = await fetch(loansUrl, {
             method: "GET",
-            headers: {
-              Authorization: `Basic ${accessToken}`,
-              "Fineract-Platform-TenantId": fineractTenantId,
-              Accept: "application/json",
-            },
+            headers,
             cache: "no-store",
           });
           
@@ -165,11 +151,7 @@ export async function GET(request: NextRequest) {
 
       const response = await fetch(accountUrl, {
         method: "GET",
-        headers: {
-          Authorization: `Basic ${accessToken}`,
-          "Fineract-Platform-TenantId": fineractTenantId,
-          Accept: "application/json",
-        },
+        headers,
         cache: "no-store",
       });
 
@@ -202,11 +184,7 @@ export async function GET(request: NextRequest) {
 
       const response = await fetch(url, {
         method: "GET",
-        headers: {
-          Authorization: `Basic ${accessToken}`,
-          "Fineract-Platform-TenantId": fineractTenantId,
-          Accept: "application/json",
-        },
+        headers,
         cache: "no-store",
       });
 
@@ -249,6 +227,7 @@ export async function GET(request: NextRequest) {
 /**
  * POST /api/fineract/loans
  * Creates a new loan in Fineract
+ * Uses user's auth token for audit trail
  */
 export async function POST(request: NextRequest) {
   try {

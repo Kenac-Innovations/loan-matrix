@@ -1,38 +1,9 @@
 import { NextResponse } from "next/server";
 import { getFineractServiceWithSession } from "@/lib/fineract-api";
 import { getFineractTenantId } from "@/lib/fineract-tenant-service";
-import { getSession } from "@/lib/auth";
-import { getSession as getCustomSession } from "@/app/actions/auth";
+import { getSearchHeaders } from "@/lib/fineract-search-auth";
 
 const baseUrl = process.env.FINERACT_BASE_URL || "http://10.10.0.143:8443";
-
-/**
- * Get access token from either NextAuth session or custom JWT session
- */
-async function getAccessToken(): Promise<string | undefined> {
-  try {
-    const nextAuthSession = (await getSession()) as any;
-    if (nextAuthSession?.base64EncodedAuthenticationKey) {
-      return nextAuthSession.base64EncodedAuthenticationKey;
-    }
-    if (nextAuthSession?.accessToken) {
-      return nextAuthSession.accessToken;
-    }
-
-    const customSession = (await getCustomSession()) as any;
-    if (customSession?.base64EncodedAuthenticationKey) {
-      return customSession.base64EncodedAuthenticationKey;
-    }
-    if (customSession?.accessToken) {
-      return customSession.accessToken;
-    }
-
-    return undefined;
-  } catch (error) {
-    console.error("Error getting access token:", error);
-    return undefined;
-  }
-}
 
 /**
  * GET /api/fineract/clients
@@ -49,18 +20,10 @@ export async function GET(request: Request) {
     const orderBy = searchParams.get("orderBy") || "id"; // id, displayName, accountNo
     const sortOrder = searchParams.get("sortOrder") || "DESC"; // ASC, DESC
 
-    const accessToken = await getAccessToken();
     const fineractTenantId = await getFineractTenantId();
 
-    if (!accessToken) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const headers = {
-      Authorization: `Basic ${accessToken}`,
-      "Fineract-Platform-TenantId": fineractTenantId,
-      Accept: "application/json",
-    };
+    // Use service account token for search operations
+    const headers = getSearchHeaders(fineractTenantId);
 
     let data;
 
