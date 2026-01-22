@@ -172,8 +172,9 @@ export function GenericDataTable<TData>({
   emptyMessage = "No results found.",
   customFilters = [],
   onFilterChange,
+  defaultSorting = [],
 }: DataTableProps<TData>) {
-  const [sorting, setSorting] = React.useState<SortingState>([]);
+  const [sorting, setSorting] = React.useState<SortingState>(defaultSorting);
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([]);
   const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>({});
   const [rowSelection, setRowSelection] = React.useState({});

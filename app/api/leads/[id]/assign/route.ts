@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getSession } from "@/lib/auth";
 
 // POST /api/leads/[id]/assign - Assign or reassign a lead to a Mifos user
 export async function POST(
@@ -10,6 +11,10 @@ export async function POST(
     const { id } = await params;
     const body = await request.json();
     const { mifosUserId, mifosUserName, assignedByUserId } = body;
+
+    // Get current session for "assigned by" info
+    const session = await getSession();
+    const assignedByName = session?.user?.name || "System";
 
     if (!mifosUserId || !mifosUserName) {
       return NextResponse.json(
@@ -23,10 +28,15 @@ export async function POST(
       where: { id },
       select: {
         id: true,
+        tenantId: true,
         status: true,
         loanSubmittedToFineract: true,
         assignedToUserId: true,
         assignedToUserName: true,
+        firstname: true,
+        lastname: true,
+        loanAmount: true,
+        fineractLoanId: true,
       },
     });
 
@@ -42,6 +52,10 @@ export async function POST(
       );
     }
 
+    // Check if this is a reassignment (different user)
+    const isReassignment = lead.assignedToUserId !== null && lead.assignedToUserId !== mifosUserId;
+    const previousAssignee = lead.assignedToUserName;
+
     // Update the lead with assignment info
     const updatedLead = await prisma.lead.update({
       where: { id },
@@ -50,6 +64,31 @@ export async function POST(
         assignedToUserName: mifosUserName,
         assignedAt: new Date(),
         assignedByUserId: assignedByUserId || null,
+      },
+    });
+
+    // Create alert for the newly assigned user
+    const clientName = [lead.firstname, lead.lastname].filter(Boolean).join(" ") || "Unknown Client";
+    const loanAmount = lead.loanAmount ? `$${lead.loanAmount.toLocaleString()}` : "N/A";
+
+    await prisma.alert.create({
+      data: {
+        tenantId: lead.tenantId,
+        mifosUserId: mifosUserId,
+        type: "TASK",
+        title: isReassignment ? "Lead Reassigned to You" : "New Lead Assigned",
+        message: `${clientName} - Loan amount: ${loanAmount}${isReassignment ? ` (previously assigned to ${previousAssignee})` : ""}`,
+        actionUrl: `/leads/${id}`,
+        actionLabel: "View Lead",
+        metadata: {
+          leadId: id,
+          clientName,
+          loanAmount: lead.loanAmount,
+          fineractLoanId: lead.fineractLoanId,
+          assignedBy: assignedByName,
+          isReassignment,
+        },
+        createdBy: assignedByName,
       },
     });
 

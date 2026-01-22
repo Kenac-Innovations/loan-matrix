@@ -123,6 +123,12 @@ export interface DataTableProps<TData = any> {
   
   /** Callback when filters change */
   onFilterChange?: (filters: DataTableFilter[]) => void;
+
+  /** Default sorting state (column id and direction) */
+  defaultSorting?: Array<{
+    id: string;
+    desc: boolean;
+  }>;
 }
 
 /**

@@ -17,6 +17,7 @@ model Tenant {
   isActive               Boolean                 @default(true)
   createdAt              DateTime                @default(now())
   updatedAt              DateTime                @updatedAt
+  alerts                 Alert[]
   communicationTemplates CommunicationTemplate[]
   leads                  Lead[]
   leadCommunications     LeadCommunication[]
@@ -780,4 +781,39 @@ model UserRole {
   @@index([tenantId, mifosUserId])
   @@index([tenantId, roleId])
   @@index([tenantId, isActive])
+}
+
+// User Alert - system alerts shown in notifications
+model Alert {
+  id          String      @id @default(cuid())
+  tenantId    String
+  mifosUserId Int         // Target user ID from Fineract/Mifos
+  type        AlertType   @default(INFO)
+  title       String
+  message     String
+  actionUrl   String?     // Optional URL to navigate to when clicked
+  actionLabel String?     // Optional label for action button
+  metadata    Json?       // Additional data (e.g., loanId, clientId, leadId)
+  isRead      Boolean     @default(false)
+  isDismissed Boolean     @default(false)
+  expiresAt   DateTime?   // Optional expiration date
+  createdBy   String?     // Who created this alert (username or system)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  tenant      Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, mifosUserId, isRead, isDismissed])
+  @@index([tenantId, mifosUserId, createdAt])
+  @@index([tenantId, expiresAt])
+}
+
+enum AlertType {
+  INFO        // General information
+  SUCCESS     // Success notification
+  WARNING     // Warning that needs attention
+  ERROR       // Error or critical issue
+  TASK        // Task assignment
+  REMINDER    // Reminder notification
+  APPROVAL    // Approval request
+  SYSTEM      // System notification
 }

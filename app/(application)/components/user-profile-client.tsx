@@ -8,6 +8,7 @@ import { useTheme } from "next-themes";
 import { UserProfileData } from "./user-profile-data";
 import { useMobileMenu } from "./mobile-menu-context";
 import { useNotifications } from "@/hooks/use-notifications";
+import { useAlerts, Alert, getAlertTypeColor, getAlertTypeBgColor } from "@/hooks/use-alerts";
 import {
   FineractNotification,
   getNotificationCategory,
@@ -18,7 +19,6 @@ import {
   Search,
   Menu,
   User,
-  Settings,
   HelpCircle,
   LogOut,
   Users,
@@ -29,6 +29,14 @@ import {
   RefreshCw,
   Loader2,
   Inbox,
+  CheckCircle2,
+  AlertTriangle,
+  XCircle,
+  ClipboardList,
+  Clock,
+  FileCheck,
+  Info,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -77,6 +85,37 @@ function getNotificationIcon(notification: FineractNotification) {
   }
 }
 
+// Helper function to get icon component for alert type
+function getAlertIcon(type: string) {
+  switch (type) {
+    case "SUCCESS":
+      return CheckCircle2;
+    case "WARNING":
+      return AlertTriangle;
+    case "ERROR":
+      return XCircle;
+    case "TASK":
+      return ClipboardList;
+    case "REMINDER":
+      return Clock;
+    case "APPROVAL":
+      return FileCheck;
+    case "SYSTEM":
+      return Shield;
+    case "INFO":
+    default:
+      return Info;
+  }
+}
+
+// Local system role interface
+interface LocalSystemRole {
+  id: string;
+  name: string;
+  displayName: string;
+  description: string | null;
+}
+
 export function UserProfileClient({ userProfileData }: UserProfileClientProps) {
   const pathname = usePathname();
   const router = useRouter();
@@ -89,17 +128,61 @@ export function UserProfileClient({ userProfileData }: UserProfileClientProps) {
   const profileRef = useRef<HTMLDivElement>(null);
   const { theme } = useTheme();
 
-  // Use the notifications hook with SSE
+  // Local system roles state
+  const [localRoles, setLocalRoles] = useState<LocalSystemRole[]>([]);
+  const [localRolesLoading, setLocalRolesLoading] = useState(true);
+
+  // Fetch local system roles
+  useEffect(() => {
+    async function fetchLocalRoles() {
+      try {
+        const response = await fetch("/api/users/roles");
+        if (response.ok) {
+          const data = await response.json();
+          setLocalRoles(data.roles || []);
+        }
+      } catch (error) {
+        console.error("Error fetching local roles:", error);
+      } finally {
+        setLocalRolesLoading(false);
+      }
+    }
+    fetchLocalRoles();
+  }, []);
+
+  // Use the notifications hook with SSE (Fineract notifications)
   const {
     notifications,
-    unreadCount,
-    isLoading,
-    error,
+    unreadCount: fineractUnreadCount,
+    isLoading: fineractLoading,
+    error: fineractError,
     isConnected,
     onViewNotifications,
     onCloseNotifications,
-    refresh,
+    refresh: refreshFineract,
   } = useNotifications();
+
+  // Use the alerts hook (local system alerts)
+  const {
+    alerts,
+    unreadCount: alertsUnreadCount,
+    isLoading: alertsLoading,
+    error: alertsError,
+    markAsRead: markAlertAsRead,
+    markAllAsRead: markAllAlertsAsRead,
+    dismissAlert,
+    refresh: refreshAlerts,
+  } = useAlerts();
+
+  // Combined unread count
+  const totalUnreadCount = fineractUnreadCount + alertsUnreadCount;
+  const isLoading = fineractLoading || alertsLoading;
+  const error = fineractError || alertsError;
+
+  // Refresh both
+  const refresh = async () => {
+    await Promise.all([refreshFineract(), refreshAlerts()]);
+  };
 
   // Get user details and login status
   const { user, isLoggedIn } = userProfileData;
@@ -200,9 +283,9 @@ export function UserProfileClient({ userProfileData }: UserProfileClientProps) {
           >
             <Bell className="h-5 w-5" />
             {/* Unread count badge */}
-            {unreadCount > 0 && (
+            {totalUnreadCount > 0 && (
               <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
-                {unreadCount > 99 ? "99+" : unreadCount}
+                {totalUnreadCount > 99 ? "99+" : totalUnreadCount}
               </span>
             )}
             <span className="sr-only">Notifications</span>
@@ -243,7 +326,7 @@ export function UserProfileClient({ userProfileData }: UserProfileClientProps) {
               </div>
 
               <div className="max-h-[400px] overflow-y-auto">
-                {isLoading && notifications.length === 0 ? (
+                {isLoading && alerts.length === 0 && notifications.length === 0 ? (
                   <div className="flex items-center justify-center p-8">
                     <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                   </div>
@@ -260,7 +343,7 @@ export function UserProfileClient({ userProfileData }: UserProfileClientProps) {
                       Retry
                     </Button>
                   </div>
-                ) : notifications.length === 0 ? (
+                ) : alerts.length === 0 && notifications.length === 0 ? (
                   <div className="p-8 text-center">
                     <Inbox className="h-12 w-12 text-muted-foreground/50 mx-auto mb-3" />
                     <p className="text-sm text-muted-foreground">
@@ -272,49 +355,137 @@ export function UserProfileClient({ userProfileData }: UserProfileClientProps) {
                   </div>
                 ) : (
                   <div className="p-2">
-                    <div className="space-y-1">
-                      {notifications.map((notification) => {
-                        const { icon, bgColor } =
-                          getNotificationIcon(notification);
-                        return (
-                          <button
-                            key={notification.id}
-                            className={`w-full text-left rounded-md p-2 hover:bg-accent transition-colors ${
-                              !notification.isRead ? "bg-accent/50" : ""
-                            }`}
-                          >
-                            <div className="flex items-start gap-2">
-                              <div
-                                className={`rounded-full ${bgColor} p-1 mt-0.5`}
-                              >
-                                {icon}
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <p className="text-xs font-medium truncate">
-                                  {notification.action || "Notification"}
-                                </p>
-                                <p className="text-xs text-muted-foreground line-clamp-2">
-                                  {notification.content}
-                                </p>
-                                <p className="text-xs text-gray-500 mt-0.5">
-                                  {formatNotificationDate(
-                                    notification.createdAt
+                    {/* System Alerts Section */}
+                    {alerts.length > 0 && (
+                      <div className="space-y-1 mb-2">
+                        <div className="flex items-center justify-between px-1 mb-1">
+                          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                            Alerts
+                          </p>
+                          {alertsUnreadCount > 0 && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                markAllAlertsAsRead();
+                              }}
+                              className="text-xs text-blue-500 hover:text-blue-600"
+                            >
+                              Mark all read
+                            </button>
+                          )}
+                        </div>
+                        {alerts.map((alert) => {
+                          const AlertIcon = getAlertIcon(alert.type);
+                          return (
+                            <div
+                              key={alert.id}
+                              className={`relative w-full text-left rounded-md p-2 hover:bg-accent transition-colors ${
+                                !alert.isRead ? "bg-accent/50" : ""
+                              }`}
+                            >
+                              <div className="flex items-start gap-2">
+                                <div
+                                  className={`rounded-full ${getAlertTypeBgColor(alert.type)} p-1 mt-0.5`}
+                                >
+                                  <AlertIcon className={`h-3 w-3 ${getAlertTypeColor(alert.type)}`} />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-xs font-medium truncate">
+                                    {alert.title}
+                                  </p>
+                                  <p className="text-xs text-muted-foreground line-clamp-2">
+                                    {alert.message}
+                                  </p>
+                                  {alert.actionUrl && (
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        markAlertAsRead(alert.id);
+                                        router.push(alert.actionUrl!);
+                                        setNotificationsOpen(false);
+                                      }}
+                                      className="text-xs text-blue-500 hover:text-blue-600 mt-1"
+                                    >
+                                      {alert.actionLabel || "View"}
+                                    </button>
                                   )}
-                                </p>
+                                  <p className="text-xs text-gray-500 mt-0.5">
+                                    {formatNotificationDate(alert.createdAt)}
+                                  </p>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  {!alert.isRead && (
+                                    <div className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0" />
+                                  )}
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      dismissAlert(alert.id);
+                                    }}
+                                    className="p-0.5 hover:bg-muted rounded opacity-50 hover:opacity-100"
+                                    title="Dismiss"
+                                  >
+                                    <X className="h-3 w-3" />
+                                  </button>
+                                </div>
                               </div>
-                              {!notification.isRead && (
-                                <div className="w-2 h-2 rounded-full bg-blue-500 mt-1.5 flex-shrink-0" />
-                              )}
                             </div>
-                          </button>
-                        );
-                      })}
-                    </div>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {/* Fineract Notifications Section */}
+                    {notifications.length > 0 && (
+                      <div className="space-y-1">
+                        {alerts.length > 0 && (
+                          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide px-1 mb-1 mt-2">
+                            Activity
+                          </p>
+                        )}
+                        {notifications.map((notification) => {
+                          const { icon, bgColor } =
+                            getNotificationIcon(notification);
+                          return (
+                            <button
+                              key={notification.id}
+                              className={`w-full text-left rounded-md p-2 hover:bg-accent transition-colors ${
+                                !notification.isRead ? "bg-accent/50" : ""
+                              }`}
+                            >
+                              <div className="flex items-start gap-2">
+                                <div
+                                  className={`rounded-full ${bgColor} p-1 mt-0.5`}
+                                >
+                                  {icon}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-xs font-medium truncate">
+                                    {notification.action || "Notification"}
+                                  </p>
+                                  <p className="text-xs text-muted-foreground line-clamp-2">
+                                    {notification.content}
+                                  </p>
+                                  <p className="text-xs text-gray-500 mt-0.5">
+                                    {formatNotificationDate(
+                                      notification.createdAt
+                                    )}
+                                  </p>
+                                </div>
+                                {!notification.isRead && (
+                                  <div className="w-2 h-2 rounded-full bg-blue-500 mt-1.5 flex-shrink-0" />
+                                )}
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
 
-              {notifications.length > 0 && (
+              {(alerts.length > 0 || notifications.length > 0) && (
                 <div className="p-2 border-t border-border">
                   <Button variant="outline" size="sm" className="w-full">
                     View All Notifications
@@ -386,8 +557,12 @@ export function UserProfileClient({ userProfileData }: UserProfileClientProps) {
                   </div>
                 </div>
                 <div className="mt-3 flex flex-wrap gap-1">
-                  {userRoles.length > 0 ? (
-                    userRoles.map((role, index) => {
+                  {localRolesLoading ? (
+                    <Badge className="bg-muted text-muted-foreground border-0 text-xs">
+                      Loading...
+                    </Badge>
+                  ) : localRoles.length > 0 ? (
+                    localRoles.map((role, index) => {
                       // Define different colors for different roles
                       const colors = [
                         "bg-blue-500",
@@ -404,32 +579,30 @@ export function UserProfileClient({ userProfileData }: UserProfileClientProps) {
                         <Badge
                           key={role.id}
                           className={`${colors[colorIndex]} text-white border-0 text-xs`}
-                          title={role.description}
+                          title={role.description || role.name}
                         >
-                          {role.name}
+                          {role.displayName}
                         </Badge>
                       );
                     })
                   ) : (
-                    <Badge className="bg-blue-500 text-white border-0 text-xs">
-                      {userRole || "User"}
+                    <Badge className="bg-gray-500 text-white border-0 text-xs">
+                      No Role Assigned
                     </Badge>
                   )}
                 </div>
               </div>
 
               <div className="py-2">
-                <button className="flex w-full items-center gap-3 px-4 py-2 text-sm hover:bg-accent transition-colors">
+                <button
+                  className="flex w-full items-center gap-3 px-4 py-2 text-sm hover:bg-accent transition-colors"
+                  onClick={() => {
+                    setProfileOpen(false);
+                    router.push("/profile");
+                  }}
+                >
                   <User className="h-4 w-4 text-muted-foreground" />
                   <span>My Profile</span>
-                </button>
-                <button className="flex w-full items-center gap-3 px-4 py-2 text-sm hover:bg-accent transition-colors">
-                  <Settings className="h-4 w-4 text-muted-foreground" />
-                  <span>Account Settings</span>
-                </button>
-                <button className="flex w-full items-center gap-3 px-4 py-2 text-sm hover:bg-accent transition-colors">
-                  <Bell className="h-4 w-4 text-muted-foreground" />
-                  <span>Notification Preferences</span>
                 </button>
               </div>
 

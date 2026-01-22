@@ -74,10 +74,11 @@ export async function getLeadsData(
     status?: string;
     limit?: number;
     offset?: number;
+    assignedToUserId?: number; // Filter by assigned user ID (for Loan Officers)
   } = {}
 ): Promise<LeadsData> {
   try {
-    const { stage, status, limit = 50, offset = 0 } = options;
+    const { stage, status, limit = 50, offset = 0, assignedToUserId } = options;
 
     // Get tenant - prefer headers for consistency with API routes
     let tenant = await getTenantFromHeaders();
@@ -103,6 +104,11 @@ export async function getLeadsData(
 
     if (status) {
       where.status = status;
+    }
+
+    // Filter by assigned user ID if provided (for Loan Officers)
+    if (assignedToUserId) {
+      where.assignedToUserId = assignedToUserId;
     }
 
     // Get leads with related data

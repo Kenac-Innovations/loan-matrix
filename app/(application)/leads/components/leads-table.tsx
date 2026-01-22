@@ -314,6 +314,7 @@ export function LeadsTable({ initialData }: LeadsTableProps) {
       emptyMessage="No leads found."
       customFilters={customFilters}
       onFilterChange={setCustomFilters}
+      defaultSorting={[{ id: "createdAt", desc: true }]}
     />
   );
 }
