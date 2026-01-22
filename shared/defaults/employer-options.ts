@@ -145,8 +145,8 @@ export function getEmployersByClientType(clientType: string | undefined): string
 }
 
 // Helper function to get occupations by employer
-export function getOccupationsByEmployer(employer: string | undefined): { value: string; label: string }[] {
-  if (!employer) return DEFAULT_OCCUPATIONS;
+export function getOccupationsByEmployer(employer: string | number | undefined | null): { value: string; label: string }[] {
+  if (!employer || typeof employer !== 'string') return DEFAULT_OCCUPATIONS;
   
   const upperEmployer = employer.toUpperCase();
   // Check for Zambia Army (under PDA employers)
@@ -162,8 +162,8 @@ export function getOccupationsByEmployer(employer: string | undefined): { value:
 }
 
 // Check if employer is Zambia Army
-export function isZambiaArmy(employer: string | undefined): boolean {
-  if (!employer) return false;
+export function isZambiaArmy(employer: string | number | undefined | null): boolean {
+  if (!employer || typeof employer !== 'string') return false;
   const upperEmployer = employer.toUpperCase();
   return (
     upperEmployer.includes("ZAMBIA ARMY") ||
