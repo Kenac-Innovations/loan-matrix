@@ -744,3 +744,40 @@ model LoanPayout {
   @@index([tenantId, status])
   @@index([tenantId, fineractClientId])
 }
+
+// System Roles - maps to Mifos/Fineract roles
+model SystemRole {
+  id          String     @id @default(cuid())
+  tenantId    String
+  name        String     // e.g., BRANCH_MANAGER, LOAN_OFFICER
+  displayName String     // e.g., "Branch Manager", "Loan Officer"
+  description String?
+  permissions Json?      // Array of permission strings
+  isActive    Boolean    @default(true)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  userRoles   UserRole[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId, isActive])
+}
+
+// Maps Mifos/Fineract users to system roles
+model UserRole {
+  id              String     @id @default(cuid())
+  tenantId        String
+  mifosUserId     Int        // Fineract/Mifos user ID
+  mifosUsername   String     // Fineract/Mifos username
+  roleId          String
+  assignedBy      String?    // Who assigned this role
+  assignedAt      DateTime   @default(now())
+  isActive        Boolean    @default(true)
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+  role            SystemRole @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, mifosUserId, roleId])
+  @@index([tenantId, mifosUserId])
+  @@index([tenantId, roleId])
+  @@index([tenantId, isActive])
+}

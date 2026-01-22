@@ -12,6 +12,10 @@ async function main() {
     console.log("Setting up pipeline stages...");
     await setupPipelineStages(tenant.id);
 
+    // Setup system roles
+    console.log("Setting up system roles...");
+    await setupSystemRoles(tenant.id);
+
     console.log("Database seeded successfully!");
   } catch (error) {
     console.error("Error seeding database:", error);
@@ -154,6 +158,153 @@ async function setupPipelineStages(tenantId: string) {
   });
 
   return stages;
+}
+
+async function setupSystemRoles(tenantId: string) {
+  // Check if roles already exist
+  const existingRoles = await prisma.systemRole.findMany({
+    where: { tenantId },
+  });
+
+  if (existingRoles.length > 0) {
+    console.log(
+      `System roles already exist (${existingRoles.length} roles), skipping...`
+    );
+    return existingRoles;
+  }
+
+  // Define the system roles based on Mifos/Fineract roles
+  const roleData = [
+    {
+      name: "BRANCH_MANAGER",
+      displayName: "Branch Manager",
+      description: "Branch manager with full branch access and approvals",
+      permissions: [
+        "VIEW_LEADS",
+        "CREATE_LEADS",
+        "EDIT_LEADS",
+        "DELETE_LEADS",
+        "APPROVE_LEADS",
+        "VIEW_CLIENTS",
+        "CREATE_CLIENTS",
+        "EDIT_CLIENTS",
+        "VIEW_LOANS",
+        "APPROVE_LOANS",
+        "DISBURSE_LOANS",
+        "VIEW_REPORTS",
+        "MANAGE_BRANCH",
+      ],
+    },
+    {
+      name: "LOAN_OFFICER",
+      displayName: "Loan Officer",
+      description: "Loan officer responsible for processing loan applications",
+      permissions: [
+        "VIEW_LEADS",
+        "CREATE_LEADS",
+        "EDIT_LEADS",
+        "VIEW_CLIENTS",
+        "CREATE_CLIENTS",
+        "EDIT_CLIENTS",
+        "VIEW_LOANS",
+        "CREATE_LOANS",
+        "EDIT_LOANS",
+        "VIEW_REPORTS",
+      ],
+    },
+    {
+      name: "CREDIT_OFFICER",
+      displayName: "Credit Officer",
+      description: "Credit officer responsible for credit assessment and risk analysis",
+      permissions: [
+        "VIEW_LEADS",
+        "EDIT_LEADS",
+        "VIEW_CLIENTS",
+        "VIEW_LOANS",
+        "ASSESS_CREDIT",
+        "VIEW_REPORTS",
+        "RECOMMEND_LOANS",
+      ],
+    },
+    {
+      name: "COMPLIANCE",
+      displayName: "Compliance",
+      description: "Compliance officer for regulatory and policy compliance",
+      permissions: [
+        "VIEW_LEADS",
+        "VIEW_CLIENTS",
+        "VIEW_LOANS",
+        "VIEW_REPORTS",
+        "COMPLIANCE_CHECK",
+        "VIEW_AUDIT_LOGS",
+      ],
+    },
+    {
+      name: "ACCOUNTANT",
+      displayName: "Accountant",
+      description: "Accountant for financial management and reconciliation",
+      permissions: [
+        "VIEW_LOANS",
+        "VIEW_REPORTS",
+        "VIEW_ACCOUNTING",
+        "CREATE_JOURNAL_ENTRIES",
+        "VIEW_JOURNAL_ENTRIES",
+        "RECONCILE_ACCOUNTS",
+        "VIEW_TELLERS",
+        "VIEW_CASH_MANAGEMENT",
+      ],
+    },
+    {
+      name: "AUTHORISER",
+      displayName: "Authoriser",
+      description: "First level authoriser for loan approvals",
+      permissions: [
+        "VIEW_LEADS",
+        "VIEW_CLIENTS",
+        "VIEW_LOANS",
+        "AUTHORISE_LOANS_L1",
+        "VIEW_REPORTS",
+      ],
+    },
+    {
+      name: "AUTHORISER2",
+      displayName: "Authoriser Level 2",
+      description: "Second level authoriser for higher value loan approvals",
+      permissions: [
+        "VIEW_LEADS",
+        "VIEW_CLIENTS",
+        "VIEW_LOANS",
+        "AUTHORISE_LOANS_L1",
+        "AUTHORISE_LOANS_L2",
+        "VIEW_REPORTS",
+      ],
+    },
+  ];
+
+  // Create roles
+  console.log("Creating system roles...");
+  const roles = await Promise.all(
+    roleData.map((role) =>
+      prisma.systemRole.create({
+        data: {
+          tenantId,
+          name: role.name,
+          displayName: role.displayName,
+          description: role.description,
+          permissions: role.permissions,
+          isActive: true,
+        },
+      })
+    )
+  );
+  console.log(`Created ${roles.length} system roles`);
+
+  // Log the created roles
+  roles.forEach((role) => {
+    console.log(`  - ${role.displayName} (${role.name})`);
+  });
+
+  return roles;
 }
 
 main()
