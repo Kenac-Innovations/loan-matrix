@@ -57,6 +57,7 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get("status") || undefined;
     const limit = parseInt(searchParams.get("limit") || "10");
     const offset = parseInt(searchParams.get("offset") || "0");
+    const skipFineractStatus = searchParams.get("skipFineractStatus") === "true";
 
     // Check if user is a Loan Officer (should only see their assigned leads)
     const { isLoanOfficer, userId } = await getUserRoleFilter();
@@ -66,6 +67,7 @@ export async function GET(request: NextRequest) {
       status,
       limit,
       offset,
+      skipFineractStatus,
       ...(isLoanOfficer && userId ? { assignedToUserId: userId } : {}),
     });
 

@@ -38,9 +38,9 @@ export default function LoansPage() {
   const [serverQuery, setServerQuery] = useState("");
   const [searchTimeout, setSearchTimeout] = useState<NodeJS.Timeout | null>(null);
 
-  // Fetch initial loans (5000 for browsing)
+  // Fetch initial loans (200 for faster loading, use search for more)
   const { data: initialData, error: initialError, isLoading: initialLoading } = useSWR(
-    `/api/fineract/loans?limit=5000`,
+    `/api/fineract/loans?limit=200`,
     fetcher,
     { revalidateOnFocus: false }
   );
@@ -147,6 +147,7 @@ export default function LoansPage() {
   const isLoading = initialLoading;
   const isSearching = searchLoading;
   const error = initialError;
+  const totalLoans = initialData?.totalFilteredRecords || loans.length;
 
   if (isLoading) {
     return (
@@ -199,7 +200,7 @@ export default function LoansPage() {
         <div>
           <h1 className="text-2xl font-bold">Loans</h1>
           <p className="text-muted-foreground">
-            Manage and track all loan applications and disbursements ({loans.length} total)
+            Manage and track loan applications (showing {loans.length} of {totalLoans.toLocaleString()} total, use search for more)
           </p>
         </div>
       </div>

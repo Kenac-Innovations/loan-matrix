@@ -77,12 +77,20 @@ export default async function LeadsPage() {
   // Check if user is a Loan Officer (should only see their assigned leads)
   const { isLoanOfficer, userId } = await getUserRoleFilter();
 
-  // Fetch leads data server-side (full dataset for metrics)
+  // Fetch all leads for accurate metrics (skipFineractStatus for speed)
+  // DB query is fast, the slow part was Fineract API calls which we skip
   // If user is Loan Officer, filter by their assigned leads
-  const leadsData = await getLeadsData(tenantSlug, {
-    limit: 1000,
+  const fullData = await getLeadsData(tenantSlug, {
+    limit: 5000, // High limit for accurate metrics
+    skipFineractStatus: true,
     ...(isLoanOfficer && userId ? { assignedToUserId: userId } : {}),
   });
+
+  // Use full data for metrics, but limit leads array for table rendering
+  const leadsData = {
+    ...fullData,
+    leads: fullData.leads.slice(0, 100), // Limit table to 100 for faster rendering
+  };
 
   return (
     <>
@@ -132,8 +140,8 @@ export default async function LeadsPage() {
               <CardTitle>{isLoanOfficer ? "My Leads" : "All Leads"}</CardTitle>
               <CardDescription>
                 {isLoanOfficer
-                  ? "Leads assigned to you"
-                  : "Manage and track all leads in the system"}
+                  ? `Leads assigned to you (showing ${leadsData.leads.length} of ${fullData.pagination.total})`
+                  : `Manage and track leads (showing ${leadsData.leads.length} of ${fullData.pagination.total})`}
               </CardDescription>
             </CardHeader>
             <CardContent>

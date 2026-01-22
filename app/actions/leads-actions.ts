@@ -67,6 +67,103 @@ export interface LeadsData {
   };
 }
 
+/**
+ * Get lightweight metrics using database aggregates (no lead details fetched)
+ * Much faster than getLeadsData for just showing metric cards
+ */
+export async function getLeadsMetricsOnly(
+  tenantSlug: string = "goodfellow",
+  options: {
+    assignedToUserId?: number;
+  } = {}
+): Promise<{ totalLeads: number; metrics: Partial<LeadMetrics>; pipelineStages: PipelineStage[] }> {
+  try {
+    const { assignedToUserId } = options;
+
+    // Get tenant
+    let tenant = await getTenantFromHeaders();
+    if (!tenant) {
+      tenant = await getOrCreateDefaultTenant();
+    }
+    if (!tenant) {
+      throw new Error("Tenant not found");
+    }
+
+    // Build where clause
+    const where: any = {
+      tenantId: tenant.id,
+    };
+
+    if (assignedToUserId) {
+      where.assignedToUserId = assignedToUserId;
+    }
+
+    // Get total count
+    const totalLeads = await prisma.lead.count({ where });
+
+    // Get counts by stage using groupBy
+    const stageCounts = await prisma.lead.groupBy({
+      by: ['currentStageId'],
+      where,
+      _count: true,
+    });
+
+    // Get pipeline stages for this tenant
+    const pipelineStages = await prisma.pipelineStage.findMany({
+      where: { tenantId: tenant.id, isActive: true },
+      orderBy: { order: "asc" },
+    });
+
+    // Calculate active leads (not in final state)
+    const finalStateIds = pipelineStages
+      .filter(s => s.isFinalState)
+      .map(s => s.id);
+    
+    const activeLeads = stageCounts
+      .filter(sc => sc.currentStageId && !finalStateIds.includes(sc.currentStageId))
+      .reduce((sum, sc) => sum + sc._count, 0);
+
+    // Get metric targets from tenant settings
+    const tenantSettings = (tenant.settings as TenantMetricSettings) || {};
+    const metricSettings = {
+      monthlyTarget: tenantSettings.monthlyTarget ?? DEFAULT_METRIC_SETTINGS.monthlyTarget,
+      conversionTarget: tenantSettings.conversionTarget ?? DEFAULT_METRIC_SETTINGS.conversionTarget,
+      processingTimeTarget: tenantSettings.processingTimeTarget ?? DEFAULT_METRIC_SETTINGS.processingTimeTarget,
+    };
+
+    return {
+      totalLeads,
+      metrics: {
+        activeLeads,
+        monthlyTarget: metricSettings.monthlyTarget,
+        conversionTarget: metricSettings.conversionTarget,
+        processingTimeTarget: metricSettings.processingTimeTarget,
+        // These will be calculated from actual leads when available
+        conversionRate: 0,
+        avgProcessingTime: 0,
+        slaCompliance: 0,
+        onTimeCount: 0,
+        atRiskCount: 0,
+        overdueCount: 0,
+      },
+      pipelineStages: pipelineStages.map((stage) => ({
+        id: stage.id,
+        name: stage.name,
+        description: stage.description || undefined,
+        order: stage.order,
+        color: stage.color,
+        isActive: stage.isActive,
+        isInitialState: stage.isInitialState,
+        isFinalState: stage.isFinalState,
+        allowedTransitions: stage.allowedTransitions,
+      })),
+    };
+  } catch (error) {
+    console.error("Error fetching leads metrics:", error);
+    throw new Error("Failed to fetch leads metrics");
+  }
+}
+
 export async function getLeadsData(
   tenantSlug: string = "goodfellow",
   options: {
@@ -75,10 +172,11 @@ export async function getLeadsData(
     limit?: number;
     offset?: number;
     assignedToUserId?: number; // Filter by assigned user ID (for Loan Officers)
+    skipFineractStatus?: boolean; // Skip slow Fineract status lookups for faster loading
   } = {}
 ): Promise<LeadsData> {
   try {
-    const { stage, status, limit = 50, offset = 0, assignedToUserId } = options;
+    const { stage, status, limit = 50, offset = 0, assignedToUserId, skipFineractStatus = false } = options;
 
     // Get tenant - prefer headers for consistency with API routes
     let tenant = await getTenantFromHeaders();
@@ -280,12 +378,12 @@ export async function getLeadsData(
       };
     });
 
-    // Fetch Fineract loan statuses for submitted leads
+    // Fetch Fineract loan statuses for submitted leads (skip if requested for faster loading)
     const submittedLeads = transformedLeads.filter(
       (lead) => lead.loanSubmittedToFineract
     );
 
-    if (submittedLeads.length > 0) {
+    if (submittedLeads.length > 0 && !skipFineractStatus) {
       try {
         const session = await getSession();
         const accessToken =
@@ -361,7 +459,7 @@ export async function getLeadsData(
       }
     }
 
-    // Fetch payout statuses for active/disbursed loans
+    // Fetch payout statuses for active/disbursed loans (skip if requested for faster loading)
     const disbursedLeads = transformedLeads.filter(
       (lead) =>
         lead.fineractLoanStatus?.toLowerCase() === "active" &&
@@ -370,7 +468,7 @@ export async function getLeadsData(
 
     console.log(`Leads with active loans: ${disbursedLeads.length}, tenant: ${tenant.id}`);
 
-    if (disbursedLeads.length > 0) {
+    if (disbursedLeads.length > 0 && !skipFineractStatus) {
       try {
         const loanIds = disbursedLeads
           .map((l) => l.fineractLoanId)
