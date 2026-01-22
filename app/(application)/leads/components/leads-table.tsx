@@ -8,8 +8,9 @@ import { LeadsData } from "@/app/actions/leads-actions";
 import { Lead } from "@/shared/types";
 import { GenericDataTable } from "@/components/tables/generic-data-table";
 import { DataTableColumn, DataTableFilter } from "@/shared/types/data-table";
-import { useState } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { FileEdit, User, Loader2 } from "lucide-react";
+import useSWR from "swr";
 
 interface LeadsTableProps {
   initialData: LeadsData;
@@ -45,13 +46,104 @@ function getStatusBadgeColor(status: string): string {
   return "bg-blue-500 hover:bg-blue-600";
 }
 
+const fetcher = (url: string) => fetch(url).then((res) => res.json());
+
+// Predefined Fineract loan statuses for filter dropdown
+const LOAN_STATUS_OPTIONS = [
+  { label: "Draft", value: "Draft" },
+  { label: "Submitted and pending approval", value: "Submitted and pending approval" },
+  { label: "Approved", value: "Approved" },
+  { label: "Disbursed", value: "Active" }, // "Active" in Fineract = Disbursed
+  { label: "Closed (obligations met)", value: "Closed (obligations met)" },
+  { label: "Closed (written off)", value: "Closed (written off)" },
+  { label: "Closed (rescheduled)", value: "Closed (rescheduled)" },
+  { label: "Overpaid", value: "Overpaid" },
+  { label: "Rejected", value: "Rejected" },
+  { label: "Withdrawn by applicant", value: "Withdrawn by applicant" },
+];
+
+// Predefined loan types for filter dropdown
+const LOAN_TYPE_OPTIONS = [
+  { label: "Personal Loan", value: "Personal Loan" },
+  { label: "Business Loan", value: "Business Loan" },
+  { label: "Mortgage", value: "Mortgage" },
+  { label: "Not specified", value: "Not specified" },
+];
+
 export function LeadsTable({ initialData }: LeadsTableProps) {
-  const { leads, pipelineStages } = initialData;
+  const { leads: initialLeads, pipelineStages } = initialData;
   const [customFilters, setCustomFilters] = useState<DataTableFilter[]>([
     { columnId: "leadStatus", value: "", type: "select" },
     { columnId: "type", value: "", type: "select" },
   ]);
   const [navigatingLeadId, setNavigatingLeadId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Debounce search input
+  useEffect(() => {
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+    searchTimeoutRef.current = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+    }, 300);
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
+  }, [searchQuery]);
+
+  // Check if any filters are active
+  const hasActiveFilters = customFilters.some((f) => f.value && f.value !== "");
+  const hasSearchOrFilters = debouncedSearch.length >= 2 || hasActiveFilters;
+
+  // Check if status filter is active (need to fetch Fineract statuses)
+  const hasStatusFilter = customFilters.some(
+    (f) => f.columnId === "leadStatus" && f.value && f.value !== ""
+  );
+
+  // Build API URL for server-side search/filter
+  const buildApiUrl = useCallback(() => {
+    if (!hasSearchOrFilters) return null;
+    
+    const params = new URLSearchParams();
+    params.set("limit", "500"); // Fetch more when searching
+    
+    // Only skip Fineract status if no status filter is applied
+    // When filtering by status, we need to fetch actual statuses from Fineract
+    if (!hasStatusFilter) {
+      params.set("skipFineractStatus", "true");
+    }
+    
+    // Add search query if present
+    if (debouncedSearch.length >= 2) {
+      params.set("search", debouncedSearch);
+    }
+    
+    // Add filters
+    customFilters.forEach((filter) => {
+      if (filter.value) {
+        params.set(filter.columnId, filter.value);
+      }
+    });
+    
+    return `/api/leads/paginated?${params.toString()}`;
+  }, [debouncedSearch, customFilters, hasSearchOrFilters, hasStatusFilter]);
+
+  // Fetch filtered data from server when search/filters are active
+  const { data: serverData, isLoading: isSearching } = useSWR(
+    buildApiUrl(),
+    fetcher,
+    { revalidateOnFocus: false }
+  );
+
+  // Use server data when searching/filtering, otherwise use initial data
+  const leads = hasSearchOrFilters && serverData?.leads 
+    ? serverData.leads 
+    : initialLeads;
 
   // Define table columns using DataTableColumn format
   const columns: DataTableColumn<Lead>[] = [
@@ -132,22 +224,7 @@ export function LeadsTable({ initialData }: LeadsTableProps) {
           </Badge>
         );
       },
-      filterOptions: Array.from(
-        new Set(
-          leads
-            .map((lead) => lead.fineractLoanStatus)
-            .filter((status): status is string => !!status)
-        )
-      ).map((status) => {
-        const count = leads.filter(
-          (lead) => lead.fineractLoanStatus === status
-        ).length;
-        const displayLabel = status === "Active" ? "Disbursed" : status;
-        return {
-          label: `${displayLabel} (${count})`,
-          value: status,
-        };
-      }),
+      filterOptions: LOAN_STATUS_OPTIONS,
     },
     {
       id: "payoutStatus",
@@ -198,15 +275,7 @@ export function LeadsTable({ initialData }: LeadsTableProps) {
           {getValue()}
         </Badge>
       ),
-      filterOptions: Array.from(new Set(leads.map((lead) => lead.type))).map(
-        (type) => {
-          const count = leads.filter((lead) => lead.type === type).length;
-          return {
-            label: `${type} (${count})`,
-            value: type,
-          };
-        }
-      ),
+      filterOptions: LOAN_TYPE_OPTIONS,
     },
     {
       id: "assignedTo",
@@ -302,7 +371,7 @@ export function LeadsTable({ initialData }: LeadsTableProps) {
     <GenericDataTable
       data={leads}
       columns={columns}
-      searchPlaceholder="Search leads..."
+      searchPlaceholder="Search all leads..."
       enablePagination={true}
       enableColumnVisibility={true}
       enableExport={true}
@@ -311,10 +380,13 @@ export function LeadsTable({ initialData }: LeadsTableProps) {
       tableId="leads-table"
       onRowClick={handleRowClick}
       exportFileName="leads-export"
-      emptyMessage="No leads found."
+      emptyMessage={isSearching ? "Searching..." : "No leads found."}
       customFilters={customFilters}
       onFilterChange={setCustomFilters}
       defaultSorting={[{ id: "createdAt", desc: true }]}
+      externalSearch={searchQuery}
+      onSearchChange={setSearchQuery}
+      isLoading={isSearching}
     />
   );
 }

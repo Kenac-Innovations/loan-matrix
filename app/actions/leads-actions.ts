@@ -173,10 +173,12 @@ export async function getLeadsData(
     offset?: number;
     assignedToUserId?: number; // Filter by assigned user ID (for Loan Officers)
     skipFineractStatus?: boolean; // Skip slow Fineract status lookups for faster loading
+    search?: string; // Text search for client name
+    leadStatus?: string; // Filter by Fineract loan status
   } = {}
 ): Promise<LeadsData> {
   try {
-    const { stage, status, limit = 50, offset = 0, assignedToUserId, skipFineractStatus = false } = options;
+    const { stage, status, limit = 50, offset = 0, assignedToUserId, skipFineractStatus = false, search, leadStatus } = options;
 
     // Get tenant - prefer headers for consistency with API routes
     let tenant = await getTenantFromHeaders();
@@ -207,6 +209,16 @@ export async function getLeadsData(
     // Filter by assigned user ID if provided (for Loan Officers)
     if (assignedToUserId) {
       where.assignedToUserId = assignedToUserId;
+    }
+
+    // Text search for client name (firstname or lastname)
+    if (search && search.length >= 2) {
+      where.OR = [
+        { firstname: { contains: search, mode: "insensitive" } },
+        { lastname: { contains: search, mode: "insensitive" } },
+        { nationalId: { contains: search, mode: "insensitive" } },
+        { phoneNumber: { contains: search, mode: "insensitive" } },
+      ];
     }
 
     // Get leads with related data

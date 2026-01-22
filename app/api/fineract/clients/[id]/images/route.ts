@@ -1,31 +1,15 @@
 import { NextResponse } from "next/server";
-import { fetchFineractAPI } from "@/lib/api";
-import { getSession } from "@/lib/auth";
-import { getSession as getCustomSession } from "@/app/actions/auth";
 import { getFineractTenantId } from "@/lib/fineract-tenant-service";
+import { getSearchAuthToken } from "@/lib/fineract-search-auth";
 
 const baseUrl = process.env.FINERACT_BASE_URL || "http://10.10.0.143:8443";
 
 /**
- * Get access token from either NextAuth session or custom JWT session
+ * Get the service account token for Fineract API calls
+ * Uses hardcoded token for now (same as other Fineract API routes)
  */
-async function getAccessToken(): Promise<string | undefined> {
-  try {
-    const nextAuthSession = await getSession();
-    if (nextAuthSession?.accessToken) {
-      return nextAuthSession.accessToken;
-    }
-
-    const customSession = await getCustomSession();
-    if (customSession?.accessToken) {
-      return customSession.accessToken;
-    }
-
-    return undefined;
-  } catch (error) {
-    console.error("Error getting access token:", error);
-    return undefined;
-  }
+function getAccessToken(): string {
+  return getSearchAuthToken();
 }
 
 /**
@@ -48,15 +32,8 @@ export async function POST(
       );
     }
 
-    const accessToken = await getAccessToken();
+    const accessToken = getAccessToken();
     const fineractTenantId = await getFineractTenantId();
-
-    if (!accessToken) {
-      return NextResponse.json(
-        { error: "No access token available" },
-        { status: 401 }
-      );
-    }
 
     const url = `${baseUrl}/fineract-provider/api/v1/clients/${id}/images`;
 
@@ -146,15 +123,8 @@ export async function GET(
     const endpoint = `/clients/${id}/images${queryString ? `?${queryString}` : ""}`;
 
     // For images, we need to handle the response as text/plain since Fineract returns base64
-    const accessToken = await getAccessToken();
+    const accessToken = getAccessToken();
     const fineractTenantId = await getFineractTenantId();
-
-    if (!accessToken) {
-      return NextResponse.json(
-        { error: "No access token available" },
-        { status: 401 }
-      );
-    }
 
     const url = `${baseUrl}/fineract-provider/api/v1${endpoint}`;
 
