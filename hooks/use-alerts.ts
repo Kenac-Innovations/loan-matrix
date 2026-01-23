@@ -1,6 +1,60 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
+
+// Notification sound utility
+const playNotificationSound = (type: AlertType = "INFO") => {
+  try {
+    // Create audio context for better browser support
+    const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContext) return;
+
+    const audioContext = new AudioContext();
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+
+    // Different sounds for different alert types
+    switch (type) {
+      case "SUCCESS":
+        // Pleasant ascending tone
+        oscillator.frequency.setValueAtTime(523.25, audioContext.currentTime); // C5
+        oscillator.frequency.setValueAtTime(659.25, audioContext.currentTime + 0.1); // E5
+        oscillator.frequency.setValueAtTime(783.99, audioContext.currentTime + 0.2); // G5
+        break;
+      case "WARNING":
+      case "ERROR":
+        // Alert tone - two beeps
+        oscillator.frequency.setValueAtTime(440, audioContext.currentTime); // A4
+        gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+        gainNode.gain.setValueAtTime(0, audioContext.currentTime + 0.1);
+        gainNode.gain.setValueAtTime(0.3, audioContext.currentTime + 0.15);
+        gainNode.gain.setValueAtTime(0, audioContext.currentTime + 0.25);
+        break;
+      case "TASK":
+      case "APPROVAL":
+        // Attention tone
+        oscillator.frequency.setValueAtTime(587.33, audioContext.currentTime); // D5
+        oscillator.frequency.setValueAtTime(783.99, audioContext.currentTime + 0.15); // G5
+        break;
+      default:
+        // Default notification sound
+        oscillator.frequency.setValueAtTime(587.33, audioContext.currentTime); // D5
+    }
+
+    oscillator.type = "sine";
+    gainNode.gain.setValueAtTime(0.2, audioContext.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+
+    oscillator.start(audioContext.currentTime);
+    oscillator.stop(audioContext.currentTime + 0.3);
+  } catch (error) {
+    // Silently fail if audio can't be played
+    console.debug("Could not play notification sound:", error);
+  }
+};
 
 export type AlertType =
   | "INFO"
@@ -34,6 +88,7 @@ interface UseAlertsOptions {
   pollingInterval?: number; // milliseconds, default 30000 (30 seconds)
   includeRead?: boolean;
   includeDismissed?: boolean;
+  enableSound?: boolean; // Enable sound notifications for new alerts
 }
 
 interface UseAlertsReturn {
@@ -52,12 +107,17 @@ export function useAlerts(options: UseAlertsOptions = {}): UseAlertsReturn {
     pollingInterval = 30000,
     includeRead = false,
     includeDismissed = false,
+    enableSound = true,
   } = options;
 
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  
+  // Track previous alert IDs to detect new alerts
+  const previousAlertIdsRef = useRef<Set<string>>(new Set());
+  const isInitialLoadRef = useRef(true);
 
   // Fetch alerts from API
   const fetchAlerts = useCallback(async () => {
@@ -79,7 +139,45 @@ export function useAlerts(options: UseAlertsOptions = {}): UseAlertsReturn {
       }
 
       const data = await response.json();
-      setAlerts(data.alerts || []);
+      const newAlerts: Alert[] = data.alerts || [];
+      
+      // Check for new alerts and play sound (skip on initial load)
+      if (enableSound && !isInitialLoadRef.current && newAlerts.length > 0) {
+        const newAlertIds = newAlerts.map(a => a.id);
+        const brandNewAlerts = newAlerts.filter(
+          alert => !previousAlertIdsRef.current.has(alert.id) && !alert.isRead
+        );
+        
+        if (brandNewAlerts.length > 0) {
+          // Play sound for the most important alert type
+          const priorityOrder: AlertType[] = ["ERROR", "WARNING", "TASK", "APPROVAL", "SUCCESS", "INFO", "REMINDER", "SYSTEM"];
+          const highestPriorityAlert = brandNewAlerts.reduce((prev, curr) => {
+            const prevPriority = priorityOrder.indexOf(prev.type);
+            const currPriority = priorityOrder.indexOf(curr.type);
+            return currPriority < prevPriority ? curr : prev;
+          }, brandNewAlerts[0]);
+          
+          playNotificationSound(highestPriorityAlert.type);
+          
+          // Also show browser notification if permitted
+          if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+            new Notification(brandNewAlerts[0].title, {
+              body: brandNewAlerts[0].message,
+              icon: "/favicon.ico",
+              tag: brandNewAlerts[0].id,
+            });
+          }
+        }
+        
+        // Update previous alert IDs
+        previousAlertIdsRef.current = new Set(newAlertIds);
+      } else if (isInitialLoadRef.current) {
+        // On initial load, just populate the previous IDs without sound
+        previousAlertIdsRef.current = new Set(newAlerts.map(a => a.id));
+        isInitialLoadRef.current = false;
+      }
+      
+      setAlerts(newAlerts);
       setUnreadCount(data.unreadCount || 0);
       setError(null);
     } catch (err: any) {
@@ -88,7 +186,7 @@ export function useAlerts(options: UseAlertsOptions = {}): UseAlertsReturn {
     } finally {
       setIsLoading(false);
     }
-  }, [includeRead, includeDismissed]);
+  }, [includeRead, includeDismissed, enableSound]);
 
   // Mark a single alert as read
   const markAsRead = useCallback(async (alertId: string) => {
@@ -171,6 +269,13 @@ export function useAlerts(options: UseAlertsOptions = {}): UseAlertsReturn {
     await fetchAlerts();
   }, [fetchAlerts]);
 
+  // Request notification permission on mount
+  useEffect(() => {
+    if (typeof Notification !== "undefined" && Notification.permission === "default") {
+      Notification.requestPermission();
+    }
+  }, []);
+
   // Initial fetch
   useEffect(() => {
     fetchAlerts();
@@ -195,6 +300,9 @@ export function useAlerts(options: UseAlertsOptions = {}): UseAlertsReturn {
     refresh,
   };
 }
+
+// Export the sound function for manual use
+export { playNotificationSound };
 
 // Helper function to get alert icon color
 export function getAlertTypeColor(type: AlertType): string {

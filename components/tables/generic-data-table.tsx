@@ -179,6 +179,7 @@ export function GenericDataTable<TData>({
   externalSearch,
   onSearchChange,
   isLoading = false,
+  headerActions,
 }: DataTableProps<TData>) {
   // Use external search if provided, otherwise use internal state
   const isExternalSearch = externalSearch !== undefined && onSearchChange !== undefined;
@@ -600,6 +601,9 @@ export function GenericDataTable<TData>({
                 </DropdownMenuContent>
               </DropdownMenu>
             )}
+
+            {/* Custom header actions */}
+            {headerActions}
           </div>
         </div>
         

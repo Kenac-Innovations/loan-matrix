@@ -138,6 +138,9 @@ export interface DataTableProps<TData = any> {
 
   /** Loading state for async operations */
   isLoading?: boolean;
+
+  /** Custom actions to render in the table header */
+  headerActions?: React.ReactNode;
 }
 
 /**

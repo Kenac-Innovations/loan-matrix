@@ -211,13 +211,13 @@ export async function getLeadsData(
       where.assignedToUserId = assignedToUserId;
     }
 
-    // Text search for client name (firstname or lastname)
+    // Text search for client name, ID, or phone
     if (search && search.length >= 2) {
       where.OR = [
         { firstname: { contains: search, mode: "insensitive" } },
         { lastname: { contains: search, mode: "insensitive" } },
-        { nationalId: { contains: search, mode: "insensitive" } },
-        { phoneNumber: { contains: search, mode: "insensitive" } },
+        { externalId: { contains: search, mode: "insensitive" } },
+        { mobileNo: { contains: search, mode: "insensitive" } },
       ];
     }
 
@@ -794,4 +794,115 @@ function getColorForUser(userId: string): string {
   }
 
   return colors[Math.abs(hash) % colors.length];
+}
+
+/**
+ * Fetch Fineract loan statuses for a batch of leads
+ * This is called client-side after initial page load to populate statuses
+ */
+export async function fetchLeadStatuses(
+  leadIds: string[]
+): Promise<Record<string, { status: string | null; payoutStatus?: string }>> {
+  try {
+    if (leadIds.length === 0) return {};
+
+    const session = await getSession();
+    const accessToken =
+      session?.base64EncodedAuthenticationKey || session?.accessToken;
+
+    if (!accessToken) {
+      console.log("No access token available for fetching statuses");
+      return {};
+    }
+
+    const fineractTenantId = await getFineractTenantId();
+    const results: Record<string, { status: string | null; payoutStatus?: string }> = {};
+
+    // Get tenant for payout status lookup
+    let tenant = await getTenantFromHeaders();
+    if (!tenant) {
+      tenant = await getOrCreateDefaultTenant();
+    }
+
+    // Fetch statuses in parallel (batch of up to 10 at a time to avoid overwhelming the API)
+    const batchSize = 10;
+    for (let i = 0; i < leadIds.length; i += batchSize) {
+      const batch = leadIds.slice(i, i + batchSize);
+      
+      const statusPromises = batch.map(async (leadId) => {
+        try {
+          // Fetch loan by external ID (leadId)
+          const searchUrl = `${FINERACT_BASE_URL}/fineract-provider/api/v1/loans?externalId=${encodeURIComponent(leadId)}`;
+
+          const response = await fetch(searchUrl, {
+            method: "GET",
+            headers: {
+              Authorization: `Basic ${accessToken}`,
+              "Fineract-Platform-TenantId": fineractTenantId,
+              Accept: "application/json",
+            },
+            cache: "no-store",
+          });
+
+          if (response.ok) {
+            const searchData = await response.json();
+            let loans = [];
+            if (Array.isArray(searchData)) {
+              loans = searchData;
+            } else if (searchData.pageItems && Array.isArray(searchData.pageItems)) {
+              loans = searchData.pageItems;
+            } else if (searchData.content && Array.isArray(searchData.content)) {
+              loans = searchData.content;
+            }
+
+            const matchingLoan = loans.find(
+              (loan: any) => loan.externalId === leadId
+            );
+
+            if (matchingLoan?.status?.value) {
+              return { 
+                leadId, 
+                status: matchingLoan.status.value,
+                fineractLoanId: matchingLoan.id 
+              };
+            }
+          }
+        } catch (error) {
+          console.error(`Error fetching Fineract status for lead ${leadId}:`, error);
+        }
+        return { leadId, status: null, fineractLoanId: null };
+      });
+
+      const batchResults = await Promise.all(statusPromises);
+      
+      // Process batch results
+      for (const result of batchResults) {
+        results[result.leadId] = { status: result.status };
+        
+        // If loan is active (disbursed), fetch payout status
+        if (result.status?.toLowerCase() === "active" && result.fineractLoanId && tenant) {
+          try {
+            const payoutRecord = await prisma.loanPayout.findFirst({
+              where: {
+                tenantId: tenant.id,
+                fineractLoanId: result.fineractLoanId,
+              },
+              select: { status: true },
+            });
+            
+            if (payoutRecord) {
+              results[result.leadId].payoutStatus = payoutRecord.status;
+            }
+          } catch (error) {
+            console.error(`Error fetching payout status for loan ${result.fineractLoanId}:`, error);
+          }
+        }
+      }
+    }
+
+    return results;
+  } catch (error) {
+    console.error("Error fetching lead statuses:", error);
+    return {};
+  }
 }

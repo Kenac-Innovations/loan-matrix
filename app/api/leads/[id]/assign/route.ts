@@ -35,7 +35,7 @@ export async function POST(
         assignedToUserName: true,
         firstname: true,
         lastname: true,
-        loanAmount: true,
+        requestedAmount: true,
         fineractLoanId: true,
       },
     });
@@ -69,7 +69,7 @@ export async function POST(
 
     // Create alert for the newly assigned user
     const clientName = [lead.firstname, lead.lastname].filter(Boolean).join(" ") || "Unknown Client";
-    const loanAmount = lead.loanAmount ? `$${lead.loanAmount.toLocaleString()}` : "N/A";
+    const loanAmount = lead.requestedAmount ? `$${lead.requestedAmount.toLocaleString()}` : "N/A";
 
     await prisma.alert.create({
       data: {
@@ -83,7 +83,7 @@ export async function POST(
         metadata: {
           leadId: id,
           clientName,
-          loanAmount: lead.loanAmount,
+          requestedAmount: lead.requestedAmount,
           fineractLoanId: lead.fineractLoanId,
           assignedBy: assignedByName,
           isReassignment,

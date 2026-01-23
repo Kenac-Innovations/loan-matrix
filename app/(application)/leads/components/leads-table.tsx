@@ -4,12 +4,12 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { LeadsData } from "@/app/actions/leads-actions";
+import { LeadsData, fetchLeadStatuses } from "@/app/actions/leads-actions";
 import { Lead } from "@/shared/types";
 import { GenericDataTable } from "@/components/tables/generic-data-table";
 import { DataTableColumn, DataTableFilter } from "@/shared/types/data-table";
-import { useState, useCallback, useEffect, useRef } from "react";
-import { FileEdit, User, Loader2 } from "lucide-react";
+import { useState, useCallback, useEffect, useRef, useMemo } from "react";
+import { FileEdit, User, Loader2, RefreshCw } from "lucide-react";
 import useSWR from "swr";
 
 interface LeadsTableProps {
@@ -80,6 +80,11 @@ export function LeadsTable({ initialData }: LeadsTableProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // State for Fineract statuses fetched after initial load
+  const [leadStatuses, setLeadStatuses] = useState<Record<string, { status: string | null; payoutStatus?: string }>>({});
+  const [isLoadingStatuses, setIsLoadingStatuses] = useState(false);
+  const statusesFetchedRef = useRef<Set<string>>(new Set());
 
   // Debounce search input
   useEffect(() => {
@@ -96,54 +101,96 @@ export function LeadsTable({ initialData }: LeadsTableProps) {
     };
   }, [searchQuery]);
 
-  // Check if any filters are active
-  const hasActiveFilters = customFilters.some((f) => f.value && f.value !== "");
-  const hasSearchOrFilters = debouncedSearch.length >= 2 || hasActiveFilters;
+  // Fetch Fineract statuses for leads that have been submitted to Fineract
+  useEffect(() => {
+    const fetchStatuses = async () => {
+      // Get leads that need status fetch (submitted to Fineract but status not yet fetched)
+      const leadsNeedingStatus = (initialLeads as Lead[]).filter(
+        (lead) =>
+          lead.loanSubmittedToFineract &&
+          !lead.fineractLoanStatus &&
+          !statusesFetchedRef.current.has(lead.id)
+      );
+
+      if (leadsNeedingStatus.length === 0) return;
+
+      // Mark these leads as being fetched
+      leadsNeedingStatus.forEach((lead) => statusesFetchedRef.current.add(lead.id));
+
+      setIsLoadingStatuses(true);
+      try {
+        const leadIds = leadsNeedingStatus.map((lead) => lead.id);
+        const statuses = await fetchLeadStatuses(leadIds);
+        setLeadStatuses((prev) => ({ ...prev, ...statuses }));
+      } catch (error) {
+        console.error("Error fetching lead statuses:", error);
+      } finally {
+        setIsLoadingStatuses(false);
+      }
+    };
+
+    fetchStatuses();
+  }, [initialLeads]);
 
   // Check if status filter is active (need to fetch Fineract statuses)
   const hasStatusFilter = customFilters.some(
     (f) => f.columnId === "leadStatus" && f.value && f.value !== ""
   );
 
-  // Build API URL for server-side search/filter
-  const buildApiUrl = useCallback(() => {
-    if (!hasSearchOrFilters) return null;
-    
-    const params = new URLSearchParams();
-    params.set("limit", "500"); // Fetch more when searching
-    
-    // Only skip Fineract status if no status filter is applied
-    // When filtering by status, we need to fetch actual statuses from Fineract
-    if (!hasStatusFilter) {
-      params.set("skipFineractStatus", "true");
-    }
-    
-    // Add search query if present
-    if (debouncedSearch.length >= 2) {
-      params.set("search", debouncedSearch);
-    }
-    
-    // Add filters
-    customFilters.forEach((filter) => {
-      if (filter.value) {
-        params.set(filter.columnId, filter.value);
-      }
-    });
-    
-    return `/api/leads/paginated?${params.toString()}`;
-  }, [debouncedSearch, customFilters, hasSearchOrFilters, hasStatusFilter]);
-
-  // Fetch filtered data from server when search/filters are active
-  const { data: serverData, isLoading: isSearching } = useSWR(
-    buildApiUrl(),
+  // Always fetch data via SWR for live updates
+  // Use initialData for fast first render, then poll for updates
+  const { data: serverData, isLoading: isSearching, mutate } = useSWR(
+    `/api/leads/paginated?${new URLSearchParams({
+      limit: "100",
+      skipFineractStatus: hasStatusFilter ? "false" : "true",
+      ...(debouncedSearch.length >= 2 ? { search: debouncedSearch } : {}),
+      ...Object.fromEntries(
+        customFilters
+          .filter((f) => f.value)
+          .map((f) => [f.columnId, String(f.value)])
+      ),
+    }).toString()}`,
     fetcher,
-    { revalidateOnFocus: false }
+    {
+      fallbackData: { leads: initialLeads },
+      refreshInterval: 30000, // Poll every 30 seconds
+      revalidateOnFocus: true, // Refresh when user returns to tab
+      revalidateOnReconnect: true, // Refresh on network reconnect
+      dedupingInterval: 5000, // Dedupe requests within 5 seconds
+    }
   );
 
-  // Use server data when searching/filtering, otherwise use initial data
-  const leads = hasSearchOrFilters && serverData?.leads 
-    ? serverData.leads 
-    : initialLeads;
+  // Expose mutate for manual refresh if needed
+  const refreshLeads = useCallback(() => {
+    mutate();
+    // Also refresh statuses
+    statusesFetchedRef.current.clear();
+    setLeadStatuses({});
+  }, [mutate]);
+
+  // Use server data (with fallback to initial data via SWR)
+  // Merge fetched statuses with leads data
+  const leads = useMemo(() => {
+    const baseLeads = serverData?.leads || initialLeads;
+    
+    // If no statuses fetched, return base leads
+    if (Object.keys(leadStatuses).length === 0) {
+      return baseLeads;
+    }
+    
+    // Merge fetched statuses into leads
+    return (baseLeads as Lead[]).map((lead) => {
+      const fetchedStatus = leadStatuses[lead.id];
+      if (fetchedStatus && fetchedStatus.status) {
+        return {
+          ...lead,
+          fineractLoanStatus: fetchedStatus.status,
+          payoutStatus: fetchedStatus.payoutStatus || lead.payoutStatus,
+        };
+      }
+      return lead;
+    });
+  }, [serverData?.leads, initialLeads, leadStatuses]);
 
   // Define table columns using DataTableColumn format
   const columns: DataTableColumn<Lead>[] = [
@@ -386,7 +433,19 @@ export function LeadsTable({ initialData }: LeadsTableProps) {
       defaultSorting={[{ id: "createdAt", desc: true }]}
       externalSearch={searchQuery}
       onSearchChange={setSearchQuery}
-      isLoading={isSearching}
+      isLoading={isSearching || isLoadingStatuses}
+      headerActions={
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={refreshLeads}
+          disabled={isSearching || isLoadingStatuses}
+          className="h-9"
+        >
+          <RefreshCw className={`h-4 w-4 mr-2 ${(isSearching || isLoadingStatuses) ? "animate-spin" : ""}`} />
+          <span className="hidden sm:inline">Refresh</span>
+        </Button>
+      }
     />
   );
 }
