@@ -304,8 +304,13 @@ export function BankDetailsFields({
     [bankHeader, branchCodeHeader, branchNameHeader, onFieldChange]
   );
 
+  // Additional banks that may not be returned by Fineract API but should always be available
+  const ADDITIONAL_BANKS = [
+    { id: -1, name: "ACCESS BANK" },
+  ];
+
   // Build bank options from Fineract CODELOOKUP
-  const bankOptions =
+  const bankOptionsFromFineract =
     bankHeader?.columnValues?.map((option: any) => {
       let label = option.id.toString();
       if (option.name) {
@@ -329,6 +334,22 @@ export function BankDetailsFields({
         label,
       };
     }) || [];
+
+  // Add any missing additional banks
+  const bankOptions = [...bankOptionsFromFineract];
+  for (const additionalBank of ADDITIONAL_BANKS) {
+    const exists = bankOptions.some(
+      (opt) => opt.label.toUpperCase() === additionalBank.name.toUpperCase()
+    );
+    if (!exists) {
+      bankOptions.push({
+        value: additionalBank.id.toString(),
+        label: additionalBank.name,
+      });
+    }
+  }
+  // Sort alphabetically
+  bankOptions.sort((a, b) => a.label.localeCompare(b.label));
 
   // Build branch code options from our local data
   const branchCodeOptions = availableBranches.map((branch) => ({
