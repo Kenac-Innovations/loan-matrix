@@ -49,6 +49,18 @@ interface FineractLoanWebhookPayload {
   };
 }
 
+/**
+ * Check if externalId is from our system (CUID format)
+ * Skip notifications for external IDs like "LA..." which are not from our system
+ */
+function isValidSystemExternalId(externalId: string | undefined | null): boolean {
+  if (!externalId) return false;
+  // Our system generates CUIDs that start with "c" (e.g., "cmkqilit0001w53013uirgks9")
+  // Skip IDs that start with "LA" or other non-CUID patterns
+  // CUIDs are 25 characters long and start with "c"
+  return externalId.startsWith("c") && externalId.length >= 20;
+}
+
 // POST /api/webhooks/fineract/loans
 export async function POST(request: NextRequest) {
   try {
@@ -59,6 +71,17 @@ export async function POST(request: NextRequest) {
     console.log("Loan ID:", payload.response?.loanId);
     console.log("External ID:", payload.response?.resourceExternalId);
     console.log("Created By:", payload.createdBy);
+    
+    // Check if this loan is from our system
+    const externalId = payload.response?.resourceExternalId || payload.request?.externalId;
+    if (!isValidSystemExternalId(externalId)) {
+      console.log("Skipping webhook - external ID is not from our system:", externalId);
+      return NextResponse.json({ 
+        success: true, 
+        message: "Skipped - external ID not from this system",
+        externalId 
+      });
+    }
     
     // Get tenant from header or default
     const tenantSlug = request.headers.get("x-tenant-slug") || 
