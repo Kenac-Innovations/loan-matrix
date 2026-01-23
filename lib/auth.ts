@@ -209,6 +209,8 @@ export const authOptions: NextAuthOptions = {
         // NOTE: Only store essential data to avoid 431 "Request Header Fields Too Large" error
         // rawPermissions can be very large and causes the JWT cookie to exceed size limits
         if (user) {
+          token.name = user.name;
+          token.email = user.email;
           token.accessToken = user.accessToken;
           token.userId = user.userId;
           token.base64EncodedAuthenticationKey =
@@ -239,6 +241,8 @@ export const authOptions: NextAuthOptions = {
         // Add user data to session.user
         if (session.user) {
           session.user.id = token.sub ?? "";
+          session.user.name = token.name as string;
+          session.user.email = token.email as string;
           session.user.userId = token.userId as number;
           session.user.officeId = token.officeId as number;
           session.user.officeName = token.officeName as string;

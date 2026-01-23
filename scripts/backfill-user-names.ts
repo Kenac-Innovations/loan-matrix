@@ -9,7 +9,8 @@ const prisma = new PrismaClient();
 
 // Fineract configuration from environment
 const FINERACT_BASE_URL = process.env.FINERACT_BASE_URL || "http://10.10.0.143";
-const FINERACT_TENANT_ID = process.env.FINERACT_TENANT_ID || "default";
+// Force goodfellow tenant for user lookup
+const FINERACT_TENANT_ID = "goodfellow";
 const FINERACT_USERNAME = process.env.FINERACT_USERNAME || "mifos";
 const FINERACT_PASSWORD = process.env.FINERACT_PASSWORD || "password";
 
