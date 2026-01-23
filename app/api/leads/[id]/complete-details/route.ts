@@ -124,6 +124,12 @@ export async function GET(
         familyMembers: lead.familyMembers,
         stateTransitions: lead.stateTransitions,
         fineractClientId: lead.fineractClientId,
+        fineractLoanId: lead.fineractLoanId,
+        // Originator info
+        userId: lead.userId,
+        createdByUserName: lead.createdByUserName,
+        assignedToUserId: lead.assignedToUserId,
+        assignedToUserName: lead.assignedToUserName,
       },
       loanInfo: {
         loanDetails,

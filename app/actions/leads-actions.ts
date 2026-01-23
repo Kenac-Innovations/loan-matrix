@@ -375,6 +375,7 @@ export async function getLeadsData(
         createdAt: lead.createdAt,
         updatedAt: lead.updatedAt,
         userId: lead.userId, // Include created by user ID
+        createdByUserName: lead.createdByUserName, // Full name of user who created the lead
         // Fineract tracking fields
         fineractLoanId: lead.fineractLoanId,
         loanSubmittedToFineract: lead.loanSubmittedToFineract,

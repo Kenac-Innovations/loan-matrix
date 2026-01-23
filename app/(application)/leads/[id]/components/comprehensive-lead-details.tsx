@@ -644,6 +644,18 @@ export function ComprehensiveLeadDetails({
                     <p className="text-muted-foreground">Email</p>
                     <p className="font-medium">{lead.emailAddress || "N/A"}</p>
                   </div>
+                  <div>
+                    <p className="text-muted-foreground">Originated By</p>
+                    <p className="font-medium">
+                      {lead.createdByUserName || lead.userId || "N/A"}
+                    </p>
+                  </div>
+                  {lead.assignedToUserName && lead.createdByUserName && lead.assignedToUserName !== lead.createdByUserName && (
+                    <div>
+                      <p className="text-muted-foreground">Assigned To</p>
+                      <p className="font-medium">{lead.assignedToUserName}</p>
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>

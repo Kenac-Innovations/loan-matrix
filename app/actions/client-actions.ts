@@ -100,7 +100,9 @@ export async function saveDraft(
       throw new Error("User not authenticated");
     }
     const userId = session.user.id;
+    const createdByUserName = session.user.name || session.user.email || userId;
     console.log("==========> User ID from session:", userId);
+    console.log("==========> Created by user name:", createdByUserName);
 
     // Get or create the default tenant
     const tenant = await getOrCreateDefaultTenant();
@@ -152,6 +154,7 @@ export async function saveDraft(
       const lead = await prisma.lead.create({
         data: {
           userId,
+          createdByUserName,
           tenantId,
           officeId: validatedData.officeId,
           officeName: validatedData.officeName,

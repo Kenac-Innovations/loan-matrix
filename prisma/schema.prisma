@@ -91,6 +91,7 @@ model Lead {
   clientId                   Int?
   resourceId                 Int?
   userId                     String
+  createdByUserName          String?             // Full name of user who created the lead
   currentStep                Int                 @default(1)
   lastModified               DateTime            @default(now())
   currentStageId             String?

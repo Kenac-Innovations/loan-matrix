@@ -62,19 +62,11 @@ const LOAN_STATUS_OPTIONS = [
   { label: "Withdrawn by applicant", value: "Withdrawn by applicant" },
 ];
 
-// Predefined loan types for filter dropdown
-const LOAN_TYPE_OPTIONS = [
-  { label: "Personal Loan", value: "Personal Loan" },
-  { label: "Business Loan", value: "Business Loan" },
-  { label: "Mortgage", value: "Mortgage" },
-  { label: "Not specified", value: "Not specified" },
-];
 
 export function LeadsTable({ initialData }: LeadsTableProps) {
   const { leads: initialLeads, pipelineStages } = initialData;
   const [customFilters, setCustomFilters] = useState<DataTableFilter[]>([
     { columnId: "leadStatus", value: "", type: "select" },
-    { columnId: "type", value: "", type: "select" },
   ]);
   const [navigatingLeadId, setNavigatingLeadId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -314,15 +306,22 @@ export function LeadsTable({ initialData }: LeadsTableProps) {
       header: "Amount",
     },
     {
-      id: "type",
-      accessorKey: "type",
-      header: "Type",
-      cell: ({ getValue }) => (
-        <Badge variant="outline" className="text-xs">
-          {getValue()}
-        </Badge>
-      ),
-      filterOptions: LOAN_TYPE_OPTIONS,
+      id: "loanOfficer",
+      accessorKey: "createdByUserName",
+      header: "Loan Officer",
+      cell: ({ row }) => {
+        const lead = row.original;
+        // Show createdByUserName (originator), falling back to assignedToUserName, then userId
+        const officerName = lead.createdByUserName || lead.assignedToUserName || lead.userId || "Unknown";
+        return (
+          <div className="flex items-center gap-2">
+            <User className="h-3 w-3 text-muted-foreground" />
+            <span className="text-xs truncate max-w-[120px]" title={officerName}>
+              {officerName}
+            </span>
+          </div>
+        );
+      },
     },
     {
       id: "assignedTo",

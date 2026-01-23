@@ -212,80 +212,118 @@ async function handleLoanCreated(payload: FineractLoanWebhookPayload, tenantId: 
 
 /**
  * Handle loan approved - notify the user who originally created the loan
+ * and automatically assign the loan to the originator
  */
 async function handleLoanApproved(payload: FineractLoanWebhookPayload, tenantId: string) {
   const { response, request, createdBy, createdByFullName } = payload;
   const loanId = response.loanId;
   const externalId = response.resourceExternalId;
-  const approvedAmount = request.approvedLoanAmount;
+  
+  console.log("=== APPROVE WEBHOOK DEBUG ===");
+  console.log("Loan ID:", loanId);
+  console.log("External ID:", externalId);
   
   // Find the original creator of the loan from the lead
-  let clientName = "Unknown Client";
-  let leadId = externalId;
+  let clientName = "";
+  let leadId: string | null = null;
+  let originatorUserId: string | null = null;
+  let originatorMifosId: number | null = null;
   
+  // Build query conditions - only include valid conditions
+  const queryConditions: any[] = [];
   if (externalId) {
-    const lead = await prisma.lead.findFirst({
-      where: { 
-        OR: [
-          { id: externalId },
-          { externalId: externalId },
-          { fineractLoanId: loanId }
-        ]
-      },
-      select: { 
-        id: true, 
-        firstname: true, 
-        lastname: true,
-        userId: true, // The user who created the lead in the app
-      },
-    });
+    queryConditions.push({ id: externalId });
+    queryConditions.push({ externalId: externalId });
+  }
+  if (loanId) {
+    queryConditions.push({ fineractLoanId: loanId });
+  }
+  
+  console.log("Query conditions:", JSON.stringify(queryConditions));
+  
+  // Get the loan record to find the originator
+  const loanRecord = queryConditions.length > 0 
+    ? await prisma.lead.findFirst({
+        where: { OR: queryConditions },
+        select: {
+          id: true,
+          firstname: true,
+          lastname: true,
+          userId: true,
+          assignedToUserId: true,
+        },
+      })
+    : null;
+
+  console.log("Lead record found:", loanRecord ? loanRecord.id : "NOT FOUND");
+
+  if (loanRecord) {
+    const fullName = [loanRecord.firstname, loanRecord.lastname].filter(Boolean).join(" ");
+    clientName = fullName || "";
+    leadId = loanRecord.id;
+    originatorUserId = loanRecord.userId;
     
-    if (lead) {
-      clientName = [lead.firstname, lead.lastname].filter(Boolean).join(" ") || "Unknown Client";
-      leadId = lead.id;
-      // Note: lead.userId is the app user, we need to map to mifosUserId if needed
+    console.log("Client name:", clientName);
+    console.log("Lead ID:", leadId);
+    console.log("Originator user ID:", originatorUserId);
+    
+    // The userId in the lead is the Mifos user ID (stored as string)
+    // Convert it to number for assignment
+    if (originatorUserId) {
+      originatorMifosId = Number.parseInt(originatorUserId, 10);
+      if (Number.isNaN(originatorMifosId)) {
+        originatorMifosId = null;
+      }
     }
   }
 
-  const loanAmount = approvedAmount ? `$${approvedAmount.toLocaleString()}` : "N/A";
+  // === AUTO-ASSIGN LOAN TO ORIGINATOR (Local DB only) ===
+  if (originatorMifosId && leadId) {
+    try {
+      console.log(`Assigning lead ${leadId} to originator (Mifos ID: ${originatorMifosId})`);
+      
+      // Update local lead record with assignment
+      await prisma.lead.update({
+        where: { id: leadId },
+        data: {
+          assignedToUserId: originatorMifosId,
+          assignedAt: new Date(),
+        },
+      });
+      
+      console.log(`Successfully assigned lead ${leadId} to originator (Mifos ID: ${originatorMifosId})`);
+    } catch (assignError) {
+      console.error("Failed to auto-assign lead to originator:", assignError);
+      // Continue with alerts even if assignment fails
+    }
+  }
 
-  // Create alert for the user who submitted the loan (createdBy from original submission)
-  // In Fineract webhooks, createdBy is the user who performed THIS action (approval)
-  // We need to look up who originally submitted the loan
+  // === CREATE ALERTS ===
   
-  // For now, we'll create an alert for the approver to acknowledge
-  // and also try to find the original submitter
+  // Build client display name
+  const clientDisplay = clientName || "the client";
+  const actionUrl = leadId ? `/leads/${leadId}` : undefined;
   
-  // Get the loan to find original submitter
-  const loanRecord = await prisma.lead.findFirst({
-    where: {
-      OR: [
-        { id: externalId || "" },
-        { fineractLoanId: loanId }
-      ]
-    },
-    select: {
-      assignedToUserId: true,
-      userId: true, // App user who created
-    },
-  });
-
-  // If there's an assigned user, notify them
-  if (loanRecord?.assignedToUserId) {
+  console.log("Action URL for alerts:", actionUrl);
+  
+  // Notify the originator (or assigned user) about approval
+  const notifyUserId = originatorMifosId || loanRecord?.assignedToUserId;
+  if (notifyUserId) {
     await prisma.alert.create({
       data: {
         tenantId,
-        mifosUserId: loanRecord.assignedToUserId,
+        mifosUserId: notifyUserId,
         type: "SUCCESS",
         title: "Loan Application Approved",
-        message: `Great news! The loan application for ${clientName} (${loanAmount}) has been approved by ${createdByFullName}.`,
-        actionUrl: leadId ? `/leads/${leadId}` : undefined,
-        actionLabel: "View Details",
+        message: `Great news! The loan application for ${clientDisplay} has been approved by ${createdByFullName}.`,
+        actionUrl,
+        actionLabel: actionUrl ? "View Details" : undefined,
         metadata: {
           loanId,
           externalId,
-          approvedAmount,
+          leadId,
           approvedBy: createdByFullName,
+          autoAssigned: !!originatorMifosId,
           action: "APPROVE",
         },
         createdBy: "System",
@@ -300,20 +338,20 @@ async function handleLoanApproved(payload: FineractLoanWebhookPayload, tenantId:
       mifosUserId: createdBy,
       type: "SUCCESS",
       title: "Loan Approved Successfully",
-      message: `You approved the loan application for ${clientName} (${loanAmount}).`,
-      actionUrl: leadId ? `/leads/${leadId}` : undefined,
-      actionLabel: "View Details",
+      message: `You approved the loan application for ${clientDisplay}.`,
+      actionUrl,
+      actionLabel: actionUrl ? "View Details" : undefined,
       metadata: {
         loanId,
         externalId,
-        approvedAmount,
+        leadId,
         action: "APPROVE",
       },
       createdBy: "System",
     },
   });
 
-  console.log("Loan APPROVE alerts created successfully");
+  console.log("Loan APPROVE alerts created and loan auto-assigned successfully");
 }
 
 /**
