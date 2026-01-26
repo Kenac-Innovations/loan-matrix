@@ -309,7 +309,7 @@ export function AllocateFundsModal({
 
         {hasGlAccount && (
           <div className="bg-muted p-3 rounded-md text-sm">
-            <p className="font-medium">Receiving GL Account (Debit)</p>
+            <p className="font-medium">Receiving GL Account (Credit)</p>
             <p className="text-muted-foreground">
               {bankGlAccountCode} - {bankGlAccountName}
             </p>
@@ -374,7 +374,7 @@ export function AllocateFundsModal({
 
             {/* Source GL Account */}
             <div className="space-y-2">
-              <Label htmlFor="sourceGlAccountId">Source GL Account (Credit) *</Label>
+              <Label htmlFor="sourceGlAccountId">Source GL Account (Debit) *</Label>
               <SearchableSelect
                 options={glAccounts
                   .filter((gl) => gl.id !== bankGlAccountId) // Exclude the bank's own GL
