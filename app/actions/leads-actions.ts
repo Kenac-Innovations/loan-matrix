@@ -172,13 +172,14 @@ export async function getLeadsData(
     limit?: number;
     offset?: number;
     assignedToUserId?: number; // Filter by assigned user ID (for Loan Officers)
+    loanOfficerFilter?: { oderId: number; userIdString: string }; // Filter for loan officers (created OR assigned)
     skipFineractStatus?: boolean; // Skip slow Fineract status lookups for faster loading
     search?: string; // Text search for client name
     leadStatus?: string; // Filter by Fineract loan status
   } = {}
 ): Promise<LeadsData> {
   try {
-    const { stage, status, limit = 50, offset = 0, assignedToUserId, skipFineractStatus = false, search, leadStatus } = options;
+    const { stage, status, limit = 50, offset = 0, assignedToUserId, loanOfficerFilter, skipFineractStatus = false, search, leadStatus } = options;
 
     // Get tenant - prefer headers for consistency with API routes
     let tenant = await getTenantFromHeaders();
@@ -206,19 +207,40 @@ export async function getLeadsData(
       where.status = status;
     }
 
-    // Filter by assigned user ID if provided (for Loan Officers)
+    // Filter by assigned user ID if provided (legacy single filter)
     if (assignedToUserId) {
       where.assignedToUserId = assignedToUserId;
     }
 
+    // Loan officer filter: see leads they created OR leads assigned to them
+    if (loanOfficerFilter) {
+      const { oderId, userIdString } = loanOfficerFilter;
+      where.OR = [
+        { userId: userIdString }, // Leads they created
+        { assignedToUserId: oderId }, // Leads assigned to them
+      ];
+    }
+
     // Text search for client name, ID, or phone
     if (search && search.length >= 2) {
-      where.OR = [
+      // If we already have an OR clause (from loanOfficerFilter), we need to use AND
+      const searchConditions = [
         { firstname: { contains: search, mode: "insensitive" } },
         { lastname: { contains: search, mode: "insensitive" } },
         { externalId: { contains: search, mode: "insensitive" } },
         { mobileNo: { contains: search, mode: "insensitive" } },
       ];
+
+      if (where.OR) {
+        // Combine loan officer filter with search using AND
+        where.AND = [
+          { OR: where.OR },
+          { OR: searchConditions },
+        ];
+        delete where.OR;
+      } else {
+        where.OR = searchConditions;
+      }
     }
 
     // Get leads with related data

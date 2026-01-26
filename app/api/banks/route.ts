@@ -127,7 +127,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { name, code, description, officeId, officeName } = body;
+    const { name, code, description, officeId, officeName, glAccountId, glAccountName, glAccountCode } = body;
 
     if (!name || !code) {
       return NextResponse.json(
@@ -160,6 +160,9 @@ export async function POST(request: NextRequest) {
         description,
         officeId: officeId ? parseInt(officeId) : null,
         officeName: officeName || null,
+        glAccountId: glAccountId || null,
+        glAccountName: glAccountName || null,
+        glAccountCode: glAccountCode || null,
         status: "ACTIVE",
         isActive: true,
       },

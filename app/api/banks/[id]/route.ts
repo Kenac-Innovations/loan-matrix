@@ -121,7 +121,7 @@ export async function PUT(
     }
 
     const body = await request.json();
-    const { name, code, description, officeId, officeName, status, isActive } =
+    const { name, code, description, officeId, officeName, glAccountId, glAccountName, glAccountCode, status, isActive } =
       body;
 
     // Find existing bank
@@ -162,6 +162,9 @@ export async function PUT(
           officeId: officeId ? parseInt(officeId) : null,
         }),
         ...(officeName !== undefined && { officeName }),
+        ...(glAccountId !== undefined && { glAccountId }),
+        ...(glAccountName !== undefined && { glAccountName }),
+        ...(glAccountCode !== undefined && { glAccountCode }),
         ...(status && { status }),
         ...(isActive !== undefined && { isActive }),
       },

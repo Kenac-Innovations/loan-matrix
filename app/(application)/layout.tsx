@@ -1,35 +1,14 @@
 import type React from "react";
 import { getUserProfileData } from "./components/user-profile-data";
 
-// Client components
-
-import Link from "next/link";
 import Image from "next/image";
-import {
-  BarChart3,
-  Bot,
-  CreditCard,
-  FileText,
-  Home,
-  Lock,
-  Phone,
-  PlusCircle,
-  Settings,
-  Shield,
-  Users,
-  TrendingUp,
-  Wallet,
-  Building2,
-  Landmark,
-} from "lucide-react";
 import AIAssistant from "@/components/ai-assistant";
 import { Suspense } from "react";
 
-// Client component for mobile sidebar
-
+// Client components
 import { UserProfileClient } from "./components/user-profile-client";
 import { MobileSidebar } from "./components/mobile-sidebar";
-import MenuItemWithSubmenu from "@/components/menu-with-sub";
+import { SidebarNav } from "./components/sidebar-nav";
 import { ChatProvider } from "@/contexts/chat-context";
 import { TenantDisplay } from "@/components/tenant-display";
 import { MobileMenuProvider } from "./components/mobile-menu-context";
@@ -70,146 +49,7 @@ export default async function DashboardLayout({
             </div>
             <TenantDisplay />
             <div className="py-4 h-[calc(100vh-7rem)] overflow-y-auto">
-              <nav className="space-y-1 px-2">
-                {/* <Link
-                href="/leads/new"
-                className="flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-              >
-                <PlusCircle className="h-4 w-4" />
-                New Lead
-              </Link>
-              <Link
-                href="/dashboard"
-                className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-              >
-                <Home className="h-4 w-4" />
-                Dashboard
-              </Link> */}
-
-                <div className="space-y-1">
-                  <MenuItemWithSubmenu
-                    icon={<TrendingUp />}
-                    label="Leads"
-                    href="/leads"
-                    subMenuItems={[
-                      { label: "Pipeline", href: "/leads" },
-                      { label: "USSD Leads", href: "/ussd-leads" },
-                      { label: "Configuration", href: "/leads/config" },
-                    ]}
-                  />
-                </div>
-
-                <Link
-                  href="/loans"
-                  className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                >
-                  <CreditCard className="h-4 w-4" />
-                  Loans
-                </Link>
-
-                <div className="space-y-1">
-                  <MenuItemWithSubmenu
-                    icon={<Users />}
-                    label="Clients"
-                    href="/clients"
-                    subMenuItems={[
-                      { label: "All Clients", href: "/clients" },
-                      { label: "Add Client", href: "/clients/new" },
-                    ]}
-                  />
-                </div>
-
-                <MenuItemWithSubmenu
-                  icon={<Landmark />}
-                  label="Cash Management"
-                  href="/banks"
-                  subMenuItems={[
-                    { label: "Banks", href: "/banks" },
-                    { label: "Tellers", href: "/tellers" },
-                  ]}
-                />
-
-                <MenuItemWithSubmenu
-                  icon={<BarChart3 />}
-                  label="Accounting"
-                  href="/accounting"
-                  subMenuItems={[
-                    { label: "Home", href: "/accounting" },
-                    {
-                      label: "Chart of Accounts",
-                      href: "/accounting/chart-of-accounts",
-                    },
-                    {
-                      label: "Journal Entries",
-                      href: "/accounting/search-journal",
-                    },
-                    {
-                      label: "Frequent Postings",
-                      href: "/accounting/frequent-postings",
-                    },
-                  ]}
-                />
-
-                <Link
-                  href="/reports"
-                  className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                >
-                  <FileText className="h-4 w-4" />
-                  Reports
-                </Link>
-
-                {/* <Link
-                href="#"
-                className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-              >
-                <FileText className="h-4 w-4" />
-                Documents
-              </Link>
-
-              <Link
-                href="#"
-                className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-              >
-                <BarChart3 className="h-4 w-4" />
-                Analytics
-              </Link>
-
-              <Link
-                href="#"
-                className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-              >
-                <Shield className="h-4 w-4" />
-                Compliance
-              </Link>
-
-              <Link
-                href="#"
-                className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-              >
-                <Lock className="h-4 w-4" />
-                Security
-              </Link> */}
-
-                <div className="space-y-1">
-                  <MenuItemWithSubmenu
-                    icon={<Bot />}
-                    label="AI Assistant"
-                    href="/ai-assistant"
-                    subMenuItems={[
-                      { label: "Chat", href: "/ai-assistant" },
-                      { label: "Admin", href: "/rag-admin" },
-                    ]}
-                  />
-                </div>
-
-                {/* <Link
-                href="#"
-                className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-              >
-                <Settings className="h-4 w-4" />
-                Settings
-              </Link> */}
-              </nav>
+              <SidebarNav />
             </div>
           </div>
 

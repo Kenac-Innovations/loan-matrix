@@ -25,6 +25,9 @@ interface EditBankModalProps {
     description?: string;
     officeId?: number;
     officeName?: string;
+    glAccountId?: number;
+    glAccountName?: string;
+    glAccountCode?: string;
     status: string;
   };
   onSuccess?: () => void;
@@ -35,6 +38,13 @@ interface Office {
   name: string;
 }
 
+interface GLAccount {
+  id: number;
+  name: string;
+  glCode: string;
+  type: { value: string };
+}
+
 export function EditBankModal({
   open,
   onOpenChange,
@@ -43,12 +53,15 @@ export function EditBankModal({
 }: EditBankModalProps) {
   const [loading, setLoading] = useState(false);
   const [offices, setOffices] = useState<Office[]>([]);
+  const [glAccounts, setGlAccounts] = useState<GLAccount[]>([]);
   const [loadingOffices, setLoadingOffices] = useState(false);
+  const [loadingGlAccounts, setLoadingGlAccounts] = useState(false);
   const [formData, setFormData] = useState({
     name: "",
     code: "",
     description: "",
     officeId: "",
+    glAccountId: "",
     status: "",
   });
 
@@ -59,9 +72,11 @@ export function EditBankModal({
         code: bank.code,
         description: bank.description || "",
         officeId: bank.officeId?.toString() || "",
+        glAccountId: bank.glAccountId?.toString() || "",
         status: bank.status,
       });
       fetchOffices();
+      fetchGlAccounts();
     }
   }, [open, bank]);
 
@@ -80,9 +95,30 @@ export function EditBankModal({
     }
   };
 
+  const fetchGlAccounts = async () => {
+    setLoadingGlAccounts(true);
+    try {
+      // Fetch all detail accounts (usage=1) that are not disabled
+      const response = await fetch("/api/fineract/glaccounts/detail?usage=1&disabled=false");
+      if (response.ok) {
+        const data = await response.json();
+        setGlAccounts(data || []);
+      }
+    } catch (error) {
+      console.error("Error fetching GL accounts:", error);
+    } finally {
+      setLoadingGlAccounts(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+
+    // Get selected GL account details
+    const selectedGlAccount = formData.glAccountId
+      ? glAccounts.find((gl) => gl.id === parseInt(formData.glAccountId))
+      : null;
 
     try {
       const response = await fetch(`/api/banks/${bank.id}`, {
@@ -96,6 +132,9 @@ export function EditBankModal({
           officeName: formData.officeId
             ? offices.find((o) => o.id === parseInt(formData.officeId))?.name
             : null,
+          glAccountId: selectedGlAccount?.id || null,
+          glAccountName: selectedGlAccount?.name || null,
+          glAccountCode: selectedGlAccount?.glCode || null,
           status: formData.status,
         }),
       });
@@ -172,6 +211,28 @@ export function EditBankModal({
                 emptyMessage="No offices found"
                 disabled={loadingOffices}
               />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="glAccountId">GL Account</Label>
+              <SearchableSelect
+                options={glAccounts.map((gl) => ({
+                  value: gl.id.toString(),
+                  label: `${gl.glCode} - ${gl.name}`,
+                }))}
+                value={formData.glAccountId}
+                onValueChange={(value) =>
+                  setFormData({ ...formData, glAccountId: value })
+                }
+                placeholder={
+                  loadingGlAccounts ? "Loading GL accounts..." : "Select GL account"
+                }
+                emptyMessage="No GL accounts found"
+                disabled={loadingGlAccounts}
+              />
+              <p className="text-xs text-muted-foreground">
+                Link this bank to a GL account for journal entries
+              </p>
             </div>
 
             <div className="space-y-2">

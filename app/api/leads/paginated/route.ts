@@ -4,15 +4,16 @@ import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getFineractTenantId } from "@/lib/fineract-tenant-service";
 
-// Check if user has Loan Officer role (only sees their assigned leads)
-async function getUserRoleFilter(): Promise<{ isLoanOfficer: boolean; userId: number | null }> {
+// Check if user has Loan Officer role (sees their created and assigned leads)
+async function getUserRoleFilter(): Promise<{ isLoanOfficer: boolean; userId: number | null; userIdString: string | null }> {
   try {
     const session = await getSession();
     if (!session?.user?.userId) {
-      return { isLoanOfficer: false, userId: null };
+      return { isLoanOfficer: false, userId: null, userIdString: null };
     }
 
     const mifosUserId = session.user.userId;
+    const mifosUserIdString = mifosUserId.toString();
     const fineractTenantId = await getFineractTenantId();
 
     // Get tenant
@@ -21,7 +22,7 @@ async function getUserRoleFilter(): Promise<{ isLoanOfficer: boolean; userId: nu
     });
 
     if (!tenant) {
-      return { isLoanOfficer: false, userId: null };
+      return { isLoanOfficer: false, userId: null, userIdString: null };
     }
 
     // Check if user has Loan Officer role in local DB
@@ -41,10 +42,10 @@ async function getUserRoleFilter(): Promise<{ isLoanOfficer: boolean; userId: nu
       (ur) => ur.role.name === "LOAN_OFFICER"
     );
 
-    return { isLoanOfficer, userId: mifosUserId };
+    return { isLoanOfficer, userId: mifosUserId, userIdString: mifosUserIdString };
   } catch (error) {
     console.error("Error checking user role:", error);
-    return { isLoanOfficer: false, userId: null };
+    return { isLoanOfficer: false, userId: null, userIdString: null };
   }
 }
 
@@ -61,8 +62,8 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get("search") || undefined;
     const leadStatus = searchParams.get("leadStatus") || undefined;
 
-    // Check if user is a Loan Officer (should only see their assigned leads)
-    const { isLoanOfficer, userId } = await getUserRoleFilter();
+    // Check if user is a Loan Officer (sees their created and assigned leads)
+    const { isLoanOfficer, userId, userIdString } = await getUserRoleFilter();
 
     const leadsData = await getLeadsData(tenantSlug, {
       stage,
@@ -72,7 +73,10 @@ export async function GET(request: NextRequest) {
       skipFineractStatus,
       search,
       leadStatus,
-      ...(isLoanOfficer && userId ? { assignedToUserId: userId } : {}),
+      // Loan officers see leads they created OR leads assigned to them
+      ...(isLoanOfficer && userId && userIdString
+        ? { loanOfficerFilter: { oderId: userId, userIdString } }
+        : {}),
     });
 
     return NextResponse.json(leadsData);
