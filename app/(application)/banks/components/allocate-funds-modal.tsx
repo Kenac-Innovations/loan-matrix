@@ -248,10 +248,11 @@ export function AllocateFundsModal({
 
       const journalResult = await journalResponse.json();
 
-      // Also record the allocation in local database
+      // Also record the allocation in local database to update bank balance
       const allocationResponse = await fetch(`/api/banks/${bankId}/allocate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include", // Include session cookies for authentication
         body: JSON.stringify({
           amount: amount,
           currency: formData.currency,
@@ -261,12 +262,23 @@ export function AllocateFundsModal({
       });
 
       if (!allocationResponse.ok) {
-        console.error("Failed to record allocation locally, but journal entry was created");
+        const allocationError = await allocationResponse.json().catch(() => ({}));
+        console.error("Failed to record allocation locally:", allocationError);
+        // Still show success for journal entry but warn about local record
+        setJournalEntryResult({
+          success: true,
+          message: `Journal entry created but failed to update local balance: ${allocationError.error || "Unknown error"}. Please refresh the page.`,
+          transactionId: journalResult.transactionId,
+        });
+        return;
       }
+
+      const allocationResult = await allocationResponse.json();
+      console.log("Allocation recorded:", allocationResult);
 
       setJournalEntryResult({
         success: true,
-        message: "Funds allocated successfully! Journal entry has been created.",
+        message: `Funds allocated successfully! Bank balance updated to ${allocationResult.bankBalance?.totalAllocated?.toLocaleString() || amount} ${formData.currency}.`,
         transactionId: journalResult.transactionId,
       });
 
