@@ -126,7 +126,7 @@ export function AllocateFundsModal({
       const [currenciesRes, glAccountsRes, paymentTypesRes, officesRes] =
         await Promise.all([
           fetch("/api/fineract/currencies"),
-          fetch("/api/fineract/glaccounts/detail?usage=1&disabled=false"),
+          fetch("/api/fineract/glaccounts/detail?usage=1&disabled=false&manualEntriesAllowed=true"),
           fetch("/api/fineract/paymenttypes"),
           fetch("/api/fineract/offices"),
         ]);
@@ -211,13 +211,13 @@ export function AllocateFundsModal({
         currencyCode: formData.currency,
         debits: [
           {
-            glAccountId: bankGlAccountId,
+            glAccountId: parseInt(formData.sourceGlAccountId),
             amount: amount,
           },
         ],
         credits: [
           {
-            glAccountId: parseInt(formData.sourceGlAccountId),
+            glAccountId: bankGlAccountId,
             amount: amount,
           },
         ],

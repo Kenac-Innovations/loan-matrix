@@ -65,8 +65,8 @@ export default function NewBankPage() {
 
   const fetchGlAccounts = async () => {
     try {
-      // Fetch all detail accounts (usage=1) that are not disabled
-      const response = await fetch("/api/fineract/glaccounts/detail?usage=1&disabled=false");
+      // Fetch all detail accounts (usage=1) that are not disabled and allow manual entries
+      const response = await fetch("/api/fineract/glaccounts/detail?usage=1&disabled=false&manualEntriesAllowed=true");
       if (response.ok) {
         const data = await response.json();
         setGlAccounts(data || []);
