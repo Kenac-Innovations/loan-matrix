@@ -830,6 +830,60 @@ export async function POST(
         },
       });
 
+      // AUTO-SETTLE: Return counted cash to vault
+      // This ensures vault balance is updated when session closes
+      if (closingBalance > 0) {
+        try {
+          // Get currency from cashier's allocations or default
+          const cashierAllocation = await prisma.cashAllocation.findFirst({
+            where: {
+              tellerId,
+              cashierId: cashier.id,
+              tenantId: tenant.id,
+              status: "ACTIVE",
+              notes: { not: { contains: "Variance" } },
+            },
+            orderBy: { allocatedDate: "desc" },
+          });
+          const currency = cashierAllocation?.currency || "ZMW";
+
+          // Create negative allocation for cashier (cash out)
+          await prisma.cashAllocation.create({
+            data: {
+              tenantId: tenant.id,
+              tellerId,
+              cashierId: cashier.id,
+              fineractAllocationId: null,
+              amount: -closingBalance, // Negative = cash out from cashier
+              currency: currency,
+              allocatedBy: session.user.id,
+              notes: `Session close settlement: Return to vault`,
+              status: "ACTIVE",
+            },
+          });
+          console.log(`Created cashier settlement: -${closingBalance} ${currency}`);
+
+          // Create positive allocation for vault (cash in)
+          await prisma.cashAllocation.create({
+            data: {
+              tenantId: tenant.id,
+              tellerId,
+              cashierId: null, // null = vault
+              fineractAllocationId: null,
+              amount: closingBalance, // Positive = cash in to vault
+              currency: currency,
+              allocatedBy: session.user.id,
+              notes: `Return from ${cashier.staffName || "Cashier"}: Session close`,
+              status: "ACTIVE",
+            },
+          });
+          console.log(`Created vault allocation: +${closingBalance} ${currency}`);
+        } catch (settleError: any) {
+          console.error("Error auto-settling on session close:", settleError.message);
+          // Don't fail the close, just log the error
+        }
+      }
+
       // If there's a variance, create an allocation record for audit trail
       // NOTE: Variance allocations are EXCLUDED from cashier balance calculations
       // Variance is tracked separately and does not affect cashier balance

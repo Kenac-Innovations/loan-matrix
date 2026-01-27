@@ -520,12 +520,11 @@ export async function POST(
     }
 
     // Determine if this is a "return to vault" or external cash out
-    const isReturnToVault = txnType !== "DISBURSEMENT" && 
-      (notes?.toLowerCase().includes("vault") || 
-       notes?.toLowerCase().includes("safe") || 
-       notes?.toLowerCase().includes("settlement") ||
-       notes?.toLowerCase().includes("return") ||
-       !notes); // Default to return to vault if no notes
+    // For non-disbursement transactions, ALWAYS return to vault
+    // This ensures vault balance is updated when cashier settles cash
+    const isReturnToVault = txnType !== "DISBURSEMENT";
+    
+    console.log(`Settlement type: ${txnType}, isReturnToVault: ${isReturnToVault}, amount: ${amount}`);
     
     // Create a negative allocation record (cash out from cashier)
     const settlementNotes =
@@ -548,11 +547,12 @@ export async function POST(
         status: "ACTIVE",
       },
     });
+    console.log(`Created cashier settlement: ID=${settlement.id}, cashierId=${cashier.id}, amount=-${amount} ${currency}`);
 
     // If this is a return to vault (not a disbursement/external expense), 
     // also create a positive allocation for the vault
     if (isReturnToVault) {
-      await prisma.cashAllocation.create({
+      const vaultAllocation = await prisma.cashAllocation.create({
         data: {
           tenantId: tenant.id,
           tellerId: teller.id,
@@ -565,7 +565,9 @@ export async function POST(
           status: "ACTIVE",
         },
       });
-      console.log(`Created vault allocation of +${amount} ${currency} (return from cashier)`);
+      console.log(`Created vault allocation: ID=${vaultAllocation.id}, tellerId=${teller.id}, amount=+${amount} ${currency}`);
+    } else {
+      console.log(`Skipped vault allocation (disbursement transaction)`);
     }
 
     // If this is a disbursement, update the loan payout record

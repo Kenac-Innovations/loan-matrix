@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
 import { getSession } from "@/lib/auth";
+import { fetchFineractAPI } from "@/lib/api";
 
 /**
  * GET /api/banks
@@ -56,12 +57,6 @@ export async function GET(request: NextRequest) {
     // Calculate balances for each bank
     const banksWithBalances = await Promise.all(
       banks.map(async (bank) => {
-        // Total funds allocated to this bank
-        const totalAllocated = bank.allocations.reduce(
-          (sum, alloc) => sum + alloc.amount,
-          0
-        );
-
         // Get all teller vault allocations for this bank
         const tellerAllocations = await prisma.cashAllocation.findMany({
           where: {
@@ -77,8 +72,43 @@ export async function GET(request: NextRequest) {
           0
         );
 
+        // Get bank balance from Fineract GL account if configured
+        let totalAllocated = 0;
+        let currency = "ZMW";
+        let balanceSource = "local";
+
+        if (bank.glAccountId) {
+          try {
+            const journalData = await fetchFineractAPI(
+              `/journalentries?glAccountId=${bank.glAccountId}&runningBalance=true&limit=1&orderBy=id&sortOrder=DESC`
+            );
+
+            if (journalData?.pageItems && journalData.pageItems.length > 0) {
+              const latestEntry = journalData.pageItems[0];
+              totalAllocated = latestEntry.organizationRunningBalance || latestEntry.officeRunningBalance || 0;
+              currency = latestEntry.currency?.code || "ZMW";
+              balanceSource = "fineract";
+            }
+          } catch (error) {
+            console.error(`Failed to fetch GL balance for bank ${bank.id}:`, error);
+            // Fallback to local allocations
+            totalAllocated = bank.allocations.reduce(
+              (sum, alloc) => sum + alloc.amount,
+              0
+            );
+            currency = bank.allocations[0]?.currency || "ZMW";
+            balanceSource = "local_fallback";
+          }
+        } else {
+          // No GL account configured, use local allocations
+          totalAllocated = bank.allocations.reduce(
+            (sum, alloc) => sum + alloc.amount,
+            0
+          );
+          currency = bank.allocations[0]?.currency || "ZMW";
+        }
+
         const availableBalance = totalAllocated - allocatedToTellers;
-        const currency = bank.allocations[0]?.currency || "ZMW";
 
         return {
           ...bank,
@@ -86,6 +116,7 @@ export async function GET(request: NextRequest) {
           allocatedToTellers,
           availableBalance,
           currency,
+          balanceSource,
           tellerCount: bank._count.tellers,
           activeTellers: bank.tellers.length,
           // Remove internal fields
