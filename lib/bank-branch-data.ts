@@ -2028,6 +2028,106 @@ export const bankBranchData: BankBranch[] = [
     branchName: "Waterfall",
     branchCode: "040039",
   },
+  {
+    bankName: "STANDARD CHARTERED BANK",
+    branchName: "North End",
+    branchCode: "060043",
+  },
+  {
+    bankName: "STANDARD CHARTERED BANK",
+    branchName: "Jacaranda Mall Branch",
+    branchCode: "060120",
+  },
+  {
+    bankName: "STANDARD CHARTERED BANK",
+    branchName: "Buteko",
+    branchCode: "060171",
+  },
+  {
+    bankName: "STANDARD CHARTERED BANK",
+    branchName: "Zambia Way",
+    branchCode: "060228",
+  },
+  {
+    bankName: "STANDARD CHARTERED BANK",
+    branchName: "Chingola",
+    branchCode: "060336",
+  },
+  {
+    bankName: "STANDARD CHARTERED BANK",
+    branchName: "Chililabombwe",
+    branchCode: "060444",
+  },
+  {
+    bankName: "STANDARD CHARTERED BANK",
+    branchName: "Customer Service Centre",
+    branchCode: "060002",
+  },
+  {
+    bankName: "STANDARD CHARTERED BANK",
+    branchName: "Cross Roads",
+    branchCode: "060015",
+  },
+  {
+    bankName: "STANDARD CHARTERED BANK",
+    branchName: "Lusaka Main",
+    branchCode: "060017",
+  },
+  {
+    bankName: "STANDARD CHARTERED BANK",
+    branchName: "Financial Control",
+    branchCode: "060011",
+  },
+  {
+    bankName: "STANDARD CHARTERED BANK",
+    branchName: "Kabulonga",
+    branchCode: "060014",
+  },
+  {
+    bankName: "STANDARD CHARTERED BANK",
+    branchName: "Levy Park Branch",
+    branchCode: "060021",
+  },
+  {
+    bankName: "STANDARD CHARTERED BANK",
+    branchName: "Manda Hill",
+    branchCode: "060030",
+  },
+  {
+    bankName: "STANDARD CHARTERED BANK",
+    branchName: "Livingstone",
+    branchCode: "061018",
+  },
+  {
+    bankName: "STANDARD CHARTERED BANK",
+    branchName: "Kasama",
+    branchCode: "060813",
+  },
+  {
+    bankName: "STANDARD CHARTERED BANK",
+    branchName: "Luanshya",
+    branchCode: "060732",
+  },
+  {
+    bankName: "STANDARD CHARTERED BANK",
+    branchName: "Choma",
+    branchCode: "061237",
+  },
+  {
+    bankName: "STANDARD CHARTERED BANK",
+    branchName: "Solwezi",
+    branchCode: "062816",
+  },
+  {
+    bankName: "STANDARD CHARTERED BANK",
+    branchName: "Mazabuka",
+    branchCode: "063619",
+  },
+  {
+    bankName: "STANDARD CHARTERED BANK",
+    branchName: "Mongu",
+    branchCode: "063148",
+  }  
 ];
 
 /**
