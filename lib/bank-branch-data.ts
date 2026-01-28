@@ -107,6 +107,7 @@ export const bankBranchData: BankBranch[] = [
     branchName: "Mbala",
     branchCode: "351416",
   },
+  
   // BAYPORT BANK
   {
     bankName: "BAYPORT",
@@ -2028,6 +2029,7 @@ export const bankBranchData: BankBranch[] = [
     branchName: "Waterfall",
     branchCode: "040039",
   },
+  // STANDARD CHARTERED BANK
   {
     bankName: "STANDARD CHARTERED BANK",
     branchName: "North End",
