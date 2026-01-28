@@ -42,6 +42,11 @@ export const ADDITIONAL_BANKS: Bank[] = [
     name: "ACCESS BANK",
     isActive: true,
   },
+  {
+    id: -2, // Placeholder ID - will be used for display only
+    name: "STANDARD CHARTERED BANK",
+    isActive: true,
+  },
 ];
 
 // Delimiter used in branch code value names
