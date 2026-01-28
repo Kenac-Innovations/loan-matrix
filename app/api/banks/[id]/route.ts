@@ -76,19 +76,31 @@ export async function GET(
 
     if (bank.glAccountId) {
       try {
-        // Fetch GL account balance from Fineract
+        // Fetch ALL journal entries for this GL account and calculate balance manually
+        // For ASSET accounts: DEBIT increases balance, CREDIT decreases balance
         const journalData = await fetchFineractAPI(
-          `/journalentries?glAccountId=${bank.glAccountId}&runningBalance=true&limit=1&orderBy=id&sortOrder=DESC`
+          `/journalentries?glAccountId=${bank.glAccountId}&limit=500&orderBy=id&sortOrder=DESC`
         );
 
         if (journalData?.pageItems && journalData.pageItems.length > 0) {
+          // Calculate balance from all entries
+          let calculatedBalance = 0;
+          for (const entry of journalData.pageItems) {
+            if (entry.entryType?.value === "DEBIT") {
+              calculatedBalance += entry.amount || 0;
+            } else if (entry.entryType?.value === "CREDIT") {
+              calculatedBalance -= entry.amount || 0;
+            }
+          }
+          
           const latestEntry = journalData.pageItems[0];
-          totalAllocated = latestEntry.organizationRunningBalance || latestEntry.officeRunningBalance || 0;
+          totalAllocated = calculatedBalance;
           currency = latestEntry.currency?.code || "ZMW";
           glAccountBalance = {
             balance: totalAllocated,
             currency,
-            source: "fineract",
+            source: "fineract_calculated",
+            entryCount: journalData.pageItems.length,
             lastEntry: {
               id: latestEntry.id,
               date: latestEntry.transactionDate,

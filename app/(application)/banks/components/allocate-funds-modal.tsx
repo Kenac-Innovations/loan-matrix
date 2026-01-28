@@ -206,18 +206,20 @@ export function AllocateFundsModal({
       const amount = parseFloat(formData.amount);
 
       // Create journal entry in Fineract
+      // For asset accounts: DEBIT increases balance, CREDIT decreases balance
+      // When allocating funds TO a bank: DEBIT the bank (increase), CREDIT the source (decrease)
       const journalEntryPayload = {
         officeId: parseInt(formData.officeId),
         currencyCode: formData.currency,
         debits: [
           {
-            glAccountId: parseInt(formData.sourceGlAccountId),
+            glAccountId: bankGlAccountId, // DEBIT bank to INCREASE its balance
             amount: amount,
           },
         ],
         credits: [
           {
-            glAccountId: bankGlAccountId,
+            glAccountId: parseInt(formData.sourceGlAccountId), // CREDIT source to decrease
             amount: amount,
           },
         ],
@@ -321,7 +323,7 @@ export function AllocateFundsModal({
 
         {hasGlAccount && (
           <div className="bg-muted p-3 rounded-md text-sm">
-            <p className="font-medium">Receiving GL Account (Credit)</p>
+            <p className="font-medium">Receiving GL Account (Debit)</p>
             <p className="text-muted-foreground">
               {bankGlAccountCode} - {bankGlAccountName}
             </p>
@@ -386,7 +388,7 @@ export function AllocateFundsModal({
 
             {/* Source GL Account */}
             <div className="space-y-2">
-              <Label htmlFor="sourceGlAccountId">Source GL Account (Debit) *</Label>
+              <Label htmlFor="sourceGlAccountId">Source GL Account (Credit) *</Label>
               <SearchableSelect
                 options={glAccounts
                   .filter((gl) => gl.id !== bankGlAccountId) // Exclude the bank's own GL
