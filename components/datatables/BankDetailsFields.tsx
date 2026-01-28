@@ -307,6 +307,7 @@ export function BankDetailsFields({
   // Additional banks that may not be returned by Fineract API but should always be available
   const ADDITIONAL_BANKS = [
     { id: -1, name: "ACCESS BANK" },
+    { id: -2, name: "STANDARD CHARTERED BANK" },
   ];
 
   // Build bank options from Fineract CODELOOKUP
