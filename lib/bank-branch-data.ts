@@ -2029,6 +2029,7 @@ export const bankBranchData: BankBranch[] = [
     branchName: "Waterfall",
     branchCode: "040039",
   },
+
   // STANDARD CHARTERED BANK
   {
     bankName: "STANDARD CHARTERED BANK",
