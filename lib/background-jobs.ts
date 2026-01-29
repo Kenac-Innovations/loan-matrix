@@ -1,6 +1,7 @@
 import * as cron from "node-cron";
 import { getRAGService } from "./rag-service";
-import { getFineractService } from "./fineract-api";
+import { getFineractServiceWithSession } from "./fineract-api";
+import { prisma } from "./prisma";
 
 export class BackgroundJobService {
   private static instance: BackgroundJobService | null = null;
@@ -19,6 +20,7 @@ export class BackgroundJobService {
   startJobs(): void {
     this.startFineractIndexingJob();
     this.startCacheCleanupJob();
+    this.startDraftCleanupJob();
     this.startHealthCheckJob();
     console.log("Background jobs started successfully");
   }
@@ -75,13 +77,50 @@ export class BackgroundJobService {
     console.log("Cache cleanup job scheduled (every hour)");
   }
 
+  // Clean up DRAFT leads older than retention window (daily at midnight)
+  private startDraftCleanupJob(): void {
+    const job = cron.schedule(
+      "0 0 * * *", // Every day at midnight
+      async () => {
+        const retentionHours = Number(process.env.DRAFT_RETENTION_HOURS || 24);
+        const cutoff = new Date(
+          Date.now() - retentionHours * 60 * 60 * 1000
+        );
+
+        console.log(
+          `Starting draft cleanup (older than ${retentionHours}h)...`
+        );
+
+        try {
+          const result = await prisma.lead.deleteMany({
+            where: {
+              status: "DRAFT",
+              updatedAt: {
+                lt: cutoff,
+              },
+            },
+          });
+
+          console.log(
+            `Draft cleanup completed successfully (deleted ${result.count} leads)`
+          );
+        } catch (error) {
+          console.error("Error in draft cleanup:", error);
+        }
+      }
+    );
+
+    this.jobs.set("draft-cleanup", job);
+    console.log("Draft cleanup job scheduled (daily at midnight)");
+  }
+
   // Health check for Fineract connection every 30 minutes
   private startHealthCheckJob(): void {
     const job = cron.schedule(
       "*/30 * * * *", // Every 30 minutes
       async () => {
         try {
-          const fineractService = getFineractService();
+          const fineractService = await getFineractServiceWithSession();
           const isHealthy = await fineractService.healthCheck();
 
           if (isHealthy) {
