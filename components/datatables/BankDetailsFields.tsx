@@ -179,31 +179,52 @@ export function BankDetailsFields({
     [accountNumberHeader, onFieldChange]
   );
 
-  // Get the bank name from the CODELOOKUP value
+  // Additional banks that may not be returned by Fineract API but should always be available
+  const ADDITIONAL_BANKS = [
+    { id: -1, name: "ACCESS BANK" },
+    { id: -2, name: "STANDARD CHARTERED BANK" },
+  ];
+
+  // Get the bank name from the CODELOOKUP value or additional banks
   const getBankNameFromValue = useCallback(
     (value: any): string | null => {
-      if (!bankHeader?.columnValues || !value) return null;
+      if (!value) return null;
 
-      const matchingOption = bankHeader.columnValues.find(
-        (opt: any) => opt.id === value || opt.id === Number(value)
-      );
+      const numericValue = Number(value);
 
-      if (matchingOption) {
-        // Extract the actual name
-        if (matchingOption.name) {
-          return matchingOption.name;
-        } else if (matchingOption.value) {
-          // Clean up value if it has code prefix
-          const valueStr = String(matchingOption.value);
-          const cdMatch = valueStr.match(/^(.+?)\s+cd_[a-z_]+\s+/i);
-          if (cdMatch && cdMatch[1]) {
-            return cdMatch[1].trim();
+      // Check additional banks first (negative IDs)
+      if (numericValue < 0) {
+        const additionalBank = ADDITIONAL_BANKS.find(
+          (bank) => bank.id === numericValue
+        );
+        if (additionalBank) {
+          return additionalBank.name;
+        }
+      }
+
+      // Check Fineract code values
+      if (bankHeader?.columnValues) {
+        const matchingOption = bankHeader.columnValues.find(
+          (opt: any) => opt.id === value || opt.id === numericValue
+        );
+
+        if (matchingOption) {
+          // Extract the actual name
+          if (matchingOption.name) {
+            return matchingOption.name;
+          } else if (matchingOption.value) {
+            // Clean up value if it has code prefix
+            const valueStr = String(matchingOption.value);
+            const cdMatch = valueStr.match(/^(.+?)\s+cd_[a-z_]+\s+/i);
+            if (cdMatch && cdMatch[1]) {
+              return cdMatch[1].trim();
+            }
+            const prefixMatch = valueStr.match(/^cd_[a-z_]+\s+(.+)$/i);
+            if (prefixMatch && prefixMatch[1]) {
+              return prefixMatch[1].trim();
+            }
+            return valueStr;
           }
-          const prefixMatch = valueStr.match(/^cd_[a-z_]+\s+(.+)$/i);
-          if (prefixMatch && prefixMatch[1]) {
-            return prefixMatch[1].trim();
-          }
-          return valueStr;
         }
       }
       return null;
@@ -303,12 +324,6 @@ export function BankDetailsFields({
     },
     [bankHeader, branchCodeHeader, branchNameHeader, onFieldChange]
   );
-
-  // Additional banks that may not be returned by Fineract API but should always be available
-  const ADDITIONAL_BANKS = [
-    { id: -1, name: "ACCESS BANK" },
-    { id: -2, name: "STANDARD CHARTERED BANK" },
-  ];
 
   // Build bank options from Fineract CODELOOKUP
   const bankOptionsFromFineract =
