@@ -50,13 +50,22 @@ export async function GET(
     }
 
     // Calculate teller allocations from local database
+    // Opening balances are excluded from allocatedToTellers as they represent
+    // existing cash at tellers, not allocations from the bank
     let allocatedToTellers = 0;
     const tellersWithBalances = bank.tellers.map((teller) => {
+      // Total vault balance includes opening balances (for teller display)
       const tellerVaultBalance = teller.cashAllocations.reduce(
         (sum, alloc) => sum + alloc.amount,
         0
       );
-      allocatedToTellers += tellerVaultBalance;
+      
+      // Only count allocations FROM BANK (exclude opening balances)
+      const bankAllocationsOnly = teller.cashAllocations
+        .filter((alloc) => !alloc.notes?.toLowerCase().includes("opening balance"))
+        .reduce((sum, alloc) => sum + alloc.amount, 0);
+      
+      allocatedToTellers += bankAllocationsOnly;
 
       return {
         id: teller.id,

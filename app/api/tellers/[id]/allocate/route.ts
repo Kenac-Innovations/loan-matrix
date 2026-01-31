@@ -83,10 +83,10 @@ export async function POST(
         },
       });
 
-      const allocatedToTellers = tellerAllocations.reduce(
-        (sum, alloc) => sum + alloc.amount,
-        0
-      );
+      // Exclude opening balances - they are existing cash at tellers, not from bank
+      const allocatedToTellers = tellerAllocations
+        .filter((alloc) => !alloc.notes?.toLowerCase().includes("opening balance"))
+        .reduce((sum, alloc) => sum + alloc.amount, 0);
 
       const bankAvailableBalance = totalBankFunds - allocatedToTellers;
 

@@ -67,10 +67,11 @@ export async function GET(request: NextRequest) {
           },
         });
 
-        const allocatedToTellers = tellerAllocations.reduce(
-          (sum, alloc) => sum + alloc.amount,
-          0
-        );
+        // Exclude opening balances from allocatedToTellers
+        // Opening balances are existing cash at tellers, not allocations from the bank
+        const allocatedToTellers = tellerAllocations
+          .filter((alloc) => !alloc.notes?.toLowerCase().includes("opening balance"))
+          .reduce((sum, alloc) => sum + alloc.amount, 0);
 
         // Get bank balance from Fineract GL account if configured
         let totalAllocated = 0;
