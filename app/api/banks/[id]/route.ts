@@ -61,8 +61,12 @@ export async function GET(
       );
       
       // Only count allocations FROM BANK (exclude opening balances)
+      // Opening balances are identified by: notes containing "opening balance" OR allocatedBy = "SYSTEM-IMPORT"
       const bankAllocationsOnly = teller.cashAllocations
-        .filter((alloc) => !alloc.notes?.toLowerCase().includes("opening balance"))
+        .filter((alloc) => 
+          !alloc.notes?.toLowerCase().includes("opening balance") && 
+          alloc.allocatedBy !== "SYSTEM-IMPORT"
+        )
         .reduce((sum, alloc) => sum + alloc.amount, 0);
       
       allocatedToTellers += bankAllocationsOnly;
