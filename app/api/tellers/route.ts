@@ -123,30 +123,75 @@ export async function GET(request: NextRequest) {
     });
 
     // Calculate balances for database tellers
+    // Formula: Vault = Bank Allocation - Cashier Balances (Fineract)
+    // This ensures vault is correct even if local settlement records fail to create
     const dbTellerBalances = await Promise.all(
       dbTellers.map(async (dbTeller) => {
-        const vaultBalance = dbTeller.cashAllocations.reduce(
+        // Get total bank allocation to this teller (from local DB)
+        const bankAllocationToTeller = dbTeller.cashAllocations.reduce(
           (sum, alloc) => sum + alloc.amount,
           0
         );
 
-        const cashierAllocations = await prisma.cashAllocation.findMany({
-          where: {
-            tellerId: dbTeller.id,
-            tenantId: tenant.id,
-            cashierId: { not: null },
-            status: "ACTIVE",
-            notes: { not: { contains: "Variance" } },
-          },
-        });
+        // Get cashier balances from Fineract (source of truth)
+        let allocatedToCashiers = 0;
+        const currency = "ZMW";
 
-        const allocatedToCashiers = cashierAllocations.reduce(
-          (sum, alloc) => sum + alloc.amount,
-          0
-        );
+        if (dbTeller.fineractTellerId) {
+          try {
+            const fineractCashiers = await fineractService.getCashiers(dbTeller.fineractTellerId);
+            
+            // Get balance for each cashier from Fineract
+            for (const fc of fineractCashiers) {
+              try {
+                const summary = await fineractService.getCashierSummaryAndTransactions(
+                  dbTeller.fineractTellerId,
+                  fc.id,
+                  "ZMK"
+                );
+                allocatedToCashiers += summary.netCash || 0;
+              } catch (err) {
+                // Silently continue if single cashier fails
+              }
+            }
+          } catch (err) {
+            console.error(`Error fetching Fineract cashier balances for teller ${dbTeller.fineractTellerId}:`, err);
+            // Fallback to local DB if Fineract fails
+            const cashierAllocations = await prisma.cashAllocation.findMany({
+              where: {
+                tellerId: dbTeller.id,
+                tenantId: tenant.id,
+                cashierId: { not: null },
+                status: "ACTIVE",
+                notes: { not: { contains: "Variance" } },
+              },
+            });
+            allocatedToCashiers = cashierAllocations.reduce(
+              (sum, alloc) => sum + alloc.amount,
+              0
+            );
+          }
+        } else {
+          // No Fineract ID, use local DB
+          const cashierAllocations = await prisma.cashAllocation.findMany({
+            where: {
+              tellerId: dbTeller.id,
+              tenantId: tenant.id,
+              cashierId: { not: null },
+              status: "ACTIVE",
+              notes: { not: { contains: "Variance" } },
+            },
+          });
+          allocatedToCashiers = cashierAllocations.reduce(
+            (sum, alloc) => sum + alloc.amount,
+            0
+          );
+        }
 
-        const availableBalance = vaultBalance - allocatedToCashiers;
-        const currency = dbTeller.cashAllocations[0]?.currency || "ZMW";
+        // Vault = Bank Allocation - Cashier Balances (Fineract)
+        // Automatically reflects settlements even if local vault record wasn't created
+        const vaultBalance = bankAllocationToTeller - allocatedToCashiers;
+        const availableBalance = vaultBalance;
 
         return {
           fineractTellerId: dbTeller.fineractTellerId,

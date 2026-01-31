@@ -365,26 +365,39 @@ export async function POST(
       );
     }
 
-    // Check cashier's available balance
-    const cashierAllocations = await prisma.cashAllocation.findMany({
-      where: {
-        tellerId: teller.id,
-        cashierId: cashier.id,
-        tenantId: tenant.id,
-        status: "ACTIVE",
-      },
-    });
-
-    const cashierBalance = cashierAllocations.reduce(
-      (sum, alloc) => sum + alloc.amount,
-      0
-    );
+    // Check cashier's available balance from Fineract (source of truth)
+    let cashierBalance = 0;
+    try {
+      const fineractService = await getFineractServiceWithSession();
+      const summary = await fineractService.getCashierSummaryAndTransactions(
+        teller.fineractTellerId,
+        fineractCashierId,
+        currency
+      );
+      cashierBalance = summary.netCash || 0;
+      console.log(`Fineract balance for cashier ${fineractCashierId}: ${cashierBalance}`);
+    } catch (err) {
+      console.error("Error fetching Fineract balance, falling back to local DB:", err);
+      // Fallback to local DB if Fineract fails
+      const cashierAllocations = await prisma.cashAllocation.findMany({
+        where: {
+          tellerId: teller.id,
+          cashierId: cashier.id,
+          tenantId: tenant.id,
+          status: "ACTIVE",
+        },
+      });
+      cashierBalance = cashierAllocations.reduce(
+        (sum, alloc) => sum + alloc.amount,
+        0
+      );
+    }
 
     if (parseFloat(amount) > cashierBalance) {
       return NextResponse.json(
         {
           error: "Insufficient balance",
-          details: `Cashier balance: ${cashierBalance.toFixed(
+          details: `Cashier balance (Fineract): ${cashierBalance.toFixed(
             2
           )} ${currency}, Requested: ${parseFloat(amount).toFixed(
             2

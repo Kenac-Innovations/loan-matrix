@@ -146,20 +146,42 @@ export async function GET(
       activeSessions.map((s) => [s.cashierId, s.sessionStatus])
     );
 
-    // Merge Fineract data with database IDs and session status
-    const mergedCashiers = fineractCashiers.map((fc: any) => {
-      const dbCashier = dbCashiers.find((dc) => dc.fineractCashierId === fc.id);
-      const sessionStatus = dbCashier
-        ? sessionStatusMap.get(dbCashier.id)
-        : null;
-      return {
-        ...fc,
-        // Include database ID if found, otherwise use Fineract ID as fallback
-        dbId: dbCashier?.id || null,
-        // Include session status from local database
-        sessionStatus: sessionStatus || "NOT_STARTED",
-      };
-    });
+    // Merge Fineract data with database IDs, session status, and Fineract balance
+    const mergedCashiers = await Promise.all(
+      fineractCashiers.map(async (fc: any) => {
+        const dbCashier = dbCashiers.find((dc) => dc.fineractCashierId === fc.id);
+        const sessionStatus = dbCashier
+          ? sessionStatusMap.get(dbCashier.id)
+          : null;
+
+        // Get balance from Fineract (source of truth)
+        let fineractBalance = 0;
+        try {
+          const summary = await fineractService.getCashierSummaryAndTransactions(
+            teller.fineractTellerId!,
+            fc.id,
+            "ZMK"
+          );
+          fineractBalance = summary.netCash || 0;
+        } catch (err) {
+          console.error(`Error getting Fineract balance for cashier ${fc.id}:`, err);
+        }
+
+        return {
+          ...fc,
+          // Include database ID if found, otherwise use Fineract ID as fallback
+          dbId: dbCashier?.id || null,
+          // Include session status from local database
+          sessionStatus: sessionStatus || "NOT_STARTED",
+          // Include Fineract balance (source of truth)
+          balance: fineractBalance,
+          currentAllocation: {
+            amount: fineractBalance,
+            currency: "ZMW",
+          },
+        };
+      })
+    );
 
     return NextResponse.json(mergedCashiers);
   } catch (error) {
