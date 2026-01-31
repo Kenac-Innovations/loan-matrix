@@ -562,26 +562,12 @@ export async function POST(
     });
     console.log(`Created cashier settlement: ID=${settlement.id}, cashierId=${cashier.id}, amount=-${amount} ${currency}`);
 
-    // If this is a return to vault (not a disbursement/external expense), 
-    // also create a positive allocation for the vault
-    if (isReturnToVault) {
-      const vaultAllocation = await prisma.cashAllocation.create({
-        data: {
-          tenantId: tenant.id,
-          tellerId: teller.id,
-          cashierId: null, // null = vault allocation
-          fineractAllocationId: null, // Vault allocations don't have Fineract IDs
-          amount: parseFloat(amount), // Positive for vault
-          currency: currency,
-          allocatedBy: session.user.id,
-          notes: `Return from ${cashier.staffName || "Cashier"}: ${settlementNotes}`,
-          status: "ACTIVE",
-        },
-      });
-      console.log(`Created vault allocation: ID=${vaultAllocation.id}, tellerId=${teller.id}, amount=+${amount} ${currency}`);
-    } else {
-      console.log(`Skipped vault allocation (disbursement transaction)`);
-    }
+    // NOTE: We no longer create vault allocation records for return to vault
+    // The vault balance is now derived from: Bank Allocation - Cashier Balances (Fineract)
+    // When Fineract cashier balance decreases, vault automatically increases
+    // Creating a vault record here would cause double counting
+    console.log(`Settlement type: ${txnType}, isReturnToVault: ${isReturnToVault}`);
+    console.log(`Vault balance will be derived from Fineract - no local vault record needed`);
 
     // If this is a disbursement, update the loan payout record
     if (txnType === "DISBURSEMENT" && loanPayout) {
