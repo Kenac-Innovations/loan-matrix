@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
+import { getFineractServiceWithSession } from "@/lib/fineract-api";
 
 /**
  * GET /api/tellers/[id]/transactions
@@ -36,6 +37,19 @@ export async function GET(
       return NextResponse.json({ error: "Teller not found" }, { status: 404 });
     }
 
+    // Fetch Fineract users to map user IDs to names
+    let userMap: Record<string, string> = {};
+    try {
+      const fineractService = await getFineractServiceWithSession();
+      const users = await fineractService.getUsers();
+      users.forEach((user: any) => {
+        userMap[user.id.toString()] = user.username || user.displayName || `User ${user.id}`;
+      });
+    } catch (err) {
+      console.error("Error fetching Fineract users:", err);
+      // Continue without user names - will fall back to IDs
+    }
+
     // Get all cash allocations for this teller's vault (cashierId = null)
     const allocations = await prisma.cashAllocation.findMany({
       where: {
@@ -61,6 +75,14 @@ export async function GET(
         transactionType = "VARIANCE_ADJUSTMENT";
       }
 
+      // Get user name from map, or use special labels for system entries
+      let allocatedByName = alloc.allocatedBy;
+      if (alloc.allocatedBy === "SYSTEM-IMPORT") {
+        allocatedByName = "System Import";
+      } else if (userMap[alloc.allocatedBy]) {
+        allocatedByName = userMap[alloc.allocatedBy];
+      }
+
       return {
         id: alloc.id,
         date: alloc.allocatedDate,
@@ -69,6 +91,7 @@ export async function GET(
         type: transactionType,
         notes: alloc.notes,
         allocatedBy: alloc.allocatedBy,
+        allocatedByName,
         status: alloc.status,
         runningBalance,
       };

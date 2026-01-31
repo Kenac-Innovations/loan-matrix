@@ -39,6 +39,7 @@ interface Transaction {
   type: string;
   notes: string | null;
   allocatedBy: string;
+  allocatedByName: string;
   status: string;
   runningBalance: number;
 }
@@ -342,7 +343,7 @@ export default function TellerTransactionsPage({
                           </span>
                         </TableCell>
                         <TableCell className="text-muted-foreground text-sm">
-                          {tx.allocatedBy === "SYSTEM-IMPORT" ? "System" : tx.allocatedBy?.slice(0, 8) || "—"}
+                          {tx.allocatedByName || "—"}
                         </TableCell>
                         <TableCell
                           className={`text-right font-medium ${
