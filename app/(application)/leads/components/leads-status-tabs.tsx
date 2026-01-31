@@ -17,7 +17,6 @@ import {
   Clock,
   CheckCircle2,
   XCircle,
-  ExternalLink,
   Loader2,
   AlertCircle,
   FileEdit,
@@ -146,6 +145,7 @@ export function LeadsStatusTabs() {
     approved: null,
     rejected: null,
   });
+  const [navigatingRowId, setNavigatingRowId] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   
   // Filter states for each tab
@@ -292,8 +292,11 @@ export function LeadsStatusTabs() {
     fetchReport(activeTab);
   };
 
-  // Columns to hide from display
+  // Columns to hide from display (but keep loan_account visible as link)
   const HIDDEN_COLUMNS = new Set(["lead_id", "loan_id", "client_id", "id", "external_id", "client_external_id"]);
+  
+  // Columns that should be rendered as links
+  const LINK_COLUMNS = new Set(["loan_account"]);
 
   // Generate columns for the data table
   const generateColumns = useCallback((data: any[]): DataTableColumn<any>[] => {
@@ -321,37 +324,43 @@ export function LeadsStatusTabs() {
 
     // Add data columns
     for (const col of columnKeys) {
+      const isLinkColumn = LINK_COLUMNS.has(col.toLowerCase());
+      
       columns.push({
         id: col,
         header: formatColumnHeader(col),
         accessorKey: col as keyof any,
-        cell: ({ getValue }) => formatCellValue(col, getValue()),
+        cell: ({ getValue, row }) => {
+          const value = getValue();
+          
+          // Render loan_account as a clickable link to loan detail page
+          if (isLinkColumn && value) {
+            const rowData = row.original;
+            const clientId = rowData.client_id;
+            const loanId = rowData.loan_id;
+            
+            // Only show as link if we have both client_id and loan_id
+            if (clientId && loanId) {
+              return (
+                <Link
+                  href={`/clients/${clientId}/loans/${loanId}`}
+                  className="text-primary hover:text-primary/80 hover:underline transition-colors font-medium"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {String(value)}
+                </Link>
+              );
+            }
+            
+            // Otherwise just show the value
+            return <span className="font-medium">{String(value)}</span>;
+          }
+          
+          return formatCellValue(col, value);
+        },
         enableSorting: true,
       });
     }
-
-    // Add action column
-    columns.push({
-      id: "actions",
-      header: "Action",
-      enableSorting: false,
-      enableHiding: false,
-      cell: ({ row }) => {
-        const rowData = row.original;
-        if (rowData.loan_account || rowData.lead_id) {
-          return (
-            <Link
-              href={rowData.lead_id ? `/leads/new?id=${rowData.lead_id}` : `/leads?search=${rowData.loan_account}`}
-              className="text-primary hover:text-primary/80 transition-colors inline-flex"
-              title={rowData.lead_id ? "Continue draft" : `View loan ${rowData.loan_account}`}
-            >
-              <ExternalLink className="h-4 w-4" />
-            </Link>
-          );
-        }
-        return null;
-      },
-    });
 
     return columns;
   }, []);
@@ -515,8 +524,25 @@ export function LeadsStatusTabs() {
           enableExport={true}
           pageSize={20}
           exportFileName={`leads-${report}-${format(dateRange.from, "yyyy-MM-dd")}`}
+          onRowClick={navigatingRowId ? undefined : (row: any) => {
+            // Get the lead ID from available fields
+            const leadId = row.lead_id || row.external_id || row.client_external_id;
+            
+            if (!leadId) return;
+            
+            // Set loading state
+            setNavigatingRowId(leadId);
+            
+            // Drafts tab → open new lead form to continue editing
+            // Other tabs (pending, approved, rejected) → open lead detail page
+            if (report === "drafts") {
+              globalThis.location.href = `/leads/new?id=${leadId}`;
+            } else {
+              globalThis.location.href = `/leads/${leadId}`;
+            }
+          }}
           emptyMessage="No records found for the selected filters."
-          isLoading={isLoading}
+          isLoading={isLoading || !!navigatingRowId}
         />
       </div>
     );
