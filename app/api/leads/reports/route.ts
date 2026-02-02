@@ -58,9 +58,52 @@ export async function GET(request: NextRequest) {
     console.log(`Report ${reportName} raw response:`, JSON.stringify(data).slice(0, 500));
 
     // Parse the report data - Fineract returns column headers and data rows
-    const result = parseReportData(data);
+    let result = parseReportData(data);
 
     console.log(`Report ${reportName} parsed ${result.length} rows`);
+
+    // Enrich with local lead IDs by looking up via fineractLoanId
+    if (result.length > 0) {
+      // Get tenant from header
+      const tenantSlug = request.headers.get("x-tenant-slug") || "goodfellow";
+      const tenant = await prisma.tenant.findFirst({
+        where: { slug: tenantSlug, isActive: true },
+      });
+
+      if (tenant) {
+        // Extract loan IDs from the report data
+        const loanIds = result
+          .map((row: any) => row.loan_id)
+          .filter((id: any) => id != null);
+
+        if (loanIds.length > 0) {
+          // Look up local leads by fineractLoanId
+          const leads = await prisma.lead.findMany({
+            where: {
+              tenantId: tenant.id,
+              fineractLoanId: { in: loanIds.map((id: any) => Number(id)) },
+            },
+            select: {
+              id: true,
+              fineractLoanId: true,
+            },
+          });
+
+          // Create a map of fineractLoanId -> leadId
+          const leadIdMap = new Map(
+            leads.map((lead) => [lead.fineractLoanId, lead.id])
+          );
+
+          // Add lead_id to each row
+          result = result.map((row: any) => ({
+            ...row,
+            lead_id: leadIdMap.get(Number(row.loan_id)) || null,
+          }));
+
+          console.log(`Enriched ${leads.length} rows with local lead IDs`);
+        }
+      }
+    }
 
     return NextResponse.json({
       report: report,

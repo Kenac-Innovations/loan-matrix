@@ -709,7 +709,11 @@ export function LeadsStatusTabs() {
             // Get the lead ID from available fields
             const leadId = row.lead_id || row.external_id || row.client_external_id;
             
-            if (!leadId) return;
+            if (!leadId) {
+              // Log for debugging - row doesn't have a matching local lead
+              console.warn("Cannot open lead: no lead_id found in row", row);
+              return;
+            }
             
             // Set loading state
             setNavigatingRowId(leadId);
