@@ -122,9 +122,24 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    // Calculate balances for database tellers
+    // OPTIMIZED: Fetch all cashiers for all tellers in parallel (single batch)
+    // This replaces multiple sequential calls with one parallel batch
+    const tellerCashiersMap = new Map<number, any[]>();
+    
+    await Promise.all(
+      fineractTellers.map(async (ft: any) => {
+        try {
+          const cashiers = await fineractService.getCashiers(ft.id);
+          tellerCashiersMap.set(ft.id, cashiers);
+        } catch (err) {
+          console.error(`Error fetching cashiers for teller ${ft.id}:`, err);
+          tellerCashiersMap.set(ft.id, []);
+        }
+      })
+    );
+
+    // Calculate balances for database tellers using cached cashier data
     // Formula: Vault = Bank Allocation - Cashier Balances (Fineract)
-    // This ensures vault is correct even if local settlement records fail to create
     const dbTellerBalances = await Promise.all(
       dbTellers.map(async (dbTeller) => {
         // Get total bank allocation to this teller (from local DB)
@@ -136,43 +151,34 @@ export async function GET(request: NextRequest) {
         // Get cashier balances from Fineract (source of truth)
         let allocatedToCashiers = 0;
         const currency = "ZMW";
+        let fineractCashiers: any[] = [];
 
         if (dbTeller.fineractTellerId) {
-          try {
-            const fineractCashiers = await fineractService.getCashiers(dbTeller.fineractTellerId);
-            
-            // Get balance for each cashier from Fineract
-            for (const fc of fineractCashiers) {
-              try {
-                const summary = await fineractService.getCashierSummaryAndTransactions(
-                  dbTeller.fineractTellerId,
-                  fc.id,
-                  "ZMK"
-                );
-                allocatedToCashiers += summary.netCash || 0;
-              } catch (err) {
-                // Silently continue if single cashier fails
-              }
-            }
-          } catch (err) {
-            console.error(`Error fetching Fineract cashier balances for teller ${dbTeller.fineractTellerId}:`, err);
-            // Fallback to local DB if Fineract fails
-            const cashierAllocations = await prisma.cashAllocation.findMany({
-              where: {
-                tellerId: dbTeller.id,
-                tenantId: tenant.id,
-                cashierId: { not: null },
-                status: "ACTIVE",
-                notes: { not: { contains: "Variance" } },
-              },
-            });
-            allocatedToCashiers = cashierAllocations.reduce(
-              (sum, alloc) => sum + alloc.amount,
-              0
+          // Use cached cashier data instead of fetching again
+          fineractCashiers = tellerCashiersMap.get(dbTeller.fineractTellerId) || [];
+          
+          if (fineractCashiers.length > 0) {
+            // Fetch all cashier summaries in parallel
+            const summaries = await Promise.all(
+              fineractCashiers.map(async (fc) => {
+                try {
+                  const summary = await fineractService.getCashierSummaryAndTransactions(
+                    dbTeller.fineractTellerId!,
+                    fc.id,
+                    "ZMK"
+                  );
+                  return summary.netCash || 0;
+                } catch (err) {
+                  return 0;
+                }
+              })
             );
+            allocatedToCashiers = summaries.reduce((sum, net) => sum + net, 0);
           }
-        } else {
-          // No Fineract ID, use local DB
+        }
+
+        // Fallback to local DB if no Fineract data
+        if (allocatedToCashiers === 0 && fineractCashiers.length === 0) {
           const cashierAllocations = await prisma.cashAllocation.findMany({
             where: {
               tellerId: dbTeller.id,
@@ -189,7 +195,6 @@ export async function GET(request: NextRequest) {
         }
 
         // Vault = Bank Allocation - Cashier Balances (Fineract)
-        // Automatically reflects settlements even if local vault record wasn't created
         const vaultBalance = bankAllocationToTeller - allocatedToCashiers;
         const availableBalance = vaultBalance;
 
@@ -202,28 +207,21 @@ export async function GET(request: NextRequest) {
           availableBalance,
           allocatedToCashiers,
           currentAllocation: { amount: availableBalance, currency },
-          activeCashiers: dbTeller.cashiers.length,
+          activeCashiers: fineractCashiers.length,
           settlementCount: dbTeller._count.settlements,
         };
       })
     );
 
-    // Fetch cashiers from Fineract for each teller
-    const tellersWithCashiers = await Promise.all(
-      fineractTellers.map(async (ft: any) => {
-        let fineractCashiers: any[] = [];
-        try {
-          fineractCashiers = await fineractService.getCashiers(ft.id);
-        } catch (err) {
-          console.error(`Error fetching cashiers for teller ${ft.id}:`, err);
-        }
-        return {
-          ...ft,
-          fineractCashiers,
-          activeCashiers: fineractCashiers.length,
-        };
-      })
-    );
+    // Use cached cashier data for merging (no duplicate fetch)
+    const tellersWithCashiers = fineractTellers.map((ft: any) => {
+      const fineractCashiers = tellerCashiersMap.get(ft.id) || [];
+      return {
+        ...ft,
+        fineractCashiers,
+        activeCashiers: fineractCashiers.length,
+      };
+    });
 
     // Merge Fineract data with database data - all should now have database IDs
     const mergedTellers = tellersWithCashiers.map((ft: any) => {
