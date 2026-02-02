@@ -343,8 +343,8 @@ export async function POST(
           return new Date();
         };
 
-        // Create cashier in database
-        console.log("Creating cashier from Fineract data:", {
+        // Create or update cashier in database (upsert to handle existing records)
+        console.log("Upserting cashier from Fineract data:", {
           fineractCashierId: fineractCashier.id,
           staffId: fineractCashier.staffId,
           staffName: fineractCashier.staffName,
@@ -352,37 +352,48 @@ export async function POST(
           endDate: fineractCashier.endDate,
         });
 
-        cashier = await prisma.cashier.create({
-          data: {
-            tenantId: tenant.id,
-            tellerId,
-            fineractCashierId: fineractCashier.id,
-            staffId: fineractCashier.staffId || 0,
-            staffName:
-              fineractCashier.staffName ||
-              fineractCashier.staff?.displayName ||
-              `Staff ${fineractCashier.staffId}`,
-            startDate: parseFineractDate(fineractCashier.startDate),
-            endDate: fineractCashier.endDate
-              ? parseFineractDate(fineractCashier.endDate)
+        const cashierData = {
+          tellerId,
+          staffId: fineractCashier.staffId || 0,
+          staffName:
+            fineractCashier.staffName ||
+            fineractCashier.staff?.displayName ||
+            `Staff ${fineractCashier.staffId}`,
+          startDate: parseFineractDate(fineractCashier.startDate),
+          endDate: fineractCashier.endDate
+            ? parseFineractDate(fineractCashier.endDate)
+            : null,
+          isFullDay:
+            fineractCashier.isFullDay !== undefined
+              ? fineractCashier.isFullDay
+              : true,
+          startTime:
+            fineractCashier.startTime && fineractCashier.startTime.trim()
+              ? fineractCashier.startTime.trim()
               : null,
-            isFullDay:
-              fineractCashier.isFullDay !== undefined
-                ? fineractCashier.isFullDay
-                : true,
-            startTime:
-              fineractCashier.startTime && fineractCashier.startTime.trim()
-                ? fineractCashier.startTime.trim()
-                : null,
-            endTime:
-              fineractCashier.endTime && fineractCashier.endTime.trim()
-                ? fineractCashier.endTime.trim()
-                : null,
-            status: "ACTIVE",
+          endTime:
+            fineractCashier.endTime && fineractCashier.endTime.trim()
+              ? fineractCashier.endTime.trim()
+              : null,
+          status: "ACTIVE",
+        };
+
+        cashier = await prisma.cashier.upsert({
+          where: {
+            tenantId_fineractCashierId: {
+              tenantId: tenant.id,
+              fineractCashierId: fineractCashier.id,
+            },
+          },
+          update: cashierData,
+          create: {
+            tenantId: tenant.id,
+            fineractCashierId: fineractCashier.id,
+            ...cashierData,
           },
         });
 
-        console.log("Created missing cashier in database:", cashier.id);
+        console.log("Upserted cashier in database:", cashier.id);
       } catch (error: any) {
         console.error("Error creating cashier from Fineract:", {
           message: error.message,
@@ -560,9 +571,9 @@ export async function POST(
             return new Date();
           };
 
-          // Create cashier in database
+          // Create or update cashier in database (upsert to handle existing records)
           console.log(
-            "Creating cashier from Fineract data for close session:",
+            "Upserting cashier from Fineract data for close session:",
             {
               fineractCashierId: fineractCashier.id,
               staffId: fineractCashier.staffId,
@@ -570,37 +581,48 @@ export async function POST(
             }
           );
 
-          cashier = await prisma.cashier.create({
-            data: {
-              tenantId: tenant.id,
-              tellerId,
-              fineractCashierId: fineractCashier.id,
-              staffId: fineractCashier.staffId || 0,
-              staffName:
-                fineractCashier.staffName ||
-                fineractCashier.staff?.displayName ||
-                `Staff ${fineractCashier.staffId}`,
-              startDate: parseFineractDate(fineractCashier.startDate),
-              endDate: fineractCashier.endDate
-                ? parseFineractDate(fineractCashier.endDate)
+          const cashierData = {
+            tellerId,
+            staffId: fineractCashier.staffId || 0,
+            staffName:
+              fineractCashier.staffName ||
+              fineractCashier.staff?.displayName ||
+              `Staff ${fineractCashier.staffId}`,
+            startDate: parseFineractDate(fineractCashier.startDate),
+            endDate: fineractCashier.endDate
+              ? parseFineractDate(fineractCashier.endDate)
+              : null,
+            isFullDay:
+              fineractCashier.isFullDay !== undefined
+                ? fineractCashier.isFullDay
+                : true,
+            startTime:
+              fineractCashier.startTime && fineractCashier.startTime.trim()
+                ? fineractCashier.startTime.trim()
                 : null,
-              isFullDay:
-                fineractCashier.isFullDay !== undefined
-                  ? fineractCashier.isFullDay
-                  : true,
-              startTime:
-                fineractCashier.startTime && fineractCashier.startTime.trim()
-                  ? fineractCashier.startTime.trim()
-                  : null,
-              endTime:
-                fineractCashier.endTime && fineractCashier.endTime.trim()
-                  ? fineractCashier.endTime.trim()
-                  : null,
-              status: "ACTIVE",
+            endTime:
+              fineractCashier.endTime && fineractCashier.endTime.trim()
+                ? fineractCashier.endTime.trim()
+                : null,
+            status: "ACTIVE",
+          };
+
+          cashier = await prisma.cashier.upsert({
+            where: {
+              tenantId_fineractCashierId: {
+                tenantId: tenant.id,
+                fineractCashierId: fineractCashier.id,
+              },
+            },
+            update: cashierData,
+            create: {
+              tenantId: tenant.id,
+              fineractCashierId: fineractCashier.id,
+              ...cashierData,
             },
           });
 
-          console.log("Created missing cashier in database:", cashier.id);
+          console.log("Upserted cashier in database:", cashier.id);
         } catch (error: any) {
           console.error("Error creating cashier from Fineract:", {
             message: error.message,
