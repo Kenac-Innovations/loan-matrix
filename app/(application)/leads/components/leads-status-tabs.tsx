@@ -115,12 +115,35 @@ function DateRangeLabel({ dateRange }: { dateRange: DateRange }) {
   );
 }
 
+// Extract tenant slug from hostname (client-side)
+function getTenantSlugFromHost(): string {
+  if (typeof globalThis.window === "undefined") return "goodfellow";
+  
+  const host = globalThis.location.hostname;
+  
+  // Handle localhost development
+  if (host === "localhost" || host === "127.0.0.1") {
+    return "goodfellow";
+  }
+  
+  // Extract subdomain (first part of hostname)
+  const parts = host.split(".");
+  if (parts.length > 2) {
+    return parts[0]; // e.g., "omama" from "omama.kenacloanmatrix.com"
+  }
+  
+  return "goodfellow";
+}
+
 export function LeadsStatusTabs() {
   const [activeTab, setActiveTab] = useState("drafts");
   const [dateRange, setDateRange] = useState<DateRange>({
     from: startOfDay(new Date()),
     to: endOfDay(new Date()),
   });
+  
+  // Get tenant slug from hostname
+  const tenantSlug = getTenantSlugFromHost();
   const [tabData, setTabData] = useState<Record<string, ReportData | null>>({
     drafts: null,
     pending: null,
@@ -241,7 +264,11 @@ export function LeadsStatusTabs() {
           endDate: formatDateForAPI(dateRange.to),
         });
 
-        const response = await fetch(`/api/leads/reports?${params}`);
+        const response = await fetch(`/api/leads/reports?${params}`, {
+          headers: {
+            "x-tenant-slug": tenantSlug,
+          },
+        });
         const data: ReportData = await response.json();
         
         if (!response.ok) {
@@ -263,7 +290,7 @@ export function LeadsStatusTabs() {
         setLoading((prev) => ({ ...prev, [report]: false }));
       }
     },
-    [dateRange]
+    [dateRange, tenantSlug]
   );
 
   // Fetch all counts on mount and when date range changes
