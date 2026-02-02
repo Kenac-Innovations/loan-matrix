@@ -208,6 +208,7 @@ async function transitionLeadStage(
   // Map loan actions to target stage names
   const actionToStageMap: Record<string, string> = {
     approve: "Approval",
+    reject: "Rejected",
     disburse: "Disbursement",
   };
 
