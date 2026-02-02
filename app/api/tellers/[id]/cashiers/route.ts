@@ -413,33 +413,73 @@ export async function POST(
       );
     }
 
-    // Create cashier in database
+    // Create or update cashier in database (upsert to handle existing records)
     try {
-      const cashier = await prisma.cashier.create({
-        data: {
-          tenantId: tenant.id,
-          tellerId: teller.id, // Use the database teller ID, not the URL param
-          fineractCashierId,
-          staffId: parseInt(staffId),
-          staffName: staffName || `Staff ${staffId}`,
-          startDate: new Date(startDate),
-          endDate: endDate
-            ? new Date(endDate)
-            : (() => {
-                // Set to 1 year from start date if not provided
-                const start = new Date(startDate);
-                const oneYearLater = new Date(start);
-                oneYearLater.setFullYear(start.getFullYear() + 1);
-                return oneYearLater;
-              })(),
-          startTime,
-          endTime,
-          isFullDay: isFullDay !== undefined ? isFullDay : true,
-          status: "PENDING",
-        },
-      });
+      const endDateValue = endDate
+        ? new Date(endDate)
+        : (() => {
+            // Set to 1 year from start date if not provided
+            const start = new Date(startDate);
+            const oneYearLater = new Date(start);
+            oneYearLater.setFullYear(start.getFullYear() + 1);
+            return oneYearLater;
+          })();
 
-      console.log("Cashier created in database:", cashier.id);
+      let cashier;
+      
+      // If we have a Fineract cashier ID, use upsert to handle existing records
+      if (fineractCashierId) {
+        cashier = await prisma.cashier.upsert({
+          where: {
+            tenantId_fineractCashierId: {
+              tenantId: tenant.id,
+              fineractCashierId: fineractCashierId,
+            },
+          },
+          update: {
+            // Update existing record with new data
+            tellerId: teller.id,
+            staffId: Number.parseInt(staffId),
+            staffName: staffName || `Staff ${staffId}`,
+            startDate: new Date(startDate),
+            endDate: endDateValue,
+            startTime,
+            endTime,
+            isFullDay: isFullDay !== undefined ? isFullDay : true,
+          },
+          create: {
+            tenantId: tenant.id,
+            tellerId: teller.id,
+            fineractCashierId,
+            staffId: Number.parseInt(staffId),
+            staffName: staffName || `Staff ${staffId}`,
+            startDate: new Date(startDate),
+            endDate: endDateValue,
+            startTime,
+            endTime,
+            isFullDay: isFullDay !== undefined ? isFullDay : true,
+            status: "PENDING",
+          },
+        });
+        console.log("Cashier upserted in database:", cashier.id);
+      } else {
+        // No Fineract ID, just create
+        cashier = await prisma.cashier.create({
+          data: {
+            tenantId: tenant.id,
+            tellerId: teller.id,
+            staffId: Number.parseInt(staffId),
+            staffName: staffName || `Staff ${staffId}`,
+            startDate: new Date(startDate),
+            endDate: endDateValue,
+            startTime,
+            endTime,
+            isFullDay: isFullDay !== undefined ? isFullDay : true,
+            status: "PENDING",
+          },
+        });
+        console.log("Cashier created in database (no Fineract ID):", cashier.id);
+      }
 
       // If Fineract creation failed, return error but still include the database record
       if (fineractError) {
@@ -460,9 +500,9 @@ export async function POST(
       return NextResponse.json(
         {
           error: "Failed to create cashier in database",
-          details: dbError.message,
-          fineractError:
-            fineractError?.response?.data || fineractError?.message,
+          details: "The cashier exists in Fineract but could not be created in the local database.",
+          hint: "Please try creating the cashier manually or contact support.",
+          fineractError: dbError.message,
         },
         { status: 500 }
       );
