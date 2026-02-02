@@ -236,7 +236,7 @@ export function UserProfileClient({ userProfileData }: UserProfileClientProps) {
   }, [notificationsOpen, onCloseNotifications]);
 
   return (
-    <header className="flex h-16 items-center justify-between border-border border-b bg-background px-4 lg:px-6 sticky top-0 z-20">
+    <header className="relative flex h-16 items-center justify-between border-b border-white/20 dark:border-white/10 px-4 lg:px-6 sticky top-0 z-20 bg-white/70 dark:bg-gray-900/70 backdrop-blur-md shadow-[0_4px_30px_rgba(0,0,0,0.1)] dark:shadow-[0_4px_30px_rgba(0,0,0,0.3)]">
       {/* Mobile Menu Button */}
       <div className="lg:hidden">
         <Button

@@ -27,7 +27,7 @@ export default async function DashboardLayout({
         <div className="flex h-screen overflow-hidden bg-background">
           {/* Desktop Sidebar */}
           <div className="hidden lg:block lg:w-64 bg-background border-border border-r h-screen sticky top-0 z-30 overflow-y-auto">
-            <div className="flex h-16 items-center justify-center border-border border-b px-4 sticky top-0 bg-background z-10">
+            <div className="flex h-16 items-center justify-center border-b border-white/20 dark:border-white/10 px-4 sticky top-0 bg-white/70 dark:bg-gray-900/70 backdrop-blur-md z-10">
               <div className="flex items-center">
                 <Image
                   src="/kenac_logo_light.png"
@@ -57,12 +57,12 @@ export default async function DashboardLayout({
           <MobileSidebar userProfileData={userProfileData} />
 
           {/* Main Content */}
-          <div className="flex flex-1 flex-col h-screen overflow-hidden">
-            {/* Pass user profile data to the client component */}
+          <div className="relative flex-1 h-screen overflow-y-auto">
+            {/* Header with glass effect */}
             <UserProfileClient userProfileData={userProfileData} />
 
-            {/* Main Content */}
-            <main className="flex-1 overflow-y-auto p-8 bg-background">
+            {/* Main Content - scrolls under the header */}
+            <main className="p-8 min-h-[calc(100vh-4rem)]">
               <Suspense fallback={<div>Loading...</div>}>{children}</Suspense>
             </main>
           </div>

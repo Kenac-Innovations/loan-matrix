@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { useSession } from "next-auth/react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -20,6 +21,10 @@ import {
   Loader2,
   AlertCircle,
   FileEdit,
+  Users,
+  TrendingUp,
+  Target,
+  Timer,
 } from "lucide-react";
 import { format, startOfDay, endOfDay } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -136,6 +141,7 @@ function getTenantSlugFromHost(): string {
 }
 
 export function LeadsStatusTabs() {
+  const { data: session } = useSession();
   const [activeTab, setActiveTab] = useState("drafts");
   const [dateRange, setDateRange] = useState<DateRange>({
     from: startOfDay(new Date()),
@@ -144,6 +150,11 @@ export function LeadsStatusTabs() {
   
   // Get tenant slug from hostname
   const tenantSlug = getTenantSlugFromHost();
+  
+  // Get user info for role-based filtering
+  const userOfficeName = (session?.user as any)?.officeName;
+  const userName = session?.user?.name;
+  const userRoles = (session?.user as any)?.roles || [];
   const [tabData, setTabData] = useState<Record<string, ReportData | null>>({
     drafts: null,
     pending: null,
@@ -318,6 +329,149 @@ export function LeadsStatusTabs() {
   const handleRefresh = () => {
     fetchReport(activeTab);
   };
+
+  // Get user permissions
+  const userPermissions = (session?.user as any)?.permissions || [];
+  
+  // Check if user has ALL_FUNCTIONS permission (super user)
+  const hasAllFunctions = userPermissions.includes("ALL_FUNCTIONS");
+  
+  // Check if user has specific role
+  const hasRole = useCallback((roleName: string) => {
+    return userRoles.some((role: any) => 
+      role.name?.toLowerCase().includes(roleName.toLowerCase()) && !role.disabled
+    );
+  }, [userRoles]);
+
+  // Check if user is an admin/super user
+  const isAdminUser = useMemo(() => {
+    // Check permissions first
+    if (hasAllFunctions) return true;
+    
+    // Check role names - include common variations
+    const adminRolePatterns = ["super", "admin", "manager", "all_functions", "head office", "headquarters"];
+    return adminRolePatterns.some(pattern => hasRole(pattern));
+  }, [hasAllFunctions, hasRole]);
+
+  // Determine user's filter scope based on role
+  const userFilterScope = useMemo(() => {
+    // If session is not loaded yet, default to all (will recalculate when loaded)
+    if (!session) {
+      return { type: "all" as const, label: "All Leads" };
+    }
+    
+    // Check for admin/super admin - they see all
+    if (isAdminUser) {
+      return { type: "all" as const, label: "All Leads" };
+    }
+    
+    // Check for branch manager role
+    if (hasRole("branch") && userOfficeName) {
+      return { type: "branch" as const, value: userOfficeName, label: `${userOfficeName} Branch` };
+    }
+    
+    // Check for loan officer - show their own leads
+    if (hasRole("loan officer") || hasRole("officer")) {
+      if (userName) {
+        return { type: "user" as const, value: userName, label: "My Leads" };
+      }
+    }
+    
+    // Default to all leads (for users without specific roles)
+    return { type: "all" as const, label: "All Leads" };
+  }, [session, isAdminUser, hasRole, userOfficeName, userName]);
+
+  // Filter data based on user's role scope
+  const getRoleScopedData = useCallback((data: any[]): any[] => {
+    if (!data || userFilterScope.type === "all") return data;
+    
+    return data.filter((row) => {
+      if (userFilterScope.type === "branch") {
+        const branch = row.branch || row.Branch || row.office || row.Office || "";
+        return String(branch).toLowerCase().includes(String(userFilterScope.value).toLowerCase());
+      }
+      if (userFilterScope.type === "user") {
+        const submittedBy = row.submitted_by || row.created_by || row["Submitted By"] || row["Created By"] || row.loan_officer || "";
+        return String(submittedBy).toLowerCase().includes(String(userFilterScope.value).toLowerCase());
+      }
+      return true;
+    });
+  }, [userFilterScope]);
+
+  // Debug: Log role detection
+  useEffect(() => {
+    console.log("Pipeline Stats Debug:", {
+      sessionLoaded: !!session,
+      userName,
+      userRoles: userRoles.map((r: any) => r.name),
+      userPermissions,
+      hasAllFunctions,
+      isAdminUser,
+      userFilterScope,
+    });
+  }, [session, userName, userRoles, userPermissions, hasAllFunctions, isAdminUser, userFilterScope]);
+
+  // Calculate pipeline stats based on role-scoped and filtered data
+  const pipelineStats = useMemo(() => {
+    // Get role-scoped data for each tab
+    const draftsData = getRoleScopedData(tabData.drafts?.data || []);
+    const pendingData = getRoleScopedData(tabData.pending?.data || []);
+    const approvedData = getRoleScopedData(tabData.approved?.data || []);
+    const rejectedData = getRoleScopedData(tabData.rejected?.data || []);
+    
+    // Debug log
+    console.log("Pipeline Stats Calculation:", {
+      filterScope: userFilterScope.type,
+      rawDrafts: tabData.drafts?.data?.length || 0,
+      rawPending: tabData.pending?.data?.length || 0,
+      rawApproved: tabData.approved?.data?.length || 0,
+      rawRejected: tabData.rejected?.data?.length || 0,
+      scopedDrafts: draftsData.length,
+      scopedPending: pendingData.length,
+      scopedApproved: approvedData.length,
+      scopedRejected: rejectedData.length,
+    });
+    
+    // Apply current filters to get filtered counts
+    const filteredDrafts = getFilteredData("drafts", draftsData);
+    const filteredPending = getFilteredData("pending", pendingData);
+    const filteredApproved = getFilteredData("approved", approvedData);
+    const filteredRejected = getFilteredData("rejected", rejectedData);
+    
+    // Total leads (all statuses)
+    const totalLeads = filteredDrafts.length + filteredPending.length + filteredApproved.length + filteredRejected.length;
+    
+    // Conversion rate: Approved / (Approved + Rejected) * 100
+    const decidedLeads = filteredApproved.length + filteredRejected.length;
+    const conversionRate = decidedLeads > 0 
+      ? ((filteredApproved.length / decidedLeads) * 100).toFixed(1) 
+      : "0.0";
+    
+    // Submission rate: (Pending + Approved + Rejected) / Total * 100 (how many drafts got submitted)
+    const submittedLeads = filteredPending.length + filteredApproved.length + filteredRejected.length;
+    const submissionRate = totalLeads > 0 
+      ? ((submittedLeads / totalLeads) * 100).toFixed(1) 
+      : "0.0";
+    
+    // Average processing time (mock - would need timestamps in data)
+    // For now, use pending count as a proxy for processing load
+    const processingLoad = filteredPending.length;
+    const slaStatus = processingLoad > 10 ? "At Risk" : processingLoad > 5 ? "Warning" : "On Track";
+    const slaColor = processingLoad > 10 ? "text-red-500" : processingLoad > 5 ? "text-yellow-500" : "text-green-500";
+    
+    return {
+      totalLeads,
+      drafts: filteredDrafts.length,
+      pending: filteredPending.length,
+      approved: filteredApproved.length,
+      rejected: filteredRejected.length,
+      conversionRate,
+      submissionRate,
+      processingLoad,
+      slaStatus,
+      slaColor,
+    };
+  }, [tabData, getFilteredData, getRoleScopedData]);
 
   // Columns to hide from display (but keep loan_account visible as link)
   const HIDDEN_COLUMNS = new Set(["lead_id", "loan_id", "client_id", "id", "external_id", "client_external_id"]);
@@ -576,15 +730,73 @@ export function LeadsStatusTabs() {
   };
 
   return (
-    <Card className="border dark:border-border">
-      <CardHeader className="border-b dark:border-border">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-          <div>
-            <CardTitle>Loan Applications</CardTitle>
-            <CardDescription>
-              View loan applications by status for the selected period
-            </CardDescription>
-          </div>
+    <div className="space-y-6">
+      {/* Pipeline Stats Cards */}
+      <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
+        <Card className="bg-gradient-to-br from-blue-500/10 to-blue-600/5 border-blue-500/20">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Total Leads</CardTitle>
+            <Users className="h-4 w-4 text-blue-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{pipelineStats.totalLeads}</div>
+            <p className="text-xs text-muted-foreground mt-1">
+              {userFilterScope.label}
+            </p>
+          </CardContent>
+        </Card>
+        
+        <Card className="bg-gradient-to-br from-green-500/10 to-green-600/5 border-green-500/20">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Conversion Rate</CardTitle>
+            <TrendingUp className="h-4 w-4 text-green-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{pipelineStats.conversionRate}%</div>
+            <p className="text-xs text-muted-foreground mt-1">
+              {pipelineStats.approved} approved / {pipelineStats.approved + pipelineStats.rejected} decided
+            </p>
+          </CardContent>
+        </Card>
+        
+        <Card className="bg-gradient-to-br from-purple-500/10 to-purple-600/5 border-purple-500/20">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Submission Rate</CardTitle>
+            <Target className="h-4 w-4 text-purple-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{pipelineStats.submissionRate}%</div>
+            <p className="text-xs text-muted-foreground mt-1">
+              {pipelineStats.drafts} drafts pending submission
+            </p>
+          </CardContent>
+        </Card>
+        
+        <Card className="bg-gradient-to-br from-amber-500/10 to-amber-600/5 border-amber-500/20">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">SLA Status</CardTitle>
+            <Timer className="h-4 w-4 text-amber-500" />
+          </CardHeader>
+          <CardContent>
+            <div className={cn("text-2xl font-bold", pipelineStats.slaColor)}>
+              {pipelineStats.slaStatus}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              {pipelineStats.pending} pending approval
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card className="border dark:border-border">
+        <CardHeader className="border-b dark:border-border">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div>
+              <CardTitle>Loan Applications</CardTitle>
+              <CardDescription>
+                View loan applications by status for the selected period
+              </CardDescription>
+            </div>
           <div className="flex items-center gap-2">
             {/* Date Range Picker */}
             <Popover>
@@ -729,6 +941,7 @@ export function LeadsStatusTabs() {
         </Tabs>
       </CardContent>
     </Card>
+    </div>
   );
 }
 
