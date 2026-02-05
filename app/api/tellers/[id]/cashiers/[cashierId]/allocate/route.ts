@@ -175,7 +175,6 @@ export async function POST(
 
     // Calculate available balance - must DECREASE when loans are disbursed, and handle deposits
     // allocatedToCashiers = sum of max(sumCashAllocation, netCash) per cashier
-    
     const tellerVaultAllocations = await prisma.cashAllocation.findMany({
       where: {
         tellerId: teller.id,

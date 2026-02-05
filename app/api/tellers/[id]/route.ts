@@ -133,7 +133,6 @@ export async function GET(
 
     // Calculate balances - available must DECREASE when loans are disbursed, and handle deposits
     // allocatedToCashiers = sum of max(sumCashAllocation, netCash) per cashier
-    // Formula: Available = Vault - sumCashAllocation (gross); netCash would make it increase
     const currency = "ZMW";
     
     const vaultBalance = dbTeller.cashAllocations.reduce(

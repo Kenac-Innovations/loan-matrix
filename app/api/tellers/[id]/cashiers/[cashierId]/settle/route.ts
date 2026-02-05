@@ -563,8 +563,7 @@ export async function POST(
     console.log(`Created cashier settlement: ID=${settlement.id}, cashierId=${cashier.id}, amount=-${amount} ${currency}`);
 
     // For disbursements: cash leaves the system (goes to customer), so we must record a vault
-    // deduction. Otherwise available balance = Bank Allocation - Cashier Balances would
-    // incorrectly increase (Fineract cashier balance drops but bank allocation unchanged).
+    // deduction. Otherwise available balance would incorrectly increase.
     if (txnType === "DISBURSEMENT") {
       await prisma.cashAllocation.create({
         data: {
