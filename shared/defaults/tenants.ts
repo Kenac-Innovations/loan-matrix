@@ -1,4 +1,4 @@
-import { TenantInfo } from "../types/tenant";
+import { TenantInfo, DEFAULT_FEATURES } from "../types/tenant";
 
 export const defaultTenantConfig = {
   name: "Default Organization",
@@ -6,10 +6,7 @@ export const defaultTenantConfig = {
   domain: "localhost",
   settings: {
     theme: "default",
-    features: {
-      statemachine: true,
-      notifications: true,
-    },
+    features: { ...DEFAULT_FEATURES },
   },
 };
 
@@ -19,10 +16,7 @@ export const demoTenantConfig = {
   domain: "localhost",
   settings: {
     theme: "default",
-    features: {
-      statemachine: true,
-      notifications: true,
-    },
+    features: { ...DEFAULT_FEATURES },
   },
 };
 
@@ -32,10 +26,7 @@ export const goodfellowTenantConfig = {
   domain: "goodfellow.kenacloanmatrix.com",
   settings: {
     theme: "default",
-    features: {
-      statemachine: true,
-      notifications: true,
-    },
+    features: { ...DEFAULT_FEATURES },
   },
 };
 

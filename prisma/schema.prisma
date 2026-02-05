@@ -91,6 +91,7 @@ model Lead {
   clientId                   Int?
   resourceId                 Int?
   userId                     String
+  createdByUserName          String?             // Full name of user who created the lead
   currentStep                Int                 @default(1)
   lastModified               DateTime            @default(now())
   currentStageId             String?
@@ -535,6 +536,9 @@ model Bank {
   description     String?
   officeId        Int?             // Optional link to Fineract office
   officeName      String?
+  glAccountId     Int?             // Optional link to Fineract GL account for this bank
+  glAccountName   String?          // Cached GL account name for display
+  glAccountCode   String?          // Cached GL account code
   status          String           @default("ACTIVE") // ACTIVE, INACTIVE, CLOSED
   isActive        Boolean          @default(true)
   createdAt       DateTime         @default(now())

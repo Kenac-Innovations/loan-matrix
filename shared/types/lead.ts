@@ -17,6 +17,7 @@ export interface Lead {
   emailAddress?: string;
   currentStageId?: string;
   userId?: string; // Created by user ID
+  createdByUserName?: string; // Full name of user who created the lead
   // Fineract tracking fields
   fineractLoanId?: number | null;
   loanSubmittedToFineract?: boolean;

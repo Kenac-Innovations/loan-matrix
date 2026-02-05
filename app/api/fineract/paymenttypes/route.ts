@@ -1,22 +1,16 @@
-// File: app/api/fineract/paymenttypes/route.ts
-import { NextRequest, NextResponse } from 'next/server';
-import { fetchFineractAPI } from '@/lib/api';
+import { NextResponse } from "next/server";
+import { fetchFineractAPI } from "@/lib/api";
 
-export async function GET(request: NextRequest) {
+/**
+ * GET /api/fineract/paymenttypes
+ * Fetch all payment types from Fineract
+ */
+export async function GET() {
   try {
-    const response = await fetchFineractAPI('/paymenttypes');
-    return NextResponse.json(response);
+    const data = await fetchFineractAPI("/paymenttypes");
+    return NextResponse.json(data);
   } catch (error: any) {
-    console.error('GET /api/fineract/paymenttypes error:', error);
-    if (error.errorData) {
-      return NextResponse.json(error.errorData, { status: error.status || 500 });
-    }
-    return NextResponse.json(
-      {
-        defaultUserMessage: 'An unexpected error occurred',
-        developerMessage: error.message
-      },
-      { status: 500 }
-    );
+    console.error("Error fetching payment types:", error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

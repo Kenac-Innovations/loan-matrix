@@ -4,12 +4,13 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { LeadsData } from "@/app/actions/leads-actions";
+import { LeadsData, fetchLeadStatuses } from "@/app/actions/leads-actions";
 import { Lead } from "@/shared/types";
 import { GenericDataTable } from "@/components/tables/generic-data-table";
 import { DataTableColumn, DataTableFilter } from "@/shared/types/data-table";
-import { useState } from "react";
-import { FileEdit, User, Loader2 } from "lucide-react";
+import { useState, useCallback, useEffect, useRef, useMemo } from "react";
+import { FileEdit, User, Loader2, RefreshCw } from "lucide-react";
+import useSWR from "swr";
 
 interface LeadsTableProps {
   initialData: LeadsData;
@@ -45,13 +46,143 @@ function getStatusBadgeColor(status: string): string {
   return "bg-blue-500 hover:bg-blue-600";
 }
 
+const fetcher = (url: string) => fetch(url).then((res) => res.json());
+
+// Predefined Fineract loan statuses for filter dropdown
+const LOAN_STATUS_OPTIONS = [
+  { label: "Draft", value: "Draft" },
+  { label: "Submitted and pending approval", value: "Submitted and pending approval" },
+  { label: "Approved", value: "Approved" },
+  { label: "Disbursed", value: "Active" }, // "Active" in Fineract = Disbursed
+  { label: "Closed (obligations met)", value: "Closed (obligations met)" },
+  { label: "Closed (written off)", value: "Closed (written off)" },
+  { label: "Closed (rescheduled)", value: "Closed (rescheduled)" },
+  { label: "Overpaid", value: "Overpaid" },
+  { label: "Rejected", value: "Rejected" },
+  { label: "Withdrawn by applicant", value: "Withdrawn by applicant" },
+];
+
+
 export function LeadsTable({ initialData }: LeadsTableProps) {
-  const { leads, pipelineStages } = initialData;
+  const { leads: initialLeads, pipelineStages } = initialData;
   const [customFilters, setCustomFilters] = useState<DataTableFilter[]>([
     { columnId: "leadStatus", value: "", type: "select" },
-    { columnId: "type", value: "", type: "select" },
   ]);
   const [navigatingLeadId, setNavigatingLeadId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // State for Fineract statuses fetched after initial load
+  const [leadStatuses, setLeadStatuses] = useState<Record<string, { status: string | null; payoutStatus?: string }>>({});
+  const [isLoadingStatuses, setIsLoadingStatuses] = useState(false);
+  const statusesFetchedRef = useRef<Set<string>>(new Set());
+
+  // Debounce search input
+  useEffect(() => {
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+    searchTimeoutRef.current = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+    }, 300);
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
+  }, [searchQuery]);
+
+  // Fetch Fineract statuses for leads that have been submitted to Fineract
+  useEffect(() => {
+    const fetchStatuses = async () => {
+      // Get leads that need status fetch (submitted to Fineract but status not yet fetched)
+      const leadsNeedingStatus = (initialLeads as Lead[]).filter(
+        (lead) =>
+          lead.loanSubmittedToFineract &&
+          !lead.fineractLoanStatus &&
+          !statusesFetchedRef.current.has(lead.id)
+      );
+
+      if (leadsNeedingStatus.length === 0) return;
+
+      // Mark these leads as being fetched
+      leadsNeedingStatus.forEach((lead) => statusesFetchedRef.current.add(lead.id));
+
+      setIsLoadingStatuses(true);
+      try {
+        const leadIds = leadsNeedingStatus.map((lead) => lead.id);
+        const statuses = await fetchLeadStatuses(leadIds);
+        setLeadStatuses((prev) => ({ ...prev, ...statuses }));
+      } catch (error) {
+        console.error("Error fetching lead statuses:", error);
+      } finally {
+        setIsLoadingStatuses(false);
+      }
+    };
+
+    fetchStatuses();
+  }, [initialLeads]);
+
+  // Check if status filter is active (need to fetch Fineract statuses)
+  const hasStatusFilter = customFilters.some(
+    (f) => f.columnId === "leadStatus" && f.value && f.value !== ""
+  );
+
+  // Always fetch data via SWR for live updates
+  // Use initialData for fast first render, then poll for updates
+  const { data: serverData, isLoading: isSearching, mutate } = useSWR(
+    `/api/leads/paginated?${new URLSearchParams({
+      limit: "100",
+      skipFineractStatus: hasStatusFilter ? "false" : "true",
+      ...(debouncedSearch.length >= 2 ? { search: debouncedSearch } : {}),
+      ...Object.fromEntries(
+        customFilters
+          .filter((f) => f.value)
+          .map((f) => [f.columnId, String(f.value)])
+      ),
+    }).toString()}`,
+    fetcher,
+    {
+      fallbackData: { leads: initialLeads },
+      refreshInterval: 30000, // Poll every 30 seconds
+      revalidateOnFocus: true, // Refresh when user returns to tab
+      revalidateOnReconnect: true, // Refresh on network reconnect
+      dedupingInterval: 5000, // Dedupe requests within 5 seconds
+    }
+  );
+
+  // Expose mutate for manual refresh if needed
+  const refreshLeads = useCallback(() => {
+    mutate();
+    // Also refresh statuses
+    statusesFetchedRef.current.clear();
+    setLeadStatuses({});
+  }, [mutate]);
+
+  // Use server data (with fallback to initial data via SWR)
+  // Merge fetched statuses with leads data
+  const leads = useMemo(() => {
+    const baseLeads = serverData?.leads || initialLeads;
+    
+    // If no statuses fetched, return base leads
+    if (Object.keys(leadStatuses).length === 0) {
+      return baseLeads;
+    }
+    
+    // Merge fetched statuses into leads
+    return (baseLeads as Lead[]).map((lead) => {
+      const fetchedStatus = leadStatuses[lead.id];
+      if (fetchedStatus && fetchedStatus.status) {
+        return {
+          ...lead,
+          fineractLoanStatus: fetchedStatus.status,
+          payoutStatus: fetchedStatus.payoutStatus || lead.payoutStatus,
+        };
+      }
+      return lead;
+    });
+  }, [serverData?.leads, initialLeads, leadStatuses]);
 
   // Define table columns using DataTableColumn format
   const columns: DataTableColumn<Lead>[] = [
@@ -132,22 +263,7 @@ export function LeadsTable({ initialData }: LeadsTableProps) {
           </Badge>
         );
       },
-      filterOptions: Array.from(
-        new Set(
-          leads
-            .map((lead) => lead.fineractLoanStatus)
-            .filter((status): status is string => !!status)
-        )
-      ).map((status) => {
-        const count = leads.filter(
-          (lead) => lead.fineractLoanStatus === status
-        ).length;
-        const displayLabel = status === "Active" ? "Disbursed" : status;
-        return {
-          label: `${displayLabel} (${count})`,
-          value: status,
-        };
-      }),
+      filterOptions: LOAN_STATUS_OPTIONS,
     },
     {
       id: "payoutStatus",
@@ -190,23 +306,22 @@ export function LeadsTable({ initialData }: LeadsTableProps) {
       header: "Amount",
     },
     {
-      id: "type",
-      accessorKey: "type",
-      header: "Type",
-      cell: ({ getValue }) => (
-        <Badge variant="outline" className="text-xs">
-          {getValue()}
-        </Badge>
-      ),
-      filterOptions: Array.from(new Set(leads.map((lead) => lead.type))).map(
-        (type) => {
-          const count = leads.filter((lead) => lead.type === type).length;
-          return {
-            label: `${type} (${count})`,
-            value: type,
-          };
-        }
-      ),
+      id: "loanOfficer",
+      accessorKey: "createdByUserName",
+      header: "Loan Officer",
+      cell: ({ row }) => {
+        const lead = row.original;
+        // Show createdByUserName (originator), falling back to assignedToUserName, then userId
+        const officerName = lead.createdByUserName || lead.assignedToUserName || lead.userId || "Unknown";
+        return (
+          <div className="flex items-center gap-2">
+            <User className="h-3 w-3 text-muted-foreground" />
+            <span className="text-xs truncate max-w-[120px]" title={officerName}>
+              {officerName}
+            </span>
+          </div>
+        );
+      },
     },
     {
       id: "assignedTo",
@@ -302,7 +417,7 @@ export function LeadsTable({ initialData }: LeadsTableProps) {
     <GenericDataTable
       data={leads}
       columns={columns}
-      searchPlaceholder="Search leads..."
+      searchPlaceholder="Search all leads..."
       enablePagination={true}
       enableColumnVisibility={true}
       enableExport={true}
@@ -311,10 +426,25 @@ export function LeadsTable({ initialData }: LeadsTableProps) {
       tableId="leads-table"
       onRowClick={handleRowClick}
       exportFileName="leads-export"
-      emptyMessage="No leads found."
+      emptyMessage={isSearching ? "Searching..." : "No leads found."}
       customFilters={customFilters}
       onFilterChange={setCustomFilters}
       defaultSorting={[{ id: "createdAt", desc: true }]}
+      externalSearch={searchQuery}
+      onSearchChange={setSearchQuery}
+      isLoading={isSearching || isLoadingStatuses}
+      headerActions={
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={refreshLeads}
+          disabled={isSearching || isLoadingStatuses}
+          className="h-9"
+        >
+          <RefreshCw className={`h-4 w-4 mr-2 ${(isSearching || isLoadingStatuses) ? "animate-spin" : ""}`} />
+          <span className="hidden sm:inline">Refresh</span>
+        </Button>
+      }
     />
   );
 }

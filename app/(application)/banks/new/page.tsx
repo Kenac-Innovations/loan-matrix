@@ -22,20 +22,31 @@ interface Office {
   name: string;
 }
 
+interface GLAccount {
+  id: number;
+  name: string;
+  glCode: string;
+  type: { value: string };
+}
+
 export default function NewBankPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [offices, setOffices] = useState<Office[]>([]);
+  const [glAccounts, setGlAccounts] = useState<GLAccount[]>([]);
   const [loadingOffices, setLoadingOffices] = useState(true);
+  const [loadingGlAccounts, setLoadingGlAccounts] = useState(true);
   const [formData, setFormData] = useState({
     name: "",
     code: "",
     description: "",
     officeId: "",
+    glAccountId: "",
   });
 
   useEffect(() => {
     fetchOffices();
+    fetchGlAccounts();
   }, []);
 
   const fetchOffices = async () => {
@@ -49,6 +60,21 @@ export default function NewBankPage() {
       console.error("Error fetching offices:", error);
     } finally {
       setLoadingOffices(false);
+    }
+  };
+
+  const fetchGlAccounts = async () => {
+    try {
+      // Fetch all detail accounts (usage=1) that are not disabled and allow manual entries
+      const response = await fetch("/api/fineract/glaccounts/detail?usage=1&disabled=false&manualEntriesAllowed=true");
+      if (response.ok) {
+        const data = await response.json();
+        setGlAccounts(data || []);
+      }
+    } catch (error) {
+      console.error("Error fetching GL accounts:", error);
+    } finally {
+      setLoadingGlAccounts(false);
     }
   };
 
@@ -74,6 +100,11 @@ export default function NewBankPage() {
     e.preventDefault();
     setLoading(true);
 
+    // Get selected GL account details
+    const selectedGlAccount = formData.glAccountId
+      ? glAccounts.find((gl) => gl.id === parseInt(formData.glAccountId))
+      : null;
+
     try {
       const response = await fetch("/api/banks", {
         method: "POST",
@@ -84,6 +115,9 @@ export default function NewBankPage() {
           officeName: formData.officeId
             ? offices.find((o) => o.id === parseInt(formData.officeId))?.name
             : null,
+          glAccountId: selectedGlAccount?.id || null,
+          glAccountName: selectedGlAccount?.name || null,
+          glAccountCode: selectedGlAccount?.glCode || null,
         }),
       });
 
@@ -170,28 +204,54 @@ export default function NewBankPage() {
               </div>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="officeId">Office/Branch</Label>
-              <SearchableSelect
-                options={offices.map((office) => ({
-                  value: office.id.toString(),
-                  label: office.name,
-                }))}
-                value={formData.officeId}
-                onValueChange={(value) =>
-                  setFormData({ ...formData, officeId: value })
-                }
-                placeholder={
-                  loadingOffices
-                    ? "Loading offices..."
-                    : "Search and select office"
-                }
-                emptyMessage="No offices found"
-                disabled={loadingOffices}
-              />
-              <p className="text-xs text-muted-foreground">
-                Optionally link this bank to a specific office/branch
-              </p>
+            <div className="grid gap-6 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="officeId">Office/Branch</Label>
+                <SearchableSelect
+                  options={offices.map((office) => ({
+                    value: office.id.toString(),
+                    label: office.name,
+                  }))}
+                  value={formData.officeId}
+                  onValueChange={(value) =>
+                    setFormData({ ...formData, officeId: value })
+                  }
+                  placeholder={
+                    loadingOffices
+                      ? "Loading offices..."
+                      : "Search and select office"
+                  }
+                  emptyMessage="No offices found"
+                  disabled={loadingOffices}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Optionally link this bank to a specific office/branch
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="glAccountId">GL Account</Label>
+                <SearchableSelect
+                  options={glAccounts.map((gl) => ({
+                    value: gl.id.toString(),
+                    label: `${gl.glCode} - ${gl.name}`,
+                  }))}
+                  value={formData.glAccountId}
+                  onValueChange={(value) =>
+                    setFormData({ ...formData, glAccountId: value })
+                  }
+                  placeholder={
+                    loadingGlAccounts
+                      ? "Loading GL accounts..."
+                      : "Search and select GL account"
+                  }
+                  emptyMessage="No GL accounts found"
+                  disabled={loadingGlAccounts}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Link this bank to a GL account for journal entries
+                </p>
+              </div>
             </div>
 
             <div className="space-y-2">

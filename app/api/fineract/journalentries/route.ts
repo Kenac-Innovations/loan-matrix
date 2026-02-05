@@ -36,11 +36,19 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const payload = await request.json();
-  const data = await fetchFineractAPI('/journalentries', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
-  return NextResponse.json(data, { status: 201 });
+  try {
+    const payload = await request.json();
+    const data = await fetchFineractAPI('/journalentries', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    return NextResponse.json(data, { status: 201 });
+  } catch (error: any) {
+    console.error('Error creating journal entry:', error);
+    return NextResponse.json(
+      { error: error.message || 'Failed to create journal entry' },
+      { status: 500 }
+    );
+  }
 }

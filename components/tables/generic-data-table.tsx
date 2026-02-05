@@ -63,6 +63,9 @@ import {
   DataTableProps
 } from "@/shared/types/data-table";
 
+// Re-export types for convenience
+export type { DataTableColumn, DataTableFilter, DataTableProps };
+
 // Export utility functions
 const exportToCSV = <TData,>(data: TData[], columns: DataTableColumn<TData>[], filename: string) => {
   try {
@@ -173,7 +176,13 @@ export function GenericDataTable<TData>({
   customFilters = [],
   onFilterChange,
   defaultSorting = [],
+  externalSearch,
+  onSearchChange,
+  isLoading = false,
+  headerActions,
 }: DataTableProps<TData>) {
+  // Use external search if provided, otherwise use internal state
+  const isExternalSearch = externalSearch !== undefined && onSearchChange !== undefined;
   const [sorting, setSorting] = React.useState<SortingState>(defaultSorting);
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([]);
   const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>({});
@@ -485,13 +494,42 @@ export function GenericDataTable<TData>({
               customSearchInput
             ) : !hideSearch && (
               <div className="relative flex-1 max-w-sm">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                {isLoading ? (
+                  <div className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4">
+                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-primary border-t-transparent" />
+                  </div>
+                ) : (
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                )}
                 <Input
                   placeholder={searchPlaceholder}
-                  value={globalFilter ?? ""}
-                  onChange={(event) => setGlobalFilter(String(event.target.value))}
+                  value={isExternalSearch ? externalSearch : (globalFilter ?? "")}
+                  onChange={(event) => {
+                    const value = String(event.target.value);
+                    if (isExternalSearch) {
+                      onSearchChange?.(value);
+                    } else {
+                      setGlobalFilter(value);
+                    }
+                  }}
                   className="pl-10 h-9"
                 />
+                {(isExternalSearch ? externalSearch : globalFilter) && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 p-0"
+                    onClick={() => {
+                      if (isExternalSearch) {
+                        onSearchChange?.("");
+                      } else {
+                        setGlobalFilter("");
+                      }
+                    }}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                )}
               </div>
             )}
 
@@ -563,6 +601,9 @@ export function GenericDataTable<TData>({
                 </DropdownMenuContent>
               </DropdownMenu>
             )}
+
+            {/* Custom header actions */}
+            {headerActions}
           </div>
         </div>
         

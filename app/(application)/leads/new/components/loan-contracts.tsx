@@ -315,7 +315,14 @@ export function LoanContracts({
 
       // Get interest rate from loan product template (not calculated)
       const numberOfPayments = loanTerms?.numberOfRepayments || 1;
-      const monthlyPercentageRate = loanTerms?.nominalInterestRate || 0;
+      
+      // Convert to monthly rate if the interest rate is annual (frequency type 3 = Per Year)
+      // Frequency type 2 = Per Month, 3 = Per Year
+      const interestRateFrequency = parseInt(loanTerms?.interestRateFrequency || "2");
+      const nominalRate = loanTerms?.nominalInterestRate || 0;
+      const monthlyPercentageRate = interestRateFrequency === 3 
+        ? nominalRate / 12  // Convert annual rate to monthly
+        : nominalRate;      // Already monthly
 
       // Format repayment schedule
       const formattedSchedule =
@@ -350,19 +357,31 @@ export function LoanContracts({
           ? formattedSchedule[0].dueDate
           : format(new Date(), "dd/MM/yyyy");
 
-      // Format charges from loan terms
+      // Format charges from loan terms (include chargeTimeType for proper categorization)
       const formattedCharges = (loanTerms.charges || []).map((charge: any) => ({
         name: charge.name,
         amount: charge.amount,
+        chargeTimeType: charge.originalCharge?.chargeTimeType || null,
       }));
 
       // Net disbursed amount (principal - upfront fees)
+      // Upfront fees are charges with chargeTimeType.id === 1 (Disbursement)
+      // Installment fees (id === 8) and Overdue fees (id === 9) are NOT deducted upfront
       const upfrontFees = formattedCharges
-        .filter(
-          (c: any) =>
+        .filter((c: any) => {
+          // If chargeTimeType is available, use it (preferred method)
+          if (c.chargeTimeType?.id) {
+            return c.chargeTimeType.id === 1; // Disbursement charges only
+          }
+          // Fallback to name-based matching for backwards compatibility
+          return (
             !c.name.toLowerCase().includes("monthly") &&
-            !c.name.toLowerCase().includes("recurring")
-        )
+            !c.name.toLowerCase().includes("recurring") &&
+            !c.name.toLowerCase().includes("installment") &&
+            !c.name.toLowerCase().includes("overdue") &&
+            !c.name.toLowerCase().includes("late")
+          );
+        })
         .reduce((sum: number, c: any) => sum + c.amount, 0);
       const disbursedAmount = principal - upfrontFees;
 

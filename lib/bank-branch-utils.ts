@@ -34,6 +34,21 @@ export interface BranchCodeValue {
 export const BANK_CODE_NAME = "Bank";
 export const BRANCH_CODE_NAME = "BranchCode";
 
+// Additional banks that should always be included (even if not returned by Fineract API)
+// These banks exist in Fineract but may be inactive/hidden
+export const ADDITIONAL_BANKS: Bank[] = [
+  {
+    id: -1, // Placeholder ID - will be used for display only
+    name: "ACCESS BANK",
+    isActive: true,
+  },
+  {
+    id: -2, // Placeholder ID - will be used for display only
+    name: "STANDARD CHARTERED BANK",
+    isActive: true,
+  },
+];
+
 // Delimiter used in branch code value names
 export const BRANCH_DELIMITER = "|";
 
@@ -91,14 +106,28 @@ export function filterBranchesByBank(branchCodeValues: any[], bankId: number): B
 
 /**
  * Convert bank code values to Bank objects
+ * Augments the list with additional banks that may not be returned by Fineract API
  */
 export function parseBanks(bankCodeValues: any[]): Bank[] {
-  return bankCodeValues.map((cv: any) => ({
+  const banks = bankCodeValues.map((cv: any) => ({
     id: cv.id,
     name: cv.name,
     description: cv.description,
     isActive: cv.isActive !== false,
   }));
+
+  // Add any additional banks that are not in the Fineract response
+  for (const additionalBank of ADDITIONAL_BANKS) {
+    const exists = banks.some(
+      (b) => b.name.toUpperCase() === additionalBank.name.toUpperCase()
+    );
+    if (!exists) {
+      banks.push(additionalBank);
+    }
+  }
+
+  // Sort banks alphabetically by name
+  return banks.sort((a, b) => a.name.localeCompare(b.name));
 }
 
 /**

@@ -129,6 +129,18 @@ export interface DataTableProps<TData = any> {
     id: string;
     desc: boolean;
   }>;
+
+  /** External search value (controlled from parent) */
+  externalSearch?: string;
+
+  /** Callback when search value changes (for server-side search) */
+  onSearchChange?: (value: string) => void;
+
+  /** Loading state for async operations */
+  isLoading?: boolean;
+
+  /** Custom actions to render in the table header */
+  headerActions?: React.ReactNode;
 }
 
 /**

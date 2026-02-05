@@ -365,26 +365,39 @@ export async function POST(
       );
     }
 
-    // Check cashier's available balance
-    const cashierAllocations = await prisma.cashAllocation.findMany({
-      where: {
-        tellerId: teller.id,
-        cashierId: cashier.id,
-        tenantId: tenant.id,
-        status: "ACTIVE",
-      },
-    });
-
-    const cashierBalance = cashierAllocations.reduce(
-      (sum, alloc) => sum + alloc.amount,
-      0
-    );
+    // Check cashier's available balance from Fineract (source of truth)
+    let cashierBalance = 0;
+    try {
+      const fineractService = await getFineractServiceWithSession();
+      const summary = await fineractService.getCashierSummaryAndTransactions(
+        teller.fineractTellerId,
+        fineractCashierId,
+        currency
+      );
+      cashierBalance = summary.netCash || 0;
+      console.log(`Fineract balance for cashier ${fineractCashierId}: ${cashierBalance}`);
+    } catch (err) {
+      console.error("Error fetching Fineract balance, falling back to local DB:", err);
+      // Fallback to local DB if Fineract fails
+      const cashierAllocations = await prisma.cashAllocation.findMany({
+        where: {
+          tellerId: teller.id,
+          cashierId: cashier.id,
+          tenantId: tenant.id,
+          status: "ACTIVE",
+        },
+      });
+      cashierBalance = cashierAllocations.reduce(
+        (sum, alloc) => sum + alloc.amount,
+        0
+      );
+    }
 
     if (parseFloat(amount) > cashierBalance) {
       return NextResponse.json(
         {
           error: "Insufficient balance",
-          details: `Cashier balance: ${cashierBalance.toFixed(
+          details: `Cashier balance (Fineract): ${cashierBalance.toFixed(
             2
           )} ${currency}, Requested: ${parseFloat(amount).toFixed(
             2
@@ -520,12 +533,11 @@ export async function POST(
     }
 
     // Determine if this is a "return to vault" or external cash out
-    const isReturnToVault = txnType !== "DISBURSEMENT" && 
-      (notes?.toLowerCase().includes("vault") || 
-       notes?.toLowerCase().includes("safe") || 
-       notes?.toLowerCase().includes("settlement") ||
-       notes?.toLowerCase().includes("return") ||
-       !notes); // Default to return to vault if no notes
+    // For non-disbursement transactions, ALWAYS return to vault
+    // This ensures vault balance is updated when cashier settles cash
+    const isReturnToVault = txnType !== "DISBURSEMENT";
+    
+    console.log(`Settlement type: ${txnType}, isReturnToVault: ${isReturnToVault}, amount: ${amount}`);
     
     // Create a negative allocation record (cash out from cashier)
     const settlementNotes =
@@ -548,18 +560,19 @@ export async function POST(
         status: "ACTIVE",
       },
     });
+    console.log(`Created cashier settlement: ID=${settlement.id}, cashierId=${cashier.id}, amount=-${amount} ${currency}`);
 
-    // For disbursements: cash leaves the system (goes to customer), so reduce teller vault.
-    // Without this, available balance would incorrectly increase because allocatedToCashiers
-    // decreases (negative cashier allocation) while vault stays same.
+    // For disbursements: cash leaves the system (goes to customer), so we must record a vault
+    // deduction. Otherwise available balance = Bank Allocation - Cashier Balances would
+    // incorrectly increase (Fineract cashier balance drops but bank allocation unchanged).
     if (txnType === "DISBURSEMENT") {
       await prisma.cashAllocation.create({
         data: {
           tenantId: tenant.id,
           tellerId: teller.id,
-          cashierId: null, // Vault allocation
+          cashierId: null,
           fineractAllocationId: null,
-          amount: -parseFloat(amount), // Cash left the system
+          amount: -parseFloat(amount),
           currency: currency,
           allocatedBy: session.user.id,
           notes: `Loan disbursement (cash out): ${settlementNotes}`,
@@ -569,24 +582,10 @@ export async function POST(
       console.log(`Created vault deduction of -${amount} ${currency} (disbursement - cash left system)`);
     }
 
-    // If this is a return to vault (not a disbursement/external expense), 
-    // also create a positive allocation for the vault
-    if (isReturnToVault) {
-      await prisma.cashAllocation.create({
-        data: {
-          tenantId: tenant.id,
-          tellerId: teller.id,
-          cashierId: null, // null = vault allocation
-          fineractAllocationId: null, // Vault allocations don't have Fineract IDs
-          amount: parseFloat(amount), // Positive for vault
-          currency: currency,
-          allocatedBy: session.user.id,
-          notes: `Return from ${cashier.staffName || "Cashier"}: ${settlementNotes}`,
-          status: "ACTIVE",
-        },
-      });
-      console.log(`Created vault allocation of +${amount} ${currency} (return from cashier)`);
-    }
+    // For return to vault: do NOT create a local vault allocation. Vault is derived from
+    // Bank Allocation - Cashier Balances (Fineract); when Fineract cashier balance
+    // decreases, vault automatically increases. A local record would double count.
+    console.log(`Settlement type: ${txnType}, isReturnToVault: ${isReturnToVault}`);
 
     // If this is a disbursement, update the loan payout record
     if (txnType === "DISBURSEMENT" && loanPayout) {

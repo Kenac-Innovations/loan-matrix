@@ -25,6 +25,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { TenantDisplayClient } from "@/components/tenant-display-client";
 import { useMobileMenu } from "./mobile-menu-context";
+import { useFeatureFlags } from "@/hooks/use-feature-flags";
 
 interface MobileSidebarProps {
   userProfileData: UserProfileData;
@@ -36,6 +37,7 @@ export function MobileSidebar({ userProfileData }: MobileSidebarProps) {
   const mobileMenuRef = useRef<HTMLDivElement>(null);
   const { theme } = useTheme();
   const [mounted, setMounted] = useState(false);
+  const { isEnabled } = useFeatureFlags();
 
   // Get login status and tenant
   const { isLoggedIn, tenantId } = userProfileData;
@@ -165,7 +167,7 @@ export function MobileSidebar({ userProfileData }: MobileSidebarProps) {
             </Link>
             <div className="space-y-1">
               <Link
-                href="/ussd-leads"
+                href="/leads"
                 className={`flex items-center gap-3 rounded-md px-3 py-3 text-sm font-medium ${
                   pathname.startsWith("/leads") || pathname.startsWith("/ussd-leads")
                     ? `${activeBgColor} ${textColor}`
@@ -184,7 +186,7 @@ export function MobileSidebar({ userProfileData }: MobileSidebarProps) {
               {(pathname.startsWith("/leads") ||
                 pathname.startsWith("/ussd-leads")) && (
                 <div className="pl-10 space-y-1">
-                  {/* <Link
+                  <Link
                     href="/leads"
                     className={`flex items-center gap-3 rounded-md px-3 py-2 text-xs font-medium ${
                       pathname === "/leads"
@@ -193,27 +195,31 @@ export function MobileSidebar({ userProfileData }: MobileSidebarProps) {
                     }`}
                   >
                     Pipeline
-                  </Link> */}
-                  <Link
-                    href="/ussd-leads"
-                    className={`flex items-center gap-3 rounded-md px-3 py-2 text-xs font-medium ${
-                      pathname === "/ussd-leads"
-                        ? iconColorActive
-                        : `${iconColor} hover:${textColor}`
-                    }`}
-                  >
-                    USSD Leads
                   </Link>
-                  {/* <Link
-                    href="/leads/config"
-                    className={`flex items-center gap-3 rounded-md px-3 py-2 text-xs font-medium ${
-                      pathname === "/leads/config"
-                        ? iconColorActive
-                        : `${iconColor} hover:${textColor}`
-                    }`}
-                  >
-                    Configuration
-                  </Link> */}
+                  {isEnabled("ussdLeads") && (
+                    <Link
+                      href="/ussd-leads"
+                      className={`flex items-center gap-3 rounded-md px-3 py-2 text-xs font-medium ${
+                        pathname === "/ussd-leads"
+                          ? iconColorActive
+                          : `${iconColor} hover:${textColor}`
+                      }`}
+                    >
+                      USSD Leads
+                    </Link>
+                  )}
+                  {isEnabled("leadConfig") && (
+                    <Link
+                      href="/leads/config"
+                      className={`flex items-center gap-3 rounded-md px-3 py-2 text-xs font-medium ${
+                        pathname === "/leads/config"
+                          ? iconColorActive
+                          : `${iconColor} hover:${textColor}`
+                      }`}
+                    >
+                      Configuration
+                    </Link>
+                  )}
                 </div>
               )}
             </div>

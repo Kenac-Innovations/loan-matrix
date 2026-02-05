@@ -182,6 +182,21 @@ export async function POST(
         }
       }
 
+      // Calculate content length - required by Fineract API
+      let contentLength: number;
+      try {
+        contentLength = form.getLengthSync();
+      } catch (lengthError) {
+        console.error("Error calculating form content length:", lengthError);
+        return NextResponse.json(
+          {
+            error: "Failed to calculate upload content length",
+            details: "The file may be too large or in an unsupported format",
+          },
+          { status: 400 }
+        );
+      }
+
       const options = {
         hostname: urlObj.hostname,
         port: urlObj.port,
@@ -189,6 +204,7 @@ export async function POST(
         method: "POST",
         headers: {
           ...form.getHeaders(),
+          "Content-Length": contentLength,
           Authorization: `Basic ${accessToken}`,
           "Fineract-Platform-TenantId": fineractTenantId,
           Accept: "application/json, text/plain, */*",

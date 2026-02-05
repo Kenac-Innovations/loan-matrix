@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Building, Calendar, Users, DollarSign } from "lucide-react";
+import { ArrowLeft, Building, Calendar, Users, DollarSign, History } from "lucide-react";
 import Link from "next/link";
 import { formatDate } from "@/lib/format-date";
 import { formatCurrency } from "@/lib/format-currency";
@@ -302,6 +302,27 @@ export default async function TellerDetailPage({
               </CardContent>
             </Card>
           )}
+
+          {/* Vault Transactions Link */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <History className="h-5 w-5" />
+                Vault Transactions
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-muted-foreground mb-4">
+                View all cash movements in and out of the teller vault, including opening balances, bank allocations, and settlement returns.
+              </p>
+              <Link href={`/tellers/${id}/transactions`}>
+                <Button>
+                  <History className="h-4 w-4 mr-2" />
+                  View Transactions
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
         </div>
 
         <div className="lg:col-span-1">

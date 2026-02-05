@@ -236,7 +236,7 @@ export function UserProfileClient({ userProfileData }: UserProfileClientProps) {
   }, [notificationsOpen, onCloseNotifications]);
 
   return (
-    <header className="flex h-16 items-center justify-between border-border border-b bg-background px-4 lg:px-6 sticky top-0 z-20">
+    <header className="relative flex h-16 items-center justify-between border-b border-white/20 dark:border-white/10 px-4 lg:px-6 sticky top-0 z-20 bg-white/70 dark:bg-gray-900/70 backdrop-blur-md shadow-[0_4px_30px_rgba(0,0,0,0.1)] dark:shadow-[0_4px_30px_rgba(0,0,0,0.3)]">
       {/* Mobile Menu Button */}
       <div className="lg:hidden">
         <Button
@@ -376,12 +376,28 @@ export function UserProfileClient({ userProfileData }: UserProfileClientProps) {
                         </div>
                         {alerts.map((alert) => {
                           const AlertIcon = getAlertIcon(alert.type);
+                          const handleAlertClick = () => {
+                            if (alert.actionUrl) {
+                              setNotificationsOpen(false);
+                              markAlertAsRead(alert.id).catch(console.error);
+                              router.push(alert.actionUrl);
+                            }
+                          };
                           return (
                             <div
                               key={alert.id}
+                              role={alert.actionUrl ? "button" : undefined}
+                              tabIndex={alert.actionUrl ? 0 : undefined}
+                              onClick={handleAlertClick}
+                              onKeyDown={(e) => {
+                                if (alert.actionUrl && (e.key === "Enter" || e.key === " ")) {
+                                  e.preventDefault();
+                                  handleAlertClick();
+                                }
+                              }}
                               className={`relative w-full text-left rounded-md p-2 hover:bg-accent transition-colors ${
                                 !alert.isRead ? "bg-accent/50" : ""
-                              }`}
+                              } ${alert.actionUrl ? "cursor-pointer" : ""}`}
                             >
                               <div className="flex items-start gap-2">
                                 <div
@@ -397,17 +413,9 @@ export function UserProfileClient({ userProfileData }: UserProfileClientProps) {
                                     {alert.message}
                                   </p>
                                   {alert.actionUrl && (
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        markAlertAsRead(alert.id);
-                                        router.push(alert.actionUrl!);
-                                        setNotificationsOpen(false);
-                                      }}
-                                      className="text-xs text-blue-500 hover:text-blue-600 mt-1"
-                                    >
-                                      {alert.actionLabel || "View"}
-                                    </button>
+                                    <span className="text-xs text-blue-500 hover:text-blue-600 mt-1 hover:underline inline-block">
+                                      {alert.actionLabel || "View Details"}
+                                    </span>
                                   )}
                                   <p className="text-xs text-gray-500 mt-0.5">
                                     {formatNotificationDate(alert.createdAt)}

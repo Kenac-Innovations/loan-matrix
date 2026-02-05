@@ -5,6 +5,7 @@ import {
   BANK_CODE_NAME,
   BRANCH_CODE_NAME,
   parseBranchCodeValue,
+  parseBanks,
   Bank,
   Branch,
 } from "@/lib/bank-branch-utils";
@@ -70,20 +71,14 @@ export function useBankBranches(
         ),
       ]);
 
-      // Parse banks
+      // Parse banks (uses parseBanks which adds missing banks like ACCESS BANK)
       if (banksResponse.ok) {
         const banksData = await banksResponse.json();
-        const parsedBanks: Bank[] = (
-          Array.isArray(banksData) ? banksData : []
-        ).map((cv: any) => ({
-          id: cv.id,
-          name: cv.name,
-          description: cv.description,
-          isActive: cv.isActive !== false,
-        }));
+        const parsedBanks = parseBanks(Array.isArray(banksData) ? banksData : []);
         setBanks(parsedBanks);
       } else {
-        setBanks([]);
+        // Even if API fails, still include the additional banks
+        setBanks(parseBanks([]));
       }
 
       // Parse branches

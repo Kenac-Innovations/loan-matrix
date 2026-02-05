@@ -131,34 +131,74 @@ export async function GET(
       return NextResponse.json({ error: "Teller not found" }, { status: 404 });
     }
 
-    // Calculate vault balance and available balance
+    // Calculate balances - available must DECREASE when loans are disbursed, and handle deposits
+    // allocatedToCashiers = sum of max(sumCashAllocation, netCash) per cashier
+    // Formula: Available = Vault - sumCashAllocation (gross); netCash would make it increase
+    const currency = "ZMW";
+    
     const vaultBalance = dbTeller.cashAllocations.reduce(
       (sum, alloc) => sum + alloc.amount,
       0
     );
-
-    // Get all cashier allocations to calculate available balance
-    // Exclude variance allocations - variance is tracked separately
-    const cashierAllocations = await prisma.cashAllocation.findMany({
-      where: {
-        tellerId: dbTeller.id,
-        tenantId: tenant.id,
-        cashierId: { not: null },
-        status: "ACTIVE",
-        // Exclude variance allocations (those with notes containing "Variance")
-        notes: { not: { contains: "Variance" } },
-      },
-    });
-
-    // Only sum positive allocations - disbursements (negative) reduce cashier till
-    // but don't "free up" teller funds (cash left the system)
-    const allocatedToCashiers = cashierAllocations.reduce(
-      (sum, alloc) => sum + (alloc.amount > 0 ? alloc.amount : 0),
-      0
-    );
+    
+    let allocatedToCashiers = 0;
+    if (dbTeller.fineractTellerId) {
+      try {
+        const fineractService = await getFineractServiceWithSession();
+        const fineractCashiers = await fineractService.getCashiers(dbTeller.fineractTellerId);
+        for (const fc of fineractCashiers) {
+          try {
+            const summary = await fineractService.getCashierSummaryAndTransactions(
+              dbTeller.fineractTellerId,
+              fc.id,
+              "ZMK"
+            );
+            // max(sumCashAllocation, netCash) - decreases on disbursement, correctly handles deposits
+            allocatedToCashiers += Math.max(
+              summary.sumCashAllocation || 0,
+              summary.netCash || 0
+            );
+          } catch (err) {
+            console.error(`Error getting Fineract summary for cashier ${fc.id}:`, err);
+          }
+        }
+      } catch (err) {
+        console.error("Error fetching Fineract cashier balances, falling back to local DB:", err);
+        const cashierAllocations = await prisma.cashAllocation.findMany({
+          where: {
+            tellerId: dbTeller.id,
+            tenantId: tenant.id,
+            cashierId: { not: null },
+            status: "ACTIVE",
+            notes: { not: { contains: "Variance" } },
+          },
+        });
+        const positiveSum = cashierAllocations.reduce(
+          (sum, alloc) => sum + (alloc.amount > 0 ? alloc.amount : 0),
+          0
+        );
+        const netSum = cashierAllocations.reduce((sum, alloc) => sum + alloc.amount, 0);
+        allocatedToCashiers = Math.max(positiveSum, netSum);
+      }
+    } else {
+      const cashierAllocations = await prisma.cashAllocation.findMany({
+        where: {
+          tellerId: dbTeller.id,
+          tenantId: tenant.id,
+          cashierId: { not: null },
+          status: "ACTIVE",
+          notes: { not: { contains: "Variance" } },
+        },
+      });
+      const positiveSum = cashierAllocations.reduce(
+        (sum, alloc) => sum + (alloc.amount > 0 ? alloc.amount : 0),
+        0
+      );
+      const netSum = cashierAllocations.reduce((sum, alloc) => sum + alloc.amount, 0);
+      allocatedToCashiers = Math.max(positiveSum, netSum);
+    }
 
     const availableBalance = vaultBalance - allocatedToCashiers;
-    const currency = dbTeller.cashAllocations[0]?.currency || "ZMW";
 
     // Prepare base response with database data
     const baseResponse = {

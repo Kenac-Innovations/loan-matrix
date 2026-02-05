@@ -13,6 +13,12 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   Building,
   Phone,
   Mail,
@@ -50,6 +56,7 @@ export function ComprehensiveLeadDetails({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [clientImage, setClientImage] = useState<string | null>(null);
+  const [imageDialogOpen, setImageDialogOpen] = useState(false);
   const [loanDocuments, setLoanDocuments] = useState<any[]>([]);
   const [loadingLoanDocs, setLoadingLoanDocs] = useState(false);
 
@@ -485,7 +492,10 @@ export function ComprehensiveLeadDetails({
         <Card className="md:col-span-2">
           <CardHeader>
             <div className="flex items-center gap-4">
-              <Avatar className="h-16 w-16">
+              <Avatar 
+                className={`h-16 w-16 ${clientImage ? "cursor-pointer ring-2 ring-transparent hover:ring-primary/50 transition-all" : ""}`}
+                onClick={() => clientImage && setImageDialogOpen(true)}
+              >
                 <AvatarImage
                   src={clientImage || "/placeholder.svg"}
                   alt={fullName}
@@ -501,6 +511,24 @@ export function ComprehensiveLeadDetails({
                 <CardTitle className="text-xl">{fullName}</CardTitle>
               </div>
             </div>
+
+            {/* Image Preview Dialog */}
+            <Dialog open={imageDialogOpen} onOpenChange={setImageDialogOpen}>
+              <DialogContent className="max-w-2xl">
+                <DialogHeader>
+                  <DialogTitle>{fullName}</DialogTitle>
+                </DialogHeader>
+                <div className="flex items-center justify-center p-4">
+                  {clientImage && (
+                    <img
+                      src={clientImage}
+                      alt={fullName}
+                      className="max-h-[70vh] max-w-full rounded-lg object-contain"
+                    />
+                  )}
+                </div>
+              </DialogContent>
+            </Dialog>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-2 gap-4 text-sm">
@@ -644,6 +672,18 @@ export function ComprehensiveLeadDetails({
                     <p className="text-muted-foreground">Email</p>
                     <p className="font-medium">{lead.emailAddress || "N/A"}</p>
                   </div>
+                  <div>
+                    <p className="text-muted-foreground">Originated By</p>
+                    <p className="font-medium">
+                      {lead.createdByUserName || lead.userId || "N/A"}
+                    </p>
+                  </div>
+                  {lead.assignedToUserName && lead.createdByUserName && lead.assignedToUserName !== lead.createdByUserName && (
+                    <div>
+                      <p className="text-muted-foreground">Assigned To</p>
+                      <p className="font-medium">{lead.assignedToUserName}</p>
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -941,7 +981,7 @@ export function ComprehensiveLeadDetails({
                                     </p>
                                     <p className="text-lg font-semibold">
                                       {fineractLoan.currency?.displaySymbol ||
-                                        "K"}
+                                        currencySymbol}
                                       {(
                                         fineractLoan.summary
                                           .feeChargesCharged || 0
@@ -955,7 +995,7 @@ export function ComprehensiveLeadDetails({
                                       </p>
                                       <p className="text-lg font-semibold text-blue-600">
                                         {fineractLoan.currency?.displaySymbol ||
-                                          "K"}
+                                          currencySymbol}
                                         {(
                                           fineractLoan.summary.feeChargesPaid ||
                                           0
@@ -974,7 +1014,7 @@ export function ComprehensiveLeadDetails({
                                     </p>
                                     <p className="text-lg font-semibold text-red-600">
                                       {fineractLoan.currency?.displaySymbol ||
-                                        "K"}
+                                        currencySymbol}
                                       {(
                                         fineractLoan.summary
                                           .penaltyChargesCharged || 0
@@ -989,7 +1029,7 @@ export function ComprehensiveLeadDetails({
                                       </p>
                                       <p className="text-lg font-semibold text-blue-600">
                                         {fineractLoan.currency?.displaySymbol ||
-                                          "K"}
+                                          currencySymbol}
                                         {(
                                           fineractLoan.summary
                                             .penaltyChargesPaid || 0
@@ -1743,7 +1783,7 @@ export function ComprehensiveLeadDetails({
                           Total Principal
                         </p>
                         <p className="text-lg font-bold">
-                          $
+                          {fineractLoan.currency?.displaySymbol || currencySymbol}
                           {(
                             fineractLoan.repaymentSchedule
                               .totalPrincipalExpected || 0
@@ -1755,7 +1795,7 @@ export function ComprehensiveLeadDetails({
                           Total Interest
                         </p>
                         <p className="text-lg font-bold text-green-600">
-                          $
+                          {fineractLoan.currency?.displaySymbol || currencySymbol}
                           {(
                             fineractLoan.repaymentSchedule
                               .totalInterestCharged || 0
@@ -1767,7 +1807,7 @@ export function ComprehensiveLeadDetails({
                           Total Repayment
                         </p>
                         <p className="text-lg font-bold text-blue-600">
-                          $
+                          {fineractLoan.currency?.displaySymbol || currencySymbol}
                           {(
                             fineractLoan.repaymentSchedule
                               .totalRepaymentExpected || 0
@@ -1779,7 +1819,7 @@ export function ComprehensiveLeadDetails({
                           Outstanding
                         </p>
                         <p className="text-lg font-bold text-orange-600">
-                          $
+                          {fineractLoan.currency?.displaySymbol || currencySymbol}
                           {(
                             fineractLoan.repaymentSchedule.totalOutstanding || 0
                           ).toLocaleString()}
@@ -1813,23 +1853,25 @@ export function ComprehensiveLeadDetails({
                                   {period.dueDate?.join("-") || "N/A"}
                                 </td>
                                 <td className="px-4 py-2 text-right">
-                                  ${period.principalDue?.toLocaleString() || 0}
+                                  {fineractLoan.currency?.displaySymbol || currencySymbol}
+                                  {period.principalDue?.toLocaleString() || 0}
                                 </td>
                                 <td className="px-4 py-2 text-right">
-                                  ${period.interestDue?.toLocaleString() || 0}
+                                  {fineractLoan.currency?.displaySymbol || currencySymbol}
+                                  {period.interestDue?.toLocaleString() || 0}
                                 </td>
                                 <td className="px-4 py-2 text-right font-medium">
-                                  $
+                                  {fineractLoan.currency?.displaySymbol || currencySymbol}
                                   {period.totalDueForPeriod?.toLocaleString() ||
                                     0}
                                 </td>
                                 <td className="px-4 py-2 text-right text-green-600">
-                                  $
+                                  {fineractLoan.currency?.displaySymbol || currencySymbol}
                                   {period.totalPaidForPeriod?.toLocaleString() ||
                                     0}
                                 </td>
                                 <td className="px-4 py-2 text-right text-orange-600">
-                                  $
+                                  {fineractLoan.currency?.displaySymbol || currencySymbol}
                                   {period.totalOutstandingForPeriod?.toLocaleString() ||
                                     0}
                                 </td>

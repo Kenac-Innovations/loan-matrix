@@ -43,6 +43,9 @@ interface Bank {
   description?: string;
   officeId?: number;
   officeName?: string;
+  glAccountId?: number;
+  glAccountName?: string;
+  glAccountCode?: string;
   status: string;
   isActive: boolean;
   totalAllocated: number;
@@ -160,6 +163,16 @@ export default function BankDetailsPage({
             <p className="text-muted-foreground mt-1">
               Code: {bank.code} {bank.officeName && `• ${bank.officeName}`}
             </p>
+            {bank.glAccountCode && bank.glAccountName && (
+              <p className="text-sm text-muted-foreground mt-1">
+                GL Account: {bank.glAccountCode} - {bank.glAccountName}
+              </p>
+            )}
+            {!bank.glAccountId && (
+              <p className="text-sm text-amber-600 mt-1">
+                ⚠️ No GL account configured - edit bank to assign one
+              </p>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -406,6 +419,10 @@ export default function BankDetailsPage({
         onOpenChange={setAllocateModalOpen}
         bankId={bank.id}
         bankName={bank.name}
+        bankGlAccountId={bank.glAccountId}
+        bankGlAccountName={bank.glAccountName}
+        bankGlAccountCode={bank.glAccountCode}
+        bankOfficeId={bank.officeId}
         onSuccess={fetchBank}
       />
       <AssignTellerModal

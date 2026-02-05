@@ -1308,6 +1308,52 @@ export class FineractAPIService {
       throw error;
     }
   }
+
+  // Loan Officer Assignment
+  async assignLoanOfficer(
+    loanId: number,
+    loanOfficerId: number,
+    assignmentDate?: string
+  ): Promise<any> {
+    try {
+      const today = new Date();
+      const formattedDate = assignmentDate || 
+        `${today.getDate()} ${today.toLocaleString('en', { month: 'long' })} ${today.getFullYear()}`;
+      
+      const response: AxiosResponse<any> = await this.client.post(
+        `/loans/${loanId}?command=assignLoanOfficer`,
+        {
+          toLoanOfficerId: loanOfficerId,
+          assignmentDate: formattedDate,
+          dateFormat: "dd MMMM yyyy",
+          locale: "en",
+        }
+      );
+      console.log(`Loan officer ${loanOfficerId} assigned to loan ${loanId}`);
+      return response.data;
+    } catch (error: any) {
+      console.error("Error assigning loan officer:", {
+        message: error.message,
+        status: error.response?.status,
+        data: error.response?.data,
+      });
+      throw error;
+    }
+  }
+
+  // Get staff member by user ID
+  async getStaffByUserId(userId: number): Promise<any | null> {
+    try {
+      // Fineract staff are linked to users, try to find staff with matching user ID
+      const allStaff = await this.getStaff();
+      // Staff might have userId property or we need to match by some other means
+      const staff = allStaff.find((s: any) => s.id === userId || s.userId === userId);
+      return staff || null;
+    } catch (error: any) {
+      console.error("Error finding staff by user ID:", error.message);
+      return null;
+    }
+  }
 }
 
 // Singleton instance for fallback
