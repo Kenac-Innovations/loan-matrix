@@ -162,8 +162,9 @@ export async function POST(
       },
     });
 
+    // Only sum positive allocations - disbursements reduce till but not "allocated"
     const totalAllocatedToCashiersBefore = allocatedToCashiersBefore.reduce(
-      (sum, alloc) => sum + alloc.amount,
+      (sum, alloc) => sum + (alloc.amount > 0 ? alloc.amount : 0),
       0
     );
 
@@ -306,8 +307,9 @@ export async function POST(
       },
     });
 
+    // Only sum positive allocations - disbursements reduce till but not "allocated"
     const totalAllocatedToCashiers = allocatedToCashiers.reduce(
-      (sum, alloc) => sum + alloc.amount,
+      (sum, alloc) => sum + (alloc.amount > 0 ? alloc.amount : 0),
       0
     );
 

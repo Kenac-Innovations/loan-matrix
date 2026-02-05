@@ -150,8 +150,10 @@ export async function GET(
       },
     });
 
+    // Only sum positive allocations - disbursements (negative) reduce cashier till
+    // but don't "free up" teller funds (cash left the system)
     const allocatedToCashiers = cashierAllocations.reduce(
-      (sum, alloc) => sum + alloc.amount,
+      (sum, alloc) => sum + (alloc.amount > 0 ? alloc.amount : 0),
       0
     );
 

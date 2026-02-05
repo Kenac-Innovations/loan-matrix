@@ -549,6 +549,26 @@ export async function POST(
       },
     });
 
+    // For disbursements: cash leaves the system (goes to customer), so reduce teller vault.
+    // Without this, available balance would incorrectly increase because allocatedToCashiers
+    // decreases (negative cashier allocation) while vault stays same.
+    if (txnType === "DISBURSEMENT") {
+      await prisma.cashAllocation.create({
+        data: {
+          tenantId: tenant.id,
+          tellerId: teller.id,
+          cashierId: null, // Vault allocation
+          fineractAllocationId: null,
+          amount: -parseFloat(amount), // Cash left the system
+          currency: currency,
+          allocatedBy: session.user.id,
+          notes: `Loan disbursement (cash out): ${settlementNotes}`,
+          status: "ACTIVE",
+        },
+      });
+      console.log(`Created vault deduction of -${amount} ${currency} (disbursement - cash left system)`);
+    }
+
     // If this is a return to vault (not a disbursement/external expense), 
     // also create a positive allocation for the vault
     if (isReturnToVault) {

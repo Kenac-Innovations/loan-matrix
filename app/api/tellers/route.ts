@@ -140,8 +140,9 @@ export async function GET(request: NextRequest) {
           },
         });
 
+        // Only sum positive allocations - disbursements reduce till but not "allocated"
         const allocatedToCashiers = cashierAllocations.reduce(
-          (sum, alloc) => sum + alloc.amount,
+          (sum, alloc) => sum + (alloc.amount > 0 ? alloc.amount : 0),
           0
         );
 
