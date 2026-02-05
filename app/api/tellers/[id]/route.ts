@@ -131,26 +131,20 @@ export async function GET(
       return NextResponse.json({ error: "Teller not found" }, { status: 404 });
     }
 
-    // Calculate balances using Fineract as source of truth
-    // Formula: Vault Balance = Bank Allocation - Cashier Balances (from Fineract)
-    // This ensures vault is correct even if local settlement records fail to create
-    
-    let allocatedToCashiers = 0;
+    // Calculate balances - available must DECREASE when loans are disbursed, and handle deposits
+    // allocatedToCashiers = sum of max(sumCashAllocation, netCash) per cashier
     const currency = "ZMW";
     
-    // Get total bank allocation to this teller (from local DB - this is the starting point)
-    // This includes all allocations from bank to teller vault
-    const bankAllocationToTeller = dbTeller.cashAllocations.reduce(
+    const vaultBalance = dbTeller.cashAllocations.reduce(
       (sum, alloc) => sum + alloc.amount,
       0
     );
     
+    let allocatedToCashiers = 0;
     if (dbTeller.fineractTellerId) {
       try {
         const fineractService = await getFineractServiceWithSession();
         const fineractCashiers = await fineractService.getCashiers(dbTeller.fineractTellerId);
-        
-        // Get balance for each cashier from Fineract (source of truth)
         for (const fc of fineractCashiers) {
           try {
             const summary = await fineractService.getCashierSummaryAndTransactions(
@@ -158,14 +152,17 @@ export async function GET(
               fc.id,
               "ZMK"
             );
-            allocatedToCashiers += summary.netCash || 0;
+            // max(sumCashAllocation, netCash) - decreases on disbursement, correctly handles deposits
+            allocatedToCashiers += Math.max(
+              summary.sumCashAllocation || 0,
+              summary.netCash || 0
+            );
           } catch (err) {
             console.error(`Error getting Fineract summary for cashier ${fc.id}:`, err);
           }
         }
       } catch (err) {
-        console.error("Error fetching cashier balances from Fineract:", err);
-        // Fallback to local DB if Fineract fails
+        console.error("Error fetching Fineract cashier balances, falling back to local DB:", err);
         const cashierAllocations = await prisma.cashAllocation.findMany({
           where: {
             tellerId: dbTeller.id,
@@ -175,13 +172,14 @@ export async function GET(
             notes: { not: { contains: "Variance" } },
           },
         });
-        allocatedToCashiers = cashierAllocations.reduce(
-          (sum, alloc) => sum + alloc.amount,
+        const positiveSum = cashierAllocations.reduce(
+          (sum, alloc) => sum + (alloc.amount > 0 ? alloc.amount : 0),
           0
         );
+        const netSum = cashierAllocations.reduce((sum, alloc) => sum + alloc.amount, 0);
+        allocatedToCashiers = Math.max(positiveSum, netSum);
       }
     } else {
-      // No Fineract ID, use local DB
       const cashierAllocations = await prisma.cashAllocation.findMany({
         where: {
           tellerId: dbTeller.id,
@@ -191,19 +189,15 @@ export async function GET(
           notes: { not: { contains: "Variance" } },
         },
       });
-      allocatedToCashiers = cashierAllocations.reduce(
-        (sum, alloc) => sum + alloc.amount,
+      const positiveSum = cashierAllocations.reduce(
+        (sum, alloc) => sum + (alloc.amount > 0 ? alloc.amount : 0),
         0
       );
+      const netSum = cashierAllocations.reduce((sum, alloc) => sum + alloc.amount, 0);
+      allocatedToCashiers = Math.max(positiveSum, netSum);
     }
 
-    // Vault Balance = Bank Allocation - Cashier Balances (Fineract)
-    // This automatically reflects settlements even if local vault record wasn't created
-    const vaultBalance = bankAllocationToTeller - allocatedToCashiers;
-    
-    // Available balance is what's in the vault (not with cashiers)
-    // Since vault already excludes cashier balances, available = vault
-    const availableBalance = vaultBalance;
+    const availableBalance = vaultBalance - allocatedToCashiers;
 
     // Prepare base response with database data
     const baseResponse = {

@@ -173,46 +173,43 @@ export async function POST(
     // Note: No session required for allocating cash to cashier
     // Cash allocation happens BEFORE starting a session - the allocated cash becomes the opening float
 
-    // Calculate available balance using Fineract as source of truth
-    // Formula: Available = Bank Allocation - Cashier Balances (Fineract)
-    
-    // Get total bank allocation to this teller (from local DB)
+    // Calculate available balance - must DECREASE when loans are disbursed, and handle deposits
+    // allocatedToCashiers = sum of max(sumCashAllocation, netCash) per cashier
     const tellerVaultAllocations = await prisma.cashAllocation.findMany({
       where: {
         tellerId: teller.id,
         tenantId: tenant.id,
-        cashierId: null, // Teller vault allocations (bank -> teller)
+        cashierId: null,
         status: "ACTIVE",
       },
     });
 
-    const bankAllocationToTeller = tellerVaultAllocations.reduce(
+    const vaultBalance = tellerVaultAllocations.reduce(
       (sum, alloc) => sum + alloc.amount,
       0
     );
 
-    // Get allocated to cashiers from Fineract (source of truth)
     let allocatedToCashiers = 0;
     try {
       const fineractService = await getFineractServiceWithSession();
       const fineractCashiers = await fineractService.getCashiers(teller.fineractTellerId);
-      
-      for (const fc of fineractCashiers) {
+      for (const fc of fineractCashiers || []) {
         try {
           const summary = await fineractService.getCashierSummaryAndTransactions(
             teller.fineractTellerId,
             fc.id,
             currency
           );
-          allocatedToCashiers += summary.netCash || 0;
+          allocatedToCashiers += Math.max(
+            summary.sumCashAllocation || 0,
+            summary.netCash || 0
+          );
         } catch (err) {
           // Silently continue if single cashier fails
         }
       }
-      console.log(`Fineract total allocated to cashiers: ${allocatedToCashiers}`);
     } catch (err) {
       console.error("Error fetching Fineract cashier balances, falling back to local DB:", err);
-      // Fallback to local DB if Fineract fails
       const cashierAllocations = await prisma.cashAllocation.findMany({
         where: {
           tellerId: teller.id,
@@ -222,15 +219,15 @@ export async function POST(
           notes: { not: { contains: "Variance" } },
         },
       });
-      allocatedToCashiers = cashierAllocations.reduce(
-        (sum, alloc) => sum + alloc.amount,
+      const positiveSum = cashierAllocations.reduce(
+        (sum, alloc) => sum + (alloc.amount > 0 ? alloc.amount : 0),
         0
       );
+      const netSum = cashierAllocations.reduce((sum, alloc) => sum + alloc.amount, 0);
+      allocatedToCashiers = Math.max(positiveSum, netSum);
     }
 
-    // Available = Bank Allocation - Cashier Balances (Fineract)
-    // This is the vault balance (cash not with cashiers)
-    const availableBalance = bankAllocationToTeller - allocatedToCashiers;
+    const availableBalance = vaultBalance - allocatedToCashiers;
 
     if (parseFloat(amount) > availableBalance) {
       return NextResponse.json(
