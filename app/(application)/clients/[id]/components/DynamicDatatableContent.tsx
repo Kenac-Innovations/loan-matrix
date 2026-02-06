@@ -866,6 +866,35 @@ export function DynamicDatatableContent({
     setEditingRowIndex(-1); // Use -1 to indicate new row
   };
 
+  // Extract rowId from a datatable row (for PUT when row already exists)
+  const extractRowIdFromRow = (
+    row: { row?: any[]; id?: number },
+    columnHeaders: any[]
+  ): number | null => {
+    if (!row) return null;
+    const hdrs = columnHeaders || [];
+    const idHeader = hdrs.find(
+      (h: any) => h.columnName?.toLowerCase() === "id" && h.isColumnPrimaryKey
+    );
+    if (idHeader && row.row) {
+      const idx = hdrs.findIndex((h: any) => h === idHeader);
+      const val = row.row[idx];
+      if (val != null) return Number(val);
+    }
+    const pkHeader = hdrs.find((h: any) => h.isColumnPrimaryKey);
+    if (pkHeader && row.row) {
+      const idx = hdrs.findIndex((h: any) => h === pkHeader);
+      const val = row.row[idx];
+      if (val != null) return Number(val);
+    }
+    if (row.row?.[0] != null) {
+      const v = Number(row.row[0]);
+      if (!isNaN(v) && v > 0) return v;
+    }
+    if (row.id != null) return Number(row.id);
+    return null;
+  };
+
   const saveNewRow = async () => {
     setSaving(true);
     try {
@@ -929,14 +958,32 @@ export function DynamicDatatableContent({
         }
       });
 
+      // Before save: check if row already exists (e.g. Banking Details one-row-per-client)
+      // If exists, use PUT; otherwise POST to avoid duplicate key error
+      const checkRes = await fetch(
+        `/api/fineract/datatables/${encodeURIComponent(
+          datatableName
+        )}/${clientId}?genericResultSet=true`,
+        { cache: "no-store" }
+      );
+      const checkData = await checkRes.json();
+      const existingRows = checkRes.ok && checkData?.data?.length > 0;
+      const existingRowId = existingRows
+        ? extractRowIdFromRow(checkData.data[0], checkData.columnHeaders || headers)
+        : null;
+
+      const usePut = existingRows && existingRowId != null;
+
       const response = await fetch(
         `/api/fineract/datatables/${encodeURIComponent(
           datatableName
         )}/${clientId}`,
         {
-          method: "POST",
+          method: usePut ? "PUT" : "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ data: payload }),
+          body: JSON.stringify(
+            usePut ? { rowId: existingRowId, data: payload } : { data: payload }
+          ),
         }
       );
 
@@ -946,13 +993,15 @@ export function DynamicDatatableContent({
         throw new Error(
           result.error ||
             result.details?.defaultUserMessage ||
-            "Failed to create entry"
+            "Failed to save entry"
         );
       }
 
       toast({
         title: "Success",
-        description: "Data table entry created successfully",
+        description: usePut
+          ? "Data table entry updated successfully"
+          : "Data table entry created successfully",
       });
 
       // Refresh data
