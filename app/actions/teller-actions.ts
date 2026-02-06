@@ -108,36 +108,16 @@ export async function getTellerFromFineract(id: string) {
           );
           currency = dbTeller.cashAllocations[0]?.currency || "ZMW";
 
-          // allocatedToCashiers = max(sumCashAllocation, netCash) per cashier - decreases on disbursement, handles deposits
-          try {
-            const fineractService = await getFineractServiceWithSession();
-            const fineractCashiers = await fineractService.getCashiers(tellerId);
-            for (const fc of fineractCashiers || []) {
-              try {
-                const summary = await fineractService.getCashierSummaryAndTransactions(
-                  tellerId,
-                  fc.id,
-                  "ZMK"
-                );
-                allocatedToCashiers += Math.max(
-                  summary.sumCashAllocation || 0,
-                  summary.netCash || 0
-                );
-              } catch (err) {
-                console.error(`Error getting Fineract summary for cashier ${fc.id}:`, err);
-              }
-            }
-          } catch (err) {
-            console.error("Error fetching Fineract cashier balances, falling back to local DB:", err);
-            const cashierAllocations = await db.cashAllocation.findMany({
-              where: {
-                tellerId: dbTeller.id,
-                tenantId: tenant.id,
-                cashierId: { not: null },
-                status: "ACTIVE",
-                notes: { not: { contains: "Variance" } },
-              },
-            });
+          const cashierAllocations = await db.cashAllocation.findMany({
+            where: {
+              tellerId: dbTeller.id,
+              tenantId: tenant.id,
+              cashierId: { not: null },
+              status: "ACTIVE",
+              notes: { not: { contains: "Variance" } },
+            },
+          });
+          const localAllocated = (() => {
             const positiveSum = cashierAllocations.reduce(
               (sum: number, alloc: { amount: number }) => sum + (alloc.amount > 0 ? alloc.amount : 0),
               0
@@ -146,7 +126,32 @@ export async function getTellerFromFineract(id: string) {
               (sum: number, alloc: { amount: number }) => sum + alloc.amount,
               0
             );
-            allocatedToCashiers = Math.max(positiveSum, netSum);
+            return Math.max(positiveSum, netSum);
+          })();
+
+          allocatedToCashiers = localAllocated;
+          try {
+            const fineractService = await getFineractServiceWithSession();
+            const fineractCashiers = await fineractService.getCashiers(tellerId);
+            let fineractAllocated = 0;
+            for (const fc of fineractCashiers || []) {
+              try {
+                const summary = await fineractService.getCashierSummaryAndTransactions(
+                  tellerId,
+                  fc.id,
+                  "ZMW"
+                );
+                fineractAllocated += Math.max(
+                  summary.sumCashAllocation || 0,
+                  summary.netCash || 0
+                );
+              } catch (err) {
+                console.error(`Error getting Fineract summary for cashier ${fc.id}:`, err);
+              }
+            }
+            allocatedToCashiers = Math.max(localAllocated, fineractAllocated);
+          } catch (err) {
+            console.error("Error fetching Fineract cashier balances, using local DB:", err);
           }
 
           availableBalance = vaultBalance - allocatedToCashiers;
