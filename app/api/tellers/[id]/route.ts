@@ -140,20 +140,40 @@ export async function GET(
       0
     );
     
-    let allocatedToCashiers = 0;
+    // Compute allocatedToCashiers: always include local DB allocations so we never undercount
+    // (Fineract may return 0 due to currency/timing; local allocations are source of truth for our allocations)
+    const cashierAllocationsForTeller = await prisma.cashAllocation.findMany({
+      where: {
+        tellerId: dbTeller.id,
+        tenantId: tenant.id,
+        cashierId: { not: null },
+        status: "ACTIVE",
+        notes: { not: { contains: "Variance" } },
+      },
+    });
+    const localAllocatedToCashiers = (() => {
+      const positiveSum = cashierAllocationsForTeller.reduce(
+        (sum, alloc) => sum + (alloc.amount > 0 ? alloc.amount : 0),
+        0
+      );
+      const netSum = cashierAllocationsForTeller.reduce((sum, alloc) => sum + alloc.amount, 0);
+      return Math.max(positiveSum, netSum);
+    })();
+
+    let allocatedToCashiers = localAllocatedToCashiers;
     if (dbTeller.fineractTellerId) {
       try {
         const fineractService = await getFineractServiceWithSession();
         const fineractCashiers = await fineractService.getCashiers(dbTeller.fineractTellerId);
+        let fineractAllocated = 0;
         for (const fc of fineractCashiers) {
           try {
             const summary = await fineractService.getCashierSummaryAndTransactions(
               dbTeller.fineractTellerId,
               fc.id,
-              "ZMK"
+              "ZMW"
             );
-            // max(sumCashAllocation, netCash) - decreases on disbursement, correctly handles deposits
-            allocatedToCashiers += Math.max(
+            fineractAllocated += Math.max(
               summary.sumCashAllocation || 0,
               summary.netCash || 0
             );
@@ -161,40 +181,12 @@ export async function GET(
             console.error(`Error getting Fineract summary for cashier ${fc.id}:`, err);
           }
         }
+        // Use the larger of Fineract or local to avoid undercounting (e.g. when Fineract returns 0)
+        allocatedToCashiers = Math.max(localAllocatedToCashiers, fineractAllocated);
       } catch (err) {
-        console.error("Error fetching Fineract cashier balances, falling back to local DB:", err);
-        const cashierAllocations = await prisma.cashAllocation.findMany({
-          where: {
-            tellerId: dbTeller.id,
-            tenantId: tenant.id,
-            cashierId: { not: null },
-            status: "ACTIVE",
-            notes: { not: { contains: "Variance" } },
-          },
-        });
-        const positiveSum = cashierAllocations.reduce(
-          (sum, alloc) => sum + (alloc.amount > 0 ? alloc.amount : 0),
-          0
-        );
-        const netSum = cashierAllocations.reduce((sum, alloc) => sum + alloc.amount, 0);
-        allocatedToCashiers = Math.max(positiveSum, netSum);
+        console.error("Error fetching Fineract cashier balances, using local DB:", err);
+        // allocatedToCashiers already set from local
       }
-    } else {
-      const cashierAllocations = await prisma.cashAllocation.findMany({
-        where: {
-          tellerId: dbTeller.id,
-          tenantId: tenant.id,
-          cashierId: { not: null },
-          status: "ACTIVE",
-          notes: { not: { contains: "Variance" } },
-        },
-      });
-      const positiveSum = cashierAllocations.reduce(
-        (sum, alloc) => sum + (alloc.amount > 0 ? alloc.amount : 0),
-        0
-      );
-      const netSum = cashierAllocations.reduce((sum, alloc) => sum + alloc.amount, 0);
-      allocatedToCashiers = Math.max(positiveSum, netSum);
     }
 
     const availableBalance = vaultBalance - allocatedToCashiers;

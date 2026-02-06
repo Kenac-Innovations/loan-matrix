@@ -138,8 +138,7 @@ export async function GET(request: NextRequest) {
       })
     );
 
-    // Calculate balances - available must DECREASE when loans are disbursed, and handle deposits
-    // allocatedToCashiers = sum of max(sumCashAllocation, netCash) per cashier
+    // Calculate balances - use max(Fineract, local) for allocatedToCashiers so we never undercount
     const dbTellerBalances = await Promise.all(
       dbTellers.map(async (dbTeller) => {
         const vaultBalance = dbTeller.cashAllocations.reduce(
@@ -147,7 +146,25 @@ export async function GET(request: NextRequest) {
           0
         );
 
-        let allocatedToCashiers = 0;
+        const cashierAllocations = await prisma.cashAllocation.findMany({
+          where: {
+            tellerId: dbTeller.id,
+            tenantId: tenant.id,
+            cashierId: { not: null },
+            status: "ACTIVE",
+            notes: { not: { contains: "Variance" } },
+          },
+        });
+        const localAllocated = (() => {
+          const positiveSum = cashierAllocations.reduce(
+            (sum, alloc) => sum + (alloc.amount > 0 ? alloc.amount : 0),
+            0
+          );
+          const netSum = cashierAllocations.reduce((sum, alloc) => sum + alloc.amount, 0);
+          return Math.max(positiveSum, netSum);
+        })();
+
+        let allocatedToCashiers = localAllocated;
         const fineractCashiers = tellerCashiersMap.get(dbTeller.fineractTellerId!) || [];
         if (fineractCashiers.length > 0) {
           const summaries = await Promise.all(
@@ -156,7 +173,7 @@ export async function GET(request: NextRequest) {
                 const summary = await fineractService.getCashierSummaryAndTransactions(
                   dbTeller.fineractTellerId!,
                   fc.id,
-                  "ZMK"
+                  "ZMW"
                 );
                 return Math.max(
                   summary.sumCashAllocation || 0,
@@ -167,23 +184,8 @@ export async function GET(request: NextRequest) {
               }
             })
           );
-          allocatedToCashiers = summaries.reduce((sum, val) => sum + val, 0);
-        } else {
-          const cashierAllocations = await prisma.cashAllocation.findMany({
-            where: {
-              tellerId: dbTeller.id,
-              tenantId: tenant.id,
-              cashierId: { not: null },
-              status: "ACTIVE",
-              notes: { not: { contains: "Variance" } },
-            },
-          });
-          const positiveSum = cashierAllocations.reduce(
-            (sum, alloc) => sum + (alloc.amount > 0 ? alloc.amount : 0),
-            0
-          );
-          const netSum = cashierAllocations.reduce((sum, alloc) => sum + alloc.amount, 0);
-          allocatedToCashiers = Math.max(positiveSum, netSum);
+          const fineractAllocated = summaries.reduce((sum, val) => sum + val, 0);
+          allocatedToCashiers = Math.max(localAllocated, fineractAllocated);
         }
 
         const availableBalance = vaultBalance - allocatedToCashiers;

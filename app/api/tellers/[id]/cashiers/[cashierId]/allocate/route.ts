@@ -189,10 +189,29 @@ export async function POST(
       0
     );
 
-    let allocatedToCashiers = 0;
+    const cashierAllocsForCheck = await prisma.cashAllocation.findMany({
+      where: {
+        tellerId: teller.id,
+        tenantId: tenant.id,
+        cashierId: { not: null },
+        status: "ACTIVE",
+        notes: { not: { contains: "Variance" } },
+      },
+    });
+    const localAllocated = (() => {
+      const positiveSum = cashierAllocsForCheck.reduce(
+        (sum, alloc) => sum + (alloc.amount > 0 ? alloc.amount : 0),
+        0
+      );
+      const netSum = cashierAllocsForCheck.reduce((sum, alloc) => sum + alloc.amount, 0);
+      return Math.max(positiveSum, netSum);
+    })();
+
+    let allocatedToCashiers = localAllocated;
     try {
       const fineractService = await getFineractServiceWithSession();
       const fineractCashiers = await fineractService.getCashiers(teller.fineractTellerId);
+      let fineractAllocated = 0;
       for (const fc of fineractCashiers || []) {
         try {
           const summary = await fineractService.getCashierSummaryAndTransactions(
@@ -200,7 +219,7 @@ export async function POST(
             fc.id,
             currency
           );
-          allocatedToCashiers += Math.max(
+          fineractAllocated += Math.max(
             summary.sumCashAllocation || 0,
             summary.netCash || 0
           );
@@ -208,23 +227,9 @@ export async function POST(
           // Silently continue if single cashier fails
         }
       }
+      allocatedToCashiers = Math.max(localAllocated, fineractAllocated);
     } catch (err) {
-      console.error("Error fetching Fineract cashier balances, falling back to local DB:", err);
-      const cashierAllocations = await prisma.cashAllocation.findMany({
-        where: {
-          tellerId: teller.id,
-          tenantId: tenant.id,
-          cashierId: { not: null },
-          status: "ACTIVE",
-          notes: { not: { contains: "Variance" } },
-        },
-      });
-      const positiveSum = cashierAllocations.reduce(
-        (sum, alloc) => sum + (alloc.amount > 0 ? alloc.amount : 0),
-        0
-      );
-      const netSum = cashierAllocations.reduce((sum, alloc) => sum + alloc.amount, 0);
-      allocatedToCashiers = Math.max(positiveSum, netSum);
+      console.error("Error fetching Fineract cashier balances, using local DB:", err);
     }
 
     const availableBalance = vaultBalance - allocatedToCashiers;
