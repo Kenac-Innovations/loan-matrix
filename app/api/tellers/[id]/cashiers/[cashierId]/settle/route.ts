@@ -3,6 +3,7 @@ import { getFineractServiceWithSession } from "@/lib/fineract-api";
 import { prisma } from "@/lib/prisma";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
 import { getSession } from "@/lib/auth";
+import { isPaymentTypeCash } from "@/lib/cash-repayment-teller";
 
 /**
  * POST /api/tellers/[id]/cashiers/[cashierId]/settle
@@ -160,6 +161,48 @@ export async function POST(
         return NextResponse.json(
           { error: "This loan payout has been voided" },
           { status: 400 }
+        );
+      }
+
+      // Cashier balance may only change for cash disbursements.
+      // Verify the loan's disbursement was made with a cash payment method.
+      try {
+        const fineractService = await getFineractServiceWithSession();
+        const transactions = await fineractService.getLoanTransactions(
+          loanPayout.fineractLoanId
+        );
+        const disburseTxn = transactions.find((t) => t.type?.disbursement);
+        const paymentTypeId =
+          disburseTxn?.paymentDetailData?.paymentType?.id ?? null;
+
+        if (paymentTypeId == null) {
+          return NextResponse.json(
+            {
+              error:
+                "Disbursement must use a cash payment method to process payout from cashier. The loan disbursement has no payment type recorded.",
+            },
+            { status: 400 }
+          );
+        }
+
+        const isCash = await isPaymentTypeCash(paymentTypeId);
+        if (!isCash) {
+          return NextResponse.json(
+            {
+              error:
+                "Disbursement must use a cash payment method to process payout from cashier. The loan was disbursed with a non-cash payment method.",
+            },
+            { status: 400 }
+          );
+        }
+      } catch (err) {
+        console.error("Error verifying disbursement payment type:", err);
+        return NextResponse.json(
+          {
+            error:
+              "Could not verify disbursement payment method. Please try again or ensure the loan has been disbursed.",
+          },
+          { status: 500 }
         );
       }
     }

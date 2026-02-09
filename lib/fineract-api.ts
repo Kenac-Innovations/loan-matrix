@@ -344,6 +344,11 @@ export interface FineractTransaction {
   submittedOnDate: string;
   manuallyReversed: boolean;
   loanChargePaidByList?: any[];
+  /** Payment details when transaction has a payment type (e.g. disbursement, repayment) */
+  paymentDetailData?: {
+    id?: number;
+    paymentType?: { id: number; name: string };
+  };
 }
 
 export interface AccountingRuleAccount {

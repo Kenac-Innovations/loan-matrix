@@ -55,51 +55,49 @@ export function DisburseModal({ isOpen, onClose, loanId, onSuccess }: DisburseMo
         setTransactionAmount(typeof data.amount === 'number' ? data.amount : 0);
         if (data.currency?.displaySymbol) setCurrencySymbol(String(data.currency.displaySymbol));
 
-        // Payment types
-        setPaymentTypeOptions(Array.isArray(data.paymentTypeOptions) ? data.paymentTypeOptions : []);
+        // Payment types - from template, or fetch from API if not included
+        let paymentTypeList = Array.isArray(data.paymentTypeOptions) ? data.paymentTypeOptions : [];
+        if (paymentTypeList.length === 0) {
+          try {
+            const ptRes = await fetch("/api/fineract/paymenttypes");
+            if (ptRes.ok) {
+              const ptData = await ptRes.json();
+              paymentTypeList = Array.isArray(ptData) ? ptData : ptData?.pageItems ?? [];
+            }
+          } catch (err) {
+            console.error("Failed to fetch payment types:", err);
+          }
+        }
+        setPaymentTypeOptions(paymentTypeList);
 
-        // Auto-select payment type using USSD application's loanMatrixPaymentMethodId
+        // Auto-select payment type: USSD loanMatrixPaymentMethodId, or first cash, or first option
+        let selectedPaymentId = "";
         try {
-          // Load loan to get externalId, then ussd lead
           const loanRes = await fetch(`/api/fineract/loans/${loanId}`);
           if (loanRes.ok) {
             const loan = await loanRes.json();
             const loanExternalId = loan?.externalId;
-            console.log('Loan externalId:', loanExternalId);
-            
             if (loanExternalId) {
-              // Set the externalId state for the payload
               setExternalId(loanExternalId);
-              
-              // externalId is the USSD app primary key id (string like "cmg6iyaop0000rllpahnto16q")
-              // We need to fetch the USSD application by this string id
               const ussdRes = await fetch(`/api/ussd-leads/by-id/${loanExternalId}`);
               if (ussdRes.ok) {
                 const ussd = await ussdRes.json();
-                console.log('USSD application:', ussd);
                 const pmId = ussd?.loanMatrixPaymentMethodId;
-                console.log('Payment method ID from USSD:', pmId);
-                console.log('Available payment type options:', data.paymentTypeOptions);
-                
-                if (pmId && Array.isArray(data.paymentTypeOptions)) {
-                  const match = data.paymentTypeOptions.find((p: any) => p.id === pmId);
-                  if (match) {
-                    setPaymentTypeId(String(pmId));
-                    console.log(`Auto-selected payment type: ${match.name} (ID: ${pmId})`);
-                  } else {
-                    console.log(`No matching payment type found for ID: ${pmId}`);
-                  }
+                if (pmId && paymentTypeList.length > 0) {
+                  const match = paymentTypeList.find((p: any) => p.id === pmId);
+                  if (match) selectedPaymentId = String(pmId);
                 }
-              } else {
-                console.log('Failed to fetch USSD application:', ussdRes.status);
               }
-            } else {
-              console.log('No externalId found in loan');
             }
           }
         } catch (error) {
-          console.error('Error auto-selecting payment type:', error);
+          console.error("Error auto-selecting payment type:", error);
         }
+        if (!selectedPaymentId && paymentTypeList.length > 0) {
+          const firstCash = paymentTypeList.find((p: any) => p.isCashPayment);
+          selectedPaymentId = String((firstCash || paymentTypeList[0]).id);
+        }
+        if (selectedPaymentId) setPaymentTypeId(selectedPaymentId);
       } catch (e) {
         console.error(e);
         toast({ title: "Error", description: "Failed to load disbursement data.", variant: "destructive" });
@@ -201,18 +199,34 @@ export function DisburseModal({ isOpen, onClose, loanId, onSuccess }: DisburseMo
               <Input value={externalId} onChange={(e) => setExternalId(e.target.value)} />
             </div>
 
-            <div className="space-y-2">
-              <Label>Payment Type</Label>
-              <Select value={paymentTypeId} onValueChange={setPaymentTypeId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select payment type" />
-                </SelectTrigger>
-                <SelectContent>
-                  {paymentTypeOptions.map((p) => (
-                    <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            {/* Payment Methods Section */}
+            <div className="rounded-lg border p-4 space-y-3">
+              <h4 className="text-sm font-medium">Payment Method</h4>
+              <p className="text-xs text-muted-foreground">
+                Select how the disbursement will be paid to the client
+              </p>
+              <div className="space-y-2">
+                <Label htmlFor="payment-type">Payment Type</Label>
+                <Select value={paymentTypeId} onValueChange={setPaymentTypeId}>
+                  <SelectTrigger id="payment-type">
+                    <SelectValue placeholder="Select payment method" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {paymentTypeOptions.length === 0 ? (
+                      <div className="py-4 px-2 text-center text-sm text-muted-foreground">
+                        No payment methods available
+                      </div>
+                    ) : (
+                      paymentTypeOptions.map((p) => (
+                        <SelectItem key={p.id} value={String(p.id)}>
+                          {p.name}
+                          {p.isCashPayment ? " (Cash)" : ""}
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
             <div className="flex items-center gap-2">
