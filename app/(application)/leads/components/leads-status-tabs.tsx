@@ -94,6 +94,15 @@ const TABS: TabConfig[] = [
     icon: <CheckCircle2 className="h-4 w-4" />,
   },
   {
+    id: "disbursed",
+    label: "Disbursed",
+    report: "disbursed",
+    bgColor: "bg-green-500 dark:bg-green-600",
+    activeBg: "data-[state=active]:bg-green-500 dark:data-[state=active]:bg-green-600",
+    inactiveText: "text-green-700 dark:text-green-400",
+    icon: <CheckCircle2 className="h-4 w-4" />,
+  },
+  {
     id: "rejected",
     label: "Rejected",
     report: "rejected",
@@ -159,24 +168,28 @@ export function LeadsStatusTabs() {
     drafts: null,
     pending: null,
     approved: null,
+    disbursed: null,
     rejected: null,
   });
   const [tabCounts, setTabCounts] = useState<Record<string, number>>({
     drafts: 0,
     pending: 0,
     approved: 0,
+    disbursed: 0,
     rejected: 0,
   });
   const [loading, setLoading] = useState<Record<string, boolean>>({
     drafts: false,
     pending: false,
     approved: false,
+    disbursed: false,
     rejected: false,
   });
   const [errors, setErrors] = useState<Record<string, string | null>>({
     drafts: null,
     pending: null,
     approved: null,
+    disbursed: null,
     rejected: null,
   });
   const [navigatingRowId, setNavigatingRowId] = useState<string | null>(null);
@@ -187,6 +200,7 @@ export function LeadsStatusTabs() {
     drafts: { branch: "all", loanProduct: "all", submittedBy: "all" },
     pending: { branch: "all", loanProduct: "all", submittedBy: "all" },
     approved: { branch: "all", loanProduct: "all", submittedBy: "all" },
+    disbursed: { branch: "all", loanProduct: "all", submittedBy: "all" },
     rejected: { branch: "all", loanProduct: "all", submittedBy: "all" },
   });
 
@@ -417,6 +431,7 @@ export function LeadsStatusTabs() {
     const draftsData = getRoleScopedData(tabData.drafts?.data || []);
     const pendingData = getRoleScopedData(tabData.pending?.data || []);
     const approvedData = getRoleScopedData(tabData.approved?.data || []);
+    const disbursedData = getRoleScopedData(tabData.disbursed?.data || []);
     const rejectedData = getRoleScopedData(tabData.rejected?.data || []);
     
     // Debug log
@@ -425,10 +440,12 @@ export function LeadsStatusTabs() {
       rawDrafts: tabData.drafts?.data?.length || 0,
       rawPending: tabData.pending?.data?.length || 0,
       rawApproved: tabData.approved?.data?.length || 0,
+      rawDisbursed: tabData.disbursed?.data?.length || 0,
       rawRejected: tabData.rejected?.data?.length || 0,
       scopedDrafts: draftsData.length,
       scopedPending: pendingData.length,
       scopedApproved: approvedData.length,
+      scopedDisbursed: disbursedData.length,
       scopedRejected: rejectedData.length,
     });
     
@@ -436,19 +453,20 @@ export function LeadsStatusTabs() {
     const filteredDrafts = getFilteredData("drafts", draftsData);
     const filteredPending = getFilteredData("pending", pendingData);
     const filteredApproved = getFilteredData("approved", approvedData);
+    const filteredDisbursed = getFilteredData("disbursed", disbursedData);
     const filteredRejected = getFilteredData("rejected", rejectedData);
     
     // Total leads (all statuses)
-    const totalLeads = filteredDrafts.length + filteredPending.length + filteredApproved.length + filteredRejected.length;
+    const totalLeads = filteredDrafts.length + filteredPending.length + filteredApproved.length + filteredDisbursed.length + filteredRejected.length;
     
     // Conversion rate: Approved / (Approved + Rejected) * 100
-    const decidedLeads = filteredApproved.length + filteredRejected.length;
+    const decidedLeads = filteredApproved.length + filteredDisbursed.length + filteredRejected.length;
     const conversionRate = decidedLeads > 0 
-      ? ((filteredApproved.length / decidedLeads) * 100).toFixed(1) 
+      ? (((filteredApproved.length + filteredDisbursed.length) / decidedLeads) * 100).toFixed(1) 
       : "0.0";
     
-    // Submission rate: (Pending + Approved + Rejected) / Total * 100 (how many drafts got submitted)
-    const submittedLeads = filteredPending.length + filteredApproved.length + filteredRejected.length;
+    // Submission rate: (Pending + Approved + Disbursed + Rejected) / Total * 100 (how many drafts got submitted)
+    const submittedLeads = filteredPending.length + filteredApproved.length + filteredDisbursed.length + filteredRejected.length;
     const submissionRate = totalLeads > 0 
       ? ((submittedLeads / totalLeads) * 100).toFixed(1) 
       : "0.0";
@@ -464,6 +482,7 @@ export function LeadsStatusTabs() {
       drafts: filteredDrafts.length,
       pending: filteredPending.length,
       approved: filteredApproved.length,
+      disbursed: filteredDisbursed.length,
       rejected: filteredRejected.length,
       conversionRate,
       submissionRate,
@@ -478,6 +497,9 @@ export function LeadsStatusTabs() {
   
   // Columns that should be rendered as links
   const LINK_COLUMNS = new Set(["loan_account"]);
+  
+  // Columns that should be rendered as payout status badges
+  const PAYOUT_STATUS_COLUMNS = new Set(["payout_status"]);
 
   // Generate columns for the data table
   const generateColumns = useCallback((data: any[]): DataTableColumn<any>[] => {
@@ -506,6 +528,7 @@ export function LeadsStatusTabs() {
     // Add data columns
     for (const col of columnKeys) {
       const isLinkColumn = LINK_COLUMNS.has(col.toLowerCase());
+      const isPayoutStatusColumn = PAYOUT_STATUS_COLUMNS.has(col.toLowerCase());
       
       columns.push({
         id: col,
@@ -513,6 +536,30 @@ export function LeadsStatusTabs() {
         accessorKey: col as keyof any,
         cell: ({ getValue, row }) => {
           const value = getValue();
+          
+          // Render payout_status with colored badges
+          if (isPayoutStatusColumn) {
+            const status = String(value || "PENDING").toUpperCase();
+            if (status === "PAID") {
+              return (
+                <Badge className="bg-green-100 text-green-800 border-green-200 text-xs">
+                  Paid
+                </Badge>
+              );
+            } else if (status === "VOIDED") {
+              return (
+                <Badge className="bg-gray-100 text-gray-800 border-gray-200 text-xs">
+                  Voided
+                </Badge>
+              );
+            } else {
+              return (
+                <Badge className="bg-yellow-100 text-yellow-800 border-yellow-200 text-xs">
+                  Pending
+                </Badge>
+              );
+            }
+          }
           
           // Render loan_account as a clickable link to loan detail page
           if (isLinkColumn && value) {
@@ -901,7 +948,7 @@ export function LeadsStatusTabs() {
       </CardHeader>
       <CardContent className="pt-6">
         <Tabs value={activeTab} onValueChange={handleTabChange}>
-          <TabsList className="grid w-full grid-cols-4 mb-4 h-auto bg-muted/50 dark:bg-muted/30 p-1 rounded-lg">
+          <TabsList className="grid w-full grid-cols-5 mb-4 h-auto bg-muted/50 dark:bg-muted/30 p-1 rounded-lg">
             {TABS.map((tab) => (
               <TabsTrigger
                 key={tab.id}
