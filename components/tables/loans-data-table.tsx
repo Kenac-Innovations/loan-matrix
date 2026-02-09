@@ -117,12 +117,11 @@ export function LoansDataTable({ data }: LoansDataTableProps) {
       id: "payoutStatus",
       accessorKey: "payoutStatus",
       header: "Payout",
-      cell: ({ getValue, row }) => {
+      cell: ({ getValue }) => {
         const payoutStatus = getValue() as string | undefined;
-        const loanStatus = row.original.status;
         
-        // Only show payout status for disbursed loans
-        if (!loanStatus?.toLowerCase().includes("active")) {
+        // Only show payout status if there's a payout record
+        if (!payoutStatus) {
           return <div className="text-sm text-muted-foreground">-</div>;
         }
         
