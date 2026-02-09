@@ -138,65 +138,58 @@ export async function GET(request: NextRequest) {
       })
     );
 
-    // Calculate balances for database tellers using cached cashier data
-    // Formula: Vault = Bank Allocation - Cashier Balances (Fineract)
+    // Calculate balances - use max(Fineract, local) for allocatedToCashiers so we never undercount
     const dbTellerBalances = await Promise.all(
       dbTellers.map(async (dbTeller) => {
-        // Get total bank allocation to this teller (from local DB)
-        const bankAllocationToTeller = dbTeller.cashAllocations.reduce(
+        const vaultBalance = dbTeller.cashAllocations.reduce(
           (sum, alloc) => sum + alloc.amount,
           0
         );
 
-        // Get cashier balances from Fineract (source of truth)
-        let allocatedToCashiers = 0;
-        const currency = "ZMW";
-        let fineractCashiers: any[] = [];
-
-        if (dbTeller.fineractTellerId) {
-          // Use cached cashier data instead of fetching again
-          fineractCashiers = tellerCashiersMap.get(dbTeller.fineractTellerId) || [];
-          
-          if (fineractCashiers.length > 0) {
-            // Fetch all cashier summaries in parallel
-            const summaries = await Promise.all(
-              fineractCashiers.map(async (fc) => {
-                try {
-                  const summary = await fineractService.getCashierSummaryAndTransactions(
-                    dbTeller.fineractTellerId!,
-                    fc.id,
-                    "ZMK"
-                  );
-                  return summary.netCash || 0;
-                } catch (err) {
-                  return 0;
-                }
-              })
-            );
-            allocatedToCashiers = summaries.reduce((sum, net) => sum + net, 0);
-          }
-        }
-
-        // Fallback to local DB if no Fineract data
-        if (allocatedToCashiers === 0 && fineractCashiers.length === 0) {
-          const cashierAllocations = await prisma.cashAllocation.findMany({
-            where: {
-              tellerId: dbTeller.id,
-              tenantId: tenant.id,
-              cashierId: { not: null },
-              status: "ACTIVE",
-              notes: { not: { contains: "Variance" } },
-            },
-          });
-          allocatedToCashiers = cashierAllocations.reduce(
-            (sum, alloc) => sum + alloc.amount,
+        const cashierAllocations = await prisma.cashAllocation.findMany({
+          where: {
+            tellerId: dbTeller.id,
+            tenantId: tenant.id,
+            cashierId: { not: null },
+            status: "ACTIVE",
+            notes: { not: { contains: "Variance" } },
+          },
+        });
+        const localAllocated = (() => {
+          const positiveSum = cashierAllocations.reduce(
+            (sum, alloc) => sum + (alloc.amount > 0 ? alloc.amount : 0),
             0
           );
+          const netSum = cashierAllocations.reduce((sum, alloc) => sum + alloc.amount, 0);
+          return Math.max(positiveSum, netSum);
+        })();
+
+        let allocatedToCashiers = localAllocated;
+        const fineractCashiers = tellerCashiersMap.get(dbTeller.fineractTellerId!) || [];
+        if (fineractCashiers.length > 0) {
+          const summaries = await Promise.all(
+            fineractCashiers.map(async (fc: any) => {
+              try {
+                const summary = await fineractService.getCashierSummaryAndTransactions(
+                  dbTeller.fineractTellerId!,
+                  fc.id,
+                  "ZMW"
+                );
+                return Math.max(
+                  summary.sumCashAllocation || 0,
+                  summary.netCash || 0
+                );
+              } catch (err) {
+                return 0;
+              }
+            })
+          );
+          const fineractAllocated = summaries.reduce((sum, val) => sum + val, 0);
+          allocatedToCashiers = Math.max(localAllocated, fineractAllocated);
         }
 
-        // Vault = Bank Allocation - Cashier Balances (Fineract)
-        const vaultBalance = bankAllocationToTeller - allocatedToCashiers;
-        const availableBalance = vaultBalance;
+        const availableBalance = vaultBalance - allocatedToCashiers;
+        const currency = "ZMW";
 
         return {
           fineractTellerId: dbTeller.fineractTellerId,

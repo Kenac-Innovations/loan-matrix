@@ -562,12 +562,29 @@ export async function POST(
     });
     console.log(`Created cashier settlement: ID=${settlement.id}, cashierId=${cashier.id}, amount=-${amount} ${currency}`);
 
-    // NOTE: We no longer create vault allocation records for return to vault
-    // The vault balance is now derived from: Bank Allocation - Cashier Balances (Fineract)
-    // When Fineract cashier balance decreases, vault automatically increases
-    // Creating a vault record here would cause double counting
+    // For disbursements: cash leaves the system (goes to customer), so we must record a vault
+    // deduction. Otherwise available balance would incorrectly increase.
+    if (txnType === "DISBURSEMENT") {
+      await prisma.cashAllocation.create({
+        data: {
+          tenantId: tenant.id,
+          tellerId: teller.id,
+          cashierId: null,
+          fineractAllocationId: null,
+          amount: -parseFloat(amount),
+          currency: currency,
+          allocatedBy: session.user.id,
+          notes: `Loan disbursement (cash out): ${settlementNotes}`,
+          status: "ACTIVE",
+        },
+      });
+      console.log(`Created vault deduction of -${amount} ${currency} (disbursement - cash left system)`);
+    }
+
+    // For return to vault: do NOT create a local vault allocation. Vault is derived from
+    // Bank Allocation - Cashier Balances (Fineract); when Fineract cashier balance
+    // decreases, vault automatically increases. A local record would double count.
     console.log(`Settlement type: ${txnType}, isReturnToVault: ${isReturnToVault}`);
-    console.log(`Vault balance will be derived from Fineract - no local vault record needed`);
 
     // If this is a disbursement, update the loan payout record
     if (txnType === "DISBURSEMENT" && loanPayout) {
