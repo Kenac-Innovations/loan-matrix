@@ -16,7 +16,7 @@ export async function fetchDashboardData(): Promise<DashboardData> {
     ] = await Promise.allSettled([
       fetchFineractAPI("/clients?limit=1000"),
       fetchFineractAPI("/loans?limit=1000"),
-      fetchFineractAPI("/loans?sqlSearch=l.loan_status_id = 100"), // Pending approval
+      fetchFineractAPI("/loans?status=100"), // Pending approval
       fetchFineractAPI(
         "/loans?sqlSearch=l.loan_status_id = 300 AND l.total_outstanding_derived > 0 AND DATEDIFF(CURDATE(), l.expected_maturedon_date) > 0"
       ), // Overdue
