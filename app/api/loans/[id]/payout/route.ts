@@ -120,7 +120,7 @@ export async function POST(
       return NextResponse.json({ error: "Invalid loan ID" }, { status: 400 });
     }
 
-    const payout = await prisma.loanPayout.findUnique({
+    let payout = await prisma.loanPayout.findUnique({
       where: {
         tenantId_fineractLoanId: {
           tenantId: tenant.id,
@@ -128,6 +128,34 @@ export async function POST(
         },
       },
     });
+
+    // For markPaid action, create the payout record if it doesn't exist
+    if (!payout && action === "markPaid") {
+      try {
+        const fineractService = await getFineractServiceWithSession();
+        const loanDetails = await fineractService.getLoan(fineractLoanId);
+
+        if (loanDetails) {
+          payout = await prisma.loanPayout.create({
+            data: {
+              tenantId: tenant.id,
+              fineractLoanId: loanDetails.id,
+              fineractClientId: loanDetails.clientId,
+              clientName: loanDetails.clientName || "Unknown Client",
+              loanAccountNo: loanDetails.accountNo || "",
+              amount:
+                loanDetails.principal ||
+                loanDetails.approvedPrincipal ||
+                0,
+              currency: loanDetails.currency?.code || "ZMW",
+              status: "PENDING",
+            },
+          });
+        }
+      } catch (fetchError) {
+        console.error("Error creating payout record from Fineract:", fetchError);
+      }
+    }
 
     if (!payout) {
       return NextResponse.json(
@@ -169,8 +197,51 @@ export async function POST(
       });
     }
 
+    // Mark payout as paid for non-cash payment methods (Mobile Money, Bank Transfer)
+    if (action === "markPaid") {
+      const { paymentMethod, notes: payoutNotes } = body;
+
+      if (!paymentMethod || !["MOBILE_MONEY", "BANK_TRANSFER"].includes(paymentMethod)) {
+        return NextResponse.json(
+          { error: "Invalid payment method. Use 'MOBILE_MONEY' or 'BANK_TRANSFER'" },
+          { status: 400 }
+        );
+      }
+
+      if (payout.status === "PAID") {
+        return NextResponse.json(
+          { error: "This loan has already been paid out" },
+          { status: 400 }
+        );
+      }
+
+      if (payout.status === "VOIDED") {
+        return NextResponse.json(
+          { error: "This loan payout has been voided" },
+          { status: 400 }
+        );
+      }
+
+      const updatedPayout = await prisma.loanPayout.update({
+        where: { id: payout.id },
+        data: {
+          status: "PAID",
+          paymentMethod,
+          paidAt: new Date(),
+          paidBy: session.user.id,
+          notes: payoutNotes || `Paid via ${paymentMethod === "MOBILE_MONEY" ? "Mobile Money" : "Bank Transfer"}`,
+        },
+      });
+
+      return NextResponse.json({
+        success: true,
+        message: `Payout marked as paid via ${paymentMethod === "MOBILE_MONEY" ? "Mobile Money" : "Bank Transfer"}`,
+        payout: updatedPayout,
+      });
+    }
+
     return NextResponse.json(
-      { error: "Invalid action. Use 'void' to void a payout" },
+      { error: "Invalid action. Use 'void' or 'markPaid'" },
       { status: 400 }
     );
   } catch (error) {

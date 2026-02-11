@@ -733,6 +733,7 @@ model LoanPayout {
   amount           Float
   currency         String          @default("ZMW")
   status           String          @default("PENDING") // PENDING, PAID, VOIDED
+  paymentMethod    String?         // CASH, MOBILE_MONEY, BANK_TRANSFER
   paidAt           DateTime?
   paidBy           String?         // User who processed payout
   cashierId        String?         // Database cashier ID

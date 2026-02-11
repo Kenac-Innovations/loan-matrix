@@ -21,7 +21,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Loader2, Banknote, CheckCircle, AlertCircle } from "lucide-react";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Loader2, Banknote, CheckCircle, AlertCircle, Smartphone, Building2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 interface PayoutModalProps {
@@ -80,9 +81,20 @@ export function PayoutModal({
   const [loadingTellers, setLoadingTellers] = useState(false);
   const [loadingCashiers, setLoadingCashiers] = useState(false);
 
+  // Payment method selection (when no disbursement payment type exists)
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<
+    "CASH" | "MOBILE_MONEY" | "BANK_TRANSFER" | null
+  >(null);
+
   // Check payout status
   const [payoutStatus, setPayoutStatus] = useState<string | null>(null);
   const [checkingStatus, setCheckingStatus] = useState(false);
+
+  // Whether we need user to pick payment method
+  const needsPaymentMethodSelection = !disbursementPaymentType.id;
+  // Whether cash flow is active (either from Fineract or user selection)
+  const isCashFlow =
+    disbursementPaymentType.id != null || selectedPaymentMethod === "CASH";
 
   useEffect(() => {
     if (open) {
@@ -92,6 +104,7 @@ export function PayoutModal({
       setSuccess(null);
       setNotes("");
       setDisbursementPaymentType({ id: null, name: null });
+      setSelectedPaymentMethod(null);
     }
   }, [open]);
 
@@ -179,69 +192,111 @@ export function PayoutModal({
     setError(null);
     setSuccess(null);
 
-    if (!selectedTeller) {
-      setError("Please select a teller");
+    // Determine which payment method is being used
+    const paymentMethod = disbursementPaymentType.id
+      ? "CASH" // Has Fineract payment type = cash flow
+      : selectedPaymentMethod;
+
+    if (!paymentMethod) {
+      setError("Please select a payment method");
       return;
     }
 
-    if (!selectedCashier) {
-      setError("Please select a cashier with an active session");
-      return;
-    }
-
-    if (!disbursementPaymentType.id) {
-      setError(
-        "This loan has no recorded disbursement payment method. Please ensure it was disbursed with a payment type."
-      );
-      return;
+    // For cash flow, require teller and cashier
+    if (paymentMethod === "CASH") {
+      if (!selectedTeller) {
+        setError("Please select a teller");
+        return;
+      }
+      if (!selectedCashier) {
+        setError("Please select a cashier with an active session");
+        return;
+      }
     }
 
     setLoading(true);
 
     try {
-      // Process the payout through the settle endpoint
-      const response = await fetch(
-        `/api/tellers/${selectedTeller}/cashiers/${selectedCashier}/settle`,
-        {
+      if (paymentMethod === "CASH") {
+        // Cash flow: process through teller/cashier settle endpoint
+        const response = await fetch(
+          `/api/tellers/${selectedTeller}/cashiers/${selectedCashier}/settle`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              amount: principal,
+              currency: currency,
+              notes: notes || `Loan Disbursement Payout - ${clientName}`,
+              date: new Date().toISOString().split("T")[0],
+              transactionType: "DISBURSEMENT",
+              loanPayoutId: loanId,
+              paymentTypeId: disbursementPaymentType.id,
+            }),
+          }
+        );
+
+        if (response.ok) {
+          const result = await response.json();
+          console.log("Cash payout processed successfully:", result);
+
+          setSuccess(
+            `Successfully paid out ${formatCurrency(principal, currency)} to ${clientName} via Cash`
+          );
+          setPayoutStatus("PAID");
+          onSuccess?.();
+          setTimeout(() => {
+            router.refresh();
+            onOpenChange(false);
+          }, 2000);
+        } else {
+          const errorData = await response.json();
+          setError(
+            errorData.fineractError?.errors?.[0]?.defaultUserMessage ||
+              errorData.details ||
+              errorData.error ||
+              "Failed to process payout"
+          );
+        }
+      } else {
+        // Non-cash flow (Mobile Money / Bank Transfer): mark payout as paid directly
+        const response = await fetch(`/api/loans/${loanId}/payout`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            amount: principal,
-            currency: currency,
-            notes: notes || `Loan Disbursement Payout - ${clientName}`,
-            date: new Date().toISOString().split("T")[0],
-            transactionType: "DISBURSEMENT",
-            loanPayoutId: loanId, // Pass Fineract loan ID
-            paymentTypeId: disbursementPaymentType.id,
+            action: "markPaid",
+            paymentMethod,
+            notes:
+              notes ||
+              `Loan Payout - ${clientName} via ${
+                paymentMethod === "MOBILE_MONEY"
+                  ? "Mobile Money"
+                  : "Bank Transfer"
+              }`,
           }),
+        });
+
+        if (response.ok) {
+          const result = await response.json();
+          console.log("Non-cash payout processed successfully:", result);
+
+          const methodLabel =
+            paymentMethod === "MOBILE_MONEY"
+              ? "Mobile Money"
+              : "Bank Transfer";
+          setSuccess(
+            `Successfully paid out ${formatCurrency(principal, currency)} to ${clientName} via ${methodLabel}`
+          );
+          setPayoutStatus("PAID");
+          onSuccess?.();
+          setTimeout(() => {
+            router.refresh();
+            onOpenChange(false);
+          }, 2000);
+        } else {
+          const errorData = await response.json();
+          setError(errorData.error || "Failed to process payout");
         }
-      );
-
-      if (response.ok) {
-        const result = await response.json();
-        console.log("Payout processed successfully:", result);
-        
-        setSuccess(
-          `Successfully paid out ${formatCurrency(principal, currency)} to ${clientName}`
-        );
-        setPayoutStatus("PAID");
-
-        // Call onSuccess immediately to trigger SWR revalidation
-        onSuccess?.();
-
-        // Refresh and close after delay
-        setTimeout(() => {
-          router.refresh();
-          onOpenChange(false);
-        }, 2000);
-      } else {
-        const errorData = await response.json();
-        setError(
-          errorData.fineractError?.errors?.[0]?.defaultUserMessage ||
-            errorData.details ||
-            errorData.error ||
-            "Failed to process payout"
-        );
       }
     } catch (error) {
       console.error("Error processing payout:", error);
@@ -264,7 +319,7 @@ export function PayoutModal({
             Loan Payout
           </DialogTitle>
           <DialogDescription>
-            Process cash payout for this disbursed loan
+            Process payout for this disbursed loan
           </DialogDescription>
         </DialogHeader>
 
@@ -307,90 +362,195 @@ export function PayoutModal({
               </div>
             </div>
 
-            {/* Teller Selection */}
-            <div className="space-y-2">
-              <Label>Select Teller *</Label>
-              <Select value={selectedTeller} onValueChange={setSelectedTeller}>
-                <SelectTrigger>
-                  <SelectValue
-                    placeholder={
-                      loadingTellers ? "Loading tellers..." : "Select a teller"
-                    }
-                  />
-                </SelectTrigger>
-                <SelectContent>
-                  {tellers.map((teller) => (
-                    <SelectItem
-                      key={teller.id}
-                      value={teller.fineractTellerId?.toString() || teller.id}
-                    >
-                      {teller.name} - {teller.officeName}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Cashier Selection */}
-            <div className="space-y-2">
-              <Label>Select Cashier *</Label>
-              <Select
-                value={selectedCashier}
-                onValueChange={setSelectedCashier}
-                disabled={!selectedTeller || loadingCashiers}
-              >
-                <SelectTrigger>
-                  <SelectValue
-                    placeholder={
-                      !selectedTeller
-                        ? "Select a teller first"
-                        : loadingCashiers
-                        ? "Loading cashiers..."
-                        : cashiers.length === 0
-                        ? "No cashiers with active sessions"
-                        : "Select a cashier"
-                    }
-                  />
-                </SelectTrigger>
-                <SelectContent>
-                  {cashiers.map((cashier) => (
-                    <SelectItem
-                      key={cashier.dbId || cashier.id}
-                      value={cashier.dbId || cashier.id.toString()}
-                    >
-                      {cashier.staffName}
-                      {cashier.sessionStatus === "ACTIVE" && (
-                        <Badge variant="outline" className="ml-2 text-xs">
-                          Active Session
-                        </Badge>
-                      )}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {selectedTeller && cashiers.length === 0 && !loadingCashiers && (
-                <p className="text-sm text-yellow-600 flex items-center gap-1">
-                  <AlertCircle className="h-4 w-4" />
-                  No cashiers have active sessions. Start a session first.
+            {/* Payment Method Selection - shown when no payment type from Fineract */}
+            {needsPaymentMethodSelection && (
+              <div className="space-y-3">
+                <Label>Select Payment Method *</Label>
+                <p className="text-xs text-muted-foreground">
+                  No disbursement payment type was recorded. Please select how
+                  the client will receive their funds.
                 </p>
-              )}
-            </div>
+                <RadioGroup
+                  value={selectedPaymentMethod || ""}
+                  onValueChange={(value) => {
+                    setSelectedPaymentMethod(
+                      value as "CASH" | "MOBILE_MONEY" | "BANK_TRANSFER"
+                    );
+                    setError(null);
+                  }}
+                  className="grid grid-cols-3 gap-3"
+                >
+                  <div
+                    className={`flex flex-col items-center space-y-2 border rounded-lg p-3 cursor-pointer transition-colors ${
+                      selectedPaymentMethod === "CASH"
+                        ? "border-green-500 bg-green-50"
+                        : "hover:bg-muted/50"
+                    }`}
+                  >
+                    <RadioGroupItem value="CASH" id="pm-cash" className="sr-only" />
+                    <Label
+                      htmlFor="pm-cash"
+                      className="flex flex-col items-center gap-2 cursor-pointer"
+                    >
+                      <Banknote className="h-6 w-6 text-green-600" />
+                      <span className="text-sm font-medium">Cash</span>
+                    </Label>
+                  </div>
+                  <div
+                    className={`flex flex-col items-center space-y-2 border rounded-lg p-3 cursor-pointer transition-colors ${
+                      selectedPaymentMethod === "MOBILE_MONEY"
+                        ? "border-blue-500 bg-blue-50"
+                        : "hover:bg-muted/50"
+                    }`}
+                  >
+                    <RadioGroupItem
+                      value="MOBILE_MONEY"
+                      id="pm-mobile"
+                      className="sr-only"
+                    />
+                    <Label
+                      htmlFor="pm-mobile"
+                      className="flex flex-col items-center gap-2 cursor-pointer"
+                    >
+                      <Smartphone className="h-6 w-6 text-blue-600" />
+                      <span className="text-sm font-medium">Mobile Money</span>
+                    </Label>
+                  </div>
+                  <div
+                    className={`flex flex-col items-center space-y-2 border rounded-lg p-3 cursor-pointer transition-colors ${
+                      selectedPaymentMethod === "BANK_TRANSFER"
+                        ? "border-purple-500 bg-purple-50"
+                        : "hover:bg-muted/50"
+                    }`}
+                  >
+                    <RadioGroupItem
+                      value="BANK_TRANSFER"
+                      id="pm-bank"
+                      className="sr-only"
+                    />
+                    <Label
+                      htmlFor="pm-bank"
+                      className="flex flex-col items-center gap-2 cursor-pointer"
+                    >
+                      <Building2 className="h-6 w-6 text-purple-600" />
+                      <span className="text-sm font-medium">Bank Transfer</span>
+                    </Label>
+                  </div>
+                </RadioGroup>
+              </div>
+            )}
 
-            {/* Payment Type Selection */}
-            <div className="space-y-2">
-              <Label>Disbursement Payment Type</Label>
-              <Input
-                value={
-                  disbursementPaymentType.name
-                    ? disbursementPaymentType.name
-                    : "Not recorded"
-                }
-                disabled
-              />
-              <p className="text-xs text-muted-foreground">
-                This payout uses the payment method selected during loan disbursement.
-              </p>
-            </div>
+            {/* Existing Fineract payment type info - shown when payment type exists */}
+            {!needsPaymentMethodSelection && (
+              <div className="space-y-2">
+                <Label>Disbursement Payment Type</Label>
+                <Input value={disbursementPaymentType.name || "Cash"} disabled />
+                <p className="text-xs text-muted-foreground">
+                  This payout uses the payment method selected during loan
+                  disbursement.
+                </p>
+              </div>
+            )}
+
+            {/* Teller/Cashier Selection - only shown for cash flow */}
+            {isCashFlow && (
+              <>
+                <div className="space-y-2">
+                  <Label>Select Teller *</Label>
+                  <Select
+                    value={selectedTeller}
+                    onValueChange={setSelectedTeller}
+                  >
+                    <SelectTrigger>
+                      <SelectValue
+                        placeholder={
+                          loadingTellers
+                            ? "Loading tellers..."
+                            : "Select a teller"
+                        }
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {tellers.map((teller) => (
+                        <SelectItem
+                          key={teller.id}
+                          value={
+                            teller.fineractTellerId?.toString() || teller.id
+                          }
+                        >
+                          {teller.name} - {teller.officeName}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Select Cashier *</Label>
+                  <Select
+                    value={selectedCashier}
+                    onValueChange={setSelectedCashier}
+                    disabled={!selectedTeller || loadingCashiers}
+                  >
+                    <SelectTrigger>
+                      <SelectValue
+                        placeholder={
+                          !selectedTeller
+                            ? "Select a teller first"
+                            : loadingCashiers
+                            ? "Loading cashiers..."
+                            : cashiers.length === 0
+                            ? "No cashiers with active sessions"
+                            : "Select a cashier"
+                        }
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {cashiers.map((cashier) => (
+                        <SelectItem
+                          key={cashier.dbId || cashier.id}
+                          value={cashier.dbId || cashier.id.toString()}
+                        >
+                          {cashier.staffName}
+                          {cashier.sessionStatus === "ACTIVE" && (
+                            <Badge
+                              variant="outline"
+                              className="ml-2 text-xs"
+                            >
+                              Active Session
+                            </Badge>
+                          )}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {selectedTeller &&
+                    cashiers.length === 0 &&
+                    !loadingCashiers && (
+                      <p className="text-sm text-yellow-600 flex items-center gap-1">
+                        <AlertCircle className="h-4 w-4" />
+                        No cashiers have active sessions. Start a session first.
+                      </p>
+                    )}
+                </div>
+              </>
+            )}
+
+            {/* Non-cash info banner */}
+            {selectedPaymentMethod &&
+              selectedPaymentMethod !== "CASH" && (
+                <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-blue-700 text-sm">
+                  <p className="font-medium">
+                    {selectedPaymentMethod === "MOBILE_MONEY"
+                      ? "Mobile Money Payout"
+                      : "Bank Transfer Payout"}
+                  </p>
+                  <p className="text-xs mt-1">
+                    The payout will be marked as paid. No cashier balance will be
+                    affected.
+                  </p>
+                </div>
+              )}
 
             {/* Notes */}
             <div className="space-y-2">
@@ -434,10 +594,11 @@ export function PayoutModal({
               onClick={handlePayout}
               disabled={
                 loading ||
-                !selectedTeller ||
-                !selectedCashier ||
-                !disbursementPaymentType.id ||
-                checkingStatus
+                checkingStatus ||
+                // Cash flow requires teller + cashier
+                (isCashFlow && (!selectedTeller || !selectedCashier)) ||
+                // Must have a payment method selected (either from Fineract or user)
+                (needsPaymentMethodSelection && !selectedPaymentMethod)
               }
               className="bg-green-600 hover:bg-green-700"
             >
@@ -448,7 +609,13 @@ export function PayoutModal({
                 </>
               ) : (
                 <>
-                  <Banknote className="mr-2 h-4 w-4" />
+                  {selectedPaymentMethod === "MOBILE_MONEY" ? (
+                    <Smartphone className="mr-2 h-4 w-4" />
+                  ) : selectedPaymentMethod === "BANK_TRANSFER" ? (
+                    <Building2 className="mr-2 h-4 w-4" />
+                  ) : (
+                    <Banknote className="mr-2 h-4 w-4" />
+                  )}
                   Process Payout
                 </>
               )}
