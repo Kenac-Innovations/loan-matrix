@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -44,12 +44,20 @@ interface RepaymentModalProps {
   onSuccess: () => void;
 }
 
+interface PaymentType {
+  id: number;
+  name: string;
+  description?: string;
+  isCashPayment?: boolean;
+}
+
 export function RepaymentModal({ isOpen, onClose, loanId, onSuccess }: RepaymentModalProps) {
   const [template, setTemplate] = useState<RepaymentTemplate | null>(null);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [paymentTypes, setPaymentTypes] = useState<PaymentType[]>([]);
   
   // Form state
   const [formData, setFormData] = useState({
@@ -73,6 +81,26 @@ export function RepaymentModal({ isOpen, onClose, loanId, onSuccess }: Repayment
       fetchRepaymentTemplate();
     }
   }, [isOpen, loanId]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const fetchPaymentTypes = async () => {
+      try {
+        const res = await fetch("/api/fineract/paymenttypes");
+        if (!res.ok) throw new Error("Failed to load payment types");
+        const data = await res.json();
+        const list: PaymentType[] = Array.isArray(data)
+          ? data
+          : Array.isArray(data?.pageItems)
+          ? data.pageItems
+          : [];
+        setPaymentTypes(list);
+      } catch (err) {
+        console.error("Error fetching payment types:", err);
+      }
+    };
+    fetchPaymentTypes();
+  }, [isOpen]);
 
   const fetchRepaymentTemplate = async () => {
     try {
@@ -105,6 +133,19 @@ export function RepaymentModal({ isOpen, onClose, loanId, onSuccess }: Repayment
     }
   };
 
+  const mergedPaymentTypeOptions = useMemo(() => {
+    const templateOptions = template?.paymentTypeOptions ?? [];
+    if (templateOptions.length === 0) return paymentTypes;
+    const paymentTypeMap = new Map(paymentTypes.map((pt) => [pt.id, pt]));
+    return templateOptions.map((option) => {
+      const mapped = paymentTypeMap.get(option.id);
+      return {
+        ...option,
+        isCashPayment: option.isCashPayment ?? mapped?.isCashPayment ?? false,
+      };
+    });
+  }, [template, paymentTypes]);
+
   const handleSubmit = async () => {
     try {
       setSubmitting(true);
@@ -113,6 +154,10 @@ export function RepaymentModal({ isOpen, onClose, loanId, onSuccess }: Repayment
       // Validate required fields
       if (!formData.transactionDate || !formData.transactionAmount) {
         setError("Transaction Date and Transaction Amount are required");
+        return;
+      }
+      if (!formData.paymentTypeId) {
+        setError("Payment type is required so the teller balance can be updated.");
         return;
       }
 
@@ -130,7 +175,7 @@ export function RepaymentModal({ isOpen, onClose, loanId, onSuccess }: Repayment
 
       // Add optional fields if provided
       if (formData.externalId) payload.externalId = formData.externalId;
-      if (formData.paymentTypeId) payload.paymentTypeId = parseInt(formData.paymentTypeId);
+      payload.paymentTypeId = parseInt(formData.paymentTypeId, 10);
       if (formData.note) payload.note = formData.note;
 
       // Add payment details if enabled
@@ -343,13 +388,23 @@ export function RepaymentModal({ isOpen, onClose, loanId, onSuccess }: Repayment
                   <SelectValue placeholder="Select payment type" />
                 </SelectTrigger>
                 <SelectContent>
-                  {template.paymentTypeOptions.map((option) => (
-                    <SelectItem key={option.id} value={option.id.toString()}>
-                      {option.name}
-                    </SelectItem>
-                  ))}
+                  {mergedPaymentTypeOptions.length === 0 ? (
+                    <div className="py-4 px-2 text-center text-sm text-muted-foreground">
+                      No payment types available
+                    </div>
+                  ) : (
+                    mergedPaymentTypeOptions.map((option) => (
+                      <SelectItem key={option.id} value={option.id.toString()}>
+                        {option.name}
+                        {option.isCashPayment ? " (Cash)" : ""}
+                      </SelectItem>
+                    ))
+                  )}
                 </SelectContent>
               </Select>
+              <p className="text-xs text-muted-foreground">
+                Required. Select a cash payment method to update the teller balance.
+              </p>
             </div>
 
             {/* Show Payment Details Toggle */}

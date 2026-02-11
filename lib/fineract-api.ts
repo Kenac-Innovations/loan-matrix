@@ -1101,7 +1101,7 @@ export class FineractAPIService {
   ): Promise<any> {
     try {
       const response: AxiosResponse<any> = await this.client.post(
-        `/tellers/${tellerId}/cashiers/${cashierId}/allocate?command=allocate`,
+        `/tellers/${tellerId}/cashiers/${cashierId}/allocate`,
         {
           ...allocationData,
           dateFormat: allocationData.dateFormat || "dd MMMM yyyy",
@@ -1135,7 +1135,7 @@ export class FineractAPIService {
     try {
       // Use the settle command for cash out transactions
       const response: AxiosResponse<any> = await this.client.post(
-        `/tellers/${tellerId}/cashiers/${cashierId}/settle?command=settle`,
+        `/tellers/${tellerId}/cashiers/${cashierId}/settle`,
         {
           ...settlementData,
           dateFormat: settlementData.dateFormat || "dd MMMM yyyy",
