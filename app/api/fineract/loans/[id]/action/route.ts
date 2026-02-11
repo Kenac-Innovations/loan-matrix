@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { FineractAPIService } from "@/lib/fineract-api";
-import { getFineractTenantId } from "@/lib/fineract-tenant-service";
-import { getSession } from "@/lib/auth";
+import { fetchFineractAPI } from "@/lib/api";
 import { prisma } from "@/lib/prisma";
 import { getTenantBySlug } from "@/lib/tenant-service";
 
@@ -28,31 +26,11 @@ export async function POST(
       );
     }
 
-    // Get session for auth
-    const session = await getSession();
-    const accessToken =
-      session?.base64EncodedAuthenticationKey || session?.accessToken;
-
-    if (!accessToken) {
-      return NextResponse.json(
-        { error: "Unauthorized - no access token" },
-        { status: 401 }
-      );
-    }
-
     // Get tenant
     const tenantSlug =
       request.headers.get("x-tenant-slug") ||
       request.nextUrl.hostname.split(".")[0] ||
       "goodfellow";
-    const tenantId = await getFineractTenantId();
-
-    const fineractService = new FineractAPIService({
-      baseUrl: process.env.FINERACT_BASE_URL || "http://10.10.0.143",
-      username: process.env.FINERACT_USERNAME || "mifos",
-      password: process.env.FINERACT_PASSWORD || "password",
-      tenantId: tenantId,
-    });
 
     // Build the request body based on action
     let actionBody: any = {};
@@ -121,38 +99,29 @@ export async function POST(
     console.log(`Performing loan action: ${command} on loan ${loanId}`);
     console.log("Action body:", actionBody);
 
-    // Call Fineract API
-    const response = await fetch(
-      `${
-        process.env.FINERACT_BASE_URL || "http://10.10.0.143"
-      }/fineract-provider/api/v1/loans/${loanId}?command=${command}`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Basic ${accessToken}`,
-          "Fineract-Platform-TenantId": tenantId,
-        },
-        body: JSON.stringify(actionBody),
-      }
-    );
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      console.error("Fineract loan action error:", errorData);
+    let result;
+    try {
+      result = await fetchFineractAPI(
+        `/loans/${loanId}?command=${command}`,
+        {
+          method: "POST",
+          body: JSON.stringify(actionBody),
+        }
+      );
+    } catch (error: any) {
+      console.error("Fineract loan action error:", error);
       return NextResponse.json(
         {
           error:
-            errorData.defaultUserMessage ||
-            errorData.error ||
+            error?.errorData?.defaultUserMessage ||
+            error?.errorData?.error ||
+            error?.message ||
             `Failed to ${action} loan`,
-          details: errorData,
+          details: error?.errorData || null,
         },
-        { status: response.status }
+        { status: error?.status || 500 }
       );
     }
-
-    const result = await response.json();
     console.log("Loan action result:", result);
 
     // Transition lead stage based on action
