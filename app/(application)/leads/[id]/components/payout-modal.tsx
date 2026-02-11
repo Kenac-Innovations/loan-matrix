@@ -66,6 +66,10 @@ export function PayoutModal({
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [notes, setNotes] = useState("");
+  const [paymentTypes, setPaymentTypes] = useState<
+    Array<{ id: number; name: string; isCashPayment?: boolean }>
+  >([]);
+  const [paymentTypeId, setPaymentTypeId] = useState<string>("");
 
   // Teller and cashier selection
   const [tellers, setTellers] = useState<Teller[]>([]);
@@ -82,10 +86,12 @@ export function PayoutModal({
   useEffect(() => {
     if (open) {
       fetchTellers();
+      fetchPaymentTypes();
       checkPayoutStatus();
       setError(null);
       setSuccess(null);
       setNotes("");
+      setPaymentTypeId("");
     }
   }, [open]);
 
@@ -125,6 +131,20 @@ export function PayoutModal({
       console.error("Error fetching tellers:", error);
     } finally {
       setLoadingTellers(false);
+    }
+  };
+
+  const fetchPaymentTypes = async () => {
+    try {
+      const response = await fetch("/api/fineract/paymenttypes");
+      if (response.ok) {
+        const data = await response.json();
+        const list: Array<{ id: number; name: string; isCashPayment?: boolean }> =
+          Array.isArray(data) ? data : data?.pageItems ?? [];
+        setPaymentTypes(list);
+      }
+    } catch (error) {
+      console.error("Error fetching payment types:", error);
     }
   };
 
@@ -175,6 +195,11 @@ export function PayoutModal({
       return;
     }
 
+    if (!paymentTypeId) {
+      setError("Please select a payment type");
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -191,6 +216,7 @@ export function PayoutModal({
             date: new Date().toISOString().split("T")[0],
             transactionType: "DISBURSEMENT",
             loanPayoutId: loanId, // Pass Fineract loan ID
+            paymentTypeId: Number(paymentTypeId),
           }),
         }
       );
@@ -354,6 +380,43 @@ export function PayoutModal({
               )}
             </div>
 
+            {/* Payment Type Selection */}
+            <div className="space-y-2">
+              <Label>Select Payment Type *</Label>
+              <Select
+                value={paymentTypeId}
+                onValueChange={setPaymentTypeId}
+                disabled={paymentTypes.length === 0}
+              >
+                <SelectTrigger>
+                  <SelectValue
+                    placeholder={
+                      paymentTypes.length === 0
+                        ? "Loading payment types..."
+                        : "Select payment type"
+                    }
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  {paymentTypes.length === 0 ? (
+                    <div className="py-4 px-2 text-center text-sm text-muted-foreground">
+                      No payment types available
+                    </div>
+                  ) : (
+                    paymentTypes.map((type) => (
+                      <SelectItem key={type.id} value={type.id.toString()}>
+                        {type.name}
+                        {type.isCashPayment ? " (Cash)" : ""}
+                      </SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Choose how this payout will be disbursed. Select a cash method to deduct from the teller.
+              </p>
+            </div>
+
             {/* Notes */}
             <div className="space-y-2">
               <Label>Notes (Optional)</Label>
@@ -395,7 +458,11 @@ export function PayoutModal({
             <Button
               onClick={handlePayout}
               disabled={
-                loading || !selectedTeller || !selectedCashier || checkingStatus
+                loading ||
+                !selectedTeller ||
+                !selectedCashier ||
+                !paymentTypeId ||
+                checkingStatus
               }
               className="bg-green-600 hover:bg-green-700"
             >
