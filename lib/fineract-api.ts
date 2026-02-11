@@ -625,6 +625,24 @@ export class FineractAPIService {
     return response.data;
   }
 
+  async searchLoansByExternalId(externalId: string): Promise<FineractLoan[]> {
+    const response: AxiosResponse<any> = await this.client.get(
+      `/loans?externalId=${encodeURIComponent(externalId)}`
+    );
+
+    const data = response.data;
+    if (Array.isArray(data)) {
+      return data;
+    }
+    if (Array.isArray(data?.pageItems)) {
+      return data.pageItems;
+    }
+    if (Array.isArray(data?.content)) {
+      return data.content;
+    }
+    return [];
+  }
+
   async getClientLoans(clientId: number): Promise<FineractLoan[]> {
     const response: AxiosResponse<FineractLoan[]> = await this.client.get(
       `/clients/${clientId}/accounts`
