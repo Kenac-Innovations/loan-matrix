@@ -21,7 +21,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Loader2, Banknote, CheckCircle, AlertCircle, Smartphone, Building2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 
@@ -91,7 +90,8 @@ export function PayoutModal({
   const [checkingStatus, setCheckingStatus] = useState(false);
 
   // Whether we need user to pick payment method
-  const needsPaymentMethodSelection = !disbursementPaymentType.id;
+  const needsPaymentMethodSelection =
+    disbursementPaymentType.id == null;
   // Whether cash flow is active (either from Fineract or user selection)
   const isCashFlow =
     disbursementPaymentType.id != null || selectedPaymentMethod === "CASH";
@@ -312,7 +312,7 @@ export function PayoutModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Banknote className="h-5 w-5 text-green-600" />
@@ -364,13 +364,13 @@ export function PayoutModal({
 
             {/* Payment Method Selection - shown when no payment type from Fineract */}
             {needsPaymentMethodSelection && (
-              <div className="space-y-3">
+              <div className="space-y-2">
                 <Label>Select Payment Method *</Label>
                 <p className="text-xs text-muted-foreground">
                   No disbursement payment type was recorded. Please select how
                   the client will receive their funds.
                 </p>
-                <RadioGroup
+                <Select
                   value={selectedPaymentMethod || ""}
                   onValueChange={(value) => {
                     setSelectedPaymentMethod(
@@ -378,65 +378,31 @@ export function PayoutModal({
                     );
                     setError(null);
                   }}
-                  className="grid grid-cols-3 gap-3"
                 >
-                  <div
-                    className={`flex flex-col items-center space-y-2 border rounded-lg p-3 cursor-pointer transition-colors ${
-                      selectedPaymentMethod === "CASH"
-                        ? "border-green-500 bg-green-50"
-                        : "hover:bg-muted/50"
-                    }`}
-                  >
-                    <RadioGroupItem value="CASH" id="pm-cash" className="sr-only" />
-                    <Label
-                      htmlFor="pm-cash"
-                      className="flex flex-col items-center gap-2 cursor-pointer"
-                    >
-                      <Banknote className="h-6 w-6 text-green-600" />
-                      <span className="text-sm font-medium">Cash</span>
-                    </Label>
-                  </div>
-                  <div
-                    className={`flex flex-col items-center space-y-2 border rounded-lg p-3 cursor-pointer transition-colors ${
-                      selectedPaymentMethod === "MOBILE_MONEY"
-                        ? "border-blue-500 bg-blue-50"
-                        : "hover:bg-muted/50"
-                    }`}
-                  >
-                    <RadioGroupItem
-                      value="MOBILE_MONEY"
-                      id="pm-mobile"
-                      className="sr-only"
-                    />
-                    <Label
-                      htmlFor="pm-mobile"
-                      className="flex flex-col items-center gap-2 cursor-pointer"
-                    >
-                      <Smartphone className="h-6 w-6 text-blue-600" />
-                      <span className="text-sm font-medium">Mobile Money</span>
-                    </Label>
-                  </div>
-                  <div
-                    className={`flex flex-col items-center space-y-2 border rounded-lg p-3 cursor-pointer transition-colors ${
-                      selectedPaymentMethod === "BANK_TRANSFER"
-                        ? "border-purple-500 bg-purple-50"
-                        : "hover:bg-muted/50"
-                    }`}
-                  >
-                    <RadioGroupItem
-                      value="BANK_TRANSFER"
-                      id="pm-bank"
-                      className="sr-only"
-                    />
-                    <Label
-                      htmlFor="pm-bank"
-                      className="flex flex-col items-center gap-2 cursor-pointer"
-                    >
-                      <Building2 className="h-6 w-6 text-purple-600" />
-                      <span className="text-sm font-medium">Bank Transfer</span>
-                    </Label>
-                  </div>
-                </RadioGroup>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select payment method..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="CASH">
+                      <span className="flex items-center gap-2">
+                        <Banknote className="h-4 w-4 text-green-600" />
+                        Cash
+                      </span>
+                    </SelectItem>
+                    <SelectItem value="MOBILE_MONEY">
+                      <span className="flex items-center gap-2">
+                        <Smartphone className="h-4 w-4 text-blue-600" />
+                        Mobile Money
+                      </span>
+                    </SelectItem>
+                    <SelectItem value="BANK_TRANSFER">
+                      <span className="flex items-center gap-2">
+                        <Building2 className="h-4 w-4 text-purple-600" />
+                        Bank Transfer
+                      </span>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             )}
 
@@ -453,7 +419,7 @@ export function PayoutModal({
             )}
 
             {/* Teller/Cashier Selection - only shown for cash flow */}
-            {isCashFlow && (
+            {isCashFlow ? (
               <>
                 <div className="space-y-2">
                   <Label>Select Teller *</Label>
@@ -534,7 +500,7 @@ export function PayoutModal({
                     )}
                 </div>
               </>
-            )}
+            ) : null}
 
             {/* Non-cash info banner */}
             {selectedPaymentMethod &&
