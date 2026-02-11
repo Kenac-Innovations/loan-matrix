@@ -117,6 +117,10 @@ export function DisburseModal({ isOpen, onClose, loanId, onSuccess }: DisburseMo
       toast({ title: "Validation Error", description: "Enter a valid transaction amount.", variant: "destructive" });
       return;
     }
+    if (!paymentTypeId) {
+      toast({ title: "Validation Error", description: "Please select a payment type for this disbursement.", variant: "destructive" });
+      return;
+    }
     setSubmitting(true);
     try {
       const payload: any = {
@@ -127,7 +131,7 @@ export function DisburseModal({ isOpen, onClose, loanId, onSuccess }: DisburseMo
         note,
       };
       if (externalId) payload.externalId = externalId;
-      if (paymentTypeId) payload.paymentTypeId = Number(paymentTypeId);
+      payload.paymentTypeId = Number(paymentTypeId);
       if (accountNumber) payload.accountNumber = accountNumber;
       if (checkNumber) payload.checkNumber = checkNumber;
       if (routingCode) payload.routingCode = routingCode;
