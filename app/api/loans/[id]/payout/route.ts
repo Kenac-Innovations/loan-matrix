@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
 import { getSession } from "@/lib/auth";
+import { getFineractServiceWithSession } from "@/lib/fineract-api";
 
 /**
  * GET /api/loans/[id]/payout
@@ -36,16 +37,47 @@ export async function GET(
       },
     });
 
+    let disbursementPaymentType: {
+      id: number | null;
+      name: string | null;
+      isCash?: boolean;
+    } | null = null;
+
+    try {
+      const fineractService = await getFineractServiceWithSession();
+      const transactions = await fineractService.getLoanTransactions(
+        fineractLoanId
+      );
+      const disburseTxn = transactions.find(
+        (t) => t.type?.disbursement && !t.manuallyReversed
+      );
+      if (disburseTxn?.paymentDetailData?.paymentType) {
+        disbursementPaymentType = {
+          id: disburseTxn.paymentDetailData.paymentType.id,
+          name: disburseTxn.paymentDetailData.paymentType.name,
+        };
+      }
+    } catch (error) {
+      console.error(
+        "Error fetching disbursement payment type for payout:",
+        error
+      );
+    }
+
     console.log(`Payout lookup result:`, payout ? { id: payout.id, status: payout.status } : "Not found");
 
     if (!payout) {
       return NextResponse.json({
         status: "PENDING",
         message: "No payout record found - loan is pending payout",
+        disbursementPaymentType,
       });
     }
 
-    return NextResponse.json(payout);
+    return NextResponse.json({
+      ...payout,
+      disbursementPaymentType,
+    });
   } catch (error) {
     console.error("Error fetching payout:", error);
     return NextResponse.json(

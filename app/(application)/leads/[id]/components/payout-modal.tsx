@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -66,10 +67,10 @@ export function PayoutModal({
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [notes, setNotes] = useState("");
-  const [paymentTypes, setPaymentTypes] = useState<
-    Array<{ id: number; name: string; isCashPayment?: boolean }>
-  >([]);
-  const [paymentTypeId, setPaymentTypeId] = useState<string>("");
+  const [disbursementPaymentType, setDisbursementPaymentType] = useState<{
+    id: number | null;
+    name: string | null;
+  }>({ id: null, name: null });
 
   // Teller and cashier selection
   const [tellers, setTellers] = useState<Teller[]>([]);
@@ -86,12 +87,11 @@ export function PayoutModal({
   useEffect(() => {
     if (open) {
       fetchTellers();
-      fetchPaymentTypes();
       checkPayoutStatus();
       setError(null);
       setSuccess(null);
       setNotes("");
-      setPaymentTypeId("");
+      setDisbursementPaymentType({ id: null, name: null });
     }
   }, [open]);
 
@@ -111,6 +111,14 @@ export function PayoutModal({
       if (response.ok) {
         const data = await response.json();
         setPayoutStatus(data.status);
+        if (data.disbursementPaymentType) {
+          setDisbursementPaymentType({
+            id: data.disbursementPaymentType.id ?? null,
+            name: data.disbursementPaymentType.name ?? null,
+          });
+        } else {
+          setDisbursementPaymentType({ id: null, name: null });
+        }
       }
     } catch (error) {
       console.error("Error checking payout status:", error);
@@ -131,20 +139,6 @@ export function PayoutModal({
       console.error("Error fetching tellers:", error);
     } finally {
       setLoadingTellers(false);
-    }
-  };
-
-  const fetchPaymentTypes = async () => {
-    try {
-      const response = await fetch("/api/fineract/paymenttypes");
-      if (response.ok) {
-        const data = await response.json();
-        const list: Array<{ id: number; name: string; isCashPayment?: boolean }> =
-          Array.isArray(data) ? data : data?.pageItems ?? [];
-        setPaymentTypes(list);
-      }
-    } catch (error) {
-      console.error("Error fetching payment types:", error);
     }
   };
 
@@ -195,8 +189,10 @@ export function PayoutModal({
       return;
     }
 
-    if (!paymentTypeId) {
-      setError("Please select a payment type");
+    if (!disbursementPaymentType.id) {
+      setError(
+        "This loan has no recorded disbursement payment method. Please ensure it was disbursed with a payment type."
+      );
       return;
     }
 
@@ -216,7 +212,7 @@ export function PayoutModal({
             date: new Date().toISOString().split("T")[0],
             transactionType: "DISBURSEMENT",
             loanPayoutId: loanId, // Pass Fineract loan ID
-            paymentTypeId: Number(paymentTypeId),
+            paymentTypeId: disbursementPaymentType.id,
           }),
         }
       );
@@ -382,38 +378,17 @@ export function PayoutModal({
 
             {/* Payment Type Selection */}
             <div className="space-y-2">
-              <Label>Select Payment Type *</Label>
-              <Select
-                value={paymentTypeId}
-                onValueChange={setPaymentTypeId}
-                disabled={paymentTypes.length === 0}
-              >
-                <SelectTrigger>
-                  <SelectValue
-                    placeholder={
-                      paymentTypes.length === 0
-                        ? "Loading payment types..."
-                        : "Select payment type"
-                    }
-                  />
-                </SelectTrigger>
-                <SelectContent>
-                  {paymentTypes.length === 0 ? (
-                    <div className="py-4 px-2 text-center text-sm text-muted-foreground">
-                      No payment types available
-                    </div>
-                  ) : (
-                    paymentTypes.map((type) => (
-                      <SelectItem key={type.id} value={type.id.toString()}>
-                        {type.name}
-                        {type.isCashPayment ? " (Cash)" : ""}
-                      </SelectItem>
-                    ))
-                  )}
-                </SelectContent>
-              </Select>
+              <Label>Disbursement Payment Type</Label>
+              <Input
+                value={
+                  disbursementPaymentType.name
+                    ? disbursementPaymentType.name
+                    : "Not recorded"
+                }
+                disabled
+              />
               <p className="text-xs text-muted-foreground">
-                Choose how this payout will be disbursed. Select a cash method to deduct from the teller.
+                This payout uses the payment method selected during loan disbursement.
               </p>
             </div>
 
@@ -461,7 +436,7 @@ export function PayoutModal({
                 loading ||
                 !selectedTeller ||
                 !selectedCashier ||
-                !paymentTypeId ||
+                !disbursementPaymentType.id ||
                 checkingStatus
               }
               className="bg-green-600 hover:bg-green-700"
