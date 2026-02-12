@@ -308,9 +308,17 @@ export function RepaymentModal({ isOpen, onClose, loanId, onSuccess }: Repayment
 
       const result = await response.json();
       console.log("Repayment submitted successfully:", result);
-      
+
+      // Show warning if cashier allocate failed (repayment succeeded but till wasn't updated)
+      const alloc = result._cashierAllocate;
+      if (alloc && !alloc.success && alloc.error && !alloc.error.includes("Skipped")) {
+        setError(`Repayment recorded, but cashier balance was not updated: ${alloc.error}`);
+        setSubmitting(false);
+        return;
+      }
+
       setSuccess(true);
-      
+
       // Close modal after a short delay
       setTimeout(() => {
         onSuccess();

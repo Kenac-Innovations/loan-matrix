@@ -1,13 +1,18 @@
 import { NextResponse } from 'next/server';
 import { fetchFineractAPI } from '@/lib/api';
+import { getFineractServiceWithSession } from '@/lib/fineract-api';
 import { getTenantFromHeaders } from '@/lib/tenant-service';
 import { isPaymentTypeCash, recordCashRepaymentToTeller } from '@/lib/cash-repayment-teller';
 
-/** Format YYYY-MM-DD to "dd MMMM yyyy" for Fineract allocate */
+/** Format YYYY-MM-DD to "dd MMMM yyyy" for Fineract allocate (match working allocate route) */
 function formatDateForFineractAllocate(isoDate: string): string {
   const d = new Date(isoDate);
-  const day = d.getDate();
-  const month = d.toLocaleString('en', { month: 'long' });
+  const day = d.getDate().toString().padStart(2, '0');
+  const monthNames = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December',
+  ];
+  const month = monthNames[d.getMonth()];
   const year = d.getFullYear();
   return `${day} ${month} ${year}`;
 }
@@ -50,6 +55,8 @@ export async function POST(
       body: JSON.stringify(repaymentBody),
     });
 
+    let cashierAllocateResult: { success: boolean; error?: string; details?: unknown } | undefined;
+
     // After successful repayment: if payment is cash, call allocate to update cashier balance
     if (
       command === 'repayment' &&
@@ -85,29 +92,38 @@ export async function POST(
         ) {
           // Use tellerId/cashierId from request body - call allocate via fetchFineractAPI (same as repayment)
           try {
-            const allocateBody = {
-              txnDate: formatDateForFineractAllocate(transactionDate),
-              txnAmount: String(body.transactionAmount),
-              currencyCode: normalizedCurrency,
-              txnNote: `Loan repayment #${loanId}`,
-              dateFormat: 'dd MMMM yyyy',
-              locale: 'en',
-            };
-            await fetchFineractAPI(
-              `/tellers/${tellerId}/cashiers/${cashierId}/allocate`,
+            const fineractService = await getFineractServiceWithSession();
+            await fineractService.allocateCashToCashier(
+              tellerId,
+              cashierId,
               {
-                method: 'POST',
-                body: JSON.stringify(allocateBody),
+                txnDate: formatDateForFineractAllocate(transactionDate),
+                txnAmount: String(body.transactionAmount),
+                currencyCode: normalizedCurrency,
+                txnNote: `Loan repayment #${loanId}`,
+                dateFormat: 'dd MMMM yyyy',
+                locale: 'en',
               }
             );
+            cashierAllocateResult = { success: true };
             console.log(
               `[CashRepayment] Allocated ${body.transactionAmount} ${normalizedCurrency} for loan ${loanId} to teller ${tellerId}/cashier ${cashierId}`
             );
           } catch (err: any) {
+            const fineractError = err?.response?.data;
+            cashierAllocateResult = {
+              success: false,
+              error:
+                fineractError?.defaultUserMessage ||
+                fineractError?.errors?.[0]?.defaultUserMessage ||
+                err?.message ||
+                'Allocate failed',
+              details: fineractError || { message: err?.message },
+            };
             console.error('[CashRepayment] Allocate failed:', {
               message: err?.message,
-              status: err?.status,
-              errorData: err?.errorData,
+              status: err?.response?.status,
+              data: err?.response?.data,
             });
           }
         } else {
@@ -125,15 +141,26 @@ export async function POST(
               console.error('[CashRepayment] Fallback allocate failed:', err);
               return { success: false, error: err?.message };
             });
+            cashierAllocateResult = result.success
+              ? { success: true }
+              : { success: false, error: result.error };
             if (!result.success) {
               console.warn('[CashRepayment] Could not update cashier:', result.error);
             }
           }
         }
+      } else {
+        cashierAllocateResult = { success: false, error: 'Skipped - payment type is not cash' };
       }
     }
 
-    return NextResponse.json(data);
+    // Include allocate result in response so it's visible in network tab when debugging
+    const responseData =
+      cashierAllocateResult != null
+        ? { ...data, _cashierAllocate: cashierAllocateResult }
+        : data;
+
+    return NextResponse.json(responseData);
   } catch (error: any) {
     console.error('Error submitting loan transaction:', error);
     
