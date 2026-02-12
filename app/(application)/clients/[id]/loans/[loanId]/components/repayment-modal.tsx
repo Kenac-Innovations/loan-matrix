@@ -51,6 +51,20 @@ interface PaymentType {
   isCashPayment?: boolean;
 }
 
+interface Teller {
+  id: string;
+  fineractTellerId?: number;
+  name: string;
+  officeName?: string;
+}
+
+interface Cashier {
+  id: string | number;
+  dbId?: string;
+  staffName: string;
+  sessionStatus?: string;
+}
+
 export function RepaymentModal({ isOpen, onClose, loanId, onSuccess }: RepaymentModalProps) {
   const [template, setTemplate] = useState<RepaymentTemplate | null>(null);
   const [loading, setLoading] = useState(false);
@@ -58,6 +72,14 @@ export function RepaymentModal({ isOpen, onClose, loanId, onSuccess }: Repayment
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [paymentTypes, setPaymentTypes] = useState<PaymentType[]>([]);
+
+  // Teller and cashier selection (for cash payments)
+  const [tellers, setTellers] = useState<Teller[]>([]);
+  const [cashiers, setCashiers] = useState<Cashier[]>([]);
+  const [selectedTeller, setSelectedTeller] = useState<string>("");
+  const [selectedCashier, setSelectedCashier] = useState<string>("");
+  const [loadingTellers, setLoadingTellers] = useState(false);
+  const [loadingCashiers, setLoadingCashiers] = useState(false);
   
   // Form state
   const [formData, setFormData] = useState({
@@ -101,6 +123,54 @@ export function RepaymentModal({ isOpen, onClose, loanId, onSuccess }: Repayment
     };
     fetchPaymentTypes();
   }, [isOpen]);
+
+  const fetchTellers = async () => {
+    setLoadingTellers(true);
+    try {
+      const response = await fetch("/api/tellers");
+      if (response.ok) {
+        const data = await response.json();
+        setTellers(data || []);
+      }
+    } catch (error) {
+      console.error("Error fetching tellers:", error);
+    } finally {
+      setLoadingTellers(false);
+    }
+  };
+
+  const fetchCashiers = async (tellerId: string) => {
+    setLoadingCashiers(true);
+    try {
+      const response = await fetch(`/api/tellers/${tellerId}/cashiers`);
+      if (response.ok) {
+        const data = await response.json();
+        const activeCashiers = (Array.isArray(data) ? data : []).filter(
+          (c: Cashier) => c.sessionStatus === "ACTIVE"
+        );
+        setCashiers(activeCashiers);
+      }
+    } catch (error) {
+      console.error("Error fetching cashiers:", error);
+    } finally {
+      setLoadingCashiers(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isOpen) {
+      fetchTellers();
+    }
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (selectedTeller) {
+      fetchCashiers(selectedTeller);
+    } else {
+      setCashiers([]);
+      setSelectedCashier("");
+    }
+  }, [selectedTeller]);
 
   const fetchRepaymentTemplate = async () => {
     try {
@@ -146,6 +216,14 @@ export function RepaymentModal({ isOpen, onClose, loanId, onSuccess }: Repayment
     });
   }, [template, paymentTypes]);
 
+  const selectedPaymentTypeIsCash = useMemo(() => {
+    if (!formData.paymentTypeId) return false;
+    const option = mergedPaymentTypeOptions.find(
+      (o) => o.id.toString() === formData.paymentTypeId
+    );
+    return !!option?.isCashPayment;
+  }, [formData.paymentTypeId, mergedPaymentTypeOptions]);
+
   const handleSubmit = async () => {
     try {
       setSubmitting(true);
@@ -159,6 +237,17 @@ export function RepaymentModal({ isOpen, onClose, loanId, onSuccess }: Repayment
       if (!formData.paymentTypeId) {
         setError("Payment type is required so the teller balance can be updated.");
         return;
+      }
+
+      if (selectedPaymentTypeIsCash) {
+        if (!selectedTeller) {
+          setError("Please select a teller for cash repayments.");
+          return;
+        }
+        if (!selectedCashier) {
+          setError("Please select a cashier with an active session for cash repayments.");
+          return;
+        }
       }
 
       // Format date for Fineract - ISO format
@@ -177,6 +266,23 @@ export function RepaymentModal({ isOpen, onClose, loanId, onSuccess }: Repayment
       if (formData.externalId) payload.externalId = formData.externalId;
       payload.paymentTypeId = parseInt(formData.paymentTypeId, 10);
       if (formData.note) payload.note = formData.note;
+
+      // Add teller and cashier for cash repayments (required for allocate)
+      if (selectedPaymentTypeIsCash) {
+        const teller = tellers.find(
+          (t) =>
+            t.fineractTellerId?.toString() === selectedTeller || t.id === selectedTeller
+        );
+        const cashier = cashiers.find(
+          (c) => (c.dbId || c.id.toString()) === selectedCashier
+        );
+        if (teller?.fineractTellerId) payload.tellerId = teller.fineractTellerId;
+        if (cashier != null) {
+          const fineractCashierId =
+            typeof cashier.id === "number" ? cashier.id : parseInt(String(cashier.id), 10);
+          if (!isNaN(fineractCashierId)) payload.cashierId = fineractCashierId;
+        }
+      }
 
       // Add payment details if enabled
       if (formData.showPaymentDetails) {
@@ -235,6 +341,8 @@ export function RepaymentModal({ isOpen, onClose, loanId, onSuccess }: Repayment
       receiptNumber: "",
       bankNumber: "",
     });
+    setSelectedTeller("");
+    setSelectedCashier("");
     setError(null);
     setSuccess(false);
   };
@@ -383,7 +491,17 @@ export function RepaymentModal({ isOpen, onClose, loanId, onSuccess }: Repayment
             {/* Payment Type */}
             <div className="space-y-2">
               <Label htmlFor="payment-type">Payment Type</Label>
-              <Select value={formData.paymentTypeId} onValueChange={(value) => setFormData(prev => ({ ...prev, paymentTypeId: value }))}>
+              <Select
+                value={formData.paymentTypeId}
+                onValueChange={(value) => {
+                  setFormData((prev) => ({ ...prev, paymentTypeId: value }));
+                  const option = mergedPaymentTypeOptions.find((o) => o.id.toString() === value);
+                  if (!option?.isCashPayment) {
+                    setSelectedTeller("");
+                    setSelectedCashier("");
+                  }
+                }}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="Select payment type" />
                 </SelectTrigger>
@@ -406,6 +524,80 @@ export function RepaymentModal({ isOpen, onClose, loanId, onSuccess }: Repayment
                 Required. Select a cash payment method to update the teller balance.
               </p>
             </div>
+
+            {/* Teller and Cashier selection (only for cash payments) */}
+            {selectedPaymentTypeIsCash && (
+              <div className="space-y-4 p-4 border rounded-lg bg-muted/30">
+                <Label className="text-sm font-medium">
+                  Cash till location (required for teller balance)
+                </Label>
+                <div className="space-y-2">
+                  <Label>Teller *</Label>
+                  <Select value={selectedTeller} onValueChange={setSelectedTeller}>
+                    <SelectTrigger>
+                      <SelectValue
+                        placeholder={
+                          loadingTellers ? "Loading tellers..." : "Select a teller"
+                        }
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {tellers.map((teller) => (
+                        <SelectItem
+                          key={teller.id}
+                          value={teller.fineractTellerId?.toString() || teller.id}
+                        >
+                          {teller.name}
+                          {teller.officeName ? ` - ${teller.officeName}` : ""}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Cashier *</Label>
+                  <Select
+                    value={selectedCashier}
+                    onValueChange={setSelectedCashier}
+                    disabled={!selectedTeller || loadingCashiers}
+                  >
+                    <SelectTrigger>
+                      <SelectValue
+                        placeholder={
+                          !selectedTeller
+                            ? "Select a teller first"
+                            : loadingCashiers
+                            ? "Loading cashiers..."
+                            : cashiers.length === 0
+                            ? "No cashiers with active sessions"
+                            : "Select a cashier"
+                        }
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {cashiers.map((cashier) => (
+                        <SelectItem
+                          key={cashier.dbId || cashier.id}
+                          value={cashier.dbId || cashier.id.toString()}
+                        >
+                          {cashier.staffName}
+                          {cashier.sessionStatus === "ACTIVE" && (
+                            <span className="ml-2 text-xs text-muted-foreground">
+                              (Active)
+                            </span>
+                          )}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {selectedTeller && cashiers.length === 0 && !loadingCashiers && (
+                  <p className="text-sm text-amber-600">
+                    No cashiers have active sessions. Start a session first.
+                  </p>
+                )}
+              </div>
+            )}
 
             {/* Show Payment Details Toggle */}
             <div className="flex items-center space-x-2">
@@ -489,9 +681,15 @@ export function RepaymentModal({ isOpen, onClose, loanId, onSuccess }: Repayment
           <Button variant="outline" onClick={onClose} disabled={submitting}>
             Cancel
           </Button>
-          <Button 
-            onClick={handleSubmit} 
-            disabled={submitting || !formData.transactionDate || !formData.transactionAmount}
+          <Button
+            onClick={handleSubmit}
+            disabled={
+              submitting ||
+              !formData.transactionDate ||
+              !formData.transactionAmount ||
+              !formData.paymentTypeId ||
+              (selectedPaymentTypeIsCash && (!selectedTeller || !selectedCashier))
+            }
             className="bg-blue-600 hover:bg-blue-700"
           >
             {submitting ? (
