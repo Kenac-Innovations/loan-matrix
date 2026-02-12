@@ -1,12 +1,23 @@
 import { NextResponse } from 'next/server';
 import { fetchFineractAPI } from '@/lib/api';
-import { getTenantFromHeaders } from '@/lib/tenant-service';
-import { recordCashRepaymentToTeller } from '@/lib/cash-repayment-teller';
+import { getFineractServiceWithSession } from '@/lib/fineract-api';
+import { isPaymentTypeCash } from '@/lib/cash-repayment-teller';
+
+/** Format YYYY-MM-DD to "dd MMMM yyyy" for Fineract allocate */
+function formatDateForFineractAllocate(isoDate: string): string {
+  const d = new Date(isoDate);
+  const day = d.getDate();
+  const month = d.toLocaleString('en', { month: 'long' });
+  const year = d.getFullYear();
+  return `${day} ${month} ${year}`;
+}
 
 /**
  * POST /api/fineract/loans/[id]/transactions
  * Proxies to Fineract's loan transactions endpoint.
- * For repayment command: if payment is cash, records cash-in to teller/cashier balance.
+ * For repayment command: reads tellerId and cashierId from body, strips them before
+ * forwarding to Fineract. After successful repayment, if payment is cash, calls
+ * Fineract allocate with tellerId/cashierId in the path.
  */
 export async function POST(
   request: Request,
@@ -26,38 +37,62 @@ export async function POST(
     }
 
     const body = await request.json();
+
+    // Ask for and store tellerId and cashierId from the request body
+    const tellerId = body.tellerId != null ? Number(body.tellerId) : null;
+    const cashierId = body.cashierId != null ? Number(body.cashierId) : null;
+
+    // Build repayment body for Fineract WITHOUT tellerId and cashierId
+    const { tellerId: _t, cashierId: _c, ...repaymentBody } = body;
+
     const data = await fetchFineractAPI(`/loans/${id}/transactions?command=${command}`, {
       method: 'POST',
-      body: JSON.stringify(body),
+      body: JSON.stringify(repaymentBody),
     });
 
-    // After successful repayment: if cash payment, record to teller/cashier balance
+    // After successful repayment: if payment is cash and we have teller/cashier, call allocate
     if (
       command === 'repayment' &&
       body.paymentTypeId != null &&
       body.transactionAmount != null &&
       body.transactionAmount > 0 &&
-      !isNaN(loanId)
+      tellerId != null &&
+      !isNaN(tellerId) &&
+      cashierId != null &&
+      !isNaN(cashierId)
     ) {
-      const tenant = await getTenantFromHeaders();
-      if (tenant) {
-        const transactionDate =
-          typeof body.transactionDate === 'string'
-            ? body.transactionDate
-            : new Date().toISOString().split('T')[0];
-        await recordCashRepaymentToTeller({
-          loanId,
-          amount: Number(body.transactionAmount),
-          currency: body.currencyCode ?? body.currency?.code,
-          transactionDate,
-          tenantId: tenant.id,
-          paymentTypeId: Number(body.paymentTypeId),
-          cashierId: body.cashierId != null ? Number(body.cashierId) : undefined,
-          tellerId: body.tellerId != null ? Number(body.tellerId) : undefined,
-        }).catch((err) => {
+      const isCash = await isPaymentTypeCash(Number(body.paymentTypeId));
+      if (isCash) {
+        try {
+          const fineractService = await getFineractServiceWithSession();
+          const transactionDate =
+            typeof body.transactionDate === 'string'
+              ? body.transactionDate
+              : new Date().toISOString().split('T')[0];
+          const currency =
+            body.currencyCode ?? body.currency?.code ?? 'ZMW';
+          const normalizedCurrency =
+            String(currency).toUpperCase() === 'ZMK' ? 'ZMW' : currency;
+
+          await fineractService.allocateCashToCashier(
+            tellerId,
+            cashierId,
+            {
+              txnDate: formatDateForFineractAllocate(transactionDate),
+              txnAmount: String(body.transactionAmount),
+              currencyCode: normalizedCurrency,
+              txnNote: `Loan repayment #${loanId}`,
+              dateFormat: 'dd MMMM yyyy',
+              locale: 'en',
+            }
+          );
+          console.log(
+            `[CashRepayment] Allocated ${body.transactionAmount} ${normalizedCurrency} for loan ${loanId} to teller ${tellerId}/cashier ${cashierId}`
+          );
+        } catch (err: any) {
+          console.error('[CashRepayment] Allocate failed:', err);
           // Do not fail repayment; log only
-          console.error('[CashRepayment] Post-repayment teller update failed:', err);
-        });
+        }
       }
     }
 
