@@ -376,9 +376,8 @@ export function PipelineView({ initialData }: PipelineViewProps) {
                                 Draft
                               </Badge>
                             )}
-                            {/* Payout Status Badge for disbursed loans */}
-                            {lead.fineractLoanStatus?.toLowerCase() ===
-                              "active" && (
+                            {/* Payout Status Badge - shows if there's a payout record */}
+                            {lead.payoutStatus && (
                               <Badge
                                 className={`text-xs ${
                                   lead.payoutStatus === "PAID"

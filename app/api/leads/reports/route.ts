@@ -7,7 +7,7 @@ import { prisma } from "@/lib/prisma";
  * Fetch loan status reports from Fineract or local DB
  * 
  * Query params:
- * - report: "drafts" | "pending" | "approved" | "rejected"
+ * - report: "drafts" | "pending" | "approved" | "rejected" | "disbursed"
  * - startDate: YYYY-MM-DD
  * - endDate: YYYY-MM-DD
  */
@@ -35,12 +35,13 @@ export async function GET(request: NextRequest) {
       pending: "system submitted pending approval",
       approved: "system approved pending disbursement",
       rejected: "system loans rejected",
+      disbursed: "system disbursed",
     };
 
     const reportName = reportNames[report];
     if (!reportName) {
       return NextResponse.json(
-        { error: "Invalid report type. Use: drafts, pending, approved, or rejected" },
+        { error: "Invalid report type. Use: drafts, pending, approved, rejected, or disbursed" },
         { status: 400 }
       );
     }
@@ -62,7 +63,7 @@ export async function GET(request: NextRequest) {
 
     console.log(`Report ${reportName} parsed ${result.length} rows`);
 
-    // Enrich with local lead IDs by looking up via fineractLoanId
+    // Enrich with local lead IDs and payout status by looking up via fineractLoanId
     if (result.length > 0) {
       // Get tenant from header
       const tenantSlug = request.headers.get("x-tenant-slug") || "goodfellow";
@@ -94,11 +95,47 @@ export async function GET(request: NextRequest) {
             leads.map((lead) => [lead.fineractLoanId, lead.id])
           );
 
-          // Add lead_id to each row
-          result = result.map((row: any) => ({
-            ...row,
-            lead_id: leadIdMap.get(Number(row.loan_id)) || null,
-          }));
+          // For disbursed report, also fetch payout statuses
+          let payoutStatusMap = new Map<number, string>();
+          if (report === "disbursed") {
+            const payouts = await prisma.loanPayout.findMany({
+              where: {
+                tenantId: tenant.id,
+                loanId: { in: loanIds.map((id: any) => Number(id)) },
+              },
+              select: {
+                loanId: true,
+                status: true,
+              },
+              orderBy: {
+                createdAt: "desc",
+              },
+            });
+
+            // Create a map of loanId -> most recent payout status
+            for (const payout of payouts) {
+              if (!payoutStatusMap.has(payout.loanId)) {
+                payoutStatusMap.set(payout.loanId, payout.status);
+              }
+            }
+            console.log(`Fetched payout statuses for ${payoutStatusMap.size} loans`);
+          }
+
+          // Add lead_id and payout_status to each row
+          result = result.map((row: any) => {
+            const loanId = Number(row.loan_id);
+            const enrichedRow: any = {
+              ...row,
+              lead_id: leadIdMap.get(loanId) || null,
+            };
+            
+            // Add payout status for disbursed report
+            if (report === "disbursed") {
+              enrichedRow.payout_status = payoutStatusMap.get(loanId) || "PENDING";
+            }
+            
+            return enrichedRow;
+          });
 
           console.log(`Enriched ${leads.length} rows with local lead IDs`);
         }

@@ -677,9 +677,33 @@ export class FineractAPIService {
 
   // Transaction operations
   async getLoanTransactions(loanId: number): Promise<FineractTransaction[]> {
-    const response: AxiosResponse<{ transactions: FineractTransaction[] }> =
-      await this.client.get(`/loans/${loanId}/transactions`);
-    return response.data.transactions || [];
+    // First try: get loan with transactions association (most reliable)
+    try {
+      const response = await this.client.get(`/loans/${loanId}?associations=transactions`);
+      const data = response.data;
+      if (data?.transactions && Array.isArray(data.transactions)) {
+        return data.transactions;
+      }
+    } catch {
+      // Fall through to alternative endpoint
+    }
+
+    // Second try: direct transactions endpoint
+    const response = await this.client.get(`/loans/${loanId}/transactions`);
+    const data = response.data;
+
+    // Handle different Fineract response formats
+    if (Array.isArray(data)) {
+      return data;
+    }
+    if (data?.transactions && Array.isArray(data.transactions)) {
+      return data.transactions;
+    }
+    if (data?.pageItems && Array.isArray(data.pageItems)) {
+      return data.pageItems;
+    }
+
+    return [];
   }
 
   async getClientTransactions(

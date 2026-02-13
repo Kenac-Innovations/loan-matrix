@@ -494,18 +494,18 @@ export async function getLeadsData(
       }
     }
 
-    // Fetch payout statuses for active/disbursed loans (skip if requested for faster loading)
-    const disbursedLeads = transformedLeads.filter(
-      (lead) =>
-        lead.fineractLoanStatus?.toLowerCase() === "active" &&
-        lead.fineractLoanId
+    // Fetch payout statuses from local DB for all leads with fineractLoanId
+    // NOTE: We always fetch payout status regardless of skipFineractStatus
+    // because payout status is stored locally and indicates the loan was disbursed
+    const leadsWithLoanId = transformedLeads.filter(
+      (lead) => lead.fineractLoanId
     );
 
-    console.log(`Leads with active loans: ${disbursedLeads.length}, tenant: ${tenant.id}`);
+    console.log(`Leads with fineractLoanId: ${leadsWithLoanId.length}, tenant: ${tenant.id}`);
 
-    if (disbursedLeads.length > 0 && !skipFineractStatus) {
+    if (leadsWithLoanId.length > 0) {
       try {
-        const loanIds = disbursedLeads
+        const loanIds = leadsWithLoanId
           .map((l) => l.fineractLoanId)
           .filter((id): id is number => id !== null && id !== undefined);
         
@@ -535,11 +535,10 @@ export async function getLeadsData(
           ])
         );
 
-        // Update leads with payout status
-        disbursedLeads.forEach((lead) => {
-          if (lead.fineractLoanId) {
-            lead.payoutStatus =
-              payoutStatusMap.get(lead.fineractLoanId) || "PENDING";
+        // Update leads with payout status (only if they have a payout record)
+        leadsWithLoanId.forEach((lead) => {
+          if (lead.fineractLoanId && payoutStatusMap.has(lead.fineractLoanId)) {
+            lead.payoutStatus = payoutStatusMap.get(lead.fineractLoanId);
           }
         });
       } catch (error) {
@@ -902,8 +901,8 @@ export async function fetchLeadStatuses(
       for (const result of batchResults) {
         results[result.leadId] = { status: result.status };
         
-        // If loan is active (disbursed), fetch payout status
-        if (result.status?.toLowerCase() === "active" && result.fineractLoanId && tenant) {
+        // Fetch payout status for any lead with a fineractLoanId (from local DB)
+        if (result.fineractLoanId && tenant) {
           try {
             const payoutRecord = await prisma.loanPayout.findFirst({
               where: {

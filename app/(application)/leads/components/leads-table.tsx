@@ -271,11 +271,10 @@ export function LeadsTable({ initialData }: LeadsTableProps) {
       header: "Payout",
       cell: ({ row }) => {
         const lead = row.original;
-        const loanStatus = lead.fineractLoanStatus;
         const payoutStatus = lead.payoutStatus;
 
-        // Only show payout status for disbursed loans
-        if (loanStatus?.toLowerCase() !== "active") {
+        // Only show payout status if there's a payout record
+        if (!payoutStatus) {
           return <span className="text-muted-foreground text-xs">-</span>;
         }
 
