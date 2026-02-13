@@ -103,8 +103,14 @@ export default function CashierTransactionsPage({
 
         setCurrencies(currencyList);
 
-        if (currencyList.length > 0 && !currencyCode) {
-          setCurrencyCode(currencyList[0].code);
+        if (!currencyCode) {
+          // Prefer ZMW – allocations use ZMW; ZMK summary shows different/legacy data
+          const zmw =
+            currencyList.length > 0 &&
+            currencyList.find(
+              (c: Currency) => (c.code || "").toUpperCase() === "ZMW"
+            );
+          setCurrencyCode(zmw?.code ?? currencyList[0]?.code ?? "ZMW");
         }
       }
     } catch (error) {
