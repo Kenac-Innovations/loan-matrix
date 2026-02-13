@@ -248,7 +248,7 @@ export async function POST(
       );
     }
 
-    // Format date for Fineract (dd MMMM yyyy format)
+    // Format date for Fineract - use yyyy-MM-dd when already in that format (e.g. loan repayments)
     const formatDateForFineract = (dateInput: string | Date): string => {
       const date =
         typeof dateInput === "string" ? new Date(dateInput) : dateInput;
@@ -272,9 +272,13 @@ export async function POST(
       return `${day.toString().padStart(2, "0")} ${month} ${year}`;
     };
 
-    const txnDate = date
+    const isIsoDate = date && /^\d{4}-\d{2}-\d{2}$/.test(String(date).trim());
+    const txnDate = isIsoDate
+      ? String(date).trim()
+      : date
       ? formatDateForFineract(date)
       : formatDateForFineract(new Date());
+    const dateFormat = isIsoDate ? "yyyy-MM-dd" : "dd MMMM yyyy";
 
     // Allocate cash in Fineract
     let fineractAllocationId: number | null = null;
@@ -295,7 +299,7 @@ export async function POST(
           currencyCode: currency,
           txnAmount: amount.toString(),
           txnNote: notes || "Allocation from teller safe",
-          dateFormat: "dd MMMM yyyy",
+          dateFormat,
           locale: "en",
         }
       );

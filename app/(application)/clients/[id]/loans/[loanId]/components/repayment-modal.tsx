@@ -264,25 +264,8 @@ export function RepaymentModal({ isOpen, onClose, loanId, onSuccess }: Repayment
       if (formData.externalId) payload.externalId = formData.externalId;
       payload.paymentTypeId = parseInt(formData.paymentTypeId, 10);
       if (formData.note) payload.note = formData.note;
-      if (template?.currency?.code) payload.currencyCode = template.currency.code;
 
-      // Add teller/cashier for allocate (stored here, NOT sent to Fineract repayment - causes 400)
-      // Our API strips these and calls allocate after repayment returns 200
-      if (selectedPaymentTypeIsCash) {
-        const teller = tellers.find(
-          (t) =>
-            t.fineractTellerId?.toString() === selectedTeller || t.id === selectedTeller
-        );
-        const cashier = cashiers.find(
-          (c) => (c.dbId || c.id.toString()) === selectedCashier
-        );
-        if (teller?.fineractTellerId) payload.tellerId = teller.fineractTellerId;
-        if (cashier != null) {
-          const fineractCashierId =
-            typeof cashier.id === "number" ? cashier.id : parseInt(String(cashier.id), 10);
-          if (!isNaN(fineractCashierId)) payload.cashierId = fineractCashierId;
-        }
-      }
+      // Do NOT send tellerId/cashierId in repayment - Fineract returns 400. Store only; use for allocate after 200.
 
       // Add payment details if enabled
       if (formData.showPaymentDetails) {
@@ -309,12 +292,43 @@ export function RepaymentModal({ isOpen, onClose, loanId, onSuccess }: Repayment
       const result = await response.json();
       console.log("Repayment submitted successfully:", result);
 
-      // Show warning if allocate failed (repayment succeeded but till wasn't updated)
-      const alloc = result._cashierAllocate;
-      if (alloc && !alloc.success && alloc.error && !alloc.error.includes("Skipped")) {
-        setError(`Repayment recorded, but cashier balance was not updated: ${alloc.error}`);
-        setSubmitting(false);
-        return;
+      // After 200: call allocate with stored teller/cashier (never sent in repayment payload)
+      if (selectedPaymentTypeIsCash && selectedTeller && selectedCashier) {
+        const amount = parseFloat(formData.transactionAmount);
+        const currency = template?.currency?.code ?? "ZMW";
+        const normalizedCurrency = currency?.toUpperCase() === "ZMK" ? "ZMW" : currency ?? "ZMW";
+        const date = formData.transactionDate || new Date().toISOString().split("T")[0];
+
+        try {
+          const allocRes = await fetch(
+            `/api/tellers/${selectedTeller}/cashiers/${selectedCashier}/allocate`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                amount,
+                currency: normalizedCurrency,
+                date,
+                notes: "Loan repayment",
+              }),
+            }
+          );
+          if (!allocRes.ok) {
+            const errData = await allocRes.json();
+            setError(
+              `Repayment recorded, but till balance was not updated: ${errData.error || allocRes.statusText}`
+            );
+            setSubmitting(false);
+            return;
+          }
+        } catch (allocErr) {
+          console.error("Allocate after repayment failed:", allocErr);
+          setError(
+            "Repayment recorded, but till balance was not updated. Please allocate manually."
+          );
+          setSubmitting(false);
+          return;
+        }
       }
 
       setSuccess(true);
