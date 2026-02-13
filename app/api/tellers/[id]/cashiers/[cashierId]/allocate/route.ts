@@ -27,7 +27,10 @@ export async function POST(
     }
 
     const body = await request.json();
-    const { amount, currency, notes, date } = body;
+    const { amount, currency, notes, date, source } = body;
+
+    // Loan repayments: money flows customer → cashier, NOT vault → cashier. Skip vault check.
+    const isRepayment = source === "repayment" || (notes && String(notes).toLowerCase().includes("loan repayment"));
 
     if (!amount || amount <= 0) {
       return NextResponse.json(
@@ -234,7 +237,9 @@ export async function POST(
 
     const availableBalance = vaultBalance - allocatedToCashiers;
 
-    if (parseFloat(amount) > availableBalance) {
+    // Only enforce vault balance when moving money vault → cashier (manual allocation).
+    // Loan repayments: money flows customer → cashier, so skip vault check.
+    if (!isRepayment && parseFloat(amount) > availableBalance) {
       return NextResponse.json(
         {
           error: "Insufficient available balance in teller vault",
@@ -333,8 +338,17 @@ export async function POST(
       );
     }
 
-    // Create allocation record in database with cashierId
-    // cashierId must be set for cashier allocations (not null)
+    // Repayments: customer → cashier. Only Fineract was updated. Do NOT create local record.
+    // Local CashAllocation would incorrectly count toward allocatedToCashiers (vault math).
+    if (isRepayment) {
+      return NextResponse.json({
+        success: true,
+        source: "repayment",
+        message: "Cashier balance updated in Fineract (customer payment, no vault change)",
+      });
+    }
+
+    // Create allocation record in database with cashierId (vault → cashier only)
     if (!cashier) {
       return NextResponse.json(
         {
