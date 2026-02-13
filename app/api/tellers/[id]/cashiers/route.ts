@@ -154,13 +154,13 @@ export async function GET(
           ? sessionStatusMap.get(dbCashier.id)
           : null;
 
-        // Get balance from Fineract (source of truth)
+        // Get balance from Fineract (source of truth) – use ZMW to match allocate currency
         let fineractBalance = 0;
         try {
           const summary = await fineractService.getCashierSummaryAndTransactions(
             teller.fineractTellerId!,
             fc.id,
-            "ZMK"
+            "ZMW"
           );
           fineractBalance = summary.netCash || 0;
         } catch (err) {

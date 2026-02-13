@@ -86,9 +86,12 @@ export function TransactionsModal({
         
         setCurrencies(currencyList);
         
-        // Set default currency if not already set
-        if (currencyList.length > 0 && !currencyCode) {
-          setCurrencyCode(currencyList[0].code);
+        // Prefer ZMW – allocations use ZMW; ZMK summary shows different/legacy data
+        if (!currencyCode && currencyList.length > 0) {
+          const zmw = currencyList.find(
+            (c: Currency) => (c.code || "").toUpperCase() === "ZMW"
+          );
+          setCurrencyCode(zmw?.code ?? currencyList[0].code ?? "ZMW");
         }
       }
     } catch (error) {
