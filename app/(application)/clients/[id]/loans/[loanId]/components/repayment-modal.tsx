@@ -310,6 +310,7 @@ export function RepaymentModal({ isOpen, onClose, loanId, onSuccess }: Repayment
                 currency: normalizedCurrency,
                 date,
                 notes: "Loan repayment",
+                source: "repayment",
               }),
             }
           );
