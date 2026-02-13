@@ -601,7 +601,7 @@ export function RepaymentModal({ isOpen, onClose, loanId, onSuccess }: Repayment
                       {cashiers.map((cashier) => (
                         <SelectItem
                           key={cashier.dbId || cashier.id}
-                          value={cashier.dbId || cashier.id.toString()}
+                          value={String(cashier.id)}
                         >
                           {cashier.staffName}
                           {cashier.sessionStatus === "ACTIVE" && (
