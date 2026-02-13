@@ -73,14 +73,14 @@ export function RepaymentModal({ isOpen, onClose, loanId, onSuccess }: Repayment
   const [success, setSuccess] = useState(false);
   const [paymentTypes, setPaymentTypes] = useState<PaymentType[]>([]);
 
-  // Teller and cashier selection (for cash payments)
+  // Teller and cashier selection (for cash payments - stored but not sent to Fineract repayment)
   const [tellers, setTellers] = useState<Teller[]>([]);
   const [cashiers, setCashiers] = useState<Cashier[]>([]);
   const [selectedTeller, setSelectedTeller] = useState<string>("");
   const [selectedCashier, setSelectedCashier] = useState<string>("");
   const [loadingTellers, setLoadingTellers] = useState(false);
   const [loadingCashiers, setLoadingCashiers] = useState(false);
-  
+
   // Form state
   const [formData, setFormData] = useState({
     transactionDate: "",
@@ -158,9 +158,7 @@ export function RepaymentModal({ isOpen, onClose, loanId, onSuccess }: Repayment
   };
 
   useEffect(() => {
-    if (isOpen) {
-      fetchTellers();
-    }
+    if (isOpen) fetchTellers();
   }, [isOpen]);
 
   useEffect(() => {
@@ -266,8 +264,10 @@ export function RepaymentModal({ isOpen, onClose, loanId, onSuccess }: Repayment
       if (formData.externalId) payload.externalId = formData.externalId;
       payload.paymentTypeId = parseInt(formData.paymentTypeId, 10);
       if (formData.note) payload.note = formData.note;
+      if (template?.currency?.code) payload.currencyCode = template.currency.code;
 
-      // Add teller and cashier for cash repayments (required for allocate)
+      // Add teller/cashier for allocate (stored here, NOT sent to Fineract repayment - causes 400)
+      // Our API strips these and calls allocate after repayment returns 200
       if (selectedPaymentTypeIsCash) {
         const teller = tellers.find(
           (t) =>
@@ -309,7 +309,7 @@ export function RepaymentModal({ isOpen, onClose, loanId, onSuccess }: Repayment
       const result = await response.json();
       console.log("Repayment submitted successfully:", result);
 
-      // Show warning if cashier allocate failed (repayment succeeded but till wasn't updated)
+      // Show warning if allocate failed (repayment succeeded but till wasn't updated)
       const alloc = result._cashierAllocate;
       if (alloc && !alloc.success && alloc.error && !alloc.error.includes("Skipped")) {
         setError(`Repayment recorded, but cashier balance was not updated: ${alloc.error}`);
@@ -533,7 +533,7 @@ export function RepaymentModal({ isOpen, onClose, loanId, onSuccess }: Repayment
               </p>
             </div>
 
-            {/* Teller and Cashier selection (only for cash payments) */}
+            {/* Teller and Cashier selection (for cash payments) */}
             {selectedPaymentTypeIsCash && (
               <div className="space-y-4 p-4 border rounded-lg bg-muted/30">
                 <Label className="text-sm font-medium">

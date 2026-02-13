@@ -793,7 +793,6 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
         setLoading(true);
         setError(null);
 
-        // Fetch client details
         const clientResponse = await fetch(`/api/clients/${clientId}`);
         if (!clientResponse.ok) {
           throw new Error(`Failed to fetch client details: ${clientResponse.statusText}`);
@@ -801,30 +800,14 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
         const clientData = await clientResponse.json();
         setClient(clientData);
 
-        // Fetch loan details with associations
         const loanResponse = await fetch(`/api/fineract/loans/${loanId}?associations=all&exclude=guarantors,futureSchedule`);
         if (!loanResponse.ok) {
           throw new Error(`Failed to fetch loan details: ${loanResponse.statusText}`);
         }
         const loanData = await loanResponse.json();
-        
-        // Log the response structure for debugging
-        console.log('Loan API Response:', loanData);
-        
-        // Handle the API response structure
-        // The API response might have repaymentSchedule at the root level
-        if (loanData.repaymentSchedule && !loanData.repaymentSchedule.periods) {
-          // If repaymentSchedule exists but doesn't have periods, it might be the old structure
-          console.log('Using legacy schedule structure');
-        } else if (loanData.repaymentSchedule && loanData.repaymentSchedule.periods) {
-          console.log('Using new repaymentSchedule structure with periods');
-        } else {
-          console.log('No repaymentSchedule found in response');
-        }
-        
+
         setLoan(loanData);
-        
-        // Update approve button state based on loan status
+
         const approveButton = document.getElementById('approve-loan-btn');
         if (approveButton) {
           const isPendingApproval = loanData?.status?.pendingApproval === true;
@@ -836,7 +819,6 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
           }
         }
 
-        // Status-based gating for actions
         const dropdownEl = document.getElementById('loan-actions-dropdown');
         if (dropdownEl) {
           const approveBtn = document.getElementById('approve-loan-btn') as HTMLButtonElement | null;
@@ -855,7 +837,6 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
             disburseBtn.classList.toggle('cursor-not-allowed', !isWaitingForDisbursal);
           }
 
-          // If pending approval, disable all other actions except approve
           if (isPendingApproval) {
             dropdownEl.querySelectorAll('[data-action]')
               .forEach((el) => {
@@ -867,7 +848,6 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
               });
           }
         }
-
       } catch (err) {
         console.error("Error fetching data:", err);
         setError(err instanceof Error ? err.message : "An error occurred");
