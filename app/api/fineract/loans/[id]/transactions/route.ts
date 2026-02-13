@@ -1,20 +1,15 @@
 import { NextResponse } from 'next/server';
 import { fetchFineractAPI } from '@/lib/api';
 import { getFineractServiceWithSession } from '@/lib/fineract-api';
-import { getTenantFromHeaders } from '@/lib/tenant-service';
-import { isPaymentTypeCash, recordCashRepaymentToTeller } from '@/lib/cash-repayment-teller';
+import { isPaymentTypeCash } from '@/lib/cash-repayment-teller';
 
-/** Format YYYY-MM-DD to "dd MMMM yyyy" for Fineract allocate (match working allocate route) */
-function formatDateForFineractAllocate(isoDate: string): string {
+/** Ensure date is yyyy-MM-dd for Fineract allocate */
+function formatDateForAllocate(isoDate: string): string {
   const d = new Date(isoDate);
-  const day = d.getDate().toString().padStart(2, '0');
-  const monthNames = [
-    'January', 'February', 'March', 'April', 'May', 'June',
-    'July', 'August', 'September', 'October', 'November', 'December',
-  ];
-  const month = monthNames[d.getMonth()];
   const year = d.getFullYear();
-  return `${day} ${month} ${year}`;
+  const month = (d.getMonth() + 1).toString().padStart(2, '0');
+  const day = d.getDate().toString().padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 /**
@@ -43,9 +38,21 @@ export async function POST(
 
     const body = await request.json();
 
-    // Ask for and store tellerId and cashierId from the request body
-    const tellerId = body.tellerId != null ? Number(body.tellerId) : null;
-    const cashierId = body.cashierId != null ? Number(body.cashierId) : null;
+    // Parse tellerId and cashierId from request body (support "fineract-123" format)
+    let tellerId: number | null = null;
+    if (body.tellerId != null) {
+      if (typeof body.tellerId === 'string' && body.tellerId.startsWith('fineract-')) {
+        tellerId = parseInt(body.tellerId.replace('fineract-', ''), 10);
+      } else {
+        tellerId = Number(body.tellerId);
+      }
+      if (isNaN(tellerId)) tellerId = null;
+    }
+    let cashierId: number | null = null;
+    if (body.cashierId != null) {
+      cashierId = Number(body.cashierId);
+      if (isNaN(cashierId)) cashierId = null;
+    }
 
     // Build repayment body for Fineract WITHOUT tellerId and cashierId
     const { tellerId: _t, cashierId: _c, ...repaymentBody } = body;
@@ -90,18 +97,18 @@ export async function POST(
           cashierId != null &&
           !isNaN(cashierId)
         ) {
-          // Use tellerId/cashierId from request body - call allocate via fetchFineractAPI (same as repayment)
+          // Request includes tellerId/cashierId - call allocate here
           try {
             const fineractService = await getFineractServiceWithSession();
             await fineractService.allocateCashToCashier(
               tellerId,
               cashierId,
               {
-                txnDate: formatDateForFineractAllocate(transactionDate),
+                txnDate: formatDateForAllocate(transactionDate),
                 txnAmount: String(body.transactionAmount),
                 currencyCode: normalizedCurrency,
-                txnNote: `Loan repayment #${loanId}`,
-                dateFormat: 'dd MMMM yyyy',
+                txnNote: 'Loan repayment',
+                dateFormat: 'yyyy-MM-dd',
                 locale: 'en',
               }
             );
@@ -127,27 +134,12 @@ export async function POST(
             });
           }
         } else {
-          // Fallback: resolve teller/cashier from loan office (e.g. Prepay Loan flow)
-          const tenant = await getTenantFromHeaders();
-          if (tenant) {
-            const result = await recordCashRepaymentToTeller({
-              loanId,
-              amount: Number(body.transactionAmount),
-              currency: normalizedCurrency,
-              transactionDate,
-              tenantId: tenant.id,
-              paymentTypeId: Number(body.paymentTypeId),
-            }).catch((err) => {
-              console.error('[CashRepayment] Fallback allocate failed:', err);
-              return { success: false, error: err?.message };
-            });
-            cashierAllocateResult = result.success
-              ? { success: true }
-              : { success: false, error: result.error };
-            if (!result.success) {
-              console.warn('[CashRepayment] Could not update cashier:', result.error);
-            }
-          }
+          // No tellerId/cashierId in request - frontend will call allocate after 200
+          // (Repayment modal uses active till from allocate modal)
+          cashierAllocateResult = {
+            success: true,
+            error: 'Skipped - allocate handled by frontend with active till',
+          };
         }
       } else {
         cashierAllocateResult = { success: false, error: 'Skipped - payment type is not cash' };
