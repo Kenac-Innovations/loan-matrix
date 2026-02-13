@@ -285,10 +285,9 @@ export async function POST(
       : formatDateForFineract(new Date());
     const dateFormat = isIsoDate ? "yyyy-MM-dd" : "dd MMMM yyyy";
 
-    // Fineract cashier summary uses ZMK for balance; if we allocate with ZMW it may not show.
-    // Use ZMK when currency is ZMW so allocation appears in the same bucket as the displayed balance.
-    const allocateCurrency =
-      currency?.toUpperCase() === "ZMW" ? "ZMK" : currency;
+    // Use the same currency the loan (and summary view) expects – do NOT map ZMW→ZMK.
+    // Fineract filters cashier summary by currencyCode; ZMK allocations do not appear in ZMW summary.
+    const allocateCurrency = currency?.toUpperCase() || "ZMW";
 
     // Allocate cash in Fineract – require resourceId as proof the request hit Fineract
     let fineractAllocationId: number | null = null;
