@@ -285,39 +285,67 @@ export async function POST(
       : formatDateForFineract(new Date());
     const dateFormat = isIsoDate ? "yyyy-MM-dd" : "dd MMMM yyyy";
 
-    // Allocate cash in Fineract
+    // Fineract cashier summary uses ZMK for balance; if we allocate with ZMW it may not show.
+    // Use ZMK when currency is ZMW so allocation appears in the same bucket as the displayed balance.
+    const allocateCurrency =
+      currency?.toUpperCase() === "ZMW" ? "ZMK" : currency;
+
+    // Allocate cash in Fineract – require resourceId as proof the request hit Fineract
     let fineractAllocationId: number | null = null;
+    let rawFineractResponse: unknown = null;
+    const fineractRequest = {
+      endpoint: `POST /fineract-provider/api/v1/tellers/${teller.fineractTellerId}/cashiers/${fineractCashierId}/allocate`,
+      tellerId: teller.fineractTellerId,
+      cashierId: fineractCashierId,
+      txnDate,
+      currencyCode: allocateCurrency,
+      txnAmount: amount.toString(),
+    };
     try {
       const fineractService = await getFineractServiceWithSession();
-      console.log("Calling Fineract allocateCashToCashier with:", {
-        tellerId: teller.fineractTellerId,
-        cashierId: fineractCashierId,
-        txnDate,
-        currencyCode: currency,
-        txnAmount: amount.toString(),
-      });
+      console.log("[Allocate] Calling Fineract allocateCashToCashier:", fineractRequest);
       const result = await fineractService.allocateCashToCashier(
         teller.fineractTellerId,
         fineractCashierId,
         {
           txnDate,
-          currencyCode: currency,
+          currencyCode: allocateCurrency,
           txnAmount: amount.toString(),
           txnNote: notes || "Allocation from teller safe",
           dateFormat,
           locale: "en",
         }
       );
-      console.log("Fineract allocateCashToCashier result:", result);
-      fineractAllocationId = result.resourceId || result.id || null;
+      rawFineractResponse = result;
+      console.log("[Allocate] Fineract raw response:", JSON.stringify(result));
+
+      const id = result?.resourceId ?? result?.id;
+      const hasValidResourceId = id != null && !isNaN(Number(id)) && Number(id) > 0;
+      if (!hasValidResourceId) {
+        console.error("[Allocate] Fineract did not return resourceId – cannot verify allocation", {
+          request: fineractRequest,
+          response: result,
+        });
+        return NextResponse.json(
+          {
+            error: "Fineract did not return a valid allocation ID",
+            details:
+              "The allocate request may not have reached Fineract, or Fineract returned an invalid response. Allocation cannot be verified.",
+            fineractRequest,
+            rawFineractResponse: result,
+            proofRequired: "resourceId must be present in Fineract response to confirm allocation",
+          },
+          { status: 502 }
+        );
+      }
+      fineractAllocationId = Number(id);
     } catch (error: any) {
       const errorDetails = {
         message: error.message,
         status: error.response?.status,
         data: error.response?.data,
       };
-      console.error("Error allocating cash in Fineract:", errorDetails);
-      // Return full error details so user can see what went wrong
+      console.error("[Allocate] Fineract allocate failed:", errorDetails);
       return NextResponse.json(
         {
           error: "Failed to allocate cash in Fineract",
@@ -326,13 +354,8 @@ export async function POST(
             error.response?.data?.errors?.[0]?.defaultUserMessage ||
             error.message,
           fineractError: error.response?.data || null,
-          debugInfo: {
-            tellerId: teller.fineractTellerId,
-            cashierId: fineractCashierId,
-            txnDate,
-            currencyCode: currency,
-            txnAmount: amount.toString(),
-          },
+          fineractRequest,
+          rawFineractResponse: error.response?.data ?? null,
         },
         { status: error.response?.status || 500 }
       );
@@ -345,6 +368,20 @@ export async function POST(
         success: true,
         source: "repayment",
         message: "Cashier balance updated in Fineract (customer payment, no vault change)",
+        fineractResult: {
+          resourceId: fineractAllocationId,
+          tellerId: teller.fineractTellerId,
+          cashierId: fineractCashierId,
+          txnAmount: amount,
+          currencyCode: allocateCurrency,
+          txnDate,
+        },
+        proof: {
+          fineractRequest,
+          rawFineractResponse,
+          resourceIdPresent: !!fineractAllocationId,
+          verifyUrl: `GET .../tellers/${teller.fineractTellerId}/cashiers/${fineractCashierId}/summaryandtransactions?currencyCode=${allocateCurrency}`,
+        },
       });
     }
 
