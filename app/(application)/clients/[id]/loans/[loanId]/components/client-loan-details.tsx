@@ -3781,11 +3781,7 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
         isOpen={showRepaymentModal}
         onClose={() => setShowRepaymentModal(false)}
         loanId={loanId}
-        onSuccess={() => {
-          // Refresh loan data and switch to transactions tab
-          window.location.reload();
-          setActiveTab("transactions");
-        }}
+        onSuccess={() => setShowRepaymentModal(false)}
       />
 
       {/* Loan Approval Modal */}
