@@ -154,13 +154,13 @@ export async function GET(
           ? sessionStatusMap.get(dbCashier.id)
           : null;
 
-        // Get balance from Fineract (source of truth) – use ZMW to match allocate currency
+        // Get balance from Fineract (source of truth) – use ZMK to match allocate currency
         let fineractBalance = 0;
         try {
           const summary = await fineractService.getCashierSummaryAndTransactions(
             teller.fineractTellerId!,
             fc.id,
-            "ZMW"
+            "ZMK"
           );
           fineractBalance = summary.netCash || 0;
         } catch (err) {
@@ -177,7 +177,7 @@ export async function GET(
           balance: fineractBalance,
           currentAllocation: {
             amount: fineractBalance,
-            currency: "ZMW",
+            currency: "ZMK",
           },
         };
       })

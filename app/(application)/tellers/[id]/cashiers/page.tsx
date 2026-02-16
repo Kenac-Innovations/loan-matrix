@@ -187,8 +187,7 @@ export default function CashiersPage({
         const data = await response.json();
         setCashiers(data || []);
 
-        // Use ZMW for balance – allocations are stored with ZMW; ZMK summary would show different data
-        const balanceCurrency = "ZMW";
+        const balanceCurrency = "ZMK";
 
         // Fetch session data and Fineract balance for each cashier in parallel
         const updatedCashiers = await Promise.all(
