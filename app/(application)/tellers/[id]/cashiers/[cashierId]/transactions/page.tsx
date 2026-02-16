@@ -69,7 +69,7 @@ export default function CashierTransactionsPage({
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [loading, setLoading] = useState(true);
-  const [currencyCode, setCurrencyCode] = useState("ZMW");
+  const [currencyCode, setCurrencyCode] = useState("ZMK");
   const [currencies, setCurrencies] = useState<Currency[]>([]);
   const [loadingCurrencies, setLoadingCurrencies] = useState(false);
 
@@ -104,11 +104,10 @@ export default function CashierTransactionsPage({
         setCurrencies(currencyList);
 
         if (!currencyCode) {
-          // Always default to ZMW – allocations use ZMW; ZMK returns different transactions/balance
-          const zmw = currencyList.find(
-            (c: Currency) => (c.code || "").toUpperCase() === "ZMW"
+          const zmk = currencyList.find(
+            (c: Currency) => (c.code || "").toUpperCase() === "ZMK"
           );
-          setCurrencyCode(zmw?.code ?? "ZMW");
+          setCurrencyCode(zmk?.code ?? "ZMK");
         }
       }
     } catch (error) {
