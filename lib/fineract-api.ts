@@ -1199,10 +1199,14 @@ export class FineractAPIService {
   async getCashierSummaryAndTransactions(
     tellerId: number,
     cashierId: number,
-    currencyCode: string = "ZMW"
+    currencyCode: string = "ZMW",
+    options?: { offset?: number; limit?: number }
   ): Promise<any> {
     try {
-      const url = `/tellers/${tellerId}/cashiers/${cashierId}/summaryandtransactions?currencyCode=${currencyCode}`;
+      const params = new URLSearchParams({ currencyCode });
+      if (options?.offset != null) params.set("offset", String(options.offset));
+      if (options?.limit != null) params.set("limit", String(options.limit));
+      const url = `/tellers/${tellerId}/cashiers/${cashierId}/summaryandtransactions?${params}`;
       console.log("Fetching cashier summary and transactions:", url);
       const response: AxiosResponse<any> = await this.client.get(url);
       console.log(

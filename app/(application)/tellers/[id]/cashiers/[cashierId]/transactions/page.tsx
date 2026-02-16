@@ -1,8 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
-import { ArrowLeft, RefreshCw, Loader2 } from "lucide-react";
+import { useState, useEffect, useMemo } from "react";
+import { ArrowLeft, RefreshCw } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -15,6 +14,8 @@ import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import Link from "next/link";
 import { formatDate } from "@/lib/format-date";
+import { GenericDataTable } from "@/components/tables/generic-data-table";
+import { DataTableColumn } from "@/shared/types/data-table";
 
 interface Transaction {
   id: number;
@@ -228,6 +229,60 @@ export default function CashierTransactionsPage({
     return tx.txnNote || tx.notes || "—";
   };
 
+  const columns: DataTableColumn<Transaction>[] = useMemo(
+    () => [
+      {
+        id: "date",
+        header: "Date",
+        accessorKey: "createdDate" as keyof Transaction,
+        enableSorting: true,
+        cell: ({ row }) => {
+          const tx = row.original;
+          const date = tx.txnDate || tx.transactionDate || tx.createdDate;
+          return (
+            <span className="text-sm">
+              {formatTransactionDate(date)}
+            </span>
+          );
+        },
+      },
+      {
+        id: "type",
+        header: "Type",
+        accessorKey: "txnType" as keyof Transaction,
+        enableSorting: true,
+        cell: ({ row }) => getTransactionTypeBadge(row.original),
+      },
+      {
+        id: "amount",
+        header: "Amount",
+        accessorKey: "txnAmount" as keyof Transaction,
+        enableSorting: true,
+        meta: { align: "right" },
+        cell: ({ row }) => (
+          <span className="text-sm font-medium text-right block">
+            {formatAmount(
+              row.original.txnAmount || row.original.amount || 0,
+              currencyCode
+            )}
+          </span>
+        ),
+      },
+      {
+        id: "notes",
+        header: "Notes",
+        accessorKey: "txnNote" as keyof Transaction,
+        enableSorting: true,
+        cell: ({ row }) => (
+          <span className="text-sm text-muted-foreground">
+            {getTransactionNotes(row.original)}
+          </span>
+        ),
+      },
+    ],
+    [currencyCode]
+  );
+
   return (
     <div className="container mx-auto py-6 space-y-6">
       {/* Header */}
@@ -317,63 +372,31 @@ export default function CashierTransactionsPage({
         </div>
       )}
 
-      {/* Transactions Table */}
+      {/* Transactions Table – TanStack DataTable with pagination, sorting, search */}
       <Card>
         <CardHeader>
           <CardTitle>Transaction History</CardTitle>
           <CardDescription>
-            {summary?.cashierTransactions?.totalFilteredRecords || 0} transactions found
+            {summary?.cashierTransactions?.totalFilteredRecords ?? transactions.length} transactions
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {loading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-            </div>
-          ) : transactions.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">
-              No transactions found for this currency
-            </div>
-          ) : (
-            <div className="border rounded-lg overflow-hidden">
-              <table className="w-full">
-                <thead className="bg-muted">
-                  <tr>
-                    <th className="px-4 py-3 text-left text-sm font-medium">
-                      Date
-                    </th>
-                    <th className="px-4 py-3 text-left text-sm font-medium">
-                      Type
-                    </th>
-                    <th className="px-4 py-3 text-right text-sm font-medium">
-                      Amount
-                    </th>
-                    <th className="px-4 py-3 text-left text-sm font-medium">
-                      Notes
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {transactions.map((tx, index) => (
-                    <tr key={tx.id || index} className="hover:bg-muted/50">
-                      <td className="px-4 py-3 text-sm">
-                        {formatTransactionDate(getTransactionDate(tx))}
-                      </td>
-                      <td className="px-4 py-3 text-sm">
-                        {getTransactionTypeBadge(tx)}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-right font-medium">
-                        {formatAmount(getTransactionAmount(tx), currencyCode)}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-muted-foreground">
-                        {getTransactionNotes(tx)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+          <GenericDataTable<Transaction>
+            data={transactions}
+            columns={columns}
+            enablePagination={true}
+            pageSize={25}
+            searchPlaceholder="Search notes..."
+            searchColumn="notes"
+            enableExport={true}
+            exportFileName={`cashier-${cashierId}-transactions`}
+            enableFilters={false}
+            enableColumnVisibility={true}
+            isLoading={loading}
+            emptyMessage="No transactions found for this currency"
+            defaultSorting={[{ id: "date", desc: true }]}
+            tableId={`cashier-transactions-${tellerId}-${cashierId}`}
+          />
         </CardContent>
       </Card>
 
