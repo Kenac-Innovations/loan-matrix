@@ -81,7 +81,7 @@ export async function GET(
 
     // Get currency code and pagination from query params
     const { searchParams } = new URL(request.url);
-    const currencyCode = searchParams.get("currencyCode") || "ZMW";
+    const currencyCode = searchParams.get("currencyCode") || "ZMK";
     const limitParam = searchParams.get("limit");
     const offsetParam = searchParams.get("offset");
     const limit = limitParam ? parseInt(limitParam, 10) : 500;

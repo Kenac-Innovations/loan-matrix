@@ -68,7 +68,7 @@ export function TransactionsModal({
   const [loading, setLoading] = useState(false);
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
-  const [currencyCode, setCurrencyCode] = useState("ZMW");
+  const [currencyCode, setCurrencyCode] = useState("ZMK");
   const [currencies, setCurrencies] = useState<Currency[]>([]);
   const [loadingCurrencies, setLoadingCurrencies] = useState(false);
 
@@ -88,12 +88,11 @@ export function TransactionsModal({
         
         setCurrencies(currencyList);
         
-        // Default to ZMW – allocations use ZMW; ZMK returns different transactions/balance
         if (!currencyCode) {
-          const zmw = currencyList.find(
-            (c: Currency) => (c.code || "").toUpperCase() === "ZMW"
+          const zmk = currencyList.find(
+            (c: Currency) => (c.code || "").toUpperCase() === "ZMK"
           );
-          setCurrencyCode(zmw?.code ?? "ZMW");
+          setCurrencyCode(zmk?.code ?? "ZMK");
         }
       }
     } catch (error) {
