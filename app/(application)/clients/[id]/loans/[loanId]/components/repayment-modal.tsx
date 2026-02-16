@@ -295,8 +295,8 @@ export function RepaymentModal({ isOpen, onClose, loanId, onSuccess }: Repayment
       // After 200: call allocate with stored teller/cashier (never sent in repayment payload)
       if (selectedPaymentTypeIsCash && selectedTeller && selectedCashier) {
         const amount = parseFloat(formData.transactionAmount);
-        const currency = template?.currency?.code ?? "ZMW";
-        const normalizedCurrency = currency?.toUpperCase() === "ZMK" ? "ZMW" : currency ?? "ZMW";
+        const rawCurrency = template?.currency?.code ?? "ZMK";
+        const currency = rawCurrency?.toUpperCase() === "ZMW" ? "ZMK" : rawCurrency ?? "ZMK";
         const date = formData.transactionDate || new Date().toISOString().split("T")[0];
 
         try {
@@ -307,7 +307,7 @@ export function RepaymentModal({ isOpen, onClose, loanId, onSuccess }: Repayment
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 amount,
-                currency: normalizedCurrency,
+                currency,
                 date,
                 notes: "Loan repayment",
                 source: "repayment",
