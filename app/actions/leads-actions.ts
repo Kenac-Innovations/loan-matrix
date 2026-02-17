@@ -284,6 +284,9 @@ export async function getLeadsData(
       },
     });
 
+    // Resolve org default currency once before mapping
+    const orgCurrency = await getOrgDefaultCurrencyCode();
+
     // Transform leads data for frontend
     const transformedLeads: Lead[] = leads.map((lead) => {
       const stageTransition = lead.stateTransitions[0];
@@ -363,7 +366,6 @@ export async function getLeadsData(
       }
 
       // Format amount with currency (default to org currency from Fineract)
-      const orgCurrency = await getOrgDefaultCurrencyCode();
       const currency = stateMetadata.currency || orgCurrency;
       const amount =
         amountNum > 0

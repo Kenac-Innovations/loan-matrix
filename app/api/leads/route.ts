@@ -78,6 +78,9 @@ export async function GET(request: NextRequest) {
       },
     });
 
+    // Resolve org default currency once before mapping
+    const orgCurrency = await getOrgDefaultCurrencyCode();
+
     // Transform leads data for frontend
     const transformedLeads = leads.map((lead) => {
       const stageTransition = lead.stateTransitions[0];
@@ -157,7 +160,6 @@ export async function GET(request: NextRequest) {
       }
 
       // Format amount with currency (default to org currency)
-      const orgCurrency = await getOrgDefaultCurrencyCode();
       const currency = stateMetadata.currency || orgCurrency;
       const amount =
         amountNum > 0
