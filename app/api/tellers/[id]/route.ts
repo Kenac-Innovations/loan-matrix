@@ -133,7 +133,8 @@ export async function GET(
 
     // Calculate balances - available must DECREASE when loans are disbursed, and handle deposits
     // allocatedToCashiers = sum of max(sumCashAllocation, netCash) per cashier
-    const currency = "ZMW";
+    // Fineract only recognizes ZMK - use ZMK for getCashierSummaryAndTransactions.
+    const currency = "ZMK";
     
     const vaultBalance = dbTeller.cashAllocations.reduce(
       (sum, alloc) => sum + alloc.amount,
@@ -171,7 +172,7 @@ export async function GET(
             const summary = await fineractService.getCashierSummaryAndTransactions(
               dbTeller.fineractTellerId,
               fc.id,
-              "ZMW"
+              "ZMK"
             );
             fineractAllocated += Math.max(
               summary.sumCashAllocation || 0,

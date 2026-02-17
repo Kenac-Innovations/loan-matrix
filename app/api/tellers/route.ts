@@ -173,7 +173,7 @@ export async function GET(request: NextRequest) {
                 const summary = await fineractService.getCashierSummaryAndTransactions(
                   dbTeller.fineractTellerId!,
                   fc.id,
-                  "ZMW"
+                  "ZMK"
                 );
                 return Math.max(
                   summary.sumCashAllocation || 0,
@@ -189,7 +189,7 @@ export async function GET(request: NextRequest) {
         }
 
         const availableBalance = vaultBalance - allocatedToCashiers;
-        const currency = "ZMW";
+        const currency = "ZMK";
 
         return {
           fineractTellerId: dbTeller.fineractTellerId,

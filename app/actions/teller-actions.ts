@@ -139,7 +139,7 @@ export async function getTellerFromFineract(id: string) {
                 const summary = await fineractService.getCashierSummaryAndTransactions(
                   tellerId,
                   fc.id,
-                  "ZMW"
+                  "ZMK"
                 );
                 fineractAllocated += Math.max(
                   summary.sumCashAllocation || 0,

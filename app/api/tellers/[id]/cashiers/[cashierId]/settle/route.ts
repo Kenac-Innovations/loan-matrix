@@ -419,7 +419,7 @@ export async function POST(
       const summary = await fineractService.getCashierSummaryAndTransactions(
         teller.fineractTellerId,
         fineractCashierId,
-        currency
+        "ZMK"
       );
       cashierBalance = summary.netCash || 0;
       console.log(`Fineract balance for cashier ${fineractCashierId}: ${cashierBalance}`);
