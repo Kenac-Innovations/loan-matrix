@@ -189,46 +189,32 @@ export default function CashiersPage({
         const data = await response.json();
         setCashiers(data || []);
 
-        // Fetch session data and Fineract balance for each cashier
-        for (const cashier of data || []) {
-          const cashierId = cashier.dbId || cashier.id.toString();
-          const fineractCashierId = cashier.id || cashier.fineractCashierId;
-          
-          try {
-            // Fetch local session data
-            const sessionResponse = await fetch(
-              `/api/tellers/${id}/cashiers/${cashierId}/session`
-            );
-            
-            // Fetch Fineract balance (use first available currency)
-            const currencyResponse = await fetch("/api/fineract/currencies");
-            let fineractBalance = 0;
-            let currencyCode = orgCurrency;
-            
-            if (currencyResponse.ok) {
-              const currencyData = await currencyResponse.json();
-              const currencies = currencyData.selectedCurrencyOptions || currencyData || [];
-              if (currencies.length > 0) {
-                currencyCode = currencies[0].code;
-                
-                // Fetch Fineract summary
-                const summaryResponse = await fetch(
-                  `/api/tellers/${id}/cashiers/${cashierId}/transactions?currencyCode=${currencyCode}`
-                );
-                if (summaryResponse.ok) {
-                  const summaryData = await summaryResponse.json();
-                  fineractBalance = summaryData.netCash || 0;
-                }
+        const balanceCurrency = "ZMK";
+
+        // Fetch session data and Fineract balance for each cashier in parallel
+        const updatedCashiers = await Promise.all(
+          (data || []).map(async (cashier: Cashier) => {
+            const cashierId = cashier.dbId || cashier.id?.toString() || "";
+            try {
+              const [sessionResponse, summaryResponse] = await Promise.all([
+                fetch(`/api/tellers/${id}/cashiers/${cashierId}/session`),
+                fetch(
+                  `/api/tellers/${id}/cashiers/${cashierId}/transactions?currencyCode=${balanceCurrency}`
+                ),
+              ]);
+
+              let fineractBalance = 0;
+              if (summaryResponse.ok) {
+                const summaryData = await summaryResponse.json();
+                fineractBalance = summaryData.netCash ?? summaryData.sumCashAllocation ?? 0;
               }
-            }
-            
-            let sessionInfo = { session: null, balances: {} };
-            if (sessionResponse.ok) {
-              sessionInfo = await sessionResponse.json();
-            }
-            
-            // Update cashier with session data and Fineract balance
-              const updatedCashier = {
+
+              let sessionInfo = { session: null, balances: {} };
+              if (sessionResponse.ok) {
+                sessionInfo = await sessionResponse.json();
+              }
+
+              return {
                 ...cashier,
                 sessionStatus:
                   sessionInfo.session?.sessionStatus || "NOT_STARTED",
@@ -237,19 +223,18 @@ export default function CashiersPage({
                 openingFloat: sessionInfo.balances?.openingFloat || 0,
                 cashIn: sessionInfo.balances?.cashIn || 0,
                 cashOut: sessionInfo.balances?.cashOut || 0,
-              netCash: fineractBalance, // Use Fineract balance
+                netCash: fineractBalance,
                 expectedBalance: sessionInfo.balances?.expectedBalance || 0,
-              currencyCode,
+                currencyCode: balanceCurrency,
               };
-              setCashiers((prev) =>
-                prev.map((c) =>
-                  (c.dbId || c.id.toString()) === cashierId ? updatedCashier : c
-                )
-              );
-          } catch (error) {
-            console.error("Error fetching data for cashier:", error);
-          }
-        }
+            } catch (error) {
+              console.error("Error fetching data for cashier:", cashierId, error);
+              return { ...cashier, netCash: 0, currencyCode: balanceCurrency };
+            }
+          })
+        );
+
+        setCashiers(updatedCashiers);
       }
     } catch (error) {
       console.error("Error fetching cashiers:", error);

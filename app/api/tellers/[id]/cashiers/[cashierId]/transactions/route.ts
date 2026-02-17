@@ -80,17 +80,18 @@ export async function GET(
       );
     }
 
-    // Get currency code from query params (default to ZMW)
+    // Get currency code and pagination from query params
     const { searchParams } = new URL(request.url);
     const orgCurrency = await getOrgDefaultCurrencyCode();
     const currencyCode = searchParams.get("currencyCode") || orgCurrency;
 
-    // Fetch summary and transactions from Fineract
+    // Fetch summary and transactions from Fineract (request up to 500 by default to avoid truncation)
     const fineractService = await getFineractServiceWithSession();
     const summaryAndTransactions = await fineractService.getCashierSummaryAndTransactions(
       teller.fineractTellerId,
       fineractCashierId,
-      currencyCode
+      currencyCode,
+      { offset, limit: Math.min(limit, 500) }
     );
 
     return NextResponse.json(summaryAndTransactions);

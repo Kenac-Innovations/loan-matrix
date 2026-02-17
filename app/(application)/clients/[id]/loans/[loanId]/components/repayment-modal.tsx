@@ -309,9 +309,10 @@ export function RepaymentModal({ isOpen, onClose, loanId, onSuccess }: Repayment
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 amount,
-                currency: normalizedCurrency,
+                currency,
                 date,
                 notes: "Loan repayment",
+                source: "repayment",
               }),
             }
           );
@@ -603,7 +604,7 @@ export function RepaymentModal({ isOpen, onClose, loanId, onSuccess }: Repayment
                       {cashiers.map((cashier) => (
                         <SelectItem
                           key={cashier.dbId || cashier.id}
-                          value={cashier.dbId || cashier.id.toString()}
+                          value={String(cashier.id)}
                         >
                           {cashier.staffName}
                           {cashier.sessionStatus === "ACTIVE" && (

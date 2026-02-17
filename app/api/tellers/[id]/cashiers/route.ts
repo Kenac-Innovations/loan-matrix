@@ -158,7 +158,7 @@ export async function GET(
           ? sessionStatusMap.get(dbCashier.id)
           : null;
 
-        // Get balance from Fineract (source of truth)
+        // Get balance from Fineract (source of truth) – use ZMK to match allocate currency
         let fineractBalance = 0;
         try {
           const summary = await fineractService.getCashierSummaryAndTransactions(
