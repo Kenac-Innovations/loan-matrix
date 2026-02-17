@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
 import { getSession } from "@/lib/auth";
 import { fetchFineractAPI } from "@/lib/api";
+import { getOrgDefaultCurrencyCode } from "@/lib/currency-utils";
 
 /**
  * GET /api/banks
@@ -15,6 +16,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Tenant not found" }, { status: 404 });
     }
 
+    const orgCurrency = await getOrgDefaultCurrencyCode();
     const { searchParams } = new URL(request.url);
     const status = searchParams.get("status");
     const officeId = searchParams.get("officeId");
@@ -79,7 +81,7 @@ export async function GET(request: NextRequest) {
 
         // Get bank balance from Fineract GL account if configured
         let totalAllocated = 0;
-        let currency = "ZMW";
+        let currency = orgCurrency;
         let balanceSource = "local";
 
         if (bank.glAccountId) {
@@ -103,7 +105,7 @@ export async function GET(request: NextRequest) {
               
               const latestEntry = journalData.pageItems[0];
               totalAllocated = calculatedBalance;
-              currency = latestEntry.currency?.code || "ZMW";
+              currency = latestEntry.currency?.code || orgCurrency;
               balanceSource = "fineract_calculated";
             }
           } catch (error) {
@@ -113,7 +115,7 @@ export async function GET(request: NextRequest) {
               (sum, alloc) => sum + alloc.amount,
               0
             );
-            currency = bank.allocations[0]?.currency || "ZMW";
+            currency = bank.allocations[0]?.currency || orgCurrency;
             balanceSource = "local_fallback";
           }
         } else {
@@ -122,7 +124,7 @@ export async function GET(request: NextRequest) {
             (sum, alloc) => sum + alloc.amount,
             0
           );
-          currency = bank.allocations[0]?.currency || "ZMW";
+          currency = bank.allocations[0]?.currency || orgCurrency;
         }
 
         const availableBalance = totalAllocated - allocatedToTellers;

@@ -301,16 +301,15 @@ export async function isAuthenticated() {
  */
 export async function getCurrentUserDetails(userId: String) {
   try {
-    // Use the hardcoded Basic authentication token from the curl command
+    const { getFineractTenantId } = await import("./fineract-tenant-service");
+    const fineractTenantId = await getFineractTenantId();
     const fineractBaseURL =
       process.env.FINERACT_BASE_URL || "http://41.174.125.165:4032";
     const url = `${fineractBaseURL}/fineract-provider/api/v1/users/${userId}`;
     const headers = {
       Accept: "application/json, text/plain, */*",
       Authorization: "Basic bWlmb3M6cGFzc3dvcmQ=",
-      "Fineract-Platform-TenantId": "goodfellow",
-      Origin: "http://localhost:4200",
-      Referer: "http://localhost:4200/",
+      "Fineract-Platform-TenantId": fineractTenantId,
     };
 
     let response;

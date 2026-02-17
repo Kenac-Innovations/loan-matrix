@@ -1,42 +1,53 @@
 /**
  * Format currency utility
  * 
- * Note: For React components, prefer using the useCurrency() hook from
- * @/contexts/currency-context which automatically uses the organization's
- * currency from Fineract.
- * 
- * This standalone function is for use in:
+ * IMPORTANT: Currency defaults are loaded dynamically from Fineract via the
+ * CurrencyProvider context. These standalone functions are for use in:
  * - Server components
  * - API routes
  * - Non-React contexts
+ * 
+ * For React components, prefer using the useCurrency() hook from
+ * @/contexts/currency-context which automatically uses the organization's
+ * currency from Fineract.
  */
-
-// Default currency configuration (Zambian Kwacha)
-const DEFAULT_CURRENCY_CODE = "ZMW";
-const DEFAULT_CURRENCY_SYMBOL = "K";
 
 /**
- * Normalize currency code - converts deprecated ZMK to ZMW
- * ZMK was the old Zambian Kwacha code before redenomination in 2013
+ * Normalize currency code - converts deprecated ZMK to ZMW.
+ * Fineract may return ZMK (old Zambian Kwacha code pre-2013 redenomination).
+ * If no code is provided, returns undefined so the caller can apply their own default.
  */
-export const normalizeCurrencyCode = (code: string | undefined | null): string => {
-  if (!code) return DEFAULT_CURRENCY_CODE;
+export const normalizeCurrencyCode = (code: string | undefined | null): string | undefined => {
+  if (!code) return undefined;
   // Convert old ZMK (Zambian Kwacha pre-2013) to ZMW (current Zambian Kwacha)
   if (code.toUpperCase() === "ZMK") return "ZMW";
   return code;
 };
 
+/**
+ * Format a monetary amount with the given currency code.
+ * The currency code should be provided by the caller (from Fineract data, loan data, etc.).
+ * If no currency is provided, formats as a plain number without a currency symbol.
+ */
 export const formatCurrency = (
   amount: number | undefined | null,
-  currencyCode: string = DEFAULT_CURRENCY_CODE
+  currencyCode?: string
 ): string => {
-  if (amount === undefined || amount === null || isNaN(amount)) {
+  if (amount === undefined || amount === null || Number.isNaN(amount)) {
     return "-";
   }
   
   // Normalize currency code (convert ZMK to ZMW)
   const normalizedCode = normalizeCurrencyCode(currencyCode);
   
+  if (!normalizedCode) {
+    // No currency code available — format as plain number
+    return amount.toLocaleString("en-US", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+  }
+
   try {
     return new Intl.NumberFormat("en-US", {
       style: "currency",
@@ -45,8 +56,8 @@ export const formatCurrency = (
       maximumFractionDigits: 2,
     }).format(amount);
   } catch {
-    // Fallback for unsupported currency codes
-    return `${DEFAULT_CURRENCY_SYMBOL}${amount.toLocaleString("en-US", {
+    // Fallback for currency codes not supported by Intl
+    return `${normalizedCode} ${amount.toLocaleString("en-US", {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     })}`;
@@ -58,10 +69,10 @@ export const formatCurrency = (
  */
 export const formatCurrencyWithSymbol = (
   amount: number | undefined | null,
-  symbol: string = DEFAULT_CURRENCY_SYMBOL,
+  symbol: string = "",
   decimalPlaces: number = 2
 ): string => {
-  if (amount === undefined || amount === null || isNaN(amount)) {
+  if (amount === undefined || amount === null || Number.isNaN(amount)) {
     return "-";
   }
   
@@ -78,7 +89,7 @@ export const formatAmount = (
   amount: number | undefined | null,
   decimalPlaces: number = 2
 ): string => {
-  if (amount === undefined || amount === null || isNaN(amount)) {
+  if (amount === undefined || amount === null || Number.isNaN(amount)) {
     return "-";
   }
   

@@ -7,7 +7,7 @@ import { getSession } from "@/lib/auth";
 import { getOrCreateDefaultTenant } from "@/lib/tenant-service";
 import { fetchFineractAPI } from "@/lib/api";
 
-// Client form schema
+// Client form schema - uses z.coerce.date() to handle strings, numbers, and Date objects
 const clientFormSchema = z.object({
   officeId: z.number(),
   officeName: z.string().optional(),
@@ -17,8 +17,8 @@ const clientFormSchema = z.object({
   firstname: z.string(),
   middlename: z.string().optional(),
   lastname: z.string(),
-  dateOfBirth: z.date().optional(),
-  gender: z.string().optional(),
+  dateOfBirth: z.coerce.date().optional(),
+  gender: z.union([z.string(), z.number()]).optional().transform(val => val !== undefined ? String(val) : undefined),
   genderId: z.number().optional(),
   isStaff: z.boolean().default(false),
   mobileNo: z.string(),
@@ -28,9 +28,9 @@ const clientFormSchema = z.object({
   clientTypeName: z.string().optional(),
   clientClassificationId: z.number().optional(),
   clientClassificationName: z.string().optional(),
-  submittedOnDate: z.date().default(() => new Date()),
+  submittedOnDate: z.coerce.date().default(() => new Date()),
   active: z.boolean().default(true),
-  activationDate: z.date().optional(),
+  activationDate: z.coerce.date().optional(),
   openSavingsAccount: z.boolean().default(false),
   savingsProductId: z.number().optional(),
   savingsProductName: z.string().optional(),
@@ -392,32 +392,12 @@ type SavingsProduct = {
 // Fetch data from Fineract API
 export async function fetchFineractClientTemplate() {
   try {
-    const fineractBaseURL =
-      process.env.FINERACT_BASE_URL || "http://41.174.125.165:4032";
-    const response = await fetch(
-      `${fineractBaseURL}/fineract-provider/api/v1/clients/template?staffInSelectedOfficeOnly=true`,
-      {
-        method: "GET",
-        headers: {
-          Accept: "application/json, text/plain, */*",
-          "Accept-Language": "en-US,en;q=0.9",
-          Authorization: "Basic bWlmb3M6cGFzc3dvcmQ=",
-          Connection: "keep-alive",
-          "Fineract-Platform-TenantId": "goodfellow",
-          "User-Agent":
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
-        },
-        cache: "no-store",
-      }
+    const data = await fetchFineractAPI(
+      "/clients/template?staffInSelectedOfficeOnly=true"
     );
-
-    if (!response.ok) {
-      throw new Error(`API request failed with status ${response.status}`);
-    }
-
-    return await response.json();
+    return data;
   } catch (error) {
-    console.error("Error fetching data from Fineract API:", error);
+    console.error("Error fetching client template from Fineract API:", error);
     throw error;
   }
 }
@@ -485,11 +465,13 @@ export async function getClientTemplateData() {
             : [],
 
           activationDate: fineractData.activationDate
-            ? new Date(
-                fineractData.activationDate[0],
-                fineractData.activationDate[1] - 1,
-                fineractData.activationDate[2]
-              )
+            ? Array.isArray(fineractData.activationDate)
+              ? new Date(
+                  fineractData.activationDate[0],
+                  fineractData.activationDate[1] - 1,
+                  fineractData.activationDate[2]
+                )
+              : new Date(fineractData.activationDate)
             : null,
         };
 

@@ -2121,9 +2121,14 @@ export function ClientRegistrationForm({
           setClientClassifications(formData.clientClassifications);
           setSavingsProducts(formData.savingsProducts);
 
-          // Set activation date if provided
+          // Set activation date if provided (convert to Date if it's a string/number from JSON)
           if (formData.activationDate) {
-            form.setValue("activationDate", formData.activationDate);
+            const activationDate = formData.activationDate instanceof Date
+              ? formData.activationDate
+              : new Date(formData.activationDate);
+            if (!isNaN(activationDate.getTime())) {
+              form.setValue("activationDate", activationDate);
+            }
           }
         } else {
           // Otherwise fetch data from server actions

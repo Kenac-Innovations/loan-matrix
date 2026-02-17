@@ -1,5 +1,6 @@
 "use client";
 
+import { useCurrency } from "@/contexts/currency-context";
 import { useState, useCallback, useMemo } from "react";
 import useSWR from "swr";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,7 +11,7 @@ import { LoansDataTable, Loan } from "@/components/tables/loans-data-table";
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
-function transformLoanData(rawLoan: any, payoutStatusMap?: Map<number, string>): Loan {
+function transformLoanData(rawLoan: any, payoutStatusMap?: Map<number, string>, defaultCurrency?: string): Loan {
   const loanId = rawLoan.id;
   return {
     id: loanId?.toString() || "",
@@ -22,7 +23,7 @@ function transformLoanData(rawLoan: any, payoutStatusMap?: Map<number, string>):
       rawLoan.productName || rawLoan.loanProductName || "Unknown Product",
     status: rawLoan.status?.value || rawLoan.status || "Unknown",
     principal: parseFloat(rawLoan.principal || rawLoan.principalAmount || "0"),
-    currency: rawLoan.currency?.code || rawLoan.currency || "ZMW",
+    currency: rawLoan.currency?.code || rawLoan.currency || defaultCurrency || "USD",
     disbursedAmount: parseFloat(rawLoan.disbursedAmount || "0"),
     outstandingBalance: parseFloat(rawLoan.outstandingBalance || "0"),
     daysInArrears: parseInt(rawLoan.daysInArrears || "0"),
@@ -34,6 +35,7 @@ function transformLoanData(rawLoan: any, payoutStatusMap?: Map<number, string>):
 }
 
 export default function LoansPage() {
+  const { currencyCode: orgCurrency } = useCurrency();
   const [searchInput, setSearchInput] = useState("");
   const [serverQuery, setServerQuery] = useState("");
   const [searchTimeout, setSearchTimeout] = useState<NodeJS.Timeout | null>(null);
@@ -105,8 +107,8 @@ export default function LoansPage() {
     return [];
   };
 
-  const initialLoans: Loan[] = parseLoans(initialData).map((loan) => transformLoanData(loan, payoutStatusMap));
-  const searchLoans: Loan[] = parseLoans(searchData).map((loan) => transformLoanData(loan, payoutStatusMap));
+  const initialLoans: Loan[] = parseLoans(initialData).map((loan) => transformLoanData(loan, payoutStatusMap, orgCurrency));
+  const searchLoans: Loan[] = parseLoans(searchData).map((loan) => transformLoanData(loan, payoutStatusMap, orgCurrency));
 
   // Combine and deduplicate: search results + initial loans filtered by search
   const loans = useMemo(() => {

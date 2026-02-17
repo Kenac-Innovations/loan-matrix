@@ -1199,7 +1199,7 @@ export class FineractAPIService {
   async getCashierSummaryAndTransactions(
     tellerId: number,
     cashierId: number,
-    currencyCode: string = "ZMW"
+    currencyCode: string
   ): Promise<any> {
     try {
       const url = `/tellers/${tellerId}/cashiers/${cashierId}/summaryandtransactions?currencyCode=${currencyCode}`;
@@ -1223,7 +1223,7 @@ export class FineractAPIService {
   async getCashierTransactions(
     tellerId: number,
     cashierId: number,
-    currencyCode: string = "ZMW",
+    currencyCode: string,
     fromDate?: string,
     toDate?: string
   ): Promise<any[]> {

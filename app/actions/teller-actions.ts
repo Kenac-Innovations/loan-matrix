@@ -4,6 +4,7 @@ import { PrismaClient } from "@/app/generated/prisma";
 import { getFineractServiceWithSession } from "@/lib/fineract-api";
 import { prisma } from "@/lib/prisma";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
+import { getOrgDefaultCurrencyCode } from "@/lib/currency-utils";
 import { unstable_noStore as noStore } from "next/cache";
 
 const db = prisma as PrismaClient;
@@ -73,7 +74,8 @@ export async function getTellerFromFineract(id: string) {
     let vaultBalance = 0;
     let availableBalance = 0;
     let allocatedToCashiers = 0;
-    let currency = "ZMW";
+    const orgCurrency = await getOrgDefaultCurrencyCode();
+    let currency = orgCurrency;
     let recentSettlements: any[] = [];
 
     try {
@@ -106,7 +108,7 @@ export async function getTellerFromFineract(id: string) {
             (sum: number, alloc: { amount: number }) => sum + alloc.amount,
             0
           );
-          currency = dbTeller.cashAllocations[0]?.currency || "ZMW";
+          currency = dbTeller.cashAllocations[0]?.currency || orgCurrency;
 
           const cashierAllocations = await db.cashAllocation.findMany({
             where: {
@@ -139,7 +141,7 @@ export async function getTellerFromFineract(id: string) {
                 const summary = await fineractService.getCashierSummaryAndTransactions(
                   tellerId,
                   fc.id,
-                  "ZMW"
+                  orgCurrency
                 );
                 fineractAllocated += Math.max(
                   summary.sumCashAllocation || 0,

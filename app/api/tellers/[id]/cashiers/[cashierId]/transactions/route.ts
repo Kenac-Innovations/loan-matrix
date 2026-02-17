@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getFineractServiceWithSession } from "@/lib/fineract-api";
 import { prisma } from "@/lib/prisma";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
+import { getOrgDefaultCurrencyCode } from "@/lib/currency-utils";
 
 /**
  * GET /api/tellers/[id]/cashiers/[cashierId]/transactions
@@ -81,7 +82,8 @@ export async function GET(
 
     // Get currency code from query params (default to ZMW)
     const { searchParams } = new URL(request.url);
-    const currencyCode = searchParams.get("currencyCode") || "ZMW";
+    const orgCurrency = await getOrgDefaultCurrencyCode();
+    const currencyCode = searchParams.get("currencyCode") || orgCurrency;
 
     // Fetch summary and transactions from Fineract
     const fineractService = await getFineractServiceWithSession();

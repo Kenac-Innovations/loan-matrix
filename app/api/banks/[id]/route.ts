@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
 import { getSession } from "@/lib/auth";
 import { fetchFineractAPI } from "@/lib/api";
+import { getOrgDefaultCurrencyCode } from "@/lib/currency-utils";
 
 /**
  * GET /api/banks/[id]
@@ -15,7 +16,10 @@ export async function GET(
   try {
     const params = await context.params;
     const { id } = params;
-    const tenant = await getTenantFromHeaders();
+    const [tenant, orgCurrency] = await Promise.all([
+      getTenantFromHeaders(),
+      getOrgDefaultCurrencyCode(),
+    ]);
 
     if (!tenant) {
       return NextResponse.json({ error: "Tenant not found" }, { status: 404 });
@@ -84,7 +88,7 @@ export async function GET(
 
     // Get bank balance from Fineract GL account if configured, otherwise use local allocations
     let totalAllocated = 0;
-    let currency = "ZMW";
+    let currency = orgCurrency;
     let glAccountBalance = null;
 
     if (bank.glAccountId) {
@@ -108,7 +112,7 @@ export async function GET(
           
           const latestEntry = journalData.pageItems[0];
           totalAllocated = calculatedBalance;
-          currency = latestEntry.currency?.code || "ZMW";
+          currency = latestEntry.currency?.code || orgCurrency;
           glAccountBalance = {
             balance: totalAllocated,
             currency,
@@ -125,7 +129,7 @@ export async function GET(
           // No journal entries yet, balance is 0
           glAccountBalance = {
             balance: 0,
-            currency: "ZMW",
+            currency: orgCurrency,
             source: "fineract",
             lastEntry: null,
           };
@@ -137,7 +141,7 @@ export async function GET(
           (sum, alloc) => sum + alloc.amount,
           0
         );
-        currency = bank.allocations[0]?.currency || "ZMW";
+        currency = bank.allocations[0]?.currency || orgCurrency;
         glAccountBalance = {
           balance: totalAllocated,
           currency,
@@ -151,7 +155,7 @@ export async function GET(
         (sum, alloc) => sum + alloc.amount,
         0
       );
-      currency = bank.allocations[0]?.currency || "ZMW";
+      currency = bank.allocations[0]?.currency || orgCurrency;
     }
 
     const availableBalance = totalAllocated - allocatedToTellers;

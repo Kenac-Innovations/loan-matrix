@@ -510,7 +510,7 @@ export function NewLeadForm() {
     "/api/leads/template",
     fetcher
   );
-  const clientFormData = templateResult?.data || {
+  const rawTemplateData = templateResult?.data || {
     offices: [],
     legalForms: [],
     genders: [],
@@ -518,6 +518,12 @@ export function NewLeadForm() {
     clientClassifications: [],
     savingsProducts: [],
     activationDate: null,
+  };
+  const clientFormData = {
+    ...rawTemplateData,
+    activationDate: rawTemplateData.activationDate
+      ? new Date(rawTemplateData.activationDate)
+      : null,
   };
 
   // Check if client exists in Fineract by National ID

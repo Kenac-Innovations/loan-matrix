@@ -1,5 +1,6 @@
 "use client";
 
+import { useCurrency } from "@/contexts/currency-context";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -48,6 +49,7 @@ export function AllocateCashModal({
   cashierName,
 }: AllocateCashModalProps) {
   const router = useRouter();
+  const { currencyCode: orgCurrency } = useCurrency();
   const [loading, setLoading] = useState(false);
   const [currencies, setCurrencies] = useState<Currency[]>([]);
   const [loadingCurrencies, setLoadingCurrencies] = useState(false);
@@ -111,7 +113,7 @@ export function AllocateCashModal({
         // Set default currency if available
         if (currencyList.length > 0 && !formData.currency) {
           const defaultCurrency =
-            currencyList.find((c: Currency) => c.code === "ZMW") ||
+            currencyList.find((c: Currency) => c.code === orgCurrency) ||
             currencyList[0];
           setFormData((prev) => ({ ...prev, currency: defaultCurrency.code }));
         }
@@ -324,7 +326,7 @@ export function AllocateCashModal({
                       onChange={(e) =>
                         setNewCurrencyCode(e.target.value.toUpperCase())
                       }
-                      placeholder="ZMW"
+                      placeholder={orgCurrency}
                       maxLength={3}
                       className="flex-1"
                     />

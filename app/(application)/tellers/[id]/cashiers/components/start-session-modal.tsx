@@ -1,5 +1,6 @@
 "use client";
 
+import { useCurrency } from "@/contexts/currency-context";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -45,6 +46,7 @@ export function StartSessionModal({
   cashierName,
 }: StartSessionModalProps) {
   const router = useRouter();
+  const { currencyCode: orgCurrency } = useCurrency();
   const [loading, setLoading] = useState(false);
   const [loadingData, setLoadingData] = useState(false);
   const [currencies, setCurrencies] = useState<Currency[]>([]);
@@ -117,7 +119,7 @@ export function StartSessionModal({
 
   const formatAmount = (amount: number) => {
     // Normalize ZMK to ZMW (Fineract uses legacy ZMK code)
-    const normalizedCurrency = currencyCode === "ZMK" ? "ZMW" : (currencyCode || "ZMW");
+    const normalizedCurrency = currencyCode === "ZMK" ? "ZMW" : (currencyCode || orgCurrency);
     try {
       return new Intl.NumberFormat("en-US", {
         style: "currency",

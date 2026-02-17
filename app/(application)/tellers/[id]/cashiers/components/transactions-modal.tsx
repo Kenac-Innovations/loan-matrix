@@ -1,5 +1,6 @@
 "use client";
 
+import { useCurrency } from "@/contexts/currency-context";
 import { useState, useEffect } from "react";
 import {
   Dialog,
@@ -61,6 +62,7 @@ export function TransactionsModal({
   cashierId,
   cashierName,
 }: TransactionsModalProps) {
+  const { currencyCode: orgCurrency } = useCurrency();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [summary, setSummary] = useState<any>(null);
   const [loading, setLoading] = useState(false);
@@ -176,7 +178,7 @@ export function TransactionsModal({
   const formatAmount = (amount: number, currency?: string) => {
     return new Intl.NumberFormat("en-US", {
       style: "currency",
-      currency: currency || "ZMW",
+      currency: currency || orgCurrency,
     }).format(amount);
   };
 

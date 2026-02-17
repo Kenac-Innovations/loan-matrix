@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getFineractServiceWithSession } from "@/lib/fineract-api";
 import { prisma } from "@/lib/prisma";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
+import { getOrgDefaultCurrencyCode } from "@/lib/currency-utils";
 
 /**
  * GET /api/tellers/[id]
@@ -133,7 +134,7 @@ export async function GET(
 
     // Calculate balances - available must DECREASE when loans are disbursed, and handle deposits
     // allocatedToCashiers = sum of max(sumCashAllocation, netCash) per cashier
-    const currency = "ZMW";
+    const currency = await getOrgDefaultCurrencyCode();
     
     const vaultBalance = dbTeller.cashAllocations.reduce(
       (sum, alloc) => sum + alloc.amount,
@@ -171,7 +172,7 @@ export async function GET(
             const summary = await fineractService.getCashierSummaryAndTransactions(
               dbTeller.fineractTellerId,
               fc.id,
-              "ZMW"
+              currency
             );
             fineractAllocated += Math.max(
               summary.sumCashAllocation || 0,

@@ -6,6 +6,7 @@ import {
   getTenantBySlug,
   getTenantFromHeaders,
 } from "@/lib/tenant-service";
+import { getOrgDefaultCurrencyCode } from "@/lib/currency-utils";
 import { UssdLeadsMetrics, UssdLoanApplication } from "./ussd-leads-actions";
 import { Lead, PipelineStage } from "@/shared/types/lead";
 import { getSession } from "@/lib/auth";
@@ -361,8 +362,9 @@ export async function getLeadsData(
         amountNum = lead.requestedAmount;
       }
 
-      // Format amount with currency (default to ZMW)
-      const currency = stateMetadata.currency || "ZMW";
+      // Format amount with currency (default to org currency from Fineract)
+      const orgCurrency = await getOrgDefaultCurrencyCode();
+      const currency = stateMetadata.currency || orgCurrency;
       const amount =
         amountNum > 0
           ? `${currency} ${amountNum

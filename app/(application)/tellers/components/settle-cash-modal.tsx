@@ -1,5 +1,6 @@
 "use client";
 
+import { useCurrency } from "@/contexts/currency-context";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -40,9 +41,11 @@ export function SettleCashModal({
   cashierId,
   cashierName,
   openingBalance = 0,
-  currency = "ZMW",
+  currency,
 }: SettleCashModalProps) {
   const router = useRouter();
+  const { currencyCode: orgCurrency } = useCurrency();
+  const effectiveCurrency = currency || orgCurrency;
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     closingBalance: "",
@@ -106,7 +109,7 @@ export function SettleCashModal({
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Opening Balance:</span>
                 <span className="font-medium">
-                  {formatCurrency(openingBalance, currency)}
+                  {formatCurrency(openingBalance, effectiveCurrency)}
                 </span>
               </div>
             </div>
@@ -134,7 +137,7 @@ export function SettleCashModal({
                     }`}
                   >
                     {difference >= 0 ? "+" : ""}
-                    {formatCurrency(difference, currency)}
+                    {formatCurrency(difference, effectiveCurrency)}
                   </span>
                 </div>
               </div>

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
 import { getSession } from "@/lib/auth";
+import { getOrgDefaultCurrencyCode } from "@/lib/currency-utils";
 
 /**
  * POST /api/tellers/[id]/allocate
@@ -54,8 +55,9 @@ export async function POST(
       return NextResponse.json({ error: "Teller not found" }, { status: 404 });
     }
 
+    const orgCurrency = await getOrgDefaultCurrencyCode();
     const requestedAmount = parseFloat(amount);
-    const allocationCurrency = currency || "ZMW";
+    const allocationCurrency = currency || orgCurrency;
 
     // If teller is linked to a bank, check bank's available balance
     if (teller.bankId && !skipBankCheck) {

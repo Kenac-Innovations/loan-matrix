@@ -6,6 +6,7 @@ import { ArrowLeft, Building, Calendar, Users, DollarSign, History } from "lucid
 import Link from "next/link";
 import { formatDate } from "@/lib/format-date";
 import { formatCurrency } from "@/lib/format-currency";
+import { getOrgDefaultCurrencyCode } from "@/lib/currency-utils";
 import { TellerActions } from "./components/teller-actions";
 import { getTellerFromFineract } from "@/app/actions/teller-actions";
 
@@ -18,7 +19,10 @@ export default async function TellerDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const result = await getTellerFromFineract(id);
+  const [result, orgCurrency] = await Promise.all([
+    getTellerFromFineract(id),
+    getOrgDefaultCurrencyCode(),
+  ]);
 
   if (!result.success || !result.data) {
     notFound();
@@ -80,10 +84,10 @@ export default async function TellerDetailPage({
             </div>
             {teller.vaultBalance !== undefined && (
               <div className="text-xs text-muted-foreground mt-1">
-                Vault: {formatCurrency(teller.vaultBalance, teller.currency || "ZMW")}
+                Vault: {formatCurrency(teller.vaultBalance, teller.currency || orgCurrency)}
                 {teller.allocatedToCashiers > 0 && (
                   <span className="ml-2">
-                    • Allocated: {formatCurrency(teller.allocatedToCashiers, teller.currency || "ZMW")}
+                    • Allocated: {formatCurrency(teller.allocatedToCashiers, teller.currency || orgCurrency)}
                   </span>
                 )}
               </div>
@@ -283,7 +287,7 @@ export default async function TellerDetailPage({
                       </div>
                       <div className="text-right">
                         <div className="font-medium">
-                          {formatCurrency(settlement.closingBalance, teller.currency || "ZMW")}
+                          {formatCurrency(settlement.closingBalance, teller.currency || orgCurrency)}
                         </div>
                         <div
                           className={`text-sm ${
@@ -293,7 +297,7 @@ export default async function TellerDetailPage({
                           }`}
                         >
                           {settlement.difference >= 0 ? "+" : ""}
-                          {formatCurrency(settlement.difference, teller.currency || "ZMW")}
+                          {formatCurrency(settlement.difference, teller.currency || orgCurrency)}
                         </div>
                       </div>
                     </div>

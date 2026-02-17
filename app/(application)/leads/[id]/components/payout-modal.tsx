@@ -1,5 +1,7 @@
 "use client";
 
+import { useCurrency } from "@/contexts/currency-context";
+
 import { useState, useEffect } from "react";
 import {
   Dialog,
@@ -59,7 +61,7 @@ export function PayoutModal({
   clientName,
   loanAccountNo,
   principal,
-  currency = "ZMW",
+  currency,
   onSuccess,
 }: PayoutModalProps) {
   const router = useRouter();
@@ -174,9 +176,10 @@ export function PayoutModal({
     }
   };
 
-  // Normalize currency code - converts deprecated ZMK to ZMW
+  // Normalize currency code - converts deprecated ZMK to current code
+  const { currencyCode: orgCurrency } = useCurrency();
   const normalizeCurrencyCode = (code: string | undefined | null): string => {
-    if (!code) return "ZMW";
+    if (!code) return orgCurrency;
     if (code.toUpperCase() === "ZMK") return "ZMW";
     return code;
   };

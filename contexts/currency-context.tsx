@@ -31,22 +31,27 @@ interface CurrencyContextType {
   formatAmount: (amount: number | undefined | null, showSymbol?: boolean) => string;
 }
 
-const defaultCurrency: Currency = {
-  code: "ZMW",
-  name: "Zambian Kwacha",
+/**
+ * Placeholder currency used while the real currency is loading from Fineract.
+ * This gets replaced once the CurrencyProvider fetches from /api/fineract/currencies.
+ */
+const LOADING_PLACEHOLDER_CURRENCY: Currency = {
+  code: "USD",
+  name: "US Dollar",
   decimalPlaces: 2,
   inMultiplesOf: 1,
-  displaySymbol: "K",
-  nameCode: "currency.ZMW",
-  displayLabel: "Zambian Kwacha (K)",
+  displaySymbol: "$",
+  nameCode: "currency.USD",
+  displayLabel: "US Dollar ($)",
 };
 
 /**
- * Normalize currency code - converts deprecated ZMK to ZMW
- * ZMK was the old Zambian Kwacha code before redenomination
+ * Normalize currency code - converts deprecated ZMK to ZMW.
+ * Fineract may return ZMK (old Zambian Kwacha code pre-2013 redenomination).
+ * For any other code (including null/undefined), returns the code as-is.
  */
-export function normalizeCurrencyCode(code: string | undefined | null): string {
-  if (!code) return "ZMW";
+export function normalizeCurrencyCode(code: string | undefined | null): string | undefined {
+  if (!code) return undefined;
   // Convert old ZMK (Zambian Kwacha pre-2013) to ZMW (current Zambian Kwacha)
   if (code.toUpperCase() === "ZMK") return "ZMW";
   return code;
@@ -60,17 +65,17 @@ function normalizeCurrency(currency: Currency): Currency {
     return {
       ...currency,
       code: "ZMW",
-      nameCode: currency.nameCode?.replace(/ZMK/gi, "ZMW") || "currency.ZMW",
-      displayLabel: currency.displayLabel?.replace(/ZMK/gi, "ZMW") || "Zambian Kwacha (K)",
+      nameCode: currency.nameCode?.replace(/ZMK/gi, "ZMW") || `currency.ZMW`,
+      displayLabel: currency.displayLabel?.replace(/ZMK/gi, "ZMW") || currency.displayLabel,
     };
   }
   return currency;
 }
 
 const CurrencyContext = createContext<CurrencyContextType>({
-  currency: defaultCurrency,
-  currencyCode: defaultCurrency.code,
-  currencySymbol: defaultCurrency.displaySymbol,
+  currency: null,
+  currencyCode: "",
+  currencySymbol: "",
   currencies: [],
   isLoading: true,
   error: null,
@@ -80,7 +85,7 @@ const CurrencyContext = createContext<CurrencyContextType>({
 });
 
 export function CurrencyProvider({ children }: { children: ReactNode }) {
-  const [currency, setCurrency] = useState<Currency | null>(defaultCurrency);
+  const [currency, setCurrency] = useState<Currency | null>(null);
   const [currencies, setCurrencies] = useState<Currency[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -112,16 +117,15 @@ export function CurrencyProvider({ children }: { children: ReactNode }) {
       
       setCurrencies(currencyList);
       
-      // Set the primary/default currency (first in the list or find specific one)
+      // Set the primary/default currency (first in the list from Fineract)
       if (currencyList.length > 0) {
-        // Try to find organization default currency, otherwise use first
         const primaryCurrency = currencyList[0];
         setCurrency(primaryCurrency);
       }
     } catch (err) {
       console.error("Error fetching currencies:", err);
       setError(err instanceof Error ? err.message : "Failed to fetch currencies");
-      // Keep default currency on error
+      // Keep null currency on error — components should handle this gracefully
     } finally {
       setIsLoading(false);
     }
@@ -131,39 +135,41 @@ export function CurrencyProvider({ children }: { children: ReactNode }) {
     fetchCurrencies();
   }, [fetchCurrencies]);
 
-  // Format currency with the organization's currency
+  // The effective currency (use loaded currency or placeholder while loading)
+  const effectiveCurrency = currency || LOADING_PLACEHOLDER_CURRENCY;
+
+  // Format currency with the organization's currency from Fineract
   const formatCurrency = useCallback(
     (amount: number | undefined | null): string => {
-      if (amount === undefined || amount === null || isNaN(amount)) {
+      if (amount === undefined || amount === null || Number.isNaN(amount)) {
         return "-";
       }
       
-      // Normalize currency code (convert ZMK to ZMW)
-      const currencyCode = normalizeCurrencyCode(currency?.code) || defaultCurrency.code;
+      const code = normalizeCurrencyCode(effectiveCurrency.code) || effectiveCurrency.code;
       
       try {
         return new Intl.NumberFormat("en-US", {
           style: "currency",
-          currency: currencyCode,
-          minimumFractionDigits: currency?.decimalPlaces ?? 2,
-          maximumFractionDigits: currency?.decimalPlaces ?? 2,
+          currency: code,
+          minimumFractionDigits: effectiveCurrency.decimalPlaces ?? 2,
+          maximumFractionDigits: effectiveCurrency.decimalPlaces ?? 2,
         }).format(amount);
       } catch {
         // Fallback for unsupported currency codes
-        const symbol = currency?.displaySymbol || defaultCurrency.displaySymbol;
+        const symbol = effectiveCurrency.displaySymbol || code;
         return `${symbol}${amount.toLocaleString("en-US", {
           minimumFractionDigits: 2,
           maximumFractionDigits: 2,
         })}`;
       }
     },
-    [currency]
+    [effectiveCurrency]
   );
 
   // Format amount with optional symbol
   const formatAmount = useCallback(
     (amount: number | undefined | null, showSymbol: boolean = true): string => {
-      if (amount === undefined || amount === null || isNaN(amount)) {
+      if (amount === undefined || amount === null || Number.isNaN(amount)) {
         return "-";
       }
       
@@ -172,17 +178,17 @@ export function CurrencyProvider({ children }: { children: ReactNode }) {
       }
       
       return amount.toLocaleString("en-US", {
-        minimumFractionDigits: currency?.decimalPlaces ?? 2,
-        maximumFractionDigits: currency?.decimalPlaces ?? 2,
+        minimumFractionDigits: effectiveCurrency.decimalPlaces ?? 2,
+        maximumFractionDigits: effectiveCurrency.decimalPlaces ?? 2,
       });
     },
-    [currency, formatCurrency]
+    [effectiveCurrency, formatCurrency]
   );
 
   const value: CurrencyContextType = {
-    currency,
-    currencyCode: normalizeCurrencyCode(currency?.code) || defaultCurrency.code,
-    currencySymbol: currency?.displaySymbol || defaultCurrency.displaySymbol,
+    currency: effectiveCurrency,
+    currencyCode: normalizeCurrencyCode(effectiveCurrency.code) || effectiveCurrency.code,
+    currencySymbol: effectiveCurrency.displaySymbol || "",
     currencies,
     isLoading,
     error,
@@ -206,19 +212,29 @@ export function useCurrency() {
   return context;
 }
 
-// Export a standalone format function for use outside of React components (e.g., API routes)
+/**
+ * Standalone format function for use outside of React components (e.g., API routes).
+ * The currencyCode should come from the data being processed (loan, transaction, etc.).
+ */
 export function formatCurrencyStandalone(
   amount: number | undefined | null,
-  currencyCode: string = "ZMW",
-  displaySymbol: string = "K"
+  currencyCode?: string,
+  displaySymbol?: string
 ): string {
-  if (amount === undefined || amount === null || isNaN(amount)) {
+  if (amount === undefined || amount === null || Number.isNaN(amount)) {
     return "-";
   }
   
   // Normalize currency code (convert ZMK to ZMW)
   const normalizedCode = normalizeCurrencyCode(currencyCode);
   
+  if (!normalizedCode) {
+    return amount.toLocaleString("en-US", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+  }
+
   try {
     return new Intl.NumberFormat("en-US", {
       style: "currency",
@@ -227,7 +243,8 @@ export function formatCurrencyStandalone(
       maximumFractionDigits: 2,
     }).format(amount);
   } catch {
-    return `${displaySymbol}${amount.toLocaleString("en-US", {
+    const symbol = displaySymbol || normalizedCode;
+    return `${symbol}${amount.toLocaleString("en-US", {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     })}`;

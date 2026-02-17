@@ -1,5 +1,6 @@
 "use client";
 
+import { useCurrency } from "@/contexts/currency-context";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, RefreshCw, Loader2 } from "lucide-react";
@@ -64,6 +65,7 @@ export default function CashierTransactionsPage({
   params: Promise<{ id: string; cashierId: string }>;
 }) {
   const router = useRouter();
+  const { currencyCode: orgCurrency } = useCurrency();
   const [tellerId, setTellerId] = useState<string>("");
   const [cashierId, setCashierId] = useState<string>("");
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -175,7 +177,7 @@ export default function CashierTransactionsPage({
 
   const formatAmount = (amount: number, currency?: string) => {
     // Normalize ZMK to ZMW (Fineract uses legacy ZMK code)
-    const normalizedCurrency = currency === "ZMK" ? "ZMW" : (currency || "ZMW");
+    const normalizedCurrency = currency === "ZMK" ? "ZMW" : (currency || orgCurrency);
     try {
       return new Intl.NumberFormat("en-US", {
         style: "currency",

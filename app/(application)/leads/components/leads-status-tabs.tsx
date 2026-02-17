@@ -1,5 +1,6 @@
 "use client";
 
+import { useCurrency } from "@/contexts/currency-context";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useSession } from "next-auth/react";
 import { Badge } from "@/components/ui/badge";
@@ -151,6 +152,7 @@ function getTenantSlugFromHost(): string {
 
 export function LeadsStatusTabs() {
   const { data: session } = useSession();
+  const { currencyCode: orgCurrency } = useCurrency();
   const [activeTab, setActiveTab] = useState("drafts");
   const [dateRange, setDateRange] = useState<DateRange>({
     from: startOfDay(new Date()),
@@ -584,7 +586,7 @@ export function LeadsStatusTabs() {
             return <span className="font-medium">{String(value)}</span>;
           }
           
-          return formatCellValue(col, value);
+          return formatCellValue(col, value, orgCurrency);
         },
         enableSorting: true,
       });
@@ -1159,7 +1161,7 @@ function parseNumericValue(value: any): number {
 }
 
 // Format numeric value based on column type
-function formatNumericValue(value: any, colLower: string): React.ReactNode | null {
+function formatNumericValue(value: any, colLower: string, currencyCode?: string): React.ReactNode | null {
   if (!isNumericValue(value)) return null;
   
   const num = parseNumericValue(value);
@@ -1167,7 +1169,7 @@ function formatNumericValue(value: any, colLower: string): React.ReactNode | nul
   
   // Currency columns
   if (isCurrencyColumn(colLower)) {
-    return <span className="font-medium tabular-nums">{formatCurrency(num, "ZMW")}</span>;
+    return <span className="font-medium tabular-nums">{formatCurrency(num, currencyCode)}</span>;
   }
   
   // Percentage columns
@@ -1192,7 +1194,7 @@ function formatNumericValue(value: any, colLower: string): React.ReactNode | nul
 }
 
 // Helper to format cell values
-function formatCellValue(column: string, value: any): React.ReactNode {
+function formatCellValue(column: string, value: any, currencyCode?: string): React.ReactNode {
   if (value === null || value === undefined || value === "") {
     return <span className="text-muted-foreground">-</span>;
   }
@@ -1211,7 +1213,7 @@ function formatCellValue(column: string, value: any): React.ReactNode {
   }
 
   // Numeric values (currency, percentage, general numbers)
-  const numericFormatted = formatNumericValue(value, colLower);
+  const numericFormatted = formatNumericValue(value, colLower, currencyCode);
   if (numericFormatted) return numericFormatted;
 
   // Status and pipeline stage badges with colors
