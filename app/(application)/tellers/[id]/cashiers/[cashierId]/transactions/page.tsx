@@ -65,7 +65,6 @@ export default function CashierTransactionsPage({
 }: {
   params: Promise<{ id: string; cashierId: string }>;
 }) {
-  const router = useRouter();
   const { currencyCode: orgCurrency } = useCurrency();
   const [tellerId, setTellerId] = useState<string>("");
   const [cashierId, setCashierId] = useState<string>("");
