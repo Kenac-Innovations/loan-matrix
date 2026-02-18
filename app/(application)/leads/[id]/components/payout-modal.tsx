@@ -322,7 +322,7 @@ export function PayoutModal({
       }}
     >
       <DialogContent
-        className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto relative"
+        className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto"
         onPointerDownOutside={(e) => loading && e.preventDefault()}
         onEscapeKeyDown={(e) => loading && e.preventDefault()}
       >

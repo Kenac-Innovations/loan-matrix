@@ -19,11 +19,30 @@ export interface Currency {
   displayLabel: string;
 }
 
+export interface TenantLocale {
+  countryCode: string;
+  countryName: string;
+  countryIso: string;
+  phoneDigits: number;
+  phoneFormat: string;
+  phonePlaceholder: string;
+}
+
+const DEFAULT_LOCALE: TenantLocale = {
+  countryCode: "+260",
+  countryName: "Zambia",
+  countryIso: "ZM",
+  phoneDigits: 9,
+  phoneFormat: "XX XXX XXXX",
+  phonePlaceholder: "977123456",
+};
+
 interface CurrencyContextType {
   currency: Currency | null;
   currencyCode: string;
   currencySymbol: string;
   currencies: Currency[];
+  locale: TenantLocale;
   isLoading: boolean;
   error: string | null;
   refetch: () => Promise<void>;
@@ -77,6 +96,7 @@ const CurrencyContext = createContext<CurrencyContextType>({
   currencyCode: "",
   currencySymbol: "",
   currencies: [],
+  locale: DEFAULT_LOCALE,
   isLoading: true,
   error: null,
   refetch: async () => {},
@@ -87,6 +107,7 @@ const CurrencyContext = createContext<CurrencyContextType>({
 export function CurrencyProvider({ children }: { children: ReactNode }) {
   const [currency, setCurrency] = useState<Currency | null>(null);
   const [currencies, setCurrencies] = useState<Currency[]>([]);
+  const [locale, setLocale] = useState<TenantLocale>(DEFAULT_LOCALE);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -95,13 +116,17 @@ export function CurrencyProvider({ children }: { children: ReactNode }) {
     setError(null);
     
     try {
-      const response = await fetch("/api/fineract/currencies");
+      // Fetch currencies and tenant locale in parallel
+      const [currencyResponse, localeResponse] = await Promise.all([
+        fetch("/api/fineract/currencies"),
+        fetch("/api/tenant/locale").catch(() => null),
+      ]);
       
-      if (!response.ok) {
+      if (!currencyResponse.ok) {
         throw new Error("Failed to fetch currencies");
       }
       
-      const data = await response.json();
+      const data = await currencyResponse.json();
       
       // Handle different response structures from Fineract
       const rawCurrencyList: Currency[] = Array.isArray(data.selectedCurrencyOptions)
@@ -121,6 +146,23 @@ export function CurrencyProvider({ children }: { children: ReactNode }) {
       if (currencyList.length > 0) {
         const primaryCurrency = currencyList[0];
         setCurrency(primaryCurrency);
+      }
+
+      // Parse tenant locale settings
+      if (localeResponse && localeResponse.ok) {
+        try {
+          const localeData = await localeResponse.json();
+          setLocale({
+            countryCode: localeData.countryCode || DEFAULT_LOCALE.countryCode,
+            countryName: localeData.countryName || DEFAULT_LOCALE.countryName,
+            countryIso: localeData.countryIso || DEFAULT_LOCALE.countryIso,
+            phoneDigits: localeData.phoneDigits || DEFAULT_LOCALE.phoneDigits,
+            phoneFormat: localeData.phoneFormat || DEFAULT_LOCALE.phoneFormat,
+            phonePlaceholder: localeData.phonePlaceholder || DEFAULT_LOCALE.phonePlaceholder,
+          });
+        } catch {
+          console.error("Error parsing tenant locale");
+        }
       }
     } catch (err) {
       console.error("Error fetching currencies:", err);
@@ -190,6 +232,7 @@ export function CurrencyProvider({ children }: { children: ReactNode }) {
     currencyCode: normalizeCurrencyCode(effectiveCurrency.code) || effectiveCurrency.code,
     currencySymbol: effectiveCurrency.displaySymbol || "",
     currencies,
+    locale,
     isLoading,
     error,
     refetch: fetchCurrencies,

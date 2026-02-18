@@ -22,7 +22,7 @@ const clientFormSchema = z.object({
   genderId: z.number().optional(),
   isStaff: z.boolean().default(false),
   mobileNo: z.string(),
-  countryCode: z.string().default("+1"),
+  countryCode: z.string().default("+260"),
   emailAddress: z.string().email(),
   clientTypeId: z.number().optional(),
   clientTypeName: z.string().optional(),
