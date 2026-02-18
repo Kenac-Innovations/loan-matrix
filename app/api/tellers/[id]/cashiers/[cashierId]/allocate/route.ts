@@ -178,6 +178,9 @@ export async function POST(
 
     // Calculate available balance - must DECREASE when loans are disbursed, and handle deposits
     // allocatedToCashiers = sum of max(sumCashAllocation, netCash) per cashier
+    // Fineract only recognizes ZMK. Use ZMK for getCashierSummaryAndTransactions so we get valid data.
+    // Must match teller details and local DB currency for consistent vault validation.
+    const validationCurrency = "ZMK";
     const tellerVaultAllocations = await prisma.cashAllocation.findMany({
       where: {
         tellerId: teller.id,
@@ -220,7 +223,7 @@ export async function POST(
           const summary = await fineractService.getCashierSummaryAndTransactions(
             teller.fineractTellerId,
             fc.id,
-            currency
+            validationCurrency
           );
           fineractAllocated += Math.max(
             summary.sumCashAllocation || 0,
@@ -245,7 +248,7 @@ export async function POST(
           error: "Insufficient available balance in teller vault",
           details: `Available balance: ${availableBalance.toFixed(
             2
-          )} ${currency}, Requested: ${parseFloat(amount).toFixed(
+          )} ${validationCurrency}, Requested: ${parseFloat(amount).toFixed(
             2
           )} ${currency}. Available balance = Vault balance - Allocated to cashiers.`,
         },
