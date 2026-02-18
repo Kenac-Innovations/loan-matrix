@@ -80,20 +80,25 @@ export async function GET(
     }
 
     // Get currency code and pagination from query params
-    const { searchParams } = new URL(request.url);
+    const searchParams = request.nextUrl?.searchParams ?? new URL(request.url).searchParams;
     const currencyCode = searchParams.get("currencyCode") || "ZMK";
     const limitParam = searchParams.get("limit");
     const offsetParam = searchParams.get("offset");
     const limit = limitParam ? parseInt(limitParam, 10) : 500;
     const offset = offsetParam ? parseInt(offsetParam, 10) : 0;
 
-    // Fetch summary and transactions from Fineract (request up to 500 by default to avoid truncation)
+    // Fetch summary and transactions from Fineract.
+    // Note: Some Fineract versions don't support offset/limit and may throw. Pass only when explicitly requested.
     const fineractService = await getFineractServiceWithSession();
+    const paginationOptions =
+      offset > 0 || limit !== 500
+        ? { offset, limit: Math.min(limit, 500) }
+        : undefined;
     const summaryAndTransactions = await fineractService.getCashierSummaryAndTransactions(
       teller.fineractTellerId,
       fineractCashierId,
       currencyCode,
-      { offset, limit: Math.min(limit, 500) }
+      paginationOptions
     );
 
     return NextResponse.json(summaryAndTransactions);
