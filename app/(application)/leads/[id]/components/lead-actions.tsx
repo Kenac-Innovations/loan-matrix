@@ -1,5 +1,6 @@
 "use client";
 
+import { useCurrency } from "@/contexts/currency-context";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -41,6 +42,7 @@ export function LeadActions({
 }: LeadActionsProps) {
   const { data: session } = useSession();
   const router = useRouter();
+  const { currencyCode: orgCurrency } = useCurrency();
   const [showPayoutModal, setShowPayoutModal] = useState(false);
 
   // Get current user's Mifos ID from session
@@ -145,7 +147,7 @@ export function LeadActions({
           clientName={clientName || "Client"}
           loanAccountNo={loanAccountNo || undefined}
           principal={loanPrincipal || 0}
-          currency={currency || "ZMW"}
+          currency={currency || orgCurrency}
           onSuccess={() => {
             mutatePayoutStatus();
             onRefresh?.();

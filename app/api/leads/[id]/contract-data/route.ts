@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getTenantBySlug } from "@/lib/tenant-service";
 import { format } from "date-fns";
 import { fetchFineractAPI } from "@/lib/api";
+import { getOrgDefaultCurrencyCode } from "@/lib/currency-utils";
 import { getSession } from "@/lib/auth";
 
 export async function GET(
@@ -311,10 +312,11 @@ export async function GET(
       .join(" ");
 
     // Normalize ZMK to ZMW (Fineract uses legacy ZMK code)
+    const orgCurrency = await getOrgDefaultCurrencyCode();
     const rawCurrency =
       loanTemplate?.currency?.code ||
       repaymentSchedule?.currency?.code ||
-      "ZMW";
+      orgCurrency;
     const currency = rawCurrency === "ZMK" ? "ZMW" : rawCurrency;
     const principal = loanTerms?.principal || 0;
     const interest = repaymentSchedule?.totalInterestCharged || 0;

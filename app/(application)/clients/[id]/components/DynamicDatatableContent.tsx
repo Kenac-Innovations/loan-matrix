@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/select";
 import { SearchableSelect } from "@/components/searchable-select";
 import { useToast } from "@/hooks/use-toast";
+import { useCurrency } from "@/contexts/currency-context";
 import { format } from "date-fns";
 import {
   Dialog,
@@ -110,6 +111,8 @@ export function DynamicDatatableContent({
   clientName,
   clientType,
 }: DynamicDatatableContentProps) {
+  const { locale: tenantLocale } = useCurrency();
+
   // Initialize state from server-provided data if available
   const [headers, setHeaders] = useState<any[]>(
     initialData?.columnHeaders || []
@@ -777,7 +780,7 @@ export function DynamicDatatableContent({
           </Label>
           <div className="flex">
             <div className="flex items-center px-3 border border-r-0 rounded-l-md bg-muted text-muted-foreground text-sm">
-              +260
+              {tenantLocale.countryCode}
             </div>
             <Input
               type="tel"
@@ -1507,7 +1510,7 @@ export function DynamicDatatableContent({
                   if (isPhoneNumberField(header?.columnName || "")) {
                     const formattedPhone = formatZambianPhoneDisplay(String(displayValue ?? ""));
                     cellValue = formattedPhone ? (
-                      <span className="font-medium">+260 {formattedPhone}</span>
+                      <span className="font-medium">{tenantLocale.countryCode} {formattedPhone}</span>
                     ) : (
                       <span className="text-muted-foreground italic">—</span>
                     );

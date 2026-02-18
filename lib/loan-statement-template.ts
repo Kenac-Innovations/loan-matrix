@@ -500,7 +500,8 @@ export function transformFineractLoanToStatement(
     logoUrl?: string;
   },
   periodFrom?: string,
-  periodTo?: string
+  periodTo?: string,
+  defaultCurrency?: string
 ): LoanStatementData {
   const currency = loan.currency || {};
   const summary = loan.summary || {};
@@ -614,8 +615,8 @@ export function transformFineractLoanToStatement(
     periodFrom: actualPeriodFrom,
     periodTo: actualPeriodTo,
 
-    currency: currency.code || "ZMW",
-    currencySymbol: currency.displaySymbol || "ZMW",
+    currency: currency.code || defaultCurrency || "USD",
+    currencySymbol: currency.displaySymbol || defaultCurrency || "USD",
 
     accruedInterest,
 

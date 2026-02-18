@@ -3,6 +3,7 @@ import { getFineractServiceWithSession } from "@/lib/fineract-api";
 import { prisma } from "@/lib/prisma";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
 import { getSession } from "@/lib/auth";
+import { getOrgDefaultCurrencyCode } from "@/lib/currency-utils";
 
 /**
  * GET /api/tellers/[id]/cashiers/[cashierId]/session
@@ -257,6 +258,7 @@ export async function POST(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const orgCurrency = await getOrgDefaultCurrencyCode();
     const body = await request.json();
     const { action, countedCashAmount, comments } = body;
 
@@ -867,7 +869,7 @@ export async function POST(
             },
             orderBy: { allocatedDate: "desc" },
           });
-          const currency = cashierAllocation?.currency || "ZMW";
+          const currency = cashierAllocation?.currency || orgCurrency;
 
           // Create negative allocation for cashier (cash out)
           await prisma.cashAllocation.create({
@@ -922,7 +924,7 @@ export async function POST(
             },
             orderBy: { allocatedDate: "desc" },
           });
-          const currency = cashierAllocations?.currency || "ZMW";
+          const currency = cashierAllocations?.currency || orgCurrency;
 
           // Create a variance allocation record for audit trail
           // This is tracked separately and excluded from balance calculations

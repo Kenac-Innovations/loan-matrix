@@ -1,5 +1,6 @@
 "use client";
 
+import { useCurrency } from "@/contexts/currency-context";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -53,6 +54,7 @@ export function SettleCashModal({
   cashierName,
 }: SettleCashModalProps) {
   const router = useRouter();
+  const { currencyCode: orgCurrency } = useCurrency();
   const [loading, setLoading] = useState(false);
   const [loadingData, setLoadingData] = useState(false);
   const [currencies, setCurrencies] = useState<Currency[]>([]);
@@ -229,10 +231,10 @@ export function SettleCashModal({
     try {
       return new Intl.NumberFormat("en-US", {
         style: "currency",
-        currency: currencyCode || "ZMW",
+        currency: currencyCode || orgCurrency,
       }).format(amount);
     } catch {
-      return `${currencyCode || "ZMW"} ${amount.toFixed(2)}`;
+      return `${currencyCode || orgCurrency} ${amount.toFixed(2)}`;
     }
   };
 

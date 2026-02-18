@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getTenantBySlug } from "@/lib/tenant-service";
+import { getOrgDefaultCurrencyCode } from "@/lib/currency-utils";
 
 export async function GET(request: NextRequest) {
   try {
@@ -76,6 +77,9 @@ export async function GET(request: NextRequest) {
         team: true,
       },
     });
+
+    // Resolve org default currency once before mapping
+    const orgCurrency = await getOrgDefaultCurrencyCode();
 
     // Transform leads data for frontend
     const transformedLeads = leads.map((lead) => {
@@ -155,8 +159,8 @@ export async function GET(request: NextRequest) {
         amountNum = lead.requestedAmount;
       }
 
-      // Format amount with currency (default to ZMW)
-      const currency = stateMetadata.currency || "ZMW";
+      // Format amount with currency (default to org currency)
+      const currency = stateMetadata.currency || orgCurrency;
       const amount =
         amountNum > 0
           ? `${currency} ${amountNum

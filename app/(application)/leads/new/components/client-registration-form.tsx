@@ -102,6 +102,7 @@ import {
 import { LeadLocalStorage } from "@/lib/lead-local-storage";
 import { ProspectContinuationDialog } from "@/app/(application)/leads/new/components/prospect-continuation-dialog";
 import { useToast } from "@/hooks/use-toast";
+import { useCurrency } from "@/contexts/currency-context";
 import { useThemeColors } from "@/lib/theme-utils";
 import { Calendar } from "@/components/ui/calender";
 import { SkeletonForm } from "./client-registration-form-skeleton";
@@ -135,10 +136,9 @@ const clientFormSchema = z
       .min(1, "Mobile number is required")
       .refine((val) => {
         const digitsOnly = val.replace(/\D/g, "");
-        // Zambia mobile numbers must be exactly 9 digits after +260
-        return digitsOnly.length === 9;
-      }, "Phone number must be exactly 9 digits (e.g., 977123456)"),
-    countryCode: z.string().default("+260"), // Zambia
+        return digitsOnly.length >= 7 && digitsOnly.length <= 12;
+      }, "Please enter a valid phone number"),
+    countryCode: z.string().default("+260"),
     emailAddress: z.string().email("Invalid email address"),
     clientTypeId: z.string().optional(),
     clientClassificationId: z.string().optional(),
@@ -266,73 +266,61 @@ const savingsProductSchema = z.object({
 
 type ClientFormValues = z.infer<typeof clientFormSchema>;
 
-// TODO: Make country code configuration (DEFAULT_COUNTRY_CODE, allowed countries) configurable via tenant settings or environment variables
-// Currently hardcoded to Zambia (+260) only
-
-// Default country code - Zambia
-const DEFAULT_COUNTRY_CODE = "+260";
-
-// Phone number parsing utility - Zambia only
-// Normalizes phone numbers to exactly 9 digits after +260
+// Phone number parsing utility - works with any country code
 const parsePhoneNumber = (
-  phoneNumber: string
+  phoneNumber: string,
+  defaultCountryCode: string = "+260"
 ): { countryCode: string; number: string } => {
-  if (!phoneNumber) return { countryCode: DEFAULT_COUNTRY_CODE, number: "" };
+  if (!phoneNumber) return { countryCode: defaultCountryCode, number: "" };
 
   // Remove all non-digit characters for parsing
   let digitsOnly = phoneNumber.replace(/\D/g, "");
 
-  // Check if number starts with Zambia country code (260)
-  if (digitsOnly.startsWith("260")) {
-    digitsOnly = digitsOnly.substring(3);
+  // Check if number starts with the country code digits (e.g. 260, 263)
+  const codeDigits = defaultCountryCode.replace("+", "");
+  if (digitsOnly.startsWith(codeDigits)) {
+    digitsOnly = digitsOnly.substring(codeDigits.length);
   }
 
   // Remove leading 0 if present (e.g., 0977123456 -> 977123456)
-  if (digitsOnly.length === 10 && digitsOnly.startsWith("0")) {
+  if (digitsOnly.startsWith("0") && digitsOnly.length > 1) {
     digitsOnly = digitsOnly.substring(1);
   }
 
-  // Return the normalized 9-digit number
-  return { countryCode: DEFAULT_COUNTRY_CODE, number: digitsOnly };
+  return { countryCode: defaultCountryCode, number: digitsOnly };
 };
 
-// Validate Zambia phone number format - must be exactly 9 digits
-const validateZambiaPhoneNumber = (number: string): boolean => {
+// Validate phone number format
+const validatePhoneNumber = (number: string, expectedDigits: number = 9): boolean => {
   const digitsOnly = number.replace(/\D/g, "");
-  // Zambia mobile numbers must be exactly 9 digits after +260 (e.g., 977123456)
-  // If user entered with leading 0 (e.g., 0977123456), strip the 0
-  if (digitsOnly.length === 9) {
+  if (digitsOnly.length === expectedDigits) {
     return true;
   }
-  // Handle case where user entered 10 digits starting with 0
-  if (digitsOnly.length === 10 && digitsOnly.startsWith("0")) {
-    return true; // Will be normalized to 9 digits
+  // Handle case where user entered digits starting with 0
+  if (digitsOnly.length === expectedDigits + 1 && digitsOnly.startsWith("0")) {
+    return true;
   }
   return false;
 };
 
-// Format phone number for display - Zambia format (XX XXX XXXX)
-// Must be exactly 9 digits after +260
-const formatPhoneNumber = (number: string): string => {
+// Format phone number for display
+const formatPhoneNumber = (number: string, maxDigits: number = 9): string => {
   if (!number) return "";
   let digitsOnly = number.replace(/\D/g, "");
 
-  // Remove leading 0 if present (convert 09XXXXXXXX to 9XXXXXXXX)
-  if (digitsOnly.startsWith("0") && digitsOnly.length === 10) {
+  // Remove leading 0 if present
+  if (digitsOnly.startsWith("0") && digitsOnly.length === maxDigits + 1) {
     digitsOnly = digitsOnly.substring(1);
   }
 
-  // Cap at 9 digits max (Zambia mobile numbers are exactly 9 digits after +260)
-  if (digitsOnly.length > 9) {
-    digitsOnly = digitsOnly.substring(0, 9);
+  // Cap at max digits
+  if (digitsOnly.length > maxDigits) {
+    digitsOnly = digitsOnly.substring(0, maxDigits);
   }
 
-  // Zambia mobile numbers are 9 digits: format as 9X XXX XXXX
+  // Format as XX XXX XXXX for 9-digit numbers
   if (digitsOnly.length === 9) {
-    return `${digitsOnly.slice(0, 2)} ${digitsOnly.slice(
-      2,
-      5
-    )} ${digitsOnly.slice(5)}`;
+    return `${digitsOnly.slice(0, 2)} ${digitsOnly.slice(2, 5)} ${digitsOnly.slice(5)}`;
   }
   // Return partial number as-is while typing
   return digitsOnly;
@@ -368,6 +356,7 @@ interface ClientRegistrationFormProps {
   setClientCreatedInFineract?: (value: boolean) => void;
   isSubmitting?: boolean;
   onAllSectionsComplete?: (isComplete: boolean) => void;
+  onLeadIdChange?: (leadId: string) => void;
 }
 
 export function ClientRegistrationForm({
@@ -377,6 +366,7 @@ export function ClientRegistrationForm({
   clientCreatedInFineract = false,
   onClientCreated,
   onFormSubmit,
+  onLeadIdChange,
   setFormCompletionStatus,
   setClientCreatedInFineract,
   isSubmitting = false,
@@ -393,6 +383,7 @@ export function ClientRegistrationForm({
   const router = useRouter();
   const searchParams = useSearchParams();
   const colors = useThemeColors();
+  const { locale: tenantLocale } = useCurrency();
 
   // State for multi-step form
   const [currentStep, setCurrentStep] = useState(1);
@@ -1769,7 +1760,7 @@ export function ClientRegistrationForm({
       lastname: "",
       isStaff: false,
       mobileNo: "",
-      countryCode: "+260", // Zambia
+      countryCode: tenantLocale.countryCode,
       emailAddress: "",
       submittedOnDate: new Date(),
       active: true,
@@ -2121,9 +2112,14 @@ export function ClientRegistrationForm({
           setClientClassifications(formData.clientClassifications);
           setSavingsProducts(formData.savingsProducts);
 
-          // Set activation date if provided
+          // Set activation date if provided (convert to Date if it's a string/number from JSON)
           if (formData.activationDate) {
-            form.setValue("activationDate", formData.activationDate);
+            const activationDate = formData.activationDate instanceof Date
+              ? formData.activationDate
+              : new Date(formData.activationDate);
+            if (!isNaN(activationDate.getTime())) {
+              form.setValue("activationDate", activationDate);
+            }
           }
         } else {
           // Otherwise fetch data from server actions
@@ -2175,7 +2171,7 @@ export function ClientRegistrationForm({
               genderId: lead.genderId?.toString() || undefined,
               isStaff: lead.isStaff || false,
               mobileNo: lead.mobileNo || "",
-              countryCode: lead.countryCode || "+260", // Default to Zambia
+              countryCode: lead.countryCode || tenantLocale.countryCode,
               emailAddress: lead.emailAddress || "",
               clientTypeId: lead.clientTypeId?.toString() || undefined,
               clientClassificationId:
@@ -2485,6 +2481,7 @@ export function ClientRegistrationForm({
     if (existingProspectData) {
       // Set the current lead ID and navigate to the existing prospect
       setCurrentLeadId(existingProspectData.leadId);
+      onLeadIdChange?.(existingProspectData.leadId);
 
       // Update the URL to reflect the leadId
       const newUrl = `/leads/new?id=${existingProspectData.leadId}`;
@@ -2637,6 +2634,7 @@ export function ClientRegistrationForm({
           setIsSettingLeadIdFromAutoSave(true);
           // If no leadId yet, update URL and state with the new leadId
           setCurrentLeadId(leadId);
+          onLeadIdChange?.(leadId);
         }
 
         // Save to local storage
@@ -3172,7 +3170,7 @@ export function ClientRegistrationForm({
       lastname: "",
       isStaff: false,
       mobileNo: "",
-      countryCode: "+260", // Zambia
+      countryCode: tenantLocale.countryCode,
       emailAddress: "",
       submittedOnDate: new Date(),
       active: true,
@@ -3603,6 +3601,7 @@ export function ClientRegistrationForm({
           if (saveResult.success && saveResult.leadId) {
             // Update currentLeadId with the newly created lead
             setCurrentLeadId(saveResult.leadId);
+            onLeadIdChange?.(saveResult.leadId);
 
             // Save to localStorage for persistence
             LeadLocalStorage.save({
@@ -3753,7 +3752,7 @@ export function ClientRegistrationForm({
       lastname: "",
       isStaff: false,
       mobileNo: "",
-      countryCode: "+260", // Zambia
+      countryCode: tenantLocale.countryCode,
       emailAddress: "",
       submittedOnDate: new Date(),
       active: true,
@@ -3902,6 +3901,7 @@ export function ClientRegistrationForm({
 
       effectiveLeadId = saveResult.leadId;
       setCurrentLeadId(effectiveLeadId);
+      if (effectiveLeadId) onLeadIdChange?.(effectiveLeadId);
     }
 
     try {
@@ -6750,14 +6750,13 @@ export function ClientRegistrationForm({
                                           <SelectTrigger
                                             className={`h-10 w-24 sm:w-28 lg:w-32 border-${colors.borderColor} ${colors.inputBg} flex-shrink-0`}
                                           >
-                                            <SelectValue placeholder="+260" />
+                                            <SelectValue placeholder={tenantLocale.countryCode} />
                                           </SelectTrigger>
                                           <SelectContent
                                             className={`border-${colors.borderColor} ${colors.dropdownBg} ${colors.textColor}`}
                                           >
-                                            {/* TODO: Make country options configurable via tenant settings */}
-                                            <SelectItem value="+260">
-                                              🇿🇲 +260
+                                            <SelectItem value={tenantLocale.countryCode}>
+                                              {tenantLocale.countryIso === "ZM" ? "🇿🇲" : tenantLocale.countryIso === "ZW" ? "🇿🇼" : "🌍"} {tenantLocale.countryCode}
                                             </SelectItem>
                                           </SelectContent>
                                         </Select>
@@ -6766,8 +6765,8 @@ export function ClientRegistrationForm({
                                     <div className="relative">
                                       <Input
                                         id="mobileNo"
-                                        placeholder="9X XXX XXXX"
-                                        maxLength={12}
+                                        placeholder={tenantLocale.phonePlaceholder}
+                                        maxLength={tenantLocale.phoneDigits + 3}
                                         className={getInputErrorStyling(
                                           hasFieldError(
                                             form,
@@ -7519,6 +7518,7 @@ export function ClientRegistrationForm({
                                       // Update lead ID if returned and update URL
                                       if (result.leadId) {
                                         setCurrentLeadId(result.leadId);
+                                        onLeadIdChange?.(result.leadId);
                                         // Update URL with the new lead ID using replaceState for reliability
                                         console.log(
                                           "==========> Updating URL with leadId:",

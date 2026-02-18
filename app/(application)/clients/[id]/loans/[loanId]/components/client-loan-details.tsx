@@ -1,5 +1,7 @@
 "use client";
 
+import { useCurrency } from "@/contexts/currency-context";
+
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -885,27 +887,33 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
     return "N/A";
   };
 
-  // Normalize currency code - converts deprecated ZMK to ZMW
+  // Normalize currency code - converts deprecated ZMK to current code
+  const { currencyCode: orgCurrency } = useCurrency();
   const normalizeCurrencyCode = (code: string | undefined | null): string => {
-    if (!code) return "ZMW";
+    if (!code) return orgCurrency;
     if (code.toUpperCase() === "ZMK") return "ZMW";
     return code;
   };
 
-  const formatCurrency = (amount: number | undefined | null, currencyCode: string = "ZMW"): string => {
-    // Return blank if amount is undefined, null, NaN, or 0
-    if (amount === undefined || amount === null || isNaN(amount) || amount === 0) {
-      return "";
+  const loanCurrencyCode = loan?.currency?.code || orgCurrency;
+
+  const formatCurrency = (amount: number | undefined | null, currencyCode?: string): string => {
+    if (amount === undefined || amount === null || Number.isNaN(amount)) {
+      return "-";
     }
     
-    const normalizedCode = normalizeCurrencyCode(currencyCode);
+    const normalizedCode = normalizeCurrencyCode(currencyCode || loanCurrencyCode);
     
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: normalizedCode,
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(amount);
+    try {
+      return new Intl.NumberFormat("en-US", {
+        style: "currency",
+        currency: normalizedCode,
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      }).format(amount);
+    } catch {
+      return `${normalizedCode} ${amount.toFixed(2)}`;
+    }
   };
 
   // Fetch collaterals for the loan
@@ -1826,7 +1834,7 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
         pdf.setTextColor(0, 0, 0);
 
         // Summary section
-        const currencyCode = loan.currency?.code || 'USD';
+        const currencyCode = loan.currency?.code || orgCurrency;
         const totalAmount = filteredTransactions.reduce((sum: number, t: any) => sum + (t.amount || 0), 0);
         const totalPrincipal = filteredTransactions.reduce((sum: number, t: any) => sum + (t.principalPortion || 0), 0);
         const totalInterest = filteredTransactions.reduce((sum: number, t: any) => sum + (t.interestPortion || 0), 0);
@@ -2667,7 +2675,7 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
               <div>
                 <p className="text-sm font-medium text-blue-600 dark:text-blue-400">Principal Amount</p>
                 <p className="text-2xl font-bold text-blue-900 dark:text-blue-100">
-                  {formatCurrency(loan.principal || 0, loan.currency?.code || 'USD')}
+                  {formatCurrency(loan.principal ?? 0)}
                 </p>
               </div>
               <div className="h-12 w-12 rounded-lg bg-blue-500 flex items-center justify-center">
@@ -2683,7 +2691,7 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
               <div>
                 <p className="text-sm font-medium text-green-600 dark:text-green-400">Outstanding Balance</p>
                 <p className="text-2xl font-bold text-green-900 dark:text-green-100">
-                  {formatCurrency(loan.summary?.totalOutstanding || 0, loan.currency?.code || 'USD')}
+                  {formatCurrency(loan.summary?.totalOutstanding ?? 0)}
                 </p>
               </div>
               <div className="h-12 w-12 rounded-lg bg-green-500 flex items-center justify-center">
@@ -2923,48 +2931,48 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                   <TableBody>
                     <TableRow className="border-b">
                       <TableCell className="font-semibold">Principal</TableCell>
-                      <TableCell className="font-medium">{formatCurrency(loan.principal, loan.currency?.code || 'USD')}</TableCell>
-                      <TableCell className="font-medium">{formatCurrency(loan.summary?.principalPaid || 0, loan.currency?.code || 'USD')}</TableCell>
-                      <TableCell className="font-medium">{formatCurrency(loan.summary?.principalWrittenOff || 0, loan.currency?.code || 'USD')}</TableCell>
-                      <TableCell className="font-medium">{formatCurrency(loan.summary?.principalWrittenOff || 0, loan.currency?.code || 'USD')}</TableCell>
-                      <TableCell className="font-medium">{formatCurrency(loan.summary?.principalOutstanding || 0, loan.currency?.code || 'USD')}</TableCell>
-                      <TableCell className="font-medium">{formatCurrency(loan.summary?.principalOverdue || 0, loan.currency?.code || 'USD')}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.principal ?? 0)}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary?.principalPaid ?? 0)}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency((loan.summary as any)?.principalWaived ?? 0)}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary?.principalWrittenOff ?? 0)}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary?.principalOutstanding ?? 0)}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary?.principalOverdue ?? 0)}</TableCell>
                     </TableRow>
                     <TableRow className="border-b">
                       <TableCell className="font-semibold">Interest</TableCell>
-                      <TableCell className="font-medium">{formatCurrency(loan.summary?.interestCharged || 0, loan.currency?.code || 'USD')}</TableCell>
-                      <TableCell className="font-medium">{formatCurrency(loan.summary?.interestPaid || 0, loan.currency?.code || 'USD')}</TableCell>
-                      <TableCell className="font-medium">{formatCurrency(loan.summary?.interestWaived || 0, loan.currency?.code || 'USD')}</TableCell>
-                      <TableCell className="font-medium">{formatCurrency(loan.summary?.interestWrittenOff || 0, loan.currency?.code || 'USD')}</TableCell>
-                      <TableCell className="font-medium">{formatCurrency(loan.summary?.interestOutstanding || 0, loan.currency?.code || 'USD')}</TableCell>
-                      <TableCell className="font-medium">{formatCurrency(loan.summary?.interestOverdue || 0, loan.currency?.code || 'USD')}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary?.interestCharged ?? 0)}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary?.interestPaid ?? 0)}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary?.interestWaived ?? 0)}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary?.interestWrittenOff ?? 0)}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary?.interestOutstanding ?? 0)}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary?.interestOverdue ?? 0)}</TableCell>
                     </TableRow>
                     <TableRow className="border-b">
                       <TableCell className="font-semibold">Fees</TableCell>
-                      <TableCell className="font-medium">{formatCurrency(loan.summary?.feeChargesCharged || 0, loan.currency?.code || 'USD')}</TableCell>
-                      <TableCell className="font-medium">{formatCurrency(loan.summary?.feeChargesPaid || 0, loan.currency?.code || 'USD')}</TableCell>
-                      <TableCell className="font-medium">{formatCurrency(loan.summary?.feeChargesWaived || 0, loan.currency?.code || 'USD')}</TableCell>
-                      <TableCell className="font-medium">{formatCurrency(loan.summary?.feeChargesWrittenOff || 0, loan.currency?.code || 'USD')}</TableCell>
-                      <TableCell className="font-medium">{formatCurrency(loan.summary?.feeChargesOutstanding || 0, loan.currency?.code || 'USD')}</TableCell>
-                      <TableCell className="font-medium">{formatCurrency(loan.summary?.feeChargesOverdue || 0, loan.currency?.code || 'USD')}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary?.feeChargesCharged ?? 0)}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary?.feeChargesPaid ?? 0)}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary?.feeChargesWaived ?? 0)}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary?.feeChargesWrittenOff ?? 0)}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary?.feeChargesOutstanding ?? 0)}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary?.feeChargesOverdue ?? 0)}</TableCell>
                     </TableRow>
                     <TableRow className="border-b">
                       <TableCell className="font-semibold">Penalties</TableCell>
-                      <TableCell className="font-medium">{formatCurrency(loan.summary?.penaltyChargesCharged || 0, loan.currency?.code || 'USD')}</TableCell>
-                      <TableCell className="font-medium">{formatCurrency(loan.summary?.penaltyChargesPaid || 0, loan.currency?.code || 'USD')}</TableCell>
-                      <TableCell className="font-medium">{formatCurrency(loan.summary?.penaltyChargesWaived || 0, loan.currency?.code || 'USD')}</TableCell>
-                      <TableCell className="font-medium">{formatCurrency(loan.summary?.penaltyChargesWrittenOff || 0, loan.currency?.code || 'USD')}</TableCell>
-                      <TableCell className="font-medium">{formatCurrency(loan.summary?.penaltyChargesOutstanding || 0, loan.currency?.code || 'USD')}</TableCell>
-                      <TableCell className="font-medium">{formatCurrency(loan.summary?.penaltyChargesOverdue || 0, loan.currency?.code || 'USD')}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary?.penaltyChargesCharged ?? 0)}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary?.penaltyChargesPaid ?? 0)}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary?.penaltyChargesWaived ?? 0)}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary?.penaltyChargesWrittenOff ?? 0)}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary?.penaltyChargesOutstanding ?? 0)}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary?.penaltyChargesOverdue ?? 0)}</TableCell>
                     </TableRow>
                     <TableRow className="bg-muted/50 font-bold">
                       <TableCell>Total</TableCell>
-                      <TableCell>{formatCurrency(loan.summary?.totalExpectedRepayment || 0, loan.currency?.code || 'USD')}</TableCell>
-                      <TableCell>{formatCurrency(loan.summary?.totalRepayment || 0, loan.currency?.code || 'USD')}</TableCell>
-                      <TableCell>{formatCurrency(loan.summary?.totalWaived || 0, loan.currency?.code || 'USD')}</TableCell>
-                      <TableCell>{formatCurrency(loan.summary?.totalWrittenOff || 0, loan.currency?.code || 'USD')}</TableCell>
-                      <TableCell>{formatCurrency(loan.summary?.totalOutstanding || 0, loan.currency?.code || 'USD')}</TableCell>
-                      <TableCell>{formatCurrency(loan.summary?.totalOverdue || 0, loan.currency?.code || 'USD')}</TableCell>
+                      <TableCell>{formatCurrency(loan.summary?.totalExpectedRepayment ?? 0)}</TableCell>
+                      <TableCell>{formatCurrency(loan.summary?.totalRepayment ?? 0)}</TableCell>
+                      <TableCell>{formatCurrency(loan.summary?.totalWaived ?? 0)}</TableCell>
+                      <TableCell>{formatCurrency(loan.summary?.totalWrittenOff ?? 0)}</TableCell>
+                      <TableCell>{formatCurrency(loan.summary?.totalOutstanding ?? 0)}</TableCell>
+                      <TableCell>{formatCurrency(loan.summary?.totalOverdue ?? 0)}</TableCell>
                     </TableRow>
                   </TableBody>
                 </Table>
@@ -3001,7 +3009,7 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                 </div>
                 <div className="space-y-1">
                   <p className="text-xs font-medium text-muted-foreground">Currency</p>
-                  <p className="text-sm font-medium">{loan.currency?.name || 'US Dollar'} {loan.currency?.code || 'USD'}</p>
+                  <p className="text-sm font-medium">{loan.currency?.name || '-'} ({loan.currency?.code || orgCurrency})</p>
                 </div>
                 <div className="space-y-1">
                   <p className="text-xs font-medium text-muted-foreground">External Id</p>
@@ -3009,11 +3017,11 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                 </div>
                 <div className="space-y-1">
                   <p className="text-xs font-medium text-muted-foreground">Proposed Amount</p>
-                  <p className="text-sm font-medium">{formatCurrency(loan.proposedPrincipal || 0, loan.currency?.code || 'USD')}</p>
+                  <p className="text-sm font-medium">{formatCurrency(loan.proposedPrincipal ?? 0)}</p>
                 </div>
                 <div className="space-y-1">
                   <p className="text-xs font-medium text-muted-foreground">Approved Amount</p>
-                  <p className="text-sm font-medium">{formatCurrency(loan.approvedPrincipal || 0, loan.currency?.code || 'USD')}</p>
+                  <p className="text-sm font-medium">{formatCurrency(loan.approvedPrincipal ?? 0)}</p>
                 </div>
               </div>
             </CardContent>
@@ -3160,7 +3168,7 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                 transactions={loan.transactions || []}
                 clientId={clientId}
                 loanId={loanId}
-                currencyCode={loan.currency?.code || 'USD'}
+                currencyCode={loan.currency?.code || orgCurrency}
                 onExport={() => setShowExportDialog(true)}
               />
             </CardContent>
@@ -3258,7 +3266,7 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                         <TableRow key={index}>
                           <TableCell className="font-medium">{charge.name}</TableCell>
                           <TableCell>{charge.chargeCalculationType?.value || charge.type || "N/A"}</TableCell>
-                          <TableCell>{formatCurrency(charge.amount, loan.currency?.code || 'USD')}</TableCell>
+                          <TableCell>{formatCurrency(charge.amount ?? 0)}</TableCell>
                           <TableCell>{charge.collectedOn || "Overdue Fees"}</TableCell>
                         </TableRow>
                       ))
@@ -3352,10 +3360,10 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                           <TableCell>{charge.chargeTimeType?.value || "N/A"}</TableCell>
                           <TableCell>{charge.dueDate ? formatDate(charge.dueDate) : "N/A"}</TableCell>
                           <TableCell>{charge.chargeCalculationType?.value || "N/A"}</TableCell>
-                          <TableCell>{formatCurrency(charge.amount, loan.currency?.code || 'USD')}</TableCell>
-                          <TableCell>{formatCurrency(charge.amountPaid || 0, loan.currency?.code || 'USD')}</TableCell>
-                          <TableCell>{formatCurrency(charge.amountWaived || 0, loan.currency?.code || 'USD')}</TableCell>
-                          <TableCell>{formatCurrency(charge.amountOutstanding || charge.amount, loan.currency?.code || 'USD')}</TableCell>
+                          <TableCell>{formatCurrency(charge.amount ?? 0)}</TableCell>
+                          <TableCell>{formatCurrency(charge.amountPaid ?? 0)}</TableCell>
+                          <TableCell>{formatCurrency(charge.amountWaived ?? 0)}</TableCell>
+                          <TableCell>{formatCurrency(charge.amountOutstanding ?? charge.amount ?? 0)}</TableCell>
                           <TableCell>
                             <div className="flex space-x-1">
                               <Button variant="outline" size="sm" className="h-8 w-8 p-0">

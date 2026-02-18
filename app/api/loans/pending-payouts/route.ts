@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getFineractServiceWithSession } from "@/lib/fineract-api";
 import { prisma } from "@/lib/prisma";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
+import { getOrgDefaultCurrencyCode } from "@/lib/currency-utils";
 
 /**
  * GET /api/loans/pending-payouts
@@ -14,6 +15,8 @@ export async function GET(request: NextRequest) {
     if (!tenant) {
       return NextResponse.json({ error: "Tenant not found" }, { status: 404 });
     }
+
+    const orgCurrency = await getOrgDefaultCurrencyCode();
 
     // Get query parameters
     const { searchParams } = new URL(request.url);
@@ -60,7 +63,7 @@ export async function GET(request: NextRequest) {
         productName: loan.loanProductName || loan.productName,
         principal: loan.principal || loan.approvedPrincipal,
         disbursedAmount: loan.principal || loan.approvedPrincipal,
-        currency: loan.currency?.code || "ZMW",
+        currency: loan.currency?.code || orgCurrency,
         disbursementDate: loan.timeline?.actualDisbursementDate || loan.actualDisbursementDate,
         status: existingPayouts.find((p) => p.fineractLoanId === loan.id)?.status || "PENDING",
       }));
@@ -104,6 +107,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Tenant not found" }, { status: 404 });
     }
 
+    const orgCurrencyPost = await getOrgDefaultCurrencyCode();
     const body = await request.json();
     const { loanId, clientId, clientName, loanAccountNo, amount, currency } = body;
 
@@ -126,7 +130,7 @@ export async function POST(request: NextRequest) {
         clientName,
         loanAccountNo,
         amount,
-        currency: currency || "ZMW",
+        currency: currency || orgCurrencyPost,
       },
       create: {
         tenantId: tenant.id,
@@ -135,7 +139,7 @@ export async function POST(request: NextRequest) {
         clientName,
         loanAccountNo,
         amount,
-        currency: currency || "ZMW",
+        currency: currency || orgCurrencyPost,
         status: "PENDING",
       },
     });

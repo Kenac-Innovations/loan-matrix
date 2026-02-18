@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
 import { getSession } from "@/lib/auth";
+import { getOrgDefaultCurrencyCode } from "@/lib/currency-utils";
 
 /**
  * POST /api/banks/[id]/allocate
@@ -27,6 +28,7 @@ export async function POST(
 
     const body = await request.json();
     const { amount, currency, notes } = body;
+    const orgCurrency = await getOrgDefaultCurrencyCode();
 
     if (!amount || amount <= 0) {
       return NextResponse.json(
@@ -57,7 +59,7 @@ export async function POST(
         tenantId: tenant.id,
         bankId: bank.id,
         amount: parseFloat(amount),
-        currency: currency || "ZMW",
+        currency: currency || orgCurrency,
         allocatedBy: session.user.id,
         notes,
         status: "ACTIVE",
@@ -81,7 +83,7 @@ export async function POST(
       allocation,
       bankBalance: {
         totalAllocated,
-        currency: currency || "ZMW",
+        currency: currency || orgCurrency,
       },
     });
   } catch (error) {

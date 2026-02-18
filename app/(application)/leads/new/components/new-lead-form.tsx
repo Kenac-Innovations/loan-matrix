@@ -92,10 +92,9 @@ const leadFormSchema = z.object({
     .min(1, { message: "Mobile number is required" })
     .refine((val) => {
       const digitsOnly = val.replace(/\D/g, "");
-      // Zambia mobile numbers must be exactly 9 digits after +260
-      return digitsOnly.length === 9;
-    }, "Phone number must be exactly 9 digits (e.g., 977123456)"),
-  countryCode: z.string().default("+260"), // Zambia
+      return digitsOnly.length >= 7 && digitsOnly.length <= 12;
+    }, "Please enter a valid phone number"),
+  countryCode: z.string().default("+260"),
   emailAddress: z.string().email({ message: "Valid email is required" }),
   clientTypeId: z.string().optional(),
   clientClassificationId: z.string().optional(),
@@ -510,7 +509,7 @@ export function NewLeadForm() {
     "/api/leads/template",
     fetcher
   );
-  const clientFormData = templateResult?.data || {
+  const rawTemplateData = templateResult?.data || {
     offices: [],
     legalForms: [],
     genders: [],
@@ -518,6 +517,12 @@ export function NewLeadForm() {
     clientClassifications: [],
     savingsProducts: [],
     activationDate: null,
+  };
+  const clientFormData = {
+    ...rawTemplateData,
+    activationDate: rawTemplateData.activationDate
+      ? new Date(rawTemplateData.activationDate)
+      : null,
   };
 
   // Check if client exists in Fineract by National ID
@@ -1115,6 +1120,11 @@ export function NewLeadForm() {
                     setClientCreatedInFineract={setClientCreatedInFineract}
                     isSubmitting={isSubmitting}
                     onAllSectionsComplete={setAllClientSectionsComplete}
+                    onLeadIdChange={(newLeadId) => {
+                      console.log("==========> Lead ID propagated from ClientRegistrationForm:", newLeadId);
+                      setCurrentLeadId(newLeadId);
+                      window.history.replaceState(null, "", `/leads/new?id=${newLeadId}`);
+                    }}
                     onClientCreated={() => {
                       setClientCreatedInFineract(true);
                       setFormCompletionStatus((prev) => ({

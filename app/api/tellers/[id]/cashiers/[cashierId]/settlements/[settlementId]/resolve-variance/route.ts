@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
 import { getSession } from "@/lib/auth";
+import { getOrgDefaultCurrencyCode } from "@/lib/currency-utils";
 
 /**
  * POST /api/tellers/[id]/cashiers/[cashierId]/settlements/[settlementId]/resolve-variance
@@ -112,7 +113,8 @@ export async function POST(
     }
 
     const variance = settlement.difference;
-    const currency = settlement.currency || "ZMW"; // Get from settlement or default to ZMW
+    const orgCurrency = await getOrgDefaultCurrencyCode();
+    const currency = settlement.currency || orgCurrency;
 
     // Create vault allocation adjustment for the variance
     // Positive variance (surplus) = add to vault

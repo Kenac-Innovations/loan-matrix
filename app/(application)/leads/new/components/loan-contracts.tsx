@@ -1,5 +1,6 @@
 "use client";
 
+import { useCurrency } from "@/contexts/currency-context";
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -100,6 +101,7 @@ export function LoanContracts({
   onComplete,
   onBack,
 }: LoanContractsProps) {
+  const { currencyCode: orgCurrency } = useCurrency();
   const [contractData, setContractData] = useState<ContractData | null>(
     initialContractData || null
   );
@@ -304,7 +306,7 @@ export function LoanContracts({
       // Override the schedule-dependent fields with our already-calculated schedule
 
       // Normalize ZMK to ZMW (Fineract uses legacy ZMK code)
-      const rawCurrency = repaymentSchedule.currency?.code || "ZMW";
+      const rawCurrency = repaymentSchedule.currency?.code || orgCurrency;
       const currency = rawCurrency === "ZMK" ? "ZMW" : rawCurrency;
       const principal = loanTerms?.principal || 0;
       const interest = repaymentSchedule?.totalInterestCharged || 0;

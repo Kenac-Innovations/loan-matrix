@@ -6,6 +6,7 @@
 import { fetchFineractAPI } from "@/lib/api";
 import { getFineractServiceWithSession } from "@/lib/fineract-api";
 import prisma from "@/lib/prisma";
+import { getOrgDefaultCurrencyCode } from "@/lib/currency-utils";
 
 /** Format YYYY-MM-DD to "dd MMMM yyyy" for Fineract */
 function formatDateForFineract(isoDate: string): string {
@@ -53,7 +54,7 @@ export async function recordCashRepaymentToTeller(
   const {
     loanId,
     amount,
-    currency = "ZMW",
+    currency,
     transactionDate,
     tenantId,
     paymentTypeId,
@@ -92,9 +93,10 @@ export async function recordCashRepaymentToTeller(
       return { success: false, error: "Loan has no office" };
     }
 
-    const loanCurrency = loan.currency?.code ?? currency;
+    const orgCurrency = await getOrgDefaultCurrencyCode();
+    const loanCurrency = loan.currency?.code ?? currency ?? orgCurrency;
     const normalizedCurrency =
-      loanCurrency?.toUpperCase() === "ZMK" ? "ZMW" : loanCurrency ?? "ZMW";
+      loanCurrency?.toUpperCase() === "ZMK" ? "ZMW" : loanCurrency;
 
     let fineractTellerId: number;
     let fineractCashierId: number;

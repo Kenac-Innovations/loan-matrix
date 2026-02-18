@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchFineractAPI } from "@/lib/api";
+import { getOrgDefaultCurrencyCode } from "@/lib/currency-utils";
 
 /**
  * GET /api/fineract/glaccounts/[id]/balance
@@ -21,13 +22,14 @@ export async function GET(
       `/journalentries?glAccountId=${glAccountId}&runningBalance=true&limit=1&orderBy=id&sortOrder=DESC`
     );
 
+    const orgCurrency = await getOrgDefaultCurrencyCode();
     let balance = 0;
-    let currency = "ZMW";
+    let currency = orgCurrency;
 
     if (journalData?.pageItems && journalData.pageItems.length > 0) {
       const latestEntry = journalData.pageItems[0];
       balance = latestEntry.organizationRunningBalance || latestEntry.officeRunningBalance || 0;
-      currency = latestEntry.currency?.code || "ZMW";
+      currency = latestEntry.currency?.code || orgCurrency;
     }
 
     // Also fetch the GL account details to get account info

@@ -1,3 +1,6 @@
+"use client";
+
+import { useCurrency } from "@/contexts/currency-context";
 import {
   Activity,
   AlertCircle,
@@ -29,9 +32,10 @@ interface DashboardContentProps {
 }
 
 export function DashboardContent({ data }: DashboardContentProps) {
-  // Normalize currency code - converts deprecated ZMK to ZMW
+  // Normalize currency code - converts deprecated ZMK to current code
+  const { currencyCode: orgCurrency } = useCurrency();
   const normalizeCurrencyCode = (code: string | undefined | null): string => {
-    if (!code) return "ZMW";
+    if (!code) return orgCurrency;
     if (code.toUpperCase() === "ZMK") return "ZMW";
     return code;
   };
@@ -48,10 +52,10 @@ export function DashboardContent({ data }: DashboardContentProps) {
         maximumFractionDigits: currency.decimalPlaces || 2,
       }).format(amount);
     }
-    // Fallback to USD if no currency provided
+    // Fallback to org currency if no specific currency provided
     return new Intl.NumberFormat("en-US", {
       style: "currency",
-      currency: "ZMW",
+      currency: orgCurrency,
     }).format(amount);
   };
 

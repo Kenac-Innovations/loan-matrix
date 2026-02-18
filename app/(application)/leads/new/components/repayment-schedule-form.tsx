@@ -1,5 +1,6 @@
 "use client";
 
+import { useCurrency } from "@/contexts/currency-context";
 import { useState, useEffect, useCallback } from "react";
 import { normalizeCurrencyCode } from "@/lib/format-currency";
 import { Button } from "@/components/ui/button";
@@ -103,6 +104,7 @@ export function RepaymentScheduleForm({
 }: RepaymentScheduleFormProps) {
   console.log("RepaymentScheduleForm props:", { leadId, clientId });
 
+  const { currencyCode: orgCurrency } = useCurrency();
   const [repaymentSchedule, setRepaymentSchedule] =
     useState<RepaymentSchedule | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -647,28 +649,28 @@ export function RepaymentScheduleForm({
                     Principal
                   </p>
                   <p className="text-lg font-semibold">
-                    {normalizeCurrencyCode(repaymentSchedule.currency?.code) || "ZMW"}{" "}
+                    {normalizeCurrencyCode(repaymentSchedule.currency?.code) || orgCurrency}{" "}
                     {formatCurrency(repaymentSchedule.totalPrincipalExpected)}
                   </p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground mb-1">Interest</p>
                   <p className="text-lg font-semibold">
-                    {normalizeCurrencyCode(repaymentSchedule.currency?.code) || "ZMW"}{" "}
+                    {normalizeCurrencyCode(repaymentSchedule.currency?.code) || orgCurrency}{" "}
                     {formatCurrency(repaymentSchedule.totalInterestCharged)}
                   </p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground mb-1">Fees</p>
                   <p className="text-lg font-semibold">
-                    {normalizeCurrencyCode(repaymentSchedule.currency?.code) || "ZMW"}{" "}
+                    {normalizeCurrencyCode(repaymentSchedule.currency?.code) || orgCurrency}{" "}
                     {formatCurrency(repaymentSchedule.totalFeeChargesCharged)}
                   </p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground mb-1">Total</p>
                   <p className="text-lg font-semibold">
-                    {normalizeCurrencyCode(repaymentSchedule.currency?.code) || "ZMW"}{" "}
+                    {normalizeCurrencyCode(repaymentSchedule.currency?.code) || orgCurrency}{" "}
                     {formatCurrency(repaymentSchedule.totalRepaymentExpected)}
                   </p>
                 </div>

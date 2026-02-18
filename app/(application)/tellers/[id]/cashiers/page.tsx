@@ -1,5 +1,6 @@
 "use client";
 
+import { useCurrency } from "@/contexts/currency-context";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Plus, Users } from "lucide-react";
@@ -99,12 +100,13 @@ export default function CashiersPage({
   params: Promise<{ id: string }>;
 }) {
   const router = useRouter();
+  const { currencyCode: orgCurrency } = useCurrency();
   const [tellerId, setTellerId] = useState<string>("");
   const [cashiers, setCashiers] = useState<Cashier[]>([]);
   const [staff, setStaff] = useState<Staff[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingStaff, setLoadingStaff] = useState(true);
-  const [systemCurrency, setSystemCurrency] = useState<string>("ZMW");
+  const [systemCurrency, setSystemCurrency] = useState<string>("");
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [creating, setCreating] = useState(false);
   const [showAllocateModal, setShowAllocateModal] = useState(false);
@@ -154,7 +156,7 @@ export default function CashiersPage({
         if (currencyList.length > 0) {
           const defaultCurrency = currencyList[0];
           // Normalize ZMK to ZMW (Fineract uses legacy ZMK code)
-          const code = defaultCurrency.code || "ZMW";
+          const code = defaultCurrency.code || orgCurrency;
           setSystemCurrency(code === "ZMK" ? "ZMW" : code);
         }
       }

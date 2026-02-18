@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
 import { getSession } from "@/lib/auth";
+import { getOrgDefaultCurrencyCode } from "@/lib/currency-utils";
 
 /**
  * POST /api/tellers/[id]/cashiers/[cashierId]/reconcile
@@ -131,8 +132,9 @@ export async function POST(
       settlement.openingBalance + settlement.cashIn - settlement.cashOut;
     const variance = parseFloat(returnedAmount) - expectedReturn;
 
-    // Get currency from first allocation or default
-    const currency = activeAllocations[0]?.currency || "ZMW";
+    // Get currency from first allocation or org default
+    const orgCurrency = await getOrgDefaultCurrencyCode();
+    const currency = activeAllocations[0]?.currency || orgCurrency;
 
     // Calculate balances BEFORE reconciliation to show current state
     // Get current vault balance (before adding returned cash)

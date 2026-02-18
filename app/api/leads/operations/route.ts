@@ -3,22 +3,46 @@ import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 import { getFineractServiceWithSession } from "@/lib/fineract-api";
 import { getSession } from "@/lib/auth";
+import { getTenantFromHeaders } from "@/lib/tenant-service";
+
+// Helper to resolve the current tenant from request headers
+async function resolveCurrentTenant(tx?: any) {
+  const tenant = await getTenantFromHeaders();
+  if (tenant) {
+    return tenant;
+  }
+  // Fallback: look up from FINERACT_TENANT_ID env or default
+  const fallbackSlug = process.env.FINERACT_TENANT_ID || "goodfellow";
+  const db = tx || prisma;
+  const fallbackTenant = await db.tenant.findFirst({
+    where: { slug: fallbackSlug, isActive: true },
+    select: { id: true, name: true, slug: true, domain: true, settings: true },
+  });
+  if (!fallbackTenant) {
+    throw new Error(
+      `Tenant '${fallbackSlug}' not found. Please ensure the tenant exists in the database.`
+    );
+  }
+  return fallbackTenant;
+}
 
 // Helper function to format dates for Fineract API
 const formatDateForFineract = (
-  date: Date | string | null | undefined
+  date: Date | string | number | null | undefined
 ): string => {
   // Handle null, undefined, or empty values
-  if (!date) {
+  if (date === null || date === undefined) {
     return new Date().toISOString().split("T")[0];
   }
 
-  // Convert string to Date if needed
+  // Convert to Date object based on input type
   let dateObj: Date;
-  if (typeof date === "string") {
-    dateObj = new Date(date);
-  } else if (date instanceof Date) {
+  if (date instanceof Date) {
     dateObj = date;
+  } else if (typeof date === "string") {
+    dateObj = new Date(date);
+  } else if (typeof date === "number") {
+    dateObj = new Date(date);
   } else {
     console.error("==========> Invalid date type:", typeof date, date);
     return new Date().toISOString().split("T")[0];
@@ -34,7 +58,7 @@ const formatDateForFineract = (
   return dateObj.toISOString().split("T")[0];
 };
 
-// Client form schema
+// Client form schema - uses z.coerce.date() to handle strings, numbers, and Date objects
 const clientFormSchema = z.object({
   officeId: z.number(),
   officeName: z.string().optional(),
@@ -44,20 +68,20 @@ const clientFormSchema = z.object({
   firstname: z.string(),
   middlename: z.string().optional(),
   lastname: z.string(),
-  dateOfBirth: z.date().optional(),
-  gender: z.string().optional(),
+  dateOfBirth: z.coerce.date().optional(),
+  gender: z.union([z.string(), z.number()]).optional().transform(val => val !== undefined ? String(val) : undefined),
   genderId: z.number().optional(),
   isStaff: z.boolean().default(false),
   mobileNo: z.string(),
-  countryCode: z.string().default("+1"),
+  countryCode: z.string().default("+260"),
   emailAddress: z.string().email(),
   clientTypeId: z.number().optional(),
   clientTypeName: z.string().optional(),
   clientClassificationId: z.number().optional(),
   clientClassificationName: z.string().optional(),
-  submittedOnDate: z.date().default(() => new Date()),
+  submittedOnDate: z.coerce.date().default(() => new Date()),
   active: z.boolean().default(true),
-  activationDate: z.date().optional(),
+  activationDate: z.coerce.date().optional(),
   openSavingsAccount: z.boolean().default(false),
   savingsProductId: z.number().optional(),
   savingsProductName: z.string().optional(),
@@ -168,16 +192,9 @@ async function handleSaveDraft(data: any, leadId?: string) {
     }
     const userId = session.user.id;
 
-    // Get the default tenant ID
-    const defaultTenant = await prisma.tenant.findUnique({
-      where: { slug: "goodfellow" },
-    });
-
-    if (!defaultTenant) {
-      throw new Error("Default tenant not found. Please run database seed.");
-    }
-
-    const tenantId = defaultTenant.id;
+    // Resolve current tenant from subdomain/headers
+    const currentTenant = await resolveCurrentTenant();
+    const tenantId = currentTenant.id;
 
     if (leadId) {
       // Update existing lead
@@ -439,15 +456,9 @@ async function handleCreateLeadWithClient(data: any) {
             }
             const userId = session.user.id;
 
-            const defaultTenant = await tx.tenant.findUnique({
-              where: { slug: "goodfellow" },
-            });
-
-            if (!defaultTenant) {
-              throw new Error("Default tenant not found. Please run database seed.");
-            }
-
-            const tenantId = defaultTenant.id;
+            // Resolve current tenant from subdomain/headers
+            const currentTenant = await resolveCurrentTenant(tx);
+            const tenantId = currentTenant.id;
 
             // Create lead in database with existing Fineract client data
             const newLead = await tx.lead.create({
@@ -585,16 +596,9 @@ async function handleCreateLeadWithClient(data: any) {
       }
       const userId = session.user.id;
 
-      // Get the default tenant ID
-      const defaultTenant = await tx.tenant.findUnique({
-        where: { slug: "goodfellow" },
-      });
-
-      if (!defaultTenant) {
-        throw new Error("Default tenant not found. Please run database seed.");
-      }
-
-      const tenantId = defaultTenant.id;
+      // Resolve current tenant from subdomain/headers
+      const currentTenant = await resolveCurrentTenant(tx);
+      const tenantId = currentTenant.id;
 
       // Create lead in database with Fineract data
       const newLead = await tx.lead.create({
@@ -1066,16 +1070,8 @@ async function handleUpdateClient(data: any, leadId?: string) {
         // CREATE new lead (fallback for backward compatibility)
         console.log("==========> No leadId provided, creating new lead...");
         result = await prisma.$transaction(async (tx) => {
-          // Get the default tenant for the lead
-          const defaultTenant = await tx.tenant.findUnique({
-            where: { slug: "goodfellow" },
-          });
-
-          if (!defaultTenant) {
-            throw new Error(
-              "Default tenant not found. Please run database seed."
-            );
-          }
+          // Resolve current tenant from subdomain/headers
+          const currentTenant = await resolveCurrentTenant(tx);
 
           // Get current user ID from session
           const session = await getSession();
@@ -1089,7 +1085,7 @@ async function handleUpdateClient(data: any, leadId?: string) {
             data: {
               // User and tenant identification
               userId: userId,
-              tenantId: defaultTenant.id,
+              tenantId: currentTenant.id,
 
               // Client identification
               externalId: data.externalId,

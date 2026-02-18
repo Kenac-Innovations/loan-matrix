@@ -1199,7 +1199,7 @@ export class FineractAPIService {
   async getCashierSummaryAndTransactions(
     tellerId: number,
     cashierId: number,
-    currencyCode: string = "ZMW",
+    currencyCode: string,
     options?: { offset?: number; limit?: number }
   ): Promise<any> {
     try {
@@ -1227,7 +1227,7 @@ export class FineractAPIService {
   async getCashierTransactions(
     tellerId: number,
     cashierId: number,
-    currencyCode: string = "ZMW",
+    currencyCode: string,
     fromDate?: string,
     toDate?: string
   ): Promise<any[]> {

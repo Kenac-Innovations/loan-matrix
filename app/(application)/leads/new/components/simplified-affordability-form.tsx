@@ -34,6 +34,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
+import { useCurrency } from "@/contexts/currency-context";
 
 // Form validation schema based on the provided JSON structure
 const affordabilitySchema = z
@@ -86,6 +87,7 @@ export function SimplifiedAffordabilityForm({
   const [isSaving, setIsSaving] = useState(false);
   const [isCompleted, setIsCompleted] = useState(false);
   const { toast } = useToast();
+  const { currencyCode: orgCurrency } = useCurrency();
   const [grossInputValue, setGrossInputValue] = useState("");
   const [netInputValue, setNetInputValue] = useState("");
   const [sectionCompletion, setSectionCompletion] = useState({
@@ -386,7 +388,7 @@ export function SimplifiedAffordabilityForm({
             </Label>
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">
-                ZMW
+                {orgCurrency}
               </span>
               <Controller
                 control={form.control}
@@ -436,7 +438,7 @@ export function SimplifiedAffordabilityForm({
             </Label>
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">
-                ZMW
+                {orgCurrency}
               </span>
               <Controller
                 control={form.control}
