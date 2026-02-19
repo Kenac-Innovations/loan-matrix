@@ -177,7 +177,7 @@ export async function POST(
     // Cash allocation happens BEFORE starting a session - the allocated cash becomes the opening float
 
     // Calculate available balance - must DECREASE when loans are disbursed, and handle deposits
-    // allocatedToCashiers = sum of max(sumCashAllocation, netCash) per cashier
+    // allocatedToCashiers = cash currently in cashier tills. Use netCash (current balance), NOT sumCashAllocation (cumulative).
     // Fineract only recognizes ZMK. Use ZMK for getCashierSummaryAndTransactions so we get valid data.
     // Must match teller details and local DB currency for consistent vault validation.
     const validationCurrency = "ZMK";
@@ -225,10 +225,7 @@ export async function POST(
             fc.id,
             validationCurrency
           );
-          fineractAllocated += Math.max(
-            summary.sumCashAllocation || 0,
-            summary.netCash || 0
-          );
+          fineractAllocated += summary.netCash ?? summary.sumCashAllocation ?? 0;
         } catch (err) {
           // Silently continue if single cashier fails
         }

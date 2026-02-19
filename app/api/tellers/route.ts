@@ -178,10 +178,7 @@ export async function GET(request: NextRequest) {
                   fc.id,
                   "ZMK" // Fineract only recognizes ZMK for cashier summary
                 );
-                return Math.max(
-                  summary.sumCashAllocation || 0,
-                  summary.netCash || 0
-                );
+                return summary.netCash ?? summary.sumCashAllocation ?? 0;
               } catch (err) {
                 return 0;
               }

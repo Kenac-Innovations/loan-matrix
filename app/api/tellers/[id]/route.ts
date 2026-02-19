@@ -133,7 +133,7 @@ export async function GET(
     }
 
     // Calculate balances - available must DECREASE when loans are disbursed, and handle deposits
-    // allocatedToCashiers = sum of max(sumCashAllocation, netCash) per cashier
+    // allocatedToCashiers = cash currently in cashier tills; use netCash (current balance), not sumCashAllocation (cumulative)
     const currency = await getOrgDefaultCurrencyCode();
     
     const vaultBalance = dbTeller.cashAllocations.reduce(
@@ -174,10 +174,7 @@ export async function GET(
               fc.id,
               "ZMK" // Fineract only recognizes ZMK for cashier summary
             );
-            fineractAllocated += Math.max(
-              summary.sumCashAllocation || 0,
-              summary.netCash || 0
-            );
+            fineractAllocated += summary.netCash ?? summary.sumCashAllocation ?? 0;
           } catch (err) {
             console.error(`Error getting Fineract summary for cashier ${fc.id}:`, err);
           }
