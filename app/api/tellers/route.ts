@@ -176,7 +176,7 @@ export async function GET(request: NextRequest) {
                 const summary = await fineractService.getCashierSummaryAndTransactions(
                   dbTeller.fineractTellerId!,
                   fc.id,
-                  orgCurrency
+                  "ZMK" // Fineract only recognizes ZMK for cashier summary
                 );
                 return Math.max(
                   summary.sumCashAllocation || 0,
