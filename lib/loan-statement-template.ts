@@ -471,7 +471,7 @@ export function mapTransactionType(
     return `${desc} ${accountNo || ""}`.trim();
   }
   if (typeCode.includes("accrual") || typeValue.toLowerCase().includes("accrual")) {
-    return `Interest to Maturity ${accountNo || ""}`.trim();
+    return `CRB and Service Fee ${accountNo || ""}`.trim();
   }
   if (typeCode.includes("waiveInterest")) {
     return "Interest Waiver";
@@ -615,8 +615,8 @@ export function transformFineractLoanToStatement(
     periodFrom: actualPeriodFrom,
     periodTo: actualPeriodTo,
 
-    currency: currency.code || defaultCurrency || "USD",
-    currencySymbol: currency.displaySymbol || defaultCurrency || "USD",
+    currency: currency.code || defaultCurrency || "ZMW",
+    currencySymbol: currency.displaySymbol || defaultCurrency || "ZMW",
 
     accruedInterest,
 
