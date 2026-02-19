@@ -143,10 +143,7 @@ export async function getTellerFromFineract(id: string) {
                   fc.id,
                   "ZMK" // Fineract only recognizes ZMK for cashier summary
                 );
-                fineractAllocated += Math.max(
-                  summary.sumCashAllocation || 0,
-                  summary.netCash || 0
-                );
+                fineractAllocated += summary.netCash ?? summary.sumCashAllocation ?? 0;
               } catch (err) {
                 console.error(`Error getting Fineract summary for cashier ${fc.id}:`, err);
               }
