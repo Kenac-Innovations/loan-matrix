@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
 import { getSession } from "@/lib/auth";
 import { isPaymentTypeCash } from "@/lib/cash-repayment-teller";
+import { sendLoanStatusSms } from "@/lib/notification-service";
 
 /**
  * POST /api/tellers/[id]/cashiers/[cashierId]/settle
@@ -639,6 +640,35 @@ export async function POST(
         status: updatedPayout.status,
         paidAt: updatedPayout.paidAt,
       });
+
+      // Send SMS: payout completed (best-effort)
+      try {
+        const lead = await prisma.lead.findFirst({
+          where: {
+            tenantId: tenant.id,
+            fineractLoanId: updatedPayout.fineractLoanId,
+          },
+          select: { mobileNo: true, firstname: true, middlename: true, lastname: true },
+        });
+        const phone = lead?.mobileNo ?? null;
+        if (phone) {
+          const clientName =
+            updatedPayout.clientName ||
+            (lead
+              ? [lead.firstname, lead.middlename, lead.lastname].filter(Boolean).join(" ")
+              : "Customer");
+          await sendLoanStatusSms({
+            type: "paid",
+            clientName: clientName || "Customer",
+            phone,
+            amount: updatedPayout.amount,
+            currency: updatedPayout.currency || "ZMW",
+            tenantId: tenant.slug,
+          });
+        }
+      } catch (smsError) {
+        console.error("Failed to send paid SMS:", smsError);
+      }
     }
 
     // Update the cashier session status to SETTLED (only for end-of-day settlements)

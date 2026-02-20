@@ -7,7 +7,7 @@ import { prisma } from "@/lib/prisma";
  * Fetch loan status reports from Fineract or local DB
  * 
  * Query params:
- * - report: "drafts" | "pending" | "approved" | "rejected" | "disbursed"
+ * - report: "drafts" | "pending" | "approved" | "rejected" | "disbursed" | "payout"
  * - startDate: YYYY-MM-DD
  * - endDate: YYYY-MM-DD
  */
@@ -30,18 +30,22 @@ export async function GET(request: NextRequest) {
       return await getDraftsFromLocalDB(startDate, endDate, request);
     }
 
+    // Payout = disbursed loans that have been paid out (payout status PAID). Fetched via disbursed then filtered.
+    const isPayoutReport = report === "payout";
+
     // Map report type to Fineract report name
     const reportNames: Record<string, string> = {
       pending: "system submitted pending approval",
       approved: "system approved pending disbursement",
       rejected: "system loans rejected",
       disbursed: "system disbursed",
+      payout: "system disbursed", // same source, filter to PAID only below
     };
 
     const reportName = reportNames[report];
     if (!reportName) {
       return NextResponse.json(
-        { error: "Invalid report type. Use: drafts, pending, approved, rejected, or disbursed" },
+        { error: "Invalid report type. Use: drafts, pending, approved, rejected, disbursed, or payout" },
         { status: 400 }
       );
     }
@@ -95,16 +99,16 @@ export async function GET(request: NextRequest) {
             leads.map((lead) => [lead.fineractLoanId, lead.id])
           );
 
-          // For disbursed report, also fetch payout statuses
+          // For disbursed or payout report, fetch payout statuses
           let payoutStatusMap = new Map<number, string>();
-          if (report === "disbursed") {
+          if (report === "disbursed" || report === "payout") {
             const payouts = await prisma.loanPayout.findMany({
               where: {
                 tenantId: tenant.id,
-                loanId: { in: loanIds.map((id: any) => Number(id)) },
+                fineractLoanId: { in: loanIds.map((id: any) => Number(id)) },
               },
               select: {
-                loanId: true,
+                fineractLoanId: true,
                 status: true,
               },
               orderBy: {
@@ -112,10 +116,10 @@ export async function GET(request: NextRequest) {
               },
             });
 
-            // Create a map of loanId -> most recent payout status
+            // Create a map of fineractLoanId -> most recent payout status
             for (const payout of payouts) {
-              if (!payoutStatusMap.has(payout.loanId)) {
-                payoutStatusMap.set(payout.loanId, payout.status);
+              if (!payoutStatusMap.has(payout.fineractLoanId)) {
+                payoutStatusMap.set(payout.fineractLoanId, payout.status);
               }
             }
             console.log(`Fetched payout statuses for ${payoutStatusMap.size} loans`);
@@ -128,14 +132,19 @@ export async function GET(request: NextRequest) {
               ...row,
               lead_id: leadIdMap.get(loanId) || null,
             };
-            
-            // Add payout status for disbursed report
-            if (report === "disbursed") {
+
+            if (report === "disbursed" || report === "payout") {
               enrichedRow.payout_status = payoutStatusMap.get(loanId) || "PENDING";
             }
-            
+
             return enrichedRow;
           });
+
+          // Payout report: only rows that have been paid out (payout_status === "PAID")
+          if (isPayoutReport) {
+            result = result.filter((row: any) => String(row.payout_status || "").toUpperCase() === "PAID");
+            console.log(`Payout report: ${result.length} paid-out loans`);
+          }
 
           console.log(`Enriched ${leads.length} rows with local lead IDs`);
         }
