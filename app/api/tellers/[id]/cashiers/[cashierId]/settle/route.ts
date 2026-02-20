@@ -610,24 +610,8 @@ export async function POST(
     });
     console.log(`Created cashier settlement: ID=${settlement.id}, cashierId=${cashier.id}, amount=-${amount} ${currency}`);
 
-    // For disbursements: cash leaves the system (goes to customer), so we must record a vault
-    // deduction. Otherwise available balance would incorrectly increase.
-    if (txnType === "DISBURSEMENT") {
-      await prisma.cashAllocation.create({
-        data: {
-          tenantId: tenant.id,
-          tellerId: teller.id,
-          cashierId: null,
-          fineractAllocationId: null,
-          amount: -parseFloat(amount),
-          currency: currency,
-          allocatedBy: session.user.id,
-          notes: `Loan disbursement (cash out): ${settlementNotes}`,
-          status: "ACTIVE",
-        },
-      });
-      console.log(`Created vault deduction of -${amount} ${currency} (disbursement - cash left system)`);
-    }
+    // Disbursements: money moves from the cashier balance only (cashier pays customer from till).
+    // Do NOT create a vault allocation — the vault is untouched. The cashier allocation above is the only record.
 
     // For return to vault: do NOT create a local vault allocation. Vault is derived from
     // Bank Allocation - Cashier Balances (Fineract); when Fineract cashier balance
