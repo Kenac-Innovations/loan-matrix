@@ -531,6 +531,7 @@ export function SimplifiedAffordabilityForm({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="Zambian">Zambian</SelectItem>
+                    <SelectItem value="Zimbabwean">Zimbabwean</SelectItem>
                   </SelectContent>
                 </Select>
               )}
