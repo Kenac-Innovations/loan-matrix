@@ -142,7 +142,19 @@ const clientFormSchema = z
     emailAddress: z.string().email("Invalid email address"),
     clientTypeId: z.string().optional(),
     clientClassificationId: z.string().optional(),
-    submittedOnDate: z.date().default(() => new Date()),
+    submittedOnDate: z
+      .date({
+        required_error: "Submitted on date is required",
+      })
+      .default(() => new Date())
+      .refine(
+        (d) => {
+          const today = new Date();
+          today.setHours(23, 59, 59, 999);
+          return d.getTime() <= today.getTime();
+        },
+        { message: "Submitted date cannot be in the future" }
+      ),
 
     // Financial Information
     monthlyIncomeRange: z.string().optional(),
@@ -265,6 +277,13 @@ const savingsProductSchema = z.object({
 });
 
 type ClientFormValues = z.infer<typeof clientFormSchema>;
+
+// Phone country codes available for new lead / client phone number
+const PHONE_COUNTRY_CODES = [
+  { code: "+260", label: "🇿🇲 +260 (Zambia)" },
+  { code: "+263", label: "🇿🇼 +263 (Zimbabwe)" },
+  { code: "+44", label: "🇬🇧 +44 (UK)" },
+];
 
 // Phone number parsing utility - works with any country code
 const parsePhoneNumber = (
@@ -6755,9 +6774,11 @@ export function ClientRegistrationForm({
                                           <SelectContent
                                             className={`border-${colors.borderColor} ${colors.dropdownBg} ${colors.textColor}`}
                                           >
-                                            <SelectItem value={tenantLocale.countryCode}>
-                                              {tenantLocale.countryIso === "ZM" ? "🇿🇲" : tenantLocale.countryIso === "ZW" ? "🇿🇼" : "🌍"} {tenantLocale.countryCode}
-                                            </SelectItem>
+                                            {PHONE_COUNTRY_CODES.map(({ code, label }) => (
+                                              <SelectItem key={code} value={code}>
+                                                {label}
+                                              </SelectItem>
+                                            ))}
                                           </SelectContent>
                                         </Select>
                                       )}
@@ -7171,7 +7192,8 @@ export function ClientRegistrationForm({
                                             selected={field.value}
                                             onSelect={field.onChange}
                                             disabled={(date) =>
-                                              date < new Date()
+                                              date > new Date() ||
+                                              date < new Date("1900-01-01")
                                             }
                                             captionLayout="dropdown"
                                             initialFocus
@@ -7183,7 +7205,7 @@ export function ClientRegistrationForm({
                                   <p
                                     className={`text-xs ${colors.textColorMuted}`}
                                   >
-                                    Date when application was submitted
+                                    Date when application was submitted (back dating allowed)
                                   </p>
                                   {form.formState.errors.submittedOnDate && (
                                     <p className="text-sm text-red-500">

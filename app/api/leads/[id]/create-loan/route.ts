@@ -4,6 +4,7 @@ import { fetchFineractAPI } from "@/lib/api";
 import { format } from "date-fns";
 import { getSession } from "@/lib/auth";
 import { callCDEAndStore } from "@/lib/cde-utils";
+import { sendLoanStatusSms } from "@/lib/notification-service";
 
 /**
  * POST /api/leads/[id]/create-loan
@@ -126,11 +127,12 @@ export async function POST(
 
         console.log(`Updated loan ${loanId} with external ID set to loan ID`);
 
-        // Update the lead with the loan ID for reference
+        // Update the lead with the loan ID and fineractLoanId for reference
         await prisma.lead.update({
           where: { id: leadId },
           data: {
-            // Store loan ID in stateMetadata for reference
+            fineractLoanId: loanId,
+            loanSubmittedToFineract: true,
             stateMetadata: {
               ...((lead.stateMetadata as any) || {}),
               loanId: loanId,
@@ -141,6 +143,28 @@ export async function POST(
       } catch (updateError) {
         console.error("Failed to update loan external ID:", updateError);
         // Don't fail the entire operation if external ID update fails
+      }
+    }
+
+    // Send SMS: loan submitted, pending approval (best-effort)
+    if (result?.resourceId && lead?.mobileNo) {
+      try {
+        const tenant = await prisma.tenant.findUnique({
+          where: { id: lead.tenantId },
+          select: { slug: true },
+        });
+        const clientName = [lead.firstname, lead.middlename, lead.lastname]
+          .filter(Boolean)
+          .join(" ");
+        await sendLoanStatusSms({
+          type: "pending_approval",
+          clientName: clientName || "Customer",
+          phone: lead.mobileNo,
+          amount: Number(loanData.principal) || 0,
+          tenantId: tenant?.slug,
+        });
+      } catch (smsError) {
+        console.error("Failed to send pending-approval SMS:", smsError);
       }
     }
 
