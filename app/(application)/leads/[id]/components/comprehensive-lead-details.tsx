@@ -51,7 +51,7 @@ interface ComprehensiveLeadDetailsProps {
 export function ComprehensiveLeadDetails({
   leadId,
 }: ComprehensiveLeadDetailsProps) {
-  const { currencySymbol } = useCurrency();
+  const { currencyCode, currencySymbol } = useCurrency();
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -598,13 +598,13 @@ export function ComprehensiveLeadDetails({
             <div>
               <p className="text-xs text-muted-foreground">Requested Amount</p>
               <p className="text-2xl font-bold">
-                ZMW {requestedAmount.toLocaleString()}
+                {currencyCode} {requestedAmount.toLocaleString()}
               </p>
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Monthly Income</p>
               <p className="text-2xl font-bold">
-                ZMW {(lead.monthlyIncome || 0).toLocaleString()}
+                {currencyCode} {(lead.monthlyIncome || 0).toLocaleString()}
               </p>
             </div>
           </CardContent>
