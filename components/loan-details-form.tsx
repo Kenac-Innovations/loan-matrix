@@ -1289,7 +1289,12 @@ export function LoanDetailsForm({
                         <Calendar
                           mode="single"
                           selected={field.value}
-                          onSelect={field.onChange}
+                          onSelect={(day) => {
+                            if (day) {
+                              field.onChange(day);
+                            }
+                          }}
+                          defaultMonth={field.value || new Date()}
                           disabled={(date) => date < new Date("1900-01-01")}
                           initialFocus
                         />

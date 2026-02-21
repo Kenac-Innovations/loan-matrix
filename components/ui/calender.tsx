@@ -95,7 +95,9 @@ function Calendar({
   autoDismiss = true,
   ...props
 }: CalendarProps) {
-  const [currentMonth, setCurrentMonth] = React.useState<Date>(new Date())
+  const [currentMonth, setCurrentMonth] = React.useState<Date>(
+    (props as any).defaultMonth || new Date()
+  )
 
   const handleMonthChange = (month: Date) => {
     setCurrentMonth(month)
