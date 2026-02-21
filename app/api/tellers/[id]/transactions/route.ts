@@ -51,7 +51,7 @@ export async function GET(
     }
 
     // Get all cash allocations for this teller's vault (cashierId = null)
-    const allocations = await prisma.cashAllocation.findMany({
+    const allVaultAllocations = await prisma.cashAllocation.findMany({
       where: {
         tellerId: teller.id,
         tenantId: tenant.id,
@@ -59,6 +59,14 @@ export async function GET(
       },
       orderBy: { allocatedDate: "asc" }, // Chronological order
     });
+
+    // Exclude loan disbursements: money for disbursements leaves the cashier till, not the vault.
+    // Any vault allocation with "loan disbursement" is incorrect and should not appear in vault history.
+    const allocations = allVaultAllocations.filter(
+      (a) =>
+        !a.notes?.toLowerCase().includes("loan disbursement") &&
+        !a.notes?.toLowerCase().includes("disbursement (cash out)")
+    );
 
     // Calculate running balance
     let runningBalance = 0;

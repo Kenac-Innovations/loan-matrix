@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
 import { getSession } from "@/lib/auth";
 import { isPaymentTypeCash } from "@/lib/cash-repayment-teller";
+import { sendLoanStatusSms } from "@/lib/notification-service";
 
 /**
  * POST /api/tellers/[id]/cashiers/[cashierId]/settle
@@ -610,24 +611,8 @@ export async function POST(
     });
     console.log(`Created cashier settlement: ID=${settlement.id}, cashierId=${cashier.id}, amount=-${amount} ${currency}`);
 
-    // For disbursements: cash leaves the system (goes to customer), so we must record a vault
-    // deduction. Otherwise available balance would incorrectly increase.
-    if (txnType === "DISBURSEMENT") {
-      await prisma.cashAllocation.create({
-        data: {
-          tenantId: tenant.id,
-          tellerId: teller.id,
-          cashierId: null,
-          fineractAllocationId: null,
-          amount: -parseFloat(amount),
-          currency: currency,
-          allocatedBy: session.user.id,
-          notes: `Loan disbursement (cash out): ${settlementNotes}`,
-          status: "ACTIVE",
-        },
-      });
-      console.log(`Created vault deduction of -${amount} ${currency} (disbursement - cash left system)`);
-    }
+    // Disbursements: money moves from the cashier balance only (cashier pays customer from till).
+    // Do NOT create a vault allocation — the vault is untouched. The cashier allocation above is the only record.
 
     // For return to vault: do NOT create a local vault allocation. Vault is derived from
     // Bank Allocation - Cashier Balances (Fineract); when Fineract cashier balance
@@ -655,6 +640,35 @@ export async function POST(
         status: updatedPayout.status,
         paidAt: updatedPayout.paidAt,
       });
+
+      // Send SMS: payout completed (best-effort)
+      try {
+        const lead = await prisma.lead.findFirst({
+          where: {
+            tenantId: tenant.id,
+            fineractLoanId: updatedPayout.fineractLoanId,
+          },
+          select: { mobileNo: true, firstname: true, middlename: true, lastname: true },
+        });
+        const phone = lead?.mobileNo ?? null;
+        if (phone) {
+          const clientName =
+            updatedPayout.clientName ||
+            (lead
+              ? [lead.firstname, lead.middlename, lead.lastname].filter(Boolean).join(" ")
+              : "Customer");
+          await sendLoanStatusSms({
+            type: "paid",
+            clientName: clientName || "Customer",
+            phone,
+            amount: updatedPayout.amount,
+            currency: updatedPayout.currency || "ZMW",
+            tenantId: tenant.slug,
+          });
+        }
+      } catch (smsError) {
+        console.error("Failed to send paid SMS:", smsError);
+      }
     }
 
     // Update the cashier session status to SETTLED (only for end-of-day settlements)
