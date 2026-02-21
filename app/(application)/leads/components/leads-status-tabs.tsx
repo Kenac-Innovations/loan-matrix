@@ -146,15 +146,21 @@ function getTenantSlugFromHost(): string {
   
   const host = globalThis.location.hostname;
   
-  // Handle localhost development
+  // Handle plain localhost (no subdomain)
   if (host === "localhost" || host === "127.0.0.1") {
     return "goodfellow";
   }
   
-  // Extract subdomain (first part of hostname)
+  // Handle subdomain.localhost (e.g. omama.localhost)
+  if (host.endsWith(".localhost")) {
+    const subdomain = host.replace(".localhost", "");
+    return subdomain || "goodfellow";
+  }
+  
+  // Extract subdomain from full domains (e.g. omama.kenacloanmatrix.com)
   const parts = host.split(".");
   if (parts.length > 2) {
-    return parts[0]; // e.g., "omama" from "omama.kenacloanmatrix.com"
+    return parts[0];
   }
   
   return "goodfellow";

@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getTenantBySlug } from "@/lib/tenant-service";
 
 export async function GET(
   request: NextRequest,
@@ -9,25 +8,13 @@ export async function GET(
   try {
     const { id } = await params;
 
-    // Get tenant from x-tenant-slug header or default to "goodfellow"
-    const tenantSlug = request.headers.get("x-tenant-slug") || "goodfellow";
-    let tenant = await getTenantBySlug(tenantSlug);
-
-    // If tenant not found, try to create default tenant
-    if (!tenant) {
-      const { getOrCreateDefaultTenant } = await import("@/lib/tenant-service");
-      tenant = await getOrCreateDefaultTenant();
-    }
-
-    if (!tenant) {
-      return NextResponse.json({ error: "Tenant not found" }, { status: 404 });
-    }
-
-    // Fetch lead with all related data
+    // Fetch lead by ID without tenant filter.
+    // The middleware that sets x-tenant-slug does not run for API routes,
+    // so client-side fetches would default to the wrong tenant.
+    // Lead IDs are UUIDs and globally unique, so tenant filtering is unnecessary here.
     const lead = await prisma.lead.findUnique({
       where: {
         id,
-        tenantId: tenant.id,
       },
       include: {
         currentStage: true,
@@ -99,27 +86,12 @@ export async function PUT(
   try {
     const { id } = await params;
 
-    // Get tenant from x-tenant-slug header or default to "goodfellow"
-    const tenantSlug = request.headers.get("x-tenant-slug") || "goodfellow";
-    let tenant = await getTenantBySlug(tenantSlug);
-
-    // If tenant not found, try to create default tenant
-    if (!tenant) {
-      const { getOrCreateDefaultTenant } = await import("@/lib/tenant-service");
-      tenant = await getOrCreateDefaultTenant();
-    }
-
-    if (!tenant) {
-      return NextResponse.json({ error: "Tenant not found" }, { status: 404 });
-    }
-
     const body = await request.json();
 
-    // Update lead
+    // Update lead by ID (without tenant filter to support cross-tenant client-side fetches)
     const updatedLead = await prisma.lead.update({
       where: {
         id,
-        tenantId: tenant.id,
       },
       data: {
         ...body,

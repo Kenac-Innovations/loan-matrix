@@ -15,15 +15,21 @@ export function extractTenantSlug(host: string): string {
   // Remove port if present
   const hostWithoutPort = host.split(":")[0];
 
-  // Handle localhost development
-  if (hostWithoutPort === "localhost") {
+  // Handle plain localhost (no subdomain)
+  if (hostWithoutPort === "localhost" || hostWithoutPort === "127.0.0.1") {
     return "goodfellow";
   }
 
-  // Extract subdomain
+  // Handle subdomain.localhost (e.g. omama.localhost)
+  if (hostWithoutPort.endsWith(".localhost")) {
+    const subdomain = hostWithoutPort.replace(".localhost", "");
+    return subdomain || "goodfellow";
+  }
+
+  // Extract subdomain from full domains (e.g. omama.example.com)
   const parts = hostWithoutPort.split(".");
   if (parts.length > 2) {
-    return parts[0]; // First part is the subdomain
+    return parts[0];
   }
 
   // If no subdomain, use default
