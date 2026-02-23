@@ -99,8 +99,9 @@ export async function GET(request: NextRequest) {
             leads.map((lead) => [lead.fineractLoanId, lead.id])
           );
 
-          // For disbursed or payout report, fetch payout statuses
+          // For disbursed or payout report, fetch payout statuses; for payout only, also payment method
           let payoutStatusMap = new Map<number, string>();
+          let payoutPaymentMethodMap = new Map<number, string>();
           if (report === "disbursed" || report === "payout") {
             const payouts = await prisma.loanPayout.findMany({
               where: {
@@ -110,22 +111,25 @@ export async function GET(request: NextRequest) {
               select: {
                 fineractLoanId: true,
                 status: true,
+                ...(report === "payout" && { paymentMethod: true }),
               },
               orderBy: {
                 createdAt: "desc",
               },
             });
 
-            // Create a map of fineractLoanId -> most recent payout status
             for (const payout of payouts) {
               if (!payoutStatusMap.has(payout.fineractLoanId)) {
                 payoutStatusMap.set(payout.fineractLoanId, payout.status);
+                if (report === "payout" && payout.paymentMethod) {
+                  payoutPaymentMethodMap.set(payout.fineractLoanId, payout.paymentMethod);
+                }
               }
             }
             console.log(`Fetched payout statuses for ${payoutStatusMap.size} loans`);
           }
 
-          // Add lead_id and payout_status to each row
+          // Add lead_id, payout_status; for payout report only, add payment_method
           result = result.map((row: any) => {
             const loanId = Number(row.loan_id);
             const enrichedRow: any = {
@@ -135,6 +139,9 @@ export async function GET(request: NextRequest) {
 
             if (report === "disbursed" || report === "payout") {
               enrichedRow.payout_status = payoutStatusMap.get(loanId) || "PENDING";
+            }
+            if (report === "payout") {
+              enrichedRow.payment_method = payoutPaymentMethodMap.get(loanId) || null;
             }
 
             return enrichedRow;
