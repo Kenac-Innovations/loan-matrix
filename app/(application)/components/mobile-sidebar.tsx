@@ -29,9 +29,11 @@ import { useFeatureFlags } from "@/hooks/use-feature-flags";
 
 interface MobileSidebarProps {
   userProfileData: UserProfileData;
+  /** Organization logo URL from document service (when set) */
+  tenantLogoUrl?: string | null;
 }
 
-export function MobileSidebar({ userProfileData }: MobileSidebarProps) {
+export function MobileSidebar({ userProfileData, tenantLogoUrl }: MobileSidebarProps) {
   const pathname = usePathname();
   const { mobileMenuOpen, setMobileMenuOpen } = useMobileMenu();
   const mobileMenuRef = useRef<HTMLDivElement>(null);
@@ -121,22 +123,34 @@ export function MobileSidebar({ userProfileData }: MobileSidebarProps) {
           className={`flex h-16 items-center justify-between ${borderColor} border-b px-4`}
         >
           <div className="flex items-center">
-            <Image
-              src="/kenac_logo_light.png"
-              alt="Kenac Logo"
-              width={100}
-              height={32}
-              className="dark:hidden"
-              priority
-            />
-            <Image
-              src="/kenac_logo.png"
-              alt="Kenac Logo"
-              width={100}
-              height={32}
-              className="hidden dark:block"
-              priority
-            />
+            {tenantLogoUrl ? (
+              <img
+                src={tenantLogoUrl}
+                alt="Organization Logo"
+                width={100}
+                height={32}
+                className="h-8 w-auto object-contain"
+              />
+            ) : (
+              <>
+                <Image
+                  src="/kenac_logo_light.png"
+                  alt="Kenac Logo"
+                  width={100}
+                  height={32}
+                  className="dark:hidden"
+                  priority
+                />
+                <Image
+                  src="/kenac_logo.png"
+                  alt="Kenac Logo"
+                  width={100}
+                  height={32}
+                  className="hidden dark:block"
+                  priority
+                />
+              </>
+            )}
           </div>
           <Button
             variant="ghost"

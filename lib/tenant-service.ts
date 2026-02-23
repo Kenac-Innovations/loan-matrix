@@ -65,6 +65,8 @@ export async function getTenantBySlug(
         slug: true,
         domain: true,
         settings: true,
+        logoFileUrl: true,
+        logoLinkId: true,
       },
     });
 

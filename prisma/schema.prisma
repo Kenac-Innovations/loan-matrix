@@ -14,6 +14,8 @@ model Tenant {
   slug                   String                  @unique
   domain                 String?
   settings               Json?
+  logoLinkId             String?                 // Document service link ID (UUID) for logo
+  logoFileUrl            String?                 // Document service file URL for display
   isActive               Boolean                 @default(true)
   createdAt              DateTime                @default(now())
   updatedAt              DateTime                @updatedAt
