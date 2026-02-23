@@ -140,6 +140,12 @@ export async function GET(request: NextRequest) {
             return enrichedRow;
           });
 
+          // Disbursed report: only rows that are disbursed but NOT yet paid out (payout_status !== "PAID")
+          if (report === "disbursed") {
+            result = result.filter((row: any) => String(row.payout_status || "").toUpperCase() !== "PAID");
+            console.log(`Disbursed report: ${result.length} disbursed-but-not-paid-out loans`);
+          }
+
           // Payout report: only rows that have been paid out (payout_status === "PAID")
           if (isPayoutReport) {
             result = result.filter((row: any) => String(row.payout_status || "").toUpperCase() === "PAID");
