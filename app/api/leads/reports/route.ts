@@ -82,7 +82,7 @@ export async function GET(request: NextRequest) {
           .filter((id: any) => id != null);
 
         if (loanIds.length > 0) {
-          // Look up local leads by fineractLoanId
+          // Look up local leads by fineractLoanId (include preferredPaymentMethod for Payment Type column)
           const leads = await prisma.lead.findMany({
             where: {
               tenantId: tenant.id,
@@ -91,12 +91,18 @@ export async function GET(request: NextRequest) {
             select: {
               id: true,
               fineractLoanId: true,
+              preferredPaymentMethod: true,
             },
           });
 
-          // Create a map of fineractLoanId -> leadId
+          // Create a map of fineractLoanId -> leadId and fineractLoanId -> preferredPaymentMethod
           const leadIdMap = new Map(
             leads.map((lead) => [lead.fineractLoanId, lead.id])
+          );
+          const preferredPaymentMethodMap = new Map(
+            leads
+              .filter((l) => l.preferredPaymentMethod != null)
+              .map((lead) => [lead.fineractLoanId, lead.preferredPaymentMethod!])
           );
 
           // For disbursed or payout report, fetch payout statuses; for payout only, also payment method
@@ -111,7 +117,7 @@ export async function GET(request: NextRequest) {
               select: {
                 fineractLoanId: true,
                 status: true,
-                ...(report === "payout" && { paymentMethod: true }),
+                paymentMethod: true,
               },
               orderBy: {
                 createdAt: "desc",
@@ -121,7 +127,7 @@ export async function GET(request: NextRequest) {
             for (const payout of payouts) {
               if (!payoutStatusMap.has(payout.fineractLoanId)) {
                 payoutStatusMap.set(payout.fineractLoanId, payout.status);
-                if (report === "payout" && payout.paymentMethod) {
+                if (payout.paymentMethod) {
                   payoutPaymentMethodMap.set(payout.fineractLoanId, payout.paymentMethod);
                 }
               }
@@ -129,7 +135,19 @@ export async function GET(request: NextRequest) {
             console.log(`Fetched payout statuses for ${payoutStatusMap.size} loans`);
           }
 
-          // Add lead_id, payout_status; for payout report only, add payment_method
+          // Helper: friendly label for payment type (dedicated column)
+          const PAYMENT_TYPE_LABELS: Record<string, string> = {
+            CASH: "Cash",
+            MOBILE_MONEY: "Mobile Money",
+            BANK_TRANSFER: "Bank Transfer",
+          };
+          const isPaymentTypeValue = (v: unknown): boolean => {
+            if (v == null || typeof v !== "string") return false;
+            const u = v.toUpperCase().replace(/\s+/g, "_");
+            return u === "CASH" || u === "MOBILE_MONEY" || u === "BANK_TRANSFER" || v === "Mobile" || v === "Cash" || v === "Bank Transfer";
+          };
+
+          // Add lead_id, payout_status, payment_type (dedicated column), and fix branch when it shows payment type
           result = result.map((row: any) => {
             const loanId = Number(row.loan_id);
             const enrichedRow: any = {
@@ -140,8 +158,23 @@ export async function GET(request: NextRequest) {
             if (report === "disbursed" || report === "payout") {
               enrichedRow.payout_status = payoutStatusMap.get(loanId) || "PENDING";
             }
+            // Dedicated Payment Type column: from Lead preferredPaymentMethod, or payout paymentMethod for disbursed/payout
+            const fromLead = preferredPaymentMethodMap.get(loanId);
+            const fromPayout = (report === "disbursed" || report === "payout") ? payoutPaymentMethodMap.get(loanId) : null;
+            const rawPaymentType = fromLead || fromPayout || null;
+            if (rawPaymentType) {
+              const key = String(rawPaymentType).toUpperCase().replace(/\s+/g, "_");
+              enrichedRow.payment_type = PAYMENT_TYPE_LABELS[key] || rawPaymentType;
+            } else {
+              enrichedRow.payment_type = null;
+            }
             if (report === "payout") {
               enrichedRow.payment_method = payoutPaymentMethodMap.get(loanId) || null;
+            }
+
+            // If Fineract report put payment type in "branch", show actual branch (office) in Branch column
+            if (isPaymentTypeValue(row.branch)) {
+              enrichedRow.branch = row.office ?? row.office_name ?? null;
             }
 
             return enrichedRow;
@@ -247,6 +280,7 @@ async function getDraftsFromLocalDB(startDate: string, endDate: string, request:
         updatedAt: true,
         userId: true,
         createdByUserName: true,
+        preferredPaymentMethod: true,
         currentStage: {
           select: {
             name: true,
@@ -269,6 +303,15 @@ async function getDraftsFromLocalDB(startDate: string, endDate: string, request:
         createdByName = userMap[draft.userId] || draft.userId;
       }
       
+      const paymentLabels: Record<string, string> = {
+        CASH: "Cash",
+        MOBILE_MONEY: "Mobile Money",
+        BANK_TRANSFER: "Bank Transfer",
+      };
+      const rawPayment = draft.preferredPaymentMethod;
+      const paymentType = rawPayment
+        ? (paymentLabels[String(rawPayment).toUpperCase().replace(/\s+/g, "_")] || rawPayment)
+        : null;
       return {
         lead_id: draft.id,
         client_name: fullName,
@@ -277,6 +320,7 @@ async function getDraftsFromLocalDB(startDate: string, endDate: string, request:
         created_date: draft.createdAt,
         pipeline_stage: draft.currentStage?.name || "New",
         created_by: createdByName || "Unknown",
+        payment_type: paymentType,
       };
     });
 
