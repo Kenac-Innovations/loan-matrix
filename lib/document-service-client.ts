@@ -51,7 +51,17 @@ export async function uploadDocument(
     // Do not set Content-Type; let fetch set multipart/form-data with boundary
   });
 
-  const json = (await res.json()) as DocumentUploadResponse & { error?: string };
+  const text = await res.text();
+  let json: DocumentUploadResponse & { error?: string };
+  try {
+    json = text ? (JSON.parse(text) as DocumentUploadResponse & { error?: string }) : {};
+  } catch {
+    throw new Error(
+      res.ok
+        ? "Document service returned invalid JSON"
+        : `Document service error (${res.status}): ${text.slice(0, 200) || res.statusText}`
+    );
+  }
   if (!res.ok) {
     const msg = json.error || json.message || `Document service upload failed: ${res.status}`;
     throw new Error(msg);

@@ -39,7 +39,13 @@ export function TenantLogoUpload({ onUploaded }: TenantLogoUploadProps) {
         method: "POST",
         body: formData,
       });
-      const data = await res.json();
+      const text = await res.text();
+      let data: { success?: boolean; logoFileUrl?: string; logoLinkId?: string; error?: string };
+      try {
+        data = text ? JSON.parse(text) : {};
+      } catch {
+        throw new Error(res.ok ? "Invalid response from server" : `Upload failed: ${text.slice(0, 100) || res.statusText}`);
+      }
       if (!res.ok) {
         throw new Error(data.error || "Upload failed");
       }
