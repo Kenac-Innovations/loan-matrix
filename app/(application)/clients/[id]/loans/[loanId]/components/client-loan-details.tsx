@@ -226,6 +226,7 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
   const [showInterestPaymentWaiverModal, setShowInterestPaymentWaiverModal] = useState(false);
   const [showPayoutRefundModal, setShowPayoutRefundModal] = useState(false);
   const [showReversePayoutModal, setShowReversePayoutModal] = useState(false);
+  const [reversedPayout, setReversedPayout] = useState<{ voidedAt: string; voidReason?: string | null; amount: number; currency: string } | null>(null);
   const [showMerchantIssuedRefundModal, setShowMerchantIssuedRefundModal] = useState(false);
 
   // Write Off Modal State
@@ -834,6 +835,23 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
         const loanData = await loanResponse.json();
 
         setLoan(loanData);
+
+        const payoutRes = await fetch(`/api/loans/${loanId}/payout`).catch(() => null);
+        if (payoutRes?.ok) {
+          const payoutData = await payoutRes.json();
+          if (payoutData?.status === "REVERSED" && payoutData?.voidedAt) {
+            setReversedPayout({
+              voidedAt: payoutData.voidedAt,
+              voidReason: payoutData.voidReason ?? null,
+              amount: payoutData.amount ?? 0,
+              currency: payoutData.currency ?? "ZMW",
+            });
+          } else {
+            setReversedPayout(null);
+          }
+        } else {
+          setReversedPayout(null);
+        }
 
         const approveButton = document.getElementById('approve-loan-btn');
         if (approveButton) {
@@ -3181,6 +3199,7 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                 loanId={loanId}
                 currencyCode={loan.currency?.code || orgCurrency}
                 onExport={() => setShowExportDialog(true)}
+                reversedPayout={reversedPayout}
               />
             </CardContent>
           </Card>
