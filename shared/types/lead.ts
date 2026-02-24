@@ -31,6 +31,8 @@ export interface Lead {
   assignedAt?: Date | null;
   // Payout status (for disbursed loans)
   payoutStatus?: string | null; // PENDING, PAID, VOIDED
+  /** Preferred payment type from affordability: CASH, MOBILE_MONEY, BANK_TRANSFER */
+  preferredPaymentMethod?: string | null;
 }
 
 export interface PipelineStage {

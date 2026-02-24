@@ -530,7 +530,7 @@ export function LeadsStatusTabs() {
   const PAYOUT_STATUS_COLUMNS = new Set(["payout_status"]);
 
   // Columns that should be rendered as payment method (friendly labels)
-  const PAYMENT_METHOD_COLUMNS = new Set(["payment_method"]);
+  const PAYMENT_METHOD_COLUMNS = new Set(["payment_method", "preferredpaymentmethod", "preferredPaymentMethod"]);
   const PAYMENT_METHOD_LABELS: Record<string, string> = {
     CASH: "Cash",
     MOBILE_MONEY: "Mobile Money",

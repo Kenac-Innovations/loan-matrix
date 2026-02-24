@@ -198,6 +198,7 @@ export default function CashierTransactionsPage({
         : tx.txnType || tx.transactionType?.value || tx.transactionType?.code || "";
 
     const txnTypeLower = txnTypeValue.toLowerCase();
+    const isReversal = txnTypeLower.includes("reversal") || (tx as { _isReversal?: boolean })._isReversal;
     const isAllocate =
       txnTypeLower.includes("allocate") ||
       txnTypeLower.includes("credit") ||
@@ -207,6 +208,9 @@ export default function CashierTransactionsPage({
       txnTypeLower.includes("debit") ||
       txnTypeLower.includes("withdrawal");
 
+    if (isReversal) {
+      return <Badge className="bg-green-600 text-white">Reversal (Cash In)</Badge>;
+    }
     if (isAllocate) {
       return <Badge className="bg-green-500 text-white">Cash In</Badge>;
     } else if (isSettle) {

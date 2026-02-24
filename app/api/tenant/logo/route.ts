@@ -33,15 +33,22 @@ export async function POST(request: NextRequest) {
 
     const formData = await request.formData();
     const file = formData.get("file");
-    if (!file || !(file instanceof File)) {
+    // Accept File or Blob (Node/Edge may return either)
+    const isFileOrBlob =
+      file &&
+      (typeof file === "object" &&
+        typeof (file as Blob).arrayBuffer === "function" &&
+        (file instanceof File || file instanceof Blob));
+    if (!isFileOrBlob) {
       return NextResponse.json(
         { error: "Missing or invalid file. Send as multipart/form-data with field 'file'." },
         { status: 400 }
       );
     }
 
-    const fileName = file.name || "logo.png";
-    const res = await uploadDocument(file, fileName, baseUrl);
+    const blob = file as File | Blob;
+    const fileName = blob instanceof File ? blob.name || "logo.png" : "logo.png";
+    const res = await uploadDocument(blob, fileName, baseUrl);
 
     if (!res.success || !res.data) {
       return NextResponse.json(

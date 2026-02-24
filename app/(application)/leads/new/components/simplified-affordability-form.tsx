@@ -11,6 +11,9 @@ import {
   Briefcase,
   Shield,
   AlertCircle,
+  Banknote,
+  Smartphone,
+  Building2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -46,6 +49,7 @@ const affordabilitySchema = z
       .number()
       .min(1, "Net monthly income must be greater than 0"),
     nationality: z.string().optional(),
+    preferredPaymentMethod: z.enum(["CASH", "MOBILE_MONEY", "BANK_TRANSFER"]).optional(),
     mobileInOwnName: z.boolean().default(false),
     hasProofOfIncome: z.boolean().default(false),
     hasValidNationalId: z.boolean().default(false),
@@ -532,6 +536,47 @@ export function SimplifiedAffordabilityForm({
                   <SelectContent>
                     <SelectItem value="Zambian">Zambian</SelectItem>
                     <SelectItem value="Zimbabwean">Zimbabwean</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="preferredPaymentMethod">Preferred Payment Type</Label>
+            <p className="text-xs text-muted-foreground">
+              How the client will receive funds (same options as payout modal).
+            </p>
+            <Controller
+              control={form.control}
+              name="preferredPaymentMethod"
+              render={({ field }) => (
+                <Select
+                  value={field.value ?? ""}
+                  onValueChange={(v) => field.onChange(v || undefined)}
+                >
+                  <SelectTrigger id="preferredPaymentMethod">
+                    <SelectValue placeholder="Select payment type..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="CASH">
+                      <span className="flex items-center gap-2">
+                        <Banknote className="h-4 w-4 text-green-600" />
+                        Cash
+                      </span>
+                    </SelectItem>
+                    <SelectItem value="MOBILE_MONEY">
+                      <span className="flex items-center gap-2">
+                        <Smartphone className="h-4 w-4 text-blue-600" />
+                        Mobile Money
+                      </span>
+                    </SelectItem>
+                    <SelectItem value="BANK_TRANSFER">
+                      <span className="flex items-center gap-2">
+                        <Building2 className="h-4 w-4 text-purple-600" />
+                        Bank Transfer
+                      </span>
+                    </SelectItem>
                   </SelectContent>
                 </Select>
               )}
