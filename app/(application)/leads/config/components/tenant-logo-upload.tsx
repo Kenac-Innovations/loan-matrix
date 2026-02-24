@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertCircle, ImageIcon, Loader2 } from "lucide-react";
+import { DocumentPreviewCard } from "@/components/document";
 
 interface TenantLogoUploadProps {
   /** Callback after successful upload (e.g. to refresh tenant info) */
@@ -65,12 +66,13 @@ export function TenantLogoUpload({ onUploaded }: TenantLogoUploadProps) {
       </CardHeader>
       <CardContent className="space-y-4">
         {currentLogoUrl && (
-          <div className="flex items-center gap-4">
-            <span className="text-sm font-medium text-muted-foreground">Current logo:</span>
-            <img
-              src={currentLogoUrl}
-              alt="Organization logo"
-              className="h-12 w-auto object-contain rounded border border-border"
+          <div className="space-y-2">
+            <span className="text-sm font-medium text-muted-foreground">Current logo</span>
+            <DocumentPreviewCard
+              documentUrl={currentLogoUrl}
+              fileName="Organization logo"
+              contentType="image/png"
+              className="max-w-[240px]"
             />
           </div>
         )}
