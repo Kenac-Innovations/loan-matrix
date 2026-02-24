@@ -144,6 +144,8 @@ model Lead {
   identityVerified           Boolean?            @default(false)
   employmentVerified         Boolean?            @default(false)
   incomeVerified             Boolean?            @default(false)
+  /** Preferred payment method for payout (same options as payout modal): CASH, MOBILE_MONEY, BANK_TRANSFER */
+  preferredPaymentMethod     String?
   clientCreatedInFineract    Boolean             @default(false)
   clientCreationDate         DateTime?
   fineractAccountNo          String?
@@ -734,7 +736,7 @@ model LoanPayout {
   loanAccountNo    String
   amount           Float
   currency         String          @default("ZMW") // DB-level fallback only; app code provides currency from Fineract
-  status           String          @default("PENDING") // PENDING, PAID, VOIDED
+  status           String          @default("PENDING") // PENDING, PAID, VOIDED, REVERSED
   paymentMethod    String?         // CASH, MOBILE_MONEY, BANK_TRANSFER
   paidAt           DateTime?
   paidBy           String?         // User who processed payout

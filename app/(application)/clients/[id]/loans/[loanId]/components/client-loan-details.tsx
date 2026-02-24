@@ -22,6 +22,7 @@ import { RepaymentModal } from "./repayment-modal";
 import { PaymentModal } from "./payment-modal";
 import { InterestPaymentWaiverModal } from "./interest-payment-waiver-modal";
 import { PayoutRefundModal } from "./payout-refund-modal";
+import { ReversePayoutModal } from "./reverse-payout-modal";
 import { MerchantIssuedRefundModal } from "./merchant-issued-refund-modal";
 import { WaiveInterestModal } from "./waive-interest-modal";
 import { RescheduleModal } from "./reschedule-modal";
@@ -224,6 +225,7 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
   // Separate modal states
   const [showInterestPaymentWaiverModal, setShowInterestPaymentWaiverModal] = useState(false);
   const [showPayoutRefundModal, setShowPayoutRefundModal] = useState(false);
+  const [showReversePayoutModal, setShowReversePayoutModal] = useState(false);
   const [showMerchantIssuedRefundModal, setShowMerchantIssuedRefundModal] = useState(false);
 
   // Write Off Modal State
@@ -349,6 +351,12 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                 <path d="M12 2v20m9-2-3-3m-6 3-3-3"/>
               </svg>
               Make Repayment
+            </button>
+            <button class="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 text-sm" data-action="reverse-payout">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/>
+              </svg>
+              Reverse payout
             </button>
             <button class="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 text-sm" data-action="undo-disbursal">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -687,6 +695,9 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                 break;
               case 'make-repayment':
                 setShowRepaymentModal(true);
+                break;
+              case 'reverse-payout':
+                setShowReversePayoutModal(true);
                 break;
               case 'undo-disbursal':
                 openUndoDisbursalModal();
@@ -3828,6 +3839,18 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
         loanId={loanId}
         onSuccess={() => {
           // Refresh loan data and switch to transactions tab
+          window.location.reload();
+          setActiveTab("transactions");
+        }}
+      />
+
+      {/* Reverse Payout Modal */}
+      <ReversePayoutModal
+        isOpen={showReversePayoutModal}
+        onClose={() => setShowReversePayoutModal(false)}
+        loanId={loanId}
+        clientName={client?.displayName}
+        onSuccess={() => {
           window.location.reload();
           setActiveTab("transactions");
         }}

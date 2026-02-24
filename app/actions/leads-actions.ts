@@ -414,6 +414,7 @@ export async function getLeadsData(
         assignedToUserId: lead.assignedToUserId,
         assignedToUserName: lead.assignedToUserName,
         assignedAt: lead.assignedAt,
+        preferredPaymentMethod: lead.preferredPaymentMethod ?? null,
       };
     });
 

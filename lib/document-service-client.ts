@@ -22,6 +22,7 @@ export interface DocumentUploadResponse {
 
 /**
  * Upload a file (e.g. logo) to the document service under the loanmatrix tenant.
+ * Expects document service to accept multipart with: uploadMetadata (JSON), file (binary).
  * Returns the response data including fileUrl and documentId (use as linkId for download).
  */
 export async function uploadDocument(
@@ -34,17 +35,21 @@ export async function uploadDocument(
     "uploadMetadata",
     JSON.stringify({ tenantId: DOCUMENT_SERVICE_TENANT_ID })
   );
-  formData.append("file", file, fileName);
+  // Ensure the file part is sent with the expected name "file" and a filename
+  const blob = file instanceof File ? file : new File([file], fileName, { type: (file as Blob).type || "application/octet-stream" });
+  formData.append("file", blob, fileName);
 
   const url = `${baseUrl.replace(/\/$/, "")}/api/documents/upload`;
   const res = await fetch(url, {
     method: "POST",
     body: formData,
+    // Do not set Content-Type; let fetch set multipart/form-data with boundary
   });
 
-  const json = (await res.json()) as DocumentUploadResponse;
+  const json = (await res.json()) as DocumentUploadResponse & { error?: string };
   if (!res.ok) {
-    throw new Error(json.message || `Document service upload failed: ${res.status}`);
+    const msg = json.error || json.message || `Document service upload failed: ${res.status}`;
+    throw new Error(msg);
   }
   return json;
 }
