@@ -16,12 +16,22 @@ import { formatDate } from "@/lib/format-date";
 import { GenericDataTable } from "@/components/tables/generic-data-table";
 import { DataTableColumn, DataTableFilter } from "@/shared/types/data-table";
 
+/** Reversed payout info to show one synthetic "Payout Reversed" row in loan transaction history */
+export interface ReversedPayoutInfo {
+  voidedAt: string;
+  voidReason?: string | null;
+  amount: number;
+  currency: string;
+}
+
 interface TransactionsDataTableProps {
   transactions: Transaction[];
   clientId: string | number;
   loanId: string | number;
   currencyCode: string;
   onExport?: () => void;
+  /** When payout was reversed, show "Payout Reversed - (reason)" in transaction history */
+  reversedPayout?: ReversedPayoutInfo | null;
 }
 
 export function TransactionsDataTable({
@@ -30,8 +40,28 @@ export function TransactionsDataTable({
   loanId,
   currencyCode,
   onExport,
+  reversedPayout,
 }: TransactionsDataTableProps) {
   const router = useRouter();
+
+  const displayTransactions = useMemo(() => {
+    if (!reversedPayout?.voidedAt) return transactions;
+    const d = new Date(reversedPayout.voidedAt);
+    const reversalRow: Transaction = {
+      id: -1,
+      officeName: "",
+      date: [d.getFullYear(), d.getMonth() + 1, d.getDate()],
+      type: { value: `Payout Reversed - ${reversedPayout.voidReason ?? "Cash returned to cashier"}` },
+      amount: 0,
+      principalPortion: 0,
+      interestPortion: 0,
+      feeChargesPortion: 0,
+      penaltyChargesPortion: 0,
+      outstandingLoanBalance: 0,
+    };
+    return [reversalRow, ...transactions];
+  }, [transactions, reversedPayout]);
+
   const [customFilters, setCustomFilters] = useState<DataTableFilter[]>([
     {
       columnId: "type",
@@ -43,10 +73,10 @@ export function TransactionsDataTable({
   // Get unique transaction types for filter options
   const transactionTypes = useMemo(() => {
     const types = Array.from(
-      new Set(transactions.map((t) => t.type?.value).filter(Boolean))
+      new Set(displayTransactions.map((t) => t.type?.value).filter(Boolean))
     );
     return types.sort().map(type => ({ label: type || '', value: type || '' }));
-  }, [transactions]);
+  }, [displayTransactions]);
 
   const getTransactionRef = (transaction: Transaction): string | undefined => {
     if (!transaction) return undefined;
@@ -66,7 +96,7 @@ export function TransactionsDataTable({
       id: "rowNumber",
       header: "#",
       cell: ({ row }) => {
-        const index = transactions.findIndex(t => t.id === row.original.id);
+        const index = displayTransactions.findIndex(t => t.id === row.original.id);
         return <span className="font-medium">{index + 1}</span>;
       },
       enableSorting: false,
@@ -142,6 +172,7 @@ export function TransactionsDataTable({
       header: "Actions",
       cell: ({ row }) => {
         const transaction = row.original;
+        if (transaction.id === -1) return <span className="text-muted-foreground text-xs">—</span>;
         return (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -224,7 +255,7 @@ export function TransactionsDataTable({
 
   return (
     <GenericDataTable<Transaction>
-      data={transactions}
+      data={displayTransactions}
       columns={columns}
       searchPlaceholder="Search Transaction ..."
       enablePagination={true}

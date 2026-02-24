@@ -127,7 +127,7 @@ export async function GET(
           txnDate: [d.getFullYear(), d.getMonth() + 1, d.getDate()] as number[],
           createdDate: [d.getFullYear(), d.getMonth() + 1, d.getDate()] as number[],
           transactionDate: [d.getFullYear(), d.getMonth() + 1, d.getDate()] as number[],
-          txnNote: `Reversal: Loan ${p.loanAccountNo} - ${p.clientName}${p.voidedBy ? ` (${p.voidedBy})` : ""}`,
+          txnNote: `Reversal - ${p.voidReason ?? "Payout reversed"}`,
           notes: p.voidReason ?? undefined,
           _isReversal: true,
         };
