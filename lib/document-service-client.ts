@@ -35,9 +35,14 @@ export async function uploadDocument(
     "uploadMetadata",
     JSON.stringify({ tenantId: DOCUMENT_SERVICE_TENANT_ID })
   );
-  // Ensure the file part is sent with the expected name "file" and a filename
-  const blob = file instanceof File ? file : new File([file], fileName, { type: (file as Blob).type || "application/octet-stream" });
-  formData.append("file", blob, fileName);
+  // Ensure the file part is sent with the expected name "file" and a filename.
+  // Do not use global File (not defined in all runtimes); FormData.append accepts Blob + filename.
+  const blob = file as Blob;
+  const name =
+    typeof (file as { name?: string }).name === "string" && (file as { name?: string }).name
+      ? (file as { name: string }).name
+      : fileName;
+  formData.append("file", blob, name);
 
   const url = `${baseUrl.replace(/\/$/, "")}/api/documents/upload`;
   const res = await fetch(url, {

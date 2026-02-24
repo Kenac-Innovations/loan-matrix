@@ -49,7 +49,9 @@ const affordabilitySchema = z
       .number()
       .min(1, "Net monthly income must be greater than 0"),
     nationality: z.string().optional(),
-    preferredPaymentMethod: z.enum(["CASH", "MOBILE_MONEY", "BANK_TRANSFER"]).optional(),
+    preferredPaymentMethod: z.enum(["CASH", "MOBILE_MONEY", "BANK_TRANSFER"], {
+      required_error: "Preferred payment type is required",
+    }),
     mobileInOwnName: z.boolean().default(false),
     hasProofOfIncome: z.boolean().default(false),
     hasValidNationalId: z.boolean().default(false),
@@ -159,14 +161,15 @@ export function SimplifiedAffordabilityForm({
     const incomeComplete =
       watchedValues.grossMonthlyIncome > 0 &&
       watchedValues.netMonthlyIncome > 0;
-    // All verification checkboxes must be checked to be complete
+    // All verification checkboxes and preferred payment type must be set to be complete
     const verificationComplete =
       watchedValues.mobileInOwnName &&
       watchedValues.hasProofOfIncome &&
       watchedValues.hasValidNationalId &&
       watchedValues.identityVerified &&
       watchedValues.employmentVerified &&
-      watchedValues.incomeVerified;
+      watchedValues.incomeVerified &&
+      !!watchedValues.preferredPaymentMethod;
 
     setSectionCompletion({
       income: incomeComplete,
@@ -543,7 +546,7 @@ export function SimplifiedAffordabilityForm({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="preferredPaymentMethod">Preferred Payment Type</Label>
+            <Label htmlFor="preferredPaymentMethod">Preferred Payment Type <span className="text-red-500">*</span></Label>
             <p className="text-xs text-muted-foreground">
               How the client will receive funds (same options as payout modal).
             </p>
@@ -555,7 +558,7 @@ export function SimplifiedAffordabilityForm({
                   value={field.value ?? ""}
                   onValueChange={(v) => field.onChange(v || undefined)}
                 >
-                  <SelectTrigger id="preferredPaymentMethod">
+                  <SelectTrigger id="preferredPaymentMethod" className={form.formState.errors.preferredPaymentMethod ? "border-red-500" : ""}>
                     <SelectValue placeholder="Select payment type..." />
                   </SelectTrigger>
                   <SelectContent>
@@ -581,6 +584,11 @@ export function SimplifiedAffordabilityForm({
                 </Select>
               )}
             />
+            {form.formState.errors.preferredPaymentMethod && (
+              <p className="text-sm text-red-500">
+                {form.formState.errors.preferredPaymentMethod.message}
+              </p>
+            )}
           </div>
 
           {/* Verification Checkboxes */}
