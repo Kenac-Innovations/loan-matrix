@@ -3030,11 +3030,25 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                 </div>
                 <div className="space-y-1">
                   <p className="text-xs font-medium text-muted-foreground">Loan Purpose</p>
-                  <p className="text-sm font-medium">{loan.loanPurpose?.name || "N/A"}</p>
+                  <p className="text-sm font-medium">{loan.loanPurpose?.name || loan.loanPurposeName || "N/A"}</p>
                 </div>
                 <div className="space-y-1">
                   <p className="text-xs font-medium text-muted-foreground">Loan Officer</p>
-                  <p className="text-sm font-medium">{loan.loanOfficerName || "N/A"}</p>
+                  <p className="text-sm font-medium">
+                    {loan.loanOfficerName || [loan.timeline?.submittedByFirstname, loan.timeline?.submittedByLastname].filter(Boolean).join(" ") || loan.timeline?.submittedByUsername || "N/A"}
+                  </p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-muted-foreground">Created By</p>
+                  <p className="text-sm font-medium">
+                    {[loan.timeline?.submittedByFirstname, loan.timeline?.submittedByLastname].filter(Boolean).join(" ") || loan.timeline?.submittedByUsername || "N/A"}
+                  </p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-muted-foreground">Approved By</p>
+                  <p className="text-sm font-medium">
+                    {[loan.timeline?.approvedByFirstname, loan.timeline?.approvedByLastname].filter(Boolean).join(" ") || loan.timeline?.approvedByUsername || "N/A"}
+                  </p>
                 </div>
                 <div className="space-y-1">
                   <p className="text-xs font-medium text-muted-foreground">Currency</p>

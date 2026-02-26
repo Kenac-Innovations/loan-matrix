@@ -58,11 +58,19 @@ export interface FineractLoan {
     timeline: {
       submittedOnDate: string | number[];
       submittedByUsername: string;
+      submittedByFirstname?: string;
+      submittedByLastname?: string;
       approvedOnDate?: string | number[];
       approvedByUsername?: string;
+      approvedByFirstname?: string;
+      approvedByLastname?: string;
       expectedDisbursementDate?: string | number[];
       actualDisbursementDate?: string | number[];
+      disbursedByUsername?: string;
+      disbursedByFirstname?: string;
+      disbursedByLastname?: string;
       expectedMaturityDate?: string | number[];
+      actualMaturityDate?: string | number[];
       closedOnDate?: string | number[];
       closedByUsername?: string;
     };

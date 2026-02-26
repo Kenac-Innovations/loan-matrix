@@ -22,7 +22,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { format } from "date-fns";
-import { Upload, FileText, Loader2 } from "lucide-react";
+import { Upload, FileText, Loader2, RefreshCw, AlertTriangle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import jsPDF from "jspdf";
 import { generateContractHTML } from "./contract-template";
@@ -491,6 +491,157 @@ export function LoanContracts({
       console.log("Contract data built from schedule successfully");
     } catch (err) {
       console.error("Error building contract data:", err);
+      setError(
+        err instanceof Error ? err.message : "Failed to build contract data"
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Fallback: build contract data purely from props when API calls fail
+  const buildContractDataFromAvailableProps = () => {
+    if (!repaymentSchedule || !loanTerms) {
+      setError("Cannot build contract: missing repayment schedule or loan terms. Please go back and complete previous steps.");
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      setError(null);
+
+      console.log("Building contract data from available props (fallback)");
+
+      const rawCurrency = repaymentSchedule.currency?.code || orgCurrency;
+      const currency = rawCurrency === "ZMK" ? "ZMW" : rawCurrency;
+      const principal = loanTerms?.principal || 0;
+      const interest = repaymentSchedule?.totalInterestCharged || 0;
+      const fees = repaymentSchedule?.totalFeeChargesCharged || 0;
+      const totalRepayment =
+        repaymentSchedule?.totalRepaymentExpected || principal + interest + fees;
+      const numberOfPayments = loanTerms?.numberOfRepayments || 1;
+
+      const interestRateFrequency = parseInt(loanTerms?.interestRateFrequency || "2");
+      const nominalRate = loanTerms?.nominalInterestRate || 0;
+      const monthlyPercentageRate = interestRateFrequency === 3
+        ? nominalRate / 12
+        : nominalRate;
+
+      const formattedSchedule =
+        repaymentSchedule?.periods
+          ?.filter(
+            (period: any) =>
+              period.period !== undefined && !period.downPaymentPeriod
+          )
+          .map((period: any) => ({
+            paymentNumber: period.period,
+            dueDate: Array.isArray(period.dueDate)
+              ? format(
+                  new Date(period.dueDate[0], period.dueDate[1] - 1, period.dueDate[2]),
+                  "dd/MM/yyyy"
+                )
+              : format(new Date(period.dueDate), "dd/MM/yyyy"),
+            paymentAmount: period.totalDueForPeriod || period.totalOriginalDueForPeriod || 0,
+            principal: period.principalDue || period.principalDisbursed || 0,
+            interestAndFees: (period.interestDue || 0) + (period.feeChargesDue || 0),
+            remainingBalance: period.principalLoanBalanceOutstanding || 0,
+          })) || [];
+
+      const firstPaymentDate =
+        formattedSchedule.length > 0
+          ? formattedSchedule[0].dueDate
+          : format(new Date(), "dd/MM/yyyy");
+
+      const formattedCharges = (loanTerms.charges || []).map((charge: any) => ({
+        name: charge.name,
+        amount: charge.amount,
+        chargeTimeType: charge.originalCharge?.chargeTimeType || null,
+      }));
+
+      const upfrontFees = formattedCharges
+        .filter((c: any) => {
+          if (c.chargeTimeType?.id) return c.chargeTimeType.id === 1;
+          return (
+            !c.name.toLowerCase().includes("monthly") &&
+            !c.name.toLowerCase().includes("recurring") &&
+            !c.name.toLowerCase().includes("installment") &&
+            !c.name.toLowerCase().includes("overdue") &&
+            !c.name.toLowerCase().includes("late")
+          );
+        })
+        .reduce((sum: number, c: any) => sum + c.amount, 0);
+      const disbursedAmount = principal - upfrontFees;
+
+      const getFrequencyLabel = (typeId: number): string => {
+        const types: { [key: number]: string } = { 0: "Days", 1: "Weeks", 2: "Months", 3: "Years" };
+        return types[typeId] || "Months";
+      };
+
+      const repaymentFrequency = loanTerms?.repaymentFrequency
+        ? getFrequencyLabel(parseInt(loanTerms.repaymentFrequency))
+        : "Monthly";
+
+      const tenure =
+        loanTerms?.loanTerm && loanTerms?.termFrequency
+          ? `${loanTerms.loanTerm} ${getFrequencyLabel(parseInt(loanTerms.termFrequency))}`
+          : `${numberOfPayments} ${repaymentFrequency}`;
+
+      let loanOfficerName = "N/A";
+      if (loanTemplate?.loanOfficerOptions && loanDetails?.loanOfficer) {
+        const officer = loanTemplate.loanOfficerOptions.find(
+          (o: any) => o.id?.toString() === loanDetails.loanOfficer?.toString()
+        );
+        loanOfficerName = officer?.displayName || "N/A";
+      }
+
+      let loanPurposeName = "N/A";
+      if (loanTemplate?.loanPurposeOptions && loanDetails?.loanPurpose) {
+        const purpose = loanTemplate.loanPurposeOptions.find(
+          (p: any) => p.id?.toString() === loanDetails.loanPurpose?.toString()
+        );
+        loanPurposeName = purpose?.name || "N/A";
+      }
+
+      const fallbackData: ContractData = {
+        clientName: clientId ? `Client #${clientId}` : "N/A",
+        nrc: "N/A",
+        dateOfBirth: "N/A",
+        gender: "N/A",
+        gflNo: clientId?.toString() || undefined,
+        loanId: leadId,
+        loanAmount: principal,
+        disbursedAmount,
+        tenure,
+        numberOfPayments,
+        paymentFrequency: repaymentFrequency,
+        firstPaymentDate,
+        interest,
+        fees,
+        totalCostOfCredit: interest + fees,
+        totalRepayment,
+        paymentPerPeriod:
+          formattedSchedule.length > 0
+            ? formattedSchedule.reduce((sum: number, p: any) => sum + p.paymentAmount, 0) / formattedSchedule.length
+            : totalRepayment / numberOfPayments,
+        monthlyPercentageRate,
+        repaymentSchedule: formattedSchedule,
+        charges: formattedCharges,
+        currency,
+        branch: "Head Office",
+        loanOfficer: loanOfficerName,
+        loanPurpose: loanPurposeName,
+      };
+
+      setContractData(fallbackData);
+      setError(null);
+      console.log("Contract data built from props (fallback) successfully");
+
+      toast({
+        title: "Loaded with limited data",
+        description: "Some client details (name, NRC, DOB) may be missing. You can still review the financial terms and schedule.",
+      });
+    } catch (err) {
+      console.error("Error building fallback contract data:", err);
       setError(
         err instanceof Error ? err.message : "Failed to build contract data"
       );
@@ -1495,17 +1646,40 @@ export function LoanContracts({
     return (
       <Card>
         <CardContent className="flex items-center justify-center py-12">
-          <div className="text-center">
-            <p className="text-red-500 mb-4">{error}</p>
-            <Button
-              onClick={() =>
-                repaymentSchedule && loanDetails && loanTerms
-                  ? buildContractDataFromSchedule()
-                  : loadContractData()
-              }
-            >
-              Retry
-            </Button>
+          <div className="text-center max-w-md mx-auto">
+            <AlertTriangle className="h-10 w-10 text-amber-500 mx-auto mb-3" />
+            <p className="text-red-500 font-medium mb-2">{error}</p>
+            <p className="text-sm text-muted-foreground mb-6">
+              This may be caused by a network issue or the server being temporarily unavailable. Try again, or continue with the data already loaded.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-3 justify-center">
+              <Button
+                onClick={() => {
+                  if (repaymentSchedule && loanDetails && loanTerms) {
+                    buildContractDataFromSchedule();
+                  } else {
+                    loadContractData();
+                  }
+                }}
+                disabled={isLoading}
+              >
+                {isLoading ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                )}
+                {isLoading ? "Retrying..." : "Retry"}
+              </Button>
+              {repaymentSchedule && loanTerms && (
+                <Button
+                  variant="outline"
+                  onClick={buildContractDataFromAvailableProps}
+                  disabled={isLoading}
+                >
+                  Continue with available data
+                </Button>
+              )}
+            </div>
           </div>
         </CardContent>
       </Card>
