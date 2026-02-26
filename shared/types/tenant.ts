@@ -51,4 +51,8 @@ export interface TenantInfo {
   slug: string;
   domain?: string | null;
   settings?: TenantSettings;
+  /** Document service file URL for org logo (when set) */
+  logoFileUrl?: string | null;
+  /** Document service link ID (UUID) for logo */
+  logoLinkId?: string | null;
 }

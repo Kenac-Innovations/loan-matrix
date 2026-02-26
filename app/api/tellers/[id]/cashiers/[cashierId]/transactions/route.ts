@@ -103,6 +103,57 @@ export async function GET(
       paginationOptions
     );
 
+    // Merge REVERSED loan payouts for this cashier into transaction history (so reversals show as Cash In)
+    const dbCashierId = cashier?.id ?? null;
+    if (dbCashierId) {
+      const reversedPayouts = await prisma.loanPayout.findMany({
+        where: {
+          tenantId: tenant.id,
+          cashierId: dbCashierId,
+          status: "REVERSED",
+          voidedAt: { not: null },
+        },
+        orderBy: { voidedAt: "asc" },
+      });
+
+      const reversalTransactions = reversedPayouts.map((p) => {
+        const d = p.voidedAt!;
+        return {
+          id: `reversal-${p.id}`,
+          txnType: { value: "Reversal", code: "REVERSAL" },
+          transactionType: { value: "Reversal", code: "REVERSAL" },
+          txnAmount: p.amount,
+          amount: p.amount,
+          txnDate: [d.getFullYear(), d.getMonth() + 1, d.getDate()] as number[],
+          createdDate: [d.getFullYear(), d.getMonth() + 1, d.getDate()] as number[],
+          transactionDate: [d.getFullYear(), d.getMonth() + 1, d.getDate()] as number[],
+          txnNote: `Reversal - ${p.voidReason ?? "Payout reversed"}`,
+          notes: p.voidReason ?? undefined,
+          _isReversal: true,
+        };
+      });
+
+      if (reversalTransactions.length > 0) {
+        const base = summaryAndTransactions?.cashierTransactions ?? {};
+        const pageItems = Array.isArray(base.pageItems) ? base.pageItems : Array.isArray(base) ? base : [];
+        const merged = [...pageItems, ...reversalTransactions].sort((a, b) => {
+          const dateA = a.txnDate ?? a.createdDate ?? a.transactionDate;
+          const dateB = b.txnDate ?? b.createdDate ?? b.transactionDate;
+          if (!dateA || !dateB) return 0;
+          const arrA = Array.isArray(dateA) ? dateA : [0, 0, 0];
+          const arrB = Array.isArray(dateB) ? dateB : [0, 0, 0];
+          const tsA = new Date(arrA[0], (arrA[1] ?? 1) - 1, arrA[2] ?? 1).getTime();
+          const tsB = new Date(arrB[0], (arrB[1] ?? 1) - 1, arrB[2] ?? 1).getTime();
+          return tsB - tsA; // newest first
+        });
+        if (Array.isArray(base)) {
+          (summaryAndTransactions as any).cashierTransactions = merged;
+        } else {
+          (summaryAndTransactions as any).cashierTransactions = { ...base, pageItems: merged };
+        }
+      }
+    }
+
     return NextResponse.json(summaryAndTransactions);
   } catch (error) {
     console.error("Error fetching cashier transactions:", error);

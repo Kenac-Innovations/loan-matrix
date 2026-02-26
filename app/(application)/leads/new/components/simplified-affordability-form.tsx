@@ -11,6 +11,9 @@ import {
   Briefcase,
   Shield,
   AlertCircle,
+  Banknote,
+  Smartphone,
+  Building2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -46,6 +49,9 @@ const affordabilitySchema = z
       .number()
       .min(1, "Net monthly income must be greater than 0"),
     nationality: z.string().optional(),
+    preferredPaymentMethod: z.enum(["CASH", "MOBILE_MONEY", "BANK_TRANSFER"], {
+      required_error: "Preferred payment type is required",
+    }),
     mobileInOwnName: z.boolean().default(false),
     hasProofOfIncome: z.boolean().default(false),
     hasValidNationalId: z.boolean().default(false),
@@ -155,14 +161,15 @@ export function SimplifiedAffordabilityForm({
     const incomeComplete =
       watchedValues.grossMonthlyIncome > 0 &&
       watchedValues.netMonthlyIncome > 0;
-    // All verification checkboxes must be checked to be complete
+    // All verification checkboxes and preferred payment type must be set to be complete
     const verificationComplete =
       watchedValues.mobileInOwnName &&
       watchedValues.hasProofOfIncome &&
       watchedValues.hasValidNationalId &&
       watchedValues.identityVerified &&
       watchedValues.employmentVerified &&
-      watchedValues.incomeVerified;
+      watchedValues.incomeVerified &&
+      !!watchedValues.preferredPaymentMethod;
 
     setSectionCompletion({
       income: incomeComplete,
@@ -536,6 +543,52 @@ export function SimplifiedAffordabilityForm({
                 </Select>
               )}
             />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="preferredPaymentMethod">Preferred Payment Type <span className="text-red-500">*</span></Label>
+            <p className="text-xs text-muted-foreground">
+              How the client will receive funds (same options as payout modal).
+            </p>
+            <Controller
+              control={form.control}
+              name="preferredPaymentMethod"
+              render={({ field }) => (
+                <Select
+                  value={field.value ?? ""}
+                  onValueChange={(v) => field.onChange(v || undefined)}
+                >
+                  <SelectTrigger id="preferredPaymentMethod" className={form.formState.errors.preferredPaymentMethod ? "border-red-500" : ""}>
+                    <SelectValue placeholder="Select payment type..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="CASH">
+                      <span className="flex items-center gap-2">
+                        <Banknote className="h-4 w-4 text-green-600" />
+                        Cash
+                      </span>
+                    </SelectItem>
+                    <SelectItem value="MOBILE_MONEY">
+                      <span className="flex items-center gap-2">
+                        <Smartphone className="h-4 w-4 text-blue-600" />
+                        Mobile Money
+                      </span>
+                    </SelectItem>
+                    <SelectItem value="BANK_TRANSFER">
+                      <span className="flex items-center gap-2">
+                        <Building2 className="h-4 w-4 text-purple-600" />
+                        Bank Transfer
+                      </span>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
+            />
+            {form.formState.errors.preferredPaymentMethod && (
+              <p className="text-sm text-red-500">
+                {form.formState.errors.preferredPaymentMethod.message}
+              </p>
+            )}
           </div>
 
           {/* Verification Checkboxes */}

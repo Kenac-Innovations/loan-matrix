@@ -158,9 +158,9 @@ export async function POST(
         );
       }
 
-      if (loanPayout.status === "VOIDED") {
+      if (loanPayout.status === "VOIDED" || loanPayout.status === "REVERSED") {
         return NextResponse.json(
-          { error: "This loan payout has been voided" },
+          { error: "This loan payout has been voided or reversed" },
           { status: 400 }
         );
       }

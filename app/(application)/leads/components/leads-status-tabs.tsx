@@ -529,6 +529,14 @@ export function LeadsStatusTabs() {
   // Columns that should be rendered as payout status badges
   const PAYOUT_STATUS_COLUMNS = new Set(["payout_status"]);
 
+  // Columns that should be rendered as payment method (friendly labels)
+  const PAYMENT_METHOD_COLUMNS = new Set(["payment_method", "payment_type", "preferredpaymentmethod", "preferredPaymentMethod"]);
+  const PAYMENT_METHOD_LABELS: Record<string, string> = {
+    CASH: "Cash",
+    MOBILE_MONEY: "Mobile Money",
+    BANK_TRANSFER: "Bank Transfer",
+  };
+
   // Generate columns for the data table
   const generateColumns = useCallback((data: any[]): DataTableColumn<any>[] => {
     if (!data || data.length === 0) return [];
@@ -557,6 +565,7 @@ export function LeadsStatusTabs() {
     for (const col of columnKeys) {
       const isLinkColumn = LINK_COLUMNS.has(col.toLowerCase());
       const isPayoutStatusColumn = PAYOUT_STATUS_COLUMNS.has(col.toLowerCase());
+      const isPaymentMethodColumn = PAYMENT_METHOD_COLUMNS.has(col.toLowerCase());
       
       columns.push({
         id: col,
@@ -564,6 +573,13 @@ export function LeadsStatusTabs() {
         accessorKey: col as keyof any,
         cell: ({ getValue, row }) => {
           const value = getValue();
+          
+          // Render payment_method with friendly labels (e.g. Cash, Mobile Money, Bank Transfer)
+          if (isPaymentMethodColumn) {
+            const raw = value ? String(value).toUpperCase().replace(/\s+/g, "_") : "";
+            const label = raw ? (PAYMENT_METHOD_LABELS[raw] || raw.replace(/_/g, " ")) : "—";
+            return <span className="font-medium">{label}</span>;
+          }
           
           // Render payout_status with colored badges
           if (isPayoutStatusColumn) {
