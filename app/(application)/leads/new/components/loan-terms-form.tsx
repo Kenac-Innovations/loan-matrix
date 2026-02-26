@@ -780,12 +780,14 @@ export function LoanTermsForm({
           interestCalcPeriodValue,
         });
 
-        // Set disbursement date for first repayment
-        if (loanTemplate.expectedDisbursementDate) {
+        // Set disbursement date for first repayment only as a fallback.
+        // If sharedFirstRepaymentOn is already set (from the Loans tab), use that instead.
+        if (sharedFirstRepaymentOn) {
+          form.setValue("firstRepaymentOn", sharedFirstRepaymentOn);
+        } else if (loanTemplate.expectedDisbursementDate) {
           const [year, month, day] = loanTemplate.expectedDisbursementDate;
           const disbursementDate = new Date(year, month - 1, day);
           form.setValue("firstRepaymentOn", disbursementDate);
-          // interestChargedFrom defaults to null - not set from disbursement date
         }
 
         // Log form values IMMEDIATELY after setting them
@@ -831,6 +833,20 @@ export function LoanTermsForm({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loanTemplate]); // form is stable from useForm, no need in deps
+
+  // Sync firstRepaymentOn from the Loans tab whenever it changes
+  useEffect(() => {
+    if (sharedFirstRepaymentOn) {
+      const currentValue = form.getValues("firstRepaymentOn");
+      if (
+        !currentValue ||
+        currentValue.getTime() !== sharedFirstRepaymentOn.getTime()
+      ) {
+        form.setValue("firstRepaymentOn", sharedFirstRepaymentOn);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sharedFirstRepaymentOn]);
 
   // Load existing loan terms data when leadId is available
   useEffect(() => {
