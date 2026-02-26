@@ -280,30 +280,85 @@ export function LoanContracts({
       setIsLoading(true);
       setError(null);
 
-      console.log(
-        "Building contract from schedule - fetching base client data"
-      );
+      console.log("Building contract from schedule - fetching client data");
 
-      // Fetch base contract data (has all client info)
-      const response = await fetch(`/api/leads/${leadId}/contract-data`);
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error("Failed to fetch base contract data:", errorText);
+      // Fetch lead data directly (lightweight, no complex validations)
+      const leadResponse = await fetch(`/api/leads/${leadId}`);
+      if (!leadResponse.ok) {
+        const errorText = await leadResponse.text();
+        console.error("Failed to fetch lead data:", errorText);
         throw new Error("Failed to fetch client data");
       }
 
-      const result = await response.json();
-      if (!result.success || !result.data) {
-        throw new Error("No client data available");
+      const lead = await leadResponse.json();
+      if (!lead || !lead.id) {
+        throw new Error("Lead not found");
       }
 
-      // Start with the base contract data from API (has all client info)
-      const baseContractData = result.data;
-      console.log(
-        "Base contract data loaded, now overriding with provided schedule"
-      );
+      const clientName = [lead.firstname, lead.middlename, lead.lastname]
+        .filter(Boolean)
+        .join(" ");
 
-      // Override the schedule-dependent fields with our already-calculated schedule
+      // Fetch Fineract client details for gender (best-effort)
+      let genderName = lead.gender || "N/A";
+      let employerName: string | undefined;
+      let employeeNo: string | undefined;
+
+      if (lead.fineractClientId) {
+        try {
+          const clientRes = await fetch(`/api/fineract/clients/${lead.fineractClientId}`);
+          if (clientRes.ok) {
+            const fineractClient = await clientRes.json();
+            if (fineractClient?.gender?.name) {
+              genderName = fineractClient.gender.name;
+            }
+          }
+        } catch (err) {
+          console.warn("Non-critical: Could not fetch Fineract client details:", err);
+        }
+
+        // Try to fetch employment info from Fineract datatables (best-effort)
+        try {
+          const dtRes = await fetch(`/api/fineract/datatables/cd_Employment_Information/${lead.fineractClientId}?genericResultSet=true`);
+          if (dtRes.ok) {
+            const dtData = await dtRes.json();
+            if (dtData?.data?.length > 0) {
+              const headers = dtData.columnHeaders || [];
+              const firstRow = dtData.data[0]?.row || [];
+              headers.forEach((header: any, index: number) => {
+                const colName = (header.columnName || "").toLowerCase().replace(/\s+/g, "_");
+                const value = firstRow[index];
+                if ((colName === "employer_name" || colName.includes("employer")) && value && !employerName) {
+                  employerName = String(value);
+                }
+                if ((colName === "employee_number" || colName.includes("employee")) && colName.includes("num") && value && !employeeNo) {
+                  employeeNo = String(value);
+                }
+              });
+            }
+          }
+        } catch (err) {
+          console.warn("Non-critical: Could not fetch employment info:", err);
+        }
+      }
+
+      // Derive loan officer name from loan template if available
+      let loanOfficerName = "N/A";
+      if (loanTemplate?.loanOfficerOptions && loanDetails?.loanOfficer) {
+        const officer = loanTemplate.loanOfficerOptions.find(
+          (o: any) => o.id?.toString() === loanDetails.loanOfficer?.toString()
+        );
+        loanOfficerName = officer?.displayName || "N/A";
+      }
+
+      // Derive loan purpose name from loan template if available
+      let loanPurposeName = "N/A";
+      if (loanTemplate?.loanPurposeOptions && loanDetails?.loanPurpose) {
+        const purpose = loanTemplate.loanPurposeOptions.find(
+          (p: any) => p.id?.toString() === loanDetails.loanPurpose?.toString()
+        );
+        loanPurposeName = purpose?.name || "N/A";
+      }
 
       // Normalize ZMK to ZMW (Fineract uses legacy ZMK code)
       const rawCurrency = repaymentSchedule.currency?.code || orgCurrency;
@@ -315,16 +370,14 @@ export function LoanContracts({
         repaymentSchedule?.totalRepaymentExpected ||
         principal + interest + fees;
 
-      // Get interest rate from loan product template (not calculated)
       const numberOfPayments = loanTerms?.numberOfRepayments || 1;
-      
+
       // Convert to monthly rate if the interest rate is annual (frequency type 3 = Per Year)
-      // Frequency type 2 = Per Month, 3 = Per Year
       const interestRateFrequency = parseInt(loanTerms?.interestRateFrequency || "2");
       const nominalRate = loanTerms?.nominalInterestRate || 0;
-      const monthlyPercentageRate = interestRateFrequency === 3 
-        ? nominalRate / 12  // Convert annual rate to monthly
-        : nominalRate;      // Already monthly
+      const monthlyPercentageRate = interestRateFrequency === 3
+        ? nominalRate / 12
+        : nominalRate;
 
       // Format repayment schedule
       const formattedSchedule =
@@ -353,7 +406,6 @@ export function LoanContracts({
             remainingBalance: period.principalLoanBalanceOutstanding || 0,
           })) || [];
 
-      // Get first payment date
       const firstPaymentDate =
         formattedSchedule.length > 0
           ? formattedSchedule[0].dueDate
@@ -366,16 +418,12 @@ export function LoanContracts({
         chargeTimeType: charge.originalCharge?.chargeTimeType || null,
       }));
 
-      // Net disbursed amount (principal - upfront fees)
-      // Upfront fees are charges with chargeTimeType.id === 1 (Disbursement)
-      // Installment fees (id === 8) and Overdue fees (id === 9) are NOT deducted upfront
+      // Upfront fees: charges with chargeTimeType.id === 1 (Disbursement)
       const upfrontFees = formattedCharges
         .filter((c: any) => {
-          // If chargeTimeType is available, use it (preferred method)
           if (c.chargeTimeType?.id) {
-            return c.chargeTimeType.id === 1; // Disbursement charges only
+            return c.chargeTimeType.id === 1;
           }
-          // Fallback to name-based matching for backwards compatibility
           return (
             !c.name.toLowerCase().includes("monthly") &&
             !c.name.toLowerCase().includes("recurring") &&
@@ -387,19 +435,42 @@ export function LoanContracts({
         .reduce((sum: number, c: any) => sum + c.amount, 0);
       const disbursedAmount = principal - upfrontFees;
 
-      // Use base contract data and override only schedule-dependent fields
-      const contractData: ContractData = {
-        ...baseContractData, // Start with all the base client data from API
+      // Get frequency labels
+      const getFrequencyLabel = (typeId: number): string => {
+        const types: { [key: number]: string } = { 0: "Days", 1: "Weeks", 2: "Months", 3: "Years" };
+        return types[typeId] || "Months";
+      };
 
-        // Override with calculated schedule values
+      const repaymentFrequency = loanTerms?.repaymentFrequency
+        ? getFrequencyLabel(parseInt(loanTerms.repaymentFrequency))
+        : "Monthly";
+
+      const tenure =
+        loanTerms?.loanTerm && loanTerms?.termFrequency
+          ? `${loanTerms.loanTerm} ${getFrequencyLabel(parseInt(loanTerms.termFrequency))}`
+          : `${numberOfPayments} ${repaymentFrequency}`;
+
+      const builtContractData: ContractData = {
+        clientName,
+        nrc: lead.externalId || "N/A",
+        dateOfBirth: lead.dateOfBirth
+          ? format(new Date(lead.dateOfBirth), "dd/MM/yyyy")
+          : "N/A",
+        gender: genderName,
+        employeeNo,
+        employer: employerName,
+        gflNo: lead.fineractClientId?.toString() || undefined,
+        loanId: leadId,
         loanAmount: principal,
-        disbursedAmount: disbursedAmount,
-        numberOfPayments: numberOfPayments,
-        firstPaymentDate: firstPaymentDate,
-        interest: interest,
-        fees: fees,
+        disbursedAmount,
+        tenure,
+        numberOfPayments,
+        paymentFrequency: repaymentFrequency,
+        firstPaymentDate,
+        interest,
+        fees,
         totalCostOfCredit: interest + fees,
-        totalRepayment: totalRepayment,
+        totalRepayment,
         paymentPerPeriod:
           formattedSchedule.length > 0
             ? formattedSchedule.reduce(
@@ -407,13 +478,16 @@ export function LoanContracts({
                 0
               ) / formattedSchedule.length
             : totalRepayment / numberOfPayments,
-        monthlyPercentageRate: monthlyPercentageRate,
+        monthlyPercentageRate,
         repaymentSchedule: formattedSchedule,
         charges: formattedCharges,
-        currency: currency,
+        currency,
+        branch: lead.officeName || "Head Office",
+        loanOfficer: loanOfficerName,
+        loanPurpose: loanPurposeName,
       };
 
-      setContractData(contractData);
+      setContractData(builtContractData);
       console.log("Contract data built from schedule successfully");
     } catch (err) {
       console.error("Error building contract data:", err);
