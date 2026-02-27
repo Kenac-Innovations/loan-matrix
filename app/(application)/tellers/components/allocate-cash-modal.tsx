@@ -229,7 +229,7 @@ export function AllocateCashModal({
                     />
                     <span>Teller Vault</span>
                   </label>
-                  <label className="flex items-center space-x-2 cursor-pointer">
+                  <label className="flex items-center space-x-2 cursor-not-allowed opacity-50">
                     <input
                       type="radio"
                       name="allocationType"
@@ -237,6 +237,7 @@ export function AllocateCashModal({
                       checked={allocationType === "cashier"}
                       onChange={(e) => setAllocationType("cashier")}
                       className="w-4 h-4"
+                      disabled
                     />
                     <span>Cashier</span>
                   </label>
