@@ -1,10 +1,10 @@
 import amqp, { Connection, Channel, ConsumeMessage } from "amqplib";
 import prisma from "./prisma";
-import { fetchFineractAPI } from "./api";
 
 export interface BulkRepaymentMessage {
   itemId: string;
   uploadId: string;
+  tenantSlug: string;
   loanId: number;
   amount: number;
   transactionDate: string;
@@ -210,7 +210,6 @@ export class BulkRepaymentQueueService {
     });
 
     try {
-      // Build Fineract repayment body
       const repaymentBody: any = {
         dateFormat: message.dateFormat,
         locale: message.locale,
@@ -229,12 +228,10 @@ export class BulkRepaymentQueueService {
       if (message.receiptNumber) repaymentBody.receiptNumber = message.receiptNumber;
       if (message.bankNumber) repaymentBody.bankNumber = message.bankNumber;
 
-      const result = await fetchFineractAPI(
+      const result = await this.callFineractAPI(
+        message.tenantSlug,
         `/loans/${message.loanId}/transactions?command=repayment`,
-        {
-          method: "POST",
-          body: JSON.stringify(repaymentBody),
-        }
+        repaymentBody
       );
 
       // Success
@@ -280,6 +277,52 @@ export class BulkRepaymentQueueService {
         `[BulkRepayment] Failed: item=${message.itemId} error=${errorMsg}`
       );
     }
+  }
+
+  private async callFineractAPI(
+    tenantSlug: string,
+    endpoint: string,
+    body: any
+  ): Promise<any> {
+    const baseUrl = process.env.FINERACT_BASE_URL || "http://10.10.0.143:8443";
+    const serviceToken = process.env.FINERACT_SERVICE_TOKEN || "bWlmb3M6cGFzc3dvcmQ=";
+    const fineractTenantId = tenantSlug || process.env.FINERACT_TENANT_ID || "goodfellow";
+
+    const url = `${baseUrl}/fineract-provider/api/v1${endpoint.startsWith("/") ? endpoint : `/${endpoint}`}`;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      Authorization: `Basic ${serviceToken}`,
+      "Fineract-Platform-TenantId": fineractTenantId,
+    };
+
+    const fetchOptions: RequestInit = { method: "POST", headers, body: JSON.stringify(body) };
+
+    let response;
+    if (url.startsWith("http://")) {
+      response = await fetch(url, fetchOptions);
+    } else {
+      const https = require("https");
+      const agent = new https.Agent({ rejectUnauthorized: false });
+      response = await fetch(url, { ...fetchOptions, ...(({ agent } as any)) });
+    }
+
+    if (!response.ok) {
+      let errorData;
+      try { errorData = await response.json(); } catch { errorData = {}; }
+
+      const msg =
+        errorData?.errors?.[0]?.defaultUserMessage ||
+        errorData?.defaultUserMessage ||
+        `HTTP ${response.status}: ${response.statusText}`;
+
+      const error = new Error(`API error: ${response.status} ${response.statusText}`);
+      (error as any).status = response.status;
+      (error as any).errorData = { ...errorData, defaultUserMessage: msg };
+      throw error;
+    }
+
+    return response.json();
   }
 
   private async updateUploadCounters(uploadId: string): Promise<void> {

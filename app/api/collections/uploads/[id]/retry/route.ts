@@ -39,10 +39,16 @@ export async function POST(
     });
 
     // Ensure upload is in PROCESSING state
-    await prisma.bulkRepaymentUpload.update({
+    const upload = await prisma.bulkRepaymentUpload.update({
       where: { id },
       data: { status: "PROCESSING" },
     });
+
+    const tenant = await prisma.tenant.findUnique({
+      where: { id: upload.tenantId },
+      select: { slug: true },
+    });
+    const tenantSlug = tenant?.slug || "goodfellow";
 
     // Re-publish to queue
     const queueService = getBulkRepaymentQueueService();
@@ -53,6 +59,7 @@ export async function POST(
         await queueService.publishRepayment({
           itemId: item.id,
           uploadId: id,
+          tenantSlug,
           loanId: item.loanId,
           amount: Number(item.amount),
           transactionDate: item.transactionDate

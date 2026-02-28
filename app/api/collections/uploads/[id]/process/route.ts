@@ -24,6 +24,12 @@ export async function POST(
       );
     }
 
+    const tenant = await prisma.tenant.findUnique({
+      where: { id: upload.tenantId },
+      select: { slug: true },
+    });
+    const tenantSlug = tenant?.slug || "goodfellow";
+
     const stagedItems = await prisma.bulkRepaymentItem.findMany({
       where: { uploadId: id, status: "STAGED" },
       orderBy: { rowNumber: "asc" },
@@ -60,6 +66,7 @@ export async function POST(
         await queueService.publishRepayment({
           itemId: item.id,
           uploadId: id,
+          tenantSlug,
           loanId: item.loanId,
           amount: Number(item.amount),
           transactionDate: item.transactionDate
