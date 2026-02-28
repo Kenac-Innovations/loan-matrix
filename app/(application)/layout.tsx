@@ -8,7 +8,7 @@ import { Suspense } from "react";
 
 // Client components
 import { UserProfileClient } from "./components/user-profile-client";
-import { MobileSidebar } from "./components/mobile-sidebar";
+import { MobileSidebarWrapper } from "./components/mobile-sidebar-wrapper";
 import { SidebarNav } from "./components/sidebar-nav";
 import { ChatProvider } from "@/contexts/chat-context";
 import { TenantDisplay } from "@/components/tenant-display";
@@ -70,7 +70,7 @@ export default async function DashboardLayout({
           </div>
 
           {/* Mobile Sidebar */}
-          <MobileSidebar userProfileData={userProfileData} tenantLogoUrl={tenantLogoUrl} />
+          <MobileSidebarWrapper userProfileData={userProfileData} tenantLogoUrl={tenantLogoUrl} />
 
           {/* Main Content */}
           <div className="relative flex-1 h-screen overflow-y-auto">

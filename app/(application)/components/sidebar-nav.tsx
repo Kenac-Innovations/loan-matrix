@@ -6,6 +6,7 @@ import {
   Bot,
   CreditCard,
   FileText,
+  Receipt,
   TrendingUp,
   Users,
   Landmark,
@@ -65,6 +66,16 @@ export function SidebarNav() {
         <CreditCard className="h-4 w-4" />
         Loans
       </Link>
+
+      <MenuItemWithSubmenu
+        icon={<Receipt />}
+        label="Collections"
+        href="/collections"
+        subMenuItems={[
+          { label: "Expected Payments", href: "/collections" },
+          { label: "Bulk Receipting", href: "/collections/bulk-receipting" },
+        ]}
+      />
 
       <div className="space-y-1">
         <MenuItemWithSubmenu

@@ -826,3 +826,54 @@ enum AlertType {
   APPROVAL    // Approval request
   SYSTEM      // System notification
 }
+
+// ─── Bulk Repayment (Collections) ───────────────────────────────────────────
+
+model BulkRepaymentUpload {
+  id            String               @id @default(cuid())
+  tenantId      String
+  fileName      String
+  uploadedBy    String
+  status        String               @default("STAGING") // STAGING, PROCESSING, COMPLETED, FAILED
+  totalRows     Int                  @default(0)
+  queuedCount   Int                  @default(0)
+  successCount  Int                  @default(0)
+  failedCount   Int                  @default(0)
+  totalAmount   Decimal              @default(0) @db.Decimal(19, 4)
+  columnMapping Json?
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+  items         BulkRepaymentItem[]
+
+  @@index([tenantId, status])
+  @@index([createdAt])
+}
+
+model BulkRepaymentItem {
+  id              String              @id @default(cuid())
+  uploadId        String
+  upload          BulkRepaymentUpload @relation(fields: [uploadId], references: [id], onDelete: Cascade)
+  rowNumber       Int
+  loanId          Int
+  loanAccountNo   String?
+  clientName      String?
+  amount          Decimal             @db.Decimal(19, 4)
+  paymentTypeId   Int?
+  paymentTypeName String?
+  accountNumber   String?
+  chequeNumber    String?
+  routingCode     String?
+  receiptNumber   String?
+  bankNumber      String?
+  note            String?
+  transactionDate DateTime?
+  status          String              @default("STAGED") // STAGED, QUEUED, PROCESSING, SUCCESS, FAILED
+  errorMessage    String?
+  fineractTxnId   String?
+  processedAt     DateTime?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  @@index([uploadId, status])
+  @@index([loanId])
+}
