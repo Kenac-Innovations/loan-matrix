@@ -34,6 +34,7 @@ import { Badge } from "@/components/ui/badge";
 import { CheckCircle2, AlertCircle } from "lucide-react";
 import { Calendar } from "@/components/ui/calender";
 import { cn } from "@/lib/utils";
+import { useFeatureFlags } from "@/hooks/use-feature-flags";
 
 // Helper function to format repayment strategy name
 // Replaces "Penalties" with "Interest on Unpaid Balance" for display
@@ -259,6 +260,9 @@ export function LoanTermsForm({
   sharedFirstRepaymentOn,
   onFirstRepaymentDateChange,
 }: LoanTermsFormProps) {
+  const { tenantSlug } = useFeatureFlags();
+  const isChargesReadOnly = tenantSlug === "goodfellow";
+
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -2523,11 +2527,12 @@ export function LoanTermsForm({
                 <div>
                   <CardTitle>Charges</CardTitle>
                   <CardDescription>
-                    Manage loan charges and fees. Add, remove, or edit charges
-                    and their due dates.
+                    {isChargesReadOnly
+                      ? "View loan charges and fees. Charges cannot be modified."
+                      : "Manage loan charges and fees. Add, remove, or edit charges and their due dates."}
                   </CardDescription>
                 </div>
-                {loanTemplate?.chargeOptions && (
+                {loanTemplate?.chargeOptions && !isChargesReadOnly && (
                   <Button
                     type="button"
                     variant="outline"
@@ -2683,6 +2688,7 @@ export function LoanTermsForm({
                             </span>
                           )}
                         </div>
+                        {!isChargesReadOnly && (
                         <Button
                           type="button"
                           variant="ghost"
@@ -2691,6 +2697,7 @@ export function LoanTermsForm({
                         >
                           <Trash2 className="h-4 w-4 text-red-500" />
                         </Button>
+                        )}
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="space-y-2">
@@ -2699,6 +2706,7 @@ export function LoanTermsForm({
                             type="number"
                             step="0.01"
                             value={charge.amount}
+                            disabled={isChargesReadOnly}
                             onChange={(e) =>
                               handleUpdateChargeAmount(
                                 index,
@@ -2717,6 +2725,7 @@ export function LoanTermsForm({
                             <PopoverTrigger asChild>
                               <Button
                                 variant="outline"
+                                disabled={isChargesReadOnly}
                                 className={cn(
                                   "w-full justify-start text-left font-normal",
                                   !charge.dueDate && "text-muted-foreground"
