@@ -3,33 +3,54 @@ import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
 import { tenantMiddleware } from "./lib/tenant-middleware";
 
+const PUBLIC_PATH_PREFIXES = [
+  "/auth",
+  "/api",
+  "/_next",
+  "/static",
+];
+
+function isPublicPath(pathname: string): boolean {
+  if (PUBLIC_PATH_PREFIXES.some((prefix) => pathname.startsWith(prefix))) {
+    return true;
+  }
+  // Static assets (favicon.ico, images, fonts, etc.)
+  if (pathname.includes(".")) {
+    return true;
+  }
+  return false;
+}
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Apply tenant middleware first
   const tenantResponse = await tenantMiddleware(request);
   if (tenantResponse && tenantResponse.status !== 200) {
     return tenantResponse;
   }
 
-  // Check if the path is a protected route
-  const isProtectedRoute =
-    pathname.startsWith("/(application)") ||
-    pathname.startsWith("/dashboard") ||
-    pathname.startsWith("/leads");
+  const next = () => tenantResponse || NextResponse.next();
 
-  // Skip middleware for API and public routes
-  if (
-    pathname.startsWith("/api") ||
-    pathname.startsWith("/_next") ||
-    pathname.startsWith("/static") ||
-    pathname.startsWith("/auth") ||
-    pathname.includes(".") // Files like favicon.ico, etc.
-  ) {
-    return tenantResponse || NextResponse.next();
+  if (isPublicPath(pathname)) {
+    // Authenticated users on the login page get redirected to /leads
+    if (pathname === "/auth/login") {
+      try {
+        const token = await getToken({
+          req: request,
+          secret: process.env.NEXTAUTH_SECRET,
+        });
+        if (token) {
+          return NextResponse.redirect(new URL("/leads", request.url));
+        }
+      } catch {
+        // Fall through to show login page
+      }
+    }
+    return next();
   }
 
-  // Get the NextAuth.js token
+  // --- All remaining paths require authentication ---
+
   let token;
   try {
     token = await getToken({
@@ -38,40 +59,25 @@ export async function middleware(request: NextRequest) {
     });
   } catch (error) {
     console.error("Middleware token error:", error);
-    // If there's an error getting the token, treat as unauthenticated
     token = null;
   }
 
-  // If the route is protected and the user is not authenticated, redirect to login
-  if (isProtectedRoute && !token) {
-    const url = new URL("/auth/login", request.url);
-    url.searchParams.set("callbackUrl", encodeURI(request.url));
-    return NextResponse.redirect(url);
+  if (!token) {
+    const loginUrl = new URL("/auth/login", request.url);
+    loginUrl.searchParams.set("callbackUrl", encodeURI(request.url));
+    return NextResponse.redirect(loginUrl);
   }
 
-  // If the user is authenticated and trying to access login page, redirect to leads
-  if (pathname === "/auth/login" && token) {
+  // Authenticated user on root → redirect to /leads
+  if (pathname === "/") {
     return NextResponse.redirect(new URL("/leads", request.url));
   }
 
-  // If the user is authenticated and accessing the root, redirect to leads
-  if (pathname === "/" && token) {
-    return NextResponse.redirect(new URL("/leads", request.url));
-  }
-
-  return tenantResponse || NextResponse.next();
+  return next();
 }
 
-// Configure the middleware to run on specific paths
 export const config = {
   matcher: [
-    /*
-     * Match all request paths except for the ones starting with:
-     * - api (API routes)
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
-     */
-    "/((?!api|_next/static|_next/image|favicon.ico).*)",
+    "/((?!_next/static|_next/image|favicon.ico).*)",
   ],
 };
