@@ -47,7 +47,7 @@ export default function LoginPage() {
       const success = await login(username, password);
 
       if (success) {
-        router.push("/leads");
+        window.location.href = "/leads";
       } else {
         setError("Invalid username or password");
       }
