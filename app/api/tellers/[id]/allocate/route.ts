@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
 import { getSession } from "@/lib/auth";
 import { getOrgDefaultCurrencyCode } from "@/lib/currency-utils";
+import { fetchFineractAPI } from "@/lib/api";
 
 /**
  * POST /api/tellers/[id]/allocate
@@ -61,38 +62,64 @@ export async function POST(
 
     // If teller is linked to a bank, check bank's available balance
     if (teller.bankId && !skipBankCheck) {
-      // Get total bank allocations
-      const bankAllocations = await prisma.bankAllocation.findMany({
-        where: {
-          bankId: teller.bankId,
-          tenantId: tenant.id,
-          status: "ACTIVE",
-        },
-      });
-
-      const totalBankFunds = bankAllocations.reduce(
-        (sum, alloc) => sum + alloc.amount,
-        0
-      );
+      const bank = teller.bank!;
 
       // Get total already allocated to tellers from this bank
       const tellerAllocations = await prisma.cashAllocation.findMany({
         where: {
           tenantId: tenant.id,
           teller: { bankId: teller.bankId },
-          cashierId: null, // Only vault allocations
+          cashierId: null,
           status: "ACTIVE",
         },
       });
 
-      // Exclude opening balances - they are existing cash at tellers, not from bank
-      // Opening balances are identified by: notes containing "opening balance" OR allocatedBy = "SYSTEM-IMPORT"
       const allocatedToTellers = tellerAllocations
-        .filter((alloc) => 
-          !alloc.notes?.toLowerCase().includes("opening balance") && 
+        .filter((alloc) =>
+          !alloc.notes?.toLowerCase().includes("opening balance") &&
           alloc.allocatedBy !== "SYSTEM-IMPORT"
         )
         .reduce((sum, alloc) => sum + alloc.amount, 0);
+
+      // Use Fineract GL balance when available (consistent with UI display),
+      // fall back to local BankAllocation records otherwise.
+      let totalBankFunds = 0;
+      let balanceSource = "local";
+
+      if (bank.glAccountId) {
+        try {
+          const journalData = await fetchFineractAPI(
+            `/journalentries?glAccountId=${bank.glAccountId}&limit=500&orderBy=id&sortOrder=DESC`
+          );
+
+          if (journalData?.pageItems && journalData.pageItems.length > 0) {
+            for (const entry of journalData.pageItems) {
+              if (entry.entryType?.value === "DEBIT") {
+                totalBankFunds += entry.amount || 0;
+              } else if (entry.entryType?.value === "CREDIT") {
+                totalBankFunds -= entry.amount || 0;
+              }
+            }
+            balanceSource = "fineract_gl";
+          }
+        } catch (error) {
+          console.error("Failed to fetch GL balance from Fineract, falling back to local:", error);
+        }
+      }
+
+      if (balanceSource === "local") {
+        const bankAllocations = await prisma.bankAllocation.findMany({
+          where: {
+            bankId: teller.bankId,
+            tenantId: tenant.id,
+            status: "ACTIVE",
+          },
+        });
+        totalBankFunds = bankAllocations.reduce(
+          (sum, alloc) => sum + alloc.amount,
+          0
+        );
+      }
 
       const bankAvailableBalance = totalBankFunds - allocatedToTellers;
 
@@ -109,6 +136,7 @@ export async function POST(
               totalFunds: totalBankFunds,
               allocatedToTellers,
               availableBalance: bankAvailableBalance,
+              source: balanceSource,
             },
           },
           { status: 400 }
