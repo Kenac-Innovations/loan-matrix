@@ -12,6 +12,9 @@ export interface DataTableColumn<TData = any> {
   
   /** Key to access data from the row object */
   accessorKey?: keyof TData;
+
+  /** Optional: return a string/number for CSV/PDF export (avoids [object Object] when value is an object) */
+  getExportValue?: (item: TData) => string | number;
   
   /** Custom cell renderer function */
   cell?: (info: {

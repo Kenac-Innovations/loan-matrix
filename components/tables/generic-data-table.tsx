@@ -72,7 +72,11 @@ const exportToCSV = <TData,>(data: TData[], columns: DataTableColumn<TData>[], f
     const headers = columns.map(col => col.header).join(",");
     const rows = data.map(item =>
       columns.map(col => {
-        const value = col.accessorKey ? (item as any)[col.accessorKey] : "";
+        const value = col.getExportValue
+          ? col.getExportValue(item)
+          : col.accessorKey
+            ? (item as any)[col.accessorKey]
+            : "";
         if (value === null || value === undefined) return "";
         const str = String(value);
         return str.includes(",") || str.includes('"') || str.includes("\n")
@@ -119,7 +123,11 @@ const exportToPDF = async <TData,>(data: TData[], columns: DataTableColumn<TData
     const headers = columns.map(col => String(col.header));
     const rows = data.map(item =>
       columns.map(col => {
-        const value = col.accessorKey ? (item as any)[col.accessorKey] : "";
+        const value = col.getExportValue
+          ? col.getExportValue(item)
+          : col.accessorKey
+            ? (item as any)[col.accessorKey]
+            : "";
         return value === null || value === undefined ? "" : String(value);
       })
     );
