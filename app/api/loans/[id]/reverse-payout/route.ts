@@ -41,9 +41,10 @@ export async function POST(
       session.user.name ||
       session.user.email ||
       "Unknown";
-    const reason =
-      (body.reason as string)?.trim() ||
-      "Reversed from loan actions; cash returned to cashier";
+    const userReason = (body.reason as string)?.trim();
+    const reason = userReason
+      ? `Reversed in Fineract; cashier credited (${reversedBy}). ${userReason}`
+      : `Reversed in Fineract; cashier credited (${reversedBy})`;
 
     const payout = await prisma.loanPayout.findFirst({
       where: {
@@ -86,6 +87,18 @@ export async function POST(
       );
     }
 
+    // Amount to allocate back to cashier = amount paid out for this loan (must be positive)
+    const allocationAmount = Number(payout.amount);
+    if (!Number.isFinite(allocationAmount) || allocationAmount <= 0) {
+      return NextResponse.json(
+        {
+          error:
+            "Payout record has no valid amount. Cannot reverse. Amount paid out for this loan is missing or zero.",
+        },
+        { status: 400 }
+      );
+    }
+
     const cashier = await prisma.cashier.findFirst({
       where: { id: payout.cashierId, tenantId: tenant.id },
       include: { teller: true },
@@ -107,6 +120,16 @@ export async function POST(
     const reversedAt = new Date();
     const txnNote = `Reversal - ${reason}`;
 
+    // Send the payout amount to Fineract so net cash increases by that amount
+    const txnAmountStr = allocationAmount.toFixed(2);
+    console.log("[Reverse payout] Allocating to cashier:", {
+      fineractTellerId: teller.fineractTellerId,
+      fineractCashierId: cashier.fineractCashierId,
+      amount: allocationAmount,
+      txnAmount: txnAmountStr,
+      currency: payout.currency,
+    });
+
     try {
       const fineractService = await getFineractServiceWithSession();
       const result = await fineractService.allocateCashToCashier(
@@ -115,7 +138,7 @@ export async function POST(
         {
           txnDate: formatDateForFineract(reversedAt),
           currencyCode: payout.currency,
-          txnAmount: String(payout.amount),
+          txnAmount: txnAmountStr,
           txnNote,
           dateFormat: "dd MMMM yyyy",
           locale: "en",
@@ -129,7 +152,7 @@ export async function POST(
             tellerId: teller.id,
             cashierId: cashier.id,
             fineractAllocationId,
-            amount: payout.amount,
+            amount: allocationAmount,
             currency: payout.currency,
             allocatedBy: session.user.id,
             notes: txnNote,

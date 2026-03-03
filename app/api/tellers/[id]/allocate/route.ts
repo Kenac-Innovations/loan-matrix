@@ -11,7 +11,7 @@ import { fetchFineractAPI } from "@/lib/api";
  */
 export async function POST(
   request: NextRequest,
-  context: { params: Promise<{ id: string }> }
+  context: { params: Promise<{ id: string }> },
 ) {
   try {
     const params = await context.params;
@@ -33,7 +33,7 @@ export async function POST(
     if (!amount || amount <= 0) {
       return NextResponse.json(
         { error: "Amount must be greater than 0" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -74,10 +74,33 @@ export async function POST(
         },
       });
 
+      // Only count allocations that actually drew from the bank. Exclude:
+      // - Opening balances / SYSTEM-IMPORT (existing cash at teller, not from bank)
+      // - Returns from cashiers (session close, reversals) – cash returning to vault, not from bank
+      const isFromBank = (alloc: {
+        notes?: string | null;
+        allocatedBy?: string | null;
+      }) => {
+        const n = (alloc.notes ?? "").toLowerCase();
+        if (
+          n.includes("opening balance") ||
+          alloc.allocatedBy === "SYSTEM-IMPORT"
+        )
+          return false;
+        if (alloc.allocatedBy === "SYSTEM-REVERSAL") return false;
+        if (
+          n.includes("return from") ||
+          n.includes("session close") ||
+          n.includes("returned to vault")
+        )
+          return false;
+        return true;
+      };
       const allocatedToTellers = tellerAllocations
-        .filter((alloc) =>
-          !alloc.notes?.toLowerCase().includes("opening balance") &&
-          alloc.allocatedBy !== "SYSTEM-IMPORT"
+        .filter(
+          (alloc) =>
+            !alloc.notes?.toLowerCase().includes("opening balance") &&
+            alloc.allocatedBy !== "SYSTEM-IMPORT",
         )
         .reduce((sum, alloc) => sum + alloc.amount, 0);
 
@@ -89,7 +112,7 @@ export async function POST(
       if (bank.glAccountId) {
         try {
           const journalData = await fetchFineractAPI(
-            `/journalentries?glAccountId=${bank.glAccountId}&limit=500&orderBy=id&sortOrder=DESC`
+            `/journalentries?glAccountId=${bank.glAccountId}&limit=500&orderBy=id&sortOrder=DESC`,
           );
 
           if (journalData?.pageItems && journalData.pageItems.length > 0) {
@@ -103,7 +126,10 @@ export async function POST(
             balanceSource = "fineract_gl";
           }
         } catch (error) {
-          console.error("Failed to fetch GL balance from Fineract, falling back to local:", error);
+          console.error(
+            "Failed to fetch GL balance from Fineract, falling back to local:",
+            error,
+          );
         }
       }
 
@@ -117,7 +143,7 @@ export async function POST(
         });
         totalBankFunds = bankAllocations.reduce(
           (sum, alloc) => sum + alloc.amount,
-          0
+          0,
         );
       }
 
@@ -128,9 +154,9 @@ export async function POST(
           {
             error: "Insufficient bank balance",
             details: `Bank available balance: ${bankAvailableBalance.toFixed(
-              2
+              2,
             )} ${allocationCurrency}. Requested: ${requestedAmount.toFixed(
-              2
+              2,
             )} ${allocationCurrency}. Please allocate more funds to the bank first.`,
             bankBalance: {
               totalFunds: totalBankFunds,
@@ -139,7 +165,7 @@ export async function POST(
               source: balanceSource,
             },
           },
-          { status: 400 }
+          { status: 400 },
         );
       }
     }
@@ -171,7 +197,7 @@ export async function POST(
         error: "Failed to allocate cash",
         details: error instanceof Error ? error.message : "Unknown error",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
