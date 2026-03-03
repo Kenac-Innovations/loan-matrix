@@ -69,14 +69,16 @@ export async function GET(request: NextRequest) {
           },
         });
 
-        // Exclude opening balances from allocatedToTellers
-        // Opening balances are existing cash at tellers, not allocations from the bank
-        // Opening balances are identified by: notes containing "opening balance" OR allocatedBy = "SYSTEM-IMPORT"
+        // Only count allocations that drew from the bank (exclude opening balance, returns from cashiers)
+        const isFromBank = (alloc: { notes?: string | null; allocatedBy?: string | null }) => {
+          const n = (alloc.notes ?? "").toLowerCase();
+          if (n.includes("opening balance") || alloc.allocatedBy === "SYSTEM-IMPORT") return false;
+          if (alloc.allocatedBy === "SYSTEM-REVERSAL") return false;
+          if (n.includes("return from") || n.includes("session close") || n.includes("returned to vault")) return false;
+          return true;
+        };
         const allocatedToTellers = tellerAllocations
-          .filter((alloc) => 
-            !alloc.notes?.toLowerCase().includes("opening balance") && 
-            alloc.allocatedBy !== "SYSTEM-IMPORT"
-          )
+          .filter(isFromBank)
           .reduce((sum, alloc) => sum + alloc.amount, 0);
 
         // Get bank balance from Fineract GL account if configured

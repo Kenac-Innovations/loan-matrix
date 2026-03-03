@@ -53,26 +53,27 @@ export async function GET(
       return NextResponse.json({ error: "Bank not found" }, { status: 404 });
     }
 
-    // Calculate teller allocations from local database
-    // Opening balances are excluded from allocatedToTellers as they represent
-    // existing cash at tellers, not allocations from the bank
+    // Only count vault allocations that actually drew from the bank (same logic as allocate route)
+    const isFromBank = (alloc: { notes?: string | null; allocatedBy?: string | null }) => {
+      const n = (alloc.notes ?? "").toLowerCase();
+      if (n.includes("opening balance") || alloc.allocatedBy === "SYSTEM-IMPORT") return false;
+      if (alloc.allocatedBy === "SYSTEM-REVERSAL") return false;
+      if (n.includes("return from") || n.includes("session close") || n.includes("returned to vault")) return false;
+      return true;
+    };
+
     let allocatedToTellers = 0;
     const tellersWithBalances = bank.tellers.map((teller) => {
-      // Total vault balance includes opening balances (for teller display)
+      // Total vault balance includes all allocations (for teller display)
       const tellerVaultBalance = teller.cashAllocations.reduce(
         (sum, alloc) => sum + alloc.amount,
         0
       );
-      
-      // Only count allocations FROM BANK (exclude opening balances)
-      // Opening balances are identified by: notes containing "opening balance" OR allocatedBy = "SYSTEM-IMPORT"
+
       const bankAllocationsOnly = teller.cashAllocations
-        .filter((alloc) => 
-          !alloc.notes?.toLowerCase().includes("opening balance") && 
-          alloc.allocatedBy !== "SYSTEM-IMPORT"
-        )
+        .filter(isFromBank)
         .reduce((sum, alloc) => sum + alloc.amount, 0);
-      
+
       allocatedToTellers += bankAllocationsOnly;
 
       return {
