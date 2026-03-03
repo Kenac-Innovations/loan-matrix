@@ -191,11 +191,11 @@ export default function CashierTransactionsPage({
     }
   };
 
-  const getTransactionTypeBadge = (tx: Transaction) => {
+  const getTransactionTypeLabel = (tx: Transaction): string => {
     const txnTypeValue =
       typeof tx.txnType === "object"
-        ? tx.txnType?.value || ""
-        : tx.txnType || tx.transactionType?.value || tx.transactionType?.code || "";
+        ? (tx.txnType as { value?: string })?.value || ""
+        : (tx.txnType as string) || tx.transactionType?.value || tx.transactionType?.code || "";
 
     const txnTypeLower = txnTypeValue.toLowerCase();
     const isReversal = txnTypeLower.includes("reversal") || (tx as { _isReversal?: boolean })._isReversal;
@@ -208,15 +208,24 @@ export default function CashierTransactionsPage({
       txnTypeLower.includes("debit") ||
       txnTypeLower.includes("withdrawal");
 
-    if (isReversal) {
+    if (isReversal) return "Reversal (Cash In)";
+    if (isAllocate) return "Cash In";
+    if (isSettle) return "Cash Out";
+    return txnTypeValue || "Unknown";
+  };
+
+  const getTransactionTypeBadge = (tx: Transaction) => {
+    const label = getTransactionTypeLabel(tx);
+    if (label === "Reversal (Cash In)") {
       return <Badge className="bg-green-600 text-white">Reversal (Cash In)</Badge>;
     }
-    if (isAllocate) {
+    if (label === "Cash In") {
       return <Badge className="bg-green-500 text-white">Cash In</Badge>;
-    } else if (isSettle) {
+    }
+    if (label === "Cash Out") {
       return <Badge variant="destructive">Cash Out</Badge>;
     }
-    return <Badge variant="outline">{txnTypeValue || "Unknown"}</Badge>;
+    return <Badge variant="outline">{label}</Badge>;
   };
 
   const getTransactionAmount = (tx: Transaction) => {
@@ -253,6 +262,7 @@ export default function CashierTransactionsPage({
         header: "Type",
         accessorKey: "txnType" as keyof Transaction,
         enableSorting: true,
+        getExportValue: (row) => getTransactionTypeLabel(row),
         cell: ({ row }) => getTransactionTypeBadge(row.original),
       },
       {
