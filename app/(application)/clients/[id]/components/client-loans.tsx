@@ -107,11 +107,12 @@ export function ClientLoans({ clientId }: ClientLoansProps) {
       return null;
     };
 
-    // Transform and filter out loans submitted before 31 Dec 2025
+    // Filter by disbursement date, falling back to submission date for undisbursed loans
     return rawLoans
       .filter((loan: any) => {
-        const submitted = parseFineractDate(loan.timeline?.submittedOnDate);
-        return !submitted || submitted >= CUTOFF;
+        const date = parseFineractDate(loan.timeline?.actualDisbursementDate)
+          ?? parseFineractDate(loan.timeline?.submittedOnDate);
+        return !date || date >= CUTOFF;
       })
       .map((loan: any) => ({
         id: loan.id,
