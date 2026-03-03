@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
 import { getSession } from "@/lib/auth";
 import { getOrgDefaultCurrencyCode } from "@/lib/currency-utils";
+import { fetchFineractAPI } from "@/lib/api";
 
 /**
  * POST /api/tellers/[id]/allocate
@@ -10,7 +11,7 @@ import { getOrgDefaultCurrencyCode } from "@/lib/currency-utils";
  */
 export async function POST(
   request: NextRequest,
-  context: { params: Promise<{ id: string }> }
+  context: { params: Promise<{ id: string }> },
 ) {
   try {
     const params = await context.params;
@@ -32,7 +33,7 @@ export async function POST(
     if (!amount || amount <= 0) {
       return NextResponse.json(
         { error: "Amount must be greater than 0" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -61,26 +62,14 @@ export async function POST(
 
     // If teller is linked to a bank, check bank's available balance
     if (teller.bankId && !skipBankCheck) {
-      // Get total bank allocations
-      const bankAllocations = await prisma.bankAllocation.findMany({
-        where: {
-          bankId: teller.bankId,
-          tenantId: tenant.id,
-          status: "ACTIVE",
-        },
-      });
-
-      const totalBankFunds = bankAllocations.reduce(
-        (sum, alloc) => sum + alloc.amount,
-        0
-      );
+      const bank = teller.bank!;
 
       // Get total already allocated to tellers from this bank
       const tellerAllocations = await prisma.cashAllocation.findMany({
         where: {
           tenantId: tenant.id,
           teller: { bankId: teller.bankId },
-          cashierId: null, // Only vault allocations
+          cashierId: null,
           status: "ACTIVE",
         },
       });
@@ -88,16 +77,75 @@ export async function POST(
       // Only count allocations that actually drew from the bank. Exclude:
       // - Opening balances / SYSTEM-IMPORT (existing cash at teller, not from bank)
       // - Returns from cashiers (session close, reversals) – cash returning to vault, not from bank
-      const isFromBank = (alloc: { notes?: string | null; allocatedBy?: string | null }) => {
+      const isFromBank = (alloc: {
+        notes?: string | null;
+        allocatedBy?: string | null;
+      }) => {
         const n = (alloc.notes ?? "").toLowerCase();
-        if (n.includes("opening balance") || alloc.allocatedBy === "SYSTEM-IMPORT") return false;
+        if (
+          n.includes("opening balance") ||
+          alloc.allocatedBy === "SYSTEM-IMPORT"
+        )
+          return false;
         if (alloc.allocatedBy === "SYSTEM-REVERSAL") return false;
-        if (n.includes("return from") || n.includes("session close") || n.includes("returned to vault")) return false;
+        if (
+          n.includes("return from") ||
+          n.includes("session close") ||
+          n.includes("returned to vault")
+        )
+          return false;
         return true;
       };
       const allocatedToTellers = tellerAllocations
-        .filter(isFromBank)
+        .filter(
+          (alloc) =>
+            !alloc.notes?.toLowerCase().includes("opening balance") &&
+            alloc.allocatedBy !== "SYSTEM-IMPORT",
+        )
         .reduce((sum, alloc) => sum + alloc.amount, 0);
+
+      // Use Fineract GL balance when available (consistent with UI display),
+      // fall back to local BankAllocation records otherwise.
+      let totalBankFunds = 0;
+      let balanceSource = "local";
+
+      if (bank.glAccountId) {
+        try {
+          const journalData = await fetchFineractAPI(
+            `/journalentries?glAccountId=${bank.glAccountId}&limit=500&orderBy=id&sortOrder=DESC`,
+          );
+
+          if (journalData?.pageItems && journalData.pageItems.length > 0) {
+            for (const entry of journalData.pageItems) {
+              if (entry.entryType?.value === "DEBIT") {
+                totalBankFunds += entry.amount || 0;
+              } else if (entry.entryType?.value === "CREDIT") {
+                totalBankFunds -= entry.amount || 0;
+              }
+            }
+            balanceSource = "fineract_gl";
+          }
+        } catch (error) {
+          console.error(
+            "Failed to fetch GL balance from Fineract, falling back to local:",
+            error,
+          );
+        }
+      }
+
+      if (balanceSource === "local") {
+        const bankAllocations = await prisma.bankAllocation.findMany({
+          where: {
+            bankId: teller.bankId,
+            tenantId: tenant.id,
+            status: "ACTIVE",
+          },
+        });
+        totalBankFunds = bankAllocations.reduce(
+          (sum, alloc) => sum + alloc.amount,
+          0,
+        );
+      }
 
       const bankAvailableBalance = totalBankFunds - allocatedToTellers;
 
@@ -106,17 +154,18 @@ export async function POST(
           {
             error: "Insufficient bank balance",
             details: `Bank available balance: ${bankAvailableBalance.toFixed(
-              2
+              2,
             )} ${allocationCurrency}. Requested: ${requestedAmount.toFixed(
-              2
+              2,
             )} ${allocationCurrency}. Please allocate more funds to the bank first.`,
             bankBalance: {
               totalFunds: totalBankFunds,
               allocatedToTellers,
               availableBalance: bankAvailableBalance,
+              source: balanceSource,
             },
           },
-          { status: 400 }
+          { status: 400 },
         );
       }
     }
@@ -148,7 +197,7 @@ export async function POST(
         error: "Failed to allocate cash",
         details: error instanceof Error ? error.message : "Unknown error",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
