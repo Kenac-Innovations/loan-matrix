@@ -179,9 +179,31 @@ export function LeadsStatusTabs() {
   const tenantSlug = getTenantSlugFromHost();
   
   // Get user info for role-based filtering
-  const userOfficeName = (session?.user as any)?.officeName;
+  const sessionOfficeName = (session?.user as any)?.officeName;
   const userName = session?.user?.name;
-  const userRoles = (session?.user as any)?.roles || [];
+  const sessionRoles = (session?.user as any)?.roles || [];
+  
+  // Fetch Fineract roles as fallback when session roles are empty
+  const [fineractRoles, setFineractRoles] = useState<any[]>([]);
+  const [fineractOfficeName, setFineractOfficeName] = useState<string | null>(null);
+  useEffect(() => {
+    if (session && sessionRoles.length === 0) {
+      fetch("/api/auth/fineract-roles")
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.roles && data.roles.length > 0) {
+            setFineractRoles(data.roles);
+          }
+          if (data.officeName) {
+            setFineractOfficeName(data.officeName);
+          }
+        })
+        .catch((err) => console.error("Failed to fetch Fineract roles:", err));
+    }
+  }, [session, sessionRoles.length]);
+
+  const userRoles = sessionRoles.length > 0 ? sessionRoles : fineractRoles;
+  const userOfficeName = sessionOfficeName || fineractOfficeName;
   const [tabData, setTabData] = useState<Record<string, ReportData | null>>({
     drafts: null,
     pending: null,
@@ -245,11 +267,11 @@ export function LeadsStatusTabs() {
   const tabFilterOptions = useMemo(() => {
     const options: Record<string, { branches: string[]; loanProducts: string[]; submittedBy: string[] }> = {};
     for (const tab of TABS) {
-      const data = tabData[tab.report]?.data || [];
+      const rawData = tabData[tab.report]?.data || [];
       options[tab.report] = {
-        branches: getFilterOptions(data, "branch"),
-        loanProducts: getFilterOptions(data, "loan_product"),
-        submittedBy: getFilterOptions(data, "submitted_by") || getFilterOptions(data, "created_by"),
+        branches: getFilterOptions(rawData, "branch"),
+        loanProducts: getFilterOptions(rawData, "loan_product"),
+        submittedBy: getFilterOptions(rawData, "submitted_by") || getFilterOptions(rawData, "created_by"),
       };
     }
     return options;
@@ -385,8 +407,8 @@ export function LeadsStatusTabs() {
     // Check permissions first
     if (hasAllFunctions) return true;
     
-    // Check role names - include common variations
-    const adminRolePatterns = ["super", "admin", "manager", "all_functions", "head office", "headquarters"];
+    // Check role names - only true admin/super roles, NOT branch manager
+    const adminRolePatterns = ["super", "all_functions", "head office", "headquarters"];
     return adminRolePatterns.some(pattern => hasRole(pattern));
   }, [hasAllFunctions, hasRole]);
 
@@ -414,7 +436,11 @@ export function LeadsStatusTabs() {
       }
     }
     
-    // Default to all leads (for users without specific roles)
+    // Default: restrict to user's own leads (safe default)
+    if (userName) {
+      return { type: "user" as const, value: userName, label: "My Leads" };
+    }
+    
     return { type: "all" as const, label: "All Leads" };
   }, [session, isAdminUser, hasRole, userOfficeName, userName]);
 
@@ -696,7 +722,8 @@ export function LeadsStatusTabs() {
       );
     }
 
-    const filteredData = getFilteredData(report, data.data);
+    const roleScopedData = getRoleScopedData(data.data);
+    const filteredData = getFilteredData(report, roleScopedData);
     const filterOpts = tabFilterOptions[report];
     const tabFilters = filters[report];
 
@@ -777,7 +804,7 @@ export function LeadsStatusTabs() {
           {(tabFilters.branch !== "all" || tabFilters.loanProduct !== "all" || tabFilters.submittedBy !== "all") && (
             <div className="flex items-center gap-2 ml-auto">
               <Badge variant="secondary" className="text-xs">
-                {filteredData.length} of {data.data.length} records
+                {filteredData.length} of {roleScopedData.length} records
               </Badge>
               <Button
                 variant="ghost"
@@ -1028,7 +1055,7 @@ export function LeadsStatusTabs() {
                     {loading[tab.id] && !tabData[tab.id] ? (
                       <Loader2 className="h-3 w-3 animate-spin" />
                     ) : (
-                      String(tabCounts[tab.id])
+                      String(pipelineStats[tab.report as keyof typeof pipelineStats] ?? tabCounts[tab.id])
                     )}
                   </Badge>
                 </div>

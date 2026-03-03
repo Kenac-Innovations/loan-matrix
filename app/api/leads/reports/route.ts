@@ -274,17 +274,19 @@ async function getDraftsFromLocalDB(startDate: string, endDate: string, request:
 
     console.log("Fetching drafts for tenant:", tenant.id, "from", startDateTime, "to", endDateTime);
 
-    // Fetch Fineract users to map user IDs to names
-    let userMap: Record<string, string> = {};
+    // Fetch Fineract users to map user IDs to names and offices
+    let userMap: Record<string, { name: string; office: string }> = {};
     try {
       const fineractService = await getFineractServiceWithSession();
       const users = await fineractService.getUsers();
       users.forEach((user: any) => {
-        userMap[user.id.toString()] = user.username || user.displayName || `User ${user.id}`;
+        userMap[user.id.toString()] = {
+          name: user.username || user.displayName || `User ${user.id}`,
+          office: user.officeName || "",
+        };
       });
     } catch (err) {
       console.error("Error fetching Fineract users for drafts:", err);
-      // Continue without user names - will fall back to IDs
     }
 
     const draftMaxAge = new Date(Date.now() - 48 * 60 * 60 * 1000);
@@ -328,10 +330,17 @@ async function getDraftsFromLocalDB(startDate: string, endDate: string, request:
       const nameParts = [draft.firstname, draft.middlename, draft.lastname].filter(Boolean);
       const fullName = nameParts.length > 0 ? nameParts.join(" ") : "Unknown";
       
-      // Get user name - prefer stored name, then lookup from Fineract, then fallback to ID
+      // Get user name and branch from Fineract user data
       let createdByName = draft.createdByUserName;
-      if (!createdByName && draft.userId) {
-        createdByName = userMap[draft.userId] || draft.userId;
+      let branch = "";
+      const fineractUser = draft.userId ? userMap[draft.userId] : null;
+      if (!createdByName && fineractUser) {
+        createdByName = fineractUser.name;
+      } else if (!createdByName && draft.userId) {
+        createdByName = draft.userId;
+      }
+      if (fineractUser) {
+        branch = fineractUser.office;
       }
       
       const paymentLabels: Record<string, string> = {
@@ -351,6 +360,7 @@ async function getDraftsFromLocalDB(startDate: string, endDate: string, request:
         created_date: draft.createdAt,
         pipeline_stage: draft.currentStage?.name || "New",
         created_by: createdByName || "Unknown",
+        branch: branch || "",
         payment_type: paymentType,
       };
     });
