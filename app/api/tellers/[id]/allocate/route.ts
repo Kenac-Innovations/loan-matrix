@@ -85,13 +85,18 @@ export async function POST(
         },
       });
 
-      // Exclude opening balances - they are existing cash at tellers, not from bank
-      // Opening balances are identified by: notes containing "opening balance" OR allocatedBy = "SYSTEM-IMPORT"
+      // Only count allocations that actually drew from the bank. Exclude:
+      // - Opening balances / SYSTEM-IMPORT (existing cash at teller, not from bank)
+      // - Returns from cashiers (session close, reversals) – cash returning to vault, not from bank
+      const isFromBank = (alloc: { notes?: string | null; allocatedBy?: string | null }) => {
+        const n = (alloc.notes ?? "").toLowerCase();
+        if (n.includes("opening balance") || alloc.allocatedBy === "SYSTEM-IMPORT") return false;
+        if (alloc.allocatedBy === "SYSTEM-REVERSAL") return false;
+        if (n.includes("return from") || n.includes("session close") || n.includes("returned to vault")) return false;
+        return true;
+      };
       const allocatedToTellers = tellerAllocations
-        .filter((alloc) => 
-          !alloc.notes?.toLowerCase().includes("opening balance") && 
-          alloc.allocatedBy !== "SYSTEM-IMPORT"
-        )
+        .filter(isFromBank)
         .reduce((sum, alloc) => sum + alloc.amount, 0);
 
       const bankAvailableBalance = totalBankFunds - allocatedToTellers;
