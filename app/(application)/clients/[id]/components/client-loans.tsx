@@ -98,34 +98,48 @@ export function ClientLoans({ clientId }: ClientLoansProps) {
       rawLoans = data.loanAccounts;
     }
     
-    // Transform the loan data to match the expected interface
-    return rawLoans.map((loan: any) => ({
-      id: loan.id,
-      accountNo: loan.accountNo,
-      loanProductName: loan.productName || loan.loanProductName,
-      principal: loan.originalLoan || loan.principal,
-      approvedPrincipal: loan.originalLoan || loan.approvedPrincipal || loan.principal,
-      interestRatePerPeriod: loan.interestRatePerPeriod || 0,
-      numberOfRepayments: loan.numberOfRepayments || 0,
-      status: {
-        id: loan.status?.id || 0,
-        code: loan.status?.code || "",
-        value: loan.status?.value || "",
-        active: loan.status?.active || false,
-        closed: loan.status?.closed || false,
-      },
-      timeline: {
-        submittedOnDate: loan.timeline?.submittedOnDate || "",
-        approvedOnDate: loan.timeline?.approvedOnDate || "",
-        actualDisbursementDate: loan.timeline?.actualDisbursementDate || "",
-        expectedMaturityDate: loan.timeline?.expectedMaturityDate || "",
-      },
-      summary: {
-        principalOutstanding: loan.loanBalance || 0,
-        totalOutstanding: loan.loanBalance || 0,
-        totalOverdue: loan.inArrears ? (loan.loanBalance || 0) : 0,
-      },
-    }));
+    const CUTOFF = new Date("2026-01-01T00:00:00Z");
+
+    const parseFineractDate = (d: any): Date | null => {
+      if (!d) return null;
+      if (Array.isArray(d) && d.length >= 3) return new Date(d[0], d[1] - 1, d[2]);
+      if (typeof d === "string") return new Date(d);
+      return null;
+    };
+
+    // Transform and filter out loans submitted before 31 Dec 2025
+    return rawLoans
+      .filter((loan: any) => {
+        const submitted = parseFineractDate(loan.timeline?.submittedOnDate);
+        return !submitted || submitted >= CUTOFF;
+      })
+      .map((loan: any) => ({
+        id: loan.id,
+        accountNo: loan.accountNo,
+        loanProductName: loan.productName || loan.loanProductName,
+        principal: loan.originalLoan || loan.principal,
+        approvedPrincipal: loan.originalLoan || loan.approvedPrincipal || loan.principal,
+        interestRatePerPeriod: loan.interestRatePerPeriod || 0,
+        numberOfRepayments: loan.numberOfRepayments || 0,
+        status: {
+          id: loan.status?.id || 0,
+          code: loan.status?.code || "",
+          value: loan.status?.value || "",
+          active: loan.status?.active || false,
+          closed: loan.status?.closed || false,
+        },
+        timeline: {
+          submittedOnDate: loan.timeline?.submittedOnDate || "",
+          approvedOnDate: loan.timeline?.approvedOnDate || "",
+          actualDisbursementDate: loan.timeline?.actualDisbursementDate || "",
+          expectedMaturityDate: loan.timeline?.expectedMaturityDate || "",
+        },
+        summary: {
+          principalOutstanding: loan.loanBalance || 0,
+          totalOutstanding: loan.loanBalance || 0,
+          totalOverdue: loan.inArrears ? (loan.loanBalance || 0) : 0,
+        },
+      }));
   })();
 
   const getStatusBadge = (status: FineractLoan["status"]) => {

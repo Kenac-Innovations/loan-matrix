@@ -76,17 +76,23 @@ export async function GET(request: NextRequest) {
       });
 
       if (tenant) {
-        // Extract loan IDs from the report data
+        // Extract loan IDs and external IDs (lead IDs) from the report data
         const loanIds = result
           .map((row: any) => row.loan_id)
           .filter((id: any) => id != null);
+        const externalIds = result
+          .map((row: any) => row.external_id || row.client_external_id)
+          .filter((id: any) => id != null && String(id).trim() !== "");
 
-        if (loanIds.length > 0) {
-          // Look up local leads by fineractLoanId (include preferredPaymentMethod for Payment Type column)
+        if (loanIds.length > 0 || externalIds.length > 0) {
+          // Look up local leads by fineractLoanId OR by lead ID (external_id from Fineract report)
           const leads = await prisma.lead.findMany({
             where: {
               tenantId: tenant.id,
-              fineractLoanId: { in: loanIds.map((id: any) => Number(id)) },
+              OR: [
+                ...(loanIds.length > 0 ? [{ fineractLoanId: { in: loanIds.map((id: any) => Number(id)) } }] : []),
+                ...(externalIds.length > 0 ? [{ id: { in: externalIds.map(String) } }] : []),
+              ],
             },
             select: {
               id: true,
@@ -95,24 +101,29 @@ export async function GET(request: NextRequest) {
             },
           });
 
-          // Create a map of fineractLoanId -> leadId and fineractLoanId -> preferredPaymentMethod
-          const leadIdMap = new Map(
-            leads.map((lead) => [lead.fineractLoanId, lead.id])
+          // Map leads by fineractLoanId and by lead ID for fast lookups
+          const leadByFineractLoanId = new Map(
+            leads.filter((l) => l.fineractLoanId != null).map((lead) => [lead.fineractLoanId!, lead])
           );
-          const preferredPaymentMethodMap = new Map(
-            leads
-              .filter((l) => l.preferredPaymentMethod != null)
-              .map((lead) => [lead.fineractLoanId, lead.preferredPaymentMethod!])
+          const leadByIdMap = new Map(
+            leads.map((lead) => [lead.id, lead])
           );
 
           // For disbursed or payout report, fetch payout statuses; for payout only, also payment method
+          // Use fineractLoanId from matched leads as well (in case Fineract report has no loan_id column)
+          const allFineractLoanIds = [
+            ...loanIds.map((id: any) => Number(id)),
+            ...leads.filter((l) => l.fineractLoanId != null).map((l) => l.fineractLoanId!),
+          ];
+          const uniqueFineractLoanIds = [...new Set(allFineractLoanIds)];
+
           let payoutStatusMap = new Map<number, string>();
           let payoutPaymentMethodMap = new Map<number, string>();
-          if (report === "disbursed" || report === "payout") {
+          if ((report === "disbursed" || report === "payout") && uniqueFineractLoanIds.length > 0) {
             const payouts = await prisma.loanPayout.findMany({
               where: {
                 tenantId: tenant.id,
-                fineractLoanId: { in: loanIds.map((id: any) => Number(id)) },
+                fineractLoanId: { in: uniqueFineractLoanIds },
               },
               select: {
                 fineractLoanId: true,
@@ -149,28 +160,37 @@ export async function GET(request: NextRequest) {
 
           // Add lead_id, payout_status, payment_type (dedicated column), and fix branch when it shows payment type
           result = result.map((row: any) => {
-            const loanId = Number(row.loan_id);
+            const rowLoanId = row.loan_id != null ? Number(row.loan_id) : null;
+            const rowExternalId = row.external_id || row.client_external_id || null;
+
+            // Resolve the lead: try fineractLoanId match first, then external_id (lead ID)
+            let resolvedLead = rowLoanId ? leadByFineractLoanId.get(rowLoanId) ?? null : null;
+            if (!resolvedLead && rowExternalId) {
+              resolvedLead = leadByIdMap.get(String(rowExternalId)) || null;
+            }
+
+            const resolvedLeadId = resolvedLead?.id || null;
+            const resolvedFineractLoanId = resolvedLead?.fineractLoanId ?? rowLoanId;
+            const fromLead = resolvedLead?.preferredPaymentMethod ?? null;
+            const fromPayout = (report === "disbursed" || report === "payout") && resolvedFineractLoanId
+              ? payoutPaymentMethodMap.get(resolvedFineractLoanId) : null;
+            const rawPaymentType = fromLead || fromPayout || null;
+            const paymentTypeLabel = rawPaymentType
+              ? (PAYMENT_TYPE_LABELS[String(rawPaymentType).toUpperCase().replace(/\s+/g, "_")] || rawPaymentType)
+              : null;
+
             const enrichedRow: any = {
               ...row,
-              lead_id: leadIdMap.get(loanId) || null,
+              lead_id: resolvedLeadId,
+              payment_type: paymentTypeLabel,
             };
 
             if (report === "disbursed" || report === "payout") {
-              enrichedRow.payout_status = payoutStatusMap.get(loanId) || "PENDING";
+              enrichedRow.payout_status = resolvedFineractLoanId
+                ? (payoutStatusMap.get(resolvedFineractLoanId) || "PENDING")
+                : "PENDING";
             }
-            // Dedicated Payment Type column: from Lead preferredPaymentMethod, or payout paymentMethod for disbursed/payout
-            const fromLead = preferredPaymentMethodMap.get(loanId);
-            const fromPayout = (report === "disbursed" || report === "payout") ? payoutPaymentMethodMap.get(loanId) : null;
-            const rawPaymentType = fromLead || fromPayout || null;
-            if (rawPaymentType) {
-              const key = String(rawPaymentType).toUpperCase().replace(/\s+/g, "_");
-              enrichedRow.payment_type = PAYMENT_TYPE_LABELS[key] || rawPaymentType;
-            } else {
-              enrichedRow.payment_type = null;
-            }
-            if (report === "payout") {
-              enrichedRow.payment_method = payoutPaymentMethodMap.get(loanId) || null;
-            }
+            
 
             // If Fineract report put payment type in "branch", show actual branch (office) in Branch column
             if (isPaymentTypeValue(row.branch)) {
@@ -193,8 +213,16 @@ export async function GET(request: NextRequest) {
           }
 
           console.log(`Enriched ${leads.length} rows with local lead IDs`);
+        } else {
+          // No local leads found — still add payment_type column so it's visible
+          result = result.map((row: any) => ({ ...row, payment_type: null }));
         }
       }
+    }
+
+    // Ensure payment_type column is always present even if enrichment was skipped
+    if (result.length > 0 && !("payment_type" in result[0])) {
+      result = result.map((row: any) => ({ ...row, payment_type: null }));
     }
 
     return NextResponse.json({
@@ -259,12 +287,15 @@ async function getDraftsFromLocalDB(startDate: string, endDate: string, request:
       // Continue without user names - will fall back to IDs
     }
 
+    const draftMaxAge = new Date(Date.now() - 48 * 60 * 60 * 1000);
+
     const drafts = await prisma.lead.findMany({
       where: {
         tenantId: tenant.id,
         loanSubmittedToFineract: false,
+        status: "DRAFT",
         createdAt: {
-          gte: startDateTime,
+          gte: startDateTime > draftMaxAge ? startDateTime : draftMaxAge,
           lte: endDateTime,
         },
       },

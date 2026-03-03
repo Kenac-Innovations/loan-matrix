@@ -106,7 +106,7 @@ const TABS: TabConfig[] = [
   },
   {
     id: "payout",
-    label: "Payout",
+    label: "Paid Out",
     report: "payout",
     bgColor: "bg-emerald-600 dark:bg-emerald-700",
     activeBg: "data-[state=active]:bg-emerald-600 dark:data-[state=active]:bg-emerald-700",
@@ -530,7 +530,7 @@ export function LeadsStatusTabs() {
   const PAYOUT_STATUS_COLUMNS = new Set(["payout_status"]);
 
   // Columns that should be rendered as payment method (friendly labels)
-  const PAYMENT_METHOD_COLUMNS = new Set(["payment_method", "payment_type", "preferredpaymentmethod", "preferredPaymentMethod"]);
+  const PAYMENT_METHOD_COLUMNS = new Set(["payment_method", "payment_type", "payout_method", "preferredpaymentmethod", "preferredPaymentMethod"]);
   const PAYMENT_METHOD_LABELS: Record<string, string> = {
     CASH: "Cash",
     MOBILE_MONEY: "Mobile Money",
@@ -574,11 +574,19 @@ export function LeadsStatusTabs() {
         cell: ({ getValue, row }) => {
           const value = getValue();
           
-          // Render payment_method with friendly labels (e.g. Cash, Mobile Money, Bank Transfer)
+          // Render payment_method as colored badges
           if (isPaymentMethodColumn) {
-            const raw = value ? String(value).toUpperCase().replace(/\s+/g, "_") : "";
-            const label = raw ? (PAYMENT_METHOD_LABELS[raw] || raw.replace(/_/g, " ")) : "—";
-            return <span className="font-medium">{label}</span>;
+            const raw = value ? String(value).toUpperCase().replaceAll(/\s+/g, "_") : "";
+            const label = raw ? (PAYMENT_METHOD_LABELS[raw] || raw.replaceAll("_", " ")) : null;
+            if (!label) return <span className="text-muted-foreground">—</span>;
+            const badgeCls = raw === "CASH"
+              ? "bg-amber-100 text-amber-800 border-amber-200"
+              : raw === "MOBILE_MONEY"
+              ? "bg-blue-100 text-blue-800 border-blue-200"
+              : raw === "BANK_TRANSFER"
+              ? "bg-purple-100 text-purple-800 border-purple-200"
+              : "bg-gray-100 text-gray-800 border-gray-200";
+            return <Badge className={`${badgeCls} text-xs`}>{label}</Badge>;
           }
           
           // Render payout_status with colored badges

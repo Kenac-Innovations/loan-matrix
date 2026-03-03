@@ -532,6 +532,18 @@ export default async function LeadDetailPage({
                         </span>
                       </span>
                     )}
+                    {lead.preferredPaymentMethod && (() => {
+                      const method = String(lead.preferredPaymentMethod).toUpperCase().replaceAll(/\s+/g, "_");
+                      const label = method === "CASH" ? "Cash" : method === "MOBILE_MONEY" ? "Mobile Money" : method === "BANK_TRANSFER" ? "Bank Transfer" : lead.preferredPaymentMethod;
+                      const cls = method === "CASH"
+                        ? "bg-amber-100 text-amber-800 border-amber-200"
+                        : method === "MOBILE_MONEY"
+                        ? "bg-blue-100 text-blue-800 border-blue-200"
+                        : method === "BANK_TRANSFER"
+                        ? "bg-purple-100 text-purple-800 border-purple-200"
+                        : "bg-gray-100 text-gray-800 border-gray-200";
+                      return <Badge className={`${cls} text-xs mr-2`}>{label}</Badge>;
+                    })()}
                     {fineractLoanId && (
                       <span>
                         Loan:{" "}

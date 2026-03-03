@@ -168,11 +168,13 @@ export async function fetchDashboardData(): Promise<DashboardData> {
     // Fetch recent leads from database
     let recentLeads: any[] = [];
     try {
+      const draftMaxAge = new Date(Date.now() - 48 * 60 * 60 * 1000);
       recentLeads = await prisma.lead.findMany({
         where: {
-          status: {
-            in: ["SUBMITTED", "DRAFT"],
-          },
+          OR: [
+            { status: "SUBMITTED" },
+            { status: "DRAFT", createdAt: { gte: draftMaxAge } },
+          ],
         },
         orderBy: {
           createdAt: "desc",
