@@ -634,35 +634,44 @@ export function ComprehensiveLeadDetails({
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-6 text-sm">
                   <div>
                     <p className="text-muted-foreground">Gender</p>
-                    <p className="font-medium">{lead.gender || "N/A"}</p>
+                    <p className="font-medium">{lead.gender || fineractClient?.gender?.name || "N/A"}</p>
                   </div>
                   <div>
                     <p className="text-muted-foreground">Date of Birth</p>
                     <p className="font-medium">
                       {lead.dateOfBirth
                         ? format(new Date(lead.dateOfBirth), "PP")
+                        : fineractClient?.dateOfBirth
+                        ? format(
+                            new Date(
+                              Array.isArray(fineractClient.dateOfBirth)
+                                ? `${fineractClient.dateOfBirth[0]}-${String(fineractClient.dateOfBirth[1]).padStart(2, "0")}-${String(fineractClient.dateOfBirth[2]).padStart(2, "0")}`
+                                : fineractClient.dateOfBirth
+                            ),
+                            "PP"
+                          )
                         : "N/A"}
                     </p>
                   </div>
                   <div>
                     <p className="text-muted-foreground">External ID</p>
-                    <p className="font-medium">{lead.externalId || "N/A"}</p>
+                    <p className="font-medium">{lead.externalId || fineractClient?.externalId || "N/A"}</p>
                   </div>
                   <div>
                     <p className="text-muted-foreground">Classification</p>
                     <p className="font-medium">
-                      {lead.clientClassificationName || "N/A"}
+                      {lead.clientClassificationName || fineractClient?.clientClassification?.name || "N/A"}
                     </p>
                   </div>
                   <div>
                     <p className="text-muted-foreground">Client Type</p>
                     <p className="font-medium">
-                      {lead.clientTypeName || "N/A"}
+                      {lead.clientTypeName || fineractClient?.clientType?.name || "N/A"}
                     </p>
                   </div>
                   <div>
                     <p className="text-muted-foreground">Office</p>
-                    <p className="font-medium">{lead.officeName || "N/A"}</p>
+                    <p className="font-medium">{lead.officeName || fineractClient?.officeName || "N/A"}</p>
                   </div>
                   <div>
                     <p className="text-muted-foreground">Phone</p>

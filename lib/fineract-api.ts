@@ -1417,7 +1417,7 @@ export function getFineractService(
   // If we have an auth token, create a new instance with it
   if (authToken) {
     const config: FineractConfig = {
-      baseUrl: process.env.FINERACT_BASE_URL || "https://demo.fineract.dev",
+      baseUrl: process.env.FINERACT_BASE_URL || "http://mifos-be.kenac.co.zw",
       username: "", // Not needed when using token
       password: "", // Not needed when using token
       tenantId: tenantId || process.env.FINERACT_TENANT_ID || "goodfellow",
@@ -1428,7 +1428,7 @@ export function getFineractService(
   // Fallback to singleton with env credentials
   if (!fineractService) {
     const config: FineractConfig = {
-      baseUrl: process.env.FINERACT_BASE_URL || "https://demo.fineract.dev",
+      baseUrl: process.env.FINERACT_BASE_URL || "http://mifos-be.kenac.co.zw",
       username: process.env.FINERACT_USERNAME || "mifos",
       password: process.env.FINERACT_PASSWORD || "password",
       tenantId: tenantId || process.env.FINERACT_TENANT_ID || "goodfellow",
