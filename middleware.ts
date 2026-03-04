@@ -3,10 +3,19 @@ import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
 import { tenantMiddleware } from "./lib/tenant-middleware";
 
-const AUTH_BYPASS_PREFIXES = [
+const PUBLIC_PREFIXES = [
   "/auth",
   "/_next",
   "/static",
+];
+
+const PUBLIC_API_PREFIXES = [
+  "/api/auth",
+  "/api/webhooks",
+  "/api/ussd-leads/payment-callback",
+  "/api/queue/health",
+  "/api/tenant",
+  "/api/init",
 ];
 
 const NO_CACHE_HEADERS = {
@@ -15,8 +24,8 @@ const NO_CACHE_HEADERS = {
   "Expires": "0",
 } as const;
 
-function isStaticAsset(pathname: string): boolean {
-  if (AUTH_BYPASS_PREFIXES.some((prefix) => pathname.startsWith(prefix))) {
+function isPublicPage(pathname: string): boolean {
+  if (PUBLIC_PREFIXES.some((prefix) => pathname.startsWith(prefix))) {
     return true;
   }
   if (pathname.includes(".")) {
@@ -25,11 +34,27 @@ function isStaticAsset(pathname: string): boolean {
   return false;
 }
 
+function isPublicApi(pathname: string): boolean {
+  return PUBLIC_API_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+}
+
 function setNoCacheHeaders(response: NextResponse): NextResponse {
   for (const [key, value] of Object.entries(NO_CACHE_HEADERS)) {
     response.headers.set(key, value);
   }
   return response;
+}
+
+async function getSessionToken(request: NextRequest) {
+  try {
+    return await getToken({
+      req: request,
+      secret: process.env.NEXTAUTH_SECRET,
+    });
+  } catch (error) {
+    console.error("Middleware token error:", error);
+    return null;
+  }
 }
 
 export async function middleware(request: NextRequest) {
@@ -42,22 +67,29 @@ export async function middleware(request: NextRequest) {
 
   const next = () => tenantResponse || NextResponse.next();
 
+  // --- API routes ---
   if (pathname.startsWith("/api")) {
+    if (isPublicApi(pathname)) {
+      return setNoCacheHeaders(next());
+    }
+
+    const token = await getSessionToken(request);
+    if (!token) {
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 }
+      );
+    }
+
     return setNoCacheHeaders(next());
   }
 
-  if (isStaticAsset(pathname)) {
+  // --- Public pages (auth, static assets) ---
+  if (isPublicPage(pathname)) {
     if (pathname === "/auth/login") {
-      try {
-        const token = await getToken({
-          req: request,
-          secret: process.env.NEXTAUTH_SECRET,
-        });
-        if (token) {
-          return NextResponse.redirect(new URL("/leads", request.url));
-        }
-      } catch {
-        // Fall through to show login page
+      const token = await getSessionToken(request);
+      if (token) {
+        return NextResponse.redirect(new URL("/leads", request.url));
       }
     }
     return next();
@@ -65,16 +97,7 @@ export async function middleware(request: NextRequest) {
 
   // --- All remaining paths require authentication ---
 
-  let token;
-  try {
-    token = await getToken({
-      req: request,
-      secret: process.env.NEXTAUTH_SECRET,
-    });
-  } catch (error) {
-    console.error("Middleware token error:", error);
-    token = null;
-  }
+  const token = await getSessionToken(request);
 
   if (!token) {
     const loginUrl = new URL("/auth/login", request.url);
