@@ -1,7 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { FileQuestion } from 'lucide-react';
 
-export default function ClientsNotFound() {
+export default function ApplicationNotFound() {
   return (
     <div className="flex items-center justify-center min-h-[50vh] p-4">
       <Card className="w-full max-w-md">
