@@ -327,7 +327,10 @@ export function TransactionsModal({
               <div className="text-center p-3 bg-red-50 rounded-lg">
                 <div className="text-xs text-muted-foreground">Cash Out</div>
                 <div className="text-lg font-bold text-red-600">
-                  {formatAmount(summary.sumCashSettlement || 0, currencyCode)}
+                  {formatAmount(
+                    (summary.sumCashSettlement || 0) + (summary.sumOutwardCash || 0),
+                    currencyCode
+                  )}
                 </div>
               </div>
               <div className="text-center p-3 bg-muted rounded-lg">
