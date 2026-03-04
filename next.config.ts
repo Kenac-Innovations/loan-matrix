@@ -24,11 +24,26 @@ const nextConfig: NextConfig = {
       ],
     },
   ],
-  webpack: (config) => {
+  webpack: (config, { isServer }) => {
     config.resolve.fallback = {
       ...config.resolve.fallback,
       fs: false,
     };
+
+    if (!isServer && process.env.NODE_ENV === "production") {
+      const TerserPlugin = require("terser-webpack-plugin");
+      config.optimization.minimizer = [
+        new TerserPlugin({
+          terserOptions: {
+            compress: {
+              drop_console: true,
+              pure_funcs: ["console.log", "console.debug", "console.info"],
+            },
+          },
+        }),
+      ];
+    }
+
     return config;
   },
 };
