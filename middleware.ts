@@ -3,22 +3,33 @@ import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
 import { tenantMiddleware } from "./lib/tenant-middleware";
 
-const PUBLIC_PATH_PREFIXES = [
+const AUTH_BYPASS_PREFIXES = [
   "/auth",
-  "/api",
   "/_next",
   "/static",
 ];
 
-function isPublicPath(pathname: string): boolean {
-  if (PUBLIC_PATH_PREFIXES.some((prefix) => pathname.startsWith(prefix))) {
+const NO_CACHE_HEADERS = {
+  "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+  "Pragma": "no-cache",
+  "Expires": "0",
+} as const;
+
+function isStaticAsset(pathname: string): boolean {
+  if (AUTH_BYPASS_PREFIXES.some((prefix) => pathname.startsWith(prefix))) {
     return true;
   }
-  // Static assets (favicon.ico, images, fonts, etc.)
   if (pathname.includes(".")) {
     return true;
   }
   return false;
+}
+
+function setNoCacheHeaders(response: NextResponse): NextResponse {
+  for (const [key, value] of Object.entries(NO_CACHE_HEADERS)) {
+    response.headers.set(key, value);
+  }
+  return response;
 }
 
 export async function middleware(request: NextRequest) {
@@ -31,8 +42,11 @@ export async function middleware(request: NextRequest) {
 
   const next = () => tenantResponse || NextResponse.next();
 
-  if (isPublicPath(pathname)) {
-    // Authenticated users on the login page get redirected to /leads
+  if (pathname.startsWith("/api")) {
+    return setNoCacheHeaders(next());
+  }
+
+  if (isStaticAsset(pathname)) {
     if (pathname === "/auth/login") {
       try {
         const token = await getToken({
@@ -68,12 +82,11 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  // Authenticated user on root → redirect to /leads
   if (pathname === "/") {
     return NextResponse.redirect(new URL("/leads", request.url));
   }
 
-  return next();
+  return setNoCacheHeaders(next());
 }
 
 export const config = {
