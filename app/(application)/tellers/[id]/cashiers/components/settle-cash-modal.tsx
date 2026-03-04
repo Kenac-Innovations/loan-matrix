@@ -34,6 +34,7 @@ interface Currency {
 interface FineractSummary {
   sumCashAllocation: number;
   sumCashSettlement: number;
+  sumOutwardCash?: number;
   netCash: number;
   tellerName?: string;
   cashierName?: string;
@@ -146,6 +147,7 @@ export function SettleCashModal({
         setSummary({
           sumCashAllocation: data.sumCashAllocation || 0,
           sumCashSettlement: data.sumCashSettlement || 0,
+          sumOutwardCash: data.sumOutwardCash ?? 0,
           netCash: data.netCash || 0,
           tellerName: data.tellerName,
           cashierName: data.cashierName,
@@ -239,7 +241,8 @@ export function SettleCashModal({
   };
 
   const cashIn = summary?.sumCashAllocation || 0;
-  const cashOut = summary?.sumCashSettlement || 0;
+  const cashOut =
+    (summary?.sumCashSettlement || 0) + (summary?.sumOutwardCash ?? 0);
   const balance = summary?.netCash || 0;
   const settleAmount = parseFloat(formData.amount || "0");
   const remainingBalance = balance - settleAmount;

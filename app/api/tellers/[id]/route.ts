@@ -220,17 +220,20 @@ export async function GET(
           dbTeller.fineractTellerId
         );
 
-        // Merge Fineract data with database data
+        // Merge Fineract data with database data.
+        // Keep our computed balances (vault, allocated, available) so they are not overwritten by Fineract's getTeller response.
         return NextResponse.json({
           ...baseResponse,
           ...fineractTeller,
-          // Ensure database ID and related data are preserved
           id: dbTeller.id,
-          // Use Fineract data if available, otherwise use database
           startDate: fineractTeller.startDate || dbTeller.startDate,
           endDate: fineractTeller.endDate || dbTeller.endDate,
           officeName: fineractTeller.officeName || dbTeller.officeName,
           status: fineractTeller.status || dbTeller.status,
+          vaultBalance: baseResponse.vaultBalance,
+          allocatedToCashiers: baseResponse.allocatedToCashiers,
+          availableBalance: baseResponse.availableBalance,
+          currentAllocation: baseResponse.currentAllocation,
         });
       } catch (error) {
         console.error("Error fetching from Fineract:", error);

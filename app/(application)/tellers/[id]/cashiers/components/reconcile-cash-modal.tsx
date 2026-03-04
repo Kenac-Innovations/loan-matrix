@@ -26,6 +26,7 @@ interface Currency {
 interface FineractSummary {
   sumCashAllocation: number;
   sumCashSettlement: number;
+  sumOutwardCash?: number;
   netCash: number;
   tellerName?: string;
   cashierName?: string;
@@ -135,6 +136,7 @@ export function ReconcileCashModal({
         setSummary({
           sumCashAllocation: data.sumCashAllocation || 0,
           sumCashSettlement: data.sumCashSettlement || 0,
+          sumOutwardCash: data.sumOutwardCash ?? 0,
           netCash: data.netCash || 0,
           tellerName: data.tellerName,
           cashierName: data.cashierName,
@@ -319,7 +321,9 @@ export function ReconcileCashModal({
                     Total Cash Out
                   </Label>
                   <p className="text-lg font-semibold text-red-600">
-                    {formatAmount(summary.sumCashSettlement)}
+                    {formatAmount(
+                      (summary.sumCashSettlement || 0) + (summary.sumOutwardCash ?? 0)
+                    )}
                   </p>
                 </div>
                 <div>

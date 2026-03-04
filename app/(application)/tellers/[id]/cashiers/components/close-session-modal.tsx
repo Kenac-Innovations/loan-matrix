@@ -207,7 +207,8 @@ export function CloseSessionModal({
   // Calculate values from Fineract data
   const openingFloat = summary?.sumCashAllocation || 0;
   const cashIn = summary?.sumCashAllocation || 0; // Total allocated
-  const cashOut = summary?.sumCashSettlement || 0; // Total settled
+  const cashOut =
+    (summary?.sumCashSettlement || 0) + (summary?.sumOutwardCash ?? 0);
   const expectedBalance = summary?.netCash || 0;
 
   const difference =

@@ -51,6 +51,7 @@ interface Currency {
 interface Summary {
   sumCashAllocation?: number;
   sumCashSettlement?: number;
+  sumOutwardCash?: number;
   netCash?: number;
   tellerName?: string;
   cashierName?: string;
@@ -369,7 +370,10 @@ export default function CashierTransactionsPage({
             <CardHeader className="pb-2">
               <CardDescription>Cash Out</CardDescription>
               <CardTitle className="text-2xl text-red-600">
-                {formatAmount(summary.sumCashSettlement || 0, currencyCode)}
+                {formatAmount(
+                  (summary.sumCashSettlement || 0) + (summary.sumOutwardCash || 0),
+                  currencyCode
+                )}
               </CardTitle>
             </CardHeader>
           </Card>
