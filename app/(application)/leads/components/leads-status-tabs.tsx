@@ -424,6 +424,11 @@ export function LeadsStatusTabs() {
       return { type: "all" as const, label: "All Leads" };
     }
     
+    // Authorisers see all leads across branches for loan authorisation
+    if (hasRole("authoriser")) {
+      return { type: "all" as const, label: "All Leads" };
+    }
+    
     // Check for branch manager role
     if (hasRole("branch") && userOfficeName) {
       return { type: "branch" as const, value: userOfficeName, label: `${userOfficeName} Branch` };
