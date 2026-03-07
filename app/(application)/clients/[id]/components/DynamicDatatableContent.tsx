@@ -154,14 +154,11 @@ export function DynamicDatatableContent({
   }, [editingRowIndex]);
 
   useEffect(() => {
-    // Skip initial fetch if we have server-provided data
-    if (initialData) {
-      return;
-    }
-
     const load = async () => {
       try {
-        setLoading(true);
+        if (!initialData) {
+          setLoading(true);
+        }
         setError(null);
         const res = await fetch(
           `/api/fineract/datatables/${encodeURIComponent(
@@ -175,16 +172,17 @@ export function DynamicDatatableContent({
         setHeaders(data.columnHeaders || []);
         const mapped: any[][] = (data.data || []).map((r: any) => r.row);
         setRows(mapped);
-        // Store full row data including IDs and metadata
         setRowData(data.data || []);
       } catch (e: any) {
-        setError(e.message || "Unknown error");
+        if (!initialData) {
+          setError(e.message || "Unknown error");
+        }
       } finally {
         setLoading(false);
       }
     };
     load();
-  }, [datatableName, clientId, initialData]);
+  }, [datatableName, clientId]);
 
   // Helper to check if column is a branch code field (should not format with commas)
   const isBranchCodeColumn = (columnName?: string): boolean => {
