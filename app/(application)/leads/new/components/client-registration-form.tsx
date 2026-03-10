@@ -288,25 +288,38 @@ const PHONE_COUNTRY_CODES = [
 // Phone number parsing utility - works with any country code
 const parsePhoneNumber = (
   phoneNumber: string,
-  defaultCountryCode: string = "+260"
+  currentCountryCode: string = "+260"
 ): { countryCode: string; number: string } => {
-  if (!phoneNumber) return { countryCode: defaultCountryCode, number: "" };
+  if (!phoneNumber) return { countryCode: currentCountryCode, number: "" };
 
-  // Remove all non-digit characters for parsing
   let digitsOnly = phoneNumber.replace(/\D/g, "");
 
-  // Check if number starts with the country code digits (e.g. 260, 263)
-  const codeDigits = defaultCountryCode.replace("+", "");
-  if (digitsOnly.startsWith(codeDigits)) {
-    digitsOnly = digitsOnly.substring(codeDigits.length);
+  // Try to detect country code from known codes (longest match first)
+  const sortedCodes = [...PHONE_COUNTRY_CODES].sort(
+    (a, b) => b.code.length - a.code.length
+  );
+  for (const { code } of sortedCodes) {
+    const codeDigits = code.replace("+", "");
+    if (digitsOnly.startsWith(codeDigits)) {
+      digitsOnly = digitsOnly.substring(codeDigits.length);
+      if (digitsOnly.startsWith("0") && digitsOnly.length > 1) {
+        digitsOnly = digitsOnly.substring(1);
+      }
+      return { countryCode: code, number: digitsOnly };
+    }
   }
 
-  // Remove leading 0 if present (e.g., 0977123456 -> 977123456)
+  // Strip the current country code prefix if present
+  const currentDigits = currentCountryCode.replace("+", "");
+  if (digitsOnly.startsWith(currentDigits)) {
+    digitsOnly = digitsOnly.substring(currentDigits.length);
+  }
+
   if (digitsOnly.startsWith("0") && digitsOnly.length > 1) {
     digitsOnly = digitsOnly.substring(1);
   }
 
-  return { countryCode: defaultCountryCode, number: digitsOnly };
+  return { countryCode: currentCountryCode, number: digitsOnly };
 };
 
 // Validate phone number format
@@ -2689,33 +2702,24 @@ export function ClientRegistrationForm({
 
   // Handle phone number changes with automatic country code detection
   const handlePhoneNumberChange = (value: string) => {
-    // Parse the phone number to detect country code
-    const parsed = parsePhoneNumber(value);
+    const currentCountryCode = form.getValues("countryCode");
+    const parsed = parsePhoneNumber(value, currentCountryCode);
 
-    // Update country code if detected (and different from current)
-    if (parsed.countryCode) {
-      const currentCountryCode = externalForm
-        ? externalForm.getValues("countryCode")
-        : form.getValues("countryCode");
-
-      if (parsed.countryCode !== currentCountryCode) {
-        if (externalForm) {
-          externalForm.setValue("countryCode", parsed.countryCode);
-        } else {
-          form.setValue("countryCode", parsed.countryCode);
-        }
+    // Only update country code if a different known code was detected from the input
+    if (parsed.countryCode !== currentCountryCode) {
+      form.setValue("countryCode", parsed.countryCode);
+      if (externalForm) {
+        externalForm.setValue("countryCode", parsed.countryCode);
       }
     }
 
-    // Format and set the phone number (without country code)
     const formattedNumber = formatPhoneNumber(parsed.number);
     if (externalForm) {
       externalForm.setValue("mobileNo", formattedNumber, {
         shouldValidate: false,
       });
-    } else {
-      form.setValue("mobileNo", formattedNumber, { shouldValidate: false });
     }
+    form.setValue("mobileNo", formattedNumber, { shouldValidate: false });
   };
 
   // Fetch clients for the client picker (same logic as clients page)
@@ -2950,7 +2954,8 @@ export function ClientRegistrationForm({
               form.setValue("emailAddress", fineractData.emailAddress);
             }
             if (fineractData.mobileNo) {
-              const parsed = parsePhoneNumber(fineractData.mobileNo);
+              const currentCode = form.getValues("countryCode") || tenantLocale.countryCode;
+              const parsed = parsePhoneNumber(fineractData.mobileNo, currentCode);
               form.setValue("mobileNo", formatPhoneNumber(parsed.number));
               form.setValue("countryCode", parsed.countryCode);
             }
@@ -3456,21 +3461,14 @@ export function ClientRegistrationForm({
             const existingCountryCode = getBestValue(
               fineractData?.countryCode,
               localData?.countryCode,
-              "+263"
+              tenantLocale.countryCode
             );
 
-            // If we have a phone number, try to parse it
             if (phoneNumber) {
-              const parsed = parsePhoneNumber(phoneNumber);
-              // If parsing detected a country code, use it; otherwise use existing
-              const finalCountryCode =
-                parsed.countryCode !== "+263" || !existingCountryCode
-                  ? parsed.countryCode
-                  : existingCountryCode;
-
+              const parsed = parsePhoneNumber(phoneNumber, existingCountryCode);
               return {
                 mobileNo: formatPhoneNumber(parsed.number),
-                countryCode: finalCountryCode,
+                countryCode: parsed.countryCode,
               };
             }
 
@@ -6758,12 +6756,25 @@ export function ClientRegistrationForm({
                                   </Label>
                                   <div className="flex space-x-2">
                                     <Controller
-                                      control={form.control}
+                                      control={
+                                        externalForm
+                                          ? externalForm.control
+                                          : form.control
+                                      }
                                       name="countryCode"
                                       render={({ field }) => (
                                         <Select
-                                          onValueChange={field.onChange}
-                                          defaultValue={field.value}
+                                          onValueChange={(value) => {
+                                            field.onChange(value);
+                                            form.setValue("countryCode", value);
+                                            if (externalForm) {
+                                              externalForm.setValue(
+                                                "countryCode",
+                                                value
+                                              );
+                                            }
+                                          }}
+                                          value={field.value}
                                           disabled={isFormDisabled}
                                         >
                                           <SelectTrigger
