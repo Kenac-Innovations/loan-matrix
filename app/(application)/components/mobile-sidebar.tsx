@@ -11,15 +11,10 @@ import {
   Bot,
   CreditCard,
   FileText,
-  Home,
-  Lock,
-  Phone,
-  Settings,
-  Shield,
+  Receipt,
   Users,
   TrendingUp,
   X,
-  Menu,
   Landmark,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -164,21 +159,6 @@ export function MobileSidebar({ userProfileData, tenantLogoUrl }: MobileSidebarP
         <TenantDisplayClient />
         <div className="py-4 h-[calc(100vh-7rem)] overflow-y-auto">
           <nav className="space-y-1 px-2">
-            <Link
-              href="/dashboard"
-              className={`flex items-center gap-3 rounded-md px-3 py-3 text-sm font-medium ${
-                pathname === "/dashboard"
-                  ? `${activeBgColor} ${textColor}`
-                  : `${textColorMuted} ${hoverBgColor} hover:${textColor}`
-              }`}
-            >
-              <Home
-                className={`h-5 w-5 ${
-                  pathname === "/dashboard" ? iconColorActive : iconColor
-                }`}
-              />
-              Dashboard
-            </Link>
             <div className="space-y-1">
               <Link
                 href="/leads"
@@ -196,7 +176,6 @@ export function MobileSidebar({ userProfileData, tenantLogoUrl }: MobileSidebarP
                 Leads
               </Link>
 
-              {/* Sub-menu items for Leads */}
               {(pathname.startsWith("/leads") ||
                 pathname.startsWith("/ussd-leads")) && (
                 <div className="pl-10 space-y-1">
@@ -237,20 +216,109 @@ export function MobileSidebar({ userProfileData, tenantLogoUrl }: MobileSidebarP
                 </div>
               )}
             </div>
+
             <Link
-              href="#"
-              className={`flex items-center gap-3 rounded-md px-3 py-3 text-sm font-medium ${textColorMuted} ${hoverBgColor} hover:${textColor}`}
+              href="/loans"
+              className={`flex items-center gap-3 rounded-md px-3 py-3 text-sm font-medium ${
+                pathname.startsWith("/loans")
+                  ? `${activeBgColor} ${textColor}`
+                  : `${textColorMuted} ${hoverBgColor} hover:${textColor}`
+              }`}
             >
-              <CreditCard className={`h-5 w-5 ${iconColor}`} />
+              <CreditCard
+                className={`h-5 w-5 ${
+                  pathname.startsWith("/loans") ? iconColorActive : iconColor
+                }`}
+              />
               Loans
             </Link>
-            <Link
-              href="#"
-              className={`flex items-center gap-3 rounded-md px-3 py-3 text-sm font-medium ${textColorMuted} ${hoverBgColor} hover:${textColor}`}
-            >
-              <Users className={`h-5 w-5 ${iconColor}`} />
-              Clients
-            </Link>
+
+            <div className="space-y-1">
+              <Link
+                href="/collections"
+                className={`flex items-center gap-3 rounded-md px-3 py-3 text-sm font-medium ${
+                  pathname.startsWith("/collections")
+                    ? `${activeBgColor} ${textColor}`
+                    : `${textColorMuted} ${hoverBgColor} hover:${textColor}`
+                }`}
+              >
+                <Receipt
+                  className={`h-5 w-5 ${
+                    pathname.startsWith("/collections") ? iconColorActive : iconColor
+                  }`}
+                />
+                Collections
+              </Link>
+
+              {pathname.startsWith("/collections") && (
+                <div className="pl-10 space-y-1">
+                  <Link
+                    href="/collections"
+                    className={`flex items-center gap-3 rounded-md px-3 py-2 text-xs font-medium ${
+                      pathname === "/collections"
+                        ? iconColorActive
+                        : `${iconColor} hover:${textColor}`
+                    }`}
+                  >
+                    Expected Payments
+                  </Link>
+                  <Link
+                    href="/collections/bulk-receipting"
+                    className={`flex items-center gap-3 rounded-md px-3 py-2 text-xs font-medium ${
+                      pathname === "/collections/bulk-receipting"
+                        ? iconColorActive
+                        : `${iconColor} hover:${textColor}`
+                    }`}
+                  >
+                    Bulk Receipting
+                  </Link>
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-1">
+              <Link
+                href="/clients"
+                className={`flex items-center gap-3 rounded-md px-3 py-3 text-sm font-medium ${
+                  pathname.startsWith("/clients")
+                    ? `${activeBgColor} ${textColor}`
+                    : `${textColorMuted} ${hoverBgColor} hover:${textColor}`
+                }`}
+              >
+                <Users
+                  className={`h-5 w-5 ${
+                    pathname.startsWith("/clients") ? iconColorActive : iconColor
+                  }`}
+                />
+                Clients
+              </Link>
+
+              {pathname.startsWith("/clients") && (
+                <div className="pl-10 space-y-1">
+                  <Link
+                    href="/clients"
+                    className={`flex items-center gap-3 rounded-md px-3 py-2 text-xs font-medium ${
+                      pathname === "/clients"
+                        ? iconColorActive
+                        : `${iconColor} hover:${textColor}`
+                    }`}
+                  >
+                    All Clients
+                  </Link>
+                  <Link
+                    href="/clients/new"
+                    className={`flex items-center gap-3 rounded-md px-3 py-2 text-xs font-medium ${
+                      pathname === "/clients/new"
+                        ? iconColorActive
+                        : `${iconColor} hover:${textColor}`
+                    }`}
+                  >
+                    Add Client
+                  </Link>
+                </div>
+              )}
+            </div>
+
             <div className="space-y-1">
               <Link
                 href="/banks"
@@ -268,7 +336,6 @@ export function MobileSidebar({ userProfileData, tenantLogoUrl }: MobileSidebarP
                 Cash Management
               </Link>
 
-              {/* Sub-menu items for Cash Management */}
               {(pathname.startsWith("/banks") ||
                 pathname.startsWith("/tellers")) && (
                 <div className="pl-10 space-y-1">
@@ -295,104 +362,139 @@ export function MobileSidebar({ userProfileData, tenantLogoUrl }: MobileSidebarP
                 </div>
               )}
             </div>
-            <Link
-              href="/reports"
-              className={`flex items-center gap-3 rounded-md px-3 py-3 text-sm font-medium ${
-                pathname === "/reports"
-                  ? `${activeBgColor} ${textColor}`
-                  : `${textColorMuted} ${hoverBgColor} hover:${textColor}`
-              }`}
-            >
-              <FileText
-                className={`h-5 w-5 ${
-                  pathname === "/reports" ? iconColorActive : iconColor
-                }`}
-              />
-              Reports
-            </Link>
-            <Link
-              href="#"
-              className={`flex items-center gap-3 rounded-md px-3 py-3 text-sm font-medium ${textColorMuted} ${hoverBgColor} hover:${textColor}`}
-            >
-              <FileText className={`h-5 w-5 ${iconColor}`} />
-              Documents
-            </Link>
-            <Link
-              href="#"
-              className={`flex items-center gap-3 rounded-md px-3 py-3 text-sm font-medium ${textColorMuted} ${hoverBgColor} hover:${textColor}`}
-            >
-              <BarChart3 className={`h-5 w-5 ${iconColor}`} />
-              Analytics
-            </Link>
-            <Link
-              href="#"
-              className={`flex items-center gap-3 rounded-md px-3 py-3 text-sm font-medium ${textColorMuted} ${hoverBgColor} hover:${textColor}`}
-            >
-              <Shield className={`h-5 w-5 ${iconColor}`} />
-              Compliance
-            </Link>
-            <Link
-              href="#"
-              className={`flex items-center gap-3 rounded-md px-3 py-3 text-sm font-medium ${textColorMuted} ${hoverBgColor} hover:${textColor}`}
-            >
-              <Lock className={`h-5 w-5 ${iconColor}`} />
-              Security
-            </Link>
-            <div className="space-y-1">
+
+            {isEnabled("accounting") && (
+              <div className="space-y-1">
+                <Link
+                  href="/accounting"
+                  className={`flex items-center gap-3 rounded-md px-3 py-3 text-sm font-medium ${
+                    pathname.startsWith("/accounting")
+                      ? `${activeBgColor} ${textColor}`
+                      : `${textColorMuted} ${hoverBgColor} hover:${textColor}`
+                  }`}
+                >
+                  <BarChart3
+                    className={`h-5 w-5 ${
+                      pathname.startsWith("/accounting") ? iconColorActive : iconColor
+                    }`}
+                  />
+                  Accounting
+                </Link>
+
+                {pathname.startsWith("/accounting") && (
+                  <div className="pl-10 space-y-1">
+                    <Link
+                      href="/accounting"
+                      className={`flex items-center gap-3 rounded-md px-3 py-2 text-xs font-medium ${
+                        pathname === "/accounting"
+                          ? iconColorActive
+                          : `${iconColor} hover:${textColor}`
+                      }`}
+                    >
+                      Home
+                    </Link>
+                    <Link
+                      href="/accounting/chart-of-accounts"
+                      className={`flex items-center gap-3 rounded-md px-3 py-2 text-xs font-medium ${
+                        pathname === "/accounting/chart-of-accounts"
+                          ? iconColorActive
+                          : `${iconColor} hover:${textColor}`
+                      }`}
+                    >
+                      Chart of Accounts
+                    </Link>
+                    <Link
+                      href="/accounting/search-journal"
+                      className={`flex items-center gap-3 rounded-md px-3 py-2 text-xs font-medium ${
+                        pathname === "/accounting/search-journal"
+                          ? iconColorActive
+                          : `${iconColor} hover:${textColor}`
+                      }`}
+                    >
+                      Journal Entries
+                    </Link>
+                    <Link
+                      href="/accounting/frequent-postings"
+                      className={`flex items-center gap-3 rounded-md px-3 py-2 text-xs font-medium ${
+                        pathname === "/accounting/frequent-postings"
+                          ? iconColorActive
+                          : `${iconColor} hover:${textColor}`
+                      }`}
+                    >
+                      Frequent Postings
+                    </Link>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {isEnabled("reports") && (
               <Link
-                href="/ai-assistant"
+                href="/reports"
                 className={`flex items-center gap-3 rounded-md px-3 py-3 text-sm font-medium ${
-                  pathname.startsWith("/ai-assistant") ||
-                  pathname.startsWith("/rag-admin")
+                  pathname === "/reports"
                     ? `${activeBgColor} ${textColor}`
                     : `${textColorMuted} ${hoverBgColor} hover:${textColor}`
                 }`}
               >
-                <Bot
+                <FileText
                   className={`h-5 w-5 ${
-                    pathname.startsWith("/ai-assistant") ||
-                    pathname.startsWith("/rag-admin")
-                      ? iconColorActive
-                      : iconColor
+                    pathname === "/reports" ? iconColorActive : iconColor
                   }`}
                 />
-                AI Assistant
+                Reports
               </Link>
+            )}
 
-              {/* Sub-menu items for AI Assistant */}
-              {(pathname.startsWith("/ai-assistant") ||
-                pathname.startsWith("/rag-admin")) && (
-                <div className="pl-10 space-y-1">
-                  <Link
-                    href="/ai-assistant"
-                    className={`flex items-center gap-3 rounded-md px-3 py-2 text-xs font-medium ${
-                      pathname === "/ai-assistant"
+            {isEnabled("aiAssistant") && (
+              <div className="space-y-1">
+                <Link
+                  href="/ai-assistant"
+                  className={`flex items-center gap-3 rounded-md px-3 py-3 text-sm font-medium ${
+                    pathname.startsWith("/ai-assistant") ||
+                    pathname.startsWith("/rag-admin")
+                      ? `${activeBgColor} ${textColor}`
+                      : `${textColorMuted} ${hoverBgColor} hover:${textColor}`
+                  }`}
+                >
+                  <Bot
+                    className={`h-5 w-5 ${
+                      pathname.startsWith("/ai-assistant") ||
+                      pathname.startsWith("/rag-admin")
                         ? iconColorActive
-                        : `${iconColor} hover:${textColor}`
+                        : iconColor
                     }`}
-                  >
-                    Chat
-                  </Link>
-                  <Link
-                    href="/rag-admin"
-                    className={`flex items-center gap-3 rounded-md px-3 py-2 text-xs font-medium ${
-                      pathname === "/rag-admin"
-                        ? iconColorActive
-                        : `${iconColor} hover:${textColor}`
-                    }`}
-                  >
-                    Admin
-                  </Link>
-                </div>
-              )}
-            </div>
-            <Link
-              href="#"
-              className={`flex items-center gap-3 rounded-md px-3 py-3 text-sm font-medium ${textColorMuted} ${hoverBgColor} hover:${textColor}`}
-            >
-              <Settings className={`h-5 w-5 ${iconColor}`} />
-              Settings
-            </Link>
+                  />
+                  AI Assistant
+                </Link>
+
+                {(pathname.startsWith("/ai-assistant") ||
+                  pathname.startsWith("/rag-admin")) && (
+                  <div className="pl-10 space-y-1">
+                    <Link
+                      href="/ai-assistant"
+                      className={`flex items-center gap-3 rounded-md px-3 py-2 text-xs font-medium ${
+                        pathname === "/ai-assistant"
+                          ? iconColorActive
+                          : `${iconColor} hover:${textColor}`
+                      }`}
+                    >
+                      Chat
+                    </Link>
+                    <Link
+                      href="/rag-admin"
+                      className={`flex items-center gap-3 rounded-md px-3 py-2 text-xs font-medium ${
+                        pathname === "/rag-admin"
+                          ? iconColorActive
+                          : `${iconColor} hover:${textColor}`
+                      }`}
+                    >
+                      Admin
+                    </Link>
+                  </div>
+                )}
+              </div>
+            )}
           </nav>
         </div>
       </div>

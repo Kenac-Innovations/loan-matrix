@@ -12,7 +12,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { MoreHorizontal, DollarSign, Users, CheckCircle, Building2 } from "lucide-react";
+import { MoreHorizontal, DollarSign, Users, CheckCircle, Building2, Loader2 } from "lucide-react";
 import { formatCurrency } from "@/lib/format-currency";
 import { formatDate } from "@/lib/format-date";
 
@@ -44,6 +44,12 @@ export function TellersTable() {
   const router = useRouter();
   const [tellers, setTellers] = useState<Teller[]>([]);
   const [loading, setLoading] = useState(true);
+  const [navigating, setNavigating] = useState(false);
+
+  const navigateTo = (path: string) => {
+    setNavigating(true);
+    router.push(path);
+  };
 
   useEffect(() => {
     fetchTellers();
@@ -199,23 +205,23 @@ export function TellersTable() {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem
-                onClick={() => router.push(`/tellers/${teller.fineractTellerId}`)}
+                onClick={() => navigateTo(`/tellers/${teller.fineractTellerId}`)}
               >
                 View Details
               </DropdownMenuItem>
               <DropdownMenuItem
-                onClick={() => router.push(`/tellers/${teller.fineractTellerId}/cashiers`)}
+                onClick={() => navigateTo(`/tellers/${teller.fineractTellerId}/cashiers`)}
               >
                 Manage Cashiers
               </DropdownMenuItem>
               <DropdownMenuItem
-                onClick={() => router.push(`/tellers/${teller.fineractTellerId}/allocate`)}
+                onClick={() => navigateTo(`/tellers/${teller.fineractTellerId}/allocate`)}
               >
                 Allocate Cash
               </DropdownMenuItem>
               {teller.status === "ACTIVE" && (
                 <DropdownMenuItem
-                  onClick={() => router.push(`/tellers/${teller.fineractTellerId}/settle`)}
+                  onClick={() => navigateTo(`/tellers/${teller.fineractTellerId}/settle`)}
                 >
                   <CheckCircle className="h-4 w-4 mr-2" />
                   Settle Cash
@@ -234,19 +240,29 @@ export function TellersTable() {
   }
 
   return (
-    <GenericDataTable
-      data={tellers}
-      columns={columns}
-      searchPlaceholder="Search tellers..."
-      enablePagination={true}
-      enableColumnVisibility={true}
-      enableExport={true}
-      enableFilters={true}
-      pageSize={10}
-      tableId="tellers-table"
-      onRowClick={(teller) => router.push(`/tellers/${teller.fineractTellerId}`)}
-      exportFileName="tellers-export"
-      emptyMessage="No tellers found. Create your first teller to get started."
-    />
+    <>
+      {navigating && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/60 backdrop-blur-sm">
+          <div className="flex flex-col items-center gap-3">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            <p className="text-sm text-muted-foreground">Loading...</p>
+          </div>
+        </div>
+      )}
+      <GenericDataTable
+        data={tellers}
+        columns={columns}
+        searchPlaceholder="Search tellers..."
+        enablePagination={true}
+        enableColumnVisibility={true}
+        enableExport={true}
+        enableFilters={true}
+        pageSize={10}
+        tableId="tellers-table"
+        onRowClick={(teller) => navigateTo(`/tellers/${teller.fineractTellerId}`)}
+        exportFileName="tellers-export"
+        emptyMessage="No tellers found. Create your first teller to get started."
+      />
+    </>
   );
 }
