@@ -67,9 +67,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // Logout function that calls NextAuth signOut
   const logout = () => {
-    signOut({ callbackUrl: "/auth/login" });
+    signOut({
+      callbackUrl: `${window.location.origin}/auth/login`,
+    });
   };
 
   // Map NextAuth session status to our auth context status

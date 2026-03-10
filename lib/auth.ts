@@ -263,6 +263,28 @@ export const authOptions: NextAuthOptions = {
     }),
   ],
   callbacks: {
+    async redirect({ url, baseUrl }) {
+      // Allow relative URLs (they resolve against the browser's current origin)
+      if (url.startsWith("/")) return url;
+
+      try {
+        const urlObj = new URL(url);
+        const baseObj = new URL(baseUrl);
+
+        // Allow any *.kenacloanmatrix.com subdomain
+        if (
+          urlObj.hostname.endsWith(".kenacloanmatrix.com") ||
+          urlObj.hostname === baseObj.hostname ||
+          urlObj.hostname === "localhost"
+        ) {
+          return url;
+        }
+      } catch {
+        // Malformed URL — fall through to default
+      }
+
+      return baseUrl;
+    },
     async jwt({ token, user }) {
       try {
         // Add user data to the token right after sign in
