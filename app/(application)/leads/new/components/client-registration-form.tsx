@@ -27,6 +27,9 @@ import {
   Eye,
   Trash2,
   Plus,
+  Camera,
+  Settings,
+  RefreshCw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -1143,6 +1146,7 @@ export function ClientRegistrationForm({
   const [uploadingDocuments, setUploadingDocuments] = useState(false);
   const [showCameraModal, setShowCameraModal] = useState(false);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
+  const [cameraPermissionDenied, setCameraPermissionDenied] = useState(false);
   const [identifiersTemplate, setIdentifiersTemplate] = useState<any>(null);
   const [showDocumentTypeDialog, setShowDocumentTypeDialog] = useState(false);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
@@ -4090,8 +4094,56 @@ export function ClientRegistrationForm({
     stream.getTracks().forEach((track) => track.stop());
   };
 
+  const attemptCameraAccess = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
+      });
+      setCameraPermissionDenied(false);
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+    } catch (err: any) {
+      console.error("Error accessing camera:", err);
+
+      if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
+        setCameraPermissionDenied(true);
+        return;
+      } else if (err.name === "NotFoundError" || err.name === "DevicesNotFoundError") {
+        error({
+          title: "Camera Error",
+          description: "No camera found on this device. Please connect a camera and try again.",
+        });
+      } else if (err.name === "NotReadableError" || err.name === "TrackStartError") {
+        error({
+          title: "Camera Error",
+          description: "Camera is in use by another application. Please close other apps using the camera and try again.",
+        });
+      } else if (err.name === "OverconstrainedError") {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+          setCameraPermissionDenied(false);
+          if (videoRef.current) {
+            videoRef.current.srcObject = stream;
+          }
+          return;
+        } catch {
+          error({
+            title: "Camera Error",
+            description: "Could not access camera with any settings.",
+          });
+        }
+      } else {
+        error({
+          title: "Camera Error",
+          description: "Could not access camera. Please check permissions.",
+        });
+      }
+      setShowCameraModal(false);
+    }
+  };
+
   const handleStartCamera = async () => {
-    // Check if we're in a secure context (HTTPS or localhost)
     if (!window.isSecureContext) {
       error({
         title: "Camera Not Available",
@@ -4100,7 +4152,6 @@ export function ClientRegistrationForm({
       return;
     }
 
-    // Check if mediaDevices API is available
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       error({
         title: "Camera Not Supported",
@@ -4111,65 +4162,9 @@ export function ClientRegistrationForm({
 
     setShowCameraModal(true);
     setCapturedImage(null);
+    setCameraPermissionDenied(false);
 
-    // Wait for modal to open before accessing camera
-    setTimeout(async () => {
-      try {
-        // First check permission status if available
-        if (navigator.permissions) {
-          try {
-            const permissionStatus = await navigator.permissions.query({ name: "camera" as PermissionName });
-            if (permissionStatus.state === "denied") {
-              error({
-                title: "Camera Permission Denied",
-                description: "Camera access was denied. Please allow camera access in your browser settings and try again.",
-              });
-              setShowCameraModal(false);
-              return;
-            }
-          } catch {
-            // permissions.query might not be supported for camera in some browsers, continue anyway
-          }
-        }
-
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
-        });
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-        }
-      } catch (err: any) {
-        console.error("Error accessing camera:", err);
-        
-        let errorMessage = "Could not access camera. Please check permissions.";
-        
-        if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
-          errorMessage = "Camera permission was denied. Please click the camera icon in your browser's address bar to allow access, then try again.";
-        } else if (err.name === "NotFoundError" || err.name === "DevicesNotFoundError") {
-          errorMessage = "No camera found on this device. Please connect a camera and try again.";
-        } else if (err.name === "NotReadableError" || err.name === "TrackStartError") {
-          errorMessage = "Camera is in use by another application. Please close other apps using the camera and try again.";
-        } else if (err.name === "OverconstrainedError") {
-          errorMessage = "Camera does not support the required settings. Trying with default settings...";
-          // Try again with basic constraints
-          try {
-            const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-            if (videoRef.current) {
-              videoRef.current.srcObject = stream;
-            }
-            return; // Success with basic constraints
-          } catch {
-            errorMessage = "Could not access camera with any settings.";
-          }
-        }
-        
-        error({
-          title: "Camera Error",
-          description: errorMessage,
-        });
-        setShowCameraModal(false);
-      }
-    }, 100);
+    setTimeout(() => attemptCameraAccess(), 100);
   };
 
   const handleStopCamera = () => {
@@ -8039,7 +8034,6 @@ export function ClientRegistrationForm({
                                   onOpenChange={(open) => {
                                     setShowCameraModal(open);
                                     if (!open) {
-                                      // Stop camera when modal closes
                                       if (videoRef.current) {
                                         const stream = videoRef.current
                                           .srcObject as MediaStream;
@@ -8048,24 +8042,68 @@ export function ClientRegistrationForm({
                                           .forEach((track) => track.stop());
                                       }
                                       setCapturedImage(null);
+                                      setCameraPermissionDenied(false);
                                     }
                                   }}
                                 >
                                   <DialogContent className="max-w-2xl">
                                     <DialogHeader>
                                       <DialogTitle className={colors.textColor}>
-                                        Capture Selfie
+                                        {cameraPermissionDenied ? "Camera Permission Required" : "Capture Selfie"}
                                       </DialogTitle>
                                       <DialogDescription
                                         className={colors.textColorMuted}
                                       >
-                                        {capturedImage
-                                          ? "Review your photo. You can retake or confirm."
-                                          : "Position your face in the frame and click capture."}
+                                        {cameraPermissionDenied
+                                          ? "Camera access was blocked. Please follow the steps below to enable it."
+                                          : capturedImage
+                                            ? "Review your photo. You can retake or confirm."
+                                            : "Position your face in the frame and click capture."}
                                       </DialogDescription>
                                     </DialogHeader>
                                     <div className="space-y-4">
-                                      {!capturedImage ? (
+                                      {cameraPermissionDenied ? (
+                                        <div className="space-y-4">
+                                          <div className="flex items-center gap-3 p-4 rounded-lg bg-amber-50 border border-amber-200 dark:bg-amber-950/30 dark:border-amber-800">
+                                            <Camera className="h-6 w-6 text-amber-600 flex-shrink-0" />
+                                            <p className="text-sm text-amber-800 dark:text-amber-200">
+                                              Your browser has blocked camera access for this site. You need to manually allow it in your browser settings.
+                                            </p>
+                                          </div>
+                                          <div className="space-y-3 p-4 rounded-lg bg-muted/50">
+                                            <h4 className="font-medium text-sm flex items-center gap-2">
+                                              <Settings className="h-4 w-4" />
+                                              How to enable camera access:
+                                            </h4>
+                                            <div className="space-y-4 text-sm text-muted-foreground">
+                                              <div>
+                                                <p className="font-medium text-foreground mb-1">Chrome / Edge:</p>
+                                                <ol className="list-decimal list-inside space-y-1 ml-2">
+                                                  <li>Click the <strong>lock icon</strong> (or tune icon) in the address bar</li>
+                                                  <li>Find <strong>Camera</strong> and set it to <strong>Allow</strong></li>
+                                                  <li>Click the <strong>Try Again</strong> button below</li>
+                                                </ol>
+                                              </div>
+                                              <div>
+                                                <p className="font-medium text-foreground mb-1">Safari:</p>
+                                                <ol className="list-decimal list-inside space-y-1 ml-2">
+                                                  <li>Go to <strong>Safari &gt; Settings &gt; Websites &gt; Camera</strong></li>
+                                                  <li>Find this site and set it to <strong>Allow</strong></li>
+                                                  <li>Click the <strong>Try Again</strong> button below</li>
+                                                </ol>
+                                              </div>
+                                              <div>
+                                                <p className="font-medium text-foreground mb-1">Firefox:</p>
+                                                <ol className="list-decimal list-inside space-y-1 ml-2">
+                                                  <li>Click the <strong>lock icon</strong> in the address bar</li>
+                                                  <li>Click <strong>Clear permissions</strong> or find Camera and set to <strong>Allow</strong></li>
+                                                  <li>Click the <strong>Try Again</strong> button below</li>
+                                                </ol>
+                                              </div>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      ) : !capturedImage ? (
                                         <div className="relative w-full aspect-video bg-black rounded-lg overflow-hidden">
                                           <video
                                             ref={videoRef}
@@ -8085,7 +8123,25 @@ export function ClientRegistrationForm({
                                       )}
                                     </div>
                                     <DialogFooter>
-                                      {!capturedImage ? (
+                                      {cameraPermissionDenied ? (
+                                        <>
+                                          <Button
+                                            type="button"
+                                            variant="outline"
+                                            onClick={handleStopCamera}
+                                          >
+                                            Cancel
+                                          </Button>
+                                          <Button
+                                            type="button"
+                                            onClick={() => attemptCameraAccess()}
+                                            className="bg-blue-500 hover:bg-blue-600 flex items-center gap-2"
+                                          >
+                                            <RefreshCw className="h-4 w-4" />
+                                            Try Again
+                                          </Button>
+                                        </>
+                                      ) : !capturedImage ? (
                                         <>
                                           <Button
                                             type="button"
