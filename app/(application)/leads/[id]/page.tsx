@@ -28,6 +28,8 @@ import {
   Info,
   Database,
   Users,
+  UserCheck,
+  UserX,
 } from "lucide-react";
 import Link from "next/link";
 import {
@@ -508,6 +510,23 @@ export default async function LeadDetailPage({
                         </Badge>
                       </Link>
                     )}
+                    {lead.assignedToUserName ? (
+                      <Badge
+                        variant="outline"
+                        className="bg-green-50 text-green-700 border-green-200 whitespace-nowrap"
+                      >
+                        <UserCheck className="h-3 w-3 mr-1" />
+                        {lead.assignedToUserName}
+                      </Badge>
+                    ) : lead.loanSubmittedToFineract ? (
+                      <Badge
+                        variant="outline"
+                        className="border-orange-500 text-orange-500 bg-orange-500/10 whitespace-nowrap"
+                      >
+                        <UserX className="h-3 w-3 mr-1" />
+                        Unassigned
+                      </Badge>
+                    ) : null}
                   </div>
                   <p className="text-muted-foreground">
                     {lead.externalId && (
