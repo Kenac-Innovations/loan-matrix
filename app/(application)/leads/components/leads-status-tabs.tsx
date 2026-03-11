@@ -552,7 +552,7 @@ export function LeadsStatusTabs() {
   }, [tabData, getFilteredData, getRoleScopedData]);
 
   // Columns to hide from display (but keep loan_account visible as link)
-  const HIDDEN_COLUMNS = new Set(["lead_id", "loan_id", "client_id", "id", "external_id", "client_external_id"]);
+  const HIDDEN_COLUMNS = new Set(["lead_id", "loan_id", "client_id", "id", "external_id", "client_external_id", "countrycode", "country_code"]);
   
   // Columns that should be rendered as links
   const LINK_COLUMNS = new Set(["loan_account"]);
@@ -667,7 +667,7 @@ export function LeadsStatusTabs() {
             return <span className="font-medium">{String(value)}</span>;
           }
           
-          return formatCellValue(col, value, orgCurrency);
+          return formatCellValue(col, value, orgCurrency, row.original);
         },
         enableSorting: true,
       });
@@ -1144,30 +1144,28 @@ function isPhoneColumn(colLower: string): boolean {
   return PHONE_PATTERNS.some(pattern => colLower.includes(pattern));
 }
 
-function formatPhoneNumber(value: any): string {
+function formatPhoneNumber(value: any, countryCode?: string): string {
   if (!value) return "-";
-  
-  let phone = String(value).replaceAll(/\D/g, ""); // Remove non-digits
-  
-  // Already has country code
-  if (phone.startsWith("260")) {
-    return `+${phone.slice(0, 3)} ${phone.slice(3, 5)} ${phone.slice(5)}`;
+
+  const code = countryCode || "+260";
+  const codeDigits = code.replace("+", "");
+  let phone = String(value).replaceAll(/\D/g, "");
+
+  // Strip country code prefix if already present in the number
+  if (phone.startsWith(codeDigits)) {
+    phone = phone.slice(codeDigits.length);
   }
-  
-  // Local number starting with 0
-  if (phone.startsWith("0") && phone.length >= 10) {
-    phone = "260" + phone.slice(1);
-    return `+${phone.slice(0, 3)} ${phone.slice(3, 5)} ${phone.slice(5)}`;
+
+  // Strip leading 0
+  if (phone.startsWith("0") && phone.length > 1) {
+    phone = phone.slice(1);
   }
-  
-  // 9-digit number without leading 0
-  if (phone.length === 9) {
-    phone = "260" + phone;
-    return `+${phone.slice(0, 3)} ${phone.slice(3, 5)} ${phone.slice(5)}`;
+
+  if (phone.length >= 7) {
+    return `${code} ${phone.slice(0, 2)} ${phone.slice(2)}`;
   }
-  
-  // Return as-is if format is unclear
-  return String(value);
+
+  return `${code} ${phone}`;
 }
 
 function formatDate(value: any): React.ReactNode | null {
@@ -1276,7 +1274,7 @@ function formatNumericValue(value: any, colLower: string, currencyCode?: string)
 }
 
 // Helper to format cell values
-function formatCellValue(column: string, value: any, currencyCode?: string): React.ReactNode {
+function formatCellValue(column: string, value: any, currencyCode?: string, rowData?: any): React.ReactNode {
   if (value === null || value === undefined || value === "") {
     return <span className="text-muted-foreground">-</span>;
   }
@@ -1285,7 +1283,8 @@ function formatCellValue(column: string, value: any, currencyCode?: string): Rea
 
   // Phone numbers
   if (isPhoneColumn(colLower)) {
-    return <span className="tabular-nums">{formatPhoneNumber(value)}</span>;
+    const code = rowData?.countryCode || rowData?.country_code;
+    return <span className="tabular-nums">{formatPhoneNumber(value, code)}</span>;
   }
 
   // Dates (check before numbers as dates can look numeric)
