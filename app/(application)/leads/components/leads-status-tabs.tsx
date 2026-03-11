@@ -30,6 +30,7 @@ import {
 } from "lucide-react";
 import { format, startOfDay, endOfDay } from "date-fns";
 import { cn } from "@/lib/utils";
+import { useIsMobile } from "@/hooks/use-media-query";
 import Link from "next/link";
 import { GenericDataTable, DataTableColumn } from "@/components/tables/generic-data-table";
 import { formatCurrency } from "@/lib/format-currency";
@@ -169,6 +170,7 @@ function getTenantSlugFromHost(): string {
 export function LeadsStatusTabs() {
   const { data: session } = useSession();
   const { currencyCode: orgCurrency } = useCurrency();
+  const isMobile = useIsMobile();
   const [activeTab, setActiveTab] = useState("drafts");
   const [dateRange, setDateRange] = useState<DateRange>({
     from: startOfDay(new Date()),
@@ -735,16 +737,15 @@ export function LeadsStatusTabs() {
     return (
       <div className="space-y-4">
         {/* Smart Filters */}
-        <div className="flex flex-wrap gap-3 p-3 bg-muted/30 dark:bg-muted/10 rounded-lg border dark:border-border">
-          {/* Branch Filter */}
+        <div className="grid grid-cols-1 sm:flex sm:flex-wrap gap-2 sm:gap-3 p-3 bg-muted/30 dark:bg-muted/10 rounded-lg border dark:border-border">
           {filterOpts.branches.length > 0 && (
             <div className="flex items-center gap-2">
-              <span className="text-sm font-medium text-muted-foreground">Branch:</span>
+              <span className="text-xs sm:text-sm font-medium text-muted-foreground whitespace-nowrap">Branch:</span>
               <Select
                 value={tabFilters.branch}
                 onValueChange={(value) => updateFilter(report, "branch", value)}
               >
-                <SelectTrigger className="w-[160px] h-8">
+                <SelectTrigger className="w-full sm:w-[160px] h-8 text-xs sm:text-sm">
                   <SelectValue placeholder="All Branches" />
                 </SelectTrigger>
                 <SelectContent>
@@ -759,15 +760,14 @@ export function LeadsStatusTabs() {
             </div>
           )}
 
-          {/* Loan Product Filter */}
           {filterOpts.loanProducts.length > 0 && (
             <div className="flex items-center gap-2">
-              <span className="text-sm font-medium text-muted-foreground">Product:</span>
+              <span className="text-xs sm:text-sm font-medium text-muted-foreground whitespace-nowrap">Product:</span>
               <Select
                 value={tabFilters.loanProduct}
                 onValueChange={(value) => updateFilter(report, "loanProduct", value)}
               >
-                <SelectTrigger className="w-[160px] h-8">
+                <SelectTrigger className="w-full sm:w-[160px] h-8 text-xs sm:text-sm">
                   <SelectValue placeholder="All Products" />
                 </SelectTrigger>
                 <SelectContent>
@@ -782,15 +782,14 @@ export function LeadsStatusTabs() {
             </div>
           )}
 
-          {/* Submitted By Filter */}
           {filterOpts.submittedBy.length > 0 && (
             <div className="flex items-center gap-2">
-              <span className="text-sm font-medium text-muted-foreground">Submitted By:</span>
+              <span className="text-xs sm:text-sm font-medium text-muted-foreground whitespace-nowrap">By:</span>
               <Select
                 value={tabFilters.submittedBy}
                 onValueChange={(value) => updateFilter(report, "submittedBy", value)}
               >
-                <SelectTrigger className="w-[160px] h-8">
+                <SelectTrigger className="w-full sm:w-[160px] h-8 text-xs sm:text-sm">
                   <SelectValue placeholder="All Users" />
                 </SelectTrigger>
                 <SelectContent>
@@ -805,9 +804,8 @@ export function LeadsStatusTabs() {
             </div>
           )}
 
-          {/* Filter count indicator */}
           {(tabFilters.branch !== "all" || tabFilters.loanProduct !== "all" || tabFilters.submittedBy !== "all") && (
-            <div className="flex items-center gap-2 ml-auto">
+            <div className="flex items-center gap-2 sm:ml-auto">
               <Badge variant="secondary" className="text-xs">
                 {filteredData.length} of {roleScopedData.length} records
               </Badge>
@@ -867,56 +865,56 @@ export function LeadsStatusTabs() {
   return (
     <div className="space-y-6">
       {/* Pipeline Stats Cards */}
-      <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
+      <div className="grid gap-3 sm:gap-4 grid-cols-2 md:grid-cols-4">
         <Card className="bg-gradient-to-br from-blue-500/10 to-blue-600/5 border-blue-500/20">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Total Leads</CardTitle>
-            <Users className="h-4 w-4 text-blue-500" />
+          <CardHeader className="flex flex-row items-center justify-between pb-1 sm:pb-2 p-3 sm:p-6">
+            <CardTitle className="text-xs sm:text-sm font-medium text-muted-foreground">Total Leads</CardTitle>
+            <Users className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-blue-500" />
           </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{pipelineStats.totalLeads}</div>
-            <p className="text-xs text-muted-foreground mt-1">
+          <CardContent className="p-3 pt-0 sm:p-6 sm:pt-0">
+            <div className="text-xl sm:text-2xl font-bold">{pipelineStats.totalLeads}</div>
+            <p className="text-[10px] sm:text-xs text-muted-foreground mt-1">
               {userFilterScope.label}
             </p>
           </CardContent>
         </Card>
         
         <Card className="bg-gradient-to-br from-green-500/10 to-green-600/5 border-green-500/20">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Conversion Rate</CardTitle>
-            <TrendingUp className="h-4 w-4 text-green-500" />
+          <CardHeader className="flex flex-row items-center justify-between pb-1 sm:pb-2 p-3 sm:p-6">
+            <CardTitle className="text-xs sm:text-sm font-medium text-muted-foreground">Conversion Rate</CardTitle>
+            <TrendingUp className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-green-500" />
           </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{pipelineStats.conversionRate}%</div>
-            <p className="text-xs text-muted-foreground mt-1">
+          <CardContent className="p-3 pt-0 sm:p-6 sm:pt-0">
+            <div className="text-xl sm:text-2xl font-bold">{pipelineStats.conversionRate}%</div>
+            <p className="text-[10px] sm:text-xs text-muted-foreground mt-1">
               {pipelineStats.approved} approved / {pipelineStats.approved + pipelineStats.rejected} decided
             </p>
           </CardContent>
         </Card>
         
         <Card className="bg-gradient-to-br from-purple-500/10 to-purple-600/5 border-purple-500/20">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Submission Rate</CardTitle>
-            <Target className="h-4 w-4 text-purple-500" />
+          <CardHeader className="flex flex-row items-center justify-between pb-1 sm:pb-2 p-3 sm:p-6">
+            <CardTitle className="text-xs sm:text-sm font-medium text-muted-foreground">Submission Rate</CardTitle>
+            <Target className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-purple-500" />
           </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{pipelineStats.submissionRate}%</div>
-            <p className="text-xs text-muted-foreground mt-1">
-              {pipelineStats.drafts} drafts pending submission
+          <CardContent className="p-3 pt-0 sm:p-6 sm:pt-0">
+            <div className="text-xl sm:text-2xl font-bold">{pipelineStats.submissionRate}%</div>
+            <p className="text-[10px] sm:text-xs text-muted-foreground mt-1 truncate">
+              {pipelineStats.drafts} drafts pending
             </p>
           </CardContent>
         </Card>
         
         <Card className="bg-gradient-to-br from-amber-500/10 to-amber-600/5 border-amber-500/20">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">SLA Status</CardTitle>
-            <Timer className="h-4 w-4 text-amber-500" />
+          <CardHeader className="flex flex-row items-center justify-between pb-1 sm:pb-2 p-3 sm:p-6">
+            <CardTitle className="text-xs sm:text-sm font-medium text-muted-foreground">SLA Status</CardTitle>
+            <Timer className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-amber-500" />
           </CardHeader>
-          <CardContent>
-            <div className={cn("text-2xl font-bold", pipelineStats.slaColor)}>
+          <CardContent className="p-3 pt-0 sm:p-6 sm:pt-0">
+            <div className={cn("text-xl sm:text-2xl font-bold", pipelineStats.slaColor)}>
               {pipelineStats.slaStatus}
             </div>
-            <p className="text-xs text-muted-foreground mt-1">
+            <p className="text-[10px] sm:text-xs text-muted-foreground mt-1">
               {pipelineStats.pending} pending approval
             </p>
           </CardContent>
@@ -924,149 +922,149 @@ export function LeadsStatusTabs() {
       </div>
 
       <Card className="border dark:border-border">
-        <CardHeader className="border-b dark:border-border">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <CardHeader className="border-b dark:border-border px-4 sm:px-6">
+          <div className="flex flex-col gap-3 sm:gap-4 md:flex-row md:items-center md:justify-between">
             <div>
-              <CardTitle>Loan Applications</CardTitle>
-              <CardDescription>
+              <CardTitle className="text-base sm:text-lg">Loan Applications</CardTitle>
+              <CardDescription className="text-xs sm:text-sm">
                 View loan applications by status for the selected period
               </CardDescription>
             </div>
-          <div className="flex items-center gap-2">
-            {/* Date Range Picker */}
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
+            <div className="flex items-center gap-2">
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className={cn(
+                      "justify-start text-left font-normal flex-1 sm:flex-none sm:min-w-[240px] text-xs sm:text-sm",
+                      !dateRange && "text-muted-foreground"
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4 flex-shrink-0" />
+                    <DateRangeLabel dateRange={dateRange} />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="end">
+                  <Calendar
+                    initialFocus
+                    mode="range"
+                    defaultMonth={dateRange?.from}
+                    selected={{ from: dateRange.from, to: dateRange.to }}
+                    onSelect={(range) => {
+                      if (range?.from) {
+                        setDateRange({
+                          from: range.from,
+                          to: range.to || range.from,
+                        });
+                      }
+                    }}
+                    numberOfMonths={isMobile ? 1 : 2}
+                  />
+                  <div className="border-t dark:border-border p-3 flex gap-2 flex-wrap">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        const today = new Date();
+                        setDateRange({
+                          from: startOfDay(today),
+                          to: endOfDay(today),
+                        });
+                      }}
+                    >
+                      Today
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        const today = new Date();
+                        const weekAgo = new Date(today);
+                        weekAgo.setDate(today.getDate() - 7);
+                        setDateRange({
+                          from: startOfDay(weekAgo),
+                          to: endOfDay(today),
+                        });
+                      }}
+                    >
+                      Last 7 days
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        const today = new Date();
+                        const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+                        setDateRange({
+                          from: startOfDay(monthStart),
+                          to: endOfDay(today),
+                        });
+                      }}
+                    >
+                      This month
+                    </Button>
+                  </div>
+                </PopoverContent>
+              </Popover>
+
+              <Button
+                variant="outline"
+                size="icon"
+                className="flex-shrink-0"
+                onClick={handleRefresh}
+                disabled={loading[activeTab]}
+              >
+                <RefreshCw
+                  className={cn("h-4 w-4", loading[activeTab] && "animate-spin")}
+                />
+              </Button>
+            </div>
+          </div>
+          {lastUpdated && (
+            <p className="text-xs text-muted-foreground mt-2">
+              Last updated: {format(lastUpdated, "HH:mm:ss")} • Auto-refreshes every 10s
+            </p>
+          )}
+        </CardHeader>
+      <CardContent className="pt-4 sm:pt-6 px-3 sm:px-6">
+        <Tabs value={activeTab} onValueChange={handleTabChange}>
+          <div className="overflow-x-auto -mx-1 px-1 mb-4 scrollbar-none">
+            <TabsList className="inline-flex w-full sm:grid sm:grid-cols-6 h-auto bg-muted/50 dark:bg-muted/30 p-1 rounded-lg min-w-max sm:min-w-0">
+              {TABS.map((tab) => (
+                <TabsTrigger
+                  key={tab.id}
+                  value={tab.id}
                   className={cn(
-                    "justify-start text-left font-normal min-w-[240px]",
-                    !dateRange && "text-muted-foreground"
+                    "py-2.5 px-3 sm:py-3 sm:px-4 rounded-md transition-all duration-200 flex-shrink-0",
+                    "data-[state=active]:text-white data-[state=active]:shadow-md",
+                    "data-[state=inactive]:hover:bg-muted dark:data-[state=inactive]:hover:bg-muted/50",
+                    tab.activeBg,
+                    activeTab !== tab.id && tab.inactiveText
                   )}
                 >
-                  <CalendarIcon className="mr-2 h-4 w-4" />
-                  <DateRangeLabel dateRange={dateRange} />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="end">
-                <Calendar
-                  initialFocus
-                  mode="range"
-                  defaultMonth={dateRange?.from}
-                  selected={{ from: dateRange.from, to: dateRange.to }}
-                  onSelect={(range) => {
-                    if (range?.from) {
-                      setDateRange({
-                        from: range.from,
-                        to: range.to || range.from,
-                      });
-                    }
-                  }}
-                  numberOfMonths={2}
-                />
-                {/* Quick date presets */}
-                <div className="border-t dark:border-border p-3 flex gap-2 flex-wrap">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      const today = new Date();
-                      setDateRange({
-                        from: startOfDay(today),
-                        to: endOfDay(today),
-                      });
-                    }}
-                  >
-                    Today
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      const today = new Date();
-                      const weekAgo = new Date(today);
-                      weekAgo.setDate(today.getDate() - 7);
-                      setDateRange({
-                        from: startOfDay(weekAgo),
-                        to: endOfDay(today),
-                      });
-                    }}
-                  >
-                    Last 7 days
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      const today = new Date();
-                      const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
-                      setDateRange({
-                        from: startOfDay(monthStart),
-                        to: endOfDay(today),
-                      });
-                    }}
-                  >
-                    This month
-                  </Button>
-                </div>
-              </PopoverContent>
-            </Popover>
-
-            {/* Refresh Button */}
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={handleRefresh}
-              disabled={loading[activeTab]}
-            >
-              <RefreshCw
-                className={cn("h-4 w-4", loading[activeTab] && "animate-spin")}
-              />
-            </Button>
+                  <div className="flex items-center gap-1.5 sm:gap-2">
+                    {tab.icon}
+                    <span className="hidden sm:inline font-medium">{tab.label}</span>
+                    <Badge
+                      variant="secondary"
+                      className={cn(
+                        "ml-0.5 sm:ml-1 transition-colors min-w-[24px] sm:min-w-[28px] justify-center text-[10px] sm:text-xs",
+                        activeTab === tab.id
+                          ? "bg-white/25 text-white border-white/20"
+                          : "bg-background dark:bg-background/50 text-foreground"
+                      )}
+                    >
+                      {loading[tab.id] && !tabData[tab.id] ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        String(pipelineStats[tab.report as keyof typeof pipelineStats] ?? tabCounts[tab.id])
+                      )}
+                    </Badge>
+                  </div>
+                </TabsTrigger>
+              ))}
+            </TabsList>
           </div>
-        </div>
-        {lastUpdated && (
-          <p className="text-xs text-muted-foreground mt-2">
-            Last updated: {format(lastUpdated, "HH:mm:ss")} • Auto-refreshes every 10s
-          </p>
-        )}
-      </CardHeader>
-      <CardContent className="pt-6">
-        <Tabs value={activeTab} onValueChange={handleTabChange}>
-          <TabsList className="grid w-full grid-cols-6 mb-4 h-auto bg-muted/50 dark:bg-muted/30 p-1 rounded-lg">
-            {TABS.map((tab) => (
-              <TabsTrigger
-                key={tab.id}
-                value={tab.id}
-                className={cn(
-                  "py-3 px-4 rounded-md transition-all duration-200",
-                  "data-[state=active]:text-white data-[state=active]:shadow-md",
-                  "data-[state=inactive]:hover:bg-muted dark:data-[state=inactive]:hover:bg-muted/50",
-                  tab.activeBg,
-                  activeTab !== tab.id && tab.inactiveText
-                )}
-              >
-                <div className="flex items-center gap-2">
-                  {tab.icon}
-                  <span className="hidden sm:inline font-medium">{tab.label}</span>
-                  <Badge
-                    variant="secondary"
-                    className={cn(
-                      "ml-1 transition-colors min-w-[28px] justify-center",
-                      activeTab === tab.id
-                        ? "bg-white/25 text-white border-white/20"
-                        : "bg-background dark:bg-background/50 text-foreground"
-                    )}
-                  >
-                    {loading[tab.id] && !tabData[tab.id] ? (
-                      <Loader2 className="h-3 w-3 animate-spin" />
-                    ) : (
-                      String(pipelineStats[tab.report as keyof typeof pipelineStats] ?? tabCounts[tab.id])
-                    )}
-                  </Badge>
-                </div>
-              </TabsTrigger>
-            ))}
-          </TabsList>
 
           {TABS.map((tab) => (
             <TabsContent key={tab.id} value={tab.id} className="mt-0">
