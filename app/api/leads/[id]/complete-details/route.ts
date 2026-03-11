@@ -258,19 +258,34 @@ export async function GET(
       );
     }
 
-    // Enrich lead response from Fineract client data
+    // Enrich lead response from Fineract client data (Fineract is source of truth)
     if (response.fineractClient) {
       const clientData = response.fineractClient;
-      if (!response.lead.gender && clientData.gender?.name) {
+      if (clientData.firstname) {
+        response.lead.firstname = clientData.firstname;
+      }
+      if (clientData.lastname) {
+        response.lead.lastname = clientData.lastname;
+      }
+      if (clientData.externalId) {
+        response.lead.externalId = clientData.externalId;
+      }
+      if (clientData.mobileNo) {
+        response.lead.mobileNo = clientData.mobileNo;
+      }
+      if (clientData.dateOfBirth) {
+        response.lead.dateOfBirth = clientData.dateOfBirth;
+      }
+      if (clientData.gender?.name) {
         response.lead.gender = clientData.gender.name;
       }
-      if (!response.lead.officeName && clientData.officeName) {
+      if (clientData.officeName) {
         response.lead.officeName = clientData.officeName;
       }
-      if (!response.lead.clientTypeName && clientData.clientType?.name) {
+      if (clientData.clientType?.name) {
         response.lead.clientTypeName = clientData.clientType.name;
       }
-      if (!response.lead.clientClassificationName && clientData.clientClassification?.name) {
+      if (clientData.clientClassification?.name) {
         response.lead.clientClassificationName = clientData.clientClassification.name;
       }
     }

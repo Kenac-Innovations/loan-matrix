@@ -73,11 +73,6 @@ export function LeadActions({
     };
   }, [router]);
 
-  // Only show if there's a loan
-  if (!loanId || !fineractClientId) {
-    return null;
-  }
-
   // Check if pre-disbursement status (show approve/disburse actions)
   const statusLower = (loanStatus || "").toLowerCase();
   const isPreDisbursement =
@@ -87,6 +82,12 @@ export function LeadActions({
 
   // Check if loan is active/disbursed (show payout option)
   const isDisbursed = statusLower.includes("active");
+
+  // For pre-disbursement, only loanId is needed (fineractClientId not required for approve/reject)
+  // For post-disbursement, both loanId and fineractClientId are needed (View Loan link, Payout)
+  if (!loanId) {
+    return null;
+  }
 
   // For pre-disbursement statuses, show LoanActions (approve/disburse)
   if (isPreDisbursement) {
@@ -105,7 +106,11 @@ export function LeadActions({
     );
   }
 
-  // For post-disbursement statuses (Active/Disbursed, Closed, etc.)
+  // For post-disbursement statuses, fineractClientId is needed for View Loan link and Payout
+  if (!fineractClientId) {
+    return null;
+  }
+
   return (
     <>
       <div className="flex flex-wrap gap-2 items-center">
