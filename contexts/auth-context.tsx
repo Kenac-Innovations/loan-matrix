@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { signIn, signOut, useSession } from "next-auth/react";
+import { signIn, signOut, useSession, getSession } from "next-auth/react";
 
 type LoginResult = { success: boolean; error?: string };
 
@@ -91,6 +91,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return { success: true };
     } catch (error) {
       console.error("Login failed:", error);
+
+      if (error instanceof TypeError && error.message.includes("Invalid URL")) {
+        const session = await getSession();
+        if (session) {
+          return { success: true };
+        }
+      }
+
       return {
         success: false,
         error: "Unable to connect. Please check your network and try again.",
