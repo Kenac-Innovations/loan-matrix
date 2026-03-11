@@ -38,20 +38,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     password: string
   ): Promise<LoginResult> => {
     try {
-      const validateRes = await fetch("/api/auth/validate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password }),
-      });
-      const validateData = await validateRes.json();
-
-      if (!validateRes.ok || !validateData.success) {
-        return {
-          success: false,
-          error: validateData.error || "Authentication failed",
-        };
-      }
-
       const result = await signIn("credentials", {
         username,
         password,
@@ -61,10 +47,45 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (result?.error) {
         console.error("SignIn error:", result.error);
-        return {
-          success: false,
-          error: "Failed to establish session. Please try again.",
-        };
+
+        try {
+          const validateRes = await fetch("/api/auth/validate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ username, password }),
+          });
+          const validateData = await validateRes.json();
+
+          if (!validateRes.ok || !validateData.success) {
+            return {
+              success: false,
+              error: validateData.error || "Invalid username or password",
+            };
+          }
+        } catch {
+          // validate endpoint unreachable, fall through to generic error
+        }
+
+        return { success: false, error: "Invalid username or password" };
+      }
+
+      try {
+        const validateRes = await fetch("/api/auth/validate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username, password }),
+        });
+        const validateData = await validateRes.json();
+
+        if (!validateRes.ok || !validateData.success) {
+          await signOut({ redirect: false });
+          return {
+            success: false,
+            error: validateData.error || "Authentication failed",
+          };
+        }
+      } catch {
+        // validate endpoint unreachable — signIn already succeeded so allow login
       }
 
       return { success: true };
