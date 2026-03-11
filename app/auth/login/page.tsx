@@ -44,12 +44,12 @@ export default function LoginPage() {
     setIsLoading(true);
 
     try {
-      const success = await login(username, password);
+      const result = await login(username, password);
 
-      if (success) {
+      if (result.success) {
         window.location.href = "/leads";
       } else {
-        setError("Invalid username or password");
+        setError(result.error || "Login failed");
       }
     } catch (err) {
       setError("An error occurred during login");

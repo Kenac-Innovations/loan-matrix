@@ -4,7 +4,8 @@ import React, { createContext, useContext, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { signIn, signOut, useSession } from "next-auth/react";
 
-// Define the shape of our authentication context
+type LoginResult = { success: boolean; error?: string };
+
 type AuthContextType = {
   status: "loading" | "authenticated" | "unauthenticated";
   user: {
@@ -13,15 +14,14 @@ type AuthContextType = {
     email?: string | null;
     image?: string | null;
   } | null;
-  login: (username: string, password: string) => Promise<boolean>;
+  login: (username: string, password: string) => Promise<LoginResult>;
   logout: () => void;
 };
 
-// Create the context with a default value
 const AuthContext = createContext<AuthContextType>({
   status: "loading",
   user: null,
-  login: async () => false,
+  login: async () => ({ success: false }),
   logout: () => {},
 });
 
@@ -33,9 +33,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const { data: session, status: sessionStatus } = useSession();
   const router = useRouter();
 
-  // Login function that calls NextAuth signIn
-  const login = async (username: string, password: string) => {
+  const login = async (
+    username: string,
+    password: string
+  ): Promise<LoginResult> => {
     try {
+      const validateRes = await fetch("/api/auth/validate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password }),
+      });
+      const validateData = await validateRes.json();
+
+      if (!validateRes.ok || !validateData.success) {
+        return {
+          success: false,
+          error: validateData.error || "Authentication failed",
+        };
+      }
+
       const result = await signIn("credentials", {
         username,
         password,
@@ -45,25 +61,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (result?.error) {
         console.error("SignIn error:", result.error);
-        // Handle specific NextAuth errors
-        if (result.error.includes("CLIENT_FETCH_ERROR")) {
-          console.error(
-            "NextAuth CLIENT_FETCH_ERROR - Check NEXTAUTH_URL configuration"
-          );
-        }
-        return false;
+        return {
+          success: false,
+          error: "Failed to establish session. Please try again.",
+        };
       }
 
-      return true;
+      return { success: true };
     } catch (error) {
       console.error("Login failed:", error);
-      // Handle network or fetch errors
-      if (error instanceof Error && error.message.includes("fetch")) {
-        console.error(
-          "Network error during authentication - check API connectivity"
-        );
-      }
-      return false;
+      return {
+        success: false,
+        error: "Unable to connect. Please check your network and try again.",
+      };
     }
   };
 
