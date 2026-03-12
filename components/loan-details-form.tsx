@@ -52,52 +52,80 @@ import { Calendar } from "@/components/ui/calender";
 import { cn } from "@/lib/utils";
 import { formatCurrency } from "@/lib/format-currency";
 
-// Helper function to calculate first repayment date
-const calculateFirstRepaymentDate = (): Date => {
+import type { FirstRepaymentDateConfig } from "@/shared/types/tenant";
+
+/**
+ * Calculate the default first repayment date based on tenant strategy.
+ *
+ * "cutoff" (default / Goodfellow):
+ *   If today >= cutoffDay → last day of next month, else last day of current month.
+ *
+ * "month-after-disbursement" (Omama):
+ *   One calendar month after the expected disbursement date.
+ */
+const calculateFirstRepaymentDate = (
+  config?: FirstRepaymentDateConfig | null,
+  disbursementDate?: Date | null,
+): Date => {
+  const strategy = config?.strategy ?? "cutoff";
+
+  if (strategy === "month-after-disbursement" && disbursementDate) {
+    const target = new Date(disbursementDate);
+    target.setMonth(target.getMonth() + 1);
+    target.setHours(0, 0, 0, 0);
+    return target;
+  }
+
+  // Default: "cutoff" strategy
   const today = new Date();
   const dayOfMonth = today.getDate();
   const year = today.getFullYear();
-  const month = today.getMonth(); // 0-indexed (0 = January, 11 = December)
+  const month = today.getMonth();
+  const cutoffDay = config?.cutoffDay ?? 16;
 
-  let targetDate: Date;
+  const targetDate =
+    dayOfMonth >= cutoffDay
+      ? new Date(year, month + 2, 0) // last day of next month
+      : new Date(year, month + 1, 0); // last day of current month
 
-  if (dayOfMonth >= 16) {
-    // If 16th or later, go to last day of next month
-    // month + 2 means: current month + 1 (next month) + 1 (to get to the month after next)
-    // day 0 of that month = last day of previous month (which is next month)
-    targetDate = new Date(year, month + 2, 0);
-  } else {
-    // If before 16th, go to last day of current month
-    // month + 1 means: next month
-    // day 0 of next month = last day of current month
-    targetDate = new Date(year, month + 1, 0);
-  }
-
-  // Set time to midnight to avoid timezone issues
   targetDate.setHours(0, 0, 0, 0);
-
   return targetDate;
 };
 
 // Form validation schema
-const loanDetailsSchema = z.object({
-  productName: z.string().min(1, "Product name is required"),
-  externalId: z.string().optional(),
-  loanPurpose: z.string().optional(),
-  submittedOn: z.date({
-    required_error: "Submitted on date is required",
-  }),
-  loanOfficer: z.string().optional(),
-  fund: z.string().optional(),
-  disbursementOn: z.date({
-    required_error: "Disbursement date is required",
-  }),
-  firstRepaymentOn: z.date({
-    required_error: "First repayment date is required",
-  }),
-  linkSavings: z.string().optional(),
-  createStandingInstructions: z.boolean(),
-});
+const loanDetailsSchema = z
+  .object({
+    productName: z.string().min(1, "Product name is required"),
+    externalId: z.string().optional(),
+    loanPurpose: z.string().optional(),
+    submittedOn: z.date({
+      required_error: "Submitted on date is required",
+    }),
+    loanOfficer: z.string().optional(),
+    fund: z.string().optional(),
+    disbursementOn: z.date({
+      required_error: "Disbursement date is required",
+    }),
+    firstRepaymentOn: z.date({
+      required_error: "First repayment date is required",
+    }),
+    linkSavings: z.string().optional(),
+    createStandingInstructions: z.boolean(),
+  })
+  .refine(
+    (data) => data.disbursementOn >= data.submittedOn,
+    {
+      message: "Expected disbursement date cannot be before submitted date",
+      path: ["disbursementOn"],
+    }
+  )
+  .refine(
+    (data) => data.firstRepaymentOn > data.disbursementOn,
+    {
+      message: "First repayment date must be after expected disbursement date",
+      path: ["firstRepaymentOn"],
+    }
+  );
 
 type LoanDetailsFormData = z.infer<typeof loanDetailsSchema>;
 
@@ -251,6 +279,9 @@ export function LoanDetailsForm({
     loanInfo: false,
     savingsLinkage: false,
   });
+  const [firstRepaymentConfig, setFirstRepaymentConfig] =
+    useState<FirstRepaymentDateConfig | null>(null);
+  const [tenantConfigLoaded, setTenantConfigLoaded] = useState(false);
 
   const form = useForm<LoanDetailsFormData>({
     resolver: zodResolver(loanDetailsSchema),
@@ -259,26 +290,49 @@ export function LoanDetailsForm({
       externalId: "",
       submittedOn: new Date(),
       disbursementOn: new Date(),
-      firstRepaymentOn: undefined as any, // Will be set in useEffect
+      firstRepaymentOn: undefined as any, // Will be set once tenant config loads
       createStandingInstructions: false,
     },
   });
 
-  // Ensure firstRepaymentOn has a default value on mount (before any data loading)
+  // Fetch tenant settings for first repayment date strategy
   useEffect(() => {
-    // Calculate and set the date immediately on mount
-    const calculatedDate = calculateFirstRepaymentDate();
-    console.log("Setting initial firstRepaymentOn on mount:", {
-      today: new Date().toISOString().split("T")[0],
-      dayOfMonth: new Date().getDate(),
+    async function fetchTenantSettings() {
+      try {
+        const res = await fetch("/api/tenant");
+        if (res.ok) {
+          const data = await res.json();
+          const config = data.settings?.firstRepaymentDate ?? null;
+          setFirstRepaymentConfig(config);
+        }
+      } catch (err) {
+        console.error("Failed to fetch tenant settings:", err);
+      } finally {
+        setTenantConfigLoaded(true);
+      }
+    }
+    fetchTenantSettings();
+  }, []);
+
+  // Calculate and set the default firstRepaymentOn once tenant config is loaded
+  useEffect(() => {
+    if (!tenantConfigLoaded) return;
+    const disbursement = form.getValues("disbursementOn");
+    const calculatedDate = calculateFirstRepaymentDate(firstRepaymentConfig, disbursement);
+    console.log("Setting initial firstRepaymentOn from tenant config:", {
+      strategy: firstRepaymentConfig?.strategy ?? "cutoff",
+      disbursement: disbursement?.toISOString().split("T")[0],
       calculatedDate: calculatedDate.toISOString().split("T")[0],
     });
     form.setValue("firstRepaymentOn", calculatedDate, {
       shouldValidate: false,
       shouldDirty: false,
     });
+    if (onFirstRepaymentDateChange) {
+      onFirstRepaymentDateChange(calculatedDate);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Only run once on mount
+  }, [tenantConfigLoaded]);
 
   // Sync shared firstRepaymentOn from parent
   useEffect(() => {
@@ -297,6 +351,29 @@ export function LoanDetailsForm({
       }
     }
   }, [sharedFirstRepaymentOn, form]);
+
+  const watchedSubmittedOn = form.watch("submittedOn");
+  const watchedDisbursementOn = form.watch("disbursementOn");
+
+  // Auto-recalculate first repayment date when disbursement date changes
+  const prevDisbursementOn = useRef<Date | null>(null);
+  useEffect(() => {
+    if (!tenantConfigLoaded || !watchedDisbursementOn) return;
+    // Skip the initial render — only react to actual user changes
+    if (prevDisbursementOn.current === null) {
+      prevDisbursementOn.current = watchedDisbursementOn;
+      return;
+    }
+    if (prevDisbursementOn.current.getTime() === watchedDisbursementOn.getTime()) return;
+    prevDisbursementOn.current = watchedDisbursementOn;
+
+    const newDate = calculateFirstRepaymentDate(firstRepaymentConfig, watchedDisbursementOn);
+    form.setValue("firstRepaymentOn", newDate);
+    if (onFirstRepaymentDateChange) {
+      onFirstRepaymentDateChange(newDate);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [watchedDisbursementOn, tenantConfigLoaded]);
 
   // Watch for changes to firstRepaymentOn and auto-save to DB
   const watchedFirstRepaymentOn = form.watch("firstRepaymentOn");
@@ -540,6 +617,7 @@ export function LoanDetailsForm({
         !leadId ||
         !hasCompleteTemplate ||
         !loanTemplate ||
+        !tenantConfigLoaded ||
         hasLoadedLoanDetails.current
       )
         return;
@@ -622,7 +700,8 @@ export function LoanDetailsForm({
               }
             } else {
               // If no saved firstRepaymentOn in either, recalculate the default
-              const calculatedDate = calculateFirstRepaymentDate();
+              const disbursement = form.getValues("disbursementOn");
+              const calculatedDate = calculateFirstRepaymentDate(firstRepaymentConfig, disbursement);
               console.log(
                 "No saved firstRepaymentOn, setting calculated default:",
                 calculatedDate.toISOString().split("T")[0]
@@ -675,9 +754,8 @@ export function LoanDetailsForm({
     };
 
     loadLoanDetails();
-    // Only depend on leadId and hasCompleteTemplate, not loanTemplate to avoid infinite loop
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [leadId, hasCompleteTemplate]);
+  }, [leadId, hasCompleteTemplate, tenantConfigLoaded]);
 
   // Check section completion
   const watchedValues = form.watch();
@@ -1258,6 +1336,52 @@ export function LoanDetailsForm({
                 )}
               </div>
 
+              {/* Expected Disbursement Date */}
+              <div className="space-y-2">
+                <Label htmlFor="disbursementOn" className="text-sm font-medium">
+                  Expected Disbursement Date <span className="text-red-500">*</span>
+                </Label>
+                <Controller
+                  control={form.control}
+                  name="disbursementOn"
+                  render={({ field }) => (
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          className={cn(
+                            "h-10 w-full justify-start text-left font-normal",
+                            !field.value && "text-muted-foreground"
+                          )}
+                        >
+                          <CalendarIcon className="mr-2 h-4 w-4" />
+                          {field.value
+                            ? format(field.value, "PPP")
+                            : "Pick a date"}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0">
+                        <Calendar
+                          mode="single"
+                          selected={field.value}
+                          onSelect={field.onChange}
+                          defaultMonth={field.value || watchedSubmittedOn || new Date()}
+                          disabled={(date) =>
+                            date < (watchedSubmittedOn || new Date("1900-01-01"))
+                          }
+                          initialFocus
+                        />
+                      </PopoverContent>
+                    </Popover>
+                  )}
+                />
+                {form.formState.errors.disbursementOn && (
+                  <p className="text-sm text-red-500">
+                    {form.formState.errors.disbursementOn.message}
+                  </p>
+                )}
+              </div>
+
               {/* First Repayment On */}
               <div className="space-y-2">
                 <Label
@@ -1294,8 +1418,10 @@ export function LoanDetailsForm({
                               field.onChange(day);
                             }
                           }}
-                          defaultMonth={field.value || new Date()}
-                          disabled={(date) => date < new Date("1900-01-01")}
+                          defaultMonth={field.value || watchedDisbursementOn || new Date()}
+                          disabled={(date) =>
+                            date <= (watchedDisbursementOn || new Date("1900-01-01"))
+                          }
                           initialFocus
                         />
                       </PopoverContent>
@@ -1308,8 +1434,9 @@ export function LoanDetailsForm({
                   </p>
                 )}
                 <p className="text-xs text-muted-foreground">
-                  Default: Last day of{" "}
-                  {new Date().getDate() >= 16 ? "next" : "current"} month
+                  {firstRepaymentConfig?.strategy === "month-after-disbursement"
+                    ? "Default: 1 month after expected disbursement date"
+                    : `Default: Last day of ${new Date().getDate() >= (firstRepaymentConfig?.cutoffDay ?? 16) ? "next" : "current"} month`}
                 </p>
               </div>
             </div>

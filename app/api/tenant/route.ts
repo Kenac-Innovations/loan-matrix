@@ -16,5 +16,6 @@ export async function GET() {
     slug: tenant.slug,
     logoFileUrl: tenant.logoFileUrl ?? null,
     logoLinkId: tenant.logoLinkId ?? null,
+    settings: tenant.settings ?? null,
   });
 }

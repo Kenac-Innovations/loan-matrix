@@ -19,6 +19,22 @@ export interface TenantFeatures {
 }
 
 /**
+ * Strategy for calculating the default first repayment date.
+ *
+ * - "cutoff": If today >= cutoffDay, last day of next month; otherwise last day of current month.
+ * - "month-after-disbursement": One calendar month after the expected disbursement date.
+ */
+export type FirstRepaymentDateStrategy =
+  | "cutoff"
+  | "month-after-disbursement";
+
+export interface FirstRepaymentDateConfig {
+  strategy: FirstRepaymentDateStrategy;
+  /** Day-of-month cutoff (only used with "cutoff" strategy). Defaults to 16. */
+  cutoffDay?: number;
+}
+
+/**
  * Tenant settings stored in the database
  */
 export interface TenantSettings {
@@ -30,6 +46,8 @@ export interface TenantSettings {
   conversionTarget?: number;
   /** Processing time target (days) */
   processingTimeTarget?: number;
+  /** How to calculate the default first repayment date */
+  firstRepaymentDate?: FirstRepaymentDateConfig;
 }
 
 /**
