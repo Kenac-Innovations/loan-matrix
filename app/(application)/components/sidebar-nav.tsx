@@ -96,6 +96,9 @@ export function SidebarNav() {
         subMenuItems={[
           { label: "Banks", href: "/banks" },
           { label: "Tellers", href: "/tellers" },
+          ...(isEnabled("receiptRanges")
+            ? [{ label: "Receipt Ranges", href: "/banks/receipts" }]
+            : []),
         ]}
       />
 

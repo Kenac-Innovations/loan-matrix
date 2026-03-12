@@ -8,6 +8,8 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "@/components/ui/use-toast";
 import { format } from "date-fns";
+import { AlertCircle, CheckCircle, Loader2 } from "lucide-react";
+import { useReceiptValidation } from "@/hooks/use-receipt-validation";
 
 interface DisburseModalProps {
   isOpen: boolean;
@@ -19,6 +21,15 @@ interface DisburseModalProps {
 export function DisburseModal({ isOpen, onClose, loanId, onSuccess }: DisburseModalProps) {
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const {
+    receiptRangesEnabled,
+    isValidating: isValidatingReceipt,
+    validationResult: receiptValidation,
+    validate: validateReceipt,
+    validateDebounced: validateReceiptDebounced,
+    markUsed: markReceiptUsed,
+    clearValidation: clearReceiptValidation,
+  } = useReceiptValidation();
 
   const [transactionDate, setTransactionDate] = useState<Date | null>(null);
   const [transactionAmount, setTransactionAmount] = useState<number>(0);
@@ -121,6 +132,19 @@ export function DisburseModal({ isOpen, onClose, loanId, onSuccess }: DisburseMo
       toast({ title: "Validation Error", description: "Please select a payment type for this disbursement.", variant: "destructive" });
       return;
     }
+    // Validate receipt number if receipt ranges are enabled and payment is cash
+    const selectedPt = paymentTypeOptions.find((p: any) => String(p.id) === paymentTypeId);
+    if (receiptRangesEnabled && selectedPt?.isCashPayment) {
+      if (!receiptNumber.trim()) {
+        toast({ title: "Validation Error", description: "Receipt number is required for cash disbursements.", variant: "destructive" });
+        return;
+      }
+      const result = await validateReceipt(receiptNumber);
+      if (!result.valid) {
+        toast({ title: "Validation Error", description: result.error || "Invalid receipt number", variant: "destructive" });
+        return;
+      }
+    }
     setSubmitting(true);
     try {
       const payload: any = {
@@ -151,6 +175,15 @@ export function DisburseModal({ isOpen, onClose, loanId, onSuccess }: DisburseMo
         else if (err?.errorData?.developerMessage) msg = err.errorData.developerMessage;
         else if (err?.error) msg = err.error;
         throw new Error(msg);
+      }
+
+      // Mark receipt number as used
+      if (receiptRangesEnabled && receiptNumber.trim() && selectedPt?.isCashPayment) {
+        await markReceiptUsed({
+          receiptNumber: receiptNumber.trim(),
+          transactionType: "DISBURSEMENT",
+          loanId,
+        });
       }
 
       toast({ title: 'Success', description: 'Loan disbursed successfully.' });
@@ -233,6 +266,45 @@ export function DisburseModal({ isOpen, onClose, loanId, onSuccess }: DisburseMo
               </div>
             </div>
 
+            {/* Receipt Number — shown prominently for tenants with receipt ranges */}
+            {receiptRangesEnabled && paymentTypeOptions.find((p: any) => String(p.id) === paymentTypeId)?.isCashPayment && (
+              <div className="space-y-2 p-4 border rounded-lg bg-muted/30">
+                <Label>
+                  Receipt Number <span className="text-red-500">*</span>
+                </Label>
+                <div className="relative">
+                  <Input
+                    value={receiptNumber}
+                    onChange={(e) => {
+                      setReceiptNumber(e.target.value);
+                      clearReceiptValidation();
+                      if (e.target.value.trim()) validateReceiptDebounced(e.target.value);
+                    }}
+                    placeholder="Enter receipt number"
+                    className={
+                      receiptValidation
+                        ? receiptValidation.valid
+                          ? "border-green-500 pr-8"
+                          : "border-red-500 pr-8"
+                        : ""
+                    }
+                  />
+                  {isValidatingReceipt && (
+                    <Loader2 className="absolute right-2 top-2.5 h-4 w-4 animate-spin text-muted-foreground" />
+                  )}
+                  {!isValidatingReceipt && receiptValidation?.valid && (
+                    <CheckCircle className="absolute right-2 top-2.5 h-4 w-4 text-green-500" />
+                  )}
+                  {!isValidatingReceipt && receiptValidation && !receiptValidation.valid && (
+                    <AlertCircle className="absolute right-2 top-2.5 h-4 w-4 text-red-500" />
+                  )}
+                </div>
+                {receiptValidation && !receiptValidation.valid && (
+                  <p className="text-xs text-red-500">{receiptValidation.error}</p>
+                )}
+              </div>
+            )}
+
             <div className="flex items-center gap-2">
               <input
                 id="show-payment-details"
@@ -257,10 +329,12 @@ export function DisburseModal({ isOpen, onClose, loanId, onSuccess }: DisburseMo
                   <Label>Routing Code</Label>
                   <Input value={routingCode} onChange={(e) => setRoutingCode(e.target.value)} />
                 </div>
-                <div className="space-y-2">
-                  <Label>Receipt #</Label>
-                  <Input value={receiptNumber} onChange={(e) => setReceiptNumber(e.target.value)} />
-                </div>
+                {!receiptRangesEnabled && (
+                  <div className="space-y-2">
+                    <Label>Receipt #</Label>
+                    <Input value={receiptNumber} onChange={(e) => setReceiptNumber(e.target.value)} />
+                  </div>
+                )}
                 <div className="space-y-2 md:col-span-2">
                   <Label>Bank #</Label>
                   <Input value={bankNumber} onChange={(e) => setBankNumber(e.target.value)} />

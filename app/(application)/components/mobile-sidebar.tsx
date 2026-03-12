@@ -359,6 +359,18 @@ export function MobileSidebar({ userProfileData, tenantLogoUrl }: MobileSidebarP
                   >
                     Tellers
                   </Link>
+                  {isEnabled("receiptRanges") && (
+                    <Link
+                      href="/banks/receipts"
+                      className={`flex items-center gap-3 rounded-md px-3 py-2 text-xs font-medium ${
+                        pathname.startsWith("/banks/receipts")
+                          ? iconColorActive
+                          : `${iconColor} hover:${textColor}`
+                      }`}
+                    >
+                      Receipt Ranges
+                    </Link>
+                  )}
                 </div>
               )}
             </div>

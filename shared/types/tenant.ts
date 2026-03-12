@@ -16,6 +16,8 @@ export interface TenantFeatures {
   accounting: boolean;
   /** Enable reports module */
   reports: boolean;
+  /** Enable managed receipt number ranges for cash transactions */
+  receiptRanges: boolean;
 }
 
 /**
@@ -61,6 +63,7 @@ export const DEFAULT_FEATURES: TenantFeatures = {
   aiAssistant: true,
   accounting: true,
   reports: true,
+  receiptRanges: false,
 };
 
 export interface TenantInfo {

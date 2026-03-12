@@ -28,6 +28,8 @@ model Tenant {
   slaConfigs             SLAConfig[]
   teams                  Team[]
   validationRules        ValidationRule[]
+  receiptRanges          ReceiptRange[]
+  usedReceipts           UsedReceipt[]
 
   @@index([slug])
   @@index([isActive])
@@ -876,4 +878,33 @@ model BulkRepaymentItem {
 
   @@index([uploadId, status])
   @@index([loanId])
+}
+
+model ReceiptRange {
+  id         String   @id @default(cuid())
+  tenantId   String
+  tenant     Tenant   @relation(fields: [tenantId], references: [id])
+  prefix     String?
+  rangeStart Int
+  rangeEnd   Int
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([tenantId, isActive])
+}
+
+model UsedReceipt {
+  id              String   @id @default(cuid())
+  tenantId        String
+  tenant          Tenant   @relation(fields: [tenantId], references: [id])
+  receiptNumber   String
+  transactionType String   // REPAYMENT, DISBURSEMENT
+  fineractTxnId   String?
+  loanId          Int?
+  usedBy          String?
+  usedAt          DateTime @default(now())
+
+  @@unique([tenantId, receiptNumber])
+  @@index([tenantId])
 }

@@ -10,8 +10,9 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { Calendar, Coins, DollarSign, Percent, AlertCircle, CheckCircle } from "lucide-react";
+import { Calendar, Coins, DollarSign, Percent, AlertCircle, CheckCircle, Loader2 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { useReceiptValidation } from "@/hooks/use-receipt-validation";
 
 interface RepaymentTemplate {
   type: {
@@ -74,6 +75,16 @@ export function RepaymentModal({ isOpen, onClose, loanId, onSuccess }: Repayment
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [paymentTypes, setPaymentTypes] = useState<PaymentType[]>([]);
+
+  const {
+    receiptRangesEnabled,
+    isValidating: isValidatingReceipt,
+    validationResult: receiptValidation,
+    validate: validateReceipt,
+    validateDebounced: validateReceiptDebounced,
+    markUsed: markReceiptUsed,
+    clearValidation: clearReceiptValidation,
+  } = useReceiptValidation();
 
   // Teller and cashier selection (for cash payments - stored but not sent to Fineract repayment)
   const [tellers, setTellers] = useState<Teller[]>([]);
@@ -248,6 +259,18 @@ export function RepaymentModal({ isOpen, onClose, loanId, onSuccess }: Repayment
           setError("Please select a cashier with an active session for cash repayments.");
           return;
         }
+        // Validate receipt number if receipt ranges are enabled
+        if (receiptRangesEnabled) {
+          if (!formData.receiptNumber.trim()) {
+            setError("Receipt number is required for cash transactions.");
+            return;
+          }
+          const result = await validateReceipt(formData.receiptNumber);
+          if (!result.valid) {
+            setError(result.error || "Invalid receipt number");
+            return;
+          }
+        }
       }
 
       // Format date for Fineract - ISO format
@@ -293,6 +316,16 @@ export function RepaymentModal({ isOpen, onClose, loanId, onSuccess }: Repayment
 
       const result = await response.json();
       console.log("Repayment submitted successfully:", result);
+
+      // Mark receipt number as used
+      if (receiptRangesEnabled && formData.receiptNumber.trim()) {
+        await markReceiptUsed({
+          receiptNumber: formData.receiptNumber.trim(),
+          transactionType: "REPAYMENT",
+          fineractTxnId: result.resourceId?.toString(),
+          loanId,
+        });
+      }
 
       // After 200: call allocate with stored teller/cashier (never sent in repayment payload)
       if (selectedPaymentTypeIsCash && selectedTeller && selectedCashier) {
@@ -625,6 +658,46 @@ export function RepaymentModal({ isOpen, onClose, loanId, onSuccess }: Repayment
               </div>
             )}
 
+            {/* Receipt Number — shown prominently for tenants with receipt ranges on cash payments */}
+            {receiptRangesEnabled && selectedPaymentTypeIsCash && (
+              <div className="space-y-2 p-4 border rounded-lg bg-muted/30">
+                <Label htmlFor="receipt-number-top">
+                  Receipt Number <span className="text-red-500">*</span>
+                </Label>
+                <div className="relative">
+                  <Input
+                    id="receipt-number-top"
+                    value={formData.receiptNumber}
+                    onChange={(e) => {
+                      setFormData(prev => ({ ...prev, receiptNumber: e.target.value }));
+                      clearReceiptValidation();
+                      if (e.target.value.trim()) validateReceiptDebounced(e.target.value);
+                    }}
+                    placeholder="Enter receipt number"
+                    className={
+                      receiptValidation
+                        ? receiptValidation.valid
+                          ? "border-green-500 pr-8"
+                          : "border-red-500 pr-8"
+                        : ""
+                    }
+                  />
+                  {isValidatingReceipt && (
+                    <Loader2 className="absolute right-2 top-2.5 h-4 w-4 animate-spin text-muted-foreground" />
+                  )}
+                  {!isValidatingReceipt && receiptValidation?.valid && (
+                    <CheckCircle className="absolute right-2 top-2.5 h-4 w-4 text-green-500" />
+                  )}
+                  {!isValidatingReceipt && receiptValidation && !receiptValidation.valid && (
+                    <AlertCircle className="absolute right-2 top-2.5 h-4 w-4 text-red-500" />
+                  )}
+                </div>
+                {receiptValidation && !receiptValidation.valid && (
+                  <p className="text-xs text-red-500">{receiptValidation.error}</p>
+                )}
+              </div>
+            )}
+
             {/* Show Payment Details Toggle */}
             <div className="flex items-center space-x-2">
               <Switch
@@ -667,15 +740,17 @@ export function RepaymentModal({ isOpen, onClose, loanId, onSuccess }: Repayment
                       placeholder="Enter routing code"
                     />
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="receipt-number">Receipt #</Label>
-                    <Input
-                      id="receipt-number"
-                      value={formData.receiptNumber}
-                      onChange={(e) => setFormData(prev => ({ ...prev, receiptNumber: e.target.value }))}
-                      placeholder="Enter receipt number"
-                    />
-                  </div>
+                  {!receiptRangesEnabled && (
+                    <div className="space-y-2">
+                      <Label htmlFor="receipt-number">Receipt #</Label>
+                      <Input
+                        id="receipt-number"
+                        value={formData.receiptNumber}
+                        onChange={(e) => setFormData(prev => ({ ...prev, receiptNumber: e.target.value }))}
+                        placeholder="Enter receipt number"
+                      />
+                    </div>
+                  )}
                   <div className="space-y-2">
                     <Label htmlFor="bank-number">Bank #</Label>
                     <Input
