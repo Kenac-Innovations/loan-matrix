@@ -189,7 +189,7 @@ export default function CashiersPage({
         const data = await response.json();
         setCashiers(data || []);
 
-        const balanceCurrency = "ZMK";
+        const balanceCurrency = orgCurrency;
 
         // Fetch session data and Fineract balance for each cashier in parallel
         const updatedCashiers = await Promise.all(

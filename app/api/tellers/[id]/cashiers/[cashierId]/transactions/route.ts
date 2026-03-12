@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getFineractServiceWithSession } from "@/lib/fineract-api";
 import { prisma } from "@/lib/prisma";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
-import { getOrgDefaultCurrencyCode } from "@/lib/currency-utils";
+import { getOrgRawCurrencyCode } from "@/lib/currency-utils";
 
 /**
  * GET /api/tellers/[id]/cashiers/[cashierId]/transactions
@@ -82,8 +82,8 @@ export async function GET(
 
     // Get currency code and pagination from query params
     const searchParams = request.nextUrl?.searchParams ?? new URL(request.url).searchParams;
-    const orgCurrency = await getOrgDefaultCurrencyCode();
-    const currencyCode = searchParams.get("currencyCode") || orgCurrency;
+    const rawCurrency = await getOrgRawCurrencyCode();
+    const currencyCode = searchParams.get("currencyCode") || rawCurrency;
     const limitParam = searchParams.get("limit");
     const offsetParam = searchParams.get("offset");
     const limit = limitParam ? parseInt(limitParam, 10) : 500;

@@ -70,7 +70,7 @@ export function TransactionsModal({
   const [loading, setLoading] = useState(false);
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
-  const [currencyCode, setCurrencyCode] = useState("ZMK");
+  const [currencyCode, setCurrencyCode] = useState("");
   const [currencies, setCurrencies] = useState<Currency[]>([]);
   const [loadingCurrencies, setLoadingCurrencies] = useState(false);
 
@@ -90,11 +90,8 @@ export function TransactionsModal({
         
         setCurrencies(currencyList);
         
-        if (!currencyCode) {
-          const zmk = currencyList.find(
-            (c: Currency) => (c.code || "").toUpperCase() === "ZMK"
-          );
-          setCurrencyCode(zmk?.code ?? "ZMK");
+        if (!currencyCode && currencyList.length > 0) {
+          setCurrencyCode(currencyList[0].code);
         }
       }
     } catch (error) {

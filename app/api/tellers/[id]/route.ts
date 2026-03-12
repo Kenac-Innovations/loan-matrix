@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getFineractServiceWithSession } from "@/lib/fineract-api";
 import { prisma } from "@/lib/prisma";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
-import { getOrgDefaultCurrencyCode } from "@/lib/currency-utils";
+import { getOrgDefaultCurrencyCode, getOrgRawCurrencyCode } from "@/lib/currency-utils";
 
 /**
  * GET /api/tellers/[id]
@@ -169,10 +169,11 @@ export async function GET(
         let fineractAllocated = 0;
         for (const fc of fineractCashiers) {
           try {
+            const rawCurrency = await getOrgRawCurrencyCode();
             const summary = await fineractService.getCashierSummaryAndTransactions(
               dbTeller.fineractTellerId,
               fc.id,
-              "ZMK" // Fineract only recognizes ZMK for cashier summary
+              rawCurrency
             );
             fineractAllocated += summary.netCash ?? summary.sumCashAllocation ?? 0;
           } catch (err) {

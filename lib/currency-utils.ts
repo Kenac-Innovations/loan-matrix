@@ -12,6 +12,7 @@
 import { fetchFineractAPI } from "./api";
 
 let cachedCurrencyCode: string | null = null;
+let cachedRawCurrencyCode: string | null = null;
 let cacheExpiry = 0;
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
@@ -40,7 +41,9 @@ export async function getOrgDefaultCurrencyCode(): Promise<string> {
       data.selectedCurrencyOptions || data.currencyOptions || [];
 
     if (currencies.length > 0) {
-      const code = normalizeCode(currencies[0].code || "USD");
+      const rawCode = currencies[0].code || "USD";
+      const code = normalizeCode(rawCode);
+      cachedRawCurrencyCode = rawCode;
       cachedCurrencyCode = code;
       cacheExpiry = Date.now() + CACHE_TTL_MS;
       return code;
@@ -50,6 +53,18 @@ export async function getOrgDefaultCurrencyCode(): Promise<string> {
   }
 
   return "USD";
+}
+
+/**
+ * Get the raw (un-normalized) currency code as returned by Fineract.
+ * Fineract APIs expect the raw code (e.g. "ZMK" not "ZMW") in query params.
+ * Ensures the cache is populated first by calling getOrgDefaultCurrencyCode.
+ */
+export async function getOrgRawCurrencyCode(): Promise<string> {
+  if (!cachedRawCurrencyCode || Date.now() >= cacheExpiry) {
+    await getOrgDefaultCurrencyCode();
+  }
+  return cachedRawCurrencyCode || "USD";
 }
 
 /**

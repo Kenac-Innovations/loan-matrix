@@ -72,7 +72,7 @@ export default function CashierTransactionsPage({
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [loading, setLoading] = useState(true);
-  const [currencyCode, setCurrencyCode] = useState("ZMK");
+  const [currencyCode, setCurrencyCode] = useState("");
   const [currencies, setCurrencies] = useState<Currency[]>([]);
   const [loadingCurrencies, setLoadingCurrencies] = useState(false);
 
@@ -106,11 +106,8 @@ export default function CashierTransactionsPage({
 
         setCurrencies(currencyList);
 
-        if (!currencyCode) {
-          const zmk = currencyList.find(
-            (c: Currency) => (c.code || "").toUpperCase() === "ZMK"
-          );
-          setCurrencyCode(zmk?.code ?? "ZMK");
+        if (!currencyCode && currencyList.length > 0) {
+          setCurrencyCode(currencyList[0].code);
         }
       }
     } catch (error) {

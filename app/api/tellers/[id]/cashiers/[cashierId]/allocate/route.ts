@@ -3,6 +3,7 @@ import { getFineractServiceWithSession } from "@/lib/fineract-api";
 import { prisma } from "@/lib/prisma";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
 import { getSession } from "@/lib/auth";
+import { getOrgRawCurrencyCode } from "@/lib/currency-utils";
 
 /**
  * POST /api/tellers/[id]/cashiers/[cashierId]/allocate
@@ -178,9 +179,7 @@ export async function POST(
 
     // Calculate available balance - must DECREASE when loans are disbursed, and handle deposits
     // allocatedToCashiers = cash currently in cashier tills. Use netCash (current balance), NOT sumCashAllocation (cumulative).
-    // Fineract only recognizes ZMK. Use ZMK for getCashierSummaryAndTransactions so we get valid data.
-    // Must match teller details and local DB currency for consistent vault validation.
-    const validationCurrency = "ZMK";
+    const validationCurrency = await getOrgRawCurrencyCode();
     const tellerVaultAllocations = await prisma.cashAllocation.findMany({
       where: {
         tellerId: teller.id,

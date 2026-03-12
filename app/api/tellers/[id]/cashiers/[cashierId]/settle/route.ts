@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
 import { getSession } from "@/lib/auth";
 import { isPaymentTypeCash } from "@/lib/cash-repayment-teller";
+import { getOrgRawCurrencyCode } from "@/lib/currency-utils";
 import { sendLoanStatusSms } from "@/lib/notification-service";
 
 /**
@@ -417,10 +418,11 @@ export async function POST(
     let cashierBalance = 0;
     try {
       const fineractService = await getFineractServiceWithSession();
+      const rawCurrency = await getOrgRawCurrencyCode();
       const summary = await fineractService.getCashierSummaryAndTransactions(
         teller.fineractTellerId,
         fineractCashierId,
-        "ZMK"
+        rawCurrency
       );
       cashierBalance = summary.netCash || 0;
       console.log(`Fineract balance for cashier ${fineractCashierId}: ${cashierBalance}`);
