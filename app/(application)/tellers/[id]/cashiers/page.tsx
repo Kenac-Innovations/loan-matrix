@@ -182,68 +182,83 @@ export default function CashiersPage({
 
   const fetchCashiers = async (id: string) => {
     try {
+      // Fetch currencies first - same logic as transactions page for consistent balance
+      const currencyResponse = await fetch("/api/fineract/currencies");
+      let currencyList: { code?: string }[] = [];
+      if (currencyResponse.ok) {
+        try {
+          const data = await currencyResponse.json();
+          currencyList = Array.isArray(data.selectedCurrencyOptions)
+            ? data.selectedCurrencyOptions
+            : Array.isArray(data)
+            ? data
+            : data.currencies || [];
+        } catch {
+          currencyList = [];
+        }
+      }
+
+      // Use same default currency as transactions page
+      const currencyCode =
+        currencyList.length > 0 ? (currencyList[0].code ?? "ZMW") : "ZMW";
+
       const response = await fetch(`/api/tellers/${id}/cashiers`);
       if (response.ok) {
         const data = await response.json();
         setCashiers(data || []);
 
-        // Fetch session data and Fineract balance for each cashier
+        // Fetch session data and Fineract balance for each cashier (same endpoint as transactions page)
         for (const cashier of data || []) {
           const cashierId = cashier.dbId || cashier.id.toString();
-          const fineractCashierId = cashier.id || cashier.fineractCashierId;
-          
+
           try {
-            // Fetch local session data
-            const sessionResponse = await fetch(
-              `/api/tellers/${id}/cashiers/${cashierId}/session`
-            );
-            
-            // Fetch Fineract balance (use first available currency)
-            const currencyResponse = await fetch("/api/fineract/currencies");
+            const [sessionResponse, summaryResponse] = await Promise.all([
+              fetch(`/api/tellers/${id}/cashiers/${cashierId}/session`),
+              fetch(
+                `/api/tellers/${id}/cashiers/${cashierId}/transactions?currencyCode=${currencyCode}`
+              ),
+            ]);
+
             let fineractBalance = 0;
-            let currencyCode = "ZMW";
-            
-            if (currencyResponse.ok) {
-              const currencyData = await currencyResponse.json();
-              const currencies = currencyData.selectedCurrencyOptions || currencyData || [];
-              if (currencies.length > 0) {
-                currencyCode = currencies[0].code;
-                
-                // Fetch Fineract summary
-                const summaryResponse = await fetch(
-                  `/api/tellers/${id}/cashiers/${cashierId}/transactions?currencyCode=${currencyCode}`
-                );
-                if (summaryResponse.ok) {
-                  const summaryData = await summaryResponse.json();
-                  fineractBalance = summaryData.netCash || 0;
-                }
-              }
+            if (summaryResponse.ok) {
+              const summaryData = await summaryResponse.json();
+              fineractBalance = summaryData.netCash ?? 0;
             }
-            
-            let sessionInfo = { session: null, balances: {} };
-            if (sessionResponse.ok) {
-              sessionInfo = await sessionResponse.json();
-            }
-            
-            // Update cashier with session data and Fineract balance
-              const updatedCashier = {
-                ...cashier,
-                sessionStatus:
-                  sessionInfo.session?.sessionStatus || "NOT_STARTED",
-                allocatedBalance: sessionInfo.balances?.allocatedBalance || 0,
-                availableBalance: sessionInfo.balances?.availableBalance || 0,
-                openingFloat: sessionInfo.balances?.openingFloat || 0,
-                cashIn: sessionInfo.balances?.cashIn || 0,
-                cashOut: sessionInfo.balances?.cashOut || 0,
-              netCash: fineractBalance, // Use Fineract balance
-                expectedBalance: sessionInfo.balances?.expectedBalance || 0,
-              currencyCode,
+
+            type SessionInfo = {
+              session?: { sessionStatus?: string } | null;
+              balances?: {
+                allocatedBalance?: number;
+                availableBalance?: number;
+                openingFloat?: number;
+                cashIn?: number;
+                cashOut?: number;
+                expectedBalance?: number;
               };
-              setCashiers((prev) =>
-                prev.map((c) =>
-                  (c.dbId || c.id.toString()) === cashierId ? updatedCashier : c
-                )
-              );
+            };
+            let sessionInfo: SessionInfo = { session: null, balances: {} };
+            if (sessionResponse.ok) {
+              sessionInfo = (await sessionResponse.json()) as SessionInfo;
+            }
+
+            const updatedCashier = {
+              ...cashier,
+              sessionStatus:
+                sessionInfo.session?.sessionStatus || "NOT_STARTED",
+              allocatedBalance: sessionInfo.balances?.allocatedBalance || 0,
+              availableBalance: sessionInfo.balances?.availableBalance || 0,
+              openingFloat: sessionInfo.balances?.openingFloat || 0,
+              cashIn: sessionInfo.balances?.cashIn || 0,
+              cashOut: sessionInfo.balances?.cashOut || 0,
+              netCash: fineractBalance,
+              expectedBalance: sessionInfo.balances?.expectedBalance || 0,
+              currencyCode,
+            };
+            setCashiers((prev) =>
+              prev.map((c) =>
+                (c.dbId || c.id.toString()) === cashierId ? updatedCashier : c
+              )
+            );
           } catch (error) {
             console.error("Error fetching data for cashier:", error);
           }

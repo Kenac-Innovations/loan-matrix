@@ -160,7 +160,7 @@ export async function GET(
           const summary = await fineractService.getCashierSummaryAndTransactions(
             teller.fineractTellerId!,
             fc.id,
-            "ZMK"
+            "ZMW"
           );
           fineractBalance = summary.netCash || 0;
         } catch (err) {
