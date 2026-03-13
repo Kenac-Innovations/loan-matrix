@@ -113,14 +113,22 @@ const loanDetailsSchema = z
     createStandingInstructions: z.boolean(),
   })
   .refine(
-    (data) => data.disbursementOn >= data.submittedOn,
+    (data) => {
+      const d = new Date(data.disbursementOn.getFullYear(), data.disbursementOn.getMonth(), data.disbursementOn.getDate());
+      const s = new Date(data.submittedOn.getFullYear(), data.submittedOn.getMonth(), data.submittedOn.getDate());
+      return d >= s;
+    },
     {
       message: "Expected disbursement date cannot be before submitted date",
       path: ["disbursementOn"],
     }
   )
   .refine(
-    (data) => data.firstRepaymentOn > data.disbursementOn,
+    (data) => {
+      const r = new Date(data.firstRepaymentOn.getFullYear(), data.firstRepaymentOn.getMonth(), data.firstRepaymentOn.getDate());
+      const d = new Date(data.disbursementOn.getFullYear(), data.disbursementOn.getMonth(), data.disbursementOn.getDate());
+      return r > d;
+    },
     {
       message: "First repayment date must be after expected disbursement date",
       path: ["firstRepaymentOn"],
