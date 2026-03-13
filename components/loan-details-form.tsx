@@ -114,25 +114,41 @@ const loanDetailsSchema = z
   })
   .refine(
     (data) => {
-      const d = new Date(data.disbursementOn.getFullYear(), data.disbursementOn.getMonth(), data.disbursementOn.getDate());
-      const s = new Date(data.submittedOn.getFullYear(), data.submittedOn.getMonth(), data.submittedOn.getDate());
+      const d = new Date(
+        data.disbursementOn.getFullYear(),
+        data.disbursementOn.getMonth(),
+        data.disbursementOn.getDate(),
+      );
+      const s = new Date(
+        data.submittedOn.getFullYear(),
+        data.submittedOn.getMonth(),
+        data.submittedOn.getDate(),
+      );
       return d >= s;
     },
     {
       message: "Expected disbursement date cannot be before submitted date",
       path: ["disbursementOn"],
-    }
+    },
   )
   .refine(
     (data) => {
-      const r = new Date(data.firstRepaymentOn.getFullYear(), data.firstRepaymentOn.getMonth(), data.firstRepaymentOn.getDate());
-      const d = new Date(data.disbursementOn.getFullYear(), data.disbursementOn.getMonth(), data.disbursementOn.getDate());
+      const r = new Date(
+        data.firstRepaymentOn.getFullYear(),
+        data.firstRepaymentOn.getMonth(),
+        data.firstRepaymentOn.getDate(),
+      );
+      const d = new Date(
+        data.disbursementOn.getFullYear(),
+        data.disbursementOn.getMonth(),
+        data.disbursementOn.getDate(),
+      );
       return r > d;
     },
     {
       message: "First repayment date must be after expected disbursement date",
       path: ["firstRepaymentOn"],
-    }
+    },
   );
 
 type LoanDetailsFormData = z.infer<typeof loanDetailsSchema>;
@@ -326,7 +342,10 @@ export function LoanDetailsForm({
   useEffect(() => {
     if (!tenantConfigLoaded) return;
     const disbursement = form.getValues("disbursementOn");
-    const calculatedDate = calculateFirstRepaymentDate(firstRepaymentConfig, disbursement);
+    const calculatedDate = calculateFirstRepaymentDate(
+      firstRepaymentConfig,
+      disbursement,
+    );
     console.log("Setting initial firstRepaymentOn from tenant config:", {
       strategy: firstRepaymentConfig?.strategy ?? "cutoff",
       disbursement: disbursement?.toISOString().split("T")[0],
@@ -353,7 +372,7 @@ export function LoanDetailsForm({
       ) {
         console.log(
           "LoanDetailsForm: Syncing from shared date:",
-          sharedFirstRepaymentOn
+          sharedFirstRepaymentOn,
         );
         form.setValue("firstRepaymentOn", sharedFirstRepaymentOn);
       }
@@ -372,10 +391,16 @@ export function LoanDetailsForm({
       prevDisbursementOn.current = watchedDisbursementOn;
       return;
     }
-    if (prevDisbursementOn.current.getTime() === watchedDisbursementOn.getTime()) return;
+    if (
+      prevDisbursementOn.current.getTime() === watchedDisbursementOn.getTime()
+    )
+      return;
     prevDisbursementOn.current = watchedDisbursementOn;
 
-    const newDate = calculateFirstRepaymentDate(firstRepaymentConfig, watchedDisbursementOn);
+    const newDate = calculateFirstRepaymentDate(
+      firstRepaymentConfig,
+      watchedDisbursementOn,
+    );
     form.setValue("firstRepaymentOn", newDate);
     if (onFirstRepaymentDateChange) {
       onFirstRepaymentDateChange(newDate);
@@ -404,7 +429,7 @@ export function LoanDetailsForm({
       try {
         console.log(
           "Auto-saving firstRepaymentOn:",
-          watchedFirstRepaymentOn.toISOString()
+          watchedFirstRepaymentOn.toISOString(),
         );
 
         await fetch(`/api/leads/${leadId}/loan-details`, {
@@ -452,7 +477,7 @@ export function LoanDetailsForm({
 
         // First, we need to get the product options to get a productId
         const productResponse = await fetch(
-          `/api/fineract/loans/template?clientId=${clientId}&activeOnly=true&staffInSelectedOfficeOnly=true&templateType=individual`
+          `/api/fineract/loans/template?clientId=${clientId}&activeOnly=true&staffInSelectedOfficeOnly=true&templateType=individual`,
         );
 
         if (!productResponse.ok) {
@@ -463,23 +488,23 @@ export function LoanDetailsForm({
         console.log("Product options data:", productData); // Debug log
         console.log(
           "Loan officer options in initial response:",
-          productData.loanOfficerOptions
+          productData.loanOfficerOptions,
         ); // Debug log
         console.log(
           "Type of loanOfficerOptions:",
           typeof productData.loanOfficerOptions,
-          Array.isArray(productData.loanOfficerOptions)
+          Array.isArray(productData.loanOfficerOptions),
         ); // Debug log
         console.log(
           "Loan officer options length:",
-          productData.loanOfficerOptions?.length
+          productData.loanOfficerOptions?.length,
         ); // Debug log
 
         // Set the product options (this includes loanOfficerOptions from the initial response)
         setLoanTemplate(productData);
         console.log(
           "Set loanTemplate with productData, loanOfficerOptions:",
-          productData.loanOfficerOptions
+          productData.loanOfficerOptions,
         );
 
         // Set default values from template
@@ -492,7 +517,7 @@ export function LoanDetailsForm({
 
           // Now fetch the detailed template with the selected product
           const templateResponse = await fetch(
-            `/api/fineract/loans/template?clientId=${clientId}&productId=${firstProduct.id}&activeOnly=true&staffInSelectedOfficeOnly=true&templateType=individual`
+            `/api/fineract/loans/template?clientId=${clientId}&productId=${firstProduct.id}&activeOnly=true&staffInSelectedOfficeOnly=true&templateType=individual`,
           );
 
           if (!templateResponse.ok) {
@@ -503,7 +528,7 @@ export function LoanDetailsForm({
           console.log("Detailed loan template data:", templateData); // Debug log
           console.log(
             "Loan officer options in detailed response:",
-            templateData.loanOfficerOptions
+            templateData.loanOfficerOptions,
           ); // Debug log
 
           // Merge the detailed template data while preserving critical arrays from initial response
@@ -526,17 +551,17 @@ export function LoanDetailsForm({
 
           console.log(
             "Merged template loanOfficerOptions:",
-            mergedTemplate.loanOfficerOptions
+            mergedTemplate.loanOfficerOptions,
           );
           console.log(
             "Merged template loanOfficerOptions length:",
-            mergedTemplate.loanOfficerOptions?.length
+            mergedTemplate.loanOfficerOptions?.length,
           );
 
           // Update the template with the merged data
           setLoanTemplate(mergedTemplate);
           console.log(
-            "Updated loanTemplate state, checking if it has loanOfficerOptions"
+            "Updated loanTemplate state, checking if it has loanOfficerOptions",
           );
           setHasCompleteTemplate(true);
 
@@ -548,7 +573,7 @@ export function LoanDetailsForm({
         }
       } catch (err) {
         setError(
-          err instanceof Error ? err.message : "Failed to fetch loan template"
+          err instanceof Error ? err.message : "Failed to fetch loan template",
         );
       } finally {
         setIsLoading(false);
@@ -564,13 +589,13 @@ export function LoanDetailsForm({
     try {
       // Find the product by name to get its ID
       const selectedProduct = loanTemplate?.productOptions?.find(
-        (product) => product.name === productName
+        (product) => product.name === productName,
       );
 
       if (selectedProduct) {
         // Fetch the detailed template for the selected product
         const response = await fetch(
-          `/api/fineract/loans/template?clientId=${clientId}&productId=${selectedProduct.id}&activeOnly=true&staffInSelectedOfficeOnly=true&templateType=individual`
+          `/api/fineract/loans/template?clientId=${clientId}&productId=${selectedProduct.id}&activeOnly=true&staffInSelectedOfficeOnly=true&templateType=individual`,
         );
 
         if (!response.ok) {
@@ -613,7 +638,7 @@ export function LoanDetailsForm({
       setError(
         err instanceof Error
           ? err.message
-          : "Failed to fetch template for selected product"
+          : "Failed to fetch template for selected product",
       );
     }
   };
@@ -659,7 +684,7 @@ export function LoanDetailsForm({
               form.setValue("productName", result.data.productName);
               // Trigger product change to load full template
               const selectedProduct = loanTemplate.productOptions?.find(
-                (p) => p.name === result.data.productName
+                (p) => p.name === result.data.productName,
               );
               if (selectedProduct) {
                 handleProductChange(result.data.productName);
@@ -679,7 +704,7 @@ export function LoanDetailsForm({
             if (result.data.disbursementOn) {
               form.setValue(
                 "disbursementOn",
-                new Date(result.data.disbursementOn)
+                new Date(result.data.disbursementOn),
               );
             }
             // Use firstRepaymentOn from loan-details, fallback to loan-terms
@@ -687,7 +712,7 @@ export function LoanDetailsForm({
               const savedDate = new Date(result.data.firstRepaymentOn);
               console.log(
                 "Loading saved firstRepaymentOn from loan-details:",
-                savedDate.toISOString().split("T")[0]
+                savedDate.toISOString().split("T")[0],
               );
               form.setValue("firstRepaymentOn", savedDate);
               // Notify parent to sync with other forms
@@ -699,7 +724,7 @@ export function LoanDetailsForm({
               const termsDate = new Date(loanTermsData.firstRepaymentOn);
               console.log(
                 "Loading firstRepaymentOn from loan-terms:",
-                termsDate.toISOString().split("T")[0]
+                termsDate.toISOString().split("T")[0],
               );
               form.setValue("firstRepaymentOn", termsDate);
               // Notify parent to sync with other forms
@@ -709,10 +734,13 @@ export function LoanDetailsForm({
             } else {
               // If no saved firstRepaymentOn in either, recalculate the default
               const disbursement = form.getValues("disbursementOn");
-              const calculatedDate = calculateFirstRepaymentDate(firstRepaymentConfig, disbursement);
+              const calculatedDate = calculateFirstRepaymentDate(
+                firstRepaymentConfig,
+                disbursement,
+              );
               console.log(
                 "No saved firstRepaymentOn, setting calculated default:",
-                calculatedDate.toISOString().split("T")[0]
+                calculatedDate.toISOString().split("T")[0],
               );
               form.setValue("firstRepaymentOn", calculatedDate);
               // Notify parent to sync with other forms
@@ -726,7 +754,7 @@ export function LoanDetailsForm({
             if (result.data.createStandingInstructions !== undefined) {
               form.setValue(
                 "createStandingInstructions",
-                result.data.createStandingInstructions
+                result.data.createStandingInstructions,
               );
             }
 
@@ -788,7 +816,7 @@ export function LoanDetailsForm({
 
   // Helper function to get section status
   const getSectionStatus = (
-    sectionName: keyof typeof sectionCompletion
+    sectionName: keyof typeof sectionCompletion,
   ): "incomplete" | "pending" | "saved" => {
     const isComplete = sectionCompletion[sectionName];
     const isSaved = sectionSaved[sectionName];
@@ -800,7 +828,7 @@ export function LoanDetailsForm({
 
   // Helper function to get section styling classes
   const getSectionClasses = (
-    sectionName: keyof typeof sectionCompletion
+    sectionName: keyof typeof sectionCompletion,
   ): string => {
     const status = getSectionStatus(sectionName);
     const baseClasses = "space-y-6 mb-8 rounded-lg p-6";
@@ -824,7 +852,7 @@ export function LoanDetailsForm({
 
       // Find selected product
       const selectedProduct = loanTemplate?.productOptions?.find(
-        (p) => p.name === formData.productName
+        (p) => p.name === formData.productName,
       );
 
       if (!selectedProduct || !loanTemplate) {
@@ -855,7 +883,7 @@ export function LoanDetailsForm({
         dateFormat: "dd MMMM yyyy",
         expectedDisbursementDate: format(
           formData.disbursementOn,
-          "dd MMMM yyyy"
+          "dd MMMM yyyy",
         ),
         externalId: formData.externalId || "",
         fundId: formData.fund || loanTemplate.fundId?.toString() || "",
@@ -872,7 +900,6 @@ export function LoanDetailsForm({
             ? product.isEqualAmortization
             : loanTemplate.isEqualAmortization || false,
         isTopup: "",
-        linkAccountId: formData.linkSavings || "",
         loanIdToClose: "",
         loanOfficerId: formData.loanOfficer || "",
         loanPurposeId: formData.loanPurpose || "",
@@ -907,7 +934,7 @@ export function LoanDetailsForm({
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(
-          errorData.error || "Failed to calculate repayment schedule"
+          errorData.error || "Failed to calculate repayment schedule",
         );
       }
 
@@ -919,7 +946,7 @@ export function LoanDetailsForm({
       setError(
         err instanceof Error
           ? err.message
-          : "Failed to generate repayment schedule"
+          : "Failed to generate repayment schedule",
       );
     } finally {
       setIsGeneratingSchedule(false);
@@ -962,11 +989,11 @@ export function LoanDetailsForm({
         id: p.id,
         name: p.name,
         nameType: typeof p.name,
-      }))
+      })),
     );
 
     const selectedProduct = loanTemplate.productOptions?.find(
-      (p) => p.name === data.productName
+      (p) => p.name === data.productName,
     );
 
     console.log("Selected product:", selectedProduct);
@@ -976,17 +1003,17 @@ export function LoanDetailsForm({
     // Warn if product not found, but try to proceed anyway
     if (!selectedProduct) {
       console.warn(
-        "Product not found in template options, but proceeding with save"
+        "Product not found in template options, but proceeding with save",
       );
       console.warn(
         "This might cause issues. Available products:",
-        loanTemplate.productOptions?.map((p) => p.name)
+        loanTemplate.productOptions?.map((p) => p.name),
       );
     }
 
     // Find loan purpose name from ID
     const selectedPurpose = loanTemplate.loanPurposeOptions?.find(
-      (p) => p.id.toString() === data.loanPurpose
+      (p) => p.id.toString() === data.loanPurpose,
     );
 
     // Save loan details to database if leadId is available
@@ -1042,7 +1069,9 @@ export function LoanDetailsForm({
       } catch (error) {
         console.error("Error saving loan details:", error);
         setError(
-          error instanceof Error ? error.message : "Failed to save loan details"
+          error instanceof Error
+            ? error.message
+            : "Failed to save loan details",
         );
         setIsSaving(false);
         return;
@@ -1119,7 +1148,7 @@ export function LoanDetailsForm({
       // Set the newly created purpose as selected
       form.setValue(
         "loanPurpose",
-        (newPurpose.resourceId || newPurpose.id).toString()
+        (newPurpose.resourceId || newPurpose.id).toString(),
       );
 
       // Reset form and close dialog
@@ -1314,7 +1343,7 @@ export function LoanDetailsForm({
                           variant="outline"
                           className={cn(
                             "h-10 w-full justify-start text-left font-normal",
-                            !field.value && "text-muted-foreground"
+                            !field.value && "text-muted-foreground",
                           )}
                         >
                           <CalendarIcon className="mr-2 h-4 w-4" />
@@ -1347,7 +1376,8 @@ export function LoanDetailsForm({
               {/* Expected Disbursement Date */}
               <div className="space-y-2">
                 <Label htmlFor="disbursementOn" className="text-sm font-medium">
-                  Expected Disbursement Date <span className="text-red-500">*</span>
+                  Expected Disbursement Date{" "}
+                  <span className="text-red-500">*</span>
                 </Label>
                 <Controller
                   control={form.control}
@@ -1359,7 +1389,7 @@ export function LoanDetailsForm({
                           variant="outline"
                           className={cn(
                             "h-10 w-full justify-start text-left font-normal",
-                            !field.value && "text-muted-foreground"
+                            !field.value && "text-muted-foreground",
                           )}
                         >
                           <CalendarIcon className="mr-2 h-4 w-4" />
@@ -1373,9 +1403,12 @@ export function LoanDetailsForm({
                           mode="single"
                           selected={field.value}
                           onSelect={field.onChange}
-                          defaultMonth={field.value || watchedSubmittedOn || new Date()}
+                          defaultMonth={
+                            field.value || watchedSubmittedOn || new Date()
+                          }
                           disabled={(date) =>
-                            date < (watchedSubmittedOn || new Date("1900-01-01"))
+                            date <
+                            (watchedSubmittedOn || new Date("1900-01-01"))
                           }
                           initialFocus
                         />
@@ -1408,7 +1441,7 @@ export function LoanDetailsForm({
                           variant="outline"
                           className={cn(
                             "h-10 w-full justify-start text-left font-normal",
-                            !field.value && "text-muted-foreground"
+                            !field.value && "text-muted-foreground",
                           )}
                         >
                           <CalendarIcon className="mr-2 h-4 w-4" />
@@ -1426,9 +1459,12 @@ export function LoanDetailsForm({
                               field.onChange(day);
                             }
                           }}
-                          defaultMonth={field.value || watchedDisbursementOn || new Date()}
+                          defaultMonth={
+                            field.value || watchedDisbursementOn || new Date()
+                          }
                           disabled={(date) =>
-                            date <= (watchedDisbursementOn || new Date("1900-01-01"))
+                            date <=
+                            (watchedDisbursementOn || new Date("1900-01-01"))
                           }
                           initialFocus
                         />
@@ -1479,32 +1515,7 @@ export function LoanDetailsForm({
             </CardDescription>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Link Savings */}
-            <div className="space-y-2">
-              <Label htmlFor="linkSavings" className="text-sm font-medium">
-                Link Savings
-              </Label>
-              <Controller
-                control={form.control}
-                name="linkSavings"
-                render={({ field }) => (
-                  <Select onValueChange={field.onChange} value={field.value}>
-                    <SelectTrigger className="h-10 w-full">
-                      <SelectValue placeholder="Select savings account" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">No Savings Link</SelectItem>
-                      <SelectItem value="auto">
-                        Auto-Debit from Savings
-                      </SelectItem>
-                      <SelectItem value="manual">
-                        Manual Savings Link
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
-                )}
-              />
-            </div>
+            {/* Link Savings - hidden until real savings account linking is implemented */}
 
             {/* Create Standing Instructions */}
             <div className="space-y-2">
@@ -1518,7 +1529,7 @@ export function LoanDetailsForm({
                   onCheckedChange={(checked) =>
                     form.setValue(
                       "createStandingInstructions",
-                      checked as boolean
+                      checked as boolean,
                     )
                   }
                 />
@@ -1589,7 +1600,7 @@ export function LoanDetailsForm({
                   <p className="text-lg font-semibold break-words">
                     {formatCurrency(
                       repaymentSchedule.totalPrincipalExpected,
-                      repaymentSchedule.currency.code
+                      repaymentSchedule.currency.code,
                     )}
                   </p>
                 </div>
@@ -1598,7 +1609,7 @@ export function LoanDetailsForm({
                   <p className="text-lg font-semibold break-words">
                     {formatCurrency(
                       repaymentSchedule.totalInterestCharged,
-                      repaymentSchedule.currency.code
+                      repaymentSchedule.currency.code,
                     )}
                   </p>
                 </div>
@@ -1609,7 +1620,7 @@ export function LoanDetailsForm({
                   <p className="text-lg font-semibold break-words">
                     {formatCurrency(
                       repaymentSchedule.totalRepaymentExpected,
-                      repaymentSchedule.currency.code
+                      repaymentSchedule.currency.code,
                     )}
                   </p>
                 </div>
@@ -1657,7 +1668,7 @@ export function LoanDetailsForm({
                       .filter(
                         (period) =>
                           period.period !== undefined &&
-                          !period.downPaymentPeriod
+                          !period.downPaymentPeriod,
                       )
                       .map((period, index) => {
                         const dueDate =
@@ -1665,7 +1676,7 @@ export function LoanDetailsForm({
                             ? new Date(
                                 period.dueDate[0],
                                 period.dueDate[1] - 1,
-                                period.dueDate[2]
+                                period.dueDate[2],
                               )
                             : null;
 
@@ -1682,7 +1693,7 @@ export function LoanDetailsForm({
                                 period.principalDue ||
                                   period.principalOriginalDue ||
                                   0,
-                                repaymentSchedule.currency.code
+                                repaymentSchedule.currency.code,
                               )}
                             </TableCell>
                             <TableCell className="text-right whitespace-nowrap">
@@ -1690,19 +1701,19 @@ export function LoanDetailsForm({
                                 period.interestDue ||
                                   period.interestOriginalDue ||
                                   0,
-                                repaymentSchedule.currency.code
+                                repaymentSchedule.currency.code,
                               )}
                             </TableCell>
                             <TableCell className="text-right whitespace-nowrap">
                               {formatCurrency(
                                 period.feeChargesDue || 0,
-                                repaymentSchedule.currency.code
+                                repaymentSchedule.currency.code,
                               )}
                             </TableCell>
                             <TableCell className="text-right whitespace-nowrap">
                               {formatCurrency(
                                 period.penaltyChargesDue || 0,
-                                repaymentSchedule.currency.code
+                                repaymentSchedule.currency.code,
                               )}
                             </TableCell>
                             <TableCell className="text-right font-semibold whitespace-nowrap">
@@ -1710,13 +1721,13 @@ export function LoanDetailsForm({
                                 period.totalDueForPeriod ||
                                   period.totalOriginalDueForPeriod ||
                                   0,
-                                repaymentSchedule.currency.code
+                                repaymentSchedule.currency.code,
                               )}
                             </TableCell>
                             <TableCell className="text-right whitespace-nowrap">
                               {formatCurrency(
                                 period.principalLoanBalanceOutstanding || 0,
-                                repaymentSchedule.currency.code
+                                repaymentSchedule.currency.code,
                               )}
                             </TableCell>
                           </TableRow>
