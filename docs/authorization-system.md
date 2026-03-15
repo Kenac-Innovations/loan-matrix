@@ -55,7 +55,7 @@ The authorization system is designed to provide three main types of access contr
 import { PermissionGate } from "@/components/auth/permission-gate";
 import { RoleGate } from "@/components/auth/role-gate";
 import { ResourceGate } from "@/components/auth/resource-gate";
-import { SpecificPermission, Resource, AccessLevel } from "@/types/auth";
+import { SpecificPermission, Resource, AccessLevel } from "@/shared/types/auth";
 
 // Permission-based access control
 <PermissionGate permission={SpecificPermission.CREATE_CLIENT}>
@@ -74,7 +74,7 @@ import { SpecificPermission, Resource, AccessLevel } from "@/types/auth";
 
 // Using the hooks
 import { usePermission, useRole, useCanAccess } from "@/hooks/use-authorization";
-import { SpecificPermission, Resource, AccessLevel } from "@/types/auth";
+import { SpecificPermission, Resource, AccessLevel } from "@/shared/types/auth";
 
 function MyComponent() {
   const canCreateClient = usePermission(SpecificPermission.CREATE_CLIENT);
@@ -100,7 +100,7 @@ import {
   createPermissionHandler,
   createResourceAccessHandler,
 } from "@/middleware/auth-middleware";
-import { AccessLevel, Resource, SpecificPermission } from "@/types/auth";
+import { AccessLevel, Resource, SpecificPermission } from "@/shared/types/auth";
 
 // Handler for GET requests - list all clients
 async function handleGetClients(req: NextRequest) {
@@ -134,7 +134,7 @@ import {
   withResourceAccessAction,
   isAuthError,
 } from "@/lib/auth-actions";
-import { AccessLevel, Resource, SpecificPermission } from "@/types/auth";
+import { AccessLevel, Resource, SpecificPermission } from "@/shared/types/auth";
 
 // Original client creation action
 async function createClientAction(data: any) {

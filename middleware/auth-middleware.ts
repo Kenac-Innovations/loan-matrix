@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
-import { AccessLevel, Resource, SpecificPermission } from "@/types/auth";
+import { AccessLevel, Resource, SpecificPermission } from "@/shared/types/auth";
 import {
   hasPermissionServer,
   hasRoleServer,
@@ -12,7 +10,7 @@ import {
  * Middleware to check if the user has a specific permission
  * @param permission - The permission to check for
  */
-export async function withPermission(
+export async function checkPermission(
   request: NextRequest,
   permission: SpecificPermission
 ) {
@@ -32,7 +30,7 @@ export async function withPermission(
  * Middleware to check if the user has a specific role
  * @param role - The role to check for
  */
-export async function withRole(request: NextRequest, role: string) {
+export async function checkRole(request: NextRequest, role: string) {
   const hasRole = await hasRoleServer(role);
 
   if (!hasRole) {
@@ -50,7 +48,7 @@ export async function withRole(request: NextRequest, role: string) {
  * @param resource - The resource to check access for
  * @param requiredLevel - The minimum access level required
  */
-export async function withResourceAccess(
+export async function checkResourceAccess(
   request: NextRequest,
   resource: Resource,
   requiredLevel: AccessLevel

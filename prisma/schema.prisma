@@ -8,121 +8,903 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model Tenant {
+  id                     String                  @id @default(cuid())
+  name                   String
+  slug                   String                  @unique
+  domain                 String?
+  settings               Json?
+  logoLinkId             String?                 // Document service link ID (UUID) for logo
+  logoFileUrl            String?                 // Document service file URL for display
+  isActive               Boolean                 @default(true)
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
+  alerts                 Alert[]
+  communicationTemplates CommunicationTemplate[]
+  leads                  Lead[]
+  leadCommunications     LeadCommunication[]
+  leadDocuments          LeadDocument[]
+  pipelineStages         PipelineStage[]
+  slaConfigs             SLAConfig[]
+  teams                  Team[]
+  validationRules        ValidationRule[]
+  receiptRanges          ReceiptRange[]
+  usedReceipts           UsedReceipt[]
+
+  @@index([slug])
+  @@index([isActive])
+}
+
+model PipelineStage {
+  id                 String            @id @default(cuid())
+  tenantId           String
+  name               String
+  description        String?
+  order              Int
+  color              String            @default("#3b82f6")
+  isActive           Boolean           @default(true)
+  isInitialState     Boolean           @default(false)
+  isFinalState       Boolean           @default(false)
+  allowedTransitions String[]
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  leadsInThisStage   Lead[]            @relation("LeadCurrentStage")
+  tenant             Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  slaConfigs         SLAConfig[]
+  transitionsFrom    StateTransition[] @relation("TransitionFromStage")
+  transitionsTo      StateTransition[] @relation("TransitionToStage")
+  validationRules    ValidationRule[]
+
+  @@unique([tenantId, name])
+  @@unique([tenantId, order])
+  @@index([tenantId, isActive])
+  @@index([tenantId, order])
+}
+
 model Lead {
-  id                String    @id @default(cuid())
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
-  status            String    @default("DRAFT") // DRAFT, SUBMITTED, CLOSED
-  closedReason      String?
-  
-  // Client Information
-  officeId          Int?
-  officeName        String?
-  legalFormId       Int?
-  legalFormName     String?
-  externalId        String?   // National ID
-  firstname         String?
-  middlename        String?
-  lastname          String?
-  dateOfBirth       DateTime?
-  gender            String?
-  genderId          Int?
-  isStaff           Boolean   @default(false)
-  mobileNo          String?
-  countryCode       String?   @default("+1")
-  emailAddress      String?
-  clientTypeId      Int?
-  clientTypeName    String?
-  clientClassificationId Int?
-  clientClassificationName String?
-  submittedOnDate   DateTime?
-  active            Boolean   @default(true)
-  activationDate    DateTime?
-  openSavingsAccount Boolean  @default(false)
-  savingsProductId  Int?
-  savingsProductName String?
-  
-  // Response data
-  clientId          Int?
-  resourceId        Int?
-  
-  // Family Members / Next of Kin
-  familyMembers     FamilyMember[]
-  
-  // User relationship
-  userId            String
-  // Tracking
-  currentStep       Int      @default(1)
-  lastModified      DateTime @default(now())
-  
+  id                         String              @id @default(cuid())
+  createdAt                  DateTime            @default(now())
+  updatedAt                  DateTime            @updatedAt
+  status                     String              @default("DRAFT")
+  closedReason               String?
+  officeId                   Int?
+  officeName                 String?
+  legalFormId                Int?
+  legalFormName              String?
+  externalId                 String?
+  firstname                  String?
+  middlename                 String?
+  lastname                   String?
+  dateOfBirth                DateTime?
+  gender                     String?
+  genderId                   Int?
+  isStaff                    Boolean             @default(false)
+  mobileNo                   String?
+  countryCode                String?             @default("+1")
+  emailAddress               String?
+  clientTypeId               Int?
+  clientTypeName             String?
+  clientClassificationId     Int?
+  clientClassificationName   String?
+  submittedOnDate            DateTime?
+  active                     Boolean             @default(true)
+  activationDate             DateTime?
+  openSavingsAccount         Boolean             @default(false)
+  savingsProductId           Int?
+  savingsProductName         String?
+  clientId                   Int?
+  resourceId                 Int?
+  userId                     String
+  createdByUserName          String?             // Full name of user who created the lead
+  currentStep                Int                 @default(1)
+  lastModified               DateTime            @default(now())
+  currentStageId             String?
+  stateContext               Json?
+  stateMetadata              Json?
+  tenantId                   String
+  accountNumber              String?
+  annualIncome               Float?
+  bankName                   String?
+  collateralType             String?
+  collateralValue            Float?
+  creditScore                Int?
+  employerName               String?
+  employmentStatus           String?
+  existingLoans              Int?                @default(0)
+  loanPurpose                String?
+  loanPurposeId              Int?
+  loanTerm                   Int?
+  loanProductName            String?
+  loanProductId              Int?
+  loanOfficerId              Int?
+  fundId                     Int?
+  expectedDisbursementDate   DateTime?
+  linkSavingsAccount         String?
+  createStandingInstructions Boolean?            @default(false)
+  monthlyExpenses            Float?
+  monthlyIncome              Float?
+  grossMonthlyIncome         Float?
+  requestedAmount            Float?
+  riskAssessedBy             String?
+  riskAssessmentDate         DateTime?
+  riskCategory               String?
+  riskFactors                String[]            @default([])
+  riskScore                  Int?
+  totalDebt                  Float?              @default(0)
+  yearsEmployed              Float?
+  businessOwnership          Boolean?            @default(false)
+  businessType               String?
+  hasExistingLoans           Boolean?            @default(false)
+  monthlyDebtPayments        Float?
+  monthlyIncomeRange         String?
+  propertyOwnership          String?
+  yearsAtCurrentJob          String?
+  nationality                String?
+  mobileInOwnName            Boolean?            @default(false)
+  hasProofOfIncome           Boolean?            @default(false)
+  hasValidNationalId         Boolean?            @default(false)
+  identityVerified           Boolean?            @default(false)
+  employmentVerified         Boolean?            @default(false)
+  incomeVerified             Boolean?            @default(false)
+  /** Preferred payment method for payout (same options as payout modal): CASH, MOBILE_MONEY, BANK_TRANSFER */
+  preferredPaymentMethod     String?
+  clientCreatedInFineract    Boolean             @default(false)
+  clientCreationDate         DateTime?
+  fineractAccountNo          String?
+  fineractClientId           Int?
+  fineractLoanId             Int?
+  loanSubmittedToFineract    Boolean             @default(false)
+  loanSubmissionDate         DateTime?
+  // Assignment tracking for submitted leads
+  assignedToUserId           Int?                // Mifos/Fineract user ID
+  assignedToUserName         String?             // Mifos/Fineract user display name
+  assignedAt                 DateTime?           // When the lead was assigned
+  assignedByUserId           String?             // App user who made the assignment
+  familyMembers              FamilyMember[]
+  currentStage               PipelineStage?      @relation("LeadCurrentStage", fields: [currentStageId], references: [id])
+  tenant                     Tenant              @relation(fields: [tenantId], references: [id])
+  communications             LeadCommunication[]
+  documents                  LeadDocument[]
+  stateTransitions           StateTransition[]
+
+  @@index([tenantId, userId])
+  @@index([tenantId, status])
+  @@index([tenantId, currentStageId])
   @@index([userId])
   @@index([status])
 }
 
+model StateTransition {
+  id          String         @id @default(cuid())
+  leadId      String
+  tenantId    String
+  fromStageId String?
+  toStageId   String
+  event       String
+  context     Json?
+  triggeredBy String
+  triggeredAt DateTime       @default(now())
+  metadata    Json?
+  fromStage   PipelineStage? @relation("TransitionFromStage", fields: [fromStageId], references: [id])
+  lead        Lead           @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  toStage     PipelineStage  @relation("TransitionToStage", fields: [toStageId], references: [id])
+
+  @@index([leadId])
+  @@index([tenantId, triggeredAt])
+  @@index([tenantId, event])
+}
+
+model ValidationRule {
+  id              String         @id @default(cuid())
+  tenantId        String
+  pipelineStageId String?
+  name            String
+  description     String?
+  conditions      Json
+  actions         Json
+  severity        String         @default("warning")
+  enabled         Boolean        @default(true)
+  order           Int            @default(0)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  pipelineStage   PipelineStage? @relation(fields: [pipelineStageId], references: [id], onDelete: Cascade)
+  tenant          Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, enabled])
+  @@index([tenantId, pipelineStageId])
+}
+
+model SLAConfig {
+  id                String        @id @default(cuid())
+  tenantId          String
+  pipelineStageId   String
+  name              String
+  description       String?
+  timeframe         Int
+  timeUnit          String
+  escalationRules   Json
+  notificationRules Json
+  enabled           Boolean       @default(true)
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  pipelineStage     PipelineStage @relation(fields: [pipelineStageId], references: [id], onDelete: Cascade)
+  tenant            Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, pipelineStageId])
+  @@index([tenantId, enabled])
+}
+
+model Team {
+  id               String       @id @default(cuid())
+  tenantId         String
+  name             String
+  description      String?
+  pipelineStageIds String[]
+  isActive         Boolean      @default(true)
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+  tenant           Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  members          TeamMember[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId, isActive])
+}
+
+model TeamMember {
+  id          String   @id @default(cuid())
+  teamId      String
+  userId      String
+  name        String
+  email       String
+  role        String
+  permissions Json?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  team        Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, userId])
+  @@index([teamId, isActive])
+  @@index([userId])
+}
+
 model FamilyMember {
-  id                String   @id @default(cuid())
-  firstname         String
-  lastname          String
-  middlename        String?
-  relationship      String
-  dateOfBirth       DateTime?
-  mobileNo          String?
-  emailAddress      String?
-  isDependent       Boolean  @default(false)
-  
-  leadId            String
-  lead              Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  
+  id           String    @id @default(cuid())
+  firstname    String
+  lastname     String
+  middlename   String?
+  relationship String
+  dateOfBirth  DateTime?
+  mobileNo     String?
+  emailAddress String?
+  isDependent  Boolean   @default(false)
+  leadId       String
+  lead         Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
   @@index([leadId])
 }
 
-// Lookup tables
+model LeadDocument {
+  id           String    @id @default(cuid())
+  leadId       String
+  tenantId     String
+  name         String
+  originalName String
+  type         String
+  size         Int
+  category     String
+  status       String    @default("pending")
+  filePath     String?
+  mimeType     String?
+  uploadedBy   String
+  verifiedBy   String?
+  verifiedAt   DateTime?
+  notes        String?
+  metadata     Json?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  lead         Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  tenant       Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([leadId])
+  @@index([tenantId])
+  @@index([category])
+  @@index([status])
+}
+
+model LeadCommunication {
+  id          String    @id @default(cuid())
+  leadId      String
+  tenantId    String
+  type        String
+  direction   String
+  subject     String?
+  content     String
+  status      String    @default("sent")
+  scheduledAt DateTime?
+  sentAt      DateTime?
+  deliveredAt DateTime?
+  readAt      DateTime?
+  fromEmail   String?
+  toEmail     String?
+  fromPhone   String?
+  toPhone     String?
+  provider    String?
+  providerId  String?
+  metadata    Json?
+  attachments Json?
+  createdBy   String
+  assignedTo  String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  lead        Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([leadId])
+  @@index([tenantId])
+  @@index([type])
+  @@index([direction])
+  @@index([status])
+  @@index([createdAt])
+  @@index([scheduledAt])
+}
+
+model CommunicationTemplate {
+  id          String   @id @default(cuid())
+  tenantId    String
+  name        String
+  description String?
+  type        String
+  category    String
+  subject     String?
+  content     String
+  variables   Json?
+  isActive    Boolean  @default(true)
+  createdBy   String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([type])
+  @@index([category])
+  @@index([isActive])
+}
+
 model Office {
-  id                Int      @id @default(autoincrement())
-  name              String
-  description       String?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  id          Int      @id @default(autoincrement())
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 model LegalForm {
-  id                Int      @id @default(autoincrement())
-  name              String
-  description       String?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  id          Int      @id @default(autoincrement())
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 model Gender {
-  id                Int      @id @default(autoincrement())
-  name              String
-  description       String?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  id          Int      @id @default(autoincrement())
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 model ClientType {
-  id                Int      @id @default(autoincrement())
-  name              String
-  description       String?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  id          Int      @id @default(autoincrement())
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 model ClientClassification {
-  id                Int      @id @default(autoincrement())
-  name              String
-  description       String?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  id          Int      @id @default(autoincrement())
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 model SavingsProduct {
-  id                Int      @id @default(autoincrement())
-  name              String
-  description       String?
-  interestRate      Float    @default(0)
-  minBalance        Float    @default(0)
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  id           Int      @id @default(autoincrement())
+  name         String
+  description  String?
+  interestRate Float    @default(0)
+  minBalance   Float    @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model FineractDocument {
+  id           String   @id @default(cuid())
+  title        String
+  content      String
+  documentType String
+  fineractId   String?
+  metadata     Json?
+  embedding    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([fineractId, documentType])
+  @@index([documentType])
+  @@index([fineractId])
+}
+
+model FineractDataCache {
+  id          String   @id @default(cuid())
+  endpoint    String
+  entityId    String?
+  data        Json
+  embedding   String?
+  lastUpdated DateTime @default(now())
+  expiresAt   DateTime
+
+  @@index([endpoint])
+  @@index([entityId])
+  @@index([expiresAt])
+}
+
+model ChatSession {
+  id          String        @id @default(cuid())
+  userId      String
+  sessionData Json?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  messages    ChatMessage[]
+
+  @@index([userId])
+}
+
+model ChatMessage {
+  id           String      @id @default(cuid())
+  sessionId    String
+  role         String
+  content      String
+  fineractData Json?
+  sources      Json?
+  createdAt    DateTime    @default(now())
+  session      ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+}
+
+model QueryLog {
+  id               String   @id @default(cuid())
+  userId           String
+  userQuery        String
+  fineractDataUsed Json?
+  response         String
+  responseTime     Int
+  timestamp        DateTime @default(now())
+
+  @@index([userId])
+  @@index([timestamp])
+}
+
+model UssdLoanApplication {
+  id                        String    @id @default(cuid())
+  tenantId                  String
+  createdAt                 DateTime  @default(now())
+  updatedAt                 DateTime  @updatedAt
+  loanApplicationUssdId     Int       @unique
+  messageId                 String    @unique
+  referenceNumber           String    @unique
+  userPhoneNumber           String
+  loanMatrixClientId        Int?
+  userFullName              String
+  userNationalId            String
+  loanMatrixLoanProductId   Int
+  loanProductName           String
+  loanProductDisplayName    String
+  principalAmount           Float
+  loanTermMonths            Int
+  payoutMethod              String
+  mobileMoneyNumber         String?
+  mobileMoneyProvider       String?
+  branchName                String?
+  officeLocationId          Int?
+  bankAccountNumber         String?
+  bankName                  String?
+  bankBranch                String?
+  status                    String    @default("CREATED")
+  source                    String    @default("USSD")
+  channel                   String    @default("USSD_LOAN_APPLICATION")
+  queuedAt                  DateTime  @default(now())
+  processedAt               DateTime?
+  processingNotes           String?
+  rejectionReason           String?
+  approvalNotes             String?
+  paymentStatus             String?
+  loanMatrixPaymentMethodId Int?
+
+  @@index([tenantId, status])
+  @@index([tenantId, createdAt])
+  @@index([messageId])
+  @@index([referenceNumber])
+  @@index([userPhoneNumber])
+  @@index([status, createdAt])
+}
+
+// Bank is the top level of the cash management hierarchy
+// Banks receive fund allocations which can then be distributed to tellers
+model Bank {
+  id              String           @id @default(cuid())
+  tenantId        String
+  name            String
+  code            String           // Unique code for the bank (e.g., "MAIN-VAULT", "HQ-BANK")
+  description     String?
+  officeId        Int?             // Optional link to Fineract office
+  officeName      String?
+  glAccountId     Int?             // Optional link to Fineract GL account for this bank
+  glAccountName   String?          // Cached GL account name for display
+  glAccountCode   String?          // Cached GL account code
+  status          String           @default("ACTIVE") // ACTIVE, INACTIVE, CLOSED
+  isActive        Boolean          @default(true)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  allocations     BankAllocation[]
+  tellers         Teller[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId, status])
+  @@index([tenantId, isActive])
+}
+
+// Tracks funds allocated to banks (the vault at bank level)
+model BankAllocation {
+  id            String   @id @default(cuid())
+  tenantId      String
+  bankId        String
+  amount        Float
+  currency      String   @default("ZMW") // DB-level fallback only; app code provides currency from Fineract
+  allocatedDate DateTime @default(now())
+  allocatedBy   String
+  notes         String?
+  status        String   @default("ACTIVE") // ACTIVE, REVERSED
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  bank          Bank     @relation(fields: [bankId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, bankId])
+  @@index([tenantId, status])
+  @@index([allocatedDate])
+}
+
+model Teller {
+  id               String           @id @default(cuid())
+  tenantId         String
+  bankId           String?          // Link to parent bank (required for fund allocation hierarchy)
+  fineractTellerId Int?
+  officeId         Int
+  officeName       String
+  name             String
+  description      String?
+  status           String           @default("PENDING") // PENDING, ACTIVE, CLOSED
+  startDate        DateTime
+  endDate          DateTime?
+  isActive         Boolean          @default(true)
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  bank             Bank?            @relation(fields: [bankId], references: [id])
+  cashAllocations  CashAllocation[]
+  cashiers         Cashier[]
+  settlements      CashSettlement[]
+  sessions         CashierSession[]
+
+  @@unique([tenantId, fineractTellerId])
+  @@index([tenantId, bankId])
+  @@index([tenantId, officeId])
+  @@index([tenantId, status])
+  @@index([tenantId, isActive])
+}
+
+model Cashier {
+  id                String           @id @default(cuid())
+  tenantId          String
+  tellerId          String
+  fineractCashierId Int?
+  staffId           Int
+  staffName         String
+  startDate         DateTime
+  endDate           DateTime?
+  isFullDay         Boolean          @default(true)
+  startTime         String? // HH:mm format
+  endTime           String? // HH:mm format
+  status            String           @default("PENDING") // PENDING, ACTIVE, CLOSED
+  isActive          Boolean          @default(true)
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  teller            Teller           @relation(fields: [tellerId], references: [id], onDelete: Cascade)
+  settlements       CashSettlement[]
+  sessions          CashierSession[]
+  cashAllocations   CashAllocation[]
+
+  @@unique([tenantId, fineractCashierId])
+  @@index([tenantId, tellerId])
+  @@index([tenantId, staffId])
+  @@index([tenantId, status])
+  @@index([tenantId, isActive])
+}
+
+model CashAllocation {
+  id                   String   @id @default(cuid())
+  tenantId             String
+  tellerId             String
+  cashierId             String? // null for teller vault allocations, set for cashier allocations
+  fineractAllocationId Int?     @unique
+  amount               Float
+  currency             String   @default("ZMW") // DB-level fallback only; app code provides currency from Fineract
+  allocatedDate        DateTime @default(now())
+  allocatedBy          String
+  notes                String?
+  status               String   @default("ACTIVE") // ACTIVE, REVERSED
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  teller               Teller   @relation(fields: [tellerId], references: [id], onDelete: Cascade)
+  cashier              Cashier? @relation(fields: [cashierId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, tellerId])
+  @@index([tenantId, cashierId])
+  @@index([tenantId, status])
+  @@index([allocatedDate])
+}
+
+model CashSettlement {
+  id                   String    @id @default(cuid())
+  tenantId             String
+  tellerId             String
+  cashierId            String
+  fineractSettlementId Int?       @unique
+  settlementDate       DateTime   @default(now())
+  openingBalance       Float
+  closingBalance       Float
+  cashIn               Float      @default(0)
+  cashOut              Float      @default(0)
+  expectedBalance      Float
+  actualBalance        Float
+  difference           Float // actualBalance - expectedBalance
+  notes                String?
+  status               String     @default("PENDING") // PENDING, RECONCILED, REVERSED
+  settledBy            String
+  reconciledAt         DateTime?
+  reconciledBy         String?
+  reconciliationNotes  String?
+  returnedAmount       Float? // Actual amount returned to vault
+  varianceResolved     Boolean    @default(false) // Whether variance has been resolved
+  varianceResolvedAt   DateTime?
+  varianceResolvedBy   String?
+  varianceResolutionNotes String? // Explanation of variance resolution
+  transactionType      String     @default("EXPENSE") // EXPENSE, DISBURSEMENT
+  loanPayoutId         String?    // Link to LoanPayout if type is DISBURSEMENT
+  createdAt            DateTime   @default(now())
+  updatedAt            DateTime   @updatedAt
+  teller               Teller     @relation(fields: [tellerId], references: [id], onDelete: Cascade)
+  cashier              Cashier    @relation(fields: [cashierId], references: [id], onDelete: Cascade)
+  loanPayout           LoanPayout? @relation(fields: [loanPayoutId], references: [id])
+
+  @@index([tenantId, tellerId])
+  @@index([tenantId, cashierId])
+  @@index([tenantId, settlementDate])
+  @@index([tenantId, status])
+  @@index([tenantId, transactionType])
+}
+
+model CashierSession {
+  id                String    @id @default(cuid())
+  tenantId          String
+  tellerId          String
+  cashierId         String
+  fineractSessionId Int?      @unique
+  sessionStatus     String    @default("NOT_STARTED") // NOT_STARTED, ACTIVE, CLOSED, CLOSED_VERIFIED
+  sessionStartTime  DateTime?
+  sessionEndTime    DateTime?
+  allocatedBalance  Float     @default(0) // Opening float
+  availableBalance  Float     @default(0) // Current available cash
+  openingFloat      Float     @default(0) // Same as allocatedBalance
+  cashIn            Float     @default(0) // Total cash received
+  cashOut           Float     @default(0) // Total cash paid out
+  netCash           Float     @default(0) // cashIn - cashOut
+  closingBalance    Float? // Counted cash at end of day
+  expectedBalance   Float? // System calculated balance
+  difference        Float? // closingBalance - expectedBalance
+  countedCashAmount Float? // Physical cash count
+  comments          String?
+  verifiedBy        String? // Supervisor who verified
+  verifiedAt        DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  teller            Teller    @relation(fields: [tellerId], references: [id], onDelete: Cascade)
+  cashier           Cashier   @relation(fields: [cashierId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, tellerId])
+  @@index([tenantId, cashierId])
+  @@index([tenantId, sessionStatus])
+  @@index([sessionStartTime])
+}
+
+model LoanPayout {
+  id               String          @id @default(cuid())
+  tenantId         String
+  fineractLoanId   Int             // Fineract loan ID
+  fineractClientId Int             // Fineract client ID
+  clientName       String
+  loanAccountNo    String
+  amount           Float
+  currency         String          @default("ZMW") // DB-level fallback only; app code provides currency from Fineract
+  status           String          @default("PENDING") // PENDING, PAID, VOIDED, REVERSED
+  paymentMethod    String?         // CASH, MOBILE_MONEY, BANK_TRANSFER
+  paidAt           DateTime?
+  paidBy           String?         // User who processed payout
+  cashierId        String?         // Database cashier ID
+  tellerId         String?         // Database teller ID
+  notes            String?
+  voidedAt         DateTime?
+  voidedBy         String?
+  voidReason       String?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  settlements      CashSettlement[]
+
+  @@unique([tenantId, fineractLoanId])
+  @@index([tenantId, status])
+  @@index([tenantId, fineractClientId])
+}
+
+// System Roles - maps to Mifos/Fineract roles
+model SystemRole {
+  id          String     @id @default(cuid())
+  tenantId    String
+  name        String     // e.g., BRANCH_MANAGER, LOAN_OFFICER
+  displayName String     // e.g., "Branch Manager", "Loan Officer"
+  description String?
+  permissions Json?      // Array of permission strings
+  isActive    Boolean    @default(true)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  userRoles   UserRole[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId, isActive])
+}
+
+// Maps Mifos/Fineract users to system roles
+model UserRole {
+  id              String     @id @default(cuid())
+  tenantId        String
+  mifosUserId     Int        // Fineract/Mifos user ID
+  mifosUsername   String     // Fineract/Mifos username
+  roleId          String
+  assignedBy      String?    // Who assigned this role
+  assignedAt      DateTime   @default(now())
+  isActive        Boolean    @default(true)
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+  role            SystemRole @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, mifosUserId, roleId])
+  @@index([tenantId, mifosUserId])
+  @@index([tenantId, roleId])
+  @@index([tenantId, isActive])
+}
+
+// User Alert - system alerts shown in notifications
+model Alert {
+  id          String      @id @default(cuid())
+  tenantId    String
+  mifosUserId Int         // Target user ID from Fineract/Mifos
+  type        AlertType   @default(INFO)
+  title       String
+  message     String
+  actionUrl   String?     // Optional URL to navigate to when clicked
+  actionLabel String?     // Optional label for action button
+  metadata    Json?       // Additional data (e.g., loanId, clientId, leadId)
+  isRead      Boolean     @default(false)
+  isDismissed Boolean     @default(false)
+  expiresAt   DateTime?   // Optional expiration date
+  createdBy   String?     // Who created this alert (username or system)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  tenant      Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, mifosUserId, isRead, isDismissed])
+  @@index([tenantId, mifosUserId, createdAt])
+  @@index([tenantId, expiresAt])
+}
+
+enum AlertType {
+  INFO        // General information
+  SUCCESS     // Success notification
+  WARNING     // Warning that needs attention
+  ERROR       // Error or critical issue
+  TASK        // Task assignment
+  REMINDER    // Reminder notification
+  APPROVAL    // Approval request
+  SYSTEM      // System notification
+}
+
+// ─── Bulk Repayment (Collections) ───────────────────────────────────────────
+
+model BulkRepaymentUpload {
+  id            String               @id @default(cuid())
+  tenantId      String
+  fileName      String
+  uploadedBy    String
+  status        String               @default("STAGING") // STAGING, PROCESSING, COMPLETED, FAILED
+  totalRows     Int                  @default(0)
+  queuedCount   Int                  @default(0)
+  successCount  Int                  @default(0)
+  failedCount   Int                  @default(0)
+  totalAmount   Decimal              @default(0) @db.Decimal(19, 4)
+  columnMapping Json?
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+  items         BulkRepaymentItem[]
+
+  @@index([tenantId, status])
+  @@index([createdAt])
+}
+
+model BulkRepaymentItem {
+  id              String              @id @default(cuid())
+  uploadId        String
+  upload          BulkRepaymentUpload @relation(fields: [uploadId], references: [id], onDelete: Cascade)
+  rowNumber       Int
+  loanId          Int
+  loanAccountNo   String?
+  clientName      String?
+  amount          Decimal             @db.Decimal(19, 4)
+  paymentTypeId   Int?
+  paymentTypeName String?
+  accountNumber   String?
+  chequeNumber    String?
+  routingCode     String?
+  receiptNumber   String?
+  bankNumber      String?
+  note            String?
+  transactionDate DateTime?
+  status          String              @default("STAGED") // STAGED, QUEUED, PROCESSING, SUCCESS, FAILED
+  errorMessage    String?
+  fineractTxnId   String?
+  processedAt     DateTime?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  @@index([uploadId, status])
+  @@index([loanId])
+}
+
+model ReceiptRange {
+  id         String   @id @default(cuid())
+  tenantId   String
+  tenant     Tenant   @relation(fields: [tenantId], references: [id])
+  prefix     String?
+  rangeStart Int
+  rangeEnd   Int
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([tenantId, isActive])
+}
+
+model UsedReceipt {
+  id              String   @id @default(cuid())
+  tenantId        String
+  tenant          Tenant   @relation(fields: [tenantId], references: [id])
+  receiptNumber   String
+  transactionType String   // REPAYMENT, DISBURSEMENT
+  fineractTxnId   String?
+  loanId          Int?
+  usedBy          String?
+  usedAt          DateTime @default(now())
+
+  @@unique([tenantId, receiptNumber])
+  @@index([tenantId])
 }

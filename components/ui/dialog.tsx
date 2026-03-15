@@ -133,3 +133,6 @@ export {
   DialogTitle,
   DialogTrigger,
 }
+
+// Re-export VisuallyHidden for convenience
+export { VisuallyHidden } from "./visually-hidden"

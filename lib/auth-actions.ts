@@ -1,4 +1,4 @@
-import { AccessLevel, Resource, SpecificPermission } from "@/types/auth";
+import { AccessLevel, Resource, SpecificPermission } from "@/shared/types/auth";
 import {
   hasPermissionServer,
   hasRoleServer,

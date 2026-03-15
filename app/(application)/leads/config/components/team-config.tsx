@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Trash2, Plus, Edit2, Users } from "lucide-react";
+import { Trash2, Plus, Edit2, Users, X, Loader2, Save } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -16,82 +16,25 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  defaultRoles,
+  type TeamMember,
+  type Team,
+} from "@/shared/defaults/team-config";
+import { toast } from "sonner";
 
-type TeamMember = {
+interface PipelineStage {
   id: string;
   name: string;
-  email: string;
-  role: string;
-  avatar?: string;
-};
-
-type Team = {
-  id: string;
-  name: string;
-  description: string;
-  members: TeamMember[];
-  pipelineStages: string[];
-};
+}
 
 export function TeamConfig() {
-  const [teams, setTeams] = useState<Team[]>([
-    {
-      id: "1",
-      name: "Sales Team",
-      description:
-        "Responsible for initial lead qualification and sales process",
-      members: [
-        {
-          id: "1",
-          name: "John Doe",
-          email: "john@example.com",
-          role: "Sales Manager",
-          avatar: "/robert-johnson-avatar.png",
-        },
-        {
-          id: "2",
-          name: "Jane Smith",
-          email: "jane@example.com",
-          role: "Sales Representative",
-        },
-      ],
-      pipelineStages: ["New Lead", "Qualification", "Proposal"],
-    },
-    {
-      id: "2",
-      name: "Finance Team",
-      description: "Handles financial verification and approval",
-      members: [
-        {
-          id: "3",
-          name: "Robert Johnson",
-          email: "robert@example.com",
-          role: "Finance Manager",
-        },
-        {
-          id: "4",
-          name: "Sarah Williams",
-          email: "sarah@example.com",
-          role: "Financial Analyst",
-        },
-      ],
-      pipelineStages: ["Negotiation"],
-    },
-    {
-      id: "3",
-      name: "Customer Success",
-      description: "Manages onboarding and customer relationship",
-      members: [
-        {
-          id: "5",
-          name: "Michael Brown",
-          email: "michael@example.com",
-          role: "Customer Success Manager",
-        },
-      ],
-      pipelineStages: ["Closed Won"],
-    },
-  ]);
+  const [teams, setTeams] = useState<Team[]>([]);
+  const [pipelineStages, setPipelineStages] = useState<string[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [hasChanges, setHasChanges] = useState(false);
 
   const [editingTeam, setEditingTeam] = useState<Team | null>(null);
   const [newTeam, setNewTeam] = useState<Partial<Team>>({
@@ -107,20 +50,67 @@ export function TeamConfig() {
     role: "",
   });
 
-  const pipelineStages = [
-    "New Lead",
-    "Qualification",
-    "Proposal",
-    "Negotiation",
-    "Closed Won",
-    "Closed Lost",
-  ];
+  useEffect(() => {
+    fetchTeams();
+  }, []);
+
+  const fetchTeams = async () => {
+    try {
+      setIsLoading(true);
+      const response = await fetch("/api/pipeline/teams");
+      if (response.ok) {
+        const data = await response.json();
+        // Show whatever is in the database (even if empty)
+        setTeams(data.teams || []);
+        if (data.stages) {
+          setPipelineStages(data.stages.map((s: PipelineStage) => s.name));
+        }
+      } else {
+        console.error("Failed to fetch teams");
+        setTeams([]);
+      }
+    } catch (error) {
+      console.error("Error fetching teams:", error);
+      setTeams([]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const saveTeams = async () => {
+    try {
+      setIsSaving(true);
+      const response = await fetch("/api/pipeline/teams", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ teams }),
+      });
+
+      if (response.ok) {
+        toast.success("Teams saved successfully");
+        setHasChanges(false);
+        await fetchTeams();
+      } else {
+        const error = await response.json();
+        toast.error(error.error || "Failed to save teams");
+      }
+    } catch (error) {
+      console.error("Error saving teams:", error);
+      toast.error("Error saving teams");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const markChanged = () => {
+    setHasChanges(true);
+  };
 
   const handleAddTeam = () => {
     if (!newTeam.name) return;
 
     const team: Team = {
-      id: Date.now().toString(),
+      id: `new-${Date.now()}`,
       name: newTeam.name,
       description: newTeam.description || "",
       members: newTeam.members || [],
@@ -129,14 +119,16 @@ export function TeamConfig() {
 
     setTeams([...teams, team]);
     setNewTeam({ name: "", description: "", members: [], pipelineStages: [] });
+    markChanged();
   };
 
   const handleDeleteTeam = (id: string) => {
     setTeams(teams.filter((team) => team.id !== id));
+    markChanged();
   };
 
   const handleEditTeam = (team: Team) => {
-    setEditingTeam(team);
+    setEditingTeam({ ...team }); // Create a copy to avoid direct mutation
   };
 
   const handleUpdateTeam = () => {
@@ -147,13 +139,14 @@ export function TeamConfig() {
     );
 
     setEditingTeam(null);
+    markChanged();
   };
 
   const handleAddMember = () => {
     if (!newMember.name || !newMember.email) return;
 
     const member: TeamMember = {
-      id: Date.now().toString(),
+      id: `new-${Date.now()}`,
       name: newMember.name,
       email: newMember.email,
       role: newMember.role || "Team Member",
@@ -172,6 +165,7 @@ export function TeamConfig() {
     }
 
     setNewMember({ name: "", email: "", role: "" });
+    markChanged();
   };
 
   const handleDeleteMember = (teamId: string, memberId: string) => {
@@ -193,53 +187,61 @@ export function TeamConfig() {
         })
       );
     }
+    markChanged();
   };
 
-  const handleStageChange = (value: string) => {
-    const stages = value.split(",").filter(Boolean);
-
-    if (editingTeam) {
-      setEditingTeam({
-        ...editingTeam,
-        pipelineStages: stages,
-      });
-    } else {
-      setNewTeam({
-        ...newTeam,
-        pipelineStages: stages,
-      });
-    }
-  };
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
-      <div className="space-y-4">
-        <h3 className="text-lg font-medium text-white">Teams Configuration</h3>
-        <p className="text-sm text-gray-400">
+      <div className="flex items-start justify-between">
+        <div className="space-y-1">
+        <h3 className="text-lg font-medium">Teams Configuration</h3>
+        <p className="text-sm text-muted-foreground">
           Configure teams and assign them to pipeline stages
         </p>
+        </div>
+        {hasChanges && (
+          <Button
+            onClick={saveTeams}
+            disabled={isSaving}
+            className="bg-green-500 hover:bg-green-600"
+          >
+            {isSaving ? (
+              <Loader2 className="h-4 w-4 animate-spin mr-2" />
+            ) : (
+              <Save className="h-4 w-4 mr-2" />
+            )}
+            Save Changes
+          </Button>
+        )}
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
         {teams.map((team) => (
-          <Card
-            key={team.id}
-            className="overflow-hidden bg-[#0d121f] border-[#1a2035]"
-          >
-            <div className="bg-[#1a2035] p-4 flex justify-between items-start">
+          <Card key={team.id} className="overflow-hidden">
+            <div className="bg-muted/50 p-4 flex justify-between items-start">
               <div>
-                <h4 className="font-medium flex items-center text-white">
+                <h4 className="font-medium flex items-center">
                   <Users className="h-4 w-4 mr-2 text-blue-400" />
                   {team.name}
                 </h4>
-                <p className="text-sm text-gray-400 mt-1">{team.description}</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  {team.description}
+                </p>
               </div>
               <div className="flex space-x-2">
                 <Button
                   variant="ghost"
                   size="icon"
                   onClick={() => handleEditTeam(team)}
-                  className="text-gray-400 hover:text-white hover:bg-[#2a304d]"
+                  className="text-muted-foreground hover:text-foreground"
                 >
                   <Edit2 className="h-4 w-4" />
                 </Button>
@@ -247,59 +249,51 @@ export function TeamConfig() {
                   variant="ghost"
                   size="icon"
                   onClick={() => handleDeleteTeam(team.id)}
-                  className="text-gray-400 hover:text-white hover:bg-[#2a304d]"
+                  className="text-muted-foreground hover:text-foreground"
                 >
                   <Trash2 className="h-4 w-4" />
                 </Button>
               </div>
             </div>
-            <CardContent className="p-4 bg-[#0d121f]">
+            <CardContent className="p-4">
               <div className="space-y-4">
                 <div>
-                  <h5 className="text-sm font-medium mb-2 text-gray-300">
-                    Pipeline Stages:
-                  </h5>
+                  <h5 className="text-sm font-medium mb-2">Pipeline Stages:</h5>
                   <div className="flex flex-wrap gap-2">
                     {team.pipelineStages.map((stage) => (
-                      <Badge
-                        key={stage}
-                        variant="secondary"
-                        className="bg-[#2a304d] text-gray-300 hover:bg-[#3a405d]"
-                      >
+                      <Badge key={stage} variant="secondary">
                         {stage}
                       </Badge>
                     ))}
                     {team.pipelineStages.length === 0 && (
-                      <span className="text-sm text-gray-500">
+                      <span className="text-sm text-muted-foreground">
                         No stages assigned
                       </span>
                     )}
                   </div>
                 </div>
                 <div>
-                  <h5 className="text-sm font-medium mb-2 text-gray-300">
-                    Team Members:
-                  </h5>
+                  <h5 className="text-sm font-medium mb-2">Team Members:</h5>
                   <div className="space-y-2">
                     {team.members.map((member) => (
                       <div
                         key={member.id}
-                        className="flex items-center justify-between bg-[#1a2035] p-2 rounded-md"
+                        className="flex items-center justify-between bg-muted/50 p-2 rounded-md"
                       >
                         <div className="flex items-center space-x-2">
-                          <Avatar className="h-8 w-8 border border-[#2a304d]">
+                          <Avatar className="h-8 w-8">
                             <AvatarImage
                               src={member.avatar || "/placeholder.svg"}
                             />
-                            <AvatarFallback className="bg-[#2a304d] text-gray-300">
+                            <AvatarFallback>
                               {member.name.charAt(0)}
                             </AvatarFallback>
                           </Avatar>
                           <div>
-                            <div className="font-medium text-sm text-white">
+                            <div className="font-medium text-sm">
                               {member.name}
                             </div>
-                            <div className="text-xs text-gray-400">
+                            <div className="text-xs text-muted-foreground">
                               {member.role}
                             </div>
                           </div>
@@ -308,14 +302,14 @@ export function TeamConfig() {
                           variant="ghost"
                           size="icon"
                           onClick={() => handleDeleteMember(team.id, member.id)}
-                          className="text-gray-400 hover:text-white hover:bg-[#2a304d]"
+                          className="text-muted-foreground hover:text-foreground"
                         >
                           <Trash2 className="h-3 w-3" />
                         </Button>
                       </div>
                     ))}
                     {team.members.length === 0 && (
-                      <span className="text-sm text-gray-500">
+                      <span className="text-sm text-muted-foreground">
                         No members added
                       </span>
                     )}
@@ -327,17 +321,15 @@ export function TeamConfig() {
         ))}
       </div>
 
-      <Card className="bg-[#0d121f] border-[#1a2035]">
+      <Card>
         <CardContent className="pt-6">
           <div className="space-y-4">
-            <h3 className="text-lg font-medium text-white">
+            <h3 className="text-lg font-medium">
               {editingTeam ? `Edit Team: ${editingTeam.name}` : "Add New Team"}
             </h3>
             <div className="grid gap-4">
               <div className="grid gap-2">
-                <Label htmlFor="team-name" className="text-gray-300">
-                  Team Name
-                </Label>
+                <Label htmlFor="team-name">Team Name</Label>
                 <Input
                   id="team-name"
                   value={editingTeam ? editingTeam.name : newTeam.name}
@@ -347,13 +339,10 @@ export function TeamConfig() {
                       : setNewTeam({ ...newTeam, name: e.target.value })
                   }
                   placeholder="Enter team name"
-                  className="bg-[#1a2035] border-[#2a304d] text-white placeholder:text-gray-500"
                 />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="team-description" className="text-gray-300">
-                  Description
-                </Label>
+                <Label htmlFor="team-description">Description</Label>
                 <Textarea
                   id="team-description"
                   value={
@@ -371,38 +360,50 @@ export function TeamConfig() {
                   }
                   placeholder="Enter team description"
                   rows={3}
-                  className="bg-[#1a2035] border-[#2a304d] text-white placeholder:text-gray-500"
                 />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="pipeline-stages" className="text-gray-300">
-                  Pipeline Stages
-                </Label>
-                <Select
-                  onValueChange={handleStageChange}
-                  value={(editingTeam
-                    ? editingTeam.pipelineStages
-                    : newTeam.pipelineStages || []
-                  ).join(",")}
-                >
-                  <SelectTrigger
-                    id="pipeline-stages"
-                    className="bg-[#1a2035] border-[#2a304d] text-white"
-                  >
-                    <SelectValue placeholder="Select stages" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-[#1a2035] border-[#2a304d] text-white">
-                    {pipelineStages.map((stage) => (
-                      <SelectItem
-                        key={stage}
-                        value={stage}
-                        className="focus:bg-[#2a304d] focus:text-white"
-                      >
-                        {stage}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Label>Pipeline Stages</Label>
+                <div className="border rounded-md p-3 space-y-2 max-h-48 overflow-y-auto">
+                  {pipelineStages.map((stage) => {
+                    const currentStages = editingTeam
+                      ? editingTeam.pipelineStages
+                      : newTeam.pipelineStages || [];
+                    const isChecked = currentStages.includes(stage);
+
+                    return (
+                      <div key={stage} className="flex items-center space-x-2">
+                        <Checkbox
+                          id={`stage-${stage}`}
+                          checked={isChecked}
+                          onCheckedChange={(checked) => {
+                            const updatedStages = checked
+                              ? [...currentStages, stage]
+                              : currentStages.filter((s) => s !== stage);
+
+                            if (editingTeam) {
+                              setEditingTeam({
+                                ...editingTeam,
+                                pipelineStages: updatedStages,
+                              });
+                            } else {
+                              setNewTeam({
+                                ...newTeam,
+                                pipelineStages: updatedStages,
+                              });
+                            }
+                          }}
+                        />
+                        <Label
+                          htmlFor={`stage-${stage}`}
+                          className="text-sm font-normal cursor-pointer"
+                        >
+                          {stage}
+                        </Label>
+                      </div>
+                    );
+                  })}
+                </div>
                 <div className="flex flex-wrap gap-2 mt-2">
                   {(editingTeam
                     ? editingTeam.pipelineStages
@@ -411,24 +412,51 @@ export function TeamConfig() {
                     <Badge
                       key={stage}
                       variant="secondary"
-                      className="bg-[#2a304d] text-gray-300 hover:bg-[#3a405d]"
+                      className="flex items-center gap-1"
                     >
                       {stage}
+                      <X
+                        className="h-3 w-3 cursor-pointer hover:text-destructive"
+                        onClick={() => {
+                          const currentStages = editingTeam
+                            ? editingTeam.pipelineStages
+                            : newTeam.pipelineStages || [];
+                          const updatedStages = currentStages.filter(
+                            (s) => s !== stage
+                          );
+
+                          if (editingTeam) {
+                            setEditingTeam({
+                              ...editingTeam,
+                              pipelineStages: updatedStages,
+                            });
+                          } else {
+                            setNewTeam({
+                              ...newTeam,
+                              pipelineStages: updatedStages,
+                            });
+                          }
+                        }}
+                      />
                     </Badge>
                   ))}
+                  {(editingTeam
+                    ? editingTeam.pipelineStages
+                    : newTeam.pipelineStages || []
+                  ).length === 0 && (
+                    <span className="text-sm text-muted-foreground">
+                      No stages selected
+                    </span>
+                  )}
                 </div>
               </div>
 
-              <div className="border-t border-[#2a304d] pt-4 mt-2">
-                <h4 className="text-sm font-medium mb-4 text-white">
-                  Team Members
-                </h4>
+              <div className="border-t pt-4 mt-2">
+                <h4 className="text-sm font-medium mb-4">Team Members</h4>
                 <div className="space-y-4">
                   <div className="grid gap-4 md:grid-cols-3">
                     <div>
-                      <Label htmlFor="member-name" className="text-gray-300">
-                        Name
-                      </Label>
+                      <Label htmlFor="member-name">Name</Label>
                       <Input
                         id="member-name"
                         value={newMember.name}
@@ -436,13 +464,10 @@ export function TeamConfig() {
                           setNewMember({ ...newMember, name: e.target.value })
                         }
                         placeholder="Member name"
-                        className="bg-[#1a2035] border-[#2a304d] text-white placeholder:text-gray-500"
                       />
                     </div>
                     <div>
-                      <Label htmlFor="member-email" className="text-gray-300">
-                        Email
-                      </Label>
+                      <Label htmlFor="member-email">Email</Label>
                       <Input
                         id="member-email"
                         type="email"
@@ -451,13 +476,10 @@ export function TeamConfig() {
                           setNewMember({ ...newMember, email: e.target.value })
                         }
                         placeholder="Member email"
-                        className="bg-[#1a2035] border-[#2a304d] text-white placeholder:text-gray-500"
                       />
                     </div>
                     <div>
-                      <Label htmlFor="member-role" className="text-gray-300">
-                        Role
-                      </Label>
+                      <Label htmlFor="member-role">Role</Label>
                       <Input
                         id="member-role"
                         value={newMember.role}
@@ -465,14 +487,13 @@ export function TeamConfig() {
                           setNewMember({ ...newMember, role: e.target.value })
                         }
                         placeholder="Member role"
-                        className="bg-[#1a2035] border-[#2a304d] text-white placeholder:text-gray-500"
                       />
                     </div>
                   </div>
                   <Button
                     onClick={handleAddMember}
                     variant="outline"
-                    className="w-full border-[#2a304d] text-gray-300 hover:bg-[#2a304d] hover:text-white"
+                    className="w-full"
                   >
                     Add Team Member
                     <Plus className="ml-2 h-4 w-4" />
@@ -486,19 +507,19 @@ export function TeamConfig() {
                   ).map((member) => (
                     <div
                       key={member.id}
-                      className="flex items-center justify-between bg-[#1a2035] p-2 rounded-md"
+                      className="flex items-center justify-between bg-muted/50 p-2 rounded-md"
                     >
                       <div className="flex items-center space-x-2">
-                        <Avatar className="h-8 w-8 border border-[#2a304d]">
-                          <AvatarFallback className="bg-[#2a304d] text-gray-300">
+                        <Avatar className="h-8 w-8">
+                          <AvatarFallback>
                             {member.name.charAt(0)}
                           </AvatarFallback>
                         </Avatar>
                         <div>
-                          <div className="font-medium text-sm text-white">
+                          <div className="font-medium text-sm">
                             {member.name}
                           </div>
-                          <div className="text-xs text-gray-400">
+                          <div className="text-xs text-muted-foreground">
                             {member.email} • {member.role}
                           </div>
                         </div>
@@ -512,7 +533,7 @@ export function TeamConfig() {
                             member.id
                           )
                         }
-                        className="text-gray-400 hover:text-white hover:bg-[#2a304d]"
+                        className="text-muted-foreground hover:text-foreground"
                       >
                         <Trash2 className="h-3 w-3" />
                       </Button>
@@ -528,11 +549,7 @@ export function TeamConfig() {
                 {editingTeam ? "Update Team" : "Add Team"}
               </Button>
               {editingTeam && (
-                <Button
-                  variant="outline"
-                  onClick={() => setEditingTeam(null)}
-                  className="border-[#2a304d] text-gray-300 hover:bg-[#2a304d] hover:text-white"
-                >
+                <Button variant="outline" onClick={() => setEditingTeam(null)}>
                   Cancel
                 </Button>
               )}

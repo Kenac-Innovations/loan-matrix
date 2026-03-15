@@ -1,12 +1,23 @@
 // Affordability calculator utility functions
+import { 
+  DtiModelConfig, 
+  DisposableIncomeModelConfig, 
+  EmployerBasedModelConfig, 
+  ExpenditureEstimationModelConfig, 
+  AffordabilityModel, 
+  IncomeDetails 
+} from "@/shared/types/affordability";
+import { LoanOffer } from "@/shared/types/loan";
+import { defaultAffordabilityConfig } from "@/shared/defaults/affordability";
+import { defaultLoanTerms } from "@/shared/defaults/loans";
 
 // Calculate maximum affordable loan amount based on income and expenditure
 export function calculateMaxLoanAmount(
   monthlyIncome: number,
   monthlyExpenditure: number,
-  interestRate = 0.07, // 7% default interest rate
-  loanTermYears = 5, // 5 years default term
-  debtToIncomeRatio = 0.36 // 36% maximum DTI ratio
+  interestRate = defaultAffordabilityConfig.interestRate,
+  loanTermYears = defaultAffordabilityConfig.loanTermYears,
+  debtToIncomeRatio = defaultAffordabilityConfig.debtToIncomeRatio
 ): number {
   // Ensure inputs are numbers
   const numMonthlyIncome = Number(monthlyIncome) || 0;
@@ -29,7 +40,7 @@ export function calculateMaxLoanAmount(
   // If max monthly payment is negative or too small, use a minimum value
   // This ensures some offers are always generated for demonstration purposes
   if (maxMonthlyPayment < 100) {
-    return 50000; // Minimum loan amount for demonstration
+    return defaultAffordabilityConfig.minimumLoanAmount;
   }
 
   // Calculate maximum loan amount based on monthly payment
@@ -107,7 +118,7 @@ export function generateLoanOffers(
   }
 
   // Generate offers with different terms
-  const terms = [3, 5, 7, 10];
+  const terms = defaultLoanTerms;
 
   terms.forEach((term) => {
     // Adjust rate based on term
@@ -140,91 +151,7 @@ export function generateLoanOffers(
   return offers;
 }
 
-// Types
-export interface LoanOffer {
-  loanAmount: number;
-  interestRate: number;
-  termYears: number;
-  monthlyPayment: number;
-  totalRepayment: number;
-  productName: string;
-  productCode: string;
-}
-
-// DTI Model Configuration
-export interface DtiModelConfig {
-  maxDtiRatio: number;
-  warningDtiRatio: number;
-  includeMortgage: boolean;
-  includeExistingLoans: boolean;
-  includeProposedLoan: boolean;
-  includeMinimumCreditCardPayments: boolean;
-  includeAutoLoans?: boolean;
-  includeStudentLoans?: boolean;
-}
-
-// Net Disposable Income Model Configuration
-export interface DisposableIncomeModelConfig {
-  minDisposableIncome: number;
-  disposableIncomePercentage: number;
-  includeBasicNeeds: boolean;
-  includeTransportation: boolean;
-  includeUtilities: boolean;
-  includeEducation?: boolean;
-  includeHealthcare?: boolean;
-}
-
-// Employer-Based Model Configuration
-export interface EmployerBasedModelConfig {
-  governmentMultiplier: number;
-  corporateMultiplier: number;
-  smeMultiplier: number;
-  startupMultiplier?: number;
-  selfEmployedMultiplier: number;
-  maxTermYears: number;
-  minEmploymentYears: number;
-}
-
-// Expenditure Estimation Model Configuration
-export interface ExpenditureEstimationModelConfig {
-  estimationMethod: string;
-  lowerIncomePercentage: number;
-  middleIncomePercentage: number;
-  upperIncomePercentage: number;
-  lowerIncomeThreshold: number;
-  upperIncomeThreshold: number;
-  urbanAdjustmentFactor: number;
-  ruralAdjustmentFactor: number;
-}
-
-// Unified affordability model
-export interface AffordabilityModel {
-  id: string;
-  name: string;
-  description: string;
-  type: "dti" | "disposableIncome" | "employerBased" | "expenditureEstimation";
-  isActive: boolean;
-  isDefault: boolean;
-  config:
-    | DtiModelConfig
-    | DisposableIncomeModelConfig
-    | EmployerBasedModelConfig
-    | ExpenditureEstimationModelConfig;
-}
-
-// Extended IncomeDetails
-export interface IncomeDetails {
-  primaryIncome: number;
-  secondaryIncome: number;
-  otherIncome: number;
-  employerType?:
-    | "government"
-    | "corporate"
-    | "sme"
-    | "startup"
-    | "selfEmployed";
-  yearsEmployed?: number;
-}
+// Types are now imported from shared/types/affordability
 
 // Extended ExpenditureDetails
 export interface ExpenditureDetails {

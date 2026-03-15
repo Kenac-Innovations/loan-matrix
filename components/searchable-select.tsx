@@ -1,18 +1,10 @@
 "use client";
 
 import * as React from "react";
-import { Check, ChevronsUpDown, Plus, Search, X } from "lucide-react";
+import { Check, ChevronsUpDown, Plus, X, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-  CommandSeparator,
-} from "@/components/ui/command";
+import { Input } from "@/components/ui/input";
 import {
   Popover,
   PopoverContent,
@@ -22,6 +14,7 @@ import {
 export type Option = {
   value: string;
   label: string;
+  disabled?: boolean;
 };
 
 interface SearchableSelectProps {
@@ -49,18 +42,32 @@ export function SearchableSelect({
 }: SearchableSelectProps) {
   const [open, setOpen] = React.useState(false);
   const [searchQuery, setSearchQuery] = React.useState("");
+  const scrollRef = React.useRef<HTMLDivElement>(null);
+
+  // Ensure options is always an array
+  const safeOptions = React.useMemo(() => {
+    return Array.isArray(options) ? options : [];
+  }, [options]);
 
   const filteredOptions = React.useMemo(() => {
-    if (!searchQuery) return options;
+    if (!searchQuery) return safeOptions;
 
-    return options.filter((option) =>
-      option.label.toLowerCase().includes(searchQuery.toLowerCase())
+    return safeOptions.filter((option) =>
+      option?.label?.toLowerCase().includes(searchQuery.toLowerCase())
     );
-  }, [options, searchQuery]);
+  }, [safeOptions, searchQuery]);
 
   const selectedOption = React.useMemo(() => {
-    return options.find((option) => option.value === value);
-  }, [options, value]);
+    return safeOptions.find((option) => option?.value === value);
+  }, [safeOptions, value]);
+
+  const handleSelect = (optionValue: string, optionDisabled?: boolean) => {
+    if (!optionDisabled) {
+      onValueChange(optionValue);
+      setOpen(false);
+      setSearchQuery("");
+    }
+  };
 
   const handleAddNew = () => {
     setOpen(false);
@@ -68,6 +75,13 @@ export function SearchableSelect({
       onAddNew();
     }
   };
+
+  // Reset scroll position when opening
+  React.useEffect(() => {
+    if (open && scrollRef.current) {
+      scrollRef.current.scrollTop = 0;
+    }
+  }, [open]);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -83,70 +97,105 @@ export function SearchableSelect({
           )}
           disabled={disabled}
         >
-          {selectedOption ? selectedOption.label : placeholder}
+          <span className="truncate">
+            {selectedOption ? selectedOption.label : placeholder}
+          </span>
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0">
-        <Command>
-          <div className="flex items-center border-b px-3">
-            <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
-            <CommandInput
-              placeholder="Search..."
-              className="h-9 flex-1"
-              value={searchQuery}
-              onValueChange={setSearchQuery}
-            />
-            {searchQuery && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-8 w-8 p-0"
-                onClick={() => setSearchQuery("")}
-              >
-                <X className="h-4 w-4" />
-              </Button>
-            )}
-          </div>
-          <CommandList>
-            <CommandEmpty>{emptyMessage}</CommandEmpty>
-            <CommandGroup>
+      <PopoverContent 
+        className="w-[var(--radix-popover-trigger-width)] p-0"
+        align="start"
+      >
+        {/* Search Input */}
+        <div className="flex items-center border-b px-3 py-2">
+          <Search className="h-4 w-4 shrink-0 opacity-50 mr-2" />
+          <Input
+            placeholder="Search..."
+            className="h-8 border-0 p-0 focus-visible:ring-0 focus-visible:ring-offset-0"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+          {searchQuery && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 w-6 p-0 ml-2"
+              onClick={() => setSearchQuery("")}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
+
+        {/* Scrollable Options List */}
+        <div 
+          ref={scrollRef}
+          className="overflow-y-auto"
+          style={{ maxHeight: '300px' }}
+        >
+          {filteredOptions.length === 0 ? (
+            <div className="py-6 text-center text-sm text-muted-foreground">
+              {emptyMessage}
+            </div>
+          ) : (
+            <div className="p-1">
               {filteredOptions.map((option) => (
-                <CommandItem
+                <div
                   key={option.value}
-                  value={option.value}
-                  onSelect={(currentValue) => {
-                    onValueChange(currentValue);
-                    setOpen(false);
-                    setSearchQuery("");
+                  role="option"
+                  tabIndex={option.disabled ? -1 : 0}
+                  aria-selected={value === option.value}
+                  aria-disabled={option.disabled}
+                  onClick={() => handleSelect(option.value, option.disabled)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      handleSelect(option.value, option.disabled);
+                    }
                   }}
+                  className={cn(
+                    "relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none",
+                    "hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground",
+                    option.disabled && "opacity-50 cursor-not-allowed pointer-events-none",
+                    value === option.value && "bg-accent"
+                  )}
                 >
                   <Check
                     className={cn(
-                      "mr-2 h-4 w-4",
+                      "mr-2 h-4 w-4 shrink-0",
                       value === option.value ? "opacity-100" : "opacity-0"
                     )}
                   />
-                  {option.label}
-                </CommandItem>
+                  <span className="truncate">{option.label}</span>
+                </div>
               ))}
-            </CommandGroup>
-            {onAddNew && (
-              <>
-                <CommandSeparator />
-                <CommandGroup>
-                  <CommandItem
-                    onSelect={handleAddNew}
-                    className="text-blue-500 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-950 dark:hover:text-blue-300"
-                  >
-                    <Plus className="mr-2 h-4 w-4" />
-                    {addNewLabel}
-                  </CommandItem>
-                </CommandGroup>
-              </>
-            )}
-          </CommandList>
-        </Command>
+            </div>
+          )}
+
+          {onAddNew && (
+            <>
+              <div className="h-px bg-border mx-1" />
+              <div className="p-1">
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={handleAddNew}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      handleAddNew();
+                    }
+                  }}
+                  className="relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-950 focus:bg-blue-50 dark:focus:bg-blue-950"
+                >
+                  <Plus className="mr-2 h-4 w-4" />
+                  {addNewLabel}
+                </div>
+              </div>
+            </>
+          )}
+        </div>
       </PopoverContent>
     </Popover>
   );

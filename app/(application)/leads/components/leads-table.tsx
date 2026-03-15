@@ -1,354 +1,390 @@
 "use client";
 
-import { useState } from "react";
-import {
-  flexRender,
-  getCoreRowModel,
-  getPaginationRowModel,
-  getSortedRowModel,
-  useReactTable,
-  type ColumnDef,
-  type SortingState,
-} from "@tanstack/react-table";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import {
-  ChevronDown,
-  ChevronUp,
-  Search,
-  ChevronLeft,
-  ChevronRight,
-} from "lucide-react";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
 import Link from "next/link";
+import { LeadsData, fetchLeadStatuses } from "@/app/actions/leads-actions";
+import { Lead } from "@/shared/types";
+import { GenericDataTable } from "@/components/tables/generic-data-table";
+import { DataTableColumn, DataTableFilter } from "@/shared/types/data-table";
+import { useState, useCallback, useEffect, useRef, useMemo } from "react";
+import { FileEdit, User, Loader2, RefreshCw } from "lucide-react";
+import useSWR from "swr";
 
-// Define the lead data type
-type Lead = {
-  id: string;
-  client: string;
-  amount: string;
-  type: string;
-  stage: string;
-  stageName: string;
-  stageColor: string;
-  timeInStage: string;
-  sla: string;
-  status: "normal" | "warning" | "overdue";
-  assignee: string;
-  assigneeName: string;
-  assigneeColor: string;
-  createdAt: string;
-};
+interface LeadsTableProps {
+  initialData: LeadsData;
+}
 
-// Sample lead data
-const sampleLeads: Lead[] = [
-  {
-    id: "1001",
-    client: "Robert Johnson",
-    amount: "$125,000",
-    type: "Business Loan",
-    stage: "qualification",
-    stageName: "Lead Qualification",
-    stageColor: "bg-blue-500",
-    timeInStage: "1d 4h",
-    sla: "2d",
-    status: "normal",
-    assignee: "JD",
-    assigneeName: "John Doe",
-    assigneeColor: "bg-blue-500",
-    createdAt: "2025-05-08",
-  },
-  {
-    id: "1002",
-    client: "Sarah Williams",
-    amount: "$75,000",
-    type: "Personal Loan",
-    stage: "documents",
-    stageName: "Document Collection",
-    stageColor: "bg-purple-500",
-    timeInStage: "2d 6h",
-    sla: "3d",
-    status: "warning",
-    assignee: "AS",
-    assigneeName: "Alice Smith",
-    assigneeColor: "bg-purple-500",
-    createdAt: "2025-05-07",
-  },
-  {
-    id: "1003",
-    client: "Michael Chen",
-    amount: "$250,000",
-    type: "Mortgage",
-    stage: "assessment",
-    stageName: "Credit Assessment",
-    stageColor: "bg-yellow-500",
-    timeInStage: "4d 2h",
-    sla: "3d",
-    status: "overdue",
-    assignee: "RJ",
-    assigneeName: "Robert Johnson",
-    assigneeColor: "bg-yellow-500",
-    createdAt: "2025-05-06",
-  },
-  {
-    id: "1004",
-    client: "Emily Rodriguez",
-    amount: "$180,000",
-    type: "Business Loan",
-    stage: "assessment",
-    stageName: "Credit Assessment",
-    stageColor: "bg-yellow-500",
-    timeInStage: "1d 5h",
-    sla: "3d",
-    status: "normal",
-    assignee: "RJ",
-    assigneeName: "Robert Johnson",
-    assigneeColor: "bg-yellow-500",
-    createdAt: "2025-05-05",
-  },
-  {
-    id: "1005",
-    client: "David Kim",
-    amount: "$95,000",
-    type: "Personal Loan",
-    stage: "approval",
-    stageName: "Approval",
-    stageColor: "bg-green-500",
-    timeInStage: "0d 8h",
-    sla: "2d",
-    status: "normal",
-    assignee: "AD",
-    assigneeName: "Alex Donovan",
-    assigneeColor: "bg-green-500",
-    createdAt: "2025-05-04",
-  },
-  {
-    id: "1006",
-    client: "Jennifer Lee",
-    amount: "$320,000",
-    type: "Mortgage",
-    stage: "disbursement",
-    stageName: "Disbursement",
-    stageColor: "bg-teal-500",
-    timeInStage: "0d 4h",
-    sla: "1d",
-    status: "normal",
-    assignee: "MS",
-    assigneeName: "Maria Santos",
-    assigneeColor: "bg-teal-500",
-    createdAt: "2025-05-03",
-  },
-  {
-    id: "1007",
-    client: "Thomas Wilson",
-    amount: "$150,000",
-    type: "Business Loan",
-    stage: "documents",
-    stageName: "Document Collection",
-    stageColor: "bg-purple-500",
-    timeInStage: "1d 2h",
-    sla: "3d",
-    status: "normal",
-    assignee: "AS",
-    assigneeName: "Alice Smith",
-    assigneeColor: "bg-purple-500",
-    createdAt: "2025-05-02",
-  },
-  {
-    id: "1008",
-    client: "Lisa Brown",
-    amount: "$85,000",
-    type: "Personal Loan",
-    stage: "qualification",
-    stageName: "Lead Qualification",
-    stageColor: "bg-blue-500",
-    timeInStage: "0d 6h",
-    sla: "2d",
-    status: "normal",
-    assignee: "JD",
-    assigneeName: "John Doe",
-    assigneeColor: "bg-blue-500",
-    createdAt: "2025-05-01",
-  },
+// Helper function to get status badge color based on Fineract loan status
+function getStatusBadgeColor(status: string): string {
+  const statusLower = status.toLowerCase();
+  // Active/Disbursed - green
+  if (statusLower.includes("active") || statusLower.includes("disbursed")) {
+    return "bg-green-500 hover:bg-green-600";
+  }
+  // Approved (not pending) - blue
+  if (statusLower.includes("approved") && !statusLower.includes("pending")) {
+    return "bg-blue-500 hover:bg-blue-600";
+  }
+  // Pending/Submitted - yellow
+  if (statusLower.includes("pending") || statusLower.includes("submitted")) {
+    return "bg-yellow-500 hover:bg-yellow-600";
+  }
+  // Rejected/Withdrawn - red
+  if (statusLower.includes("rejected") || statusLower.includes("withdrawn")) {
+    return "bg-red-500 hover:bg-red-600";
+  }
+  // Closed/Written off - gray
+  if (statusLower.includes("closed") || statusLower.includes("written off")) {
+    return "bg-gray-500 hover:bg-gray-600";
+  }
+  // Overpaid - purple
+  if (statusLower.includes("overpaid")) {
+    return "bg-purple-500 hover:bg-purple-600";
+  }
+  return "bg-blue-500 hover:bg-blue-600";
+}
+
+const fetcher = (url: string) => fetch(url).then((res) => res.json());
+
+// Predefined Fineract loan statuses for filter dropdown
+const LOAN_STATUS_OPTIONS = [
+  { label: "Draft", value: "Draft" },
+  { label: "Submitted and pending approval", value: "Submitted and pending approval" },
+  { label: "Approved", value: "Approved" },
+  { label: "Disbursed", value: "Active" }, // "Active" in Fineract = Disbursed
+  { label: "Closed (obligations met)", value: "Closed (obligations met)" },
+  { label: "Closed (written off)", value: "Closed (written off)" },
+  { label: "Closed (rescheduled)", value: "Closed (rescheduled)" },
+  { label: "Overpaid", value: "Overpaid" },
+  { label: "Rejected", value: "Rejected" },
+  { label: "Withdrawn by applicant", value: "Withdrawn by applicant" },
 ];
 
-export function LeadsTable() {
-  const [sorting, setSorting] = useState<SortingState>([]);
-  const [searchQuery, setSearchQuery] = useState("");
 
-  // Define table columns
-  const columns: ColumnDef<Lead>[] = [
-    {
-      accessorKey: "id",
-      header: "ID",
-      cell: ({ row }) => <span className="text-xs">#{row.getValue("id")}</span>,
-    },
-    {
-      accessorKey: "client",
-      header: ({ column }) => {
-        return (
-          <Button
-            variant="ghost"
-            className="-ml-4 h-8 data-[state=open]:bg-transparent"
-            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-          >
-            Client
-            {column.getIsSorted() === "asc" ? (
-              <ChevronUp className="ml-2 h-4 w-4" />
-            ) : column.getIsSorted() === "desc" ? (
-              <ChevronDown className="ml-2 h-4 w-4" />
-            ) : null}
-          </Button>
-        );
-      },
-      cell: ({ row }) => (
-        <div className="flex items-center gap-2">
-          <Avatar className="h-8 w-8">
-            <AvatarImage
-              src={`/diverse-group-avatars.png?height=32&width=32&query=avatar ${row.getValue(
-                "client"
-              )}`}
-              alt={row.getValue("client")}
-            />
-            <AvatarFallback>
-              {(row.getValue("client") as string)
-                .split(" ")
-                .map((n) => n[0])
-                .join("")}
-            </AvatarFallback>
-          </Avatar>
-          <span>{row.getValue("client")}</span>
-        </div>
+export function LeadsTable({ initialData }: LeadsTableProps) {
+  const { leads: initialLeads, pipelineStages } = initialData;
+  const [customFilters, setCustomFilters] = useState<DataTableFilter[]>([
+    { columnId: "leadStatus", value: "", type: "select" },
+  ]);
+  const [navigatingLeadId, setNavigatingLeadId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // State for Fineract statuses fetched after initial load
+  const [leadStatuses, setLeadStatuses] = useState<Record<string, { status: string | null; payoutStatus?: string }>>({});
+  const [isLoadingStatuses, setIsLoadingStatuses] = useState(false);
+  const statusesFetchedRef = useRef<Set<string>>(new Set());
+
+  // Debounce search input
+  useEffect(() => {
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+    searchTimeoutRef.current = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+    }, 300);
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
+  }, [searchQuery]);
+
+  // Fetch Fineract statuses for leads that have been submitted to Fineract
+  useEffect(() => {
+    const fetchStatuses = async () => {
+      // Get leads that need status fetch (submitted to Fineract but status not yet fetched)
+      const leadsNeedingStatus = (initialLeads as Lead[]).filter(
+        (lead) =>
+          lead.loanSubmittedToFineract &&
+          !lead.fineractLoanStatus &&
+          !statusesFetchedRef.current.has(lead.id)
+      );
+
+      if (leadsNeedingStatus.length === 0) return;
+
+      // Mark these leads as being fetched
+      leadsNeedingStatus.forEach((lead) => statusesFetchedRef.current.add(lead.id));
+
+      setIsLoadingStatuses(true);
+      try {
+        const leadIds = leadsNeedingStatus.map((lead) => lead.id);
+        const statuses = await fetchLeadStatuses(leadIds);
+        setLeadStatuses((prev) => ({ ...prev, ...statuses }));
+      } catch (error) {
+        console.error("Error fetching lead statuses:", error);
+      } finally {
+        setIsLoadingStatuses(false);
+      }
+    };
+
+    fetchStatuses();
+  }, [initialLeads]);
+
+  // Check if status filter is active (need to fetch Fineract statuses)
+  const hasStatusFilter = customFilters.some(
+    (f) => f.columnId === "leadStatus" && f.value && f.value !== ""
+  );
+
+  // Always fetch data via SWR for live updates
+  // Use initialData for fast first render, then poll for updates
+  const { data: serverData, isLoading: isSearching, mutate } = useSWR(
+    `/api/leads/paginated?${new URLSearchParams({
+      limit: "100",
+      skipFineractStatus: hasStatusFilter ? "false" : "true",
+      ...(debouncedSearch.length >= 2 ? { search: debouncedSearch } : {}),
+      ...Object.fromEntries(
+        customFilters
+          .filter((f) => f.value)
+          .map((f) => [f.columnId, String(f.value)])
       ),
-    },
+    }).toString()}`,
+    fetcher,
     {
-      accessorKey: "amount",
-      header: ({ column }) => {
-        return (
-          <Button
-            variant="ghost"
-            className="-ml-4 h-8 data-[state=open]:bg-transparent"
-            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-          >
-            Amount
-            {column.getIsSorted() === "asc" ? (
-              <ChevronUp className="ml-2 h-4 w-4" />
-            ) : column.getIsSorted() === "desc" ? (
-              <ChevronDown className="ml-2 h-4 w-4" />
-            ) : null}
-          </Button>
-        );
-      },
-    },
+      fallbackData: { leads: initialLeads },
+      refreshInterval: 30000, // Poll every 30 seconds
+      revalidateOnFocus: true, // Refresh when user returns to tab
+      revalidateOnReconnect: true, // Refresh on network reconnect
+      dedupingInterval: 5000, // Dedupe requests within 5 seconds
+    }
+  );
+
+  // Expose mutate for manual refresh if needed
+  const refreshLeads = useCallback(() => {
+    mutate();
+    // Also refresh statuses
+    statusesFetchedRef.current.clear();
+    setLeadStatuses({});
+  }, [mutate]);
+
+  // Use server data (with fallback to initial data via SWR)
+  // Merge fetched statuses with leads data
+  const leads = useMemo(() => {
+    const baseLeads = serverData?.leads || initialLeads;
+    
+    // If no statuses fetched, return base leads
+    if (Object.keys(leadStatuses).length === 0) {
+      return baseLeads;
+    }
+    
+    // Merge fetched statuses into leads
+    return (baseLeads as Lead[]).map((lead) => {
+      const fetchedStatus = leadStatuses[lead.id];
+      if (fetchedStatus && fetchedStatus.status) {
+        return {
+          ...lead,
+          fineractLoanStatus: fetchedStatus.status,
+          payoutStatus: fetchedStatus.payoutStatus || lead.payoutStatus,
+        };
+      }
+      return lead;
+    });
+  }, [serverData?.leads, initialLeads, leadStatuses]);
+
+  // Define table columns using DataTableColumn format
+  const columns: DataTableColumn<Lead>[] = [
     {
-      accessorKey: "type",
-      header: "Type",
-      cell: ({ row }) => (
-        <Badge
-          variant="outline"
-          className="border-[#1a2035] bg-[#1a2035] text-xs text-gray-300"
-        >
-          {row.getValue("type")}
-        </Badge>
-      ),
-    },
-    {
-      accessorKey: "stageName",
-      header: ({ column }) => {
-        return (
-          <Button
-            variant="ghost"
-            className="-ml-4 h-8 data-[state=open]:bg-transparent"
-            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-          >
-            Stage
-            {column.getIsSorted() === "asc" ? (
-              <ChevronUp className="ml-2 h-4 w-4" />
-            ) : column.getIsSorted() === "desc" ? (
-              <ChevronDown className="ml-2 h-4 w-4" />
-            ) : null}
-          </Button>
-        );
-      },
+      id: "rowNumber",
+      header: "#",
       cell: ({ row }) => {
-        const lead = row.original;
         return (
-          <Badge className={`${lead.stageColor} text-white border-0 text-xs`}>
-            {lead.stageName}
-          </Badge>
-        );
-      },
-    },
-    {
-      accessorKey: "timeInStage",
-      header: "Time in Stage",
-      cell: ({ row }) => {
-        const lead = row.original;
-        return (
-          <span
-            className={`text-xs ${
-              lead.status === "overdue"
-                ? "text-red-400"
-                : lead.status === "warning"
-                ? "text-yellow-400"
-                : "text-gray-400"
-            }`}
-          >
-            {lead.timeInStage} / {lead.sla}
+          <span className="text-muted-foreground font-mono text-xs">
+            {row.index + 1}
           </span>
         );
       },
+      enableSorting: false,
     },
     {
-      accessorKey: "assigneeName",
-      header: "Assignee",
-      cell: ({ row }) => {
-        const lead = row.original;
+      id: "client",
+      accessorKey: "client",
+      header: "Client",
+      cell: ({ getValue, row }) => {
+        const isNavigating = navigatingLeadId === row.original.id;
         return (
           <div className="flex items-center gap-2">
-            <div
-              className="h-6 w-6 rounded-full flex items-center justify-center"
-              style={{ backgroundColor: lead.assigneeColor }}
-            >
-              <span className="text-xs font-medium text-white">
-                {lead.assignee}
-              </span>
-            </div>
-            <span className="text-xs">{lead.assigneeName}</span>
+            {isNavigating ? (
+              <div className="h-8 w-8 flex items-center justify-center">
+                <Loader2 className="h-5 w-5 animate-spin text-primary" />
+              </div>
+            ) : (
+              <Avatar className="h-8 w-8">
+                <AvatarFallback className="bg-primary/10 text-primary">
+                  {getValue()
+                    ? (getValue() as string)
+                        .split(" ")
+                        .map((n) => n[0])
+                        .join("")
+                        .slice(0, 2)
+                        .toUpperCase()
+                    : "UN"}
+                </AvatarFallback>
+              </Avatar>
+            )}
+            <span className={isNavigating ? "opacity-50" : ""}>
+              {getValue()}
+            </span>
           </div>
         );
       },
     },
     {
-      accessorKey: "createdAt",
-      header: ({ column }) => {
+      id: "leadStatus",
+      accessorKey: "fineractLoanStatus",
+      header: "Status",
+      cell: ({ row }) => {
+        const lead = row.original;
+        const status = lead.fineractLoanStatus;
+
+        if (status === "Draft" || !status) {
+          return (
+            <Badge
+              variant="outline"
+              className="border-yellow-500 bg-yellow-500/10 text-yellow-600 text-xs"
+            >
+              <FileEdit className="h-3 w-3 mr-1" />
+              Draft
+            </Badge>
+          );
+        }
+
+        // Transform "Active" to "Disbursed" for better clarity
+        const displayStatus = status === "Active" ? "Disbursed" : status;
         return (
-          <Button
-            variant="ghost"
-            className="-ml-4 h-8 data-[state=open]:bg-transparent"
-            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+          <Badge
+            className={`${getStatusBadgeColor(
+              status
+            )} text-white border-0 text-xs`}
           >
-            Created
-            {column.getIsSorted() === "asc" ? (
-              <ChevronUp className="ml-2 h-4 w-4" />
-            ) : column.getIsSorted() === "desc" ? (
-              <ChevronDown className="ml-2 h-4 w-4" />
-            ) : null}
-          </Button>
+            {displayStatus}
+          </Badge>
         );
       },
+      filterOptions: LOAN_STATUS_OPTIONS,
+    },
+    {
+      id: "preferredPaymentMethod",
+      accessorKey: "preferredPaymentMethod",
+      header: "Payment Type",
       cell: ({ row }) => {
+        const value = row.original.preferredPaymentMethod;
+        if (!value) return <span className="text-muted-foreground text-xs">-</span>;
+        const labels: Record<string, string> = {
+          CASH: "Cash",
+          MOBILE_MONEY: "Mobile Money",
+          BANK_TRANSFER: "Bank Transfer",
+        };
+        return <span className="text-xs font-medium">{labels[value] ?? value}</span>;
+      },
+    },
+    {
+      id: "payoutStatus",
+      accessorKey: "payoutStatus",
+      header: "Payout",
+      cell: ({ row }) => {
+        const lead = row.original;
+        const payoutStatus = lead.payoutStatus;
+
+        // Only show payout status if there's a payout record
+        if (!payoutStatus) {
+          return <span className="text-muted-foreground text-xs">-</span>;
+        }
+
+        if (payoutStatus === "PAID") {
+          return (
+            <Badge className="bg-green-100 text-green-800 border-green-200 text-xs">
+              Paid
+            </Badge>
+          );
+        } else if (payoutStatus === "VOIDED") {
+          return (
+            <Badge className="bg-gray-100 text-gray-800 border-gray-200 text-xs">
+              Voided
+            </Badge>
+          );
+        } else {
+          return (
+            <Badge className="bg-yellow-100 text-yellow-800 border-yellow-200 text-xs">
+              Pending
+            </Badge>
+          );
+        }
+      },
+    },
+    {
+      id: "amount",
+      accessorKey: "amount",
+      header: "Amount",
+    },
+    {
+      id: "loanOfficer",
+      accessorKey: "createdByUserName",
+      header: "Loan Officer",
+      cell: ({ row }) => {
+        const lead = row.original;
+        // Show createdByUserName (originator), falling back to assignedToUserName, then userId
+        const officerName = lead.createdByUserName || lead.assignedToUserName || lead.userId || "Unknown";
+        return (
+          <div className="flex items-center gap-2">
+            <User className="h-3 w-3 text-muted-foreground" />
+            <span className="text-xs truncate max-w-[120px]" title={officerName}>
+              {officerName}
+            </span>
+          </div>
+        );
+      },
+    },
+    {
+      id: "assignedTo",
+      accessorKey: "assignedToUserName",
+      header: "Assigned To",
+      cell: ({ row }) => {
+        const lead = row.original;
+        const isSubmitted = lead.loanSubmittedToFineract || lead.fineractLoanId;
+
+        if (!isSubmitted) {
+          return <span className="text-xs text-muted-foreground">-</span>;
+        }
+
+        if (lead.assignedToUserName) {
+          return (
+            <div className="flex items-center gap-2">
+              <Avatar className="h-6 w-6">
+                <AvatarFallback className="bg-green-500/20 text-green-600 text-xs">
+                  {lead.assignedToUserName
+                    .split(" ")
+                    .map((n: string) => n[0])
+                    .join("")
+                    .slice(0, 2)
+                    .toUpperCase()}
+                </AvatarFallback>
+              </Avatar>
+              <span className="text-xs">{lead.assignedToUserName}</span>
+            </div>
+          );
+        }
+
+        return (
+          <Badge
+            variant="outline"
+            className="text-xs border-orange-500 text-orange-500 bg-orange-500/10"
+          >
+            <User className="h-3 w-3 mr-1" />
+            Unassigned
+          </Badge>
+        );
+      },
+    },
+    {
+      id: "createdAt",
+      accessorKey: "createdAt",
+      header: "Created",
+      cell: ({ getValue }) => {
         // Format date
-        const date = new Date(row.getValue("createdAt"));
+        const date = new Date(getValue());
         const formattedDate = date.toLocaleDateString("en-US", {
           month: "short",
           day: "numeric",
@@ -359,151 +395,70 @@ export function LeadsTable() {
     },
     {
       id: "actions",
+      header: "Actions",
       cell: ({ row }) => {
+        const lead = row.original;
+        // Show detail view for submitted loans, create view for drafts
+        const isSubmitted = lead.loanSubmittedToFineract || lead.fineractLoanId;
         return (
           <Button variant="ghost" size="sm" asChild>
-            <Link href={`/leads/${row.original.id}`}>View</Link>
+            <Link
+              href={
+                isSubmitted ? `/leads/${lead.id}` : `/leads/new?id=${lead.id}`
+              }
+            >
+              {isSubmitted ? "View" : "Continue"}
+            </Link>
           </Button>
         );
       },
+      enableSorting: false,
     },
   ];
 
-  // Filter data based on search query
-  const filteredData = sampleLeads.filter((lead) => {
-    if (!searchQuery) return true;
-    const searchLower = searchQuery.toLowerCase();
-    return (
-      lead.client.toLowerCase().includes(searchLower) ||
-      lead.id.includes(searchQuery) ||
-      lead.type.toLowerCase().includes(searchLower) ||
-      lead.stageName.toLowerCase().includes(searchLower) ||
-      lead.amount.toLowerCase().includes(searchLower)
-    );
-  });
-
-  // Initialize table
-  const table = useReactTable({
-    data: filteredData,
-    columns,
-    getCoreRowModel: getCoreRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
-    onSortingChange: setSorting,
-    getSortedRowModel: getSortedRowModel(),
-    state: {
-      sorting,
-    },
-    initialState: {
-      pagination: {
-        pageSize: 8,
-      },
-    },
-  });
+  // Handle row click to navigate to lead details
+  const handleRowClick = (lead: Lead) => {
+    // Set navigating state to show loader
+    setNavigatingLeadId(lead.id);
+    // Show detail view for submitted loans, create view for drafts
+    const isSubmitted = lead.loanSubmittedToFineract || lead.fineractLoanId;
+    window.location.href = isSubmitted
+      ? `/leads/${lead.id}`
+      : `/leads/new?id=${lead.id}`;
+  };
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-400" />
-          <Input
-            placeholder="Search leads..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-8 border-[#1a2035] bg-[#0a0e17] text-white"
-          />
-        </div>
-      </div>
-
-      <div className="rounded-md border border-[#1a2035]">
-        <Table>
-          <TableHeader className="bg-[#0a0e17]">
-            {table.getHeaderGroups().map((headerGroup) => (
-              <TableRow
-                key={headerGroup.id}
-                className="border-[#1a2035] hover:bg-transparent"
-              >
-                {headerGroup.headers.map((header) => {
-                  return (
-                    <TableHead key={header.id} className="text-gray-400">
-                      {header.isPlaceholder
-                        ? null
-                        : flexRender(
-                            header.column.columnDef.header,
-                            header.getContext()
-                          )}
-                    </TableHead>
-                  );
-                })}
-              </TableRow>
-            ))}
-          </TableHeader>
-          <TableBody>
-            {table.getRowModel().rows?.length ? (
-              table.getRowModel().rows.map((row) => (
-                <TableRow
-                  key={row.id}
-                  data-state={row.getIsSelected() && "selected"}
-                  className="border-[#1a2035] hover:bg-[#141b2d]"
-                >
-                  {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id}>
-                      {flexRender(
-                        cell.column.columnDef.cell,
-                        cell.getContext()
-                      )}
-                    </TableCell>
-                  ))}
-                </TableRow>
-              ))
-            ) : (
-              <TableRow className="border-[#1a2035]">
-                <TableCell
-                  colSpan={columns.length}
-                  className="h-24 text-center"
-                >
-                  No results.
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </div>
-
-      <div className="flex items-center justify-between">
-        <div className="text-sm text-gray-400">
-          Showing{" "}
-          {table.getState().pagination.pageIndex *
-            table.getState().pagination.pageSize +
-            1}{" "}
-          to{" "}
-          {Math.min(
-            (table.getState().pagination.pageIndex + 1) *
-              table.getState().pagination.pageSize,
-            filteredData.length
-          )}{" "}
-          of {filteredData.length} leads
-        </div>
-        <div className="flex items-center space-x-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => table.previousPage()}
-            disabled={!table.getCanPreviousPage()}
-            className="border-[#1a2035] hover:bg-[#1a2035]"
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => table.nextPage()}
-            disabled={!table.getCanNextPage()}
-            className="border-[#1a2035] hover:bg-[#1a2035]"
-          >
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-        </div>
-      </div>
-    </div>
+    <GenericDataTable
+      data={leads}
+      columns={columns}
+      searchPlaceholder="Search all leads..."
+      enablePagination={true}
+      enableColumnVisibility={true}
+      enableExport={true}
+      enableFilters={true}
+      pageSize={8}
+      tableId="leads-table"
+      onRowClick={handleRowClick}
+      exportFileName="leads-export"
+      emptyMessage={isSearching ? "Searching..." : "No leads found."}
+      customFilters={customFilters}
+      onFilterChange={setCustomFilters}
+      defaultSorting={[{ id: "createdAt", desc: true }]}
+      externalSearch={searchQuery}
+      onSearchChange={setSearchQuery}
+      isLoading={isSearching || isLoadingStatuses}
+      headerActions={
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={refreshLeads}
+          disabled={isSearching || isLoadingStatuses}
+          className="h-9"
+        >
+          <RefreshCw className={`h-4 w-4 mr-2 ${(isSearching || isLoadingStatuses) ? "animate-spin" : ""}`} />
+          <span className="hidden sm:inline">Refresh</span>
+        </Button>
+      }
+    />
   );
 }

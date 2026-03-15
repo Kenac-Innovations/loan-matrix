@@ -2,11 +2,17 @@
 
 import { SessionProvider } from "next-auth/react";
 import { AuthProvider } from "@/contexts/auth-context";
+import { CurrencyProvider } from "@/contexts/currency-context";
 
 export function Providers({ children }: { children: React.ReactNode }) {
   return (
-    <SessionProvider>
-      <AuthProvider>{children}</AuthProvider>
+    <SessionProvider
+      refetchInterval={5 * 60} // Refetch session every 5 minutes
+      refetchOnWindowFocus={true}
+    >
+      <AuthProvider>
+        <CurrencyProvider>{children}</CurrencyProvider>
+      </AuthProvider>
     </SessionProvider>
   );
 }

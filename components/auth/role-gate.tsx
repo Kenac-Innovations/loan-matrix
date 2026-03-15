@@ -1,7 +1,7 @@
 "use client";
 
 import { ReactNode } from "react";
-import { useRole } from "@/hooks/use-authorization";
+import { useRole } from "@/hooks/use-client-auth";
 
 interface RoleGateProps {
   role: string;

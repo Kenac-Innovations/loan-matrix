@@ -41,3 +41,7 @@ yarn-error.log*
 next-env.d.ts
 
 /app/generated
+# env files
+.env
+.env.*
+env.local

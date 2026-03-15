@@ -19,7 +19,7 @@ export function ThemeToggle() {
       <Button
         variant="ghost"
         size="icon"
-        className="relative h-9 w-9 rounded-full text-white"
+        className="relative h-9 w-9 rounded-full"
       >
         <span className="sr-only">Toggle theme</span>
       </Button>
@@ -31,7 +31,7 @@ export function ThemeToggle() {
       variant="ghost"
       size="icon"
       onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-      className="relative h-9 w-9 rounded-full text-white"
+      className="relative h-9 w-9 rounded-full"
     >
       {theme === "dark" ? (
         <Sun className="h-[1.2rem] w-[1.2rem]" />
