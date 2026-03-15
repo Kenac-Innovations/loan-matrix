@@ -1,0 +1,17 @@
+-- AlterTable
+ALTER TABLE "Lead" ADD COLUMN     "createStandingInstructions" BOOLEAN DEFAULT false,
+ADD COLUMN     "employmentVerified" BOOLEAN DEFAULT false,
+ADD COLUMN     "expectedDisbursementDate" TIMESTAMP(3),
+ADD COLUMN     "fundId" INTEGER,
+ADD COLUMN     "grossMonthlyIncome" DOUBLE PRECISION,
+ADD COLUMN     "hasProofOfIncome" BOOLEAN DEFAULT false,
+ADD COLUMN     "hasValidNationalId" BOOLEAN DEFAULT false,
+ADD COLUMN     "identityVerified" BOOLEAN DEFAULT false,
+ADD COLUMN     "incomeVerified" BOOLEAN DEFAULT false,
+ADD COLUMN     "linkSavingsAccount" TEXT,
+ADD COLUMN     "loanOfficerId" INTEGER,
+ADD COLUMN     "loanProductId" INTEGER,
+ADD COLUMN     "loanProductName" TEXT,
+ADD COLUMN     "loanPurposeId" INTEGER,
+ADD COLUMN     "mobileInOwnName" BOOLEAN DEFAULT false,
+ADD COLUMN     "nationality" TEXT;

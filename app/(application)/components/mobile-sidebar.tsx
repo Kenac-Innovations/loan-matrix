@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useTheme } from "next-themes";
 import { UserProfileData } from "./user-profile-data";
@@ -10,29 +11,38 @@ import {
   Bot,
   CreditCard,
   FileText,
-  Home,
-  Lock,
-  Settings,
-  Shield,
+  Receipt,
   Users,
   TrendingUp,
   X,
-  Menu,
+  Landmark,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { TenantDisplayClient } from "@/components/tenant-display-client";
+import { useMobileMenu } from "./mobile-menu-context";
+import { useFeatureFlags } from "@/hooks/use-feature-flags";
 
 interface MobileSidebarProps {
   userProfileData: UserProfileData;
+  /** Organization logo URL from document service (when set) */
+  tenantLogoUrl?: string | null;
 }
 
-export function MobileSidebar({ userProfileData }: MobileSidebarProps) {
+export function MobileSidebar({ userProfileData, tenantLogoUrl }: MobileSidebarProps) {
   const pathname = usePathname();
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { mobileMenuOpen, setMobileMenuOpen } = useMobileMenu();
   const mobileMenuRef = useRef<HTMLDivElement>(null);
   const { theme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+  const { isEnabled } = useFeatureFlags();
 
   // Get login status and tenant
   const { isLoggedIn, tenantId } = userProfileData;
+
+  // Avoid hydration mismatch
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Close mobile menu when changing routes
   useEffect(() => {
@@ -70,32 +80,24 @@ export function MobileSidebar({ userProfileData }: MobileSidebarProps) {
   }, [mobileMenuOpen]);
 
   // Define colors based on theme
-  const bgColor = theme === "light" ? "bg-white" : "bg-[#0d121f]";
+  const bgColor = mounted && theme === "light" ? "bg-white" : "bg-[#0d121f]";
   const borderColor =
-    theme === "light" ? "border-gray-200" : "border-[#1a2035]";
-  const textColor = theme === "light" ? "text-gray-900" : "text-white";
-  const textColorMuted = theme === "light" ? "text-gray-500" : "text-gray-300";
-  const iconColor = theme === "light" ? "text-gray-500" : "text-gray-400";
-  const iconColorActive = theme === "light" ? "text-blue-500" : "text-blue-400";
+    mounted && theme === "light" ? "border-gray-200" : "border-[#1a2035]";
+  const textColor =
+    mounted && theme === "light" ? "text-gray-900" : "text-white";
+  const textColorMuted =
+    mounted && theme === "light" ? "text-gray-500" : "text-gray-300";
+  const iconColor =
+    mounted && theme === "light" ? "text-gray-500" : "text-gray-400";
+  const iconColorActive =
+    mounted && theme === "light" ? "text-blue-500" : "text-blue-400";
   const hoverBgColor =
-    theme === "light" ? "hover:bg-gray-100" : "hover:bg-[#1a2035]";
-  const activeBgColor = theme === "light" ? "bg-gray-100" : "bg-[#1a2035]";
+    mounted && theme === "light" ? "hover:bg-gray-100" : "hover:bg-[#1a2035]";
+  const activeBgColor =
+    mounted && theme === "light" ? "bg-gray-100" : "bg-[#1a2035]";
 
   return (
     <>
-      {/* Mobile Menu Toggle Button */}
-      <div className="lg:hidden">
-        <Button
-          variant="ghost"
-          size="icon"
-          className={textColor}
-          onClick={() => setMobileMenuOpen(true)}
-          data-mobile-toggle="true"
-        >
-          <Menu className="h-6 w-6" />
-          <span className="sr-only">Toggle menu</span>
-        </Button>
-      </div>
 
       {/* Mobile Sidebar Overlay */}
       {mobileMenuOpen && (
@@ -115,33 +117,34 @@ export function MobileSidebar({ userProfileData }: MobileSidebarProps) {
         <div
           className={`flex h-16 items-center justify-between ${borderColor} border-b px-4`}
         >
-          <div className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-blue-500 text-white">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="24"
-                height="24"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className="h-5 w-5"
-              >
-                <rect width="18" height="18" x="3" y="3" rx="2" />
-                <path d="M7 7h10" />
-                <path d="M7 12h10" />
-                <path d="M7 17h10" />
-              </svg>
-            </div>
-            <span className={`text-lg font-bold ${textColor}`}>
-              {tenantId.toUpperCase()}
-            </span>
-            {!isLoggedIn && (
-              <span className="ml-2 text-xs bg-yellow-500 text-white px-2 py-0.5 rounded">
-                Guest
-              </span>
+          <div className="flex items-center">
+            {tenantLogoUrl ? (
+              <img
+                src={tenantLogoUrl}
+                alt="Organization Logo"
+                width={100}
+                height={32}
+                className="h-8 w-auto object-contain"
+              />
+            ) : (
+              <>
+                <Image
+                  src="/kenac_logo_light.png"
+                  alt="Kenac Logo"
+                  width={100}
+                  height={32}
+                  className="dark:hidden"
+                  priority
+                />
+                <Image
+                  src="/kenac_logo.png"
+                  alt="Kenac Logo"
+                  width={100}
+                  height={32}
+                  className="hidden dark:block"
+                  priority
+                />
+              </>
             )}
           </div>
           <Button
@@ -153,42 +156,28 @@ export function MobileSidebar({ userProfileData }: MobileSidebarProps) {
             <X className="h-5 w-5" />
           </Button>
         </div>
-        <div className="py-4 h-[calc(100vh-4rem)] overflow-y-auto">
+        <TenantDisplayClient />
+        <div className="py-4 h-[calc(100vh-7rem)] overflow-y-auto">
           <nav className="space-y-1 px-2">
-            <Link
-              href="/dashboard"
-              className={`flex items-center gap-3 rounded-md px-3 py-3 text-sm font-medium ${
-                pathname === "/dashboard"
-                  ? `${activeBgColor} ${textColor}`
-                  : `${textColorMuted} ${hoverBgColor} hover:${textColor}`
-              }`}
-            >
-              <Home
-                className={`h-5 w-5 ${
-                  pathname === "/dashboard" ? iconColorActive : iconColor
-                }`}
-              />
-              Dashboard
-            </Link>
             <div className="space-y-1">
               <Link
                 href="/leads"
                 className={`flex items-center gap-3 rounded-md px-3 py-3 text-sm font-medium ${
-                  pathname.startsWith("/leads")
+                  pathname.startsWith("/leads") || pathname.startsWith("/ussd-leads")
                     ? `${activeBgColor} ${textColor}`
                     : `${textColorMuted} ${hoverBgColor} hover:${textColor}`
                 }`}
               >
                 <TrendingUp
                   className={`h-5 w-5 ${
-                    pathname.startsWith("/leads") ? iconColorActive : iconColor
+                    pathname.startsWith("/leads") || pathname.startsWith("/ussd-leads") ? iconColorActive : iconColor
                   }`}
                 />
                 Leads
               </Link>
 
-              {/* Sub-menu items for Leads */}
-              {pathname.startsWith("/leads") && (
+              {(pathname.startsWith("/leads") ||
+                pathname.startsWith("/ussd-leads")) && (
                 <div className="pl-10 space-y-1">
                   <Link
                     href="/leads"
@@ -200,85 +189,324 @@ export function MobileSidebar({ userProfileData }: MobileSidebarProps) {
                   >
                     Pipeline
                   </Link>
-                  <Link
-                    href="/leads/config"
-                    className={`flex items-center gap-3 rounded-md px-3 py-2 text-xs font-medium ${
-                      pathname === "/leads/config"
-                        ? iconColorActive
-                        : `${iconColor} hover:${textColor}`
-                    }`}
-                  >
-                    Configuration
-                  </Link>
+                  {isEnabled("ussdLeads") && (
+                    <Link
+                      href="/ussd-leads"
+                      className={`flex items-center gap-3 rounded-md px-3 py-2 text-xs font-medium ${
+                        pathname === "/ussd-leads"
+                          ? iconColorActive
+                          : `${iconColor} hover:${textColor}`
+                      }`}
+                    >
+                      USSD Leads
+                    </Link>
+                  )}
+                  {isEnabled("leadConfig") && (
+                    <Link
+                      href="/leads/config"
+                      className={`flex items-center gap-3 rounded-md px-3 py-2 text-xs font-medium ${
+                        pathname === "/leads/config"
+                          ? iconColorActive
+                          : `${iconColor} hover:${textColor}`
+                      }`}
+                    >
+                      Configuration
+                    </Link>
+                  )}
                 </div>
               )}
             </div>
+
             <Link
-              href="#"
-              className={`flex items-center gap-3 rounded-md px-3 py-3 text-sm font-medium ${textColorMuted} ${hoverBgColor} hover:${textColor}`}
-            >
-              <CreditCard className={`h-5 w-5 ${iconColor}`} />
-              Loans
-            </Link>
-            <Link
-              href="#"
-              className={`flex items-center gap-3 rounded-md px-3 py-3 text-sm font-medium ${textColorMuted} ${hoverBgColor} hover:${textColor}`}
-            >
-              <Users className={`h-5 w-5 ${iconColor}`} />
-              Clients
-            </Link>
-            <Link
-              href="#"
-              className={`flex items-center gap-3 rounded-md px-3 py-3 text-sm font-medium ${textColorMuted} ${hoverBgColor} hover:${textColor}`}
-            >
-              <FileText className={`h-5 w-5 ${iconColor}`} />
-              Documents
-            </Link>
-            <Link
-              href="#"
-              className={`flex items-center gap-3 rounded-md px-3 py-3 text-sm font-medium ${textColorMuted} ${hoverBgColor} hover:${textColor}`}
-            >
-              <BarChart3 className={`h-5 w-5 ${iconColor}`} />
-              Analytics
-            </Link>
-            <Link
-              href="#"
-              className={`flex items-center gap-3 rounded-md px-3 py-3 text-sm font-medium ${textColorMuted} ${hoverBgColor} hover:${textColor}`}
-            >
-              <Shield className={`h-5 w-5 ${iconColor}`} />
-              Compliance
-            </Link>
-            <Link
-              href="#"
-              className={`flex items-center gap-3 rounded-md px-3 py-3 text-sm font-medium ${textColorMuted} ${hoverBgColor} hover:${textColor}`}
-            >
-              <Lock className={`h-5 w-5 ${iconColor}`} />
-              Security
-            </Link>
-            <Link
-              href="/dashboard/rag"
+              href="/loans"
               className={`flex items-center gap-3 rounded-md px-3 py-3 text-sm font-medium ${
-                pathname.startsWith("/dashboard/rag")
+                pathname.startsWith("/loans")
                   ? `${activeBgColor} ${textColor}`
                   : `${textColorMuted} ${hoverBgColor} hover:${textColor}`
               }`}
             >
-              <Bot
+              <CreditCard
                 className={`h-5 w-5 ${
-                  pathname.startsWith("/dashboard/rag")
-                    ? iconColorActive
-                    : iconColor
+                  pathname.startsWith("/loans") ? iconColorActive : iconColor
                 }`}
               />
-              AI Assistant
+              Loans
             </Link>
-            <Link
-              href="#"
-              className={`flex items-center gap-3 rounded-md px-3 py-3 text-sm font-medium ${textColorMuted} ${hoverBgColor} hover:${textColor}`}
-            >
-              <Settings className={`h-5 w-5 ${iconColor}`} />
-              Settings
-            </Link>
+
+            <div className="space-y-1">
+              <Link
+                href="/collections"
+                className={`flex items-center gap-3 rounded-md px-3 py-3 text-sm font-medium ${
+                  pathname.startsWith("/collections")
+                    ? `${activeBgColor} ${textColor}`
+                    : `${textColorMuted} ${hoverBgColor} hover:${textColor}`
+                }`}
+              >
+                <Receipt
+                  className={`h-5 w-5 ${
+                    pathname.startsWith("/collections") ? iconColorActive : iconColor
+                  }`}
+                />
+                Collections
+              </Link>
+
+              {pathname.startsWith("/collections") && (
+                <div className="pl-10 space-y-1">
+                  <Link
+                    href="/collections"
+                    className={`flex items-center gap-3 rounded-md px-3 py-2 text-xs font-medium ${
+                      pathname === "/collections"
+                        ? iconColorActive
+                        : `${iconColor} hover:${textColor}`
+                    }`}
+                  >
+                    Expected Payments
+                  </Link>
+                  <Link
+                    href="/collections/bulk-receipting"
+                    className={`flex items-center gap-3 rounded-md px-3 py-2 text-xs font-medium ${
+                      pathname === "/collections/bulk-receipting"
+                        ? iconColorActive
+                        : `${iconColor} hover:${textColor}`
+                    }`}
+                  >
+                    Bulk Receipting
+                  </Link>
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-1">
+              <Link
+                href="/clients"
+                className={`flex items-center gap-3 rounded-md px-3 py-3 text-sm font-medium ${
+                  pathname.startsWith("/clients")
+                    ? `${activeBgColor} ${textColor}`
+                    : `${textColorMuted} ${hoverBgColor} hover:${textColor}`
+                }`}
+              >
+                <Users
+                  className={`h-5 w-5 ${
+                    pathname.startsWith("/clients") ? iconColorActive : iconColor
+                  }`}
+                />
+                Clients
+              </Link>
+
+              {pathname.startsWith("/clients") && (
+                <div className="pl-10 space-y-1">
+                  <Link
+                    href="/clients"
+                    className={`flex items-center gap-3 rounded-md px-3 py-2 text-xs font-medium ${
+                      pathname === "/clients"
+                        ? iconColorActive
+                        : `${iconColor} hover:${textColor}`
+                    }`}
+                  >
+                    All Clients
+                  </Link>
+                  <Link
+                    href="/clients/new"
+                    className={`flex items-center gap-3 rounded-md px-3 py-2 text-xs font-medium ${
+                      pathname === "/clients/new"
+                        ? iconColorActive
+                        : `${iconColor} hover:${textColor}`
+                    }`}
+                  >
+                    Add Client
+                  </Link>
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-1">
+              <Link
+                href="/banks"
+                className={`flex items-center gap-3 rounded-md px-3 py-3 text-sm font-medium ${
+                  pathname.startsWith("/banks") || pathname.startsWith("/tellers")
+                    ? `${activeBgColor} ${textColor}`
+                    : `${textColorMuted} ${hoverBgColor} hover:${textColor}`
+                }`}
+              >
+                <Landmark
+                  className={`h-5 w-5 ${
+                    pathname.startsWith("/banks") || pathname.startsWith("/tellers") ? iconColorActive : iconColor
+                  }`}
+                />
+                Cash Management
+              </Link>
+
+              {(pathname.startsWith("/banks") ||
+                pathname.startsWith("/tellers")) && (
+                <div className="pl-10 space-y-1">
+                  <Link
+                    href="/banks"
+                    className={`flex items-center gap-3 rounded-md px-3 py-2 text-xs font-medium ${
+                      pathname.startsWith("/banks")
+                        ? iconColorActive
+                        : `${iconColor} hover:${textColor}`
+                    }`}
+                  >
+                    Banks
+                  </Link>
+                  <Link
+                    href="/tellers"
+                    className={`flex items-center gap-3 rounded-md px-3 py-2 text-xs font-medium ${
+                      pathname.startsWith("/tellers")
+                        ? iconColorActive
+                        : `${iconColor} hover:${textColor}`
+                    }`}
+                  >
+                    Tellers
+                  </Link>
+                  {isEnabled("receiptRanges") && (
+                    <Link
+                      href="/banks/receipts"
+                      className={`flex items-center gap-3 rounded-md px-3 py-2 text-xs font-medium ${
+                        pathname.startsWith("/banks/receipts")
+                          ? iconColorActive
+                          : `${iconColor} hover:${textColor}`
+                      }`}
+                    >
+                      Receipt Ranges
+                    </Link>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {isEnabled("accounting") && (
+              <div className="space-y-1">
+                <Link
+                  href="/accounting"
+                  className={`flex items-center gap-3 rounded-md px-3 py-3 text-sm font-medium ${
+                    pathname.startsWith("/accounting")
+                      ? `${activeBgColor} ${textColor}`
+                      : `${textColorMuted} ${hoverBgColor} hover:${textColor}`
+                  }`}
+                >
+                  <BarChart3
+                    className={`h-5 w-5 ${
+                      pathname.startsWith("/accounting") ? iconColorActive : iconColor
+                    }`}
+                  />
+                  Accounting
+                </Link>
+
+                {pathname.startsWith("/accounting") && (
+                  <div className="pl-10 space-y-1">
+                    <Link
+                      href="/accounting"
+                      className={`flex items-center gap-3 rounded-md px-3 py-2 text-xs font-medium ${
+                        pathname === "/accounting"
+                          ? iconColorActive
+                          : `${iconColor} hover:${textColor}`
+                      }`}
+                    >
+                      Home
+                    </Link>
+                    <Link
+                      href="/accounting/chart-of-accounts"
+                      className={`flex items-center gap-3 rounded-md px-3 py-2 text-xs font-medium ${
+                        pathname === "/accounting/chart-of-accounts"
+                          ? iconColorActive
+                          : `${iconColor} hover:${textColor}`
+                      }`}
+                    >
+                      Chart of Accounts
+                    </Link>
+                    <Link
+                      href="/accounting/search-journal"
+                      className={`flex items-center gap-3 rounded-md px-3 py-2 text-xs font-medium ${
+                        pathname === "/accounting/search-journal"
+                          ? iconColorActive
+                          : `${iconColor} hover:${textColor}`
+                      }`}
+                    >
+                      Journal Entries
+                    </Link>
+                    <Link
+                      href="/accounting/frequent-postings"
+                      className={`flex items-center gap-3 rounded-md px-3 py-2 text-xs font-medium ${
+                        pathname === "/accounting/frequent-postings"
+                          ? iconColorActive
+                          : `${iconColor} hover:${textColor}`
+                      }`}
+                    >
+                      Frequent Postings
+                    </Link>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {isEnabled("reports") && (
+              <Link
+                href="/reports"
+                className={`flex items-center gap-3 rounded-md px-3 py-3 text-sm font-medium ${
+                  pathname === "/reports"
+                    ? `${activeBgColor} ${textColor}`
+                    : `${textColorMuted} ${hoverBgColor} hover:${textColor}`
+                }`}
+              >
+                <FileText
+                  className={`h-5 w-5 ${
+                    pathname === "/reports" ? iconColorActive : iconColor
+                  }`}
+                />
+                Reports
+              </Link>
+            )}
+
+            {isEnabled("aiAssistant") && (
+              <div className="space-y-1">
+                <Link
+                  href="/ai-assistant"
+                  className={`flex items-center gap-3 rounded-md px-3 py-3 text-sm font-medium ${
+                    pathname.startsWith("/ai-assistant") ||
+                    pathname.startsWith("/rag-admin")
+                      ? `${activeBgColor} ${textColor}`
+                      : `${textColorMuted} ${hoverBgColor} hover:${textColor}`
+                  }`}
+                >
+                  <Bot
+                    className={`h-5 w-5 ${
+                      pathname.startsWith("/ai-assistant") ||
+                      pathname.startsWith("/rag-admin")
+                        ? iconColorActive
+                        : iconColor
+                    }`}
+                  />
+                  AI Assistant
+                </Link>
+
+                {(pathname.startsWith("/ai-assistant") ||
+                  pathname.startsWith("/rag-admin")) && (
+                  <div className="pl-10 space-y-1">
+                    <Link
+                      href="/ai-assistant"
+                      className={`flex items-center gap-3 rounded-md px-3 py-2 text-xs font-medium ${
+                        pathname === "/ai-assistant"
+                          ? iconColorActive
+                          : `${iconColor} hover:${textColor}`
+                      }`}
+                    >
+                      Chat
+                    </Link>
+                    <Link
+                      href="/rag-admin"
+                      className={`flex items-center gap-3 rounded-md px-3 py-2 text-xs font-medium ${
+                        pathname === "/rag-admin"
+                          ? iconColorActive
+                          : `${iconColor} hover:${textColor}`
+                      }`}
+                    >
+                      Admin
+                    </Link>
+                  </div>
+                )}
+              </div>
+            )}
           </nav>
         </div>
       </div>

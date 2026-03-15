@@ -18,98 +18,23 @@ import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
-
-type ValidationCondition = {
-  field: string;
-  operator:
-    | "equals"
-    | "not_equals"
-    | "contains"
-    | "not_contains"
-    | "greater_than"
-    | "less_than"
-    | "is_empty"
-    | "is_not_empty"
-    | "matches_regex";
-  value?: string;
-};
-
-type ValidationAction = {
-  type: "block_progression" | "notify" | "auto_assign" | "set_field_value";
-  message?: string;
-  assignTo?: string;
-  field?: string;
-  value?: string;
-};
-
-type ValidationRule = {
-  id: string;
-  name: string;
-  description: string;
-  enabled: boolean;
-  appliesTo: string[]; // Stage IDs
-  conditions: ValidationCondition[];
-  actions: ValidationAction[];
-  severity: "info" | "warning" | "error";
-};
+import {
+  defaultValidationRules,
+  defaultPipelineStages,
+  defaultFields,
+  defaultOperators,
+  defaultActionTypes,
+  defaultTeams,
+  defaultSeverityOptions,
+  type ValidationCondition,
+  type ValidationAction,
+  type ValidationRule,
+  type PipelineStage,
+  type Field
+} from "@/shared/defaults/validation-config";
 
 export function ValidationConfig() {
-  const [rules, setRules] = useState<ValidationRule[]>([
-    {
-      id: "1",
-      name: "Required Company Information",
-      description:
-        "Ensures company information is complete before moving to Qualification",
-      enabled: true,
-      appliesTo: ["1"], // New Lead stage
-      conditions: [
-        { field: "company_name", operator: "is_empty" },
-        { field: "industry", operator: "is_empty" },
-      ],
-      actions: [
-        {
-          type: "block_progression",
-          message:
-            "Company name and industry must be provided before moving to Qualification",
-        },
-      ],
-      severity: "error",
-    },
-    {
-      id: "2",
-      name: "Budget Validation",
-      description: "Checks if budget information is available before proposal",
-      enabled: true,
-      appliesTo: ["2"], // Qualification stage
-      conditions: [{ field: "annual_revenue", operator: "is_empty" }],
-      actions: [
-        {
-          type: "notify",
-          message:
-            "Budget information is missing. Consider collecting this before proceeding.",
-        },
-      ],
-      severity: "warning",
-    },
-    {
-      id: "3",
-      name: "Auto-assign to Finance Team",
-      description:
-        "Automatically assigns leads with high revenue to Finance Team",
-      enabled: true,
-      appliesTo: ["2", "3"], // Qualification and Proposal stages
-      conditions: [
-        { field: "annual_revenue", operator: "greater_than", value: "1000000" },
-      ],
-      actions: [
-        {
-          type: "auto_assign",
-          assignTo: "Finance Team",
-        },
-      ],
-      severity: "info",
-    },
-  ]);
+  const [rules, setRules] = useState<ValidationRule[]>(defaultValidationRules);
 
   const [editingRule, setEditingRule] = useState<ValidationRule | null>(null);
   const [newRule, setNewRule] = useState<Partial<ValidationRule>>({
@@ -135,53 +60,12 @@ export function ValidationConfig() {
     message: "",
   });
 
-  // Sample pipeline stages (would be fetched from the pipeline config in a real app)
-  const pipelineStages = [
-    { id: "1", name: "New Lead" },
-    { id: "2", name: "Qualification" },
-    { id: "3", name: "Proposal" },
-    { id: "4", name: "Negotiation" },
-    { id: "5", name: "Closed Won" },
-    { id: "6", name: "Closed Lost" },
-  ];
-
-  // Sample fields (would be fetched from the field config in a real app)
-  const fields = [
-    { id: "company_name", name: "Company Name" },
-    { id: "industry", name: "Industry" },
-    { id: "annual_revenue", name: "Annual Revenue" },
-    { id: "notes", name: "Additional Notes" },
-    { id: "contact_name", name: "Contact Name" },
-    { id: "contact_email", name: "Contact Email" },
-    { id: "contact_phone", name: "Contact Phone" },
-  ];
-
-  const operators = [
-    { value: "equals", label: "Equals" },
-    { value: "not_equals", label: "Does not equal" },
-    { value: "contains", label: "Contains" },
-    { value: "not_contains", label: "Does not contain" },
-    { value: "greater_than", label: "Greater than" },
-    { value: "less_than", label: "Less than" },
-    { value: "is_empty", label: "Is empty" },
-    { value: "is_not_empty", label: "Is not empty" },
-    { value: "matches_regex", label: "Matches regex" },
-  ];
-
-  const actionTypes = [
-    { value: "block_progression", label: "Block progression to next stage" },
-    { value: "notify", label: "Show notification" },
-    { value: "auto_assign", label: "Auto-assign to team" },
-    { value: "set_field_value", label: "Set field value" },
-  ];
-
-  const teams = ["Sales Team", "Finance Team", "Customer Success"];
-
-  const severityOptions = [
-    { value: "info", label: "Info" },
-    { value: "warning", label: "Warning" },
-    { value: "error", label: "Error (Blocking)" },
-  ];
+  const pipelineStages = defaultPipelineStages;
+  const fields = defaultFields;
+  const operators = defaultOperators;
+  const actionTypes = defaultActionTypes;
+  const teams = defaultTeams;
+  const severityOptions = defaultSeverityOptions;
 
   const handleDragEnd = (result: any) => {
     if (!result.destination) return;
@@ -399,8 +283,8 @@ export function ValidationConfig() {
   return (
     <div className="space-y-6">
       <div className="space-y-4">
-        <h3 className="text-lg font-medium text-white">Validation Rules</h3>
-        <p className="text-sm text-gray-400">
+        <h3 className="text-lg font-medium">Validation Rules</h3>
+        <p className="text-sm text-muted-foreground">
           Configure validation rules that automatically check conditions and
           perform actions at different pipeline stages
         </p>
@@ -420,13 +304,13 @@ export function ValidationConfig() {
                     <div
                       ref={provided.innerRef}
                       {...provided.draggableProps}
-                      className="flex items-center space-x-2 bg-[#1a2035] rounded-md border border-[#2a304d] p-3"
+                      className="flex items-center space-x-2 bg-card rounded-md border p-3"
                     >
                       <div
                         {...provided.dragHandleProps}
                         className="cursor-grab"
                       >
-                        <GripVertical className="h-5 w-5 text-gray-400" />
+                        <GripVertical className="h-5 w-5 text-muted-foreground" />
                       </div>
                       <div
                         className={`w-2 h-full rounded-full ${getSeverityColor(
@@ -435,16 +319,14 @@ export function ValidationConfig() {
                       />
                       <div className="flex-1">
                         <div className="flex items-center">
-                          <div className="font-medium text-white">
-                            {rule.name}
-                          </div>
+                          <div className="font-medium">{rule.name}</div>
                           {!rule.enabled && (
                             <Badge className="ml-2 bg-gray-500 text-white">
                               Disabled
                             </Badge>
                           )}
                         </div>
-                        <div className="text-sm text-gray-400">
+                        <div className="text-sm text-muted-foreground">
                           {rule.description}
                         </div>
                         <div className="mt-2 flex flex-wrap gap-1">
@@ -453,11 +335,7 @@ export function ValidationConfig() {
                               (s) => s.id === stageId
                             );
                             return (
-                              <Badge
-                                key={stageId}
-                                variant="outline"
-                                className="border-[#2a304d] text-gray-300"
-                              >
+                              <Badge key={stageId} variant="outline">
                                 {stage?.name || stageId}
                               </Badge>
                             );
@@ -469,7 +347,7 @@ export function ValidationConfig() {
                           variant="ghost"
                           size="icon"
                           onClick={() => handleEditRule(rule)}
-                          className="text-gray-400 hover:text-white hover:bg-[#2a304d]"
+                          className="text-muted-foreground hover:text-foreground"
                         >
                           <Edit2 className="h-4 w-4" />
                         </Button>
@@ -477,7 +355,7 @@ export function ValidationConfig() {
                           variant="ghost"
                           size="icon"
                           onClick={() => handleDeleteRule(rule.id)}
-                          className="text-gray-400 hover:text-white hover:bg-[#2a304d]"
+                          className="text-muted-foreground hover:text-foreground"
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
@@ -492,18 +370,16 @@ export function ValidationConfig() {
         </Droppable>
       </DragDropContext>
 
-      <Card className="bg-[#0d121f] border-[#1a2035]">
+      <Card>
         <CardContent className="pt-6">
           <div className="space-y-4">
-            <h3 className="text-lg font-medium text-white">
+            <h3 className="text-lg font-medium">
               {editingRule ? "Edit Validation Rule" : "Add New Validation Rule"}
             </h3>
             <div className="grid gap-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="grid gap-2">
-                  <Label htmlFor="name" className="text-gray-300">
-                    Rule Name
-                  </Label>
+                  <Label htmlFor="name">Rule Name</Label>
                   <Input
                     id="name"
                     value={editingRule ? editingRule.name : newRule.name}
@@ -516,13 +392,10 @@ export function ValidationConfig() {
                         : setNewRule({ ...newRule, name: e.target.value })
                     }
                     placeholder="Enter rule name"
-                    className="bg-[#1a2035] border-[#2a304d] text-white placeholder:text-gray-500"
                   />
                 </div>
                 <div className="grid gap-2">
-                  <Label htmlFor="severity" className="text-gray-300">
-                    Severity
-                  </Label>
+                  <Label htmlFor="severity">Severity</Label>
                   <Select
                     value={
                       editingRule ? editingRule.severity : newRule.severity
@@ -536,19 +409,12 @@ export function ValidationConfig() {
                         : setNewRule({ ...newRule, severity: value as any })
                     }
                   >
-                    <SelectTrigger
-                      id="severity"
-                      className="bg-[#1a2035] border-[#2a304d] text-white"
-                    >
+                    <SelectTrigger id="severity">
                       <SelectValue placeholder="Select severity" />
                     </SelectTrigger>
-                    <SelectContent className="bg-[#1a2035] border-[#2a304d] text-white">
+                    <SelectContent>
                       {severityOptions.map((option) => (
-                        <SelectItem
-                          key={option.value}
-                          value={option.value}
-                          className="focus:bg-[#2a304d] focus:text-white"
-                        >
+                        <SelectItem key={option.value} value={option.value}>
                           {option.label}
                         </SelectItem>
                       ))}
@@ -558,9 +424,7 @@ export function ValidationConfig() {
               </div>
 
               <div className="grid gap-2">
-                <Label htmlFor="description" className="text-gray-300">
-                  Description
-                </Label>
+                <Label htmlFor="description">Description</Label>
                 <Textarea
                   id="description"
                   value={
@@ -578,7 +442,6 @@ export function ValidationConfig() {
                   }
                   placeholder="Enter rule description"
                   rows={2}
-                  className="bg-[#1a2035] border-[#2a304d] text-white placeholder:text-gray-500"
                 />
               </div>
 
@@ -593,18 +456,13 @@ export function ValidationConfig() {
                       ? setEditingRule({ ...editingRule, enabled: checked })
                       : setNewRule({ ...newRule, enabled: checked })
                   }
-                  className="data-[state=checked]:bg-blue-600"
                 />
-                <Label htmlFor="enabled" className="text-gray-300">
-                  Rule Enabled
-                </Label>
+                <Label htmlFor="enabled">Rule Enabled</Label>
               </div>
 
               {/* Applies To (Stages) */}
-              <div className="border-t border-[#2a304d] pt-4 mt-2">
-                <h4 className="text-sm font-medium mb-4 text-white">
-                  Applies To Stages
-                </h4>
+              <div className="border-t pt-4 mt-2">
+                <h4 className="text-sm font-medium mb-4">Applies To Stages</h4>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                   {pipelineStages.map((stage) => (
                     <div key={stage.id} className="flex items-center space-x-2">
@@ -616,12 +474,8 @@ export function ValidationConfig() {
                             : newRule.appliesTo?.includes(stage.id) || false
                         }
                         onCheckedChange={() => handleStageToggle(stage.id)}
-                        className="border-[#2a304d] data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
                       />
-                      <Label
-                        htmlFor={`stage-${stage.id}`}
-                        className="text-sm text-gray-300"
-                      >
+                      <Label htmlFor={`stage-${stage.id}`} className="text-sm">
                         {stage.name}
                       </Label>
                     </div>
@@ -630,38 +484,24 @@ export function ValidationConfig() {
               </div>
 
               {/* Conditions */}
-              <div className="border-t border-[#2a304d] pt-4 mt-2">
-                <h4 className="text-sm font-medium mb-4 text-white">
-                  Conditions
-                </h4>
+              <div className="border-t pt-4 mt-2">
+                <h4 className="text-sm font-medium mb-4">Conditions</h4>
                 <div className="space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
-                      <Label
-                        htmlFor="condition-field"
-                        className="text-gray-300"
-                      >
-                        Field
-                      </Label>
+                      <Label htmlFor="condition-field">Field</Label>
                       <Select
                         value={newCondition.field}
                         onValueChange={(value) =>
                           setNewCondition({ ...newCondition, field: value })
                         }
                       >
-                        <SelectTrigger
-                          id="condition-field"
-                          className="bg-[#1a2035] border-[#2a304d] text-white"
-                        >
+                        <SelectTrigger id="condition-field">
                           <SelectValue placeholder="Select field" />
                         </SelectTrigger>
-                        <SelectContent className="bg-[#1a2035] border-[#2a304d] text-white">
+                        <SelectContent>
                           {fields.map((field) => (
-                            <SelectItem
-                              key={field.id}
-                              value={field.id}
-                              className="focus:bg-[#2a304d] focus:text-white"
-                            >
+                            <SelectItem key={field.id} value={field.id}>
                               {field.name}
                             </SelectItem>
                           ))}
@@ -669,12 +509,7 @@ export function ValidationConfig() {
                       </Select>
                     </div>
                     <div>
-                      <Label
-                        htmlFor="condition-operator"
-                        className="text-gray-300"
-                      >
-                        Operator
-                      </Label>
+                      <Label htmlFor="condition-operator">Operator</Label>
                       <Select
                         value={newCondition.operator}
                         onValueChange={(value) =>
@@ -684,18 +519,14 @@ export function ValidationConfig() {
                           })
                         }
                       >
-                        <SelectTrigger
-                          id="condition-operator"
-                          className="bg-[#1a2035] border-[#2a304d] text-white"
-                        >
+                        <SelectTrigger id="condition-operator">
                           <SelectValue placeholder="Select operator" />
                         </SelectTrigger>
-                        <SelectContent className="bg-[#1a2035] border-[#2a304d] text-white">
+                        <SelectContent>
                           {operators.map((operator) => (
                             <SelectItem
                               key={operator.value}
                               value={operator.value}
-                              className="focus:bg-[#2a304d] focus:text-white"
                             >
                               {operator.label}
                             </SelectItem>
@@ -706,12 +537,7 @@ export function ValidationConfig() {
                     {newCondition.operator !== "is_empty" &&
                       newCondition.operator !== "is_not_empty" && (
                         <div>
-                          <Label
-                            htmlFor="condition-value"
-                            className="text-gray-300"
-                          >
-                            Value
-                          </Label>
+                          <Label htmlFor="condition-value">Value</Label>
                           <Input
                             id="condition-value"
                             value={newCondition.value || ""}
@@ -722,7 +548,6 @@ export function ValidationConfig() {
                               })
                             }
                             placeholder="Enter value"
-                            className="bg-[#1a2035] border-[#2a304d] text-white placeholder:text-gray-500"
                           />
                         </div>
                       )}
@@ -730,7 +555,7 @@ export function ValidationConfig() {
                   <Button
                     onClick={handleAddCondition}
                     variant="outline"
-                    className="w-full border-[#2a304d] text-gray-300 hover:bg-[#2a304d] hover:text-white"
+                    className="w-full"
                   >
                     Add Condition
                     <Plus className="ml-2 h-4 w-4" />
@@ -744,16 +569,16 @@ export function ValidationConfig() {
                   ).map((condition, index) => (
                     <div
                       key={index}
-                      className="flex items-center justify-between bg-[#1a2035] p-2 rounded-md"
+                      className="flex items-center justify-between bg-muted/50 p-2 rounded-md"
                     >
-                      <div className="text-sm text-white">
+                      <div className="text-sm">
                         {getConditionLabel(condition)}
                       </div>
                       <Button
                         variant="ghost"
                         size="icon"
                         onClick={() => handleDeleteCondition(index)}
-                        className="text-gray-400 hover:text-white hover:bg-[#2a304d]"
+                        className="text-muted-foreground hover:text-foreground"
                       >
                         <Trash2 className="h-3 w-3" />
                       </Button>
@@ -763,32 +588,26 @@ export function ValidationConfig() {
               </div>
 
               {/* Actions */}
-              <div className="border-t border-[#2a304d] pt-4 mt-2">
-                <h4 className="text-sm font-medium mb-4 text-white">Actions</h4>
+              <div className="border-t pt-4 mt-2">
+                <h4 className="text-sm font-medium mb-4">Actions</h4>
                 <div className="space-y-4">
                   <div className="grid gap-4">
                     <div>
-                      <Label htmlFor="action-type" className="text-gray-300">
-                        Action Type
-                      </Label>
+                      <Label htmlFor="action-type">Action Type</Label>
                       <Select
                         value={newAction.type}
                         onValueChange={(value) =>
                           setNewAction({ ...newAction, type: value as any })
                         }
                       >
-                        <SelectTrigger
-                          id="action-type"
-                          className="bg-[#1a2035] border-[#2a304d] text-white"
-                        >
+                        <SelectTrigger id="action-type">
                           <SelectValue placeholder="Select action type" />
                         </SelectTrigger>
-                        <SelectContent className="bg-[#1a2035] border-[#2a304d] text-white">
+                        <SelectContent>
                           {actionTypes.map((actionType) => (
                             <SelectItem
                               key={actionType.value}
                               value={actionType.value}
-                              className="focus:bg-[#2a304d] focus:text-white"
                             >
                               {actionType.label}
                             </SelectItem>
@@ -800,12 +619,7 @@ export function ValidationConfig() {
                     {(newAction.type === "block_progression" ||
                       newAction.type === "notify") && (
                       <div>
-                        <Label
-                          htmlFor="action-message"
-                          className="text-gray-300"
-                        >
-                          Message
-                        </Label>
+                        <Label htmlFor="action-message">Message</Label>
                         <Textarea
                           id="action-message"
                           value={newAction.message || ""}
@@ -817,38 +631,25 @@ export function ValidationConfig() {
                           }
                           placeholder="Enter message"
                           rows={2}
-                          className="bg-[#1a2035] border-[#2a304d] text-white placeholder:text-gray-500"
                         />
                       </div>
                     )}
 
                     {newAction.type === "auto_assign" && (
                       <div>
-                        <Label
-                          htmlFor="action-assign-to"
-                          className="text-gray-300"
-                        >
-                          Assign To
-                        </Label>
+                        <Label htmlFor="action-assign-to">Assign To</Label>
                         <Select
                           value={newAction.assignTo}
                           onValueChange={(value) =>
                             setNewAction({ ...newAction, assignTo: value })
                           }
                         >
-                          <SelectTrigger
-                            id="action-assign-to"
-                            className="bg-[#1a2035] border-[#2a304d] text-white"
-                          >
+                          <SelectTrigger id="action-assign-to">
                             <SelectValue placeholder="Select team" />
                           </SelectTrigger>
-                          <SelectContent className="bg-[#1a2035] border-[#2a304d] text-white">
+                          <SelectContent>
                             {teams.map((team) => (
-                              <SelectItem
-                                key={team}
-                                value={team}
-                                className="focus:bg-[#2a304d] focus:text-white"
-                              >
+                              <SelectItem key={team} value={team}>
                                 {team}
                               </SelectItem>
                             ))}
@@ -860,31 +661,19 @@ export function ValidationConfig() {
                     {newAction.type === "set_field_value" && (
                       <>
                         <div>
-                          <Label
-                            htmlFor="action-field"
-                            className="text-gray-300"
-                          >
-                            Field
-                          </Label>
+                          <Label htmlFor="action-field">Field</Label>
                           <Select
                             value={newAction.field}
                             onValueChange={(value) =>
                               setNewAction({ ...newAction, field: value })
                             }
                           >
-                            <SelectTrigger
-                              id="action-field"
-                              className="bg-[#1a2035] border-[#2a304d] text-white"
-                            >
+                            <SelectTrigger id="action-field">
                               <SelectValue placeholder="Select field" />
                             </SelectTrigger>
-                            <SelectContent className="bg-[#1a2035] border-[#2a304d] text-white">
+                            <SelectContent>
                               {fields.map((field) => (
-                                <SelectItem
-                                  key={field.id}
-                                  value={field.id}
-                                  className="focus:bg-[#2a304d] focus:text-white"
-                                >
+                                <SelectItem key={field.id} value={field.id}>
                                   {field.name}
                                 </SelectItem>
                               ))}
@@ -892,12 +681,7 @@ export function ValidationConfig() {
                           </Select>
                         </div>
                         <div>
-                          <Label
-                            htmlFor="action-value"
-                            className="text-gray-300"
-                          >
-                            Value
-                          </Label>
+                          <Label htmlFor="action-value">Value</Label>
                           <Input
                             id="action-value"
                             value={newAction.value || ""}
@@ -908,7 +692,6 @@ export function ValidationConfig() {
                               })
                             }
                             placeholder="Enter value"
-                            className="bg-[#1a2035] border-[#2a304d] text-white placeholder:text-gray-500"
                           />
                         </div>
                       </>
@@ -917,7 +700,7 @@ export function ValidationConfig() {
                   <Button
                     onClick={handleAddAction}
                     variant="outline"
-                    className="w-full border-[#2a304d] text-gray-300 hover:bg-[#2a304d] hover:text-white"
+                    className="w-full"
                   >
                     Add Action
                     <Plus className="ml-2 h-4 w-4" />
@@ -931,12 +714,12 @@ export function ValidationConfig() {
                   ).map((action, index) => (
                     <div
                       key={index}
-                      className="flex items-center justify-between bg-[#1a2035] p-2 rounded-md"
+                      className="flex items-center justify-between bg-muted/50 p-2 rounded-md"
                     >
-                      <div className="text-sm text-white">
+                      <div className="text-sm">
                         {getActionLabel(action)}
                         {action.message && (
-                          <div className="text-xs text-gray-400 mt-1">
+                          <div className="text-xs text-muted-foreground mt-1">
                             {action.message}
                           </div>
                         )}
@@ -945,7 +728,7 @@ export function ValidationConfig() {
                         variant="ghost"
                         size="icon"
                         onClick={() => handleDeleteAction(index)}
-                        className="text-gray-400 hover:text-white hover:bg-[#2a304d]"
+                        className="text-muted-foreground hover:text-foreground"
                       >
                         <Trash2 className="h-3 w-3" />
                       </Button>
@@ -962,11 +745,7 @@ export function ValidationConfig() {
                 {!editingRule && <Plus className="ml-2 h-4 w-4" />}
               </Button>
               {editingRule && (
-                <Button
-                  variant="outline"
-                  onClick={() => setEditingRule(null)}
-                  className="border-[#2a304d] text-gray-300 hover:bg-[#2a304d] hover:text-white"
-                >
+                <Button variant="outline" onClick={() => setEditingRule(null)}>
                   Cancel
                 </Button>
               )}

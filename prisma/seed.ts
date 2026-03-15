@@ -1,68 +1,310 @@
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient } from "../app/generated/prisma";
 
-// Use the correct path to the generated Prisma client
-const prisma = new PrismaClient({
-  datasources: {
-    db: {
-      url: process.env.DATABASE_URL,
-    },
-  },
-});
+const prisma = new PrismaClient();
 
 async function main() {
   try {
-    // Seed offices
-    console.log("Seeding offices...");
-    await Promise.all([
-      prisma.$executeRaw`INSERT INTO "Office" (name, description, "createdAt", "updatedAt") VALUES ('Head Office', 'Main headquarters', NOW(), NOW()) ON CONFLICT DO NOTHING`,
-      prisma.$executeRaw`INSERT INTO "Office" (name, description, "createdAt", "updatedAt") VALUES ('Branch Office', 'Branch location', NOW(), NOW()) ON CONFLICT DO NOTHING`,
-      prisma.$executeRaw`INSERT INTO "Office" (name, description, "createdAt", "updatedAt") VALUES ('Regional Office', 'Regional headquarters', NOW(), NOW()) ON CONFLICT DO NOTHING`,
-    ]);
+    // Create or get default tenant
+    console.log("Setting up default tenant...");
+    const tenant = await setupDefaultTenant();
 
-    // Seed legal forms
-    console.log("Seeding legal forms...");
-    await Promise.all([
-      prisma.$executeRaw`INSERT INTO "LegalForm" (name, description, "createdAt", "updatedAt") VALUES ('Individual', 'Individual person', NOW(), NOW()) ON CONFLICT DO NOTHING`,
-      prisma.$executeRaw`INSERT INTO "LegalForm" (name, description, "createdAt", "updatedAt") VALUES ('Corporate', 'Corporate entity', NOW(), NOW()) ON CONFLICT DO NOTHING`,
-      prisma.$executeRaw`INSERT INTO "LegalForm" (name, description, "createdAt", "updatedAt") VALUES ('Partnership', 'Business partnership', NOW(), NOW()) ON CONFLICT DO NOTHING`,
-    ]);
+    // Setup pipeline stages for the tenant
+    console.log("Setting up pipeline stages...");
+    await setupPipelineStages(tenant.id);
 
-    // Seed genders
-    console.log("Seeding genders...");
-    await Promise.all([
-      prisma.$executeRaw`INSERT INTO "Gender" (name, description, "createdAt", "updatedAt") VALUES ('Male', 'Male gender', NOW(), NOW()) ON CONFLICT DO NOTHING`,
-      prisma.$executeRaw`INSERT INTO "Gender" (name, description, "createdAt", "updatedAt") VALUES ('Female', 'Female gender', NOW(), NOW()) ON CONFLICT DO NOTHING`,
-      prisma.$executeRaw`INSERT INTO "Gender" (name, description, "createdAt", "updatedAt") VALUES ('Other', 'Other gender', NOW(), NOW()) ON CONFLICT DO NOTHING`,
-    ]);
+    // Setup system roles
+    console.log("Setting up system roles...");
+    await setupSystemRoles(tenant.id);
 
-    // Seed client types
-    console.log("Seeding client types...");
-    await Promise.all([
-      prisma.$executeRaw`INSERT INTO "ClientType" (name, description, "createdAt", "updatedAt") VALUES ('Individual', 'Individual client', NOW(), NOW()) ON CONFLICT DO NOTHING`,
-      prisma.$executeRaw`INSERT INTO "ClientType" (name, description, "createdAt", "updatedAt") VALUES ('Corporate', 'Corporate client', NOW(), NOW()) ON CONFLICT DO NOTHING`,
-      prisma.$executeRaw`INSERT INTO "ClientType" (name, description, "createdAt", "updatedAt") VALUES ('Group', 'Group client', NOW(), NOW()) ON CONFLICT DO NOTHING`,
-    ]);
-
-    // Seed client classifications
-    console.log("Seeding client classifications...");
-    await Promise.all([
-      prisma.$executeRaw`INSERT INTO "ClientClassification" (name, description, "createdAt", "updatedAt") VALUES ('Standard', 'Standard client', NOW(), NOW()) ON CONFLICT DO NOTHING`,
-      prisma.$executeRaw`INSERT INTO "ClientClassification" (name, description, "createdAt", "updatedAt") VALUES ('Premium', 'Premium client', NOW(), NOW()) ON CONFLICT DO NOTHING`,
-      prisma.$executeRaw`INSERT INTO "ClientClassification" (name, description, "createdAt", "updatedAt") VALUES ('VIP', 'VIP client', NOW(), NOW()) ON CONFLICT DO NOTHING`,
-    ]);
-
-    // Seed savings products
-    console.log("Seeding savings products...");
-    await Promise.all([
-      prisma.$executeRaw`INSERT INTO "SavingsProduct" (name, description, "interestRate", "minBalance", "createdAt", "updatedAt") VALUES ('Basic Savings', 'Basic savings account', 0.5, 0, NOW(), NOW()) ON CONFLICT DO NOTHING`,
-      prisma.$executeRaw`INSERT INTO "SavingsProduct" (name, description, "interestRate", "minBalance", "createdAt", "updatedAt") VALUES ('Premium Savings', 'Premium savings account with higher interest', 1.5, 1000, NOW(), NOW()) ON CONFLICT DO NOTHING`,
-      prisma.$executeRaw`INSERT INTO "SavingsProduct" (name, description, "interestRate", "minBalance", "createdAt", "updatedAt") VALUES ('Fixed Deposit', 'Fixed deposit account', 3.0, 5000, NOW(), NOW()) ON CONFLICT DO NOTHING`,
-    ]);
+    console.log("Database seeded successfully!");
   } catch (error) {
     console.error("Error seeding database:", error);
+    throw error;
+  }
+}
+
+async function setupDefaultTenant() {
+  let tenant = await prisma.tenant.findUnique({
+    where: { slug: "goodfellow" },
+  });
+
+  if (!tenant) {
+    console.log("Creating tenant...");
+    tenant = await prisma.tenant.create({
+      data: {
+        name: "GoodFellow Organization",
+        slug: "goodfellow",
+        settings: {
+          theme: "default",
+          features: {
+            statemachine: true,
+            notifications: true,
+          },
+        },
+      },
+    });
+    console.log(`Tenant created: ${tenant.name} (${tenant.slug})`);
+  } else {
+    console.log(`Tenant already exists: ${tenant.name} (${tenant.slug})`);
   }
 
-  console.log("Database seeded successfully");
+  return tenant;
+}
+
+async function setupPipelineStages(tenantId: string) {
+  // Check if stages already exist
+  const existingStages = await prisma.pipelineStage.findMany({
+    where: { tenantId },
+  });
+
+  if (existingStages.length > 0) {
+    console.log(
+      `Pipeline stages already exist (${existingStages.length} stages), skipping...`
+    );
+    return existingStages;
+  }
+
+  const stageData = [
+    {
+      name: "New Lead",
+      description: "Initial lead entry point",
+      order: 1,
+      color: "#3b82f6",
+      isInitialState: true,
+      isFinalState: false,
+    },
+    {
+      name: "Approved",
+      description: "Lead has been approved",
+      order: 2,
+      color: "#10b981",
+      isInitialState: false,
+      isFinalState: false,
+    },
+    {
+      name: "Rejected",
+      description: "Lead has been rejected",
+      order: 3,
+      color: "#ef4444",
+      isInitialState: false,
+      isFinalState: true,
+    },
+    {
+      name: "Pending Disbursement",
+      description: "Waiting for loan disbursement",
+      order: 4,
+      color: "#f59e0b",
+      isInitialState: false,
+      isFinalState: false,
+    },
+    {
+      name: "Disbursed",
+      description: "Loan has been disbursed",
+      order: 5,
+      color: "#10b981",
+      isInitialState: false,
+      isFinalState: true,
+    },
+  ];
+
+  // Create stages
+  console.log("Creating pipeline stages...");
+  const stages = await Promise.all(
+    stageData.map((stage) =>
+      prisma.pipelineStage.create({
+        data: {
+          ...stage,
+          tenantId,
+          allowedTransitions: [], // Will be updated after all stages are created
+        },
+      })
+    )
+  );
+  console.log(`Created ${stages.length} pipeline stages`);
+
+  // Update allowed transitions
+  console.log("Configuring stage transitions...");
+  const stageMap = new Map(stages.map((stage) => [stage.name, stage.id]));
+
+  const transitions = {
+    "New Lead": ["Approved", "Rejected"],
+    Approved: ["Pending Disbursement", "Rejected"],
+    Rejected: [],
+    "Pending Disbursement": ["Disbursed", "Rejected"],
+    Disbursed: [],
+  };
+
+  await Promise.all(
+    stages.map((stage) => {
+      const allowedTransitionNames =
+        transitions[stage.name as keyof typeof transitions] || [];
+      const allowedTransitionIds = allowedTransitionNames
+        .map((name) => stageMap.get(name))
+        .filter(Boolean) as string[];
+
+      return prisma.pipelineStage.update({
+        where: { id: stage.id },
+        data: { allowedTransitions: allowedTransitionIds },
+      });
+    })
+  );
+
+  console.log("Stage transitions configured");
+
+  // Log the created stages
+  stages.forEach((stage) => {
+    const transitions = stageData.find((s) => s.name === stage.name);
+    console.log(`  - ${stage.name} (order: ${stage.order})`);
+  });
+
+  return stages;
+}
+
+async function setupSystemRoles(tenantId: string) {
+  // Check if roles already exist
+  const existingRoles = await prisma.systemRole.findMany({
+    where: { tenantId },
+  });
+
+  if (existingRoles.length > 0) {
+    console.log(
+      `System roles already exist (${existingRoles.length} roles), skipping...`
+    );
+    return existingRoles;
+  }
+
+  // Define the system roles based on Mifos/Fineract roles
+  const roleData = [
+    {
+      name: "BRANCH_MANAGER",
+      displayName: "Branch Manager",
+      description: "Branch manager with full branch access and approvals",
+      permissions: [
+        "VIEW_LEADS",
+        "CREATE_LEADS",
+        "EDIT_LEADS",
+        "DELETE_LEADS",
+        "APPROVE_LEADS",
+        "VIEW_CLIENTS",
+        "CREATE_CLIENTS",
+        "EDIT_CLIENTS",
+        "VIEW_LOANS",
+        "APPROVE_LOANS",
+        "DISBURSE_LOANS",
+        "VIEW_REPORTS",
+        "MANAGE_BRANCH",
+      ],
+    },
+    {
+      name: "LOAN_OFFICER",
+      displayName: "Loan Officer",
+      description: "Loan officer responsible for processing loan applications",
+      permissions: [
+        "VIEW_LEADS",
+        "CREATE_LEADS",
+        "EDIT_LEADS",
+        "VIEW_CLIENTS",
+        "CREATE_CLIENTS",
+        "EDIT_CLIENTS",
+        "VIEW_LOANS",
+        "CREATE_LOANS",
+        "EDIT_LOANS",
+        "VIEW_REPORTS",
+      ],
+    },
+    {
+      name: "CREDIT_OFFICER",
+      displayName: "Credit Officer",
+      description: "Credit officer responsible for credit assessment and risk analysis",
+      permissions: [
+        "VIEW_LEADS",
+        "EDIT_LEADS",
+        "VIEW_CLIENTS",
+        "VIEW_LOANS",
+        "ASSESS_CREDIT",
+        "VIEW_REPORTS",
+        "RECOMMEND_LOANS",
+      ],
+    },
+    {
+      name: "COMPLIANCE",
+      displayName: "Compliance",
+      description: "Compliance officer for regulatory and policy compliance",
+      permissions: [
+        "VIEW_LEADS",
+        "VIEW_CLIENTS",
+        "VIEW_LOANS",
+        "VIEW_REPORTS",
+        "COMPLIANCE_CHECK",
+        "VIEW_AUDIT_LOGS",
+      ],
+    },
+    {
+      name: "ACCOUNTANT",
+      displayName: "Accountant",
+      description: "Accountant for financial management and reconciliation",
+      permissions: [
+        "VIEW_LOANS",
+        "VIEW_REPORTS",
+        "VIEW_ACCOUNTING",
+        "CREATE_JOURNAL_ENTRIES",
+        "VIEW_JOURNAL_ENTRIES",
+        "RECONCILE_ACCOUNTS",
+        "VIEW_TELLERS",
+        "VIEW_CASH_MANAGEMENT",
+      ],
+    },
+    {
+      name: "AUTHORISER",
+      displayName: "Authoriser",
+      description: "First level authoriser for loan approvals",
+      permissions: [
+        "VIEW_LEADS",
+        "VIEW_CLIENTS",
+        "VIEW_LOANS",
+        "AUTHORISE_LOANS_L1",
+        "VIEW_REPORTS",
+      ],
+    },
+    {
+      name: "AUTHORISER2",
+      displayName: "Authoriser Level 2",
+      description: "Second level authoriser for higher value loan approvals",
+      permissions: [
+        "VIEW_LEADS",
+        "VIEW_CLIENTS",
+        "VIEW_LOANS",
+        "AUTHORISE_LOANS_L1",
+        "AUTHORISE_LOANS_L2",
+        "VIEW_REPORTS",
+      ],
+    },
+  ];
+
+  // Create roles
+  console.log("Creating system roles...");
+  const roles = await Promise.all(
+    roleData.map((role) =>
+      prisma.systemRole.create({
+        data: {
+          tenantId,
+          name: role.name,
+          displayName: role.displayName,
+          description: role.description,
+          permissions: role.permissions,
+          isActive: true,
+        },
+      })
+    )
+  );
+  console.log(`Created ${roles.length} system roles`);
+
+  // Log the created roles
+  roles.forEach((role) => {
+    console.log(`  - ${role.displayName} (${role.name})`);
+  });
+
+  return roles;
 }
 
 main()

@@ -3,23 +3,25 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
+import { getSession } from "@/lib/auth";
+import { getTenantFromHeaders } from "@/lib/tenant-service";
 
-// Client form schema
+// Client form schema - uses z.coerce.date() to handle strings, numbers, and Date objects
 const clientFormSchema = z.object({
   officeId: z.number().optional(),
   officeName: z.string().optional(),
   legalFormId: z.number().optional(),
   legalFormName: z.string().optional(),
-  externalId: z.string().optional(),
+  externalId: z.union([z.string(), z.number()]).optional().transform(val => val !== undefined ? String(val) : undefined),
   firstname: z.string().optional(),
   middlename: z.string().optional(),
   lastname: z.string().optional(),
-  dateOfBirth: z.date().optional(),
-  gender: z.string().optional(),
+  dateOfBirth: z.coerce.date().optional(),
+  gender: z.union([z.string(), z.number()]).optional().transform(val => val !== undefined ? String(val) : undefined),
   genderId: z.number().optional(),
   isStaff: z.boolean().default(false),
-  mobileNo: z.string().optional(),
-  countryCode: z.string().default("+1"),
+  mobileNo: z.union([z.string(), z.number()]).optional().transform(val => val !== undefined ? String(val) : undefined),
+  countryCode: z.string().default("+260"),
   emailAddress: z.union([
     z.string().email(),
     z.string().length(0),
@@ -30,9 +32,9 @@ const clientFormSchema = z.object({
   clientTypeName: z.string().optional(),
   clientClassificationId: z.number().optional(),
   clientClassificationName: z.string().optional(),
-  submittedOnDate: z.date().default(() => new Date()),
+  submittedOnDate: z.coerce.date().default(() => new Date()),
   active: z.boolean().default(true),
-  activationDate: z.date().optional(),
+  activationDate: z.coerce.date().optional(),
   openSavingsAccount: z.boolean().default(false),
   savingsProductId: z.number().optional(),
   savingsProductName: z.string().optional(),
@@ -50,11 +52,48 @@ export async function autoSaveField(
     console.log("Field being saved:", data.fieldName);
     console.log("Current leadId:", leadId);
 
-    // Validate data
-    const validatedData = clientFormSchema.parse(data);
+    // Convert data types before validation
+    const processedData = {
+      ...data,
+      // Convert string IDs to numbers
+      officeId: data.officeId ? Number(data.officeId) : undefined,
+      legalFormId: data.legalFormId ? Number(data.legalFormId) : undefined,
+      clientTypeId: data.clientTypeId ? Number(data.clientTypeId) : undefined,
+      clientClassificationId: data.clientClassificationId ? Number(data.clientClassificationId) : undefined,
+      genderId: data.genderId ? Number(data.genderId) : undefined,
+      // Convert date strings to Date objects
+      dateOfBirth: data.dateOfBirth ? new Date(data.dateOfBirth) : undefined,
+      submittedOnDate: data.submittedOnDate ? new Date(data.submittedOnDate) : new Date(),
+      activationDate: data.activationDate ? new Date(data.activationDate) : undefined,
+      // Convert savingsProductId to number if it exists
+      savingsProductId: data.savingsProductId ? Number(data.savingsProductId) : undefined,
+    };
 
-    // Get current user ID (in a real app, this would come from auth)
-    const userId = "user_1"; // Placeholder - replace with actual user ID from auth
+    // Validate data
+    const validatedData = clientFormSchema.parse(processedData);
+
+    // Get current user ID and tenant from session/headers
+    const session = await getSession();
+    if (!session?.user?.id) {
+      throw new Error("User not authenticated");
+    }
+    const userId = session.user.id;
+
+    let tenantId: string;
+    const tenant = await getTenantFromHeaders();
+    if (tenant) {
+      tenantId = tenant.id;
+    } else {
+      // Fallback: look up tenant from env or default
+      const fallbackSlug = process.env.FINERACT_TENANT_ID || "goodfellow";
+      const fallbackTenant = await prisma.tenant.findFirst({
+        where: { slug: fallbackSlug, isActive: true },
+      });
+      if (!fallbackTenant) {
+        throw new Error(`Tenant '${fallbackSlug}' not found.`);
+      }
+      tenantId = fallbackTenant.id;
+    }
 
     // Current timestamp for tracking
     const now = new Date();
@@ -157,6 +196,8 @@ export async function autoSaveField(
         // Create new lead with prospect stage
         const lead = await prisma.lead.create({
           data: {
+            userId,
+            tenantId,
             officeId: validatedData.officeId || null,
             officeName: validatedData.officeName || null,
             legalFormId: validatedData.legalFormId || null,
@@ -170,7 +211,7 @@ export async function autoSaveField(
             genderId: validatedData.genderId || null,
             isStaff: validatedData.isStaff || false,
             mobileNo: validatedData.mobileNo || null,
-            countryCode: validatedData.countryCode || "+1",
+            countryCode: validatedData.countryCode || "+260",
             emailAddress: validatedData.emailAddress || null,
             clientTypeId: validatedData.clientTypeId || null,
             clientTypeName: validatedData.clientTypeName || null,
@@ -206,6 +247,8 @@ export async function autoSaveField(
           console.log("Retrying without user connection");
           // Use type assertion to bypass TypeScript's type checking
           const leadData = {
+            userId,
+            tenantId,
             officeId: validatedData.officeId || null,
             officeName: validatedData.officeName || null,
             legalFormId: validatedData.legalFormId || null,
@@ -219,7 +262,7 @@ export async function autoSaveField(
             genderId: validatedData.genderId || null,
             isStaff: validatedData.isStaff || false,
             mobileNo: validatedData.mobileNo || null,
-            countryCode: validatedData.countryCode || "+1",
+            countryCode: validatedData.countryCode || "+260",
             emailAddress: validatedData.emailAddress || null,
             clientTypeId: validatedData.clientTypeId || null,
             clientTypeName: validatedData.clientTypeName || null,

@@ -1,5 +1,7 @@
 "use client";
 
+import { useCurrency } from "@/contexts/currency-context";
+import { useEffect, useState } from "react";
 import {
   Card,
   CardContent,
@@ -10,15 +12,141 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
-import { Calculator, DollarSign, Briefcase, Building } from "lucide-react";
+import {
+  Calculator,
+  DollarSign,
+  Briefcase,
+  Building,
+  Loader2,
+} from "lucide-react";
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  Title,
+  Tooltip,
+  Legend,
+  ArcElement,
+  PointElement,
+  LineElement,
+} from "chart.js";
+import { Bar, Doughnut, Line } from "react-chartjs-2";
+import { useChartTheme } from "@/lib/chart-theme-utils";
+import { useTheme } from "next-themes";
+
+// Register Chart.js components
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  Title,
+  Tooltip,
+  Legend,
+  ArcElement,
+  PointElement,
+  LineElement
+);
 
 interface LeadAffordabilityProps {
   leadId: string;
 }
 
+interface Factor {
+  name: string;
+  value: string;
+  status: "good" | "warning" | "bad" | "neutral";
+}
+
+interface ModelResult {
+  maxLoanAmount: number;
+  approved: boolean;
+  factors: Factor[];
+  [key: string]: any;
+}
+
+interface AffordabilityModel {
+  modelName: string;
+  modelType: string;
+  isDefault: boolean;
+  result: ModelResult;
+}
+
+interface OverallAssessment {
+  maxLoanAmount: number;
+  recommendedModel: string;
+  requestedAmount: number;
+  approved: boolean;
+  warnings: string[];
+  approvalFactors: string[];
+}
+
+interface AffordabilityData {
+  dtiModel: AffordabilityModel;
+  disposableIncomeModel: AffordabilityModel;
+  employerBasedModel: AffordabilityModel;
+  expenditureEstimationModel: AffordabilityModel;
+  overallAssessment: OverallAssessment;
+}
+
 export function LeadAffordability({ leadId }: LeadAffordabilityProps) {
-  // In a real application, this data would be fetched from an API
-  const affordabilityData = {
+  const { currencyCode: orgCurrency } = useCurrency();
+  const [affordabilityData, setAffordabilityData] =
+    useState<AffordabilityData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const { theme } = useTheme();
+
+  useEffect(() => {
+    const fetchAffordabilityData = async () => {
+      try {
+        setLoading(true);
+        const response = await fetch(`/api/leads/${leadId}/affordability`);
+        if (!response.ok) {
+          throw new Error("Failed to fetch affordability data");
+        }
+        const data = await response.json();
+        setAffordabilityData(data);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "An error occurred");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchAffordabilityData();
+  }, [leadId]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="h-8 w-8 animate-spin" />
+        <span className="ml-2">Loading affordability data...</span>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <p className="text-red-500 mb-2">Error loading affordability data</p>
+          <p className="text-sm text-muted-foreground">{error}</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!affordabilityData) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <p className="text-muted-foreground">No affordability data available</p>
+      </div>
+    );
+  }
+
+  // Dummy data fallback for demonstration
+  const fallbackData = {
     // DTI Model Results
     dtiModel: {
       modelName: "Standard DTI Model",
@@ -130,19 +258,104 @@ export function LeadAffordability({ leadId }: LeadAffordabilityProps) {
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("en-US", {
       style: "currency",
-      currency: "USD",
+      currency: orgCurrency,
       minimumFractionDigits: 0,
       maximumFractionDigits: 0,
     }).format(amount);
   };
 
+  const { colors, getOptions } = useChartTheme();
+
+  // Chart data generators
+  const getDTIChartData = () => {
+    const dtiData = affordabilityData.dtiModel.result;
+    return {
+      labels: ["Current Debt", "Proposed Payment", "Available Capacity"],
+      datasets: [
+        {
+          label: "Monthly Debt Breakdown",
+          data: [
+            dtiData.currentDebt || 0,
+            dtiData.proposedPayment || 0,
+            Math.max(
+              0,
+              dtiData.monthlyIncome * 0.36 -
+                (dtiData.currentDebt || 0) -
+                (dtiData.proposedPayment || 0)
+            ),
+          ],
+          backgroundColor: [colors.warning, colors.info, colors.success],
+          borderColor: [colors.warning, colors.info, colors.success],
+          borderWidth: 1,
+        },
+      ],
+    };
+  };
+
+  const getDisposableIncomeChartData = () => {
+    const disposableData = affordabilityData.disposableIncomeModel.result;
+    return {
+      labels: ["Monthly Income", "Monthly Expenses", "Disposable Income"],
+      datasets: [
+        {
+          label: "Income vs Expenses",
+          data: [
+            disposableData.monthlyIncome || 0,
+            disposableData.monthlyExpenditure || 0,
+            disposableData.disposableIncome || 0,
+          ],
+          backgroundColor: [colors.success, colors.error, colors.info],
+          borderColor: [colors.success, colors.error, colors.info],
+          borderWidth: 1,
+        },
+      ],
+    };
+  };
+
+  const getModelComparisonChartData = () => {
+    return {
+      labels: [
+        "DTI Model",
+        "Disposable Income",
+        "Employer-Based",
+        "Expenditure Est.",
+      ],
+      datasets: [
+        {
+          label: "Maximum Loan Amount",
+          data: [
+            affordabilityData.dtiModel.result.maxLoanAmount,
+            affordabilityData.disposableIncomeModel.result.maxLoanAmount,
+            affordabilityData.employerBasedModel.result.maxLoanAmount,
+            affordabilityData.expenditureEstimationModel.result.maxLoanAmount,
+          ],
+          backgroundColor: colors.info,
+          borderColor: colors.info,
+          borderWidth: 1,
+        },
+        {
+          label: "Requested Amount",
+          data: [
+            affordabilityData.overallAssessment.requestedAmount,
+            affordabilityData.overallAssessment.requestedAmount,
+            affordabilityData.overallAssessment.requestedAmount,
+            affordabilityData.overallAssessment.requestedAmount,
+          ],
+          backgroundColor: colors.warning,
+          borderColor: colors.warning,
+          borderWidth: 1,
+        },
+      ],
+    };
+  };
+
   return (
     <div className="space-y-6">
       {/* Overall Assessment Card */}
-      <Card className="border-[#1a2035] bg-[#0d121f] text-white">
+      <Card>
         <CardHeader>
           <CardTitle>Affordability Assessment</CardTitle>
-          <CardDescription className="text-gray-400">
+          <CardDescription>
             Overall affordability evaluation for this loan application
           </CardDescription>
         </CardHeader>
@@ -150,8 +363,10 @@ export function LeadAffordability({ leadId }: LeadAffordabilityProps) {
           <div className="space-y-6">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
               <div className="space-y-2">
-                <p className="text-sm text-gray-400">Maximum Loan Amount</p>
-                <p className="text-2xl font-semibold text-blue-400">
+                <p className="text-sm text-muted-foreground">
+                  Maximum Loan Amount
+                </p>
+                <p className="text-2xl font-semibold text-blue-500">
                   {formatCurrency(
                     affordabilityData.overallAssessment.maxLoanAmount
                   )}
@@ -159,8 +374,10 @@ export function LeadAffordability({ leadId }: LeadAffordabilityProps) {
               </div>
 
               <div className="space-y-2">
-                <p className="text-sm text-gray-400">Requested Amount</p>
-                <p className="text-2xl font-semibold text-green-400">
+                <p className="text-sm text-muted-foreground">
+                  Requested Amount
+                </p>
+                <p className="text-2xl font-semibold text-green-500">
                   {formatCurrency(
                     affordabilityData.overallAssessment.requestedAmount
                   )}
@@ -173,16 +390,56 @@ export function LeadAffordability({ leadId }: LeadAffordabilityProps) {
               </div>
 
               <div className="space-y-2">
-                <p className="text-sm text-gray-400">Recommended Model</p>
-                <p className="text-xl font-medium">
+                <p className="text-sm text-muted-foreground">
+                  Recommended Model
+                </p>
+                <p className="text-xl font-medium text-foreground">
                   {affordabilityData.overallAssessment.recommendedModel}
                 </p>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-[#1a2035]">
+            {/* Model Comparison Chart */}
+            <div className="pt-4 border-t border-border">
+              <p className="text-sm font-medium mb-3 text-foreground">
+                Model Comparison Analysis
+              </p>
+              <div className="h-64 mb-6">
+                <Bar
+                  data={getModelComparisonChartData()}
+                  options={getOptions({
+                    plugins: {
+                      legend: {
+                        position: "top" as const,
+                      },
+                      tooltip: {
+                        callbacks: {
+                          label: function (context: any) {
+                            return `${context.dataset.label}: ${formatCurrency(
+                              context.parsed.y
+                            )}`;
+                          },
+                        },
+                      },
+                    },
+                    scales: {
+                      y: {
+                        beginAtZero: true,
+                        ticks: {
+                          callback: function (value: any) {
+                            return formatCurrency(value);
+                          },
+                        },
+                      },
+                    },
+                  })}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-border">
               <div className="space-y-2">
-                <p className="text-sm font-medium text-white">
+                <p className="text-sm font-medium text-foreground">
                   Approval Factors
                 </p>
                 <ul className="space-y-1">
@@ -190,7 +447,7 @@ export function LeadAffordability({ leadId }: LeadAffordabilityProps) {
                     (factor, index) => (
                       <li
                         key={index}
-                        className="flex items-center text-sm text-green-400"
+                        className="flex items-center text-sm text-green-500"
                       >
                         <span className="inline-block h-1.5 w-1.5 rounded-full bg-green-500 mr-2"></span>
                         {factor}
@@ -201,13 +458,13 @@ export function LeadAffordability({ leadId }: LeadAffordabilityProps) {
               </div>
 
               <div className="space-y-2">
-                <p className="text-sm font-medium text-white">Warnings</p>
+                <p className="text-sm font-medium text-foreground">Warnings</p>
                 <ul className="space-y-1">
                   {affordabilityData.overallAssessment.warnings.map(
                     (warning, index) => (
                       <li
                         key={index}
-                        className="flex items-center text-sm text-yellow-400"
+                        className="flex items-center text-sm text-yellow-500"
                       >
                         <span className="inline-block h-1.5 w-1.5 rounded-full bg-yellow-500 mr-2"></span>
                         {warning}
@@ -223,29 +480,20 @@ export function LeadAffordability({ leadId }: LeadAffordabilityProps) {
 
       {/* Detailed Models Tabs */}
       <Tabs defaultValue="dti">
-        <TabsList className="bg-[#0d121f] border border-[#1a2035] w-full sm:w-auto overflow-x-auto">
-          <TabsTrigger value="dti" className="data-[state=active]:bg-blue-500">
+        <TabsList className="w-full sm:w-auto overflow-x-auto">
+          <TabsTrigger value="dti">
             <Calculator className="mr-2 h-4 w-4" />
             <span className="whitespace-nowrap">DTI Model</span>
           </TabsTrigger>
-          <TabsTrigger
-            value="disposable"
-            className="data-[state=active]:bg-blue-500"
-          >
+          <TabsTrigger value="disposable">
             <DollarSign className="mr-2 h-4 w-4" />
             <span className="whitespace-nowrap">Disposable Income</span>
           </TabsTrigger>
-          <TabsTrigger
-            value="employer"
-            className="data-[state=active]:bg-blue-500"
-          >
+          <TabsTrigger value="employer">
             <Building className="mr-2 h-4 w-4" />
             <span className="whitespace-nowrap">Employer-Based</span>
           </TabsTrigger>
-          <TabsTrigger
-            value="expenditure"
-            className="data-[state=active]:bg-blue-500"
-          >
+          <TabsTrigger value="expenditure">
             <Briefcase className="mr-2 h-4 w-4" />
             <span className="whitespace-nowrap">Expenditure Estimation</span>
           </TabsTrigger>
@@ -253,12 +501,12 @@ export function LeadAffordability({ leadId }: LeadAffordabilityProps) {
 
         {/* DTI Model Tab */}
         <TabsContent value="dti" className="mt-4">
-          <Card className="border-[#1a2035] bg-[#0d121f] text-white">
+          <Card>
             <CardHeader>
               <div className="flex items-center justify-between">
                 <div>
                   <CardTitle>{affordabilityData.dtiModel.modelName}</CardTitle>
-                  <CardDescription className="text-gray-400">
+                  <CardDescription>
                     Debt-to-Income Ratio Assessment
                   </CardDescription>
                 </div>
@@ -273,8 +521,10 @@ export function LeadAffordability({ leadId }: LeadAffordabilityProps) {
               <div className="space-y-6">
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
                   <div className="space-y-2">
-                    <p className="text-sm text-gray-400">Maximum Loan Amount</p>
-                    <p className="text-2xl font-semibold text-blue-400">
+                    <p className="text-sm text-muted-foreground">
+                      Maximum Loan Amount
+                    </p>
+                    <p className="text-2xl font-semibold text-blue-500">
                       {formatCurrency(
                         affordabilityData.dtiModel.result.maxLoanAmount
                       )}
@@ -282,8 +532,10 @@ export function LeadAffordability({ leadId }: LeadAffordabilityProps) {
                   </div>
 
                   <div className="space-y-2">
-                    <p className="text-sm text-gray-400">Monthly Income</p>
-                    <p className="text-2xl font-semibold text-green-400">
+                    <p className="text-sm text-muted-foreground">
+                      Monthly Income
+                    </p>
+                    <p className="text-2xl font-semibold text-green-500">
                       {formatCurrency(
                         affordabilityData.dtiModel.result.monthlyIncome
                       )}
@@ -291,8 +543,10 @@ export function LeadAffordability({ leadId }: LeadAffordabilityProps) {
                   </div>
 
                   <div className="space-y-2">
-                    <p className="text-sm text-gray-400">Total Monthly Debt</p>
-                    <p className="text-2xl font-semibold text-yellow-400">
+                    <p className="text-sm text-muted-foreground">
+                      Total Monthly Debt
+                    </p>
+                    <p className="text-2xl font-semibold text-yellow-500">
                       {formatCurrency(
                         affordabilityData.dtiModel.result.monthlyDebt
                       )}
@@ -302,16 +556,16 @@ export function LeadAffordability({ leadId }: LeadAffordabilityProps) {
 
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <p className="text-sm text-gray-400">
+                    <p className="text-sm text-muted-foreground">
                       Debt-to-Income Ratio
                     </p>
                     <p
                       className={`text-sm font-medium ${
                         affordabilityData.dtiModel.result.dtiRatio > 0.43
-                          ? "text-red-400"
+                          ? "text-red-500"
                           : affordabilityData.dtiModel.result.dtiRatio > 0.36
-                          ? "text-yellow-400"
-                          : "text-green-400"
+                          ? "text-yellow-500"
+                          : "text-green-500"
                       }`}
                     >
                       {(
@@ -323,7 +577,7 @@ export function LeadAffordability({ leadId }: LeadAffordabilityProps) {
                   <Progress
                     value={affordabilityData.dtiModel.result.dtiRatio * 100}
                     max={50}
-                    className="h-2 bg-[#1a2035]"
+                    className="h-2"
                     indicatorClassName={
                       affordabilityData.dtiModel.result.dtiRatio > 0.43
                         ? "bg-red-500"
@@ -332,7 +586,7 @@ export function LeadAffordability({ leadId }: LeadAffordabilityProps) {
                         : "bg-green-500"
                     }
                   />
-                  <div className="flex justify-between text-xs text-gray-400">
+                  <div className="flex justify-between text-xs text-muted-foreground">
                     <span>0%</span>
                     <span>36%</span>
                     <span>43%</span>
@@ -340,27 +594,55 @@ export function LeadAffordability({ leadId }: LeadAffordabilityProps) {
                   </div>
                 </div>
 
-                <div className="pt-4 border-t border-[#1a2035]">
-                  <p className="text-sm font-medium mb-3">
+                {/* DTI Chart */}
+                <div className="pt-4 border-t border-border">
+                  <p className="text-sm font-medium mb-3 text-foreground">
+                    Debt Breakdown Analysis
+                  </p>
+                  <div className="h-64 mb-6">
+                    <Doughnut
+                      data={getDTIChartData()}
+                      options={getOptions({
+                        plugins: {
+                          legend: {
+                            position: "bottom" as const,
+                          },
+                          tooltip: {
+                            callbacks: {
+                              label: function (context: any) {
+                                return `${context.label}: ${formatCurrency(
+                                  context.parsed
+                                )}`;
+                              },
+                            },
+                          },
+                        },
+                        scales: false,
+                      })}
+                    />
+                  </div>
+                </div>
+
+                <div className="pt-4 border-t border-border">
+                  <p className="text-sm font-medium mb-3 text-foreground">
                     Detailed Assessment
                   </p>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     {affordabilityData.dtiModel.result.factors.map(
                       (factor, index) => (
-                        <div
-                          key={index}
-                          className="bg-[#151e36] p-3 rounded-md"
-                        >
-                          <p className="text-xs text-gray-400">{factor.name}</p>
+                        <div key={index} className="bg-muted p-3 rounded-md">
+                          <p className="text-xs text-muted-foreground">
+                            {factor.name}
+                          </p>
                           <p
                             className={`text-sm font-medium ${
                               factor.status === "good"
-                                ? "text-green-400"
+                                ? "text-green-500"
                                 : factor.status === "warning"
-                                ? "text-yellow-400"
+                                ? "text-yellow-500"
                                 : factor.status === "bad"
-                                ? "text-red-400"
-                                : "text-white"
+                                ? "text-red-500"
+                                : "text-foreground"
                             }`}
                           >
                             {factor.value}
@@ -377,14 +659,14 @@ export function LeadAffordability({ leadId }: LeadAffordabilityProps) {
 
         {/* Disposable Income Tab */}
         <TabsContent value="disposable" className="mt-4">
-          <Card className="border-[#1a2035] bg-[#0d121f] text-white">
+          <Card>
             <CardHeader>
               <div className="flex items-center justify-between">
                 <div>
                   <CardTitle>
                     {affordabilityData.disposableIncomeModel.modelName}
                   </CardTitle>
-                  <CardDescription className="text-gray-400">
+                  <CardDescription>
                     Net Disposable Income Assessment
                   </CardDescription>
                 </div>
@@ -399,8 +681,10 @@ export function LeadAffordability({ leadId }: LeadAffordabilityProps) {
               <div className="space-y-6">
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
                   <div className="space-y-2">
-                    <p className="text-sm text-gray-400">Maximum Loan Amount</p>
-                    <p className="text-2xl font-semibold text-blue-400">
+                    <p className="text-sm text-muted-foreground">
+                      Maximum Loan Amount
+                    </p>
+                    <p className="text-2xl font-semibold text-blue-500">
                       {formatCurrency(
                         affordabilityData.disposableIncomeModel.result
                           .maxLoanAmount
@@ -409,8 +693,10 @@ export function LeadAffordability({ leadId }: LeadAffordabilityProps) {
                   </div>
 
                   <div className="space-y-2">
-                    <p className="text-sm text-gray-400">Disposable Income</p>
-                    <p className="text-2xl font-semibold text-green-400">
+                    <p className="text-sm text-muted-foreground">
+                      Disposable Income
+                    </p>
+                    <p className="text-2xl font-semibold text-green-500">
                       {formatCurrency(
                         affordabilityData.disposableIncomeModel.result
                           .disposableIncome
@@ -419,8 +705,10 @@ export function LeadAffordability({ leadId }: LeadAffordabilityProps) {
                   </div>
 
                   <div className="space-y-2">
-                    <p className="text-sm text-gray-400">Required Minimum</p>
-                    <p className="text-2xl font-semibold text-yellow-400">
+                    <p className="text-sm text-muted-foreground">
+                      Required Minimum
+                    </p>
+                    <p className="text-2xl font-semibold text-yellow-500">
                       {formatCurrency(
                         affordabilityData.disposableIncomeModel.result
                           .requiredDisposableIncome
@@ -431,10 +719,10 @@ export function LeadAffordability({ leadId }: LeadAffordabilityProps) {
 
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <p className="text-sm text-gray-400">
+                    <p className="text-sm text-muted-foreground">
                       Disposable Income Ratio
                     </p>
-                    <p className="text-sm font-medium text-green-400">
+                    <p className="text-sm font-medium text-green-500">
                       {(
                         (affordabilityData.disposableIncomeModel.result
                           .disposableIncome /
@@ -454,10 +742,10 @@ export function LeadAffordability({ leadId }: LeadAffordabilityProps) {
                       100
                     }
                     max={50}
-                    className="h-2 bg-[#1a2035]"
+                    className="h-2"
                     indicatorClassName="bg-green-500"
                   />
-                  <div className="flex justify-between text-xs text-gray-400">
+                  <div className="flex justify-between text-xs text-muted-foreground">
                     <span>0%</span>
                     <span>15%</span>
                     <span>30%</span>
@@ -465,25 +753,64 @@ export function LeadAffordability({ leadId }: LeadAffordabilityProps) {
                   </div>
                 </div>
 
-                <div className="pt-4 border-t border-[#1a2035]">
-                  <p className="text-sm font-medium mb-3">Expense Breakdown</p>
+                {/* Disposable Income Chart */}
+                <div className="pt-4 border-t border-border">
+                  <p className="text-sm font-medium mb-3 text-foreground">
+                    Income vs Expenses Analysis
+                  </p>
+                  <div className="h-64 mb-6">
+                    <Bar
+                      data={getDisposableIncomeChartData()}
+                      options={getOptions({
+                        plugins: {
+                          legend: {
+                            position: "top" as const,
+                          },
+                          tooltip: {
+                            callbacks: {
+                              label: function (context: any) {
+                                return `${
+                                  context.dataset.label
+                                }: ${formatCurrency(context.parsed.y)}`;
+                              },
+                            },
+                          },
+                        },
+                        scales: {
+                          y: {
+                            beginAtZero: true,
+                            ticks: {
+                              callback: function (value: any) {
+                                return formatCurrency(value);
+                              },
+                            },
+                          },
+                        },
+                      })}
+                    />
+                  </div>
+                </div>
+
+                <div className="pt-4 border-t border-border">
+                  <p className="text-sm font-medium mb-3 text-foreground">
+                    Expense Breakdown
+                  </p>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     {affordabilityData.disposableIncomeModel.result.factors.map(
                       (factor, index) => (
-                        <div
-                          key={index}
-                          className="bg-[#151e36] p-3 rounded-md"
-                        >
-                          <p className="text-xs text-gray-400">{factor.name}</p>
+                        <div key={index} className="bg-muted p-3 rounded-md">
+                          <p className="text-xs text-muted-foreground">
+                            {factor.name}
+                          </p>
                           <p
                             className={`text-sm font-medium ${
                               factor.status === "good"
-                                ? "text-green-400"
+                                ? "text-green-500"
                                 : factor.status === "warning"
-                                ? "text-yellow-400"
+                                ? "text-yellow-500"
                                 : factor.status === "bad"
-                                ? "text-red-400"
-                                : "text-white"
+                                ? "text-red-500"
+                                : "text-foreground"
                             }`}
                           >
                             {factor.value}
@@ -500,14 +827,14 @@ export function LeadAffordability({ leadId }: LeadAffordabilityProps) {
 
         {/* Employer-Based Tab */}
         <TabsContent value="employer" className="mt-4">
-          <Card className="border-[#1a2035] bg-[#0d121f] text-white">
+          <Card>
             <CardHeader>
               <div className="flex items-center justify-between">
                 <div>
                   <CardTitle>
                     {affordabilityData.employerBasedModel.modelName}
                   </CardTitle>
-                  <CardDescription className="text-gray-400">
+                  <CardDescription>
                     Employer-Based Salary Assessment
                   </CardDescription>
                 </div>
@@ -522,8 +849,10 @@ export function LeadAffordability({ leadId }: LeadAffordabilityProps) {
               <div className="space-y-6">
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
                   <div className="space-y-2">
-                    <p className="text-sm text-gray-400">Maximum Loan Amount</p>
-                    <p className="text-2xl font-semibold text-blue-400">
+                    <p className="text-sm text-muted-foreground">
+                      Maximum Loan Amount
+                    </p>
+                    <p className="text-2xl font-semibold text-blue-500">
                       {formatCurrency(
                         affordabilityData.employerBasedModel.result
                           .maxLoanAmount
@@ -532,8 +861,10 @@ export function LeadAffordability({ leadId }: LeadAffordabilityProps) {
                   </div>
 
                   <div className="space-y-2">
-                    <p className="text-sm text-gray-400">Annual Salary</p>
-                    <p className="text-2xl font-semibold text-green-400">
+                    <p className="text-sm text-muted-foreground">
+                      Annual Salary
+                    </p>
+                    <p className="text-2xl font-semibold text-green-500">
                       {formatCurrency(
                         affordabilityData.employerBasedModel.result.annualSalary
                       )}
@@ -541,8 +872,10 @@ export function LeadAffordability({ leadId }: LeadAffordabilityProps) {
                   </div>
 
                   <div className="space-y-2">
-                    <p className="text-sm text-gray-400">Salary Multiplier</p>
-                    <p className="text-2xl font-semibold text-yellow-400">
+                    <p className="text-sm text-muted-foreground">
+                      Salary Multiplier
+                    </p>
+                    <p className="text-2xl font-semibold text-yellow-500">
                       {
                         affordabilityData.employerBasedModel.result
                           .salaryMultiplier
@@ -554,15 +887,19 @@ export function LeadAffordability({ leadId }: LeadAffordabilityProps) {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                   <div className="space-y-2">
-                    <p className="text-sm text-gray-400">Employer Type</p>
-                    <p className="text-xl font-medium capitalize">
+                    <p className="text-sm text-muted-foreground">
+                      Employer Type
+                    </p>
+                    <p className="text-xl font-medium capitalize text-foreground">
                       {affordabilityData.employerBasedModel.result.employerType}
                     </p>
                   </div>
 
                   <div className="space-y-2">
-                    <p className="text-sm text-gray-400">Employment Duration</p>
-                    <p className="text-xl font-medium">
+                    <p className="text-sm text-muted-foreground">
+                      Employment Duration
+                    </p>
+                    <p className="text-xl font-medium text-foreground">
                       {
                         affordabilityData.employerBasedModel.result
                           .yearsEmployed
@@ -572,25 +909,26 @@ export function LeadAffordability({ leadId }: LeadAffordabilityProps) {
                   </div>
                 </div>
 
-                <div className="pt-4 border-t border-[#1a2035]">
-                  <p className="text-sm font-medium mb-3">Assessment Factors</p>
+                <div className="pt-4 border-t border-border">
+                  <p className="text-sm font-medium mb-3 text-foreground">
+                    Assessment Factors
+                  </p>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     {affordabilityData.employerBasedModel.result.factors.map(
                       (factor, index) => (
-                        <div
-                          key={index}
-                          className="bg-[#151e36] p-3 rounded-md"
-                        >
-                          <p className="text-xs text-gray-400">{factor.name}</p>
+                        <div key={index} className="bg-muted p-3 rounded-md">
+                          <p className="text-xs text-muted-foreground">
+                            {factor.name}
+                          </p>
                           <p
                             className={`text-sm font-medium ${
                               factor.status === "good"
-                                ? "text-green-400"
+                                ? "text-green-500"
                                 : factor.status === "warning"
-                                ? "text-yellow-400"
+                                ? "text-yellow-500"
                                 : factor.status === "bad"
-                                ? "text-red-400"
-                                : "text-white"
+                                ? "text-red-500"
+                                : "text-foreground"
                             }`}
                           >
                             {factor.value}
@@ -607,14 +945,14 @@ export function LeadAffordability({ leadId }: LeadAffordabilityProps) {
 
         {/* Expenditure Estimation Tab */}
         <TabsContent value="expenditure" className="mt-4">
-          <Card className="border-[#1a2035] bg-[#0d121f] text-white">
+          <Card>
             <CardHeader>
               <div className="flex items-center justify-between">
                 <div>
                   <CardTitle>
                     {affordabilityData.expenditureEstimationModel.modelName}
                   </CardTitle>
-                  <CardDescription className="text-gray-400">
+                  <CardDescription>
                     Expenditure Estimation Assessment
                   </CardDescription>
                 </div>
@@ -629,8 +967,10 @@ export function LeadAffordability({ leadId }: LeadAffordabilityProps) {
               <div className="space-y-6">
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
                   <div className="space-y-2">
-                    <p className="text-sm text-gray-400">Maximum Loan Amount</p>
-                    <p className="text-2xl font-semibold text-blue-400">
+                    <p className="text-sm text-muted-foreground">
+                      Maximum Loan Amount
+                    </p>
+                    <p className="text-2xl font-semibold text-blue-500">
                       {formatCurrency(
                         affordabilityData.expenditureEstimationModel.result
                           .maxLoanAmount
@@ -639,10 +979,10 @@ export function LeadAffordability({ leadId }: LeadAffordabilityProps) {
                   </div>
 
                   <div className="space-y-2">
-                    <p className="text-sm text-gray-400">
+                    <p className="text-sm text-muted-foreground">
                       Estimated Expenditure
                     </p>
-                    <p className="text-2xl font-semibold text-yellow-400">
+                    <p className="text-2xl font-semibold text-yellow-500">
                       {formatCurrency(
                         affordabilityData.expenditureEstimationModel.result
                           .estimatedExpenditure
@@ -651,8 +991,10 @@ export function LeadAffordability({ leadId }: LeadAffordabilityProps) {
                   </div>
 
                   <div className="space-y-2">
-                    <p className="text-sm text-gray-400">Expenditure %</p>
-                    <p className="text-2xl font-semibold text-yellow-400">
+                    <p className="text-sm text-muted-foreground">
+                      Expenditure %
+                    </p>
+                    <p className="text-2xl font-semibold text-yellow-500">
                       {(
                         affordabilityData.expenditureEstimationModel.result
                           .expenditurePercentage * 100
@@ -664,8 +1006,10 @@ export function LeadAffordability({ leadId }: LeadAffordabilityProps) {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                   <div className="space-y-2">
-                    <p className="text-sm text-gray-400">Income Bracket</p>
-                    <p className="text-xl font-medium capitalize">
+                    <p className="text-sm text-muted-foreground">
+                      Income Bracket
+                    </p>
+                    <p className="text-xl font-medium capitalize text-foreground">
                       {
                         affordabilityData.expenditureEstimationModel.result
                           .incomeBracket
@@ -674,13 +1018,15 @@ export function LeadAffordability({ leadId }: LeadAffordabilityProps) {
                   </div>
 
                   <div className="space-y-2">
-                    <p className="text-sm text-gray-400">Location Type</p>
-                    <p className="text-xl font-medium capitalize">
+                    <p className="text-sm text-muted-foreground">
+                      Location Type
+                    </p>
+                    <p className="text-xl font-medium capitalize text-foreground">
                       {
                         affordabilityData.expenditureEstimationModel.result
                           .location
                       }
-                      <span className="text-sm text-gray-400 ml-2">
+                      <span className="text-sm text-muted-foreground ml-2">
                         (Factor:{" "}
                         {
                           affordabilityData.expenditureEstimationModel.result
@@ -692,25 +1038,26 @@ export function LeadAffordability({ leadId }: LeadAffordabilityProps) {
                   </div>
                 </div>
 
-                <div className="pt-4 border-t border-[#1a2035]">
-                  <p className="text-sm font-medium mb-3">Assessment Factors</p>
+                <div className="pt-4 border-t border-border">
+                  <p className="text-sm font-medium mb-3 text-foreground">
+                    Assessment Factors
+                  </p>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     {affordabilityData.expenditureEstimationModel.result.factors.map(
                       (factor, index) => (
-                        <div
-                          key={index}
-                          className="bg-[#151e36] p-3 rounded-md"
-                        >
-                          <p className="text-xs text-gray-400">{factor.name}</p>
+                        <div key={index} className="bg-muted p-3 rounded-md">
+                          <p className="text-xs text-muted-foreground">
+                            {factor.name}
+                          </p>
                           <p
                             className={`text-sm font-medium ${
                               factor.status === "good"
-                                ? "text-green-400"
+                                ? "text-green-500"
                                 : factor.status === "warning"
-                                ? "text-yellow-400"
+                                ? "text-yellow-500"
                                 : factor.status === "bad"
-                                ? "text-red-400"
-                                : "text-white"
+                                ? "text-red-500"
+                                : "text-foreground"
                             }`}
                           >
                             {factor.value}

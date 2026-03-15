@@ -1,11 +1,14 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
+import useSWR from "swr";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { useCurrency } from "@/contexts/currency-context";
 import {
   Card,
   CardContent,
@@ -13,8 +16,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
@@ -24,23 +25,41 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Switch } from "@/components/ui/switch";
+import { Badge } from "@/components/ui/badge";
 import {
   ArrowLeft,
   Save,
   Loader2,
   Calculator,
   CreditCard,
-  Check,
+  Shield,
+  User,
+  FileText,
+  Info,
+  Calendar,
 } from "lucide-react";
 import Link from "next/link";
-import type {
-  AffordabilityResult,
-  LoanOffer,
-} from "@/lib/affordability-calculator";
-import { Badge } from "@/components/ui/badge";
-import { AffordabilityCalculator } from "./affordability-calculator";
+import type { AffordabilityResult } from "@/lib/affordability-calculator";
+import { FormValidationSummary } from "@/components/ui/form-validation-summary";
+
+// Define LoanOffer type locally
+interface LoanOffer {
+  id: string;
+  amount: number;
+  term: number;
+  interestRate: number;
+  monthlyPayment: number;
+  totalPayment: number;
+  description: string;
+}
+import { SimplifiedAffordabilityForm } from "./simplified-affordability-form";
 import { ClientRegistrationForm } from "./client-registration-form";
+import { LoanDetailsForm } from "@/components/loan-details-form";
+import { LoanTermsForm } from "@/app/(application)/leads/new/components/loan-terms-form";
+import { RepaymentScheduleForm } from "@/app/(application)/leads/new/components/repayment-schedule-form";
+import { LoanContracts } from "@/app/(application)/leads/new/components/loan-contracts";
+import { toast } from "@/components/ui/use-toast";
+import { LeadLocalStorage } from "@/lib/lead-local-storage";
 
 // Define the type for the client form data
 type ClientFormData = {
@@ -53,86 +72,811 @@ type ClientFormData = {
   activationDate: Date | null;
 };
 
-// Props for the NewLeadForm component
-interface NewLeadFormProps {
-  clientFormData: ClientFormData;
-}
+// Simple fetcher for SWR
+const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
 // Form validation schema
 const leadFormSchema = z.object({
   // Client Information
-  clientName: z.string().min(2, { message: "Client name is required" }),
-  clientEmail: z.string().email({ message: "Valid email is required" }),
-  clientPhone: z
+  officeId: z.string().min(1, { message: "Office is required" }),
+  legalFormId: z.string().min(1, { message: "Legal form is required" }),
+  externalId: z.string().optional(),
+  firstname: z.string().min(2, { message: "First name is required" }),
+  middlename: z.string().optional(),
+  lastname: z.string().min(2, { message: "Last name is required" }),
+  dateOfBirth: z.date().optional(),
+  gender: z.string().optional(),
+  isStaff: z.boolean().default(false),
+  mobileNo: z
     .string()
-    .min(10, { message: "Valid phone number is required" }),
-  clientCompany: z.string().optional(),
-  clientAddress: z.string().optional(),
+    .min(1, { message: "Mobile number is required" })
+    .refine((val) => {
+      const digitsOnly = val.replace(/\D/g, "");
+      return digitsOnly.length >= 7 && digitsOnly.length <= 12;
+    }, "Please enter a valid phone number"),
+  countryCode: z.string().default("+260"),
+  emailAddress: z.string().email({ message: "Valid email is required" }),
+  clientTypeId: z.string().optional(),
+  clientClassificationId: z.string().optional(),
+  submittedOnDate: z.date().default(() => new Date()),
+  active: z.boolean().default(true),
+  activationDate: z.date().optional(),
+  openSavingsAccount: z.boolean().default(false),
+  savingsProductId: z.string().optional(),
 
-  // Loan Information
-  loanType: z.string().min(1, { message: "Loan type is required" }),
-  loanAmount: z.string().min(1, { message: "Loan amount is required" }),
-  loanPurpose: z.string().optional(),
-  loanTerm: z.string().optional(),
-  interestRate: z.string().optional(),
-  collateral: z.string().optional(),
+  // Financial fields
+  monthlyIncomeRange: z.string().optional(),
+  employmentStatus: z.string().optional(),
+  employerName: z.string().optional(),
+  yearsAtCurrentJob: z.string().optional(),
+  hasExistingLoans: z.boolean().default(false),
+  monthlyDebtPayments: z
+    .union([z.number(), z.string()])
+    .transform((val) => {
+      if (typeof val === "string") {
+        const parsed = parseFloat(val);
+        return isNaN(parsed) ? 0 : parsed;
+      }
+      return val;
+    })
+    .default(0),
+  propertyOwnership: z.string().optional(),
+  businessOwnership: z.boolean().default(false),
+  businessType: z.string().optional(),
 
-  // Additional Information
-  notes: z.string().optional(),
-  priority: z.string().default("medium"),
+  // Additional Information fields
+  priority: z.string().optional(),
   assignTo: z.string().optional(),
-  isExistingClient: z.boolean().default(false),
+  notes: z.string().optional(),
 });
 
 type LeadFormValues = z.infer<typeof leadFormSchema>;
 
-export function NewLeadForm({ clientFormData }: NewLeadFormProps) {
+export function NewLeadForm() {
+  // ALL HOOKS MUST BE CALLED FIRST, BEFORE ANY CONDITIONAL RETURNS
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const { currencyCode, currencySymbol } = useCurrency();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [affordabilityResult, setAffordabilityResult] =
     useState<AffordabilityResult | null>(null);
   const [selectedOffer, setSelectedOffer] = useState<LoanOffer | null>(null);
   const [activeTab, setActiveTab] = useState("client");
+  const [loanTemplateData, setLoanTemplateData] = useState<any>(null);
+  const [formCompletionStatus, setFormCompletionStatus] = useState({
+    client: false,
+    affordability: false,
+    loan: false,
+    terms: false,
+    schedule: false,
+    contracts: false,
+  });
+  const [currentLeadId, setCurrentLeadId] = useState<string | null>(null);
+  const [clientCreatedInFineract, setClientCreatedInFineract] = useState(false);
+  const [fineractClientId, setFineractClientId] = useState<number | null>(null);
+  const [loanProductId, setLoanProductId] = useState<number | null>(null);
+  const [allClientSectionsComplete, setAllClientSectionsComplete] =
+    useState(false);
+  const [repaymentSchedule, setRepaymentSchedule] = useState<any>(null);
+  const [loanDetails, setLoanDetails] = useState<any>(null);
+  const [loanTerms, setLoanTerms] = useState<any>(null);
+  const [sharedFirstRepaymentOn, setSharedFirstRepaymentOn] = useState<
+    Date | undefined
+  >(undefined);
 
-  // Initialize form with default values
-  const form = useForm<LeadFormValues>({
+  // Load leadId from URL or localStorage on mount
+  useEffect(() => {
+    const loadLeadData = async () => {
+      console.log("=== LOAD LEAD DATA START ===");
+      // Check for both 'id' and 'leadId' URL parameters for compatibility
+      const leadIdFromUrl =
+        searchParams?.get("id") || searchParams?.get("leadId");
+      const leadIdFromStorage = LeadLocalStorage.getLeadId();
+      console.log("Lead ID from URL:", leadIdFromUrl);
+      console.log("Lead ID from localStorage:", leadIdFromStorage);
+
+      const leadId = leadIdFromUrl || leadIdFromStorage;
+      console.log("Final lead ID to use:", leadId);
+
+      if (leadId) {
+        console.log("Setting currentLeadId to:", leadId);
+        setCurrentLeadId(leadId);
+
+        // Store fineractClientId locally for use in subsequent calls
+        let loadedFineractClientId: number | null = null;
+
+        // Fetch lead data to get fineractClientId
+        try {
+          const leadResponse = await fetch(`/api/leads/${leadId}`);
+          if (leadResponse.ok) {
+            const leadData = await leadResponse.json();
+            if (leadData.fineractClientId) {
+              loadedFineractClientId = leadData.fineractClientId;
+              setFineractClientId(leadData.fineractClientId);
+              console.log(
+                "Loaded fineractClientId from lead:",
+                leadData.fineractClientId
+              );
+            }
+            // Also check window for fineractClientId (set by client registration form)
+            if ((window as any).fineractClientId) {
+              loadedFineractClientId = (window as any).fineractClientId;
+              setFineractClientId((window as any).fineractClientId);
+            }
+          } else if (leadResponse.status === 404) {
+            // Lead no longer exists in database - clear stale data
+            console.log(
+              "==========> Lead not found (404), clearing stale localStorage data"
+            );
+            LeadLocalStorage.clear();
+            setCurrentLeadId(null);
+            return; // Exit early if lead not found
+          }
+        } catch (error) {
+          console.error("Error loading lead data:", error);
+        }
+
+        // Check if affordability data exists for this lead
+        try {
+          const response = await fetch(`/api/leads/${leadId}/affordability`);
+          if (response.ok) {
+            const result = await response.json();
+            if (result.success && result.data) {
+              // Check if affordability data has been filled
+              const hasAffordabilityData =
+                result.data.netMonthlyIncome > 0 ||
+                result.data.grossMonthlyIncome > 0;
+
+              if (hasAffordabilityData) {
+                console.log("Affordability data found, marking as complete");
+                setFormCompletionStatus((prev) => ({
+                  ...prev,
+                  affordability: true,
+                }));
+              }
+            }
+          }
+        } catch (error) {
+          console.error("Error checking affordability data:", error);
+        }
+
+        // Check if loan details exist for this lead
+        let loadedLoanDetails: any = null;
+        let loadedProductId: number | null = null;
+
+        try {
+          const loanResponse = await fetch(`/api/leads/${leadId}/loan-details`);
+          if (loanResponse.ok) {
+            const loanResult = await loanResponse.json();
+            if (loanResult.success && loanResult.data) {
+              // Check if loan details have been filled
+              const hasLoanDetails =
+                loanResult.data.productName ||
+                loanResult.data.loanPurpose ||
+                loanResult.data.loanOfficer;
+
+              if (hasLoanDetails) {
+                console.log(
+                  "Loan details found, marking as complete and setting state"
+                );
+                loadedLoanDetails = loanResult.data;
+                setLoanDetails(loanResult.data); // Actually set the state!
+                setFormCompletionStatus((prev) => ({
+                  ...prev,
+                  loan: true,
+                }));
+                // Set loanProductId from loan details if available
+                if (loanResult.data.productId) {
+                  loadedProductId = parseInt(loanResult.data.productId);
+                  setLoanProductId(loadedProductId);
+                }
+              }
+            }
+          }
+        } catch (error) {
+          console.error("Error checking loan details:", error);
+        }
+
+        // Check if loan terms exist for this lead
+        let loadedLoanTerms: any = null;
+        try {
+          const loanTermsResponse = await fetch(
+            `/api/leads/${leadId}/loan-terms`
+          );
+          if (loanTermsResponse.ok) {
+            const loanTermsResult = await loanTermsResponse.json();
+            if (loanTermsResult.success && loanTermsResult.data) {
+              // Check if loan terms have been filled
+              const hasLoanTerms =
+                loanTermsResult.data.principal ||
+                loanTermsResult.data.nominalInterestRate ||
+                loanTermsResult.data.numberOfRepayments;
+
+              if (hasLoanTerms) {
+                console.log(
+                  "Loan terms found, marking as complete and setting state"
+                );
+                loadedLoanTerms = loanTermsResult.data;
+                setLoanTerms(loanTermsResult.data); // Actually set the state!
+                setFormCompletionStatus((prev) => ({
+                  ...prev,
+                  terms: true,
+                }));
+              }
+            }
+          }
+        } catch (error) {
+          console.error("Error checking loan terms:", error);
+        }
+
+        // If we have loan details with productId and fineractClientId, fetch the loan template
+        // Note: loadedFineractClientId was set at the beginning of this block when fetching lead data
+        if (loadedProductId && loadedFineractClientId) {
+          try {
+            console.log(
+              "Fetching loan template for productId:",
+              loadedProductId,
+              "clientId:",
+              loadedFineractClientId
+            );
+            const templateResponse = await fetch(
+              `/api/fineract/loans/template?clientId=${loadedFineractClientId}&productId=${loadedProductId}&activeOnly=true&staffInSelectedOfficeOnly=true&templateType=individual`
+            );
+            if (templateResponse.ok) {
+              const templateData = await templateResponse.json();
+              console.log("Loan template loaded for continued application");
+              setLoanTemplateData(templateData);
+
+              // If we have all the data needed, calculate the repayment schedule
+              if (loadedLoanDetails && loadedLoanTerms && templateData) {
+                console.log(
+                  "All data available, calculating repayment schedule for continued application"
+                );
+                try {
+                  const { format } = await import("date-fns");
+
+                  const submittedDate = loadedLoanDetails.submittedOn
+                    ? format(
+                        new Date(loadedLoanDetails.submittedOn),
+                        "dd MMMM yyyy"
+                      )
+                    : format(new Date(), "dd MMMM yyyy");
+
+                  const disbursementDate = loadedLoanDetails.disbursementOn
+                    ? format(
+                        new Date(loadedLoanDetails.disbursementOn),
+                        "dd MMMM yyyy"
+                      )
+                    : format(new Date(), "dd MMMM yyyy");
+
+                  const charges = (loadedLoanTerms.charges || []).map(
+                    (charge: any) => ({
+                      chargeId: charge.chargeId,
+                      amount: charge.amount,
+                      dueDate: charge.dueDate,
+                    })
+                  );
+
+                  const payload = {
+                    productId: loadedProductId,
+                    loanOfficerId: loadedLoanDetails.loanOfficer || "",
+                    loanPurposeId: loadedLoanDetails.loanPurpose || "",
+                    fundId: loadedLoanDetails.fund || "",
+                    submittedOnDate: submittedDate,
+                    expectedDisbursementDate: disbursementDate,
+                    externalId: "",
+                    linkAccountId: loadedLoanDetails.linkSavings || "",
+                    createStandingInstructionAtDisbursement:
+                      loadedLoanDetails.createStandingInstructions
+                        ? "true"
+                        : "",
+                    loanTermFrequency: loadedLoanTerms.loanTerm || 1,
+                    loanTermFrequencyType: loadedLoanTerms.termFrequency
+                      ? parseInt(loadedLoanTerms.termFrequency)
+                      : templateData?.termPeriodFrequencyType?.id || 2,
+                    numberOfRepayments: loadedLoanTerms.numberOfRepayments || 1,
+                    repaymentEvery: loadedLoanTerms.repaymentEvery || 1,
+                    repaymentFrequencyType: loadedLoanTerms.repaymentFrequency
+                      ? parseInt(loadedLoanTerms.repaymentFrequency)
+                      : templateData?.repaymentFrequencyType?.id || 2,
+                    repaymentFrequencyNthDayType:
+                      loadedLoanTerms.repaymentFrequencyNthDay || "",
+                    repaymentFrequencyDayOfWeekType:
+                      loadedLoanTerms.repaymentFrequencyDayOfWeek || "",
+                    repaymentsStartingFromDate: loadedLoanTerms.firstRepaymentOn
+                      ? format(
+                          new Date(loadedLoanTerms.firstRepaymentOn),
+                          "dd MMMM yyyy"
+                        )
+                      : null,
+                    interestChargedFromDate: loadedLoanTerms.interestChargedFrom
+                      ? format(
+                          new Date(loadedLoanTerms.interestChargedFrom),
+                          "dd MMMM yyyy"
+                        )
+                      : null,
+                    interestType: loadedLoanTerms.interestMethod
+                      ? parseInt(loadedLoanTerms.interestMethod)
+                      : templateData?.interestType?.id || 1,
+                    isEqualAmortization:
+                      loadedLoanTerms.isEqualAmortization || false,
+                    amortizationType: loadedLoanTerms.amortization
+                      ? parseInt(loadedLoanTerms.amortization)
+                      : templateData?.amortizationType?.id || 1,
+                    interestCalculationPeriodType:
+                      loadedLoanTerms.interestCalculationPeriod
+                        ? parseInt(loadedLoanTerms.interestCalculationPeriod)
+                        : templateData?.interestCalculationPeriodType?.id || 1,
+                    loanIdToClose: "",
+                    isTopup: "",
+                    transactionProcessingStrategyCode:
+                      loadedLoanTerms.repaymentStrategy ||
+                      templateData?.transactionProcessingStrategyCode ||
+                      "creocore-strategy",
+                    interestRateFrequencyType:
+                      loadedLoanTerms.interestRateFrequency
+                        ? parseInt(loadedLoanTerms.interestRateFrequency)
+                        : templateData?.interestRateFrequencyType?.id || 2,
+                    interestRatePerPeriod:
+                      loadedLoanTerms.nominalInterestRate || 0,
+                    charges: charges,
+                    collateral: [],
+                    dateFormat: "dd MMMM yyyy",
+                    locale: "en",
+                    clientId: loadedFineractClientId,
+                    loanType: "individual",
+                    principal: loadedLoanTerms.principal || 0,
+                    allowPartialPeriodInterestCalcualtion: false,
+                  };
+
+                  const scheduleResponse = await fetch(
+                    `/api/fineract/loans/calculate-schedule`,
+                    {
+                      method: "POST",
+                      headers: {
+                        "Content-Type": "application/json",
+                      },
+                      body: JSON.stringify(payload),
+                    }
+                  );
+
+                  if (scheduleResponse.ok) {
+                    const scheduleData = await scheduleResponse.json();
+                    console.log(
+                      "Repayment schedule calculated for continued application"
+                    );
+                    setRepaymentSchedule(scheduleData);
+                    setFormCompletionStatus((prev) => ({
+                      ...prev,
+                      schedule: true,
+                    }));
+                  } else {
+                    console.error(
+                      "Failed to calculate repayment schedule:",
+                      await scheduleResponse.text()
+                    );
+                  }
+                } catch (scheduleError) {
+                  console.error(
+                    "Error calculating repayment schedule:",
+                    scheduleError
+                  );
+                }
+              }
+            }
+          } catch (templateError) {
+            console.error("Error fetching loan template:", templateError);
+          }
+        }
+      } else {
+        console.log("No lead ID found, starting fresh lead");
+      }
+      console.log("=== LOAD LEAD DATA END ===");
+    };
+
+    loadLeadData();
+  }, [searchParams]);
+
+  // Debug state changes
+  useEffect(() => {
+    console.log(
+      "==========> clientCreatedInFineract state changed to:",
+      clientCreatedInFineract
+    );
+  }, [clientCreatedInFineract]);
+
+  // Debug currentLeadId changes
+  useEffect(() => {
+    console.log("==========> currentLeadId changed to:", currentLeadId);
+  }, [currentLeadId]);
+
+  // Debug fineractClientId changes
+  useEffect(() => {
+    console.log("==========> fineractClientId changed to:", fineractClientId);
+  }, [fineractClientId]);
+
+  // Update fineractClientId when client is created in Fineract
+  useEffect(() => {
+    if (clientCreatedInFineract && (window as any).fineractClientId) {
+      const clientId = (window as any).fineractClientId;
+      setFineractClientId(clientId);
+      console.log("Updated fineractClientId from window:", clientId);
+    }
+  }, [clientCreatedInFineract]);
+
+  // Fetch template data using SWR
+  const { data: templateResult, error: templateError } = useSWR(
+    "/api/leads/template",
+    fetcher
+  );
+  const rawTemplateData = templateResult?.data || {
+    offices: [],
+    legalForms: [],
+    genders: [],
+    clientTypes: [],
+    clientClassifications: [],
+    savingsProducts: [],
+    activationDate: null,
+  };
+  const clientFormData = {
+    ...rawTemplateData,
+    activationDate: rawTemplateData.activationDate
+      ? new Date(rawTemplateData.activationDate)
+      : null,
+  };
+
+  // Check if client exists in Fineract by National ID
+  const checkClientExists = async (nationalId: string) => {
+    try {
+      const response = await fetch(`/api/fineract/clients/external-id`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ externalId: nationalId }),
+      });
+      if (response.ok) {
+        const clientData = await response.json();
+        setClientCreatedInFineract(true);
+        setFormCompletionStatus((prev) => ({ ...prev, client: true }));
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error("Error checking client existence:", error);
+      return false;
+    }
+  };
+
+  // Initialize form with default values - MUST BE BEFORE ANY CONDITIONAL RETURNS
+  const form = useForm({
     resolver: zodResolver(leadFormSchema),
+    mode: "onBlur", // Validate on blur for better UX
+    reValidateMode: "onChange", // Re-validate on change after first validation
     defaultValues: {
-      clientName: "",
-      clientEmail: "",
-      clientPhone: "",
-      clientCompany: "",
-      clientAddress: "",
-      loanType: "",
-      loanAmount: "",
-      loanPurpose: "",
-      loanTerm: "",
-      interestRate: "",
-      collateral: "",
-      notes: "",
-      priority: "medium",
+      officeId: "1",
+      legalFormId: "1",
+      externalId: "",
+      firstname: "",
+      middlename: "",
+      lastname: "",
+      dateOfBirth: undefined,
+      gender: "",
+      isStaff: false,
+      mobileNo: "",
+      countryCode: "+263",
+      emailAddress: "",
+      clientTypeId: "",
+      clientClassificationId: "",
+      submittedOnDate: new Date(),
+      active: true,
+      activationDate: undefined,
+      openSavingsAccount: false,
+      savingsProductId: "",
+      // Financial fields
+      monthlyIncomeRange: "",
+      employmentStatus: "",
+      employerName: "",
+      yearsAtCurrentJob: "",
+      hasExistingLoans: false,
+      monthlyDebtPayments: 0,
+      propertyOwnership: "",
+      businessOwnership: false,
+      businessType: "",
+      // Additional Information fields
+      priority: "",
       assignTo: "",
-      isExistingClient: false,
+      notes: "",
     },
   });
+
+  // Handle template loading error
+  if (templateError) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="icon" asChild className="h-8 w-8">
+              <Link href="/leads">
+                <ArrowLeft className="h-4 w-4" />
+              </Link>
+            </Button>
+            <h1 className="text-2xl font-bold tracking-tight">
+              Create New Lead
+            </h1>
+          </div>
+        </div>
+
+        <Card className="border-red-200 bg-red-50">
+          <CardContent className="pt-6">
+            <div className="text-center">
+              <div className="text-red-600 font-medium">
+                Error loading form data
+              </div>
+              <div className="text-sm text-red-500 mt-1">
+                {templateError.message}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // Handle loading state
+  if (!templateResult) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="icon" asChild className="h-8 w-8">
+              <Link href="/leads">
+                <ArrowLeft className="h-4 w-4" />
+              </Link>
+            </Button>
+            <h1 className="text-2xl font-bold tracking-tight">
+              Create New Lead
+            </h1>
+          </div>
+        </div>
+
+        <Card className="animate-pulse">
+          <CardHeader>
+            <div className="h-6 bg-gray-200 rounded w-1/3 mb-2"></div>
+            <div className="h-4 bg-gray-200 rounded w-1/2"></div>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {[...Array(6)].map((_, i) => (
+                <div key={i}>
+                  <div className="h-4 bg-gray-200 rounded w-1/3 mb-2"></div>
+                  <div className="h-10 bg-gray-200 rounded"></div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   // Handle form submission
   const onSubmit = async (data: LeadFormValues) => {
     setIsSubmitting(true);
 
     try {
-      // This would normally be an API call to create the lead
-      console.log("Form data:", data);
-      console.log("Affordability result:", affordabilityResult);
-      console.log("Selected offer:", selectedOffer);
+      // Trigger form validation
+      const isValid = await form.trigger();
 
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1500));
+      if (!isValid) {
+        toast({
+          title: "Validation Error",
+          description: "Please fix the errors in the form before submitting",
+          variant: "destructive",
+        });
+        throw new Error("Form validation failed");
+      }
 
-      // Redirect to leads page after successful submission
-      router.push("/leads");
-    } catch (error) {
+      // Validate required fields before submission
+      if (!data.officeId || !data.legalFormId) {
+        toast({
+          title: "Validation Error",
+          description:
+            "Please fill in all required fields (Office and Legal Form)",
+          variant: "destructive",
+        });
+        throw new Error("Missing required fields");
+      }
+
+      console.log("Form data being submitted:", data);
+
+      // Determine operation based on whether client was found
+      console.log(
+        "==========> clientCreatedInFineract state:",
+        clientCreatedInFineract
+      );
+      const operation = clientCreatedInFineract
+        ? "updateClient"
+        : "createLeadWithClient";
+      console.log("==========> Selected operation:", operation);
+
+      // Prepare data for the API call
+      const apiData = {
+        ...data,
+        // Convert string IDs to numbers
+        officeId: data.officeId ? Number(data.officeId) : undefined,
+        legalFormId: data.legalFormId ? Number(data.legalFormId) : undefined,
+        clientTypeId: data.clientTypeId ? Number(data.clientTypeId) : undefined,
+        clientClassificationId: data.clientClassificationId
+          ? Number(data.clientClassificationId)
+          : undefined,
+        genderId: data.gender ? Number(data.gender) : undefined,
+        // Convert data types to match the schema expectations
+        dateOfBirth: data.dateOfBirth ? new Date(data.dateOfBirth) : undefined,
+        submittedOnDate: data.submittedOnDate
+          ? new Date(data.submittedOnDate)
+          : new Date(),
+        activationDate: data.activationDate
+          ? new Date(data.activationDate)
+          : undefined,
+        savingsProductId: data.savingsProductId
+          ? Number(data.savingsProductId)
+          : undefined,
+        monthlyDebtPayments: data.monthlyDebtPayments
+          ? Number(data.monthlyDebtPayments)
+          : undefined,
+        // Add affordability data
+        affordabilityResult,
+        selectedOffer,
+      };
+
+      // If updating client, add the Fineract client ID and existing lead ID
+      if (operation === "updateClient") {
+        // Get the Fineract client ID from the client lookup
+        const fineractClientId = (window as any).fineractClientId;
+        console.log(
+          "==========> Retrieved fineractClientId from window:",
+          fineractClientId
+        );
+        console.log("==========> Current leadId:", currentLeadId);
+
+        if (!fineractClientId) {
+          throw new Error("Cannot update client: Fineract client ID not found");
+        }
+
+        // Add Fineract client ID
+        (apiData as any).fineractClientId = fineractClientId;
+
+        // CRITICAL: Add existing lead ID to update the same lead instead of creating a new one
+        if (currentLeadId) {
+          (apiData as any).leadId = currentLeadId;
+          console.log(
+            "==========> Added existing leadId to apiData:",
+            currentLeadId
+          );
+        } else {
+          console.warn(
+            "==========> No currentLeadId found, may create new lead"
+          );
+        }
+
+        console.log(
+          "==========> Final apiData for update:",
+          (apiData as any).fineractClientId,
+          "leadId:",
+          (apiData as any).leadId
+        );
+      }
+
+      // Call the appropriate API operation
+      console.log("==========> Making API call to /api/leads/operations");
+      console.log("==========> Operation:", operation);
+      console.log("==========> API Data:", apiData);
+
+      const response = await fetch("/api/leads/operations", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          operation,
+          data: apiData,
+        }),
+      });
+
+      console.log("==========> Response status:", response.status);
+      console.log("==========> Response headers:", response.headers);
+
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          console.error(
+            "==========> Failed to parse error response as JSON:",
+            parseError
+          );
+          errorData = {
+            error: `HTTP ${response.status}: ${response.statusText}`,
+          };
+        }
+        console.error("==========> API Error:", errorData);
+        throw new Error(
+          errorData.error ||
+            `Failed to ${
+              operation === "updateClient" ? "update" : "create"
+            } lead and client`
+        );
+      }
+
+      const result = await response.json();
+      console.log(
+        `${
+          operation === "updateClient"
+            ? "Client updated"
+            : "Lead and client created"
+        } successfully:`,
+        result
+      );
+
+      // Store the lead ID for future operations
+      // Only update if we don't already have a leadId (prevents overwriting when updating)
+      if (result.leadId && (!currentLeadId || operation !== "updateClient")) {
+        console.log("==========> Setting leadId to:", result.leadId);
+        console.log("==========> Updating URL with leadId:", result.leadId);
+        setCurrentLeadId(result.leadId);
+        // Update URL with the new lead ID using replace to avoid history clutter
+        window.history.replaceState(null, "", `/leads/new?id=${result.leadId}`);
+      } else {
+        console.log("==========> Keeping existing leadId:", currentLeadId);
+      }
+
+      // Update UI state to reflect successful operation
+      setClientCreatedInFineract(true);
+      setFormCompletionStatus((prev) => ({ ...prev, client: true }));
+
+      toast({
+        title: "Success",
+        description:
+          operation === "updateClient"
+            ? `Client updated successfully! Fineract Account: ${
+                result.fineractAccountNo || "N/A"
+              }`
+            : `Lead and client created successfully! Fineract Account: ${
+                result.fineractAccountNo || "N/A"
+              }`,
+      });
+
+      // Clear local storage after URL is updated
+      LeadLocalStorage.clear();
+    } catch (error: any) {
       console.error("Error creating lead:", error);
+
+      // Check if it's a Fineract-specific error
+      const isFineractError =
+        error.message?.includes("Fineract") ||
+        error.message?.includes("client");
+
+      toast({
+        title: isFineractError ? "Fineract Connection Error" : "Error",
+        description:
+          error instanceof Error
+            ? error.message
+            : "An unexpected error occurred",
+        variant: "destructive",
+        action: isFineractError
+          ? {
+              label: "Retry",
+              onClick: () => {
+                // Retry the operation
+                onSubmit(data);
+              },
+            }
+          : undefined,
+      });
+
+      // Re-throw the error so the caller can handle it (e.g., prevent navigation)
+      throw error;
     } finally {
       setIsSubmitting(false);
     }
@@ -145,486 +889,501 @@ export function NewLeadForm({ clientFormData }: NewLeadFormProps) {
     if (result.offers.length > 0) {
       // Update the form with the first offer's details
       const firstOffer = result.offers[0];
-      form.setValue("loanAmount", firstOffer.loanAmount.toString());
-      form.setValue("loanTerm", firstOffer.termYears.toString());
-      form.setValue("interestRate", (firstOffer.interestRate * 100).toFixed(2));
-
-      // Add a note about the affordability calculation
-      const currentNotes = form.getValues("notes");
-      const affordabilityNote =
-        `Affordability calculation completed on ${new Date().toLocaleDateString()}.\n` +
-        `Monthly income: $${result.totalMonthlyIncome}\n` +
-        `Monthly expenditure: $${result.totalMonthlyExpenditure}\n` +
-        `Maximum affordable loan: $${result.maxLoanAmount}\n\n`;
-
-      form.setValue("notes", affordabilityNote + (currentNotes || ""));
-
-      // Do NOT automatically move to the loan details tab
-      // setActiveTab("loan");
+      // Note: We're not updating form fields here since this form is for client registration
+      // The loan details will be handled in a separate loan application form
     }
   };
 
   const handleOfferSelect = (offer: LoanOffer) => {
+    toast({
+      title: "Selected Offer",
+      description: "Offer selected successfully",
+    });
     setSelectedOffer(offer);
 
-    // Update loan details in the form
-    form.setValue("loanAmount", offer.loanAmount.toString());
-    form.setValue("loanTerm", offer.termYears.toString());
-    form.setValue("interestRate", (offer.interestRate * 100).toString());
+    // Note: We're not updating form fields here since this form is for client registration
+    // The loan details will be handled in a separate loan application form
   };
 
-  // Format currency
-  const formatCurrency = (amount: number | string) => {
+  // Format currency - uses currency from context
+  const formatCurrencyLocal = (amount: number | string) => {
     const numAmount =
       typeof amount === "string" ? Number.parseFloat(amount) : amount;
-    if (isNaN(numAmount)) return "$0";
+    if (isNaN(numAmount)) return `${currencySymbol}0`;
 
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(numAmount);
+    try {
+      return new Intl.NumberFormat("en-US", {
+        style: "currency",
+        currency: currencyCode,
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0,
+      }).format(numAmount);
+    } catch {
+      return `${currencySymbol}${numAmount.toLocaleString()}`;
+    }
+  };
+
+  // Handle step navigation
+  const handleStepNavigation = (stepId: string) => {
+    setActiveTab(stepId);
+  };
+
+  // Check if next button should be disabled
+  const isNextButtonDisabled = (currentTab: string) => {
+    const tabOrder = [
+      "client",
+      "affordability",
+      "loan",
+      "terms",
+      "schedule",
+      "contracts",
+    ];
+    const currentIndex = tabOrder.indexOf(currentTab);
+
+    // Disable if any previous tab is not completed
+    for (let i = 0; i < currentIndex; i++) {
+      if (
+        !formCompletionStatus[tabOrder[i] as keyof typeof formCompletionStatus]
+      ) {
+        return true;
+      }
+    }
+    return false;
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="icon"
-            asChild
-            className="h-8 w-8 border-[#1a2035]"
-          >
-            <Link href="/leads">
-              <ArrowLeft className="h-4 w-4" />
-            </Link>
-          </Button>
-          <h1 className="text-2xl font-bold tracking-tight text-white">
-            Create New Lead
-          </h1>
+    <div className="min-h-screen flex flex-col">
+      {/* Fixed Header */}
+      <div className="flex-shrink-0 px-2 py-2 lg:px-6 lg:py-6 border-b bg-background">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="icon" asChild className="h-8 w-8">
+              <Link href="/leads">
+                <ArrowLeft className="h-4 w-4" />
+              </Link>
+            </Button>
+            <h1 className="text-lg lg:text-2xl font-bold tracking-tight">
+              Create New Lead
+            </h1>
+          </div>
         </div>
       </div>
 
-      <form onSubmit={form.handleSubmit(onSubmit)}>
-        <Tabs
-          value={activeTab}
-          onValueChange={setActiveTab}
-          className="space-y-4"
-        >
-          <TabsList className="bg-[#0d121f] border border-[#1a2035] w-full sm:w-auto overflow-x-auto">
-            <TabsTrigger
-              value="client"
-              className="data-[state=active]:bg-blue-500"
-            >
-              Client Information
-            </TabsTrigger>
-            <TabsTrigger
-              value="affordability"
-              className="data-[state=active]:bg-blue-500"
-            >
-              <Calculator className="mr-2 h-4 w-4" />
-              <span className="whitespace-nowrap">Affordability</span>
-            </TabsTrigger>
-            <TabsTrigger
-              value="loan"
-              className="data-[state=active]:bg-blue-500"
-            >
-              <CreditCard className="mr-2 h-4 w-4" />
-              <span className="whitespace-nowrap">Loan Details</span>
-              {selectedOffer && (
-                <Badge className="ml-2 bg-green-500 text-white">
-                  Offer Selected
-                </Badge>
+      {/* Scrollable Content */}
+      <div className="flex-1">
+        <div className="px-2 py-2 lg:px-6 lg:py-6 space-y-2 lg:space-y-6">
+          {/* Form Validation Summary */}
+          {Object.keys(form.formState.errors).length > 0 && (
+            <FormValidationSummary
+              errors={Object.entries(form.formState.errors).map(
+                ([field, error]) => ({
+                  field: field.charAt(0).toUpperCase() + field.slice(1),
+                  message: error?.message || "Invalid value",
+                })
               )}
-            </TabsTrigger>
-            <TabsTrigger
-              value="additional"
-              className="data-[state=active]:bg-blue-500"
-            >
-              Additional Information
-            </TabsTrigger>
-          </TabsList>
+              onDismiss={() => {
+                // Clear errors by resetting the form state
+                form.clearErrors();
+              }}
+            />
+          )}
 
-          {/* Client Information Tab */}
-          <TabsContent value="client">
-            <Card className="border-[#1a2035] bg-[#0d121f] text-white">
-              <CardHeader>
-                <CardTitle>Client Information</CardTitle>
-                <CardDescription className="text-gray-400">
-                  Enter the client's personal and contact information.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <ClientRegistrationForm formData={clientFormData} />
+          <Tabs
+            value={activeTab}
+            onValueChange={setActiveTab}
+            className="space-y-4"
+          >
+            <TabsList className="w-full grid grid-cols-7 gap-0 lg:grid lg:grid-cols-7 lg:gap-0">
+              <TabsTrigger
+                value="client"
+                className={`data-[state=active]:bg-blue-500 flex-1 justify-center ${
+                  formCompletionStatus.client
+                    ? "bg-green-100 text-green-700"
+                    : ""
+                }`}
+                title="Client Information"
+              >
+                <User className="h-4 w-4" />
+                <span className="hidden sm:inline ml-1 lg:ml-2">Client</span>
+                {formCompletionStatus.client && (
+                  <Badge className="ml-1 bg-green-500 text-white text-xs">
+                    ✓
+                  </Badge>
+                )}
+              </TabsTrigger>
+              <TabsTrigger
+                value="affordability"
+                className={`data-[state=active]:bg-blue-500 flex-1 justify-center ${
+                  formCompletionStatus.affordability
+                    ? "bg-green-100 text-green-700"
+                    : ""
+                }`}
+                title="Affordability"
+              >
+                <Calculator className="h-4 w-4" />
+                <span className="hidden sm:inline ml-1 lg:ml-2">
+                  Affordability
+                </span>
+                {formCompletionStatus.affordability && (
+                  <Badge className="ml-1 bg-green-500 text-white text-xs">
+                    ✓
+                  </Badge>
+                )}
+              </TabsTrigger>
+              <TabsTrigger
+                value="loan"
+                className={`data-[state=active]:bg-blue-500 flex-1 justify-center ${
+                  formCompletionStatus.loan ? "bg-green-100 text-green-700" : ""
+                }`}
+                title="Loan Details"
+              >
+                <CreditCard className="h-4 w-4" />
+                <span className="hidden sm:inline ml-1 lg:ml-2">Loan</span>
+                {formCompletionStatus.loan && (
+                  <Badge className="ml-1 bg-green-500 text-white text-xs">
+                    ✓
+                  </Badge>
+                )}
+              </TabsTrigger>
+              <TabsTrigger
+                value="terms"
+                className={`data-[state=active]:bg-blue-500 flex-1 justify-center ${
+                  formCompletionStatus.terms
+                    ? "bg-green-100 text-green-700"
+                    : ""
+                }`}
+                title="Terms and Charges"
+              >
+                <FileText className="h-4 w-4" />
+                <span className="hidden sm:inline ml-1 lg:ml-2">
+                  Terms and Charges
+                </span>
+                {formCompletionStatus.terms && (
+                  <Badge className="ml-1 bg-green-500 text-white text-xs">
+                    ✓
+                  </Badge>
+                )}
+              </TabsTrigger>
+              <TabsTrigger
+                value="schedule"
+                className={`data-[state=active]:bg-blue-500 flex-1 justify-center ${
+                  formCompletionStatus.schedule
+                    ? "bg-green-100 text-green-700"
+                    : ""
+                }`}
+                title="Repayment Schedule"
+              >
+                <Calendar className="h-4 w-4" />
+                <span className="hidden sm:inline ml-1 lg:ml-2">Schedule</span>
+                {formCompletionStatus.schedule && (
+                  <Badge className="ml-1 bg-green-500 text-white text-xs">
+                    ✓
+                  </Badge>
+                )}
+              </TabsTrigger>
+              <TabsTrigger
+                value="contracts"
+                className={`data-[state=active]:bg-blue-500 flex-1 justify-center ${
+                  formCompletionStatus.contracts
+                    ? "bg-green-100 text-green-700"
+                    : ""
+                }`}
+                title="Loan Contracts"
+              >
+                <FileText className="h-4 w-4" />
+                <span className="hidden sm:inline ml-1 lg:ml-2">Contracts</span>
+                {formCompletionStatus.contracts && (
+                  <Badge className="ml-1 bg-green-500 text-white text-xs">
+                    ✓
+                  </Badge>
+                )}
+              </TabsTrigger>
+            </TabsList>
 
-                <div className="flex justify-end">
-                  <Button
-                    type="button"
-                    className="bg-blue-500 hover:bg-blue-600"
-                    onClick={() => setActiveTab("affordability")}
-                  >
-                    Next: Affordability
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
+            {/* Client Information Tab */}
+            <TabsContent value="client" className="mt-0">
+              <Card className="px-2 py-2 lg:px-6 lg:py-6">
+                <CardHeader className="px-2 lg:px-6">
+                  <CardTitle>Client Information</CardTitle>
+                  <CardDescription>
+                    Enter the client's personal and contact information.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4 px-2 lg:px-6">
+                  <ClientRegistrationForm
+                    leadId={currentLeadId || undefined}
+                    formData={clientFormData}
+                    externalForm={form}
+                    onFormSubmit={onSubmit}
+                    clientCreatedInFineract={clientCreatedInFineract}
+                    setFormCompletionStatus={setFormCompletionStatus}
+                    setClientCreatedInFineract={setClientCreatedInFineract}
+                    isSubmitting={isSubmitting}
+                    onAllSectionsComplete={setAllClientSectionsComplete}
+                    onLeadIdChange={(newLeadId) => {
+                      console.log("==========> Lead ID propagated from ClientRegistrationForm:", newLeadId);
+                      setCurrentLeadId(newLeadId);
+                      window.history.replaceState(null, "", `/leads/new?id=${newLeadId}`);
+                    }}
+                    onClientCreated={() => {
+                      setClientCreatedInFineract(true);
+                      setFormCompletionStatus((prev) => ({
+                        ...prev,
+                        client: true,
+                      }));
+                    }}
+                  />
 
-          {/* Affordability Tab */}
-          <TabsContent value="affordability">
-            <Card className="border-[#1a2035] bg-[#0d121f] text-white">
-              <CardHeader>
-                <CardTitle>Affordability Calculator</CardTitle>
-                <CardDescription className="text-gray-400">
-                  Calculate loan affordability and generate offers based on
-                  client's financial situation
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <AffordabilityCalculator
-                  onCalculationComplete={handleAffordabilityCalculation}
-                  onOfferSelect={handleOfferSelect}
-                />
+                  <div className="flex justify-end">
+                    <Button
+                      type="button"
+                      className={`w-full sm:w-auto ${
+                        clientCreatedInFineract && allClientSectionsComplete
+                          ? "bg-green-500 hover:bg-green-600"
+                          : "bg-blue-500 hover:bg-blue-600"
+                      }`}
+                      disabled={
+                        !clientCreatedInFineract || !allClientSectionsComplete
+                      }
+                      onClick={() => setActiveTab("affordability")}
+                    >
+                      {!clientCreatedInFineract ? (
+                        "Complete Client Registration First"
+                      ) : !allClientSectionsComplete ? (
+                        "Complete All Client Tabs"
+                      ) : (
+                        <>✓ All Tabs Complete - Next: Affordability</>
+                      )}
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
 
-                <div className="flex justify-between mt-6 pt-6 border-t border-[#1a2035]">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="border-[#1a2035] hover:bg-[#1a2035]"
-                    onClick={() => setActiveTab("client")}
-                  >
-                    Back: Client Information
-                  </Button>
-
-                  <Button
-                    type="button"
-                    className="bg-blue-500 hover:bg-blue-600"
-                    onClick={(e) => {
-                      e.stopPropagation();
+            {/* Affordability Tab */}
+            <TabsContent value="affordability" className="mt-0">
+              <Card className="px-2 py-2 lg:px-6 lg:py-6">
+                <CardHeader className="px-2 lg:px-6">
+                  <CardTitle>Affordability Assessment</CardTitle>
+                  <CardDescription>
+                    Capture loan request and affordability details for the
+                    client
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="px-2 lg:px-6">
+                  <SimplifiedAffordabilityForm
+                    leadId={currentLeadId || undefined}
+                    onComplete={() => {
+                      setFormCompletionStatus((prev) => ({
+                        ...prev,
+                        affordability: true,
+                      }));
+                      toast({
+                        title: "Success",
+                        description:
+                          "Affordability assessment completed. You can now proceed to loan details.",
+                      });
                       setActiveTab("loan");
                     }}
-                  >
-                    Next: Loan Details
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
+                    onBack={() => setActiveTab("client")}
+                  />
+                </CardContent>
+              </Card>
+            </TabsContent>
 
-          {/* Loan Details Tab */}
-          <TabsContent value="loan">
-            <Card className="border-[#1a2035] bg-[#0d121f] text-white">
-              <CardHeader>
-                <CardTitle>Loan Details</CardTitle>
-                <CardDescription className="text-gray-400">
-                  {selectedOffer
-                    ? "Review and confirm the selected loan offer details"
-                    : "Enter information about the requested loan"}
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {selectedOffer && (
-                  <div className="mb-6 p-4 rounded-lg border border-blue-500 bg-blue-500/10">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Check className="h-5 w-5 text-green-400" />
-                      <h3 className="font-medium">
-                        Selected Offer: {selectedOffer.productName}
-                      </h3>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-                      <div>
-                        <span className="text-gray-400">Loan Amount:</span>{" "}
-                        <span className="font-medium">
-                          {formatCurrency(selectedOffer.loanAmount)}
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-gray-400">Interest Rate:</span>{" "}
-                        <span className="font-medium">
-                          {(selectedOffer.interestRate * 100).toFixed(2)}%
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-gray-400">Term:</span>{" "}
-                        <span className="font-medium">
-                          {selectedOffer.termYears} years
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-gray-400">Monthly Payment:</span>{" "}
-                        <span className="font-medium">
-                          {formatCurrency(selectedOffer.monthlyPayment)}
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-gray-400">Total Repayment:</span>{" "}
-                        <span className="font-medium">
-                          {formatCurrency(selectedOffer.totalRepayment)}
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-gray-400">Product Code:</span>{" "}
-                        <span className="font-medium">
-                          {selectedOffer.productCode}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="loanType">
-                      Loan Type <span className="text-red-500">*</span>
-                    </Label>
-                    <Select
-                      onValueChange={(value) =>
-                        form.setValue("loanType", value)
-                      }
-                      defaultValue={form.watch("loanType")}
-                    >
-                      <SelectTrigger className="border-[#1a2035] bg-[#0a0e17]">
-                        <SelectValue placeholder="Select loan type" />
-                      </SelectTrigger>
-                      <SelectContent className="border-[#1a2035] bg-[#0d121f] text-white">
-                        <SelectItem value="business">Business Loan</SelectItem>
-                        <SelectItem value="personal">Personal Loan</SelectItem>
-                        <SelectItem value="mortgage">Mortgage</SelectItem>
-                        <SelectItem value="auto">Auto Loan</SelectItem>
-                        <SelectItem value="education">
-                          Education Loan
-                        </SelectItem>
-                        <SelectItem value="other">Other</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    {form.formState.errors.loanType && (
-                      <p className="text-sm text-red-500">
-                        {form.formState.errors.loanType.message}
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="loanAmount">
-                      Loan Amount <span className="text-red-500">*</span>
-                    </Label>
-                    <Input
-                      id="loanAmount"
-                      placeholder="Enter loan amount"
-                      className="border-[#1a2035] bg-[#0a0e17]"
-                      {...form.register("loanAmount")}
+            {/* Loan Details Tab */}
+            <TabsContent value="loan" className="mt-0">
+              <Card className="px-2 py-2 lg:px-6 lg:py-6">
+                <CardContent className="p-2 lg:p-6">
+                  {fineractClientId ? (
+                    <LoanDetailsForm
+                      clientId={fineractClientId}
+                      leadId={currentLeadId || undefined}
+                      onSubmit={(data) => {
+                        console.log("Loan details submitted:", data);
+                        // Handle loan details submission
+                      }}
+                      onBack={() => setActiveTab("affordability")}
+                      onNext={(templateData) => {
+                        console.log(
+                          "Received template data in main form:",
+                          templateData
+                        );
+                        setLoanTemplateData(templateData);
+                        // Extract productId from templateData if available
+                        if (templateData?.productId) {
+                          setLoanProductId(templateData.productId);
+                        }
+                        setFormCompletionStatus((prev) => ({
+                          ...prev,
+                          loan: true,
+                        }));
+                        setActiveTab("terms");
+                      }}
+                      onComplete={() => {
+                        setFormCompletionStatus((prev) => ({
+                          ...prev,
+                          loan: true,
+                        }));
+                        toast({
+                          title: "Success",
+                          description:
+                            "Loan details saved successfully. You can proceed to the next stage.",
+                        });
+                        // Note: Navigation to next tab is handled by onNext callback
+                      }}
+                      sharedFirstRepaymentOn={sharedFirstRepaymentOn}
+                      onFirstRepaymentDateChange={setSharedFirstRepaymentOn}
                     />
-                    {form.formState.errors.loanAmount && (
-                      <p className="text-sm text-red-500">
-                        {form.formState.errors.loanAmount.message}
+                  ) : (
+                    <div className="text-center py-8">
+                      <p className="text-muted-foreground mb-4">
+                        Please complete the client registration first to access
+                        loan details.
                       </p>
-                    )}
-                  </div>
+                      <Button onClick={() => setActiveTab("client")}>
+                        Go to Client Details
+                      </Button>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="loanTerm">Loan Term</Label>
-                    <Select
-                      onValueChange={(value) =>
-                        form.setValue("loanTerm", value)
-                      }
-                      value={form.watch("loanTerm")}
-                    >
-                      <SelectTrigger className="border-[#1a2035] bg-[#0a0e17]">
-                        <SelectValue placeholder="Select loan term" />
-                      </SelectTrigger>
-                      <SelectContent className="border-[#1a2035] bg-[#0d121f] text-white">
-                        <SelectItem value="3">3 years</SelectItem>
-                        <SelectItem value="5">5 years</SelectItem>
-                        <SelectItem value="7">7 years</SelectItem>
-                        <SelectItem value="10">10 years</SelectItem>
-                        <SelectItem value="15">15 years</SelectItem>
-                        <SelectItem value="20">20 years</SelectItem>
-                        <SelectItem value="30">30 years</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="interestRate">Interest Rate (%)</Label>
-                    <Input
-                      id="interestRate"
-                      placeholder="Enter interest rate"
-                      className="border-[#1a2035] bg-[#0a0e17]"
-                      {...form.register("interestRate")}
+            {/* Loan Terms Tab */}
+            <TabsContent value="terms" className="mt-0">
+              <Card className="p-2 lg:p-6">
+                <CardContent className="p-2 lg:p-6">
+                  {loanTemplateData || (fineractClientId && loanProductId) ? (
+                    <LoanTermsForm
+                      key={`loan-terms-${currentLeadId}`}
+                      loanTemplate={loanTemplateData}
+                      clientId={fineractClientId || undefined}
+                      productId={loanProductId || undefined}
+                      leadId={currentLeadId || undefined}
+                      onSubmit={(data) => {
+                        console.log("Loan terms submitted:", data);
+                        // Update loanTerms state with submitted data including charges
+                        setLoanTerms(data);
+                        // Handle loan terms submission
+                        form.handleSubmit(onSubmit)();
+                      }}
+                      onBack={() => setActiveTab("loan")}
+                      onNext={() => setActiveTab("schedule")}
+                      onComplete={() => {
+                        setFormCompletionStatus((prev) => ({
+                          ...prev,
+                          terms: true,
+                        }));
+                        toast({
+                          title: "Success",
+                          description:
+                            "Loan terms saved successfully. You can proceed to the next stage.",
+                        });
+                      }}
+                      sharedFirstRepaymentOn={sharedFirstRepaymentOn}
+                      onFirstRepaymentDateChange={setSharedFirstRepaymentOn}
                     />
-                  </div>
-                </div>
+                  ) : (
+                    <div className="text-center py-8">
+                      <p className="text-muted-foreground mb-4">
+                        No loan template data available
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        Please complete the Loan Details tab first to load the
+                        template data.
+                      </p>
+                      <Button
+                        onClick={() => setActiveTab("loan")}
+                        className="mt-2"
+                      >
+                        Go to Loan Details
+                      </Button>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
 
-                <div className="space-y-2">
-                  <Label htmlFor="loanPurpose">Loan Purpose</Label>
-                  <Textarea
-                    id="loanPurpose"
-                    placeholder="Describe the purpose of the loan"
-                    className="border-[#1a2035] bg-[#0a0e17] min-h-[100px]"
-                    {...form.register("loanPurpose")}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="collateral">Collateral (if any)</Label>
-                  <Textarea
-                    id="collateral"
-                    placeholder="Describe any collateral for the loan"
-                    className="border-[#1a2035] bg-[#0a0e17] min-h-[100px]"
-                    {...form.register("collateral")}
-                  />
-                </div>
-
-                <div className="flex justify-between mt-6 pt-6 border-t border-[#1a2035]">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="border-[#1a2035] hover:bg-[#1a2035]"
-                    onClick={() => setActiveTab("affordability")}
-                  >
-                    Back: Affordability
-                  </Button>
-
-                  <Button
-                    type="button"
-                    className="bg-blue-500 hover:bg-blue-600"
-                    onClick={() => setActiveTab("additional")}
-                  >
-                    Next: Additional Information
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* Additional Information Tab */}
-          <TabsContent value="additional">
-            <Card className="border-[#1a2035] bg-[#0d121f] text-white">
-              <CardHeader>
-                <CardTitle>Additional Information</CardTitle>
-                <CardDescription className="text-gray-400">
-                  Add notes, assign team members, and set priority.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="priority">Priority</Label>
-                    <Select
-                      onValueChange={(value) =>
-                        form.setValue("priority", value)
+            {/* Repayment Schedule Tab */}
+            <TabsContent value="schedule" className="mt-0">
+              <Card className="px-2 py-2 lg:px-6 lg:py-6">
+                <CardContent className="p-2 lg:p-6">
+                  <RepaymentScheduleForm
+                    leadId={currentLeadId || undefined}
+                    clientId={fineractClientId || undefined}
+                    onBack={() => setActiveTab("terms")}
+                    onNext={() => setActiveTab("contracts")}
+                    onComplete={(data) => {
+                      if (data) {
+                        setRepaymentSchedule(data.repaymentSchedule);
+                        setLoanDetails(data.loanDetails);
+                        setLoanTerms(data.loanTerms);
+                        setFormCompletionStatus((prev) => ({
+                          ...prev,
+                          schedule: true,
+                        }));
+                        toast({
+                          title: "Success",
+                          description:
+                            "Repayment schedule generated successfully. Review the schedule and proceed to contracts when ready.",
+                        });
+                        // Don't auto-advance - let user review the schedule first
                       }
-                      defaultValue={form.watch("priority")}
-                    >
-                      <SelectTrigger className="border-[#1a2035] bg-[#0a0e17]">
-                        <SelectValue placeholder="Select priority" />
-                      </SelectTrigger>
-                      <SelectContent className="border-[#1a2035] bg-[#0d121f] text-white">
-                        <SelectItem value="low">Low</SelectItem>
-                        <SelectItem value="medium">Medium</SelectItem>
-                        <SelectItem value="high">High</SelectItem>
-                        <SelectItem value="urgent">Urgent</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="assignTo">Assign To</Label>
-                    <Select
-                      onValueChange={(value) =>
-                        form.setValue("assignTo", value)
-                      }
-                      defaultValue={form.watch("assignTo")}
-                    >
-                      <SelectTrigger className="border-[#1a2035] bg-[#0a0e17]">
-                        <SelectValue placeholder="Select team member" />
-                      </SelectTrigger>
-                      <SelectContent className="border-[#1a2035] bg-[#0d121f] text-white">
-                        <SelectItem value="jd">
-                          John Doe (Lead Qualification)
-                        </SelectItem>
-                        <SelectItem value="as">
-                          Alice Smith (Document Collection)
-                        </SelectItem>
-                        <SelectItem value="rj">
-                          Robert Johnson (Credit Assessment)
-                        </SelectItem>
-                        <SelectItem value="ad">
-                          Alex Donovan (Approval)
-                        </SelectItem>
-                        <SelectItem value="ms">
-                          Maria Santos (Disbursement)
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="notes">Notes</Label>
-                  <Textarea
-                    id="notes"
-                    placeholder="Add any additional notes or comments"
-                    className="border-[#1a2035] bg-[#0a0e17] min-h-[150px]"
-                    {...form.register("notes")}
+                    }}
                   />
-                </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
 
-                <div className="flex justify-between mt-6 pt-6 border-t border-[#1a2035]">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="border-[#1a2035] hover:bg-[#1a2035]"
-                    onClick={() => setActiveTab("loan")}
-                  >
-                    Back: Loan Details
-                  </Button>
-
-                  <Button
-                    type="submit"
-                    className="bg-blue-500 hover:bg-blue-600"
-                    disabled={isSubmitting}
-                  >
-                    {isSubmitting ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Saving...
-                      </>
-                    ) : (
-                      <>
-                        <Save className="mr-2 h-4 w-4" />
-                        Create Lead
-                      </>
-                    )}
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
-      </form>
-
-      {/* Debug section - remove in production */}
-      {process.env.NODE_ENV === "development" && (
-        <div className="text-xs text-gray-500 mt-4 p-4 border border-gray-700 rounded">
-          <details>
-            <summary>Debug Info</summary>
-            <div className="mt-2">
-              <p>
-                Selected Offer:{" "}
-                {selectedOffer ? JSON.stringify(selectedOffer) : "None"}
-              </p>
-              <p>
-                Affordability Result:{" "}
-                {affordabilityResult ? "Available" : "None"}
-              </p>
-              <p>Active Tab: {activeTab}</p>
-            </div>
-          </details>
+            {/* Loan Contracts Tab */}
+            <TabsContent value="contracts" className="mt-0">
+              <Card className="px-2 py-2 lg:px-6 lg:py-6">
+                <CardHeader className="px-2 lg:px-6">
+                  <CardTitle>Loan Contracts</CardTitle>
+                  <CardDescription>
+                    Generate and sign loan contracts for the borrower
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="p-2 lg:p-6">
+                  {repaymentSchedule && loanTemplateData ? (
+                    <LoanContracts
+                      leadId={currentLeadId || undefined}
+                      clientId={fineractClientId || undefined}
+                      repaymentSchedule={repaymentSchedule}
+                      loanDetails={loanDetails}
+                      loanTerms={loanTerms}
+                      loanTemplate={loanTemplateData}
+                      onBack={() => setActiveTab("schedule")}
+                      onComplete={() => {
+                        setFormCompletionStatus((prev) => ({
+                          ...prev,
+                          contracts: true,
+                        }));
+                        toast({
+                          title: "Success",
+                          description:
+                            "Loan contracts completed successfully. Loan application is complete.",
+                        });
+                      }}
+                    />
+                  ) : (
+                    <div className="text-center py-8">
+                      <p className="text-muted-foreground mb-4">
+                        Please complete the repayment schedule first to access
+                        loan contracts.
+                      </p>
+                      <Button onClick={() => setActiveTab("schedule")}>
+                        Go to Repayment Schedule
+                      </Button>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
         </div>
-      )}
+      </div>
     </div>
   );
 }
