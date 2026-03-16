@@ -271,9 +271,9 @@ export const authOptions: NextAuthOptions = {
         const urlObj = new URL(url);
         const baseObj = new URL(baseUrl);
 
-        // Allow any *.kenacloanmatrix.com subdomain
         if (
           urlObj.hostname.endsWith(".kenacloanmatrix.com") ||
+          urlObj.hostname.endsWith(".kenac.co.zw") ||
           urlObj.hostname === baseObj.hostname ||
           urlObj.hostname === "localhost"
         ) {
