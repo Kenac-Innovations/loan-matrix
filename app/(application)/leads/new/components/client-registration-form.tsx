@@ -5875,7 +5875,7 @@ export function ClientRegistrationForm({
                       className="w-full"
                     >
                       <TabsList
-                        className={`grid${
+                        className={`grid ${
                           clientCreatedInFineract
                             ? "grid-cols-3"
                             : "grid-cols-2"

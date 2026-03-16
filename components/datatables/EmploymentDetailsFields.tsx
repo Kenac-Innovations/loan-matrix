@@ -64,10 +64,12 @@ function isAppointmentDateField(columnName: string): boolean {
   return (
     normalized === "appointmentdate" ||
     normalized === "dateofappointment" ||
+    normalized === "appointedon" ||
     normalized === "startdate" ||
     normalized === "employmentdate" ||
     normalized.includes("appointmentdate") ||
-    normalized.includes("dateofappointment")
+    normalized.includes("dateofappointment") ||
+    normalized.includes("appointedon")
   );
 }
 
@@ -130,6 +132,25 @@ function isEmployerNameField(columnName: string): boolean {
 function isEmployerIdField(columnName: string): boolean {
   const normalized = normalizeColumnName(columnName);
   return normalized === "employerid" || normalized === "employer";
+}
+
+// Find the best employer column for the SearchableSelect.
+// Prefers CODELOOKUP > STRING/TEXT > INTEGER to avoid storing
+// string names in integer columns (which causes parseInt → 0).
+function findBestEmployerHeader(headers: any[]): any | undefined {
+  const candidates = headers.filter(
+    (h) => h?.columnName && isEmployerField(h.columnName)
+  );
+  if (candidates.length === 0) return undefined;
+  const codeLookup = candidates.find(
+    (h) => h.columnDisplayType === "CODELOOKUP" && h.columnValues?.length > 0
+  );
+  if (codeLookup) return codeLookup;
+  const textCol = candidates.find(
+    (h) => h.columnDisplayType === "STRING" || h.columnDisplayType === "TEXT"
+  );
+  if (textCol) return textCol;
+  return candidates[0];
 }
 
 // Format header name for display
@@ -215,7 +236,7 @@ export function EmploymentDetailsFields({
   const contractEndDateHeader = headers.find((h) => h?.columnName && isContractEndDateField(h.columnName));
   const appointmentDateHeader = headers.find((h) => h?.columnName && isAppointmentDateField(h.columnName));
   const yearsOfServiceHeader = headers.find((h) => h?.columnName && isYearsOfServiceField(h.columnName));
-  const employerHeader = headers.find((h) => h?.columnName && isEmployerField(h.columnName));
+  const employerHeader = findBestEmployerHeader(headers);
   const occupationHeader = headers.find((h) => h?.columnName && isOccupationField(h.columnName));
 
   // Get current values
@@ -238,13 +259,58 @@ export function EmploymentDetailsFields({
     ? editedData[occupationHeader.columnName]
     : undefined;
 
-  // Get employer options based on client type
+  // Check if employer column is a Fineract CODELOOKUP (stores integer IDs)
+  const isEmployerCodeLookup = !!(
+    employerHeader?.columnDisplayType === "CODELOOKUP" &&
+    employerHeader?.columnValues?.length > 0
+  );
+
+  // Check if occupation column is a Fineract CODELOOKUP
+  const isOccupationCodeLookup = !!(
+    occupationHeader?.columnDisplayType === "CODELOOKUP" &&
+    occupationHeader?.columnValues?.length > 0
+  );
+
+  // Helper to extract clean label from a Fineract code value option
+  const extractCodeValueLabel = (option: any): string => {
+    if (option.name) return option.name;
+    if (option.value) {
+      const valueStr = String(option.value);
+      const cdMatch = valueStr.match(/^(.+?)\s+cd_[a-z_]+\s+/i);
+      if (cdMatch?.[1]) return cdMatch[1].trim();
+      const prefixMatch = valueStr.match(/^cd_[a-z_]+\s+(.+)$/i);
+      if (prefixMatch?.[1]) return prefixMatch[1].trim();
+      return valueStr;
+    }
+    return option.id.toString();
+  };
+
+  // Resolve the employer display name from a CODELOOKUP integer ID
+  const resolveEmployerName = useCallback(
+    (value: any): string | null => {
+      if (!isEmployerCodeLookup || value == null) return typeof value === "string" ? value : null;
+      const numericValue = Number(value);
+      const match = employerHeader!.columnValues.find(
+        (opt: any) => opt.id === value || opt.id === numericValue,
+      );
+      return match ? extractCodeValueLabel(match) : null;
+    },
+    [isEmployerCodeLookup, employerHeader],
+  );
+
+  // Get employer options: use Fineract code values for CODELOOKUP, local list for TEXT
   const employerOptions = useMemo(() => {
+    if (isEmployerCodeLookup) {
+      return employerHeader!.columnValues.map((option: any) => ({
+        value: option.id.toString(),
+        label: extractCodeValueLabel(option),
+      }));
+    }
     return getEmployersByClientType(clientType).map((emp) => ({
       value: emp,
       label: emp,
     }));
-  }, [clientType]);
+  }, [isEmployerCodeLookup, employerHeader, clientType]);
 
   // Check if this is an SME client (no predefined employers)
   const isSMEClient = useMemo(() => {
@@ -253,15 +319,25 @@ export function EmploymentDetailsFields({
     return upperType.includes("SME") || upperType.includes("ENTERPRISE") || upperType.includes("BUSINESS");
   }, [clientType]);
 
-  // Get occupation options based on selected employer
+  // Get occupation options: use Fineract code values for CODELOOKUP, local list for TEXT
   const occupationOptions = useMemo(() => {
+    if (isOccupationCodeLookup) {
+      return occupationHeader!.columnValues.map((option: any) => ({
+        value: option.id.toString(),
+        label: extractCodeValueLabel(option),
+      }));
+    }
     return getOccupationsByEmployer(currentEmployer);
-  }, [currentEmployer]);
+  }, [isOccupationCodeLookup, occupationHeader, currentEmployer]);
 
   // Check if selected employer is Zambia Army (under PDA)
   const isArmyEmployer = useMemo(() => {
+    if (isEmployerCodeLookup) {
+      const name = resolveEmployerName(currentEmployer);
+      return name ? isZambiaArmy(name) : false;
+    }
     return isZambiaArmy(currentEmployer);
-  }, [currentEmployer]);
+  }, [currentEmployer, isEmployerCodeLookup, resolveEmployerName]);
 
   // Check if employment type is CONTRACT
   const isContract = useMemo(() => {
@@ -448,7 +524,7 @@ export function EmploymentDetailsFields({
         <div className="space-y-1">
           <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             {formatHeaderName(employerHeader.columnName)}
-            {clientType && (
+            {clientType && !isEmployerCodeLookup && (
               <span className="ml-2 text-xs font-normal text-blue-500">
                 ({clientType} employers)
               </span>
@@ -458,16 +534,31 @@ export function EmploymentDetailsFields({
             options={employerOptions}
             value={currentEmployer?.toString() ?? ""}
             onValueChange={(value) => {
-              onFieldChange(employerHeader.columnName, value);
-              // Clear occupation when employer changes if it's Zambia Army
-              if (occupationHeader && isZambiaArmy(value) !== isArmyEmployer) {
-                onFieldChange(occupationHeader.columnName, "");
+              const isIntegerType =
+                employerHeader.columnType === "INTEGER" ||
+                employerHeader.columnType === "BIGINT";
+              const storedValue =
+                isEmployerCodeLookup && isIntegerType
+                  ? parseInt(value) || 0
+                  : value;
+              onFieldChange(employerHeader.columnName, storedValue);
+              // Clear occupation when employer changes
+              if (occupationHeader) {
+                const newName = isEmployerCodeLookup
+                  ? resolveEmployerName(parseInt(value))
+                  : value;
+                if (
+                  newName &&
+                  isZambiaArmy(newName) !== isArmyEmployer
+                ) {
+                  onFieldChange(occupationHeader.columnName, "");
+                }
               }
             }}
             placeholder={`Select ${clientType || ""} employer`}
             emptyMessage="No employers available"
           />
-          {clientType && (
+          {clientType && !isEmployerCodeLookup && (
             <p className="text-xs text-muted-foreground">
               Showing {clientType === "GRZ" ? "government" : "private sector"} employers
             </p>
@@ -491,7 +582,7 @@ export function EmploymentDetailsFields({
         <div className="space-y-1">
           <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             {formatHeaderName(occupationHeader.columnName)}
-            {isArmyEmployer && (
+            {isArmyEmployer && !isOccupationCodeLookup && (
               <span className="ml-2 text-xs font-normal text-orange-500">
                 (Army personnel)
               </span>
@@ -500,11 +591,21 @@ export function EmploymentDetailsFields({
           <SearchableSelect
             options={occupationOptions}
             value={currentOccupation?.toString() ?? ""}
-            onValueChange={(value) => onFieldChange(occupationHeader.columnName, value)}
+            onValueChange={(value) => {
+              const isIntegerType =
+                occupationHeader.columnType === "INTEGER" ||
+                occupationHeader.columnType === "BIGINT";
+              onFieldChange(
+                occupationHeader.columnName,
+                isOccupationCodeLookup && isIntegerType
+                  ? parseInt(value) || 0
+                  : value,
+              );
+            }}
             placeholder="Select occupation"
             emptyMessage="No occupations available"
           />
-          {isArmyEmployer && (
+          {isArmyEmployer && !isOccupationCodeLookup && (
             <p className="text-xs text-orange-500 mt-1">
               Zambia Army personnel: Select Army Soldier, Army Officer, Confidential, or Non Military Personnel
             </p>
@@ -543,11 +644,10 @@ export function getEmploymentDetailColumnNames(headers: any[] | undefined | null
   const contractEndDateHeader = headers.find((h) => h?.columnName && isContractEndDateField(h.columnName));
   const appointmentDateHeader = headers.find((h) => h?.columnName && isAppointmentDateField(h.columnName));
   const yearsOfServiceHeader = headers.find((h) => h?.columnName && isYearsOfServiceField(h.columnName));
-  const employerHeader = headers.find((h) => h?.columnName && isEmployerField(h.columnName));
+  const employerHeader = findBestEmployerHeader(headers);
   const occupationHeader = headers.find((h) => h?.columnName && isOccupationField(h.columnName));
   // Hidden fields
   const payDateHeader = headers.find((h) => h?.columnName && isPayDateField(h.columnName));
-  const employerNameHeader = headers.find((h) => h?.columnName && isEmployerNameField(h.columnName));
 
   if (employmentTypeHeader) names.push(employmentTypeHeader.columnName);
   if (contractStartDateHeader) names.push(contractStartDateHeader.columnName);
@@ -558,7 +658,13 @@ export function getEmploymentDetailColumnNames(headers: any[] | undefined | null
   if (occupationHeader) names.push(occupationHeader.columnName);
   // Include hidden fields so they're not rendered by generic renderer
   if (payDateHeader) names.push(payDateHeader.columnName);
-  if (employerNameHeader) names.push(employerNameHeader.columnName);
+  // Skip ALL employer-related columns (e.g., both "Employer ID" and "Employer Name")
+  // so the generic renderer doesn't show a raw integer input for the ID column
+  headers.forEach((h) => {
+    if (h?.columnName && isEmployerField(h.columnName) && !names.includes(h.columnName)) {
+      names.push(h.columnName);
+    }
+  });
 
   return names;
 }
