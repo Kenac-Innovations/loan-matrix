@@ -133,7 +133,15 @@ export async function fetchFineractAPI(
       throw error;
     }
 
-    return await response.json();
+    const text = await response.text();
+    if (!text || text.trim() === "") {
+      return {};
+    }
+    try {
+      return JSON.parse(text);
+    } catch {
+      return {};
+    }
   } catch (error) {
     console.error("API request failed:", error);
     throw error;
