@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { Loader2, AlertCircle, Edit2, Save, X, Plus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -419,12 +419,12 @@ export function DynamicDatatableContent({
     setEditedData({});
   };
 
-  const handleFieldChange = (columnName: string, value: any) => {
+  const handleFieldChange = useCallback((columnName: string, value: any) => {
     setEditedData((prev) => ({
       ...prev,
       [columnName]: value,
     }));
-  };
+  }, []);
 
   const saveRow = async (rowIndex: number) => {
     setSaving(true);
