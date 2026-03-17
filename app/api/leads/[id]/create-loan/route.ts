@@ -46,13 +46,16 @@ export async function POST(
       );
     }
 
-    // Determine submitted and expected disbursement dates
-    let submittedDate = loanData.submittedOn
+    // Determine submitted, expected disbursement, and first repayment dates
+    const submittedDate = loanData.submittedOn
       ? new Date(loanData.submittedOn)
       : new Date();
-    let disbursementDate = loanData.disbursementOn
+    const disbursementDate = loanData.disbursementOn
       ? new Date(loanData.disbursementOn)
       : new Date();
+    const firstRepaymentDate = loanData.firstRepaymentOn
+      ? new Date(loanData.firstRepaymentOn)
+      : null;
 
     const dateStr = format(submittedDate, "yyyy-MM-dd");
     const disbursementDateStr = format(disbursementDate, "yyyy-MM-dd");
@@ -75,6 +78,9 @@ export async function POST(
       transactionProcessingStrategyCode: "creocore-strategy",
       submittedOnDate: dateStr,
       expectedDisbursementDate: disbursementDateStr,
+      ...(firstRepaymentDate && {
+        repaymentsStartingFromDate: format(firstRepaymentDate, "yyyy-MM-dd"),
+      }),
       locale: "en",
       dateFormat: "yyyy-MM-dd",
       // Use lead ID as initial external ID, will be updated to loan ID after creation
@@ -87,6 +93,9 @@ export async function POST(
       })),
       collateral: [],
       loanType: "individual",
+      ...(loanData.isTopup && loanData.loanIdToClose
+        ? { isTopup: true, loanIdToClose: parseInt(loanData.loanIdToClose) }
+        : {}),
     };
 
     // Add optional fields if provided

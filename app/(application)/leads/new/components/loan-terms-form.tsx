@@ -1,15 +1,16 @@
 "use client";
 
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { format } from "date-fns";
-import { CalendarIcon, Plus, Trash2, X } from "lucide-react";
+import { CalendarIcon, Plus, Trash2, X, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -233,6 +234,13 @@ interface LoanTemplate {
     active: boolean;
     penalty: boolean;
   }>;
+  canUseForTopup?: boolean;
+  clientActiveLoanOptions?: Array<{
+    id: number;
+    accountNo: string;
+    productName: string;
+    loanBalance: number;
+  }>;
 }
 
 interface LoanTermsFormProps {
@@ -284,6 +292,8 @@ export function LoanTermsForm({
   const [newChargeDueDate, setNewChargeDueDate] = useState<Date | undefined>(
     undefined
   );
+  const [isTopup, setIsTopup] = useState(false);
+  const [loanIdToClose, setLoanIdToClose] = useState<string>("");
   const [sectionCompletion, setSectionCompletion] = useState({
     basicTerms: false,
     interestSchedule: false,
@@ -431,31 +441,62 @@ export function LoanTermsForm({
     },
   });
 
-  // Fetch detailed template when clientId and productId are available
+  // Fetch detailed template and product topup config when clientId and productId are available
   useEffect(() => {
     const fetchDetailedTemplate = async () => {
-      // Only fetch if we have clientId and productId, and don't already have a template with charges
       if (!clientId || !productId) return;
-      // If we already have a template with charges, don't refetch
       if (loanTemplate?.charges && loanTemplate.charges.length > 0) return;
 
-      // Reset frequency values flag only when we're actually fetching a new template
       frequencyValuesSet.current = false;
 
       try {
         setIsLoading(true);
         setError(null);
 
-        const response = await fetch(
-          `/api/fineract/loans/template?clientId=${clientId}&productId=${productId}&activeOnly=true&staffInSelectedOfficeOnly=true&templateType=individual`
-        );
+        // Fetch loan template and product details in parallel
+        const [templateRes, productRes] = await Promise.all([
+          fetch(
+            `/api/fineract/loans/template?clientId=${clientId}&productId=${productId}&activeOnly=true&staffInSelectedOfficeOnly=true&templateType=individual`
+          ),
+          fetch(`/api/fineract/loans/product/${productId}`),
+        ]);
 
-        if (!response.ok) {
+        if (!templateRes.ok) {
           throw new Error("Failed to fetch detailed loan template");
         }
 
-        const detailedTemplate = await response.json();
+        const detailedTemplate = await templateRes.json();
         console.log("Detailed loan template:", detailedTemplate);
+
+        // Merge product-level topup config into the template
+        if (productRes.ok) {
+          const productData = await productRes.json();
+          console.log("Product data - canUseForTopup:", productData.canUseForTopup);
+          if (productData.canUseForTopup) {
+            detailedTemplate.canUseForTopup = true;
+            // clientActiveLoanOptions may come from the template or we build from client accounts
+            if (!detailedTemplate.clientActiveLoanOptions) {
+              try {
+                const accountsRes = await fetch(`/api/fineract/clients/${clientId}/accounts`);
+                if (accountsRes.ok) {
+                  const accountsData = await accountsRes.json();
+                  const activeLoans = (accountsData.loanAccounts || []).filter(
+                    (la: any) => la.status?.active
+                  );
+                  detailedTemplate.clientActiveLoanOptions = activeLoans.map((la: any) => ({
+                    id: la.id,
+                    accountNo: la.accountNo,
+                    productName: la.productName || la.loanProductName || "",
+                    loanBalance: la.loanBalance || 0,
+                  }));
+                }
+              } catch (e) {
+                console.warn("Could not fetch client accounts for topup options:", e);
+              }
+            }
+          }
+        }
+
         setLoanTemplate(detailedTemplate);
 
         // Initialize editable charges from template
@@ -465,7 +506,7 @@ export function LoanTermsForm({
               chargeId: charge.chargeId || charge.id,
               name: charge.name || "Unknown Charge",
               amount: charge.amount || 0,
-              dueDate: new Date(), // Default to today, user can edit
+              dueDate: new Date(),
               originalCharge: charge,
             })
           );
@@ -1375,6 +1416,8 @@ export function LoanTermsForm({
         // Prepare data for saving (convert dates to ISO strings)
         const loanTermsData = {
           ...submissionData,
+          isTopup,
+          loanIdToClose: isTopup ? loanIdToClose : "",
           firstRepaymentOn: submissionData.firstRepaymentOn
             ? submissionData.firstRepaymentOn.toISOString()
             : null,
@@ -1426,7 +1469,11 @@ export function LoanTermsForm({
       interestSchedule: true,
       chargesCollateral: true,
     });
-    onSubmit(submissionData);
+    onSubmit({
+      ...submissionData,
+      isTopup,
+      loanIdToClose: isTopup ? loanIdToClose : "",
+    } as any);
     onNext();
   };
 
@@ -1527,29 +1574,89 @@ export function LoanTermsForm({
             <CardTitle>Principal</CardTitle>
             <CardDescription>Enter the principal loan amount</CardDescription>
           </CardHeader>
-          <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-2">
-              <Label htmlFor="principal" className="text-sm font-medium">
-                Principal Amount <span className="text-red-500">*</span>
-              </Label>
-              <div className="relative">
-                <Input
-                  id="principal"
-                  type="number"
-                  step="0.01"
-                  className="h-10 pr-16"
-                  {...form.register("principal", { valueAsNumber: true })}
-                />
-                {/* <div className="absolute inset-y-0 right-0 flex items-center pr-3">
-                <span className="text-sm text-muted-foreground">ZMW</span>
-              </div> */}
+          <CardContent className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-2">
+                <Label htmlFor="principal" className="text-sm font-medium">
+                  Principal Amount <span className="text-red-500">*</span>
+                </Label>
+                <div className="relative">
+                  <Input
+                    id="principal"
+                    type="number"
+                    step="0.01"
+                    className="h-10 pr-16"
+                    {...form.register("principal", { valueAsNumber: true })}
+                  />
+                </div>
+                {form.formState.errors.principal && (
+                  <p className="text-sm text-red-500">
+                    {form.formState.errors.principal.message}
+                  </p>
+                )}
               </div>
-              {form.formState.errors.principal && (
-                <p className="text-sm text-red-500">
-                  {form.formState.errors.principal.message}
-                </p>
+
+              {loanTemplate?.canUseForTopup && (
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium flex items-center gap-2">
+                    <RefreshCw className="h-4 w-4" />
+                    Loan Top-Up / Refinancing
+                  </Label>
+                  <div className="flex items-center gap-3 h-10">
+                    <Switch
+                      checked={isTopup}
+                      onCheckedChange={(checked) => {
+                        setIsTopup(checked);
+                        if (!checked) setLoanIdToClose("");
+                      }}
+                    />
+                    <span className="text-sm text-muted-foreground">
+                      {isTopup ? "Top-up enabled" : "New loan"}
+                    </span>
+                  </div>
+                </div>
               )}
             </div>
+
+            {isTopup && loanTemplate?.canUseForTopup && (
+              <div className="rounded-lg border border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950 p-4 space-y-3">
+                <Label className="text-sm font-medium">
+                  Select Loan to Close (Top-Up) <span className="text-red-500">*</span>
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  The outstanding balance on the selected loan will be deducted from the new
+                  disbursement. The remaining amount will be paid out to the client.
+                </p>
+                {loanTemplate.clientActiveLoanOptions &&
+                loanTemplate.clientActiveLoanOptions.length > 0 ? (
+                  <Select
+                    value={loanIdToClose}
+                    onValueChange={setLoanIdToClose}
+                  >
+                    <SelectTrigger className="bg-white dark:bg-background">
+                      <SelectValue placeholder="Choose an active loan to close..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {loanTemplate.clientActiveLoanOptions.map((loan) => (
+                        <SelectItem
+                          key={loan.id}
+                          value={loan.id.toString()}
+                        >
+                          {loan.accountNo} – {loan.productName} (Balance:{" "}
+                          {loan.loanBalance?.toLocaleString("en-US", {
+                            minimumFractionDigits: 2,
+                          })})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <p className="text-sm text-amber-600 dark:text-amber-400">
+                    No active loans available for top-up on this client.
+                  </p>
+                )}
+              </div>
+            )}
           </CardContent>
         </Card>
 
