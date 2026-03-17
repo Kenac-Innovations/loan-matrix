@@ -30,9 +30,25 @@ model Tenant {
   validationRules        ValidationRule[]
   receiptRanges          ReceiptRange[]
   usedReceipts           UsedReceipt[]
+  loanContractTemplates  LoanContractTemplate[]
 
   @@index([slug])
   @@index([isActive])
+}
+
+model LoanContractTemplate {
+  id         String   @id @default(cuid())
+  tenantId   String
+  name       String   // e.g. "Full Loan Template"
+  slug       String   // e.g. "full-loan" - used to identify which template to show
+  content    String   @db.Text // HTML content
+  isDefault  Boolean  @default(false) // if true, use as main contract for this tenant
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, slug])
+  @@index([tenantId])
 }
 
 model PipelineStage {

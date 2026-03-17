@@ -134,8 +134,23 @@ export function LoanContracts({
   >([]);
   const [isLoadingSignatures, setIsLoadingSignatures] = useState(false);
   const [showKeyFacts, setShowKeyFacts] = useState(true); // Toggle between KFS and full contract preview
+  const [tenantContractHtml, setTenantContractHtml] = useState<string | null>(null); // Tenant-specific full contract template (e.g. Omama)
   const { toast } = useToast();
   const router = useRouter();
+
+  // Fetch tenant-specific contract template (e.g. Omama full loan template) so it appears in Contracts tab
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/tenant/contract-template?slug=full-loan")
+      .then((res) => res.json())
+      .then((data: { html?: string | null }) => {
+        if (!cancelled && data.html) setTenantContractHtml(data.html);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Transform contract data to Key Facts Statement format
   const getKeyFactsData = (): KeyFactsData | null => {
@@ -2173,11 +2188,14 @@ export function LoanContracts({
               />
             ) : (
               <iframe
-                srcDoc={generateContractHTML(contractData, {
-                  borrower: borrowerSignature,
-                  guarantor: guarantorSignature,
-                  loanOfficer: loanOfficerSignature,
-                })}
+                srcDoc={
+                  tenantContractHtml ??
+                  generateContractHTML(contractData, {
+                    borrower: borrowerSignature,
+                    guarantor: guarantorSignature,
+                    loanOfficer: loanOfficerSignature,
+                  })
+                }
                 className="w-full border rounded bg-white"
                 style={{ height: "700px", minHeight: "500px" }}
                 title="Loan Contract Preview"
