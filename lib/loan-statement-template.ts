@@ -28,6 +28,9 @@ export interface LoanStatementData {
   totalDebits: number;
   totalCredits: number;
   closingBalance: number;
+
+  // Prepared by
+  preparedBy?: string;
 }
 
 export interface LoanTransaction {
@@ -392,13 +395,13 @@ export function generateLoanStatementHTML(data: LoanStatementData): string {
     <div class="footer">
       <div class="footer-left">
         <div class="signature-line">
-          Prepared By : <span class="signature-dots"></span>
+          Prepared By : ${data.preparedBy ? `<strong>${data.preparedBy}</strong>` : ''} <span class="signature-dots"></span>
         </div>
         <div class="signature-line">
           Sign / Stamp : <span class="signature-dots"></span>
         </div>
         <div class="signature-line">
-          Date : <span class="signature-dots"></span>
+          Date : ${data.preparedBy ? data.printDate : ''} <span class="signature-dots"></span>
         </div>
       </div>
       <div class="footer-right">
@@ -452,39 +455,63 @@ export function parseFineractDate(dateValue: string | number[] | undefined): str
 }
 
 /**
- * Map Fineract transaction type to readable description
+ * Map Fineract transaction type to readable description using the
+ * narration from Fineract (type.value) and the transaction breakdown.
+ * For fee accruals, attempts to match the fee amount to a loan charge name.
  */
 export function mapTransactionType(
   type: { code?: string; value?: string } | string,
   accountNo?: string,
-  paymentDetail?: string
+  paymentDetail?: string,
+  breakdown?: {
+    interestPortion?: number;
+    feeChargesPortion?: number;
+    penaltyChargesPortion?: number;
+    principalPortion?: number;
+  },
+  chargeNameByAmount?: Map<number, string>
 ): string {
   const typeCode = typeof type === "string" ? type : type?.code || "";
   const typeValue = typeof type === "string" ? type : type?.value || "";
 
-  // Map common transaction types
   if (typeCode.includes("disbursement") || typeValue.toLowerCase().includes("disbursement")) {
     return `Disbursement ${accountNo || ""}`.trim();
   }
+
   if (typeCode.includes("repayment") || typeValue.toLowerCase().includes("repayment")) {
     const desc = paymentDetail || "Capital Repayment";
     return `${desc} ${accountNo || ""}`.trim();
   }
+
   if (typeCode.includes("accrual") || typeValue.toLowerCase().includes("accrual")) {
-    return `CRB and Service Fee ${accountNo || ""}`.trim();
+    const feeAmt = breakdown?.feeChargesPortion || 0;
+    const intAmt = breakdown?.interestPortion || 0;
+    const penAmt = breakdown?.penaltyChargesPortion || 0;
+
+    const acct = accountNo ? ` ${accountNo}` : "";
+
+    if (feeAmt > 0 && intAmt === 0 && penAmt === 0) {
+      const chargeName = chargeNameByAmount?.get(feeAmt);
+      if (chargeName) return `${chargeName} Accrual${acct}`;
+      return `Fee Accrual${acct}`;
+    }
+    if (intAmt > 0 && feeAmt === 0 && penAmt === 0) return `Interest Accrual${acct}`;
+    if (penAmt > 0 && feeAmt === 0 && intAmt === 0) return `Penalty Accrual${acct}`;
+
+    const parts: string[] = [];
+    if (intAmt > 0) parts.push("Interest");
+    if (feeAmt > 0) {
+      const chargeName = chargeNameByAmount?.get(feeAmt);
+      parts.push(chargeName || "Fee");
+    }
+    if (penAmt > 0) parts.push("Penalty");
+    return parts.length > 0 ? `${parts.join(" & ")} Accrual${acct}` : `${typeValue || "Accrual"}${acct}`;
   }
-  if (typeCode.includes("waiveInterest")) {
-    return "Interest Waiver";
-  }
-  if (typeCode.includes("waiveCharges")) {
-    return "Charges Waiver";
-  }
-  if (typeCode.includes("writeOff")) {
-    return "Write-Off";
-  }
-  if (typeCode.includes("chargePayment")) {
-    return "Fee Payment";
-  }
+
+  if (typeCode.includes("waiveInterest")) return "Interest Waiver";
+  if (typeCode.includes("waiveCharges")) return "Charges Waiver";
+  if (typeCode.includes("writeOff")) return "Write-Off";
+  if (typeCode.includes("chargePayment")) return "Fee Payment";
 
   return typeValue || typeCode || "Unknown";
 }
@@ -501,12 +528,14 @@ export function transformFineractLoanToStatement(
   },
   periodFrom?: string,
   periodTo?: string,
-  defaultCurrency?: string
+  defaultCurrency?: string,
+  preparedBy?: string
 ): LoanStatementData {
   const currency = loan.currency || {};
   const summary = loan.summary || {};
   const transactions = loan.transactions || [];
   const accountNo = loan.accountNo || "";
+  const charges: any[] = loan.charges || [];
 
   // Calculate totals
   let openingBalance = 0;
@@ -528,6 +557,17 @@ export function transformFineractLoanToStatement(
     cumulativeBalance: 0,
     isHighlighted: false,
   });
+
+  // Build lookup: per-installment fee amount → charge name for labeling fee accruals
+  const chargeNameByAmount = new Map<number, string>();
+  for (const c of charges) {
+    if (!c.name || c.chargeTimeType?.code !== "chargeTimeType.instalmentFee") continue;
+    const isFlat = c.chargeCalculationType?.code === "chargeCalculationType.flat";
+    const perInstallment = isFlat ? (c.amountOrPercentage ?? c.amount) : null;
+    if (perInstallment != null) {
+      chargeNameByAmount.set(perInstallment, c.name);
+    }
+  }
 
   // Sort transactions by date
   const sortedTransactions = [...transactions].sort((a: any, b: any) => {
@@ -573,13 +613,17 @@ export function transformFineractLoanToStatement(
       isHighlighted = true;
     }
 
-    // Get payment detail for description
     const paymentDetail = tx.paymentDetailData?.paymentType?.name || tx.note || "";
 
     processedTransactions.push({
       id: tx.id,
       date: parseFineractDate(tx.date),
-      type: mapTransactionType(tx.type, accountNo, paymentDetail),
+      type: mapTransactionType(tx.type, accountNo, paymentDetail, {
+        interestPortion: tx.interestPortion,
+        feeChargesPortion: tx.feeChargesPortion,
+        penaltyChargesPortion: tx.penaltyChargesPortion,
+        principalPortion: tx.principalPortion,
+      }, chargeNameByAmount),
       trxnId: tx.id?.toString() || "",
       debit,
       credit,
@@ -588,8 +632,7 @@ export function transformFineractLoanToStatement(
     });
   });
 
-  // Calculate accrued interest (interest outstanding)
-  const accruedInterest = summary.interestOutstanding || 0;
+  const accruedInterest = summary.interestCharged || 0;
 
   // Determine period dates
   const now = new Date();
@@ -626,5 +669,7 @@ export function transformFineractLoanToStatement(
     totalDebits,
     totalCredits,
     closingBalance: Math.max(0, runningBalance),
+
+    preparedBy,
   };
 }
