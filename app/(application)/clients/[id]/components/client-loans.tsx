@@ -45,6 +45,12 @@ interface FineractLoan {
     value: string;
     active: boolean;
     closed: boolean;
+    overpaid?: boolean;
+    pendingApproval?: boolean;
+    waitingForDisbursal?: boolean;
+    closedObligationsMet?: boolean;
+    closedWrittenOff?: boolean;
+    closedRescheduled?: boolean;
   };
   timeline: {
     submittedOnDate: string;
@@ -128,6 +134,12 @@ export function ClientLoans({ clientId }: ClientLoansProps) {
           value: loan.status?.value || "",
           active: loan.status?.active || false,
           closed: loan.status?.closed || false,
+          overpaid: loan.status?.overpaid || false,
+          pendingApproval: loan.status?.pendingApproval || false,
+          waitingForDisbursal: loan.status?.waitingForDisbursal || false,
+          closedObligationsMet: loan.status?.closedObligationsMet || false,
+          closedWrittenOff: loan.status?.closedWrittenOff || false,
+          closedRescheduled: loan.status?.closedRescheduled || false,
         },
         timeline: {
           submittedOnDate: loan.timeline?.submittedOnDate || "",
@@ -144,10 +156,38 @@ export function ClientLoans({ clientId }: ClientLoansProps) {
   })();
 
   const getStatusBadge = (status: FineractLoan["status"]) => {
+    if (status.overpaid) {
+      return (
+        <Badge variant="outline" className="bg-emerald-600 text-white border-0">
+          Overpaid
+        </Badge>
+      );
+    }
     if (status.active) {
       return (
         <Badge variant="outline" className="bg-green-500 text-white border-0">
           Active
+        </Badge>
+      );
+    }
+    if (status.closedObligationsMet) {
+      return (
+        <Badge variant="outline" className="bg-slate-500 text-white border-0">
+          Closed - Obligations Met
+        </Badge>
+      );
+    }
+    if (status.closedWrittenOff) {
+      return (
+        <Badge variant="outline" className="bg-red-500 text-white border-0">
+          Written Off
+        </Badge>
+      );
+    }
+    if (status.closedRescheduled) {
+      return (
+        <Badge variant="outline" className="bg-amber-500 text-white border-0">
+          Rescheduled
         </Badge>
       );
     }
@@ -158,14 +198,14 @@ export function ClientLoans({ clientId }: ClientLoansProps) {
         </Badge>
       );
     }
-    if (status.code === "loanStatusType.approved") {
+    if (status.waitingForDisbursal || status.code === "loanStatusType.approved") {
       return (
         <Badge variant="outline" className="bg-blue-500 text-white border-0">
           Approved
         </Badge>
       );
     }
-    if (status.code === "loanStatusType.pending") {
+    if (status.pendingApproval || status.code === "loanStatusType.pending") {
       return (
         <Badge variant="outline" className="bg-yellow-500 text-white border-0">
           Pending
