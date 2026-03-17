@@ -437,6 +437,201 @@ export function generateLoanStatementHTML(data: LoanStatementData): string {
 </html>`;
 }
 
+// ── Consolidated Statement ───────────────────────────────────────────
+
+export interface ConsolidatedStatementData {
+  companyName: string;
+  logoUrl?: string;
+
+  clientName: string;
+  printDate: string;
+  periodFrom: string;
+  periodTo: string;
+
+  currency: string;
+  currencySymbol: string;
+
+  loanSummaries: {
+    accountNo: string;
+    productName: string;
+    totalDebits: number;
+    totalCredits: number;
+    closingBalance: number;
+  }[];
+
+  transactions: ConsolidatedTransaction[];
+
+  totalDebits: number;
+  totalCredits: number;
+  closingBalance: number;
+
+  preparedBy?: string;
+}
+
+export interface ConsolidatedTransaction {
+  date: string;
+  loanAccount: string;
+  type: string;
+  trxnId: string;
+  debit: number;
+  credit: number;
+  cumulativeBalance: number;
+  isHighlighted?: boolean;
+}
+
+export function generateConsolidatedStatementHTML(data: ConsolidatedStatementData): string {
+  const transactionRows = data.transactions
+    .map(
+      (tx) => `
+      <tr class="${tx.isHighlighted ? "highlighted-row" : ""}">
+        <td class="date-cell">${tx.date}</td>
+        <td class="loan-cell">${tx.loanAccount}</td>
+        <td class="type-cell">${tx.type}</td>
+        <td class="trxn-id-cell">${tx.trxnId}</td>
+        <td class="amount-cell">${formatCurrency(tx.debit, "")}</td>
+        <td class="amount-cell">${formatCurrency(tx.credit, "")}</td>
+        <td class="amount-cell balance-cell">${formatCurrency(tx.cumulativeBalance, "")}</td>
+      </tr>
+    `
+    )
+    .join("");
+
+  const loanSummaryRows = data.loanSummaries
+    .map(
+      (ls) => `
+      <tr>
+        <td>${ls.accountNo} – ${ls.productName}</td>
+        <td class="amount-cell">${formatCurrency(ls.totalDebits, "")}</td>
+        <td class="amount-cell">${formatCurrency(ls.totalCredits, "")}</td>
+        <td class="amount-cell">${formatCurrency(ls.closingBalance, "")}</td>
+      </tr>`
+    )
+    .join("");
+
+  const printDate = data.printDate;
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Consolidated Statement - ${data.clientName}</title>
+  <style>
+    @page { margin: 0.4in; size: A4; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; line-height: 1.3; color: #000; background: #fff; padding: 20px; }
+    .container { max-width: 100%; margin: 0 auto; }
+    .header { display: table; width: 100%; border: 1px solid #000; margin-bottom: 0; }
+    .header-left { display: table-cell; width: 50%; vertical-align: middle; text-align: center; padding: 15px; border-right: 1px solid #000; }
+    .header-right { display: table-cell; width: 50%; vertical-align: top; padding: 0; }
+    .logo { max-width: 80px; max-height: 80px; margin-bottom: 10px; }
+    .company-name { font-size: 14px; font-weight: bold; color: #1a5276; margin-top: 10px; }
+    .account-info-table { width: 100%; border-collapse: collapse; }
+    .account-info-table td { padding: 6px 10px; border-bottom: 1px solid #000; }
+    .account-info-table tr:last-child td { border-bottom: none; }
+    .account-title { font-size: 18px; font-weight: bold; text-align: center; color: #1a5276; }
+    .account-info-label { text-align: right; font-weight: bold; }
+    .transactions-section { margin-top: 20px; margin-bottom: 20px; }
+    .transactions-table { width: 100%; border-collapse: collapse; }
+    .transactions-table th { background: #f5f5f5; padding: 10px 8px; text-align: left; font-weight: bold; border-bottom: 2px solid #000; font-size: 11px; }
+    .transactions-table th.amount-header { text-align: right; }
+    .transactions-table td { padding: 8px; border-bottom: 1px solid #ddd; font-size: 11px; }
+    .transactions-table .date-cell { width: 100px; }
+    .transactions-table .loan-cell { width: 100px; font-family: 'Courier New', monospace; font-size: 10px; }
+    .transactions-table .type-cell { width: auto; }
+    .transactions-table .trxn-id-cell { width: 60px; text-align: center; }
+    .transactions-table .amount-cell { width: 100px; text-align: right; font-family: 'Courier New', monospace; }
+    .transactions-table .balance-cell { font-weight: bold; }
+    .transactions-table .highlighted-row td { color: #0e6655; }
+    .footer { display: table; width: 100%; border: 1px solid #000; margin-top: 30px; }
+    .footer-left { display: table-cell; width: 55%; vertical-align: top; padding: 15px; border-right: 1px solid #000; }
+    .footer-right { display: table-cell; width: 45%; vertical-align: top; padding: 0; }
+    .signature-line { margin-bottom: 15px; font-weight: bold; }
+    .signature-dots { display: inline-block; width: 80%; border-bottom: 1px dotted #000; margin-left: 5px; }
+    .summary-table { width: 100%; border-collapse: collapse; }
+    .summary-table th { background: #f5f5f5; padding: 8px 10px; text-align: center; font-weight: bold; font-size: 11px; border-bottom: 1px solid #000; }
+    .summary-table td { padding: 6px 10px; border-bottom: 1px solid #ddd; font-size: 11px; }
+    .summary-table .amount-cell { text-align: right; font-weight: bold; font-family: 'Courier New', monospace; }
+    .summary-table .closing-row td { font-weight: bold; background: #f0f0f0; }
+    @media print { body { padding: 0; } .header, .footer { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="header-left">
+        ${data.logoUrl ? `<img src="${data.logoUrl}" alt="Logo" class="logo" onerror="this.style.display='none'" />` : ""}
+        <div class="company-name">${data.companyName}</div>
+      </div>
+      <div class="header-right">
+        <table class="account-info-table">
+          <tr><td class="account-title">Consolidated Account Statement</td></tr>
+          <tr><td class="account-info-label">Client Name: ${data.clientName}</td></tr>
+          <tr><td class="account-info-label">Loan Accounts: ${data.loanSummaries.length}</td></tr>
+          <tr><td class="account-info-label">Print Date: ${data.printDate}</td></tr>
+          <tr><td class="account-info-label">From ${data.periodFrom} To ${data.periodTo}</td></tr>
+        </table>
+      </div>
+    </div>
+
+    <div class="transactions-section">
+      <table class="transactions-table">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Loan Account</th>
+            <th>Trxn Type</th>
+            <th class="amount-header">Trxn ID</th>
+            <th class="amount-header">Debit</th>
+            <th class="amount-header">Credit</th>
+            <th class="amount-header">Cumulative Balance</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${transactionRows || '<tr><td colspan="7" style="text-align: center; padding: 20px;">No transactions found</td></tr>'}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="footer">
+      <div class="footer-left">
+        <div class="signature-line">
+          Prepared By : ${data.preparedBy ? `<strong>${data.preparedBy}</strong>` : ''} <span class="signature-dots"></span>
+        </div>
+        <div class="signature-line">
+          Sign / Stamp : <span class="signature-dots"></span>
+        </div>
+        <div class="signature-line">
+          Date : ${data.preparedBy ? printDate : ''} <span class="signature-dots"></span>
+        </div>
+      </div>
+      <div class="footer-right">
+        <table class="summary-table">
+          <thead>
+            <tr>
+              <th>Loan Account</th>
+              <th>Total Debits</th>
+              <th>Total Credits</th>
+              <th>Balance</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${loanSummaryRows}
+            <tr class="closing-row">
+              <td><strong>Grand Total</strong></td>
+              <td class="amount-cell">${data.currencySymbol}${formatCurrency(data.totalDebits, "")}</td>
+              <td class="amount-cell">${data.currencySymbol}${formatCurrency(data.totalCredits, "")}</td>
+              <td class="amount-cell">${data.currencySymbol}${formatCurrency(data.closingBalance, "")}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</body>
+</html>`;
+}
+
 /**
  * Helper function to parse Fineract date arrays to formatted string
  */

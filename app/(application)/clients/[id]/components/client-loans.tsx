@@ -13,6 +13,7 @@ import {
   TrendingDown,
   Clock,
   ExternalLink,
+  FileText,
 } from "lucide-react";
 import {
   Card,
@@ -30,6 +31,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Button } from "@/components/ui/button";
 
 interface FineractLoan {
   id: number;
@@ -374,11 +376,28 @@ export function ClientLoans({ clientId }: ClientLoansProps) {
 
       {/* Loans Table */}
       <Card>
-        <CardHeader>
-          <CardTitle>Loan Details</CardTitle>
-          <CardDescription>
-            Complete list of loans for this client
-          </CardDescription>
+        <CardHeader className="flex flex-row items-start justify-between">
+          <div className="space-y-1">
+            <CardTitle>Loan Details</CardTitle>
+            <CardDescription>
+              Complete list of loans for this client
+            </CardDescription>
+          </div>
+          {loans.length > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() =>
+                window.open(
+                  `/api/fineract/clients/${clientId}/statement?format=html`,
+                  "_blank"
+                )
+              }
+            >
+              <FileText className="h-4 w-4 mr-2" />
+              Consolidated Statement
+            </Button>
+          )}
         </CardHeader>
         <CardContent>
           {loans.length === 0 ? (
