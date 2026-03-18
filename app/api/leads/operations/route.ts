@@ -3,15 +3,40 @@ import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 import { getFineractServiceWithSession } from "@/lib/fineract-api";
 import { getSession } from "@/lib/auth";
-import { getTenantFromHeaders } from "@/lib/tenant-service";
+import {
+  getTenantFromHeaders,
+  getTenantBySlug,
+  extractTenantSlug,
+} from "@/lib/tenant-service";
 
-// Helper to resolve the current tenant from request headers
-async function resolveCurrentTenant(tx?: any) {
-  const tenant = await getTenantFromHeaders();
-  if (tenant) {
-    return tenant;
+// Helper to resolve the current tenant, optionally using the raw request
+// so we can read middleware-set and proxy-set headers directly.
+async function resolveCurrentTenant(tx?: any, req?: Request) {
+  if (req) {
+    const origin = req.headers.get("origin");
+    const referer = req.headers.get("referer");
+    const host = req.headers.get("host");
+    console.log("[resolveCurrentTenant] headers:", { origin, referer, host, hasReq: !!req });
+
+    if (origin) {
+      try {
+        const t = await getTenantBySlug(extractTenantSlug(new URL(origin).hostname));
+        if (t) return t;
+      } catch {}
+    }
+    if (referer) {
+      try {
+        const t = await getTenantBySlug(extractTenantSlug(new URL(referer).hostname));
+        if (t) return t;
+      } catch {}
+    }
   }
-  // Fallback: look up from FINERACT_TENANT_ID env or default
+
+  try {
+    const tenant = await getTenantFromHeaders();
+    if (tenant) return tenant;
+  } catch {}
+
   const fallbackSlug = process.env.FINERACT_TENANT_ID || "goodfellow";
   const db = tx || prisma;
   const fallbackTenant = await db.tenant.findFirst({
@@ -98,11 +123,16 @@ const clientFormSchema = z.object({
   businessType: z.string().optional(),
 });
 
+// Holds the current request so resolveCurrentTenant can read headers
+// without changing every handler's signature.
+let _currentRequest: Request | undefined;
+
 /**
  * POST /api/leads/operations
  * Handles lead operations like save draft, submit, etc.
  */
 export async function POST(request: Request) {
+  _currentRequest = request;
   try {
     const body = await request.json();
     const { operation, data, leadId } = body;
@@ -193,7 +223,7 @@ async function handleSaveDraft(data: any, leadId?: string) {
     const userId = session.user.id;
 
     // Resolve current tenant from subdomain/headers
-    const currentTenant = await resolveCurrentTenant();
+    const currentTenant = await resolveCurrentTenant(undefined, _currentRequest);
     const tenantId = currentTenant.id;
 
     if (leadId) {
@@ -457,7 +487,7 @@ async function handleCreateLeadWithClient(data: any) {
             const userId = session.user.id;
 
             // Resolve current tenant from subdomain/headers
-            const currentTenant = await resolveCurrentTenant(tx);
+            const currentTenant = await resolveCurrentTenant(tx, _currentRequest);
             const tenantId = currentTenant.id;
 
             // Create lead in database with existing Fineract client data
@@ -597,7 +627,7 @@ async function handleCreateLeadWithClient(data: any) {
       const userId = session.user.id;
 
       // Resolve current tenant from subdomain/headers
-      const currentTenant = await resolveCurrentTenant(tx);
+      const currentTenant = await resolveCurrentTenant(tx, _currentRequest);
       const tenantId = currentTenant.id;
 
       // Create lead in database with Fineract data
@@ -729,7 +759,16 @@ async function handleCreateLeadWithClient(data: any) {
       error.response?.data || error.message?.includes("Fineract");
     let errorMessage = error.message || "Failed to create lead and client";
 
-    if (isFineractError) {
+    // Clarify when the error is from the Fineract backend's database (not Loan Matrix .env)
+    if (
+      error.message?.includes("database server") &&
+      error.message?.includes("credentials for")
+    ) {
+      errorMessage =
+        "The Fineract/Mifos backend (" +
+        (process.env.FINERACT_BASE_URL || "mifos-be") +
+        ") could not connect to its database. Update the database credentials on the Fineract server (host 10.10.0.143:5432, user postgres), not in Loan Matrix .env.";
+    } else if (isFineractError) {
       const fineractError = error.response?.data;
       if (fineractError?.errors && Array.isArray(fineractError.errors)) {
         // Extract specific validation errors from Fineract
@@ -1071,7 +1110,7 @@ async function handleUpdateClient(data: any, leadId?: string) {
         console.log("==========> No leadId provided, creating new lead...");
         result = await prisma.$transaction(async (tx) => {
           // Resolve current tenant from subdomain/headers
-          const currentTenant = await resolveCurrentTenant(tx);
+          const currentTenant = await resolveCurrentTenant(tx, _currentRequest);
 
           // Get current user ID from session
           const session = await getSession();

@@ -1,0 +1,3 @@
+# Omama tenant contract template assets.
+# Run: CONTRACT_TEMPLATE_DIR=/path/to/full-loan-template-final npx tsx scripts/seed-omama-contract-template.ts
+# to copy the HTML into the DB and image folder here.

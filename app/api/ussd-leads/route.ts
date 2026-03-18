@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUssdLeadsData } from "@/app/actions/ussd-leads-actions";
+import { extractTenantSlugFromRequest } from "@/lib/tenant-service";
 
 export async function GET(request: NextRequest) {
   try {
-    // Get tenant from x-tenant-slug header or default to "goodfellow"
-    const tenantSlug = request.headers.get("x-tenant-slug") || "goodfellow";
+    const tenantSlug = extractTenantSlugFromRequest(request);
 
     const { searchParams } = new URL(request.url);
     const status = searchParams.get("status");

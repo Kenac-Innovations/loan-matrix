@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { getSession as getCustomSession } from "@/app/actions/auth";
-import { getFineractTenantId } from "@/lib/fineract-tenant-service";
-import { extractTenantSlug } from "@/lib/tenant-service";
+import { extractTenantSlugFromRequest } from "@/lib/tenant-service";
 
 const baseUrl = process.env.FINERACT_BASE_URL || "http://10.10.0.143:8443";
 
@@ -46,13 +45,7 @@ export async function GET(request: NextRequest) {
 
     const accessToken = await getAccessToken();
 
-    // Check for x-tenant-slug header first (from internal API calls), then fall back to extraction
-    const tenantSlugHeader = request.headers.get("x-tenant-slug");
-    const host = request.headers.get("host") || "localhost:3000";
-    const fineractTenantId =
-      tenantSlugHeader ||
-      extractTenantSlug(host) ||
-      (await getFineractTenantId());
+    const fineractTenantId = extractTenantSlugFromRequest(request);
 
     if (!accessToken) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

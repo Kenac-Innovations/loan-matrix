@@ -4,6 +4,7 @@ import { useCurrency } from "@/contexts/currency-context";
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -24,6 +25,8 @@ import { InterestPaymentWaiverModal } from "./interest-payment-waiver-modal";
 import { PayoutRefundModal } from "./payout-refund-modal";
 import { ReversePayoutModal } from "./reverse-payout-modal";
 import { MerchantIssuedRefundModal } from "./merchant-issued-refund-modal";
+import { CreditBalanceRefundModal } from "@/app/(application)/leads/[id]/components/credit-balance-refund-modal";
+import { TransferFundsModal } from "@/app/(application)/leads/[id]/components/transfer-funds-modal";
 import { WaiveInterestModal } from "./waive-interest-modal";
 import { RescheduleModal } from "./reschedule-modal";
 import { DisburseModal } from "./disburse-modal";
@@ -228,6 +231,8 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
   const [showReversePayoutModal, setShowReversePayoutModal] = useState(false);
   const [reversedPayout, setReversedPayout] = useState<{ voidedAt: string; voidReason?: string | null; amount: number; currency: string } | null>(null);
   const [showMerchantIssuedRefundModal, setShowMerchantIssuedRefundModal] = useState(false);
+  const [showCreditBalanceRefundModal, setShowCreditBalanceRefundModal] = useState(false);
+  const [showTransferFundsModal, setShowTransferFundsModal] = useState(false);
 
   // Write Off Modal State
   const [showWriteOffModal, setShowWriteOffModal] = useState(false);
@@ -448,6 +453,18 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                       <line x1="12" y1="17" x2="12" y2="21"/>
                     </svg>
                     Merchant Issued Refund
+                  </button>
+                  <button class="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 text-sm" data-action="transfer-funds" id="transfer-funds-btn" style="display:none">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M8 3L4 7l4 4"/><path d="M4 7h16"/><path d="M16 21l4-4-4-4"/><path d="M20 17H4"/>
+                    </svg>
+                    Transfer Funds
+                  </button>
+                  <button class="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 text-sm" data-action="credit-balance-refund" id="credit-balance-refund-btn" style="display:none">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <circle cx="8" cy="8" r="6"/><path d="M18.09 10.37A6 6 0 1 1 10.34 18"/><path d="M7 6h1v4"/><path d="m16.71 13.88.7.71-2.82 2.82"/>
+                    </svg>
+                    Credit Balance Refund
                   </button>
                 </div>
               </div>
@@ -733,6 +750,12 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
               case 'merchant-issued-refund':
                 setShowMerchantIssuedRefundModal(true);
                 break;
+              case 'transfer-funds':
+                setShowTransferFundsModal(true);
+                break;
+              case 'credit-balance-refund':
+                setShowCreditBalanceRefundModal(true);
+                break;
               case 'more':
                 // Submenu handled by hover events
                 break;
@@ -891,6 +914,34 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                   el.classList.add('opacity-50', 'cursor-not-allowed');
                 }
               });
+          }
+
+          const isOverpaid =
+            loanData?.status?.overpaid === true ||
+            (loanData?.summary &&
+              loanData.summary.totalRepayment > 0 &&
+              loanData.summary.totalOutstanding === 0 &&
+              loanData.summary.totalRepayment >
+                loanData.summary.totalExpectedRepayment);
+
+          const transferFundsBtn = document.getElementById('transfer-funds-btn');
+          const creditBalanceRefundBtn = document.getElementById('credit-balance-refund-btn');
+
+          if (isOverpaid) {
+            if (transferFundsBtn) transferFundsBtn.style.display = '';
+            if (creditBalanceRefundBtn) creditBalanceRefundBtn.style.display = '';
+
+            dropdownEl.querySelectorAll('[data-action]')
+              .forEach((el) => {
+                const action = (el as HTMLElement).getAttribute('data-action');
+                if (action !== 'transfer-funds' && action !== 'credit-balance-refund') {
+                  (el as HTMLButtonElement).setAttribute('disabled', 'true');
+                  el.classList.add('opacity-50', 'cursor-not-allowed');
+                }
+              });
+          } else {
+            if (transferFundsBtn) transferFundsBtn.style.display = 'none';
+            if (creditBalanceRefundBtn) creditBalanceRefundBtn.style.display = 'none';
           }
         }
       } catch (err) {
@@ -2694,8 +2745,59 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
     );
   }
 
+  const loanStatusValue = loan.status?.value || "Unknown";
+  const loanStatusConfig = (() => {
+    const s = loan.status;
+    if (s?.overpaid) return { label: "Overpaid", bg: "bg-emerald-500", bgLight: "bg-emerald-50 dark:bg-emerald-950/40", border: "border-emerald-200 dark:border-emerald-800", text: "text-emerald-700 dark:text-emerald-300" };
+    if (s?.active) return { label: loanStatusValue, bg: "bg-green-500", bgLight: "bg-green-50 dark:bg-green-950/40", border: "border-green-200 dark:border-green-800", text: "text-green-700 dark:text-green-300" };
+    if (s?.closedObligationsMet) return { label: "Closed - Obligations Met", bg: "bg-slate-500", bgLight: "bg-slate-50 dark:bg-slate-950/40", border: "border-slate-200 dark:border-slate-800", text: "text-slate-700 dark:text-slate-300" };
+    if (s?.closedWrittenOff) return { label: "Closed - Written Off", bg: "bg-red-500", bgLight: "bg-red-50 dark:bg-red-950/40", border: "border-red-200 dark:border-red-800", text: "text-red-700 dark:text-red-300" };
+    if (s?.closedRescheduled) return { label: "Closed - Rescheduled", bg: "bg-amber-500", bgLight: "bg-amber-50 dark:bg-amber-950/40", border: "border-amber-200 dark:border-amber-800", text: "text-amber-700 dark:text-amber-300" };
+    if (s?.closed) return { label: loanStatusValue, bg: "bg-gray-500", bgLight: "bg-gray-50 dark:bg-gray-950/40", border: "border-gray-200 dark:border-gray-800", text: "text-gray-700 dark:text-gray-300" };
+    if (s?.waitingForDisbursal) return { label: "Approved - Awaiting Disbursement", bg: "bg-blue-500", bgLight: "bg-blue-50 dark:bg-blue-950/40", border: "border-blue-200 dark:border-blue-800", text: "text-blue-700 dark:text-blue-300" };
+    if (s?.pendingApproval) return { label: "Pending Approval", bg: "bg-yellow-500", bgLight: "bg-yellow-50 dark:bg-yellow-950/40", border: "border-yellow-200 dark:border-yellow-800", text: "text-yellow-700 dark:text-yellow-300" };
+    return { label: loanStatusValue, bg: "bg-gray-500", bgLight: "bg-gray-50 dark:bg-gray-950/40", border: "border-gray-200 dark:border-gray-800", text: "text-gray-700 dark:text-gray-300" };
+  })();
+
   return (
     <div className="space-y-6">
+      {/* Loan Status Banner */}
+      <div className={`rounded-lg border ${loanStatusConfig.border} ${loanStatusConfig.bgLight} px-5 py-3 flex items-center justify-between`}>
+        <div className="flex items-center gap-3">
+          <span className={`inline-flex h-3 w-3 rounded-full ${loanStatusConfig.bg} shrink-0`} />
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <p className={`text-sm font-semibold ${loanStatusConfig.text}`}>{loanStatusConfig.label}</p>
+              <span className="text-xs text-muted-foreground">&middot;</span>
+              <p className="text-sm font-medium">{loan.loanProductName || loan.productName}</p>
+            </div>
+            <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
+              <span>{loan.accountNo}</span>
+              {loan.externalId && (
+                <>
+                  <span>&middot;</span>
+                  <Link
+                    href={`/leads/${loan.externalId}`}
+                    className="text-blue-600 dark:text-blue-400 hover:underline inline-flex items-center gap-1"
+                  >
+                    View Lead
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                  </Link>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+        <div className="flex items-center gap-4 text-xs text-muted-foreground">
+          {loan.timeline?.actualDisbursementDate && (
+            <span>Disbursed: {formatDate(loan.timeline.actualDisbursementDate)}</span>
+          )}
+          {loan.timeline?.expectedMaturityDate && (
+            <span>Maturity: {formatDate(loan.timeline.expectedMaturityDate)}</span>
+          )}
+        </div>
+      </div>
+
       {/* Quick Stats Cards */}
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
         <Card className="border-0 shadow-sm bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-950 dark:to-blue-900">
@@ -3895,7 +3997,38 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
         onClose={() => setShowMerchantIssuedRefundModal(false)}
         loanId={loanId}
         onSuccess={() => {
-          // Refresh loan data and switch to transactions tab
+          window.location.reload();
+          setActiveTab("transactions");
+        }}
+      />
+
+      {/* Credit Balance Refund Modal */}
+      <CreditBalanceRefundModal
+        isOpen={showCreditBalanceRefundModal}
+        onClose={() => setShowCreditBalanceRefundModal(false)}
+        loanId={loanId}
+        onSuccess={() => {
+          window.location.reload();
+          setActiveTab("transactions");
+        }}
+      />
+
+      {/* Transfer Funds Modal */}
+      <TransferFundsModal
+        isOpen={showTransferFundsModal}
+        onClose={() => setShowTransferFundsModal(false)}
+        loanId={loanId}
+        clientId={clientId}
+        overpaidAmount={
+          loan?.summary?.totalOverpaid ||
+          (loan?.summary?.totalRepayment &&
+          loan?.summary?.totalExpectedRepayment &&
+          loan.summary.totalRepayment > loan.summary.totalExpectedRepayment
+            ? loan.summary.totalRepayment - loan.summary.totalExpectedRepayment
+            : 0)
+        }
+        currencySymbol={loan?.currency?.displaySymbol || "K"}
+        onSuccess={() => {
           window.location.reload();
           setActiveTab("transactions");
         }}

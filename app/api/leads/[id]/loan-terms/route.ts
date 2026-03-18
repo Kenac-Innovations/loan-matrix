@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getTenantBySlug } from "@/lib/tenant-service";
+import { getTenantBySlug, extractTenantSlugFromRequest } from "@/lib/tenant-service";
 
 export async function POST(
   request: NextRequest,
@@ -14,7 +14,7 @@ export async function POST(
     const data = await request.json();
     console.log("Loan terms data:", data);
 
-    const tenantSlug = request.headers.get("x-tenant-slug") || "goodfellow";
+    const tenantSlug = extractTenantSlugFromRequest(request);
     const tenant = await getTenantBySlug(tenantSlug);
 
     if (!tenant) {
@@ -110,7 +110,7 @@ export async function GET(
     const { id: leadId } = params;
     console.log("GET loan terms for leadId:", leadId);
 
-    const tenantSlug = request.headers.get("x-tenant-slug") || "goodfellow";
+    const tenantSlug = extractTenantSlugFromRequest(request);
     const tenant = await getTenantBySlug(tenantSlug);
 
     if (!tenant) {

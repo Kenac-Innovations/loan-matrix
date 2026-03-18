@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { extractTenantSlugFromRequest } from "@/lib/tenant-service";
 import { DEFAULT_FEATURES, TenantFeatures } from "@/shared/types/tenant";
 
 /**
@@ -8,7 +9,7 @@ import { DEFAULT_FEATURES, TenantFeatures } from "@/shared/types/tenant";
  */
 export async function GET(request: NextRequest) {
   try {
-    const tenantSlug = request.headers.get("x-tenant-slug") || "goodfellow";
+    const tenantSlug = extractTenantSlugFromRequest(request);
     
     const tenant = await prisma.tenant.findFirst({
       where: { slug: tenantSlug, isActive: true },
@@ -56,7 +57,7 @@ export async function GET(request: NextRequest) {
  */
 export async function PUT(request: NextRequest) {
   try {
-    const tenantSlug = request.headers.get("x-tenant-slug") || "goodfellow";
+    const tenantSlug = extractTenantSlugFromRequest(request);
     const body = await request.json();
     const { features } = body;
     

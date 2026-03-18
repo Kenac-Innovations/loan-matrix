@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import {
   getTenantBySlug,
   getOrCreateDefaultTenant,
+  extractTenantSlugFromRequest,
 } from "@/lib/tenant-service";
 
 /**
@@ -11,7 +12,7 @@ import {
  */
 export async function GET(request: NextRequest) {
   try {
-    const tenantSlug = request.headers.get("x-tenant-slug") || "goodfellow";
+    const tenantSlug = extractTenantSlugFromRequest(request);
     let tenant = await getTenantBySlug(tenantSlug);
 
     if (!tenant) {
@@ -92,7 +93,7 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    const tenantSlug = request.headers.get("x-tenant-slug") || "goodfellow";
+    const tenantSlug = extractTenantSlugFromRequest(request);
     let tenant = await getTenantBySlug(tenantSlug);
 
     if (!tenant) {

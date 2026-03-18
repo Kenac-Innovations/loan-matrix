@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getTenantBySlug } from "@/lib/tenant-service";
+import { getTenantBySlug, extractTenantSlugFromRequest } from "@/lib/tenant-service";
 import { getSession } from "@/lib/auth";
 import { getFineractTenantId } from "@/lib/fineract-tenant-service";
 
@@ -21,8 +21,7 @@ export async function GET(
   try {
     const { id: leadId } = await params;
 
-    // Get tenant from x-tenant-slug header or default to "goodfellow"
-    const tenantSlug = request.headers.get("x-tenant-slug") || "goodfellow";
+    const tenantSlug = extractTenantSlugFromRequest(request);
     let tenant = await getTenantBySlug(tenantSlug);
 
     // If tenant not found, try to create default tenant
@@ -238,7 +237,8 @@ export async function GET(
         `${request.nextUrl.origin}/api/leads/${leadId}/validations`,
         {
           headers: {
-            "x-tenant-slug": tenantSlug,
+            origin: request.headers.get("origin") || "",
+            referer: request.headers.get("referer") || "",
           },
         }
       );

@@ -4,6 +4,7 @@ export interface FineractLoan {
     externalId?: string;
     productId: number;
     productName: string;
+    loanProductName?: string;
     shortProductName: string;
     status: {
       id: number;
@@ -11,6 +12,12 @@ export interface FineractLoan {
       value: string;
       active: boolean;
       closed: boolean;
+      overpaid?: boolean;
+      pendingApproval?: boolean;
+      waitingForDisbursal?: boolean;
+      closedObligationsMet?: boolean;
+      closedWrittenOff?: boolean;
+      closedRescheduled?: boolean;
     };
     loanType: {
       id: number;
@@ -102,6 +109,7 @@ export interface FineractLoan {
       totalRepayment: number;
       totalOutstanding: number;
       totalOverdue: number;
+      totalOverpaid?: number;
       totalWaived?: number;
       totalWrittenOff?: number;
     };

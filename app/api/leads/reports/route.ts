@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getFineractServiceWithSession } from "@/lib/fineract-api";
 import { prisma } from "@/lib/prisma";
+import { extractTenantSlugFromRequest } from "@/lib/tenant-service";
 
 /**
  * GET /api/leads/reports
@@ -70,7 +71,7 @@ export async function GET(request: NextRequest) {
     // Enrich with local lead IDs and payout status by looking up via fineractLoanId
     if (result.length > 0) {
       // Get tenant from header
-      const tenantSlug = request.headers.get("x-tenant-slug") || "goodfellow";
+      const tenantSlug = extractTenantSlugFromRequest(request);
       const tenant = await prisma.tenant.findFirst({
         where: { slug: tenantSlug, isActive: true },
       });
@@ -251,8 +252,7 @@ export async function GET(request: NextRequest) {
  */
 async function getDraftsFromLocalDB(startDate: string, endDate: string, request: NextRequest) {
   try {
-    // Get tenant from header or default to goodfellow
-    const tenantSlug = request.headers.get("x-tenant-slug") || "goodfellow";
+    const tenantSlug = extractTenantSlugFromRequest(request);
     
     const tenant = await prisma.tenant.findFirst({
       where: { slug: tenantSlug, isActive: true },
