@@ -46,15 +46,13 @@ export function extractTenantSlug(host: string): string {
 export async function getTenantFromHeaders(): Promise<TenantInfo | null> {
   const headersList = await headers();
 
-  // Debug: log all tenant-relevant headers to identify the correct source
+  // Debug: log tenant-relevant headers to identify the correct source
   const debugHeaders = {
     "x-tenant-slug": headersList.get("x-tenant-slug"),
     "host": headersList.get("host"),
     "x-forwarded-host": headersList.get("x-forwarded-host"),
-    ":authority": headersList.get(":authority"),
     "x-envoy-original-path": headersList.get("x-envoy-original-path"),
     "x-forwarded-proto": headersList.get("x-forwarded-proto"),
-    "x-real-ip": headersList.get("x-real-ip"),
     "x-forwarded-for": headersList.get("x-forwarded-for"),
     "x-original-host": headersList.get("x-original-host"),
     "authority": headersList.get("authority"),
