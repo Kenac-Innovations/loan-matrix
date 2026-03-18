@@ -38,8 +38,10 @@ export function extractTenantSlug(host: string): string {
 
 /**
  * Get tenant information from request headers.
- * Checks the x-tenant-slug header set by middleware first,
- * then falls back to extracting the tenant slug from the host header.
+ * Checks multiple header sources to reliably resolve the tenant in
+ * environments where the Host header may be rewritten (e.g. Kubernetes/Istio).
+ *
+ * Priority: x-tenant-slug > x-forwarded-host > host
  */
 export async function getTenantFromHeaders(): Promise<TenantInfo | null> {
   const headersList = await headers();
@@ -47,6 +49,15 @@ export async function getTenantFromHeaders(): Promise<TenantInfo | null> {
   const slugFromMiddleware = headersList.get("x-tenant-slug");
   if (slugFromMiddleware) {
     return await getTenantBySlug(slugFromMiddleware);
+  }
+
+  // In Kubernetes/Istio the Host header is often rewritten to the internal
+  // service name. The original client hostname is preserved in x-forwarded-host.
+  const forwardedHost = headersList.get("x-forwarded-host");
+  if (forwardedHost) {
+    const tenantSlug = extractTenantSlug(forwardedHost.split(",")[0].trim());
+    const tenant = await getTenantBySlug(tenantSlug);
+    if (tenant) return tenant;
   }
 
   const host = headersList.get("host");
