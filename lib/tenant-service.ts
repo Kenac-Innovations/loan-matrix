@@ -46,13 +46,29 @@ export function extractTenantSlug(host: string): string {
 export async function getTenantFromHeaders(): Promise<TenantInfo | null> {
   const headersList = await headers();
 
+  // Debug: log all tenant-relevant headers to identify the correct source
+  const debugHeaders = {
+    "x-tenant-slug": headersList.get("x-tenant-slug"),
+    "host": headersList.get("host"),
+    "x-forwarded-host": headersList.get("x-forwarded-host"),
+    ":authority": headersList.get(":authority"),
+    "x-envoy-original-path": headersList.get("x-envoy-original-path"),
+    "x-forwarded-proto": headersList.get("x-forwarded-proto"),
+    "x-real-ip": headersList.get("x-real-ip"),
+    "x-forwarded-for": headersList.get("x-forwarded-for"),
+    "x-original-host": headersList.get("x-original-host"),
+    "authority": headersList.get("authority"),
+  };
+  console.log("[getTenantFromHeaders] Headers:", JSON.stringify(debugHeaders));
+
   const slugFromMiddleware = headersList.get("x-tenant-slug");
   if (slugFromMiddleware) {
     return await getTenantBySlug(slugFromMiddleware);
   }
 
   // In Kubernetes/Istio the Host header is often rewritten to the internal
-  // service name. The original client hostname is preserved in x-forwarded-host.
+  // service name. The original client hostname is preserved in x-forwarded-host
+  // or :authority.
   const forwardedHost = headersList.get("x-forwarded-host");
   if (forwardedHost) {
     const tenantSlug = extractTenantSlug(forwardedHost.split(",")[0].trim());
