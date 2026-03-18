@@ -62,6 +62,12 @@ export async function getTenantFromHeaders(): Promise<TenantInfo | null> {
     } catch {}
   }
 
+  const envTenant = process.env.FINERACT_TENANT_ID;
+  if (envTenant) {
+    const t = await getTenantBySlug(envTenant);
+    if (t) return t;
+  }
+
   return null;
 }
 

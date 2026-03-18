@@ -85,23 +85,32 @@ export function LoanContracts({
     Array<{ id: number; name: string; url: string }>
   >([]);
   const [isLoadingSignatures, setIsLoadingSignatures] = useState(false);
-  const [showKeyFacts, setShowKeyFacts] = useState(true); // Toggle between KFS and full contract preview
-  const [tenantContractHtml, setTenantContractHtml] = useState<string | null>(null); // Tenant-specific full contract template (e.g. Omama)
+  const [showKeyFacts, setShowKeyFacts] = useState(false);
+  const [tenantContractHtml, setTenantContractHtml] = useState<string | null>(null);
+  const [tenantLogoUrl, setTenantLogoUrl] = useState<string | null>(null);
   const { toast } = useToast();
   const router = useRouter();
 
   const filledTenantContractHtml = useMemo(() => {
-    if (!tenantContractHtml || !contractData) return tenantContractHtml;
-    return fillOmamaContractTemplate(tenantContractHtml, contractData);
-  }, [tenantContractHtml, contractData]);
+    if (!tenantContractHtml) return null;
+    if (!contractData) {
+      return tenantContractHtml.replace(
+        /\{\{\s*[A-Z_0-9]+\s*\}\}/g,
+        " ____________________ "
+      );
+    }
+    return fillOmamaContractTemplate(tenantContractHtml, contractData, tenantLogoUrl);
+  }, [tenantContractHtml, contractData, tenantLogoUrl]);
 
-  // Fetch tenant-specific contract template (e.g. Omama full loan template) so it appears in Contracts tab
   useEffect(() => {
     let cancelled = false;
     fetch("/api/tenant/contract-template?slug=full-loan")
       .then((res) => res.json())
-      .then((data: { html?: string | null }) => {
-        if (!cancelled && data.html) setTenantContractHtml(data.html);
+      .then((data: { html?: string | null; logoUrl?: string | null }) => {
+        if (!cancelled) {
+          if (data.html) setTenantContractHtml(data.html);
+          if (data.logoUrl) setTenantLogoUrl(data.logoUrl);
+        }
       })
       .catch(() => {});
     return () => {
@@ -1596,7 +1605,7 @@ export function LoanContracts({
         description: "Creating PDF documents",
       });
 
-      const keyFactsPDF = await generateKeyFactsPDF();
+      const keyFactsPDF = tenantContractHtml ? null : await generateKeyFactsPDF();
       const salaryAdvancePDF = await generateSalaryAdvanceContractPDF();
 
       // Step 3: Create loan in Fineract
@@ -2156,22 +2165,24 @@ export function LoanContracts({
                   Review the documents before printing or completing
                 </CardDescription>
               </div>
-              <div className="flex gap-2">
-                <Button
-                  variant={showKeyFacts ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setShowKeyFacts(true)}
-                >
-                  Key Facts Statement
-                </Button>
-                <Button
-                  variant={!showKeyFacts ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setShowKeyFacts(false)}
-                >
-                  Loan Contract
-                </Button>
-              </div>
+              {!tenantContractHtml && (
+                <div className="flex gap-2">
+                  <Button
+                    variant={showKeyFacts ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setShowKeyFacts(true)}
+                  >
+                    Key Facts Statement
+                  </Button>
+                  <Button
+                    variant={!showKeyFacts ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setShowKeyFacts(false)}
+                  >
+                    Loan Contract
+                  </Button>
+                </div>
+              )}
             </div>
           </CardHeader>
           <CardContent className="p-4">
@@ -2827,18 +2838,22 @@ export function LoanContracts({
               </Button>
             )}
             <div className="flex gap-4 ml-auto">
-              <Button onClick={handlePrintKeyFacts} variant="outline" size="sm">
-                <FileText className="mr-2 h-4 w-4" />
-                Print Key Facts
-              </Button>
+              {!tenantContractHtml && (
+                <Button onClick={handlePrintKeyFacts} variant="outline" size="sm">
+                  <FileText className="mr-2 h-4 w-4" />
+                  Print Key Facts
+                </Button>
+              )}
               <Button onClick={handlePrintContract} variant="outline" size="sm">
                 <FileText className="mr-2 h-4 w-4" />
                 Print Contract
               </Button>
-              <Button onClick={handlePrintBoth} variant="outline" size="sm">
-                <FileText className="mr-2 h-4 w-4" />
-                Print All
-              </Button>
+              {!tenantContractHtml && (
+                <Button onClick={handlePrintBoth} variant="outline" size="sm">
+                  <FileText className="mr-2 h-4 w-4" />
+                  Print All
+                </Button>
+              )}
               <Button
                 onClick={handleComplete}
                 className="px-6 transition-all duration-300"

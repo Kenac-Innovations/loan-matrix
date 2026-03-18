@@ -1,9 +1,6 @@
 import { format } from "date-fns";
 import { ContractData } from "./contract-types";
 
-const DOTS_PATTERN = "[\\._\\u2026]{3,}";
-const HTML_SPACE_PATTERN = "(?:\\s|&nbsp;|&#xa0;|&#160;|&#xA0;)";
-const HTML_SPACE_OPT = `${HTML_SPACE_PATTERN}*`;
 
 const escapeHtml = (value: string): string =>
   value
@@ -13,8 +10,6 @@ const escapeHtml = (value: string): string =>
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
 
-const escapeRegExp = (value: string): string =>
-  value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 const formatCurrency = (amount?: number | null): string => {
   if (amount === null || amount === undefined || Number.isNaN(amount)) {
@@ -230,37 +225,11 @@ const pickValue = (data: ContractData, keys: string[]): any => {
   return undefined;
 };
 
-const replaceAfterLabel = (
-  html: string,
-  label: string,
-  value?: string | number | null
-): string => {
-  if (value === undefined || value === null || value === "") return html;
-  const safeValue = escapeHtml(String(value));
-  const pattern = new RegExp(
-    `(${escapeRegExp(label)}\\s*)${DOTS_PATTERN}`,
-    "i"
-  );
-  return html.replace(pattern, `$1${safeValue}`);
-};
-
-const replaceAllAfterLabel = (
-  html: string,
-  label: string,
-  value?: string | number | null
-): string => {
-  if (value === undefined || value === null || value === "") return html;
-  const safeValue = escapeHtml(String(value));
-  const pattern = new RegExp(
-    `(${escapeRegExp(label)}\\s*)${DOTS_PATTERN}`,
-    "gi"
-  );
-  return html.replace(pattern, `$1${safeValue}`);
-};
 
 export const fillOmamaContractTemplate = (
   html: string,
-  data: ContractData
+  data: ContractData,
+  logoUrl?: string | null,
 ): string => {
   let output = html;
 
@@ -653,159 +622,6 @@ export const fillOmamaContractTemplate = (
   const currentMonth = format(new Date(), "MMMM");
   const currentYear = format(new Date(), "yyyy");
 
-  // Header section – ensure spaces between label and value for readability
-  output = replaceAfterLabel(output, "NAME OF INDIVIDUAL:", clientName);
-
-  // CELL NUMBER and ACC No on two separate lines for readability
-  const cellAccPattern = new RegExp(
-    `(CELL NUMBER\\s*)${DOTS_PATTERN}\\s*(ACC No\\.?\\s*)${DOTS_PATTERN}`,
-    "gi"
-  );
-  output = output.replace(cellAccPattern, () => {
-    const phoneVal = phone ? escapeHtml(String(phone)) : "_____________________";
-    const accVal = accountNumber ? escapeHtml(String(accountNumber)) : "_____________________";
-    return `CELL NUMBER ${phoneVal} ACC No ${accVal}`;
-  });
-  output = replaceAfterLabel(output, "CELL NUMBER", phone);
-  output = replaceAfterLabel(output, "ACC No", accountNumber);
-  output = replaceAfterLabel(output, "ACC No\\.", accountNumber);
-  if (loanAmount || loanDate) {
-    const loanLinePattern =
-      /LOAN PRINCIPAL\s*\$\s*[._\u2026]{3,}[\s\S]*?LOAN DATE[\s\S]*?LOAN PRINCIPAL\$[._\u2026]{3,}[\s\S]*?LOAN DATE[._\u2026]{3,}/i;
-    output = output.replace(loanLinePattern, (line) => {
-      const amt = loanAmount ? escapeHtml(loanAmount) : "__________";
-      const dt = loanDate ? escapeHtml(loanDate) : "__________";
-      let updated = line.replace(
-        /(LOAN PRINCIPAL\s*\$\s*)[._\u2026]{3,}/i,
-        `$1${amt}`
-      );
-      updated = updated.replace(
-        /(LOAN DATE)\s*(?:[._\u2026]{3,}|\/\s*\/\s*\d{4})/i,
-        `LOAN DATE ${dt}`
-      );
-      return updated;
-    });
-  }
-  if (borrowingCount !== undefined && borrowingCount !== null && borrowingCount !== "") {
-    const timesPattern = new RegExp(
-      `(No of times borrowing)${DOTS_PATTERN}([\\s\\S]*?)(No of times borrowing)${DOTS_PATTERN}`,
-      "i"
-    );
-    output = output.replace(timesPattern, (_m, label1, mid, label2) => {
-      const val = escapeHtml(String(borrowingCount));
-      return `${label1} ${val}${mid}${label2} ${"................"}`;
-    });
-  }
-
-  // Loan application form – ensure spaces between fields for readability
-  if (surname || firstNames || idNumber) {
-    const pattern = new RegExp(
-      `Surname:\\s*${DOTS_PATTERN}\\s*First names:\\s*${DOTS_PATTERN}\\s*ID\\s*${DOTS_PATTERN}`,
-      "i"
-    );
-    output = output.replace(pattern, () => {
-      const s = escapeHtml(surname || "");
-      const f = escapeHtml(firstNames || "");
-      const id = escapeHtml(String(idNumber || ""));
-      return `Surname: ${s}  First names: ${f}  ID ${id}`;
-    });
-    output = output.replace(
-      new RegExp(`Surname:\\s*${DOTS_PATTERN}`, "gi"),
-      `Surname: ${escapeHtml(surname || "")} `
-    );
-    output = output.replace(
-      new RegExp(`First names:\\s*${DOTS_PATTERN}`, "gi"),
-      `First names: ${escapeHtml(firstNames || "")} `
-    );
-    output = output.replace(
-      new RegExp(`ID\\s*${DOTS_PATTERN}`, "gi"),
-      `ID ${escapeHtml(String(idNumber || ""))}`
-    );
-  }
-
-  if (title || gender || dateOfBirth) {
-    const normalizedGender = normalizeGender(gender);
-    const maleSelected = normalizedGender === "male";
-    const femaleSelected = normalizedGender === "female";
-    const dobText = dateOfBirth ? escapeHtml(String(dateOfBirth)) : "__________";
-    const titleText = title ? ` ${escapeHtml(String(title))}` : "";
-    const titleGenderMarkup = `Title: Mr/Mrs., Miss, Dr, Reverend, other (Tick):${titleText} Gender<span style="font-weight:normal">: </span><span class="gender-choice${
-      maleSelected ? " selected" : ""
-    }" style="font-weight:normal">Male</span> / <span class="gender-choice${
-      femaleSelected ? " selected" : ""
-    }" style="font-weight:normal">Female</span><span style="font-weight:normal">. Date of Birth ${dobText}</span>`;
-
-    const titleGenderPattern = new RegExp(
-      `Title:[\\s\\S]{0,200}?Date of Birth${HTML_SPACE_OPT}${DOTS_PATTERN}`,
-      "i"
-    );
-    output = output.replace(titleGenderPattern, titleGenderMarkup);
-  }
-
-  if (residentialAddress || phone) {
-    const addressPattern = new RegExp(
-      `Physical Res\\. Address${HTML_SPACE_OPT}${DOTS_PATTERN}[\\s\\S]*?Phone${HTML_SPACE_OPT}${DOTS_PATTERN}`,
-      "i"
-    );
-    output = output.replace(addressPattern, () => {
-      const addrText = residentialAddress
-        ? escapeHtml(String(residentialAddress))
-        : "________________________";
-      const phoneText = phone ? escapeHtml(String(phone)) : "____________";
-      return `Physical Res. Address ${addrText} Phone ${phoneText}`;
-    });
-  }
-
-  if (employerName || workAddress || phone) {
-    const workPattern = new RegExp(
-      `Place of work & Physical Address${HTML_SPACE_OPT}${DOTS_PATTERN}[\\s\\S]*?Phone${HTML_SPACE_OPT}${DOTS_PATTERN}`,
-      "i"
-    );
-    output = output.replace(workPattern, () => {
-      const placeText = escapeHtml(String(employerName || workAddress || ""));
-      const phoneVal = workPhone || phone;
-      const phoneText = phoneVal ? escapeHtml(String(phoneVal)) : "____________";
-      return `Place of work & Physical Address ${placeText} Phone ${phoneText}`;
-    });
-  }
-
-  if (spouseName || spousePhone) {
-    const spousePattern = /Name of wife\/husband\s*[._\u2026]{3,}Tel:\s*[._\u2026]{3,}/i;
-    output = output.replace(spousePattern, () => {
-      const nameText = spouseName ? escapeHtml(String(spouseName)) : "_____________________";
-      const phoneText = spousePhone ? escapeHtml(String(spousePhone)) : "______________";
-      return `Name of wife/husband ${nameText} Tel: ${phoneText}`;
-    });
-  }
-
-  if (maritalStatus) {
-    output = output.replace(
-      /(Marital status:\s*)[_\u2026]{3,}/i,
-      `$1${escapeHtml(String(maritalStatus))}`
-    );
-  }
-
-  if (closestRelativeName || closestRelativePhone) {
-    const relativePattern = /Name of closest relative:\s*[._\u2026]{3,}Tel:\s*[._\u2026]{3,}/i;
-    output = output.replace(relativePattern, () => {
-      const nameText = closestRelativeName
-        ? escapeHtml(String(closestRelativeName))
-        : "_____________________";
-      const phoneText = closestRelativePhone
-        ? escapeHtml(String(closestRelativePhone))
-        : "______________";
-      return `Name of closest relative: ${nameText} Tel: ${phoneText}`;
-    });
-  }
-
-  if (closestRelativeRelationship) {
-    output = output.replace(
-      /(Relation\/[^_]*?)[_\u2026]{3,}/i,
-      `$1${escapeHtml(String(closestRelativeRelationship))}`
-    );
-  }
-
-  // Occupation / business (including Shona "Munoita nezvei?")
   const occupationText =
     employmentStatus ||
     businessType ||
@@ -813,423 +629,6 @@ export const fillOmamaContractTemplate = (
     findValueByKeyMatch(data.stateContext, /occupation|job|business|trade/i) ||
     findValueByKeyMatch(data.stateMetadata, /occupation|job|business|trade/i) ||
     "";
-  if (occupationText) {
-    output = output.replace(
-      new RegExp(`(Munoita nezvei\\?${HTML_SPACE_OPT})${DOTS_PATTERN}`, "gi"),
-      `$1${escapeHtml(String(occupationText))}`
-    );
-    output = output.replace(
-      new RegExp(`(What business or job do you do\\?${HTML_SPACE_OPT})${DOTS_PATTERN}`, "gi"),
-      `$1${escapeHtml(String(occupationText))}`
-    );
-  }
-  output = output.replace(
-    new RegExp(`(What business or job do you do\\?[^_]*?)${DOTS_PATTERN}`, "gi"),
-    (match, prefix) => {
-      const jobText = escapeHtml(String(occupationText || "_____________________"));
-      return `${prefix}${jobText}`;
-    }
-  );
-
-  if (businessLocation) {
-    const locationPattern = new RegExp(
-      `(Where do you operate your business from[\\s\\S]{0,400}?)(?:${HTML_SPACE_OPT})${DOTS_PATTERN}`,
-      "i"
-    );
-    output = output.replace(locationPattern, (_match, prefix) => {
-      return `${prefix}${escapeHtml(String(businessLocation))}`;
-    });
-  }
-
-  if (yearsInBusiness || monthlyIncome) {
-    const yearsText = yearsInBusiness ? escapeHtml(String(yearsInBusiness)) : "______";
-    const incomeText = monthlyIncome
-      ? escapeHtml(formatMaybeCurrency(monthlyIncome))
-      : "______";
-    const yearsPattern = new RegExp(
-      `(Years\\/Months in Business or at work[\\s\\S]{0,120}?:${HTML_SPACE_OPT})${DOTS_PATTERN}`,
-      "i"
-    );
-    output = output.replace(yearsPattern, `$1${yearsText}`);
-    const salaryPattern = new RegExp(
-      `(salary${HTML_SPACE_OPT}\\$)${HTML_SPACE_OPT}${DOTS_PATTERN}`,
-      "i"
-    );
-    output = output.replace(salaryPattern, `$1${incomeText}`);
-  }
-
-  if (requestedAmount || loanPurpose) {
-    const reqPattern =
-      /Required Loan Amount[^$]*\$[_\u2026]{3,}[^L]*Loan Purpose\/[^_]*[_\u2026]{3,}/i;
-    output = output.replace(reqPattern, () => {
-      const amountText = requestedAmount
-        ? escapeHtml(formatCurrency(Number(requestedAmount)))
-        : "______";
-      const purposeText = loanPurpose ? escapeHtml(String(loanPurpose)) : "__________________";
-      return `Required Loan Amount $${amountText} Loan Purpose/ ${purposeText}`;
-    });
-  }
-
-  if (securityItems.length > 0) {
-    const proposedSecurityLine = /1[.\s\u2026]{3,}2[.\s\u2026]{3,}3[.\s\u2026]{3,}4[.\s\u2026]{3,}5[.\s\u2026]{3,}/i;
-    const proposedText = [0, 1, 2, 3, 4]
-      .map((idx) => `${idx + 1} ${escapeHtml(String(securityItems[idx] || "________________"))}`)
-      .join(" ");
-    output = output.replace(proposedSecurityLine, proposedText);
-  }
-
-  // Declaration & Signature: Date (isai zuva ranhasi) and Place – use current date on user's machine
-  output = output.replace(
-    new RegExp(
-      `(Date \\(isai zuva ranhasi\\):\\s*)${DOTS_PATTERN}`,
-      "gi"
-    ),
-    `Date (isai zuva ranhasi): ${escapeHtml(currentDateStr)}`
-  );
-  output = output.replace(
-    new RegExp(
-      `(Place \\(nyorai nzvimbo kana Guta ramuri\\)\\s*)${DOTS_PATTERN}`,
-      "gi"
-    ),
-    `Place (nyorai nzvimbo kana Guta ramuri) ${escapeHtml(executionPlace || "___________________")}`
-  );
-  output = replaceAllAfterLabel(output, "Date (isai zuva ranhasi)", currentDateStr);
-  output = replaceAfterLabel(output, "Place (nyorai nzvimbo", executionPlace);
-
-  if (clientName) {
-    const signaturePattern =
-      /Borrower:\s*[._\u2026]{3,}\s*\(Signature\)/i;
-    output = output.replace(signaturePattern, () => {
-      return `Borrower: ${escapeHtml(String(clientName))} (Signature)`;
-    });
-  }
-
-  if (clientName || idNumber) {
-    const idPattern = /I[._\u2026]{3,}ID Number[._\u2026]{3,}/gi;
-    output = output.replace(idPattern, () => {
-      const nameText = clientName ? escapeHtml(String(clientName)) : "________________";
-      const idText = idNumber ? escapeHtml(String(idNumber)) : "________________";
-      return `I ${nameText} ID Number ${idText}`;
-    });
-  }
-
-  if (clientName) {
-    output = output.replace(/[._\u2026]{3,}\s*\(NAME IN\s*FULL\)/gi, `${escapeHtml(String(clientName))} (NAME IN FULL)`);
-    output = output.replace(
-      /I,?\s*[._\u2026]{3,}\s*\(NAME IN FULL\)/gi,
-      `I, ${escapeHtml(String(clientName))} (NAME IN FULL)`
-    );
-  }
-
-  if (clientName) {
-    output = output.replace(/[._\u2026]{3,}\s*\(Borrower\)/i, `${escapeHtml(String(clientName))} (Borrower)`);
-  }
-
-  if (residentialAddress) {
-    output = output.replace(/\(address\)/i, `(address) ${escapeHtml(String(residentialAddress))}`);
-  }
-
-  if (loanAmount || principalWords || loanPurpose) {
-    const principalPattern =
-      /Principal US\$ \(NOT RTGS\$\)\s*[._\u2026]{3,}\s*Word\s*[._\u2026]{3,}\s*Loan Purpose:\s*[._\u2026]{3,}/i;
-    output = output.replace(principalPattern, () => {
-      const amountText = loanAmount ? escapeHtml(loanAmount) : "________";
-      const wordsText = principalWords ? escapeHtml(principalWords) : "__________________________";
-      const purposeText = loanPurpose ? escapeHtml(String(loanPurpose)) : "__________";
-      return `Principal US$ (NOT RTGS$) ${amountText} Word ${wordsText} Loan Purpose: ${purposeText}`;
-    });
-  }
-
-  if (collateralType || collateralValue) {
-    const collateralText = [
-      collateralType ? `Type: ${collateralType}` : null,
-      collateralValue ? `Value: ${formatCurrency(collateralValue)}` : null,
-    ]
-      .filter(Boolean)
-      .join(" ");
-    if (collateralText) {
-      output = output.replace(
-        /Some of the pledged assets include:/i,
-        `Some of the pledged assets include: ${escapeHtml(collateralText)}`
-      );
-    }
-  }
-
-  if (securityItems.length > 0) {
-    const pledgedLine = /1[.\s\u2026]{5,}2[.\s\u2026]{5,}3[.\s\u2026]{5,}/i;
-    const pledgedText = [0, 1, 2]
-      .map((idx) => `${idx + 1} ${escapeHtml(String(securityItems[idx] || "________________"))}`)
-      .join(" ");
-    output = output.replace(pledgedLine, pledgedText);
-  }
-
-  if (clientName) {
-    output = output.replace(
-      /PLEDGE AGREEMENT BETWEEN:\s*\(NAME\)[._\u2026]{3,}/i,
-      `PLEDGE AGREEMENT BETWEEN: (NAME) ${escapeHtml(String(clientName))}`
-    );
-  }
-
-  if (idNumber) {
-    output = output.replace(
-      /I\.D\s*[._\u2026]{3,}/i,
-      `I.D ${escapeHtml(String(idNumber))}`
-    );
-  }
-
-  if (securityItems.length > 0) {
-    const regardingPattern =
-      /Regarding:\s*1\.[_\u2026]{3,}\s*2\.[_\u2026]{3,}\s*3\.[_\u2026]{3,}\s*4\.[_\u2026]{3,}\s*5\.[_\u2026]{3,}/i;
-    const regardingText = [0, 1, 2, 3, 4]
-      .map((idx) => `${idx + 1}. ${escapeHtml(String(securityItems[idx] || "________________"))}`)
-      .join(" ");
-    output = output.replace(regardingPattern, `Regarding: ${regardingText}`);
-  }
-
-  if (guarantorName || guarantorAddress || guarantorId || guarantorPhone) {
-    const nameText = guarantorName || "___________________";
-    const addressText = guarantorAddress || "___________________";
-    const idText = guarantorId || "___________________";
-    const phoneText = guarantorPhone || "____________";
-    output = output.replace(
-      new RegExp(
-        `I\\s*${DOTS_PATTERN}\\s*of\\s*${DOTS_PATTERN}\\s*\\(domicilium citandi\\/ serving address\\)\\s*ID no\\s*${DOTS_PATTERN}\\s*Tel\\s*${DOTS_PATTERN}`,
-        "i"
-      ),
-      `I ${escapeHtml(String(nameText))} of ${escapeHtml(String(addressText))} (domicilium citandi/ serving address) ID no ${escapeHtml(String(idText))} Tel ${escapeHtml(String(phoneText))}`
-    );
-  }
-
-  if (executionDate) {
-    output = output.replace(
-      new RegExp(`(from this date\\s*)${DOTS_PATTERN}\\s*\\(date\\)`, "i"),
-      `from this date ${escapeHtml(String(executionDate))} (date)`
-    );
-  }
-
-  if (clientName) {
-    output = output.replace(
-      /[_\u2026]{3,}\s*\(hereinafter called the [“"']Borrower[”"']\)/i,
-      `${escapeHtml(String(clientName))} (hereinafter called the “Borrower”)`
-    );
-  }
-
-  if (guarantorName) {
-    output = output.replace(
-      /Signed:\s*[._\u2026]{3,}\s*\(Guarantor\)/i,
-      `Signed: ${escapeHtml(String(guarantorName))} (Guarantor)`
-    );
-  }
-
-  // Interest rate % per month (e.g. "at the rate of........ % per month")
-  if (interestRateStr) {
-    output = output.replace(
-      new RegExp(`(rate of\\s*)${DOTS_PATTERN}(\\s*%\\s*per\\s*month)`, "gi"),
-      `rate of ${escapeHtml(interestRateStr)} % per month`
-    );
-    output = output.replace(
-      /rate[\s\S]{0,120}?<span[^>]*>[._\u2026]{3,}<\/span>[\s\S]{0,40}?%/gi,
-      (match) =>
-        match.replace(
-          /<span[^>]*>[._\u2026]{3,}<\/span>/i,
-          escapeHtml(interestRateStr)
-        )
-    );
-  }
-
-  // Domicilium citandi et executandi (address)
-  if (residentialAddress) {
-    output = output.replace(
-      new RegExp(
-        `(domicilium citandi et executandi\\s+at\\s*)${DOTS_PATTERN}`,
-        "gi"
-      ),
-      `domicilium citandi et executandi at ${escapeHtml(String(residentialAddress))}`
-    );
-    output = output.replace(
-      new RegExp(`(choose domicilium citandi et executandi at\\s*)${DOTS_PATTERN}`, "gi"),
-      `choose domicilium citandi et executandi at ${escapeHtml(String(residentialAddress))}`
-    );
-    output = output.replace(
-      /domicilium citandi\s*\(address\)/i,
-      `domicilium citandi (address) ${escapeHtml(String(residentialAddress))}`
-    );
-  }
-
-  // Execution block: "THUS DONE and AGREED AT ... this ... day of ... 202..." – use current date on user's machine
-  const thusDonePlace = executionPlace || "___________________";
-  const thusDoneDay = currentDay || executionDay;
-  const thusDoneMonth = currentMonth || executionMonth;
-  const thusDoneYear = currentYear || executionYear;
-  output = output.replace(
-    new RegExp(
-      `THUS DONE and AGREED AT\\s*${DOTS_PATTERN}\\s*this\\s*${DOTS_PATTERN}\\s*day of\\s*${DOTS_PATTERN}\\s*202[._\\u2026]*`,
-      "gi"
-    ),
-    `THUS DONE and AGREED AT ${escapeHtml(thusDonePlace)} this ${escapeHtml(thusDoneDay)} day of ${escapeHtml(thusDoneMonth)} ${escapeHtml(thusDoneYear)}`
-  );
-  output = output.replace(
-    new RegExp(
-      `(THUS DONE and AGREED AT\\s*)${DOTS_PATTERN}`,
-      "gi"
-    ),
-    `THUS DONE and AGREED AT ${escapeHtml(thusDonePlace)}`
-  );
-  output = output.replace(
-    /THUS DONE and AGREED AT[\s\S]{0,300}?day[\s\S]{0,80}?of[\s\S]{0,160}?(202[._\u2026]*|\d{4})/gi,
-    `THUS DONE and AGREED AT ${escapeHtml(thusDonePlace)} this ${escapeHtml(thusDoneDay)} day of ${escapeHtml(thusDoneMonth)} ${escapeHtml(thusDoneYear)}`
-  );
-  output = output.replace(
-    /THUS DONE and AGREED AT[\s\S]{0,300}?(202[._\u2026]*|\d{4})/gi,
-    `THUS DONE and AGREED AT ${escapeHtml(thusDonePlace)} this ${escapeHtml(thusDoneDay)} day of ${escapeHtml(thusDoneMonth)} ${escapeHtml(thusDoneYear)}`
-  );
-
-  // Acknowledgement of debt: sum of USD$, monthly payment, first payment date
-  if (totalDebtStr) {
-    output = replaceAllAfterLabel(output, "sum of USD$", totalDebtStr);
-    output = replaceAllAfterLabel(output, "sum of $", totalDebtStr);
-    output = replaceAllAfterLabel(output, "in the sum of USD$", totalDebtStr);
-    output = output.replace(
-      new RegExp(
-        `(indebtedness to OMAMA FINANCE in the sum of USD\\$\\s*)${DOTS_PATTERN}`,
-        "gi"
-      ),
-      `indebtedness to OMAMA FINANCE in the sum of USD$ ${escapeHtml(totalDebtStr)}`
-    );
-    output = output.replace(
-      /(USD\$)\.?\s*<span[^>]*>[._\u2026]{3,}<\/span>/gi,
-      `$1 ${escapeHtml(totalDebtStr)}`
-    );
-  }
-  if (paymentPerPeriodStr) {
-    output = replaceAllAfterLabel(output, "reduction of the debt of USD$", paymentPerPeriodStr);
-    output = replaceAllAfterLabel(output, "minimum amount in reduction of the debt of USD$", paymentPerPeriodStr);
-    output = output.replace(
-      /(debt of USD\$)\s*<span[^>]*>[._\u2026]{3,}<\/span>/gi,
-      `$1 ${escapeHtml(paymentPerPeriodStr)}`
-    );
-  }
-  if (paymentByDate) {
-    output = output.replace(
-      new RegExp(
-        `(first payment to be made by the${HTML_SPACE_OPT})${DOTS_PATTERN}`,
-        "gi"
-      ),
-      `first payment to be made by the ${escapeHtml(String(paymentByDate))}`
-    );
-    output = output.replace(
-      /(first payment to be made by the)\s*<span[^>]*>[._\u2026]{3,}<\/span>/gi,
-      `$1 ${escapeHtml(String(paymentByDate))}`
-    );
-    output = output.replace(
-      new RegExp(
-        `(payment to be made${HTML_SPACE_OPT}by${HTML_SPACE_OPT}the${HTML_SPACE_OPT})${DOTS_PATTERN}`,
-        "gi"
-      ),
-      `payment to be made by the ${escapeHtml(String(paymentByDate))}`
-    );
-    output = output.replace(
-      /payment to be made\s*<span[^>]*>[^<]*<\/span>\s*by\s*<span[^>]*>[^<]*<\/span>\s*the\s*<span[^>]*>[._\u2026]{3,}<\/span>/gi,
-      `payment to be made by the ${escapeHtml(String(paymentByDate))}`
-    );
-  }
-
-  // Cash received (disbursed amount)
-  if (disbursedAmountStr) {
-    output = output.replace(
-      /Cash Received:\s*US\$\(NOT RTGS\$\)\s*[._\u2026]{3,}/gi,
-      `Cash Received: US$(NOT RTGS$) ${escapeHtml(disbursedAmountStr)}`
-    );
-    output = output.replace(
-      /CASH RECEIVED:\s*US\$\(NOT RTGS\$\)\s*[._\u2026]{3,}/gi,
-      `CASH RECEIVED: US$(NOT RTGS$) ${escapeHtml(disbursedAmountStr)}`
-    );
-  }
-
-  if (executionPlace || executionDate) {
-    const placeText = executionPlace || "___________________";
-    const dateText = executionDate || currentDateStr;
-    output = output.replace(
-      /PLACE:\s*[._\u2026]{3,}\s*DATE ALL THIS DONE:\s*[._\u2026]{3,}/gi,
-      `PLACE: ${escapeHtml(String(placeText))} DATE ALL THIS DONE: ${escapeHtml(String(dateText))}`
-    );
-  }
-
-  if (clientName || data.loanOfficer) {
-    const lenderName = data.loanOfficer || "Omama Finance";
-    output = output.replace(
-      /Signature:\s*Borrower[.\u2026]{3,}\s*Lender[.\u2026]{3,}/i,
-      `Signature: Borrower ${escapeHtml(String(clientName || ""))} Lender ${escapeHtml(String(lenderName))}`
-    );
-  }
-
-  // Voluntary surrender opening: "I................ of ................ do hereby voluntarily surrender"
-  if (clientName || residentialAddress) {
-    output = output.replace(
-      new RegExp(
-        `I\\s*${DOTS_PATTERN}\\s+of\\s*${DOTS_PATTERN}\\s*do hereby voluntarily surrender`,
-        "i"
-      ),
-      `I ${escapeHtml(String(clientName || "_______________"))} of ${escapeHtml(String(residentialAddress || "_______________"))} do hereby voluntarily surrender`
-    );
-  }
-  // "I owe Omama Finance to the tune of" – remove duplicate phrase and ensure correct amount (not $0)
-  const tuneAmount = loanAmount || formatCurrency(data.loanAmount) || "";
-  if (tuneAmount) {
-    output = output.replace(
-      /I owe Omama Finance to the tune of\s+I owe Omama Finance to the tune of/gi,
-      "I owe Omama Finance to the tune of"
-    );
-    output = output.replace(
-      new RegExp(
-        `(I owe Omama Finance to the tune of\\s+(?:I owe Omama Finance to the tune of\\s+)?\\$)${DOTS_PATTERN}`,
-        "gi"
-      ),
-      `I owe Omama Finance to the tune of $${escapeHtml(tuneAmount)}`
-    );
-    output = output.replace(
-      new RegExp(
-        `(I owe Omama Finance to the tune of \\$)${DOTS_PATTERN}`,
-        "gi"
-      ),
-      `I owe Omama Finance to the tune of $${escapeHtml(tuneAmount)}`
-    );
-    output = output.replace(
-      /to the tune of\s+\$0,?000\.00/gi,
-      `to the tune of $${escapeHtml(tuneAmount)}`
-    );
-    output = output.replace(
-      /to the tune of\s+\$0\.00/gi,
-      `to the tune of $${escapeHtml(tuneAmount)}`
-    );
-  }
-
-  // As Pledger / As Pledgee / Witnesses – fill name and place/date where we have them
-  if (clientName) {
-    output = output.replace(
-      /As Pledger:\s*[._\u2026]{3,}/i,
-      `As Pledger: ${escapeHtml(String(clientName))}`
-    );
-  }
-  if (data.loanOfficer) {
-    output = output.replace(
-      /As Pledgee:\s*[._\u2026]{3,}/i,
-      `As Pledgee: ${escapeHtml(String(data.loanOfficer))}`
-    );
-  }
-  // Signature block place and date (only where "At" / "on" are followed by dotted placeholders)
-  if (executionPlace) {
-    output = output.replace(
-      new RegExp(`(At\\s*)${DOTS_PATTERN}`, "g"),
-      `At ${escapeHtml(executionPlace)}`
-    );
-  }
-  if (loanDate) {
-    output = output.replace(
-      new RegExp(`(on\\s*)${DOTS_PATTERN}(?=\\s*</|\\s*$)`, "g"),
-      `on ${escapeHtml(loanDate)}`
-    );
-  }
 
   // Repayment schedule table – inject rows into empty table body
   if (schedule.length > 0) {
@@ -1284,83 +683,178 @@ export const fillOmamaContractTemplate = (
     }
   }
 
-  // REFEREES section – if we have referees in stateContext/stateMetadata
+  const UNDERLINE = (len: number) => "_".repeat(len);
+
+  const replaceToken = (token: string, value?: string | null, underlineLen: number = 20) => {
+    const replacement = value
+      ? ` ${escapeHtml(String(value))} `
+      : ` ${UNDERLINE(underlineLen)} `;
+    output = output.replace(new RegExp(`\\{\\{\\s*${token}\\s*\\}\\}`, "g"), replacement);
+  };
+
+  // Tenant logo
+  if (logoUrl) {
+    output = output.replace(/\{\{\s*TENANT_LOGO_URL\s*\}\}/g, escapeHtml(logoUrl));
+  }
+
+  // Gender display – tick/bold the selected gender
+  const normalizedGender = normalizeGender(gender);
+  const maleLabel = normalizedGender === "male"
+    ? '<span style="font-weight:bold;text-decoration:underline">Male &#10003;</span>'
+    : "Male";
+  const femaleLabel = normalizedGender === "female"
+    ? '<span style="font-weight:bold;text-decoration:underline">Female &#10003;</span>'
+    : "Female";
+  const genderDisplay = `${maleLabel} / ${femaleLabel}`;
+  output = output.replace(/\{\{\s*GENDER_DISPLAY\s*\}\}/g, genderDisplay);
+
+  // Page 1: Loan Application Form
+  replaceToken("SURNAME", surname, 25);
+  replaceToken("FIRST_NAMES", firstNames, 25);
+  replaceToken("ID_NUMBER", idNumber ? String(idNumber) : null, 20);
+  replaceToken("DATE_OF_BIRTH", dateOfBirth, 15);
+  replaceToken("RESIDENTIAL_ADDRESS", residentialAddress ? String(residentialAddress) : null, 45);
+  replaceToken("PHONE", phone ? String(phone) : null, 15);
+  replaceToken("WORK_ADDRESS", workAddress ? String(workAddress) : null, 45);
+  replaceToken("WORK_PHONE", workPhone ? String(workPhone) : null, 15);
+  replaceToken("MARITAL_STATUS", maritalStatus ? String(maritalStatus) : null, 20);
+  replaceToken("SPOUSE_NAME", spouseName ? String(spouseName) : null, 30);
+  replaceToken("SPOUSE_PHONE", spousePhone ? String(spousePhone) : null, 15);
+  replaceToken("CLOSEST_RELATIVE_NAME", closestRelativeName ? String(closestRelativeName) : null, 30);
+  replaceToken("CLOSEST_RELATIVE_PHONE", closestRelativePhone ? String(closestRelativePhone) : null, 15);
+  replaceToken("CLOSEST_RELATIVE_RELATIONSHIP", closestRelativeRelationship ? String(closestRelativeRelationship) : null, 30);
+  replaceToken("OCCUPATION", occupationText ? String(occupationText) : null, 35);
+  replaceToken("BUSINESS_LOCATION", businessLocation ? String(businessLocation) : null, 50);
+  replaceToken("YEARS_IN_BUSINESS", yearsInBusiness ? String(yearsInBusiness) : null, 10);
+  replaceToken("MONTHLY_INCOME", monthlyIncome ? formatMaybeCurrency(monthlyIncome) : null, 10);
+  replaceToken("REQUESTED_AMOUNT", requestedAmount ? formatCurrency(Number(requestedAmount)) : null, 12);
+  replaceToken("LOAN_PURPOSE", loanPurpose ? String(loanPurpose) : null, 25);
+
+  for (let i = 0; i < 5; i += 1) {
+    replaceToken(`SECURITY_${i + 1}`, securityItems[i], 25);
+  }
+
+  // Referees
   const referees =
     data.referees ||
     (data.stateContext as any)?.referees ||
     (data.stateMetadata as any)?.referees;
-  if (Array.isArray(referees) && referees.length > 0) {
-    const normalizeRef = (ref: any) => {
-      const name =
-        ref?.name ||
-        [ref?.firstname, ref?.middlename, ref?.lastname].filter(Boolean).join(" ");
-      return {
-        name,
-        occupation:
-          ref?.occupation || ref?.job || ref?.work || ref?.employment || "",
-        relation: ref?.relationship || ref?.relation || "",
-        address: ref?.address || ref?.location || "",
-        phone: ref?.phone || ref?.telephone || ref?.mobileNo || ref?.contact || "",
-      };
+  const normalizeRef = (ref: any) => {
+    const name =
+      ref?.name ||
+      [ref?.firstname, ref?.middlename, ref?.lastname].filter(Boolean).join(" ");
+    return {
+      name,
+      occupation: ref?.occupation || ref?.job || ref?.work || ref?.employment || "",
+      relation: ref?.relationship || ref?.relation || "",
+      address: ref?.address || ref?.location || "",
+      phone: ref?.phone || ref?.telephone || ref?.mobileNo || ref?.contact || "",
     };
-    const ref1 = normalizeRef(referees[0] || {});
-    const ref2 = normalizeRef(referees[1] || {});
-    const blank = "____________________";
-
-    const namePattern = new RegExp(
-      `(Name:\\s*)${DOTS_PATTERN}(\\s*Name:\\s*)${DOTS_PATTERN}`,
-      "i"
-    );
-    output = output.replace(
-      namePattern,
-      `$1${escapeHtml(ref1.name || blank)} $2${escapeHtml(ref2.name || blank)}`
-    );
-
-    const occupationPattern = new RegExp(
-      `(Occupation\\/[^:]*:\\s*)${DOTS_PATTERN}(\\s*Occupation\\/[^:]*:\\s*)${DOTS_PATTERN}`,
-      "i"
-    );
-    output = output.replace(
-      occupationPattern,
-      `$1${escapeHtml(ref1.occupation || blank)} $2${escapeHtml(ref2.occupation || blank)}`
-    );
-
-    const relationPattern = new RegExp(
-      `(Relation to applicant:\\s*)${DOTS_PATTERN}(\\s*Relation to applicant:\\s*)${DOTS_PATTERN}`,
-      "i"
-    );
-    output = output.replace(
-      relationPattern,
-      `$1${escapeHtml(ref1.relation || blank)} $2${escapeHtml(ref2.relation || blank)}`
-    );
-
-    const addressPattern = new RegExp(
-      `(Address:\\s*)${DOTS_PATTERN}(\\s*Address:\\s*)${DOTS_PATTERN}`,
-      "i"
-    );
-    output = output.replace(
-      addressPattern,
-      `$1${escapeHtml(ref1.address || blank)} $2${escapeHtml(ref2.address || blank)}`
-    );
-
-    const phonePattern = new RegExp(
-      `(Telephone No:\\s*)${DOTS_PATTERN}(\\s*Telephone No:\\s*)${DOTS_PATTERN}`,
-      "i"
-    );
-    output = output.replace(
-      phonePattern,
-      `$1${escapeHtml(ref1.phone || blank)} $2${escapeHtml(ref2.phone || blank)}`
-    );
-  }
-
-  const replaceToken = (token: string, value?: string | null) => {
-    const replacement = value ? escapeHtml(String(value)) : "&nbsp;";
-    output = output.replace(new RegExp(`\\{\\{\\s*${token}\\s*\\}\\}`, "g"), replacement);
   };
+  const ref1 = normalizeRef(Array.isArray(referees) ? referees[0] : {});
+  const ref2 = normalizeRef(Array.isArray(referees) ? referees[1] : {});
+  replaceToken("REF1_NAME", ref1.name || null, 25);
+  replaceToken("REF1_OCCUPATION", ref1.occupation || null, 20);
+  replaceToken("REF1_RELATION", ref1.relation || null, 20);
+  replaceToken("REF1_ADDRESS", ref1.address || null, 25);
+  replaceToken("REF1_PHONE", ref1.phone || null, 20);
+  replaceToken("REF2_NAME", ref2.name || null, 25);
+  replaceToken("REF2_OCCUPATION", ref2.occupation || null, 20);
+  replaceToken("REF2_RELATION", ref2.relation || null, 20);
+  replaceToken("REF2_ADDRESS", ref2.address || null, 25);
+  replaceToken("REF2_PHONE", ref2.phone || null, 20);
 
+  replaceToken("APPLICANT_SIGNATURE", null, 35);
+  replaceToken("DECLARATION_DATE", currentDateStr, 15);
+  replaceToken("DECLARATION_PLACE", executionPlace || null, 25);
+
+  // Acknowledgement of Debt / used across pages
+  replaceToken("CLIENT_NAME", clientName, 40);
+  replaceToken("CLIENT_ADDRESS", residentialAddress ? String(residentialAddress) : null, 50);
+  replaceToken("TOTAL_DEBT", totalDebtStr || null, 15);
+
+  // Voluntary Surrender items
   for (let i = 0; i < 8; i += 1) {
-    replaceToken(`REPAY_DATE_${i + 1}`, scheduleDates[i]);
+    replaceToken(`VOL_ITEM_${i + 1}`, securityItems[i], 30);
   }
+
+  // Loan Agreement
+  replaceToken("LOAN_AMOUNT", loanAmount || null, 15);
+  replaceToken("PRINCIPAL_WORDS", principalWords || null, 35);
+  replaceToken("BORROWER_SIGNATURE", null, 35);
+  replaceToken("LENDER_SIGNATURE", data.loanOfficer || null, 35);
+  replaceToken("DISBURSED_AMOUNT", disbursedAmountStr || null, 15);
+  replaceToken("SIGNED_BY", null, 25);
+  replaceToken("EXECUTION_PLACE", executionPlace || null, 25);
+  replaceToken("EXECUTION_DATE", executionDate || currentDateStr, 15);
+
+  // Misc tokens
+  replaceToken("ACCOUNT_NUMBER", accountNumber ? String(accountNumber) : null, 15);
+  replaceToken("LOAN_DATE", loanDate || null, 15);
+  replaceToken("BORROWING_COUNT", borrowingCount !== undefined && borrowingCount !== null ? String(borrowingCount) : null, 10);
+  replaceToken("LOAN_AMOUNT_2", null, 15);
+  replaceToken("LOAN_DATE_2", null, 15);
+  replaceToken("BORROWING_COUNT_2", null, 10);
+  for (let i = 0; i < 8; i += 1) {
+    replaceToken(`REPAY_DATE_${i + 1}`, scheduleDates[i], 12);
+  }
+  const lastDueDate = scheduleDates.length
+    ? parseDate(scheduleDates[scheduleDates.length - 1])
+    : null;
+  if (lastDueDate) {
+    const addDays = (date: Date, days: number) =>
+      new Date(date.getTime() + days * 24 * 60 * 60 * 1000);
+    const penalty1 = addDays(lastDueDate, 7);
+    const penalty2 = addDays(penalty1, 7);
+    const penalty3 = addDays(penalty2, 30);
+    replaceToken("PENALTY_DATE_1", formatDate(penalty1), 12);
+    replaceToken("PENALTY_DATE_2", formatDate(penalty2), 12);
+    replaceToken("PENALTY_DATE_3", formatDate(penalty3), 12);
+  } else {
+    replaceToken("PENALTY_DATE_1", null, 12);
+    replaceToken("PENALTY_DATE_2", null, 12);
+    replaceToken("PENALTY_DATE_3", null, 12);
+  }
+
+  // Acknowledgement of Debt
+  replaceToken("PAYMENT_PER_PERIOD", paymentPerPeriodStr || null, 15);
+  replaceToken("FIRST_PAYMENT_DATE", firstPaymentDateStr || null, 25);
+  replaceToken("INTEREST_RATE", interestRateStr || null, 8);
+  replaceToken("EXECUTION_DAY", currentDay || executionDay ? String(currentDay || executionDay) : null, 8);
+  replaceToken("EXECUTION_MONTH", currentMonth || executionMonth ? String(currentMonth || executionMonth) : null, 15);
+  replaceToken("EXECUTION_YEAR", currentYear || executionYear ? String(currentYear || executionYear) : null, 8);
+  replaceToken("DEBTOR_SIGNATURE", null, 40);
+  replaceToken("AOD_WITNESS_1", null, 45);
+  replaceToken("AOD_WITNESS_2", null, 45);
+
+  // Guarantee
+  replaceToken("GUARANTOR_NAME", guarantorName ? String(guarantorName) : null, 40);
+  replaceToken("GUARANTOR_ADDRESS", guarantorAddress ? String(guarantorAddress) : null, 40);
+  replaceToken("GUARANTOR_ID", guarantorId ? String(guarantorId) : null, 20);
+  replaceToken("GUARANTOR_PHONE", guarantorPhone ? String(guarantorPhone) : null, 15);
+  replaceToken("GUARANTOR_SIGNATURE", null, 30);
+  replaceToken("GUARANTEE_DATE", executionDate || currentDateStr, 15);
+  replaceToken("GUARANTEE_WITNESS_1", null, 30);
+  replaceToken("GUARANTEE_WITNESS_1_DATE", null, 15);
+  replaceToken("GUARANTEE_WITNESS_2", null, 30);
+  replaceToken("GUARANTEE_WITNESS_2_DATE", null, 15);
+
+  // Pledge Agreement
+  for (let i = 0; i < 5; i += 1) {
+    replaceToken(`PLEDGE_ITEM_${i + 1}`, securityItems[i], 20);
+  }
+  replaceToken("PLEDGER_SIGNATURE", null, 30);
+  replaceToken("PLEDGEE_SIGNATURE", data.loanOfficer || null, 30);
+  replaceToken("PLEDGE_WITNESS_1", null, 25);
+  replaceToken("PLEDGE_WITNESS_2", null, 25);
+
+  // Misc signature placeholders
+  replaceToken("DEBTOR_WITNESS_1", null, 30);
+  replaceToken("DEBTOR_WITNESS_2", null, 30);
+  replaceToken("SURRENDER_WITNESS_1", null, 30);
+  replaceToken("SURRENDER_WITNESS_2", null, 30);
+  replaceToken("AGREEMENT_WITNESS_1", null, 30);
+  replaceToken("AGREEMENT_WITNESS_2", null, 30);
 
   const dateAmounts = Array.isArray(schedule)
     ? schedule.slice(0, 4).map((p: any) => {
@@ -1371,32 +865,15 @@ export const fillOmamaContractTemplate = (
         return amount ? `$${amount}` : "";
       })
     : [];
-
   for (let i = 0; i < 4; i += 1) {
-    replaceToken(`DATE_AMOUNT_${i + 1}`, dateAmounts[i]);
+    replaceToken(`DATE_AMOUNT_${i + 1}`, dateAmounts[i], 20);
   }
 
-  for (let i = 0; i < 8; i += 1) {
-    replaceToken(`VOL_ITEM_${i + 1}`, securityItems[i]);
-  }
-
-  const lastDueDate = scheduleDates.length
-    ? parseDate(scheduleDates[scheduleDates.length - 1])
-    : null;
-  if (lastDueDate) {
-    const addDays = (date: Date, days: number) =>
-      new Date(date.getTime() + days * 24 * 60 * 60 * 1000);
-    const penalty1 = addDays(lastDueDate, 7);
-    const penalty2 = addDays(penalty1, 7);
-    const penalty3 = addDays(penalty2, 30);
-    replaceToken("PENALTY_DATE_1", formatDate(penalty1));
-    replaceToken("PENALTY_DATE_2", formatDate(penalty2));
-    replaceToken("PENALTY_DATE_3", formatDate(penalty3));
-  } else {
-    replaceToken("PENALTY_DATE_1", "");
-    replaceToken("PENALTY_DATE_2", "");
-    replaceToken("PENALTY_DATE_3", "");
-  }
+  // Catch any remaining unreplaced tokens
+  output = output.replace(
+    /\{\{\s*[A-Z_0-9]+\s*\}\}/g,
+    ` ${UNDERLINE(20)} `
+  );
 
   return output;
 };
