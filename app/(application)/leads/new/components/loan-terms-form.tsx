@@ -308,6 +308,7 @@ export function LoanTermsForm({
   // Track if template values have been set
   const frequencyValuesSet = useRef(false);
   const templateValuesSet = useRef(false);
+  const detailedTemplateFetched = useRef(false);
 
   // Compute display values directly from template - this survives remounts!
   const templateDerivedValues = useMemo(() => {
@@ -443,9 +444,13 @@ export function LoanTermsForm({
 
   // Fetch detailed template and product topup config when clientId and productId are available
   useEffect(() => {
+    detailedTemplateFetched.current = false;
+  }, [clientId, productId]);
+
+  useEffect(() => {
     const fetchDetailedTemplate = async () => {
       if (!clientId || !productId) return;
-      if (loanTemplate?.charges && loanTemplate.charges.length > 0) return;
+      if (detailedTemplateFetched.current) return;
 
       frequencyValuesSet.current = false;
 
@@ -497,6 +502,7 @@ export function LoanTermsForm({
           }
         }
 
+        detailedTemplateFetched.current = true;
         setLoanTemplate(detailedTemplate);
 
         // Initialize editable charges from template
