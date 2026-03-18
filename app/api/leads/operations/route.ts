@@ -15,6 +15,8 @@ async function resolveCurrentTenant(tx?: any, req?: Request) {
   if (req) {
     const origin = req.headers.get("origin");
     const referer = req.headers.get("referer");
+    const host = req.headers.get("host");
+    console.log("[resolveCurrentTenant] headers:", { origin, referer, host, hasReq: !!req });
 
     if (origin) {
       try {
