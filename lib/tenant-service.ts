@@ -37,12 +37,19 @@ export function extractTenantSlug(host: string): string {
 }
 
 /**
- * Get tenant information from request headers
+ * Get tenant information from request headers.
+ * Checks the x-tenant-slug header set by middleware first,
+ * then falls back to extracting the tenant slug from the host header.
  */
 export async function getTenantFromHeaders(): Promise<TenantInfo | null> {
   const headersList = await headers();
-  const host = headersList.get("host");
 
+  const slugFromMiddleware = headersList.get("x-tenant-slug");
+  if (slugFromMiddleware) {
+    return await getTenantBySlug(slugFromMiddleware);
+  }
+
+  const host = headersList.get("host");
   if (!host) return null;
 
   const tenantSlug = extractTenantSlug(host);
