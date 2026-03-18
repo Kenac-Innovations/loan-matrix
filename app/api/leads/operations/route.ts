@@ -3,16 +3,49 @@ import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 import { getFineractServiceWithSession } from "@/lib/fineract-api";
 import { getSession } from "@/lib/auth";
-import { getTenantFromHeaders } from "@/lib/tenant-service";
+import {
+  getTenantFromHeaders,
+  getTenantBySlug,
+  extractTenantSlug,
+} from "@/lib/tenant-service";
 
-// Helper to resolve the current tenant from request headers
-async function resolveCurrentTenant(tx?: any) {
-  const tenant = await getTenantFromHeaders();
-  if (tenant) {
-    return tenant;
+// Helper to resolve the current tenant, optionally using the raw request
+// so we can read middleware-set and proxy-set headers directly.
+async function resolveCurrentTenant(tx?: any, req?: Request) {
+  // 1. Try reading headers directly from the request object (most reliable)
+  if (req) {
+    const slug = req.headers.get("x-tenant-slug");
+    const fwdHost = req.headers.get("x-forwarded-host");
+    const host = req.headers.get("host");
+    console.log("[resolveCurrentTenant] req headers:", { slug, fwdHost, host });
+
+    if (slug) {
+      const t = await getTenantBySlug(slug);
+      if (t) return t;
+    }
+    if (fwdHost) {
+      const t = await getTenantBySlug(
+        extractTenantSlug(fwdHost.split(",")[0].trim())
+      );
+      if (t) return t;
+    }
+    if (host) {
+      const t = await getTenantBySlug(extractTenantSlug(host));
+      if (t) return t;
+    }
   }
-  // Fallback: look up from FINERACT_TENANT_ID env or default
+
+  // 2. Try the next/headers helper (works in server components / actions)
+  try {
+    const tenant = await getTenantFromHeaders();
+    if (tenant) return tenant;
+  } catch (e) {
+    console.warn("[resolveCurrentTenant] getTenantFromHeaders failed:", e);
+  }
+
+  // 3. Fallback
   const fallbackSlug = process.env.FINERACT_TENANT_ID || "goodfellow";
+  console.warn("[resolveCurrentTenant] falling back to:", fallbackSlug);
   const db = tx || prisma;
   const fallbackTenant = await db.tenant.findFirst({
     where: { slug: fallbackSlug, isActive: true },
@@ -98,11 +131,16 @@ const clientFormSchema = z.object({
   businessType: z.string().optional(),
 });
 
+// Holds the current request so resolveCurrentTenant can read headers
+// without changing every handler's signature.
+let _currentRequest: Request | undefined;
+
 /**
  * POST /api/leads/operations
  * Handles lead operations like save draft, submit, etc.
  */
 export async function POST(request: Request) {
+  _currentRequest = request;
   try {
     const body = await request.json();
     const { operation, data, leadId } = body;
@@ -193,7 +231,7 @@ async function handleSaveDraft(data: any, leadId?: string) {
     const userId = session.user.id;
 
     // Resolve current tenant from subdomain/headers
-    const currentTenant = await resolveCurrentTenant();
+    const currentTenant = await resolveCurrentTenant(undefined, _currentRequest);
     const tenantId = currentTenant.id;
 
     if (leadId) {
@@ -457,7 +495,7 @@ async function handleCreateLeadWithClient(data: any) {
             const userId = session.user.id;
 
             // Resolve current tenant from subdomain/headers
-            const currentTenant = await resolveCurrentTenant(tx);
+            const currentTenant = await resolveCurrentTenant(tx, _currentRequest);
             const tenantId = currentTenant.id;
 
             // Create lead in database with existing Fineract client data
@@ -597,7 +635,7 @@ async function handleCreateLeadWithClient(data: any) {
       const userId = session.user.id;
 
       // Resolve current tenant from subdomain/headers
-      const currentTenant = await resolveCurrentTenant(tx);
+      const currentTenant = await resolveCurrentTenant(tx, _currentRequest);
       const tenantId = currentTenant.id;
 
       // Create lead in database with Fineract data
@@ -1080,7 +1118,7 @@ async function handleUpdateClient(data: any, leadId?: string) {
         console.log("==========> No leadId provided, creating new lead...");
         result = await prisma.$transaction(async (tx) => {
           // Resolve current tenant from subdomain/headers
-          const currentTenant = await resolveCurrentTenant(tx);
+          const currentTenant = await resolveCurrentTenant(tx, _currentRequest);
 
           // Get current user ID from session
           const session = await getSession();
