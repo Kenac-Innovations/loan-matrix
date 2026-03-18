@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 import { getSession } from "@/lib/auth";
-import { getOrCreateDefaultTenant } from "@/lib/tenant-service";
+import { getTenantFromHeaders, getOrCreateDefaultTenant } from "@/lib/tenant-service";
 import { fetchFineractAPI } from "@/lib/api";
 
 // Client form schema - uses z.coerce.date() to handle strings, numbers, and Date objects
@@ -104,8 +104,7 @@ export async function saveDraft(
     console.log("==========> User ID from session:", userId);
     console.log("==========> Created by user name:", createdByUserName);
 
-    // Get or create the default tenant
-    const tenant = await getOrCreateDefaultTenant();
+    const tenant = await getTenantFromHeaders() || await getOrCreateDefaultTenant();
     const tenantId = tenant.id;
     console.log("==========> Tenant ID:", tenantId);
 

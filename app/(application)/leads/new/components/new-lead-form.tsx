@@ -195,7 +195,7 @@ export function NewLeadForm() {
               setFineractClientId(leadData.fineractClientId);
               console.log(
                 "Loaded fineractClientId from lead:",
-                leadData.fineractClientId
+                leadData.fineractClientId,
               );
             }
             // Also check window for fineractClientId (set by client registration form)
@@ -206,7 +206,7 @@ export function NewLeadForm() {
           } else if (leadResponse.status === 404) {
             // Lead no longer exists in database - clear stale data
             console.log(
-              "==========> Lead not found (404), clearing stale localStorage data"
+              "==========> Lead not found (404), clearing stale localStorage data",
             );
             LeadLocalStorage.clear();
             setCurrentLeadId(null);
@@ -257,7 +257,7 @@ export function NewLeadForm() {
 
               if (hasLoanDetails) {
                 console.log(
-                  "Loan details found, marking as complete and setting state"
+                  "Loan details found, marking as complete and setting state",
                 );
                 loadedLoanDetails = loanResult.data;
                 setLoanDetails(loanResult.data); // Actually set the state!
@@ -281,7 +281,7 @@ export function NewLeadForm() {
         let loadedLoanTerms: any = null;
         try {
           const loanTermsResponse = await fetch(
-            `/api/leads/${leadId}/loan-terms`
+            `/api/leads/${leadId}/loan-terms`,
           );
           if (loanTermsResponse.ok) {
             const loanTermsResult = await loanTermsResponse.json();
@@ -294,7 +294,7 @@ export function NewLeadForm() {
 
               if (hasLoanTerms) {
                 console.log(
-                  "Loan terms found, marking as complete and setting state"
+                  "Loan terms found, marking as complete and setting state",
                 );
                 loadedLoanTerms = loanTermsResult.data;
                 setLoanTerms(loanTermsResult.data); // Actually set the state!
@@ -317,10 +317,10 @@ export function NewLeadForm() {
               "Fetching loan template for productId:",
               loadedProductId,
               "clientId:",
-              loadedFineractClientId
+              loadedFineractClientId,
             );
             const templateResponse = await fetch(
-              `/api/fineract/loans/template?clientId=${loadedFineractClientId}&productId=${loadedProductId}&activeOnly=true&staffInSelectedOfficeOnly=true&templateType=individual`
+              `/api/fineract/loans/template?clientId=${loadedFineractClientId}&productId=${loadedProductId}&activeOnly=true&staffInSelectedOfficeOnly=true&templateType=individual`,
             );
             if (templateResponse.ok) {
               const templateData = await templateResponse.json();
@@ -330,7 +330,7 @@ export function NewLeadForm() {
               // If we have all the data needed, calculate the repayment schedule
               if (loadedLoanDetails && loadedLoanTerms && templateData) {
                 console.log(
-                  "All data available, calculating repayment schedule for continued application"
+                  "All data available, calculating repayment schedule for continued application",
                 );
                 try {
                   const { format } = await import("date-fns");
@@ -338,14 +338,14 @@ export function NewLeadForm() {
                   const submittedDate = loadedLoanDetails.submittedOn
                     ? format(
                         new Date(loadedLoanDetails.submittedOn),
-                        "dd MMMM yyyy"
+                        "dd MMMM yyyy",
                       )
                     : format(new Date(), "dd MMMM yyyy");
 
                   const disbursementDate = loadedLoanDetails.disbursementOn
                     ? format(
                         new Date(loadedLoanDetails.disbursementOn),
-                        "dd MMMM yyyy"
+                        "dd MMMM yyyy",
                       )
                     : format(new Date(), "dd MMMM yyyy");
 
@@ -354,7 +354,7 @@ export function NewLeadForm() {
                       chargeId: charge.chargeId,
                       amount: charge.amount,
                       dueDate: charge.dueDate,
-                    })
+                    }),
                   );
 
                   const payload = {
@@ -386,13 +386,13 @@ export function NewLeadForm() {
                     repaymentsStartingFromDate: loadedLoanTerms.firstRepaymentOn
                       ? format(
                           new Date(loadedLoanTerms.firstRepaymentOn),
-                          "dd MMMM yyyy"
+                          "dd MMMM yyyy",
                         )
                       : null,
                     interestChargedFromDate: loadedLoanTerms.interestChargedFrom
                       ? format(
                           new Date(loadedLoanTerms.interestChargedFrom),
-                          "dd MMMM yyyy"
+                          "dd MMMM yyyy",
                         )
                       : null,
                     interestType: loadedLoanTerms.interestMethod
@@ -407,8 +407,8 @@ export function NewLeadForm() {
                       loadedLoanTerms.interestCalculationPeriod
                         ? parseInt(loadedLoanTerms.interestCalculationPeriod)
                         : templateData?.interestCalculationPeriodType?.id || 1,
-                    loanIdToClose: "",
-                    isTopup: "",
+                    loanIdToClose: loadedLoanTerms.loanIdToClose || "",
+                    isTopup: loadedLoanTerms.isTopup || "",
                     transactionProcessingStrategyCode:
                       loadedLoanTerms.repaymentStrategy ||
                       templateData?.transactionProcessingStrategyCode ||
@@ -437,13 +437,13 @@ export function NewLeadForm() {
                         "Content-Type": "application/json",
                       },
                       body: JSON.stringify(payload),
-                    }
+                    },
                   );
 
                   if (scheduleResponse.ok) {
                     const scheduleData = await scheduleResponse.json();
                     console.log(
-                      "Repayment schedule calculated for continued application"
+                      "Repayment schedule calculated for continued application",
                     );
                     setRepaymentSchedule(scheduleData);
                     setFormCompletionStatus((prev) => ({
@@ -453,13 +453,13 @@ export function NewLeadForm() {
                   } else {
                     console.error(
                       "Failed to calculate repayment schedule:",
-                      await scheduleResponse.text()
+                      await scheduleResponse.text(),
                     );
                   }
                 } catch (scheduleError) {
                   console.error(
                     "Error calculating repayment schedule:",
-                    scheduleError
+                    scheduleError,
                   );
                 }
               }
@@ -481,7 +481,7 @@ export function NewLeadForm() {
   useEffect(() => {
     console.log(
       "==========> clientCreatedInFineract state changed to:",
-      clientCreatedInFineract
+      clientCreatedInFineract,
     );
   }, [clientCreatedInFineract]);
 
@@ -507,7 +507,7 @@ export function NewLeadForm() {
   // Fetch template data using SWR
   const { data: templateResult, error: templateError } = useSWR(
     "/api/leads/template",
-    fetcher
+    fetcher,
   );
   const rawTemplateData = templateResult?.data || {
     offices: [],
@@ -693,7 +693,7 @@ export function NewLeadForm() {
       // Determine operation based on whether client was found
       console.log(
         "==========> clientCreatedInFineract state:",
-        clientCreatedInFineract
+        clientCreatedInFineract,
       );
       const operation = clientCreatedInFineract
         ? "updateClient"
@@ -736,7 +736,7 @@ export function NewLeadForm() {
         const fineractClientId = (window as any).fineractClientId;
         console.log(
           "==========> Retrieved fineractClientId from window:",
-          fineractClientId
+          fineractClientId,
         );
         console.log("==========> Current leadId:", currentLeadId);
 
@@ -752,11 +752,11 @@ export function NewLeadForm() {
           (apiData as any).leadId = currentLeadId;
           console.log(
             "==========> Added existing leadId to apiData:",
-            currentLeadId
+            currentLeadId,
           );
         } else {
           console.warn(
-            "==========> No currentLeadId found, may create new lead"
+            "==========> No currentLeadId found, may create new lead",
           );
         }
 
@@ -764,7 +764,7 @@ export function NewLeadForm() {
           "==========> Final apiData for update:",
           (apiData as any).fineractClientId,
           "leadId:",
-          (apiData as any).leadId
+          (apiData as any).leadId,
         );
       }
 
@@ -794,7 +794,7 @@ export function NewLeadForm() {
         } catch (parseError) {
           console.error(
             "==========> Failed to parse error response as JSON:",
-            parseError
+            parseError,
           );
           errorData = {
             error: `HTTP ${response.status}: ${response.statusText}`,
@@ -805,7 +805,7 @@ export function NewLeadForm() {
           errorData.error ||
             `Failed to ${
               operation === "updateClient" ? "update" : "create"
-            } lead and client`
+            } lead and client`,
         );
       }
 
@@ -816,7 +816,7 @@ export function NewLeadForm() {
             ? "Client updated"
             : "Lead and client created"
         } successfully:`,
-        result
+        result,
       );
 
       // Store the lead ID for future operations
@@ -979,7 +979,7 @@ export function NewLeadForm() {
                 ([field, error]) => ({
                   field: field.charAt(0).toUpperCase() + field.slice(1),
                   message: error?.message || "Invalid value",
-                })
+                }),
               )}
               onDismiss={() => {
                 // Clear errors by resetting the form state
@@ -1121,9 +1121,16 @@ export function NewLeadForm() {
                     isSubmitting={isSubmitting}
                     onAllSectionsComplete={setAllClientSectionsComplete}
                     onLeadIdChange={(newLeadId) => {
-                      console.log("==========> Lead ID propagated from ClientRegistrationForm:", newLeadId);
+                      console.log(
+                        "==========> Lead ID propagated from ClientRegistrationForm:",
+                        newLeadId,
+                      );
                       setCurrentLeadId(newLeadId);
-                      window.history.replaceState(null, "", `/leads/new?id=${newLeadId}`);
+                      window.history.replaceState(
+                        null,
+                        "",
+                        `/leads/new?id=${newLeadId}`,
+                      );
                     }}
                     onClientCreated={() => {
                       setClientCreatedInFineract(true);
@@ -1207,7 +1214,7 @@ export function NewLeadForm() {
                       onNext={(templateData) => {
                         console.log(
                           "Received template data in main form:",
-                          templateData
+                          templateData,
                         );
                         setLoanTemplateData(templateData);
                         // Extract productId from templateData if available

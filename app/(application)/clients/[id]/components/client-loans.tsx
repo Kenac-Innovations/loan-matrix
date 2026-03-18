@@ -13,6 +13,7 @@ import {
   TrendingDown,
   Clock,
   ExternalLink,
+  FileText,
 } from "lucide-react";
 import {
   Card,
@@ -30,6 +31,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Button } from "@/components/ui/button";
 
 interface FineractLoan {
   id: number;
@@ -45,6 +47,12 @@ interface FineractLoan {
     value: string;
     active: boolean;
     closed: boolean;
+    overpaid?: boolean;
+    pendingApproval?: boolean;
+    waitingForDisbursal?: boolean;
+    closedObligationsMet?: boolean;
+    closedWrittenOff?: boolean;
+    closedRescheduled?: boolean;
   };
   timeline: {
     submittedOnDate: string;
@@ -128,6 +136,12 @@ export function ClientLoans({ clientId }: ClientLoansProps) {
           value: loan.status?.value || "",
           active: loan.status?.active || false,
           closed: loan.status?.closed || false,
+          overpaid: loan.status?.overpaid || false,
+          pendingApproval: loan.status?.pendingApproval || false,
+          waitingForDisbursal: loan.status?.waitingForDisbursal || false,
+          closedObligationsMet: loan.status?.closedObligationsMet || false,
+          closedWrittenOff: loan.status?.closedWrittenOff || false,
+          closedRescheduled: loan.status?.closedRescheduled || false,
         },
         timeline: {
           submittedOnDate: loan.timeline?.submittedOnDate || "",
@@ -144,10 +158,38 @@ export function ClientLoans({ clientId }: ClientLoansProps) {
   })();
 
   const getStatusBadge = (status: FineractLoan["status"]) => {
+    if (status.overpaid) {
+      return (
+        <Badge variant="outline" className="bg-emerald-600 text-white border-0">
+          Overpaid
+        </Badge>
+      );
+    }
     if (status.active) {
       return (
         <Badge variant="outline" className="bg-green-500 text-white border-0">
           Active
+        </Badge>
+      );
+    }
+    if (status.closedObligationsMet) {
+      return (
+        <Badge variant="outline" className="bg-slate-500 text-white border-0">
+          Closed - Obligations Met
+        </Badge>
+      );
+    }
+    if (status.closedWrittenOff) {
+      return (
+        <Badge variant="outline" className="bg-red-500 text-white border-0">
+          Written Off
+        </Badge>
+      );
+    }
+    if (status.closedRescheduled) {
+      return (
+        <Badge variant="outline" className="bg-amber-500 text-white border-0">
+          Rescheduled
         </Badge>
       );
     }
@@ -158,14 +200,14 @@ export function ClientLoans({ clientId }: ClientLoansProps) {
         </Badge>
       );
     }
-    if (status.code === "loanStatusType.approved") {
+    if (status.waitingForDisbursal || status.code === "loanStatusType.approved") {
       return (
         <Badge variant="outline" className="bg-blue-500 text-white border-0">
           Approved
         </Badge>
       );
     }
-    if (status.code === "loanStatusType.pending") {
+    if (status.pendingApproval || status.code === "loanStatusType.pending") {
       return (
         <Badge variant="outline" className="bg-yellow-500 text-white border-0">
           Pending
@@ -334,11 +376,28 @@ export function ClientLoans({ clientId }: ClientLoansProps) {
 
       {/* Loans Table */}
       <Card>
-        <CardHeader>
-          <CardTitle>Loan Details</CardTitle>
-          <CardDescription>
-            Complete list of loans for this client
-          </CardDescription>
+        <CardHeader className="flex flex-row items-start justify-between">
+          <div className="space-y-1">
+            <CardTitle>Loan Details</CardTitle>
+            <CardDescription>
+              Complete list of loans for this client
+            </CardDescription>
+          </div>
+          {loans.length > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() =>
+                window.open(
+                  `/api/fineract/clients/${clientId}/statement?format=html`,
+                  "_blank"
+                )
+              }
+            >
+              <FileText className="h-4 w-4 mr-2" />
+              Consolidated Statement
+            </Button>
+          )}
         </CardHeader>
         <CardContent>
           {loans.length === 0 ? (

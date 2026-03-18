@@ -1,43 +1,5 @@
 import { format } from "date-fns";
-
-interface ContractData {
-  clientName: string;
-  nrc: string;
-  dateOfBirth: string;
-  gender: string;
-  employeeNo?: string;
-  employer?: string;
-  gflNo?: string;
-  loanId?: string;
-  loanAmount: number;
-  disbursedAmount: number;
-  tenure: string;
-  numberOfPayments: number;
-  paymentFrequency: string;
-  firstPaymentDate: string;
-  interest: number;
-  fees: number;
-  totalCostOfCredit: number;
-  totalRepayment: number;
-  paymentPerPeriod: number;
-  monthlyPercentageRate: number;
-  repaymentSchedule: Array<{
-    paymentNumber: number;
-    dueDate: string;
-    paymentAmount: number;
-    principal: number;
-    interestAndFees: number;
-    remainingBalance: number;
-  }>;
-  charges: Array<{
-    name: string;
-    amount: number;
-  }>;
-  currency: string;
-  branch: string;
-  loanOfficer?: string;
-  loanPurpose?: string;
-}
+import { ContractData } from "./contract-types";
 
 interface SignatureData {
   borrower?: string | null;

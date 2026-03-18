@@ -37,16 +37,54 @@ export function extractTenantSlug(host: string): string {
 }
 
 /**
- * Get tenant information from request headers
+ * Get tenant information from request headers.
+ * Checks multiple header sources to reliably resolve the tenant in
+ * environments where the Host header may be rewritten (e.g. Kubernetes/Istio).
+ *
+ * Resolves tenant from the browser's origin/referer hostname.
  */
 export async function getTenantFromHeaders(): Promise<TenantInfo | null> {
   const headersList = await headers();
-  const host = headersList.get("host");
 
-  if (!host) return null;
+  const origin = headersList.get("origin");
+  if (origin) {
+    try {
+      const t = await getTenantBySlug(extractTenantSlug(new URL(origin).hostname));
+      if (t) return t;
+    } catch {}
+  }
 
-  const tenantSlug = extractTenantSlug(host);
-  return await getTenantBySlug(tenantSlug);
+  const referer = headersList.get("referer");
+  if (referer) {
+    try {
+      const t = await getTenantBySlug(extractTenantSlug(new URL(referer).hostname));
+      if (t) return t;
+    } catch {}
+  }
+
+  const envTenant = process.env.FINERACT_TENANT_ID;
+  if (envTenant) {
+    const t = await getTenantBySlug(envTenant);
+    if (t) return t;
+  }
+
+  return null;
+}
+
+/**
+ * Extract tenant slug from a request's origin or referer header.
+ * These are browser-set and cannot be rewritten by reverse proxies.
+ */
+export function extractTenantSlugFromRequest(req: Request): string {
+  const origin = req.headers.get("origin");
+  if (origin) {
+    try { return extractTenantSlug(new URL(origin).hostname); } catch {}
+  }
+  const referer = req.headers.get("referer");
+  if (referer) {
+    try { return extractTenantSlug(new URL(referer).hostname); } catch {}
+  }
+  return process.env.FINERACT_TENANT_ID || "goodfellow";
 }
 
 /**
