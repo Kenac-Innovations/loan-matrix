@@ -21,9 +21,15 @@ export async function tenantMiddleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Add tenant slug to headers for downstream consumption
-  // The actual tenant validation will happen in server components/actions
-  const response = NextResponse.next();
+  // Propagate tenant slug as a request header so downstream handlers
+  // (API routes, server actions, server components) can read it via
+  // request.headers.get("x-tenant-slug") or headers().get("x-tenant-slug").
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set("x-tenant-slug", tenantSlug);
+
+  const response = NextResponse.next({
+    request: { headers: requestHeaders },
+  });
   response.headers.set("x-tenant-slug", tenantSlug);
 
   return response;
