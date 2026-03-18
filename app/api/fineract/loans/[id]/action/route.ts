@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchFineractAPI } from "@/lib/api";
 import { prisma } from "@/lib/prisma";
-import { getTenantBySlug, extractTenantSlug } from "@/lib/tenant-service";
+import { getTenantBySlug, extractTenantSlugFromRequest } from "@/lib/tenant-service";
 import { sendLoanStatusSms } from "@/lib/notification-service";
 
 // POST /api/fineract/loans/[id]/action - Perform an action on a loan
@@ -27,15 +27,7 @@ export async function POST(
       );
     }
 
-    // Get tenant — prefer x-tenant-slug (middleware), then x-forwarded-host
-    // (Istio/ingress preserves the original hostname there).
-    const tenantSlug =
-      request.headers.get("x-tenant-slug") ||
-      extractTenantSlug(
-        request.headers.get("x-forwarded-host")?.split(",")[0]?.trim() ||
-        request.headers.get("host") ||
-        ""
-      );
+    const tenantSlug = extractTenantSlugFromRequest(request);
 
     // Build the request body based on action
     let actionBody: any = {};

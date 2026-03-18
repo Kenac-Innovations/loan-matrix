@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { extractTenantSlugFromRequest } from "@/lib/tenant-service";
 
 const DEFAULT_LOCALE = {
   countryCode: "+260",
@@ -17,7 +18,7 @@ const DEFAULT_LOCALE = {
  */
 export async function GET(request: NextRequest) {
   try {
-    const tenantSlug = request.headers.get("x-tenant-slug") || "goodfellow";
+    const tenantSlug = extractTenantSlugFromRequest(request);
 
     const tenant = await prisma.tenant.findFirst({
       where: { slug: tenantSlug, isActive: true },

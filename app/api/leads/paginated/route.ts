@@ -3,6 +3,7 @@ import { getLeadsData } from "@/app/actions/leads-actions";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getFineractTenantId } from "@/lib/fineract-tenant-service";
+import { extractTenantSlugFromRequest } from "@/lib/tenant-service";
 
 // Check if user has Loan Officer role (sees their created and assigned leads)
 async function getUserRoleFilter(): Promise<{ isLoanOfficer: boolean; userId: number | null; userIdString: string | null }> {
@@ -52,7 +53,7 @@ async function getUserRoleFilter(): Promise<{ isLoanOfficer: boolean; userId: nu
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const tenantSlug = request.headers.get("x-tenant-slug") || "goodfellow";
+    const tenantSlug = extractTenantSlugFromRequest(request);
 
     const stage = searchParams.get("stage") || undefined;
     const status = searchParams.get("status") || undefined;

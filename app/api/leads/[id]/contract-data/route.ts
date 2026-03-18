@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getTenantBySlug } from "@/lib/tenant-service";
+import { getTenantBySlug, extractTenantSlugFromRequest } from "@/lib/tenant-service";
 import { format } from "date-fns";
 import { fetchFineractAPI } from "@/lib/api";
 import { getOrgDefaultCurrencyCode } from "@/lib/currency-utils";
@@ -15,7 +15,7 @@ export async function GET(
     const { id: leadId } = params;
     console.log("Fetching contract data for leadId:", leadId);
 
-    const tenantSlug = request.headers.get("x-tenant-slug") || "goodfellow";
+    const tenantSlug = extractTenantSlugFromRequest(request);
     console.log("Tenant slug:", tenantSlug);
     const tenant = await getTenantBySlug(tenantSlug);
 
@@ -109,7 +109,8 @@ export async function GET(
       `${request.nextUrl.origin}/api/leads/${leadId}/loan-details`,
       {
         headers: {
-          "x-tenant-slug": tenantSlug,
+          origin: request.headers.get("origin") || "",
+          referer: request.headers.get("referer") || "",
         },
       },
     );
@@ -125,7 +126,8 @@ export async function GET(
       `${request.nextUrl.origin}/api/leads/${leadId}/loan-terms`,
       {
         headers: {
-          "x-tenant-slug": tenantSlug,
+          origin: request.headers.get("origin") || "",
+          referer: request.headers.get("referer") || "",
         },
       },
     );
@@ -178,7 +180,8 @@ export async function GET(
           `${request.nextUrl.origin}/api/fineract/clients/${lead.fineractClientId}`,
           {
             headers: {
-              "x-tenant-slug": tenantSlug,
+              origin: request.headers.get("origin") || "",
+          referer: request.headers.get("referer") || "",
             },
           },
         );
@@ -287,7 +290,8 @@ export async function GET(
         `${request.nextUrl.origin}/api/fineract/clients/template`,
         {
           headers: {
-            "x-tenant-slug": tenantSlug,
+            origin: request.headers.get("origin") || "",
+          referer: request.headers.get("referer") || "",
           },
         },
       );
@@ -306,7 +310,8 @@ export async function GET(
           `${request.nextUrl.origin}/api/fineract/loans/template?clientId=${lead.fineractClientId}&productId=${loanDetails.productId}&activeOnly=true&staffInSelectedOfficeOnly=true&templateType=individual`,
           {
             headers: {
-              "x-tenant-slug": tenantSlug,
+              origin: request.headers.get("origin") || "",
+          referer: request.headers.get("referer") || "",
             },
           },
         );
@@ -402,7 +407,8 @@ export async function GET(
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              "x-tenant-slug": tenantSlug,
+              origin: request.headers.get("origin") || "",
+          referer: request.headers.get("referer") || "",
             },
             body: JSON.stringify(payload),
           },

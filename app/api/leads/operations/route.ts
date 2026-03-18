@@ -12,40 +12,30 @@ import {
 // Helper to resolve the current tenant, optionally using the raw request
 // so we can read middleware-set and proxy-set headers directly.
 async function resolveCurrentTenant(tx?: any, req?: Request) {
-  // 1. Try reading headers directly from the request object (most reliable)
   if (req) {
-    const slug = req.headers.get("x-tenant-slug");
-    const fwdHost = req.headers.get("x-forwarded-host");
-    const host = req.headers.get("host");
-    console.log("[resolveCurrentTenant] req headers:", { slug, fwdHost, host });
+    const origin = req.headers.get("origin");
+    const referer = req.headers.get("referer");
 
-    if (slug) {
-      const t = await getTenantBySlug(slug);
-      if (t) return t;
+    if (origin) {
+      try {
+        const t = await getTenantBySlug(extractTenantSlug(new URL(origin).hostname));
+        if (t) return t;
+      } catch {}
     }
-    if (fwdHost) {
-      const t = await getTenantBySlug(
-        extractTenantSlug(fwdHost.split(",")[0].trim())
-      );
-      if (t) return t;
-    }
-    if (host) {
-      const t = await getTenantBySlug(extractTenantSlug(host));
-      if (t) return t;
+    if (referer) {
+      try {
+        const t = await getTenantBySlug(extractTenantSlug(new URL(referer).hostname));
+        if (t) return t;
+      } catch {}
     }
   }
 
-  // 2. Try the next/headers helper (works in server components / actions)
   try {
     const tenant = await getTenantFromHeaders();
     if (tenant) return tenant;
-  } catch (e) {
-    console.warn("[resolveCurrentTenant] getTenantFromHeaders failed:", e);
-  }
+  } catch {}
 
-  // 3. Fallback
   const fallbackSlug = process.env.FINERACT_TENANT_ID || "goodfellow";
-  console.warn("[resolveCurrentTenant] falling back to:", fallbackSlug);
   const db = tx || prisma;
   const fallbackTenant = await db.tenant.findFirst({
     where: { slug: fallbackSlug, isActive: true },
