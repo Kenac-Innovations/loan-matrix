@@ -43,6 +43,10 @@ export async function GET(
         dateOfBirth: true,
         gender: true,
         genderId: true,
+        mobileNo: true,
+        countryCode: true,
+        accountNumber: true,
+        fineractAccountNo: true,
         fineractClientId: true,
         officeName: true,
 
@@ -55,13 +59,30 @@ export async function GET(
         fundId: true,
         submittedOnDate: true,
         expectedDisbursementDate: true,
+        requestedAmount: true,
 
         // Affordability
+        annualIncome: true,
         monthlyIncome: true,
         grossMonthlyIncome: true,
+        monthlyExpenses: true,
+        employmentStatus: true,
+        employerName: true,
+        yearsEmployed: true,
+        yearsAtCurrentJob: true,
+        businessType: true,
+        businessOwnership: true,
+        collateralType: true,
+        collateralValue: true,
+        bankName: true,
+        existingLoans: true,
+        hasExistingLoans: true,
+        nationality: true,
 
         // State metadata (contains loan terms)
         stateMetadata: true,
+        stateContext: true,
+        familyMembers: true,
       },
     });
 
@@ -170,6 +191,92 @@ export async function GET(
         }
       } catch (err) {
         console.error("Error fetching Fineract client details:", err);
+      }
+    }
+
+    // Fetch client addresses from Fineract for residential/work address
+    let residentialAddress: string | null = null;
+    let workAddress: string | null = null;
+    if (lead.fineractClientId) {
+      try {
+        const addresses = await fetchFineractAPI(
+          `/client/${lead.fineractClientId}/addresses`,
+        );
+        const addressList = Array.isArray(addresses) ? addresses : [];
+        for (const addr of addressList) {
+          const parts = [
+            addr.addressLine1,
+            addr.addressLine2,
+            addr.addressLine3,
+            addr.city,
+            addr.townVillage,
+            addr.district,
+          ].filter(Boolean);
+          const fullAddress = parts.join(", ");
+          const typeName = (addr.addressType?.name || addr.addressType || "")
+            .toString()
+            .toLowerCase();
+          if (
+            typeName.includes("home") ||
+            typeName.includes("residence") ||
+            typeName.includes("physical") ||
+            !residentialAddress
+          ) {
+            if (!residentialAddress && fullAddress) residentialAddress = fullAddress;
+          }
+          if (
+            typeName.includes("work") ||
+            typeName.includes("office") ||
+            typeName.includes("business")
+          ) {
+            if (fullAddress) workAddress = fullAddress;
+          }
+        }
+        if (!residentialAddress && addressList.length > 0) {
+          const first = addressList[0];
+          residentialAddress = [
+            first.addressLine1,
+            first.addressLine2,
+            first.addressLine3,
+            first.city,
+            first.townVillage,
+          ]
+            .filter(Boolean)
+            .join(", ");
+        }
+      } catch (err) {
+        console.error("Error fetching client addresses:", err);
+      }
+    }
+
+    // Derive spouse and closest relative from family members
+    const familyMembers = (lead.familyMembers || []) as Array<{
+      firstname: string;
+      middlename?: string | null;
+      lastname: string;
+      relationship?: string | null;
+      mobileNo?: string | null;
+    }>;
+    const spouseRelation = ["spouse", "wife", "husband", "partner"];
+    let spouseName: string | null = null;
+    let spousePhone: string | null = null;
+    let closestRelativeName: string | null = null;
+    let closestRelativePhone: string | null = null;
+    let closestRelativeRelationship: string | null = null;
+    for (const fm of familyMembers) {
+      const rel = (fm.relationship || "").toLowerCase();
+      const name = [fm.firstname, fm.middlename, fm.lastname]
+        .filter(Boolean)
+        .join(" ");
+      if (spouseRelation.some((r) => rel.includes(r))) {
+        if (!spouseName) {
+          spouseName = name || null;
+          spousePhone = (fm.mobileNo as string) || null;
+        }
+      } else if (!closestRelativeName && name) {
+        closestRelativeName = name;
+        closestRelativePhone = (fm.mobileNo as string) || null;
+        closestRelativeRelationship = (fm.relationship as string) || null;
       }
     }
 
@@ -611,6 +718,27 @@ export async function GET(
       }
     }
 
+    const loanDateFormatted =
+      lead.expectedDisbursementDate
+        ? format(new Date(lead.expectedDisbursementDate), "dd/MM/yyyy")
+        : lead.submittedOnDate
+          ? format(new Date(lead.submittedOnDate), "dd/MM/yyyy")
+          : format(new Date(), "dd/MM/yyyy");
+
+    const nominalInterestRate =
+      loanTerms?.nominalInterestRate ?? repaymentSchedule?.annualInterestRate ?? 0;
+    const executionPlace = lead.officeName || "Head Office";
+    const executionDate = loanDateFormatted;
+    const executionDay = lead.expectedDisbursementDate
+      ? format(new Date(lead.expectedDisbursementDate), "d")
+      : format(new Date(), "d");
+    const executionMonth = lead.expectedDisbursementDate
+      ? format(new Date(lead.expectedDisbursementDate), "MMMM")
+      : format(new Date(), "MMMM");
+    const executionYear = lead.expectedDisbursementDate
+      ? format(new Date(lead.expectedDisbursementDate), "yyyy")
+      : format(new Date(), "yyyy");
+
     const contractData = {
       // Client Information
       clientName,
@@ -645,6 +773,7 @@ export async function GET(
             ) / formattedSchedule.length
           : totalRepayment / numberOfPayments,
       monthlyPercentageRate: monthlyPercentageRate,
+      nominalInterestRate,
 
       // Schedule
       repaymentSchedule: formattedSchedule,
@@ -657,6 +786,78 @@ export async function GET(
       branch: lead.officeName || "Head Office",
       loanOfficer: loanOfficerName,
       loanPurpose: loanPurposeName,
+      executionPlace,
+      executionDate,
+      executionDay,
+      executionMonth,
+      executionYear,
+
+      // Address & family (for contract prepopulation)
+      residentialAddress:
+        residentialAddress ||
+        (lead.stateContext as any)?.residentialAddress ||
+        (lead.stateContext as any)?.physicalAddress ||
+        (lead.stateMetadata as any)?.residentialAddress ||
+        null,
+      workAddress:
+        workAddress ||
+        (lead.stateContext as any)?.workAddress ||
+        (lead.stateMetadata as any)?.workAddress ||
+        null,
+      spouseName:
+        spouseName ||
+        (lead.stateContext as any)?.spouseName ||
+        (lead.stateMetadata as any)?.spouseName ||
+        null,
+      spousePhone:
+        spousePhone ||
+        (lead.stateContext as any)?.spousePhone ||
+        (lead.stateMetadata as any)?.spousePhone ||
+        null,
+      closestRelativeName:
+        closestRelativeName ||
+        (lead.stateContext as any)?.closestRelativeName ||
+        (lead.stateMetadata as any)?.closestRelativeName ||
+        null,
+      closestRelativePhone:
+        closestRelativePhone ||
+        (lead.stateContext as any)?.closestRelativePhone ||
+        (lead.stateMetadata as any)?.closestRelativePhone ||
+        null,
+      closestRelativeRelationship:
+        closestRelativeRelationship ||
+        (lead.stateContext as any)?.closestRelativeRelationship ||
+        (lead.stateMetadata as any)?.closestRelativeRelationship ||
+        null,
+
+      // Extra fields for tenant-specific templates
+      firstname: lead.firstname || null,
+      middlename: lead.middlename || null,
+      lastname: lead.lastname || null,
+      mobileNo: lead.mobileNo || null,
+      countryCode: lead.countryCode || null,
+      accountNumber: lead.fineractAccountNo || lead.accountNumber || null,
+      loanDate: loanDateFormatted,
+      requestedAmount: lead.requestedAmount ?? null,
+      annualIncome: lead.annualIncome ?? null,
+      monthlyIncome: lead.monthlyIncome ?? null,
+      grossMonthlyIncome: lead.grossMonthlyIncome ?? null,
+      monthlyExpenses: lead.monthlyExpenses ?? null,
+      employmentStatus: lead.employmentStatus || null,
+      employerName: lead.employerName || employerName || null,
+      yearsEmployed: lead.yearsEmployed ?? null,
+      yearsAtCurrentJob: lead.yearsAtCurrentJob || null,
+      businessType: lead.businessType || null,
+      businessOwnership: lead.businessOwnership ?? null,
+      collateralType: lead.collateralType || null,
+      collateralValue: lead.collateralValue ?? null,
+      bankName: lead.bankName || null,
+      existingLoans: lead.existingLoans ?? null,
+      hasExistingLoans: lead.hasExistingLoans ?? null,
+      nationality: lead.nationality || null,
+      familyMembers: lead.familyMembers || [],
+      stateContext: lead.stateContext || null,
+      stateMetadata: lead.stateMetadata || null,
     };
 
     return NextResponse.json({

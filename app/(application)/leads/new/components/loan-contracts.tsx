@@ -1,7 +1,7 @@
 "use client";
 
 import { useCurrency } from "@/contexts/currency-context";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
@@ -32,60 +32,12 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import jsPDF from "jspdf";
 import { generateContractHTML } from "./contract-template";
+import { ContractData } from "./contract-types";
+import { fillOmamaContractTemplate } from "./omama-contract-template";
 import {
   generateKeyFactsStatementHTML,
   KeyFactsData,
 } from "./key-facts-statement-template";
-
-interface ContractData {
-  // Client Information
-  clientName: string;
-  nrc: string;
-  dateOfBirth: string;
-  gender: string;
-  employeeNo?: string;
-  employer?: string;
-  gflNo?: string;
-  loanId?: string;
-
-  // Loan Information
-  loanAmount: number;
-  disbursedAmount: number;
-  tenure: string;
-  numberOfPayments: number;
-  paymentFrequency: string;
-  firstPaymentDate: string;
-
-  // Financial Information
-  interest: number;
-  fees: number;
-  totalCostOfCredit: number;
-  totalRepayment: number;
-  paymentPerPeriod: number;
-  monthlyPercentageRate: number;
-
-  // Schedule
-  repaymentSchedule: Array<{
-    paymentNumber: number;
-    dueDate: string;
-    paymentAmount: number;
-    principal: number;
-    interestAndFees: number;
-    remainingBalance: number;
-  }>;
-
-  // Charges breakdown
-  charges: Array<{
-    name: string;
-    amount: number;
-  }>;
-
-  // Other
-  currency: string;
-  branch: string;
-  loanOfficer?: string;
-  loanPurpose?: string;
-}
 
 interface LoanContractsProps {
   leadId?: string;
@@ -137,6 +89,11 @@ export function LoanContracts({
   const [tenantContractHtml, setTenantContractHtml] = useState<string | null>(null); // Tenant-specific full contract template (e.g. Omama)
   const { toast } = useToast();
   const router = useRouter();
+
+  const filledTenantContractHtml = useMemo(() => {
+    if (!tenantContractHtml || !contractData) return tenantContractHtml;
+    return fillOmamaContractTemplate(tenantContractHtml, contractData);
+  }, [tenantContractHtml, contractData]);
 
   // Fetch tenant-specific contract template (e.g. Omama full loan template) so it appears in Contracts tab
   useEffect(() => {
@@ -503,6 +460,14 @@ export function LoanContracts({
           ? `${loanTerms.loanTerm} ${getFrequencyLabel(parseInt(loanTerms.termFrequency))}`
           : `${numberOfPayments} ${repaymentFrequency}`;
 
+      const loanDateValue =
+        lead.expectedDisbursementDate || lead.submittedOnDate || null;
+      const loanDate = loanDateValue
+        ? format(new Date(loanDateValue), "dd/MM/yyyy")
+        : undefined;
+      const accountNumber =
+        lead.fineractAccountNo || lead.accountNumber || undefined;
+
       const builtContractData: ContractData = {
         clientName,
         nrc: lead.externalId || "N/A",
@@ -538,6 +503,33 @@ export function LoanContracts({
         branch: lead.officeName || "Head Office",
         loanOfficer: loanOfficerName,
         loanPurpose: loanPurposeName,
+        firstname: lead.firstname || undefined,
+        middlename: lead.middlename || undefined,
+        lastname: lead.lastname || undefined,
+        mobileNo: lead.mobileNo || undefined,
+        countryCode: lead.countryCode || undefined,
+        accountNumber,
+        loanDate,
+        requestedAmount: lead.requestedAmount ?? undefined,
+        annualIncome: lead.annualIncome ?? undefined,
+        monthlyIncome: lead.monthlyIncome ?? undefined,
+        grossMonthlyIncome: lead.grossMonthlyIncome ?? undefined,
+        monthlyExpenses: lead.monthlyExpenses ?? undefined,
+        employmentStatus: lead.employmentStatus || undefined,
+        employerName: lead.employerName || employerName || undefined,
+        yearsEmployed: lead.yearsEmployed ?? undefined,
+        yearsAtCurrentJob: lead.yearsAtCurrentJob || undefined,
+        businessType: lead.businessType || undefined,
+        businessOwnership: lead.businessOwnership ?? undefined,
+        collateralType: lead.collateralType || undefined,
+        collateralValue: lead.collateralValue ?? undefined,
+        bankName: lead.bankName || undefined,
+        existingLoans: lead.existingLoans ?? undefined,
+        hasExistingLoans: lead.hasExistingLoans ?? undefined,
+        nationality: lead.nationality || undefined,
+        familyMembers: lead.familyMembers || undefined,
+        stateContext: lead.stateContext || undefined,
+        stateMetadata: lead.stateMetadata || undefined,
       };
 
       setContractData(builtContractData);
@@ -654,6 +646,12 @@ export function LoanContracts({
           ? `${loanTerms.loanTerm} ${getFrequencyLabel(parseInt(loanTerms.termFrequency))}`
           : `${numberOfPayments} ${repaymentFrequency}`;
 
+      const loanDateValue =
+        loanDetails?.disbursementOn || loanDetails?.submittedOn || null;
+      const loanDate = loanDateValue
+        ? format(new Date(loanDateValue), "dd/MM/yyyy")
+        : undefined;
+
       let loanOfficerName = "N/A";
       if (loanTemplate?.loanOfficerOptions && loanDetails?.loanOfficer) {
         const officer = loanTemplate.loanOfficerOptions.find(
@@ -701,6 +699,8 @@ export function LoanContracts({
         branch: "Head Office",
         loanOfficer: loanOfficerName,
         loanPurpose: loanPurposeName,
+        loanDate,
+        requestedAmount: loanTerms?.principal ?? undefined,
       };
 
       setContractData(fallbackData);
@@ -907,11 +907,13 @@ export function LoanContracts({
       printWindow.document.write(kfsHTML);
     } else if (printType === "contract") {
       // Print only the Salary Advance Contract
-      const contractHTML = generateContractHTML(contractData, {
-        borrower: borrowerSignature,
-        guarantor: guarantorSignature,
-        loanOfficer: loanOfficerSignature,
-      });
+      const contractHTML =
+        filledTenantContractHtml ||
+        generateContractHTML(contractData, {
+          borrower: borrowerSignature,
+          guarantor: guarantorSignature,
+          loanOfficer: loanOfficerSignature,
+        });
       printWindow.document.write(contractHTML);
     } else {
       // Print both - Key Facts Statement AND Salary Advance Contract
@@ -924,11 +926,13 @@ export function LoanContracts({
         creditProvider: loanOfficerSignature,
       });
 
-      const contractHTML = generateContractHTML(contractData, {
-        borrower: borrowerSignature,
-        guarantor: guarantorSignature,
-        loanOfficer: loanOfficerSignature,
-      });
+      const contractHTML =
+        filledTenantContractHtml ||
+        generateContractHTML(contractData, {
+          borrower: borrowerSignature,
+          guarantor: guarantorSignature,
+          loanOfficer: loanOfficerSignature,
+        });
 
       // Extract body content from both HTML documents and combine them
       const kfsBodyMatch = kfsHTML.match(/<body[^>]*>([\s\S]*)<\/body>/i);
@@ -2189,7 +2193,7 @@ export function LoanContracts({
             ) : (
               <iframe
                 srcDoc={
-                  tenantContractHtml ??
+                  filledTenantContractHtml ??
                   generateContractHTML(contractData, {
                     borrower: borrowerSignature,
                     guarantor: guarantorSignature,

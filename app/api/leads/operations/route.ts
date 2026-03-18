@@ -729,7 +729,16 @@ async function handleCreateLeadWithClient(data: any) {
       error.response?.data || error.message?.includes("Fineract");
     let errorMessage = error.message || "Failed to create lead and client";
 
-    if (isFineractError) {
+    // Clarify when the error is from the Fineract backend's database (not Loan Matrix .env)
+    if (
+      error.message?.includes("database server") &&
+      error.message?.includes("credentials for")
+    ) {
+      errorMessage =
+        "The Fineract/Mifos backend (" +
+        (process.env.FINERACT_BASE_URL || "mifos-be") +
+        ") could not connect to its database. Update the database credentials on the Fineract server (host 10.10.0.143:5432, user postgres), not in Loan Matrix .env.";
+    } else if (isFineractError) {
       const fineractError = error.response?.data;
       if (fineractError?.errors && Array.isArray(fineractError.errors)) {
         // Extract specific validation errors from Fineract
