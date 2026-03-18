@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getTenantBySlug } from "@/lib/tenant-service";
+import { getTenantBySlug, extractTenantSlugFromRequest } from "@/lib/tenant-service";
 import { buildCDEPayload, fetchFineractLoanForLead } from "@/lib/cde-utils";
 
 export async function POST(
@@ -15,8 +15,7 @@ export async function POST(
     const data = await request.json();
     console.log("Received data:", data);
 
-    // Get tenant from x-tenant-slug header or default to "goodfellow"
-    const tenantSlug = request.headers.get("x-tenant-slug") || "goodfellow";
+    const tenantSlug = extractTenantSlugFromRequest(request);
     console.log("Tenant slug:", tenantSlug);
 
     const tenant = await getTenantBySlug(tenantSlug);

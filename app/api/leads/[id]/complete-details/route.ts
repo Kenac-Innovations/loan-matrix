@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { extractTenantSlug } from "@/lib/tenant-service";
+import { extractTenantSlugFromRequest } from "@/lib/tenant-service";
 import { getSession } from "@/lib/auth";
 import { getFineractServiceWithSession } from "@/lib/fineract-api";
 import { getFineractTenantId } from "@/lib/fineract-tenant-service";
@@ -19,10 +19,7 @@ export async function GET(
     const params = await context.params;
     const { id: leadId } = params;
 
-    // Extract tenant slug from request for internal API calls
-    const host = request.headers.get("host") || "localhost:3000";
-    const tenantSlug =
-      request.headers.get("x-tenant-slug") || extractTenantSlug(host);
+    const tenantSlug = extractTenantSlugFromRequest(request);
 
     console.log("=== FETCHING COMPLETE DETAILS FOR LEAD ===");
     console.log("Lead ID:", leadId);

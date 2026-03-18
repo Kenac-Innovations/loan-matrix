@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchFineractAPI } from "@/lib/api";
 import { prisma } from "@/lib/prisma";
-import { getTenantBySlug } from "@/lib/tenant-service";
+import { getTenantBySlug, extractTenantSlugFromRequest } from "@/lib/tenant-service";
 import { sendLoanStatusSms } from "@/lib/notification-service";
 
 // POST /api/fineract/loans/[id]/action - Perform an action on a loan
@@ -27,11 +27,7 @@ export async function POST(
       );
     }
 
-    // Get tenant
-    const tenantSlug =
-      request.headers.get("x-tenant-slug") ||
-      request.nextUrl.hostname.split(".")[0] ||
-      "goodfellow";
+    const tenantSlug = extractTenantSlugFromRequest(request);
 
     // Build the request body based on action
     let actionBody: any = {};

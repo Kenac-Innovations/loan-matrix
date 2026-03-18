@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getTenantBySlug } from "@/lib/tenant-service";
+import { getTenantBySlug, extractTenantSlugFromRequest } from "@/lib/tenant-service";
 
 /**
  * Fineract Loan Webhook Handler
@@ -83,10 +83,7 @@ export async function POST(request: NextRequest) {
       });
     }
     
-    // Get tenant from header or default
-    const tenantSlug = request.headers.get("x-tenant-slug") || 
-                       request.headers.get("Fineract-Platform-TenantId") || 
-                       "goodfellow";
+    const tenantSlug = extractTenantSlugFromRequest(request);
     const tenant = await getTenantBySlug(tenantSlug);
     
     if (!tenant) {

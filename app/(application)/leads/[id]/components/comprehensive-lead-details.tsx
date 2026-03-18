@@ -19,6 +19,12 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   Building,
   Phone,
   Mail,
@@ -40,9 +46,14 @@ import {
   MapPin,
   Hash,
   Download,
+  MoreVertical,
+  ArrowRightLeft,
+  Coins,
 } from "lucide-react";
 import { format } from "date-fns";
 import { useCurrency } from "@/contexts/currency-context";
+import { CreditBalanceRefundModal } from "./credit-balance-refund-modal";
+import { TransferFundsModal } from "./transfer-funds-modal";
 
 interface ComprehensiveLeadDetailsProps {
   leadId: string;
@@ -59,6 +70,8 @@ export function ComprehensiveLeadDetails({
   const [imageDialogOpen, setImageDialogOpen] = useState(false);
   const [loanDocuments, setLoanDocuments] = useState<any[]>([]);
   const [loadingLoanDocs, setLoadingLoanDocs] = useState(false);
+  const [showCreditBalanceRefundModal, setShowCreditBalanceRefundModal] = useState(false);
+  const [showTransferFundsModal, setShowTransferFundsModal] = useState(false);
 
   // Memoized fetch function that can be called to refresh data
   const fetchData = useCallback(
@@ -730,8 +743,43 @@ export function ComprehensiveLeadDetails({
             <div className="space-y-6">
               {/* Loan Basic Information */}
               <Card>
-                <CardHeader>
+                <CardHeader className="flex flex-row items-center justify-between">
                   <CardTitle>Loan Information</CardTitle>
+                  {(() => {
+                    const isOverpaid =
+                      fineractLoan.status?.overpaid === true ||
+                      (fineractLoan.summary &&
+                        fineractLoan.summary.totalRepayment > 0 &&
+                        fineractLoan.summary.totalOutstanding === 0 &&
+                        fineractLoan.summary.totalRepayment >
+                          fineractLoan.summary.totalExpectedRepayment);
+                    if (!isOverpaid) return null;
+                    return (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="outline" size="icon">
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem
+                            onClick={() => setShowTransferFundsModal(true)}
+                          >
+                            <ArrowRightLeft className="mr-2 h-4 w-4" />
+                            Transfer Funds
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() =>
+                              setShowCreditBalanceRefundModal(true)
+                            }
+                          >
+                            <Coins className="mr-2 h-4 w-4" />
+                            Credit Balance Refund
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    );
+                  })()}
                 </CardHeader>
                 <CardContent>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -1110,6 +1158,29 @@ export function ComprehensiveLeadDetails({
                                 </p>
                               </div>
                             )}
+                            {(() => {
+                              const overpaidAmt =
+                                fineractLoan.summary.totalOverpaid ||
+                                (fineractLoan.summary.totalRepayment > 0 &&
+                                fineractLoan.summary.totalOutstanding === 0 &&
+                                fineractLoan.summary.totalRepayment >
+                                  fineractLoan.summary.totalExpectedRepayment
+                                  ? fineractLoan.summary.totalRepayment -
+                                    fineractLoan.summary.totalExpectedRepayment
+                                  : 0);
+                              if (!overpaidAmt || overpaidAmt <= 0) return null;
+                              return (
+                                <div className="p-3 rounded-lg bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800">
+                                  <p className="text-xs text-muted-foreground">
+                                    Overpaid By
+                                  </p>
+                                  <p className="text-xl font-semibold text-green-600">
+                                    {fineractLoan.currency?.displaySymbol || currencySymbol}
+                                    {overpaidAmt.toLocaleString()}
+                                  </p>
+                                </div>
+                              );
+                            })()}
                           </div>
                         </div>
                       </>
@@ -1896,6 +1967,49 @@ export function ComprehensiveLeadDetails({
           </TabsContent>
         )}
       </Tabs>
+
+      {fineractLoan?.id && (
+        <>
+          <CreditBalanceRefundModal
+            isOpen={showCreditBalanceRefundModal}
+            onClose={() => setShowCreditBalanceRefundModal(false)}
+            loanId={fineractLoan.id}
+            onSuccess={() => {
+              fetchData(false);
+              window.dispatchEvent(
+                new CustomEvent("loan-action-complete", {
+                  detail: { leadId },
+                })
+              );
+            }}
+          />
+          <TransferFundsModal
+            isOpen={showTransferFundsModal}
+            onClose={() => setShowTransferFundsModal(false)}
+            loanId={fineractLoan.id}
+            clientId={fineractLoan.clientId}
+            overpaidAmount={
+              fineractLoan.summary?.totalOverpaid ||
+              (fineractLoan.summary?.totalRepayment >
+                fineractLoan.summary?.totalExpectedRepayment
+                ? fineractLoan.summary.totalRepayment -
+                  fineractLoan.summary.totalExpectedRepayment
+                : 0)
+            }
+            currencySymbol={
+              fineractLoan.currency?.displaySymbol || currencySymbol
+            }
+            onSuccess={() => {
+              fetchData(false);
+              window.dispatchEvent(
+                new CustomEvent("loan-action-complete", {
+                  detail: { leadId },
+                })
+              );
+            }}
+          />
+        </>
+      )}
     </div>
   );
 }

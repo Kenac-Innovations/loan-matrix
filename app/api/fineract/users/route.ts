@@ -1,14 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { FineractAPIService } from "@/lib/fineract-api";
 import { getFineractTenantId } from "@/lib/fineract-tenant-service";
+import { extractTenantSlugFromRequest } from "@/lib/tenant-service";
 
 // GET /api/fineract/users - Fetch all Mifos/Fineract users
 export async function GET(request: NextRequest) {
   try {
-    // Get tenant from headers
-    const tenantSlug =
-      request.headers.get("x-tenant-slug") ||
-      request.nextUrl.hostname.split(".")[0];
+    const tenantSlug = extractTenantSlugFromRequest(request);
 
     const tenantId = await getFineractTenantId(tenantSlug);
 
