@@ -41,6 +41,8 @@ import {
   FileText,
   UserCog,
 } from "lucide-react";
+import { usePermission } from "@/hooks/use-client-auth";
+import { SpecificPermission } from "@/shared/types/auth";
 
 interface LoanActionsProps {
   leadId: string;
@@ -172,8 +174,17 @@ export function LoanActions({
     new Date().toISOString().split("T")[0]
   );
 
-  // Get available actions based on loan status
-  const availableActions = loanStatus ? STATUS_ACTIONS[loanStatus] || [] : [];
+  const canApprove = usePermission(SpecificPermission.APPROVE_LOAN);
+  const canDisburse = usePermission(SpecificPermission.DISBURSE_LOAN);
+
+  const PERMISSION_GATED_ACTIONS: Record<string, boolean> = {
+    approve: canApprove,
+    disburse: canDisburse,
+  };
+
+  // Get available actions based on loan status, filtered by permissions
+  const availableActions = (loanStatus ? STATUS_ACTIONS[loanStatus] || [] : [])
+    .filter((a) => PERMISSION_GATED_ACTIONS[a.action] ?? true);
   const dropdownActions = loanStatus
     ? STATUS_DROPDOWN_ACTIONS[loanStatus] || []
     : [];

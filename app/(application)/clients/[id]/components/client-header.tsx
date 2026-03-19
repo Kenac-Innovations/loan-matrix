@@ -3,6 +3,8 @@ import { ArrowLeft, Edit, Users, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { PermissionGate } from "@/components/auth/permission-gate";
+import { SpecificPermission } from "@/shared/types/auth";
 
 interface FineractClient {
   id: number;
@@ -32,7 +34,7 @@ interface ClientHeaderProps {
   clientImage: string | null;
 }
 
-export function ClientHeader({
+export async function ClientHeader({
   clientId,
   client,
   clientImage,
@@ -177,16 +179,18 @@ export function ClientHeader({
             </div>
             <div className="flex items-center gap-2">
               {client.active && client.externalId && (
-                <Link
-                  href={`/leads/new?externalId=${encodeURIComponent(
-                    client.externalId
-                  )}`}
-                >
-                  <Button size="sm" className="bg-green-600 hover:bg-green-700">
-                    <Plus className="h-4 w-4 mr-2" />
-                    Apply for Loan
-                  </Button>
-                </Link>
+                <PermissionGate permission={SpecificPermission.CREATE_LOAN}>
+                  <Link
+                    href={`/leads/new?externalId=${encodeURIComponent(
+                      client.externalId
+                    )}`}
+                  >
+                    <Button size="sm" className="bg-green-600 hover:bg-green-700">
+                      <Plus className="h-4 w-4 mr-2" />
+                      Apply for Loan
+                    </Button>
+                  </Link>
+                </PermissionGate>
               )}
               <Link href={`/clients/${clientId}/edit`}>
                 <Button size="sm" variant="outline">

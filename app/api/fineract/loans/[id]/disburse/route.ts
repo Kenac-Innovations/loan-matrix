@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { fetchFineractAPI } from '@/lib/api';
 import prisma from '@/lib/prisma';
+import { hasPermissionServer } from '@/lib/authorization';
+import { SpecificPermission } from '@/shared/types/auth';
 
 /**
  * POST /api/fineract/loans/[id]/disburse
@@ -11,6 +13,14 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const hasPermission = await hasPermissionServer(SpecificPermission.DISBURSE_LOAN);
+    if (!hasPermission) {
+      return NextResponse.json(
+        { error: "You don't have permission to disburse loans" },
+        { status: 403 }
+      );
+    }
+
     const { id } = await params;
     const payload = await request.json();
 

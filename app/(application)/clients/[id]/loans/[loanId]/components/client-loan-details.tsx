@@ -17,7 +17,7 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { toast } from "@/components/ui/use-toast";
-import { AlertCircle, Download, MoreVertical, X, ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight, Edit, Flag, Plus, Heart, Coins, RotateCcw, Calendar, ChevronRight as ChevronRightIcon, User, Building, Phone, Mail, CreditCard, TrendingUp, Clock, FileText, Shield, DollarSign, Percent, CalendarDays, Settings, Trash2, StickyNote } from "lucide-react";
+import { AlertCircle, Download, MoreVertical, X, ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight, Edit, Flag, Plus, Heart, Coins, RotateCcw, Calendar, ChevronRight as ChevronRightIcon, User, Building, Phone, Mail, CreditCard, TrendingUp, Clock, FileText, Shield, DollarSign, Percent, CalendarDays, Settings, Trash2, StickyNote, ArrowUpCircle } from "lucide-react";
 import { ClientTransactions } from "../../../components/client-transactions";
 import { RepaymentModal } from "./repayment-modal";
 import { PaymentModal } from "./payment-modal";
@@ -40,6 +40,8 @@ import RecoverFromGuarantorModal from "@/components/RecoverFromGuarantorModal";
 import SellLoanModal from "@/components/SellLoanModal";
 import { TransactionsDataTable } from "./transactions-data-table";
 import { FineractClient, FineractLoan } from "@/shared/types";
+import { usePermission } from "@/hooks/use-client-auth";
+import { SpecificPermission } from "@/shared/types/auth";
 
 interface ClientLoanDetailsProps {
   clientId: number;
@@ -261,6 +263,9 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
   // Disburse Modal State
   const [showDisburseModal, setShowDisburseModal] = useState(false);
 
+  const canApproveLoan = usePermission(SpecificPermission.APPROVE_LOAN);
+  const canDisburseLoan = usePermission(SpecificPermission.DISBURSE_LOAN);
+
   // Close actions menu when clicking outside
 
 
@@ -323,7 +328,7 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
         </button>
         <div class="absolute top-full right-0 mt-2 w-56 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 hidden" id="loan-actions-dropdown">
           <div class="py-2">
-            <button class="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed" data-action="approve-loan" id="approve-loan-btn">
+            ${canApproveLoan ? `<button class="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed" data-action="approve-loan" id="approve-loan-btn">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M9 12l2 2 4-4"/>
                 <path d="M21 12c-1 0-3-1-3-3s2-3 3-3 3 1 3 3-2 3-3 3"/>
@@ -332,13 +337,13 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                 <path d="M8 12h3"/>
               </svg>
               Approve
-            </button>
-            <button class="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed" data-action="disburse-loan" id="disburse-loan-btn">
+            </button>` : ''}
+            ${canDisburseLoan ? `<button class="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed" data-action="disburse-loan" id="disburse-loan-btn">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M12 2v20m9-2-3-3m-6 3-3-3"/>
               </svg>
               Disburse
-            </button>
+            </button>` : ''}
             <button class="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 text-sm" data-action="add-charge">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M5 12h14"/>
@@ -836,7 +841,7 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
         container.innerHTML = '';
       }
     };
-  }, [loan, clientId, loanId, setShowRepaymentModal]);
+  }, [loan, clientId, loanId, setShowRepaymentModal, canApproveLoan, canDisburseLoan]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -2770,6 +2775,15 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
               <p className={`text-sm font-semibold ${loanStatusConfig.text}`}>{loanStatusConfig.label}</p>
               <span className="text-xs text-muted-foreground">&middot;</span>
               <p className="text-sm font-medium">{loan.loanProductName || loan.productName}</p>
+              {loan.isTopup && (
+                <>
+                  <span className="text-xs text-muted-foreground">&middot;</span>
+                  <Badge className="bg-amber-500 hover:bg-amber-600 text-white border-0 text-xs gap-1 py-0">
+                    <ArrowUpCircle className="h-3 w-3" />
+                    Top-Up
+                  </Badge>
+                </>
+              )}
             </div>
             <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
               <span>{loan.accountNo}</span>
@@ -3169,6 +3183,17 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                   <p className="text-sm font-medium">{formatCurrency(loan.approvedPrincipal ?? 0)}</p>
                 </div>
               </div>
+              {loan.isTopup && (
+                <div className="mt-4 flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-950 px-4 py-3">
+                  <ArrowUpCircle className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                  <p className="text-sm text-amber-800 dark:text-amber-200">
+                    <span className="font-semibold">Top-Up Loan</span>
+                    {loan.topupDetails?.loanIdToClose && (
+                      <span className="ml-1">— closes loan <Link href={`/clients/${loan.clientId}/loans/${loan.topupDetails.loanIdToClose}`} className="font-medium text-amber-700 dark:text-amber-300 underline underline-offset-2 hover:text-amber-900 dark:hover:text-amber-100">#{loan.topupDetails.loanIdToClose}</Link></span>
+                    )}
+                  </p>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

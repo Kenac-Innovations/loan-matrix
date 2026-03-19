@@ -3,6 +3,13 @@ import { fetchFineractAPI } from "@/lib/api";
 import { prisma } from "@/lib/prisma";
 import { getTenantBySlug, extractTenantSlugFromRequest } from "@/lib/tenant-service";
 import { sendLoanStatusSms } from "@/lib/notification-service";
+import { hasPermissionServer } from "@/lib/authorization";
+import { SpecificPermission } from "@/shared/types/auth";
+
+const ACTION_PERMISSION_MAP: Record<string, SpecificPermission> = {
+  approve: SpecificPermission.APPROVE_LOAN,
+  disburse: SpecificPermission.DISBURSE_LOAN,
+};
 
 // POST /api/fineract/loans/[id]/action - Perform an action on a loan
 export async function POST(
@@ -25,6 +32,17 @@ export async function POST(
         { error: "Action is required" },
         { status: 400 }
       );
+    }
+
+    const requiredPermission = ACTION_PERMISSION_MAP[action];
+    if (requiredPermission) {
+      const hasPermission = await hasPermissionServer(requiredPermission);
+      if (!hasPermission) {
+        return NextResponse.json(
+          { error: `You don't have permission to ${action} loans` },
+          { status: 403 }
+        );
+      }
     }
 
     const tenantSlug = extractTenantSlugFromRequest(request);

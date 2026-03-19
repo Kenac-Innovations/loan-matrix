@@ -3,6 +3,8 @@ import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
 import Link from "next/link";
 import { LeadsStatusTabs } from "./components/leads-status-tabs";
+import { PermissionGate } from "@/components/auth/permission-gate";
+import { SpecificPermission } from "@/shared/types/auth";
 
 export const metadata: Metadata = {
   title: "Lead Management | KENAC Loan Matrix",
@@ -19,12 +21,14 @@ export default async function LeadsPage() {
             Track leads through the loan processing pipeline
           </p>
         </div>
-        <Button className="bg-blue-500 hover:bg-blue-600 w-full sm:w-auto" asChild>
-          <Link href="/leads/new">
-            <Plus className="mr-2 h-4 w-4" />
-            Add New Lead
-          </Link>
-        </Button>
+        <PermissionGate permission={SpecificPermission.CREATE_LOAN}>
+          <Button className="bg-blue-500 hover:bg-blue-600 w-full sm:w-auto" asChild>
+            <Link href="/leads/new">
+              <Plus className="mr-2 h-4 w-4" />
+              Add New Lead
+            </Link>
+          </Button>
+        </PermissionGate>
       </div>
 
       <div className="mt-4 sm:mt-6">
