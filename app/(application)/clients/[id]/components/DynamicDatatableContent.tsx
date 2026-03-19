@@ -50,46 +50,40 @@ const isPhoneNumberField = (columnName: string): boolean => {
   );
 };
 
-// Format phone number for display (Zambian format)
-const formatZambianPhoneDisplay = (value: string): string => {
+// Format phone number for display using tenant locale
+const formatPhoneDisplay = (value: string, countryCode: string): string => {
   if (!value) return "";
-  // Remove all non-digits
   let digits = value.replace(/\D/g, "");
-  
-  // Remove country code if present
-  if (digits.startsWith("260")) {
-    digits = digits.substring(3);
+  const codeDigits = countryCode.replace("+", "");
+
+  if (digits.startsWith(codeDigits)) {
+    digits = digits.substring(codeDigits.length);
   }
-  
-  // Remove leading zero if present
-  if (digits.startsWith("0")) {
+
+  if (digits.startsWith("0") && digits.length > 1) {
     digits = digits.substring(1);
   }
-  
-  // Format as 9X XXX XXXX
-  if (digits.length >= 9) {
-    return `${digits.slice(0, 2)} ${digits.slice(2, 5)} ${digits.slice(5, 9)}`;
+
+  if (digits.length >= 7) {
+    return `${digits.slice(0, 2)} ${digits.slice(2, 5)} ${digits.slice(5)}`;
   }
   return digits;
 };
 
-// Format phone number for storage (just digits, max 10)
-const formatPhoneForStorage = (value: string): string => {
-  // Remove all non-digits
+// Format phone number for storage (just local digits)
+const formatPhoneForStorage = (value: string, countryCode: string, maxDigits: number): string => {
   let digits = value.replace(/\D/g, "");
-  
-  // Remove country code if present
-  if (digits.startsWith("260")) {
-    digits = digits.substring(3);
+  const codeDigits = countryCode.replace("+", "");
+
+  if (digits.startsWith(codeDigits)) {
+    digits = digits.substring(codeDigits.length);
   }
-  
-  // Remove leading zero if present
-  if (digits.startsWith("0")) {
+
+  if (digits.startsWith("0") && digits.length > 1) {
     digits = digits.substring(1);
   }
-  
-  // Limit to 9 digits (Zambian local number without leading 0)
-  return digits.slice(0, 9);
+
+  return digits.slice(0, maxDigits);
 };
 
 interface DynamicDatatableContentProps {
@@ -770,7 +764,7 @@ export function DynamicDatatableContent({
 
     // Phone number field - detect by column name and apply Zambian format
     if (isPhoneNumberField(columnName)) {
-      const displayValue = formatZambianPhoneDisplay(String(currentValue ?? ""));
+      const displayValue = formatPhoneDisplay(String(currentValue ?? ""), tenantLocale.countryCode);
       return (
         <div className="space-y-1">
           <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -784,16 +778,16 @@ export function DynamicDatatableContent({
               type="tel"
               value={displayValue}
               onChange={(e) => {
-                const formatted = formatPhoneForStorage(e.target.value);
+                const formatted = formatPhoneForStorage(e.target.value, tenantLocale.countryCode, tenantLocale.phoneDigits);
                 handleFieldChange(columnName, formatted);
               }}
-              placeholder="9X XXX XXXX"
-              maxLength={12}
+              placeholder={tenantLocale.phoneFormat}
+              maxLength={tenantLocale.phoneDigits + 3}
               className="text-sm rounded-l-none"
             />
           </div>
           <p className="text-xs text-muted-foreground">
-            Enter 9 digit Zambian number (e.g., 97 123 4567)
+            Enter {tenantLocale.phoneDigits} digit {tenantLocale.countryName} number (e.g., {tenantLocale.phonePlaceholder})
           </p>
         </div>
       );
@@ -959,48 +953,70 @@ export function DynamicDatatableContent({
         }
       });
 
-      // Before save: check if row already exists (e.g. Banking Details one-row-per-client)
-      // If exists, use PUT; otherwise POST to avoid duplicate key error
-      const checkRes = await fetch(
-        `/api/fineract/datatables/${encodeURIComponent(
-          datatableName
-        )}/${clientId}?genericResultSet=true`,
-        { cache: "no-store" }
-      );
-      const checkData = await checkRes.json();
-      const existingRows = checkRes.ok && checkData?.data?.length > 0;
-      const existingRowId = existingRows
-        ? extractRowIdFromRow(checkData.data[0], checkData.columnHeaders || headers)
-        : null;
-
-      const usePut = existingRows && existingRowId != null;
-
-      const response = await fetch(
+      // Try POST first (create new row). For single-row datatables that
+      // already have data Fineract will reject the POST, so we fall back
+      // to PUT on the existing row.
+      const postRes = await fetch(
         `/api/fineract/datatables/${encodeURIComponent(
           datatableName
         )}/${clientId}`,
         {
-          method: usePut ? "PUT" : "POST",
+          method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(
-            usePut ? { rowId: existingRowId, data: payload } : { data: payload }
-          ),
+          body: JSON.stringify({ data: payload }),
         }
       );
 
-      const result = await response.json();
+      let result = await postRes.json();
+      let usedPut = false;
 
-      if (!response.ok) {
-        throw new Error(
-          result.error ||
-            result.details?.defaultUserMessage ||
-            "Failed to save entry"
+      if (!postRes.ok) {
+        // POST failed — likely a single-row datatable that already has data.
+        // Check for an existing row and try PUT instead.
+        const checkRes = await fetch(
+          `/api/fineract/datatables/${encodeURIComponent(
+            datatableName
+          )}/${clientId}?genericResultSet=true`,
+          { cache: "no-store" }
         );
+        const checkData = await checkRes.json();
+        const existingRowId =
+          checkRes.ok && checkData?.data?.length > 0
+            ? extractRowIdFromRow(checkData.data[0], checkData.columnHeaders || headers)
+            : null;
+
+        if (existingRowId != null) {
+          const putRes = await fetch(
+            `/api/fineract/datatables/${encodeURIComponent(
+              datatableName
+            )}/${clientId}`,
+            {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ rowId: existingRowId, data: payload }),
+            }
+          );
+          result = await putRes.json();
+          if (!putRes.ok) {
+            throw new Error(
+              result.error ||
+                result.details?.defaultUserMessage ||
+                "Failed to save entry"
+            );
+          }
+          usedPut = true;
+        } else {
+          throw new Error(
+            result.error ||
+              result.details?.defaultUserMessage ||
+              "Failed to save entry"
+          );
+        }
       }
 
       toast({
         title: "Success",
-        description: usePut
+        description: usedPut
           ? "Data table entry updated successfully"
           : "Data table entry created successfully",
       });
@@ -1503,10 +1519,9 @@ export function DynamicDatatableContent({
                     }
                   }
 
-                  // Format phone numbers with Zambian international format
                   let cellValue;
                   if (isPhoneNumberField(header?.columnName || "")) {
-                    const formattedPhone = formatZambianPhoneDisplay(String(displayValue ?? ""));
+                    const formattedPhone = formatPhoneDisplay(String(displayValue ?? ""), tenantLocale.countryCode);
                     cellValue = formattedPhone ? (
                       <span className="font-medium">{tenantLocale.countryCode} {formattedPhone}</span>
                     ) : (

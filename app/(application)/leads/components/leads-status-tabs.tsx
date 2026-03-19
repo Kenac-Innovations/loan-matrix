@@ -169,7 +169,7 @@ function getTenantSlugFromHost(): string {
 
 export function LeadsStatusTabs() {
   const { data: session } = useSession();
-  const { currencyCode: orgCurrency } = useCurrency();
+  const { currencyCode: orgCurrency, locale: tenantLocale } = useCurrency();
   const isMobile = useIsMobile();
   const [activeTab, setActiveTab] = useState("drafts");
   const [dateRange, setDateRange] = useState<DateRange>({
@@ -669,14 +669,14 @@ export function LeadsStatusTabs() {
             return <span className="font-medium">{String(value)}</span>;
           }
           
-          return formatCellValue(col, value, orgCurrency, row.original);
+          return formatCellValue(col, value, orgCurrency, row.original, tenantLocale.countryCode);
         },
         enableSorting: true,
       });
     }
 
     return columns;
-  }, []);
+  }, [orgCurrency, tenantLocale.countryCode]);
 
   // Memoize columns for each tab
   const tabColumns = useMemo(() => {
@@ -865,7 +865,7 @@ export function LeadsStatusTabs() {
   return (
     <div className="space-y-6">
       {/* Pipeline Stats Cards */}
-      <div className="grid gap-3 sm:gap-4 grid-cols-2 md:grid-cols-4">
+      <div className="grid gap-2 sm:gap-3 lg:gap-4 grid-cols-2 md:grid-cols-4">
         <Card className="bg-gradient-to-br from-blue-500/10 to-blue-600/5 border-blue-500/20">
           <CardHeader className="flex flex-row items-center justify-between pb-1 sm:pb-2 p-3 sm:p-6">
             <CardTitle className="text-xs sm:text-sm font-medium text-muted-foreground">Total Leads</CardTitle>
@@ -1026,10 +1026,10 @@ export function LeadsStatusTabs() {
             </p>
           )}
         </CardHeader>
-      <CardContent className="pt-4 sm:pt-6 px-3 sm:px-6">
+      <CardContent className="pt-4 sm:pt-6 px-2 sm:px-4 lg:px-6">
         <Tabs value={activeTab} onValueChange={handleTabChange}>
           <div className="overflow-x-auto -mx-1 px-1 mb-4 scrollbar-none">
-            <TabsList className="inline-flex w-full sm:grid sm:grid-cols-6 h-auto bg-muted/50 dark:bg-muted/30 p-1 rounded-lg min-w-max sm:min-w-0">
+            <TabsList className="inline-flex w-full lg:grid lg:grid-cols-6 h-auto bg-muted/50 dark:bg-muted/30 p-1 rounded-lg min-w-max lg:min-w-0">
               {TABS.map((tab) => (
                 <TabsTrigger
                   key={tab.id}
@@ -1044,7 +1044,7 @@ export function LeadsStatusTabs() {
                 >
                   <div className="flex items-center gap-1.5 sm:gap-2">
                     {tab.icon}
-                    <span className="hidden sm:inline font-medium">{tab.label}</span>
+                    <span className="font-medium text-xs sm:text-sm">{tab.label}</span>
                     <Badge
                       variant="secondary"
                       className={cn(
@@ -1142,10 +1142,10 @@ function isPhoneColumn(colLower: string): boolean {
   return PHONE_PATTERNS.some(pattern => colLower.includes(pattern));
 }
 
-function formatPhoneNumber(value: any, countryCode?: string): string {
+function formatPhoneNumber(value: any, countryCode?: string, defaultCountryCode?: string): string {
   if (!value) return "-";
 
-  const code = countryCode || "+260";
+  const code = countryCode || defaultCountryCode || "+260";
   const codeDigits = code.replace("+", "");
   let phone = String(value).replaceAll(/\D/g, "");
 
@@ -1272,7 +1272,7 @@ function formatNumericValue(value: any, colLower: string, currencyCode?: string)
 }
 
 // Helper to format cell values
-function formatCellValue(column: string, value: any, currencyCode?: string, rowData?: any): React.ReactNode {
+function formatCellValue(column: string, value: any, currencyCode?: string, rowData?: any, defaultCountryCode?: string): React.ReactNode {
   if (value === null || value === undefined || value === "") {
     return <span className="text-muted-foreground">-</span>;
   }
@@ -1282,7 +1282,7 @@ function formatCellValue(column: string, value: any, currencyCode?: string, rowD
   // Phone numbers
   if (isPhoneColumn(colLower)) {
     const code = rowData?.countryCode || rowData?.country_code;
-    return <span className="tabular-nums">{formatPhoneNumber(value, code)}</span>;
+    return <span className="tabular-nums">{formatPhoneNumber(value, code, defaultCountryCode)}</span>;
   }
 
   // Dates (check before numbers as dates can look numeric)
