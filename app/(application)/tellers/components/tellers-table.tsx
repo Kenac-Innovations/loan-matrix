@@ -12,8 +12,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { MoreHorizontal, DollarSign, Users, CheckCircle, Building2, Loader2 } from "lucide-react";
-import { formatCurrency } from "@/lib/format-currency";
+import { MoreHorizontal, Users, CheckCircle, Building2, Loader2 } from "lucide-react";
 import { formatDate } from "@/lib/format-date";
 
 interface Teller {
@@ -160,12 +159,12 @@ export function TellersTable() {
           );
         }
         return (
-          <div className="flex items-center gap-1">
-            <DollarSign className="h-3 w-3 text-muted-foreground" />
-            <span className="font-medium">
-              {formatCurrency(allocation.amount, allocation.currency)}
-            </span>
-          </div>
+          <span className="font-medium">
+            {allocation.amount.toLocaleString("en-US", {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            })}
+          </span>
         );
       },
     },
