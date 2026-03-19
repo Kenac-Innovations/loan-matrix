@@ -28,6 +28,7 @@ import {
   Loader2,
   RefreshCw,
   AlertTriangle,
+  ArrowUpCircle,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import jsPDF from "jspdf";
@@ -93,14 +94,33 @@ export function LoanContracts({
 
   const filledTenantContractHtml = useMemo(() => {
     if (!tenantContractHtml) return null;
+    let html: string;
     if (!contractData) {
-      return tenantContractHtml.replace(
+      html = tenantContractHtml.replace(
         /\{\{\s*[A-Z_0-9]+\s*\}\}/g,
         " ____________________ "
       );
+    } else {
+      html = fillOmamaContractTemplate(tenantContractHtml, contractData, tenantLogoUrl, {
+        borrower: borrowerSignature,
+        guarantor: guarantorSignature,
+        loanOfficer: loanOfficerSignature,
+      });
     }
-    return fillOmamaContractTemplate(tenantContractHtml, contractData, tenantLogoUrl);
-  }, [tenantContractHtml, contractData, tenantLogoUrl]);
+    // srcDoc iframes have origin about:srcdoc — inject <base> so relative
+    // URLs (e.g. /api/documents/…) resolve against the real app origin.
+    if (typeof window !== "undefined") {
+      const baseTag = `<base href="${window.location.origin}/">`;
+      if (html.includes("<head>")) {
+        html = html.replace("<head>", `<head>${baseTag}`);
+      } else if (html.includes("<head ")) {
+        html = html.replace(/<head\s[^>]*>/, (m) => `${m}${baseTag}`);
+      } else {
+        html = baseTag + html;
+      }
+    }
+    return html;
+  }, [tenantContractHtml, contractData, tenantLogoUrl, borrowerSignature, guarantorSignature, loanOfficerSignature]);
 
   useEffect(() => {
     let cancelled = false;
@@ -293,9 +313,33 @@ export function LoanContracts({
         .join(" ");
 
       // Fetch Fineract client details for gender (best-effort)
-      let genderName = lead.gender || "N/A";
+      const FINERACT_GENDER_MAP: Record<number, string> = { 15: "Male", 16: "Female" };
+      console.log("Gender debug:", { gender: lead.gender, genderId: lead.genderId, type: typeof lead.genderId, mapped: lead.genderId ? FINERACT_GENDER_MAP[lead.genderId] : "no id" });
+      let genderName =
+        (lead.genderId && FINERACT_GENDER_MAP[lead.genderId]) ||
+        (lead.gender && lead.gender !== "null" && lead.gender !== "N/A" ? lead.gender : "") ||
+        "";
       let employerName: string | undefined;
       let employeeNo: string | undefined;
+
+      let residentialAddress: string | undefined;
+      let workAddress: string | undefined;
+      let dtMaritalStatus: string | undefined;
+      let dtSpouseName: string | undefined;
+      let dtSpousePhone: string | undefined;
+      let dtClosestRelativeName: string | undefined;
+      let dtClosestRelativePhone: string | undefined;
+      let dtClosestRelativeRelationship: string | undefined;
+      let dtBusinessSector: string | undefined;
+      let dtBusinessAddress: string | undefined;
+      let dtCollaterals: Array<{ description?: string }> = [];
+      let dtReferees: Array<{
+        name?: string;
+        occupation?: string;
+        relation?: string;
+        address?: string;
+        phone?: string;
+      }> = [];
 
       if (lead.fineractClientId) {
         try {
@@ -306,6 +350,8 @@ export function LoanContracts({
             const fineractClient = await clientRes.json();
             if (fineractClient?.gender?.name) {
               genderName = fineractClient.gender.name;
+            } else if (fineractClient?.gender?.id) {
+              genderName = fineractClient.gender.id === 22 ? "Female" : "Male";
             }
           }
         } catch (err) {
@@ -315,43 +361,271 @@ export function LoanContracts({
           );
         }
 
-        // Try to fetch employment info from Fineract datatables (best-effort)
         try {
-          const dtRes = await fetch(
-            `/api/fineract/datatables/cd_Employment_Information/${lead.fineractClientId}?genericResultSet=true`,
+          const addrRes = await fetch(
+            `/api/fineract/clients/${lead.fineractClientId}/addresses`,
           );
-          if (dtRes.ok) {
-            const dtData = await dtRes.json();
-            if (dtData?.data?.length > 0) {
-              const headers = dtData.columnHeaders || [];
-              const firstRow = dtData.data[0]?.row || [];
-              headers.forEach((header: any, index: number) => {
-                const colName = (header.columnName || "")
-                  .toLowerCase()
-                  .replace(/\s+/g, "_");
-                const value = firstRow[index];
-                if (
-                  (colName === "employer_name" ||
-                    colName.includes("employer")) &&
-                  value &&
-                  !employerName
-                ) {
-                  employerName = String(value);
+          if (addrRes.ok) {
+            const addresses = await addrRes.json();
+            if (Array.isArray(addresses)) {
+              const formatAddr = (addr: any): string => {
+                return [
+                  addr.addressLine1,
+                  addr.addressLine2,
+                  addr.addressLine3,
+                  addr.city,
+                  addr.stateProvinceName,
+                  addr.postalCode,
+                  addr.countryName,
+                ]
+                  .filter((p) => typeof p === "string" && p.trim())
+                  .map((p: string) => p.trim())
+                  .join(", ");
+              };
+
+              for (const addr of addresses) {
+                const typeName = (addr.addressTypeName || addr.addressType || "").toLowerCase();
+                const formatted = formatAddr(addr);
+                if (!formatted) continue;
+
+                if (!residentialAddress && (typeName.includes("residential") || typeName.includes("home") || typeName.includes("permanent"))) {
+                  residentialAddress = formatted;
+                } else if (!workAddress && (typeName.includes("work") || typeName.includes("office") || typeName.includes("business"))) {
+                  workAddress = formatted;
                 }
-                if (
-                  (colName === "employee_number" ||
-                    colName.includes("employee")) &&
-                  colName.includes("num") &&
-                  value &&
-                  !employeeNo
-                ) {
-                  employeeNo = String(value);
-                }
-              });
+              }
+
+              if (!residentialAddress && addresses.length > 0) {
+                const formatted = formatAddr(addresses[0]);
+                if (formatted) residentialAddress = formatted;
+              }
             }
           }
         } catch (err) {
-          console.warn("Non-critical: Could not fetch employment info:", err);
+          console.warn("Non-critical: Could not fetch client addresses:", err);
+        }
+
+        // Fetch all Fineract client datatables for contract data (best-effort)
+        try {
+          const dtListRes = await fetch(
+            `/api/fineract/datatables?apptable=m_client`,
+          );
+          if (dtListRes.ok) {
+            const allDatatables = await dtListRes.json();
+
+            const resolveCodeValue = (header: any, rawValue: any): string => {
+              if (rawValue == null) return "";
+              if (
+                header.columnDisplayType === "CODELOOKUP" &&
+                Array.isArray(header.columnValues)
+              ) {
+                const match = header.columnValues.find(
+                  (cv: any) =>
+                    cv.id === rawValue || cv.id === Number(rawValue),
+                );
+                return match?.value || match?.name || String(rawValue);
+              }
+              return String(rawValue);
+            };
+
+            for (const dt of allDatatables) {
+              const tableName = dt.registeredTableName || "";
+              const lowerName = tableName.toLowerCase();
+              try {
+                const dtRes = await fetch(
+                  `/api/fineract/datatables/${encodeURIComponent(tableName)}/${lead.fineractClientId}?genericResultSet=true`,
+                );
+                if (!dtRes.ok) continue;
+                const dtData = await dtRes.json();
+                const headers = dtData?.columnHeaders || [];
+                const rows = dtData?.data || [];
+                if (rows.length === 0) continue;
+
+                const getVal = (
+                  row: any[],
+                  colMatch: (name: string) => boolean,
+                ) => {
+                  const idx = headers.findIndex((h: any) =>
+                    colMatch(
+                      (h.columnName || "")
+                        .toLowerCase()
+                        .replace(/\s+/g, "_"),
+                    ),
+                  );
+                  return idx >= 0 ? row[idx] : undefined;
+                };
+
+                const getResolvedVal = (
+                  row: any[],
+                  colMatch: (name: string) => boolean,
+                ): string => {
+                  const idx = headers.findIndex((h: any) =>
+                    colMatch(
+                      (h.columnName || "")
+                        .toLowerCase()
+                        .replace(/\s+/g, "_"),
+                    ),
+                  );
+                  if (idx < 0) return "";
+                  return resolveCodeValue(headers[idx], row[idx]);
+                };
+
+                if (
+                  lowerName.includes("employment") ||
+                  lowerName.includes("employer")
+                ) {
+                  const firstRow = rows[0]?.row || [];
+                  if (!employerName) {
+                    const idx = headers.findIndex((h: any) =>
+                      (h.columnName || "")
+                        .toLowerCase()
+                        .replace(/\s+/g, "_")
+                        .includes("employer"),
+                    );
+                    if (idx >= 0 && firstRow[idx]) {
+                      employerName = resolveCodeValue(
+                        headers[idx],
+                        firstRow[idx],
+                      );
+                    }
+                  }
+                  if (!employeeNo) {
+                    const val = getVal(
+                      firstRow,
+                      (n) =>
+                        n.includes("employee") && n.includes("num"),
+                    );
+                    if (val) employeeNo = String(val);
+                  }
+                }
+
+                if (lowerName.includes("business")) {
+                  const firstRow = rows[0]?.row || [];
+                  if (!dtBusinessSector) {
+                    dtBusinessSector = getResolvedVal(
+                      firstRow,
+                      (n) =>
+                        n.includes("business") &&
+                        (n.includes("sector") || n.includes("type")),
+                    );
+                  }
+                  if (!dtBusinessAddress) {
+                    const val = getVal(
+                      firstRow,
+                      (n) => n === "address" || n.includes("address"),
+                    );
+                    if (val) dtBusinessAddress = String(val);
+                  }
+                }
+
+                if (lowerName.includes("family")) {
+                  const firstRow = rows[0]?.row || [];
+                  if (!dtMaritalStatus) {
+                    dtMaritalStatus = getResolvedVal(
+                      firstRow,
+                      (n) => n.includes("marital"),
+                    );
+                  }
+                  if (!dtSpouseName) {
+                    const val = getVal(
+                      firstRow,
+                      (n) => n.includes("spouse") && n.includes("name"),
+                    );
+                    if (val) dtSpouseName = String(val);
+                  }
+                  if (!dtSpousePhone) {
+                    const val = getVal(
+                      firstRow,
+                      (n) =>
+                        n.includes("spouse") &&
+                        (n.includes("phone") || n.includes("tel")),
+                    );
+                    if (val) dtSpousePhone = String(val);
+                  }
+                  if (!dtClosestRelativeName) {
+                    const val = getVal(
+                      firstRow,
+                      (n) =>
+                        n.includes("closest") && n.includes("name"),
+                    );
+                    if (val) dtClosestRelativeName = String(val);
+                  }
+                  if (!dtClosestRelativePhone) {
+                    const val = getVal(
+                      firstRow,
+                      (n) =>
+                        n.includes("closest") &&
+                        (n.includes("phone") || n.includes("tel")),
+                    );
+                    if (val) dtClosestRelativePhone = String(val);
+                  }
+                  if (!dtClosestRelativeRelationship) {
+                    dtClosestRelativeRelationship = getResolvedVal(
+                      firstRow,
+                      (n) => n.includes("relation"),
+                    );
+                  }
+                }
+
+                if (
+                  lowerName.includes("security") ||
+                  lowerName.includes("collateral")
+                ) {
+                  for (const rowObj of rows) {
+                    const row = rowObj?.row || [];
+                    const desc = getVal(
+                      row,
+                      (n) => n.includes("description"),
+                    );
+                    if (desc)
+                      dtCollaterals.push({ description: String(desc) });
+                  }
+                }
+
+                if (lowerName.includes("referee")) {
+                  for (const rowObj of rows) {
+                    const row = rowObj?.row || [];
+                    const name = getVal(row, (n) => n === "name");
+                    const occupation = getVal(
+                      row,
+                      (n) => n === "occupation",
+                    );
+                    const relation = getResolvedVal(
+                      row,
+                      (n) => n.includes("relation"),
+                    );
+                    const address = getVal(row, (n) => n === "address");
+                    const phone = getVal(
+                      row,
+                      (n) =>
+                        n.includes("telephone") ||
+                        n.includes("phone") ||
+                        n.includes("tel"),
+                    );
+                    dtReferees.push({
+                      name: name ? String(name) : undefined,
+                      occupation: occupation
+                        ? String(occupation)
+                        : undefined,
+                      relation: relation || undefined,
+                      address: address ? String(address) : undefined,
+                      phone: phone ? String(phone) : undefined,
+                    });
+                  }
+                }
+              } catch (err) {
+                console.warn(
+                  `Non-critical: Could not fetch datatable "${tableName}":`,
+                  err,
+                );
+              }
+            }
+          }
+        } catch (err) {
+          console.warn(
+            "Non-critical: Could not fetch client datatables:",
+            err,
+          );
         }
       }
 
@@ -536,9 +810,21 @@ export function LoanContracts({
         existingLoans: lead.existingLoans ?? undefined,
         hasExistingLoans: lead.hasExistingLoans ?? undefined,
         nationality: lead.nationality || undefined,
+        residentialAddress: residentialAddress || undefined,
+        workAddress: workAddress || dtBusinessAddress || undefined,
         familyMembers: lead.familyMembers || undefined,
         stateContext: lead.stateContext || undefined,
         stateMetadata: lead.stateMetadata || undefined,
+        maritalStatus: dtMaritalStatus || undefined,
+        spouseName: dtSpouseName || undefined,
+        spousePhone: dtSpousePhone || undefined,
+        closestRelativeName: dtClosestRelativeName || undefined,
+        closestRelativePhone: dtClosestRelativePhone || undefined,
+        closestRelativeRelationship: dtClosestRelativeRelationship || undefined,
+        businessSector: dtBusinessSector || undefined,
+        businessAddress: dtBusinessAddress || undefined,
+        collaterals: dtCollaterals.length > 0 ? dtCollaterals : undefined,
+        referees: dtReferees.length > 0 ? dtReferees : undefined,
       };
 
       setContractData(builtContractData);
@@ -681,7 +967,7 @@ export function LoanContracts({
         clientName: clientId ? `Client #${clientId}` : "N/A",
         nrc: "N/A",
         dateOfBirth: "N/A",
-        gender: "N/A",
+        gender: "",
         gflNo: clientId?.toString() || undefined,
         loanId: leadId,
         loanAmount: principal,
@@ -769,6 +1055,40 @@ export function LoanContracts({
       );
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const refreshContract = async () => {
+    setIsRefreshing(true);
+    try {
+      const templateRes = await fetch("/api/tenant/contract-template?slug=full-loan");
+      const templateData = await templateRes.json();
+      if (templateData.html) setTenantContractHtml(templateData.html);
+      if (templateData.logoUrl) setTenantLogoUrl(templateData.logoUrl);
+
+      let dataRefreshed = false;
+      if (leadId) {
+        const dataRes = await fetch(`/api/leads/${leadId}/contract-data`);
+        if (dataRes.ok) {
+          const result = await dataRes.json();
+          if (result.success && result.data) {
+            setContractData(result.data);
+            dataRefreshed = true;
+          }
+        }
+      }
+
+      if (!dataRefreshed && repaymentSchedule && loanDetails && loanTerms) {
+        await buildContractDataFromSchedule();
+      }
+
+      toast({ title: "Contract refreshed" });
+    } catch {
+      toast({ title: "Refresh failed", variant: "destructive" });
+    } finally {
+      setIsRefreshing(false);
     }
   };
 
@@ -1657,8 +1977,9 @@ export function LoanContracts({
         interestCalculationPeriodType: loanTerms.interestCalculationPeriod
           ? parseInt(loanTerms.interestCalculationPeriod)
           : 1,
-        loanIdToClose: loanTerms.loanIdToClose || "",
-        isTopup: loanTerms.isTopup ? true : "",
+        ...(loanTerms.isTopup && loanTerms.loanIdToClose
+          ? { isTopup: true, loanIdToClose: parseInt(loanTerms.loanIdToClose) }
+          : {}),
         transactionProcessingStrategyCode:
           loanTerms.repaymentStrategy || "creocore-strategy",
         interestRateFrequencyType: loanTerms.interestRateFrequency
@@ -2156,14 +2477,37 @@ export function LoanContracts({
 
       <div className="contract-section bg-white text-black dark:bg-white dark:text-black">
         {/* Contract Preview using HTML Template */}
+        {loanTerms?.isTopup && (
+          <div className="mb-4 flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-950 px-4 py-3">
+            <ArrowUpCircle className="h-5 w-5 text-amber-600 dark:text-amber-400 shrink-0" />
+            <div>
+              <p className="text-sm font-semibold text-amber-800 dark:text-amber-200">Top-Up Loan</p>
+              <p className="text-xs text-amber-600 dark:text-amber-400">
+                This loan will close an existing loan (ID: {loanTerms.loanIdToClose}) and top up the balance.
+              </p>
+            </div>
+          </div>
+        )}
+
         <Card className="mb-6 bg-white text-black border-gray-200">
           <CardHeader>
             <div className="flex items-center justify-between">
-              <div>
-                <CardTitle>Document Preview</CardTitle>
-                <CardDescription>
-                  Review the documents before printing or completing
-                </CardDescription>
+              <div className="flex items-center gap-3">
+                <div>
+                  <CardTitle>Document Preview</CardTitle>
+                  <CardDescription>
+                    Review the documents before printing or completing
+                  </CardDescription>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={refreshContract}
+                  disabled={isRefreshing}
+                >
+                  <RefreshCw className={`mr-2 h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
+                  {isRefreshing ? "Refreshing..." : "Refresh"}
+                </Button>
               </div>
               {!tenantContractHtml && (
                 <div className="flex gap-2">

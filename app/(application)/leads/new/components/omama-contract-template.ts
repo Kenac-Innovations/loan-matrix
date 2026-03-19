@@ -1,7 +1,6 @@
 import { format } from "date-fns";
 import { ContractData } from "./contract-types";
 
-
 const escapeHtml = (value: string): string =>
   value
     .replace(/&/g, "&amp;")
@@ -9,7 +8,6 @@ const escapeHtml = (value: string): string =>
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
-
 
 const formatCurrency = (amount?: number | null): string => {
   if (amount === null || amount === undefined || Number.isNaN(amount)) {
@@ -161,13 +159,14 @@ const getValueByPath = (obj: any, path: string): any => {
 const findValueByKeyMatch = (obj: any, pattern: RegExp): string | undefined => {
   if (!obj || typeof obj !== "object") return undefined;
   const queue: Array<{ key: string; value: any }> = Object.entries(obj).map(
-    ([key, value]) => ({ key, value })
+    ([key, value]) => ({ key, value }),
   );
   while (queue.length > 0) {
     const { key, value } = queue.shift()!;
     if (pattern.test(key)) {
       if (typeof value === "string" && value.trim()) return value;
-      if (typeof value === "number" && !Number.isNaN(value)) return String(value);
+      if (typeof value === "number" && !Number.isNaN(value))
+        return String(value);
     }
     if (value && typeof value === "object") {
       for (const [childKey, childVal] of Object.entries(value)) {
@@ -209,7 +208,8 @@ const normalizeGender = (value?: string | null): "male" | "female" | "" => {
     if (normalized === "1") return "male";
     if (normalized === "2") return "female";
   }
-  if (normalized.startsWith("f") || normalized.includes("female")) return "female";
+  if (normalized.startsWith("f") || normalized.includes("female"))
+    return "female";
   if (normalized.startsWith("m") || normalized.includes("male")) return "male";
   return "";
 };
@@ -225,11 +225,15 @@ const pickValue = (data: ContractData, keys: string[]): any => {
   return undefined;
 };
 
-
 export const fillOmamaContractTemplate = (
   html: string,
   data: ContractData,
   logoUrl?: string | null,
+  signatures?: {
+    borrower?: string | null;
+    guarantor?: string | null;
+    loanOfficer?: string | null;
+  },
 ): string => {
   let output = html;
 
@@ -243,13 +247,14 @@ export const fillOmamaContractTemplate = (
     data.lastname ||
     pickValue(data, ["lastname", "lastName", "surname", "clientLastName"]);
 
-  const clientName = data.clientName || [firstName, middleName, lastName].filter(Boolean).join(" ");
+  const clientName =
+    data.clientName ||
+    [firstName, middleName, lastName].filter(Boolean).join(" ");
   const firstNames =
     [firstName, middleName].filter(Boolean).join(" ") ||
     (clientName ? clientName.split(" ").slice(0, -1).join(" ") : "");
   const surname =
-    lastName ||
-    (clientName ? clientName.split(" ").slice(-1).join(" ") : "");
+    lastName || (clientName ? clientName.split(" ").slice(-1).join(" ") : "");
 
   const rawPhone =
     data.mobileNo ||
@@ -281,7 +286,7 @@ export const fillOmamaContractTemplate = (
   const loanDate = formatDate(
     data.loanDate ||
       pickValue(data, ["expectedDisbursementDate", "submittedOnDate"]) ||
-      null
+      null,
   );
   const borrowingCount =
     data.existingLoans ||
@@ -322,11 +327,11 @@ export const fillOmamaContractTemplate = (
     contextResidentialAddress ||
     findValueByKeyMatch(
       stateContext,
-      /(residential|physical|home).*address|addressLine|streetAddress|street|townVillage|town|city|village|district|postal|address(?!Type|Id)/i
+      /(residential|physical|home).*address|addressLine|streetAddress|street|townVillage|town|city|village|district|postal|address(?!Type|Id)/i,
     ) ||
     findValueByKeyMatch(
       stateMetadata,
-      /(residential|physical|home).*address|addressLine|streetAddress|street|townVillage|town|city|village|district|postal|address(?!Type|Id)/i
+      /(residential|physical|home).*address|addressLine|streetAddress|street|townVillage|town|city|village|district|postal|address(?!Type|Id)/i,
     );
 
   const workAddress =
@@ -334,11 +339,11 @@ export const fillOmamaContractTemplate = (
     pickValue(data, ["workAddress", "employerAddress", "placeOfWorkAddress"]) ||
     findValueByKeyMatch(
       stateContext,
-      /work.*address|employer.*address|business.*address|office.*address|workplace/i
+      /work.*address|employer.*address|business.*address|office.*address|workplace/i,
     ) ||
     findValueByKeyMatch(
       stateMetadata,
-      /work.*address|employer.*address|business.*address|office.*address|workplace/i
+      /work.*address|employer.*address|business.*address|office.*address|workplace/i,
     );
   const workPhone =
     pickValue(data, [
@@ -351,17 +356,18 @@ export const fillOmamaContractTemplate = (
     ]) ||
     findValueByKeyMatch(
       stateContext,
-      /work.*phone|employer.*phone|business.*phone|office.*phone|work.*contact/i
+      /work.*phone|employer.*phone|business.*phone|office.*phone|work.*contact/i,
     ) ||
     findValueByKeyMatch(
       stateMetadata,
-      /work.*phone|employer.*phone|business.*phone|office.*phone|work.*contact/i
+      /work.*phone|employer.*phone|business.*phone|office.*phone|work.*contact/i,
     );
   const title =
     pickValue(data, ["title", "salutation", "prefix", "honorific"]) ||
     findValueByKeyMatch(stateContext, /title|salutation|prefix|honorific/i) ||
     findValueByKeyMatch(stateMetadata, /title|salutation|prefix|honorific/i);
   const maritalStatus =
+    data.maritalStatus ||
     pickValue(data, [
       "maritalStatus",
       "marital",
@@ -369,6 +375,7 @@ export const fillOmamaContractTemplate = (
       "familyStatus",
     ]);
   const businessLocation =
+    data.businessAddress ||
     pickValue(data, [
       "businessLocation",
       "workLocation",
@@ -378,27 +385,30 @@ export const fillOmamaContractTemplate = (
     ]) ||
     findValueByKeyMatch(
       stateContext,
-      /business.*location|work.*location|placeOfWork|workplace/i
+      /business.*location|work.*location|placeOfWork|workplace/i,
     ) ||
     findValueByKeyMatch(
       stateMetadata,
-      /business.*location|work.*location|placeOfWork|workplace/i
+      /business.*location|work.*location|placeOfWork|workplace/i,
     ) ||
     workAddress;
 
   const employmentStatus =
     data.employmentStatus ||
     pickValue(data, ["employmentStatus", "occupation", "jobTitle"]) ||
+    data.businessSector ||
     findValueByKeyMatch(
       stateContext,
-      /employmentStatus|occupation|jobTitle|job|work/i
+      /employmentStatus|occupation|jobTitle|job|work/i,
     ) ||
     findValueByKeyMatch(
       stateMetadata,
-      /employmentStatus|occupation|jobTitle|job|work/i
+      /employmentStatus|occupation|jobTitle|job|work/i,
     );
   const businessType =
-    data.businessType || pickValue(data, ["businessType", "business"]);
+    data.businessType ||
+    data.businessSector ||
+    pickValue(data, ["businessType", "businessSector", "business"]);
   const employerName =
     data.employer ||
     data.employerName ||
@@ -426,23 +436,27 @@ export const fillOmamaContractTemplate = (
     ]) ||
     findValueByKeyMatch(
       stateContext,
-      /monthly.*income|monthly.*salary|salary|net.*income|gross.*income/i
+      /monthly.*income|monthly.*salary|salary|net.*income|gross.*income/i,
     ) ||
     findValueByKeyMatch(
       stateMetadata,
-      /monthly.*income|monthly.*salary|salary|net.*income|gross.*income/i
+      /monthly.*income|monthly.*salary|salary|net.*income|gross.*income/i,
     );
 
   const requestedAmount =
-    data.requestedAmount || pickValue(data, ["requestedAmount"]) || data.loanAmount;
+    data.requestedAmount ||
+    pickValue(data, ["requestedAmount"]) ||
+    data.loanAmount;
 
   const loanPurpose =
     data.loanPurpose || pickValue(data, ["loanPurpose", "purpose"]);
 
   const spouseName =
-    data.spouseName || pickValue(data, ["spouseName", "husbandName", "wifeName"]);
+    data.spouseName ||
+    pickValue(data, ["spouseName", "husbandName", "wifeName"]);
   const spousePhone =
-    data.spousePhone || pickValue(data, ["spousePhone", "husbandPhone", "wifePhone"]);
+    data.spousePhone ||
+    pickValue(data, ["spousePhone", "husbandPhone", "wifePhone"]);
 
   const familyMember = data.familyMembers?.[0];
   const guarantorMember = data.familyMembers?.find((member) => {
@@ -459,7 +473,11 @@ export const fillOmamaContractTemplate = (
       : undefined);
   const closestRelativePhone =
     data.closestRelativePhone ||
-    pickValue(data, ["closestRelativePhone", "nextOfKinPhone", "relativePhone"]) ||
+    pickValue(data, [
+      "closestRelativePhone",
+      "nextOfKinPhone",
+      "relativePhone",
+    ]) ||
     familyMember?.mobileNo;
   const closestRelativeRelationship =
     data.closestRelativeRelationship ||
@@ -475,33 +493,34 @@ export const fillOmamaContractTemplate = (
       "suretyName",
     ]) ||
     (guarantorMember
-      ? [guarantorMember.firstname, guarantorMember.middlename, guarantorMember.lastname]
+      ? [
+          guarantorMember.firstname,
+          guarantorMember.middlename,
+          guarantorMember.lastname,
+        ]
           .filter(Boolean)
           .join(" ")
       : undefined);
-  const guarantorId =
-    pickValue(data, [
-      "guarantorId",
-      "guarantorIdNumber",
-      "guarantor.idNumber",
-      "guarantor.nationalId",
-      "suretyId",
-    ]);
+  const guarantorId = pickValue(data, [
+    "guarantorId",
+    "guarantorIdNumber",
+    "guarantor.idNumber",
+    "guarantor.nationalId",
+    "suretyId",
+  ]);
   const guarantorPhone =
     pickValue(data, [
       "guarantorPhone",
       "guarantorTelephone",
       "guarantor.mobileNo",
       "suretyPhone",
-    ]) ||
-    guarantorMember?.mobileNo;
-  const guarantorAddress =
-    pickValue(data, [
-      "guarantorAddress",
-      "guarantor.address",
-      "guarantor.residentialAddress",
-      "suretyAddress",
-    ]);
+    ]) || guarantorMember?.mobileNo;
+  const guarantorAddress = pickValue(data, [
+    "guarantorAddress",
+    "guarantor.address",
+    "guarantor.residentialAddress",
+    "suretyAddress",
+  ]);
 
   const collateralType =
     data.collateralType || pickValue(data, ["collateralType", "securityType"]);
@@ -509,6 +528,9 @@ export const fillOmamaContractTemplate = (
     data.collateralValue || pickValue(data, ["collateralValue"]);
 
   const rawCollaterals =
+    (Array.isArray(data.collaterals) && data.collaterals.length > 0
+      ? data.collaterals
+      : null) ||
     pickValue(data, [
       "loanTerms.collaterals",
       "collaterals",
@@ -546,7 +568,9 @@ export const fillOmamaContractTemplate = (
   const fallbackCollateralItem =
     collateralType || collateralValue
       ? `${collateralType || "Collateral"}${
-          collateralValue ? ` ($${formatCurrency(Number(collateralValue))})` : ""
+          collateralValue
+            ? ` ($${formatCurrency(Number(collateralValue))})`
+            : ""
         }`
       : "";
   const securityItems =
@@ -556,9 +580,7 @@ export const fillOmamaContractTemplate = (
         ? [fallbackCollateralItem]
         : [];
 
-  const principalWords = data.loanAmount
-    ? numberToWords(data.loanAmount)
-    : "";
+  const principalWords = data.loanAmount ? numberToWords(data.loanAmount) : "";
 
   const interestRatePct =
     data.nominalInterestRate ??
@@ -575,7 +597,9 @@ export const fillOmamaContractTemplate = (
     ]) ??
     0;
   const interestRateStr =
-    interestRatePct !== undefined && interestRatePct !== null && !Number.isNaN(Number(interestRatePct))
+    interestRatePct !== undefined &&
+    interestRatePct !== null &&
+    !Number.isNaN(Number(interestRatePct))
       ? String(Number(interestRatePct).toFixed(2))
       : "";
   const executionPlace =
@@ -587,20 +611,19 @@ export const fillOmamaContractTemplate = (
   const executionMonth = data.executionMonth ?? "";
   const executionYear = data.executionYear ?? "";
   const executionDate = data.executionDate || loanDate || "";
-  const disbursedAmountStr = formatCurrency(data.disbursedAmount ?? data.loanAmount);
+  const disbursedAmountStr = formatCurrency(
+    data.disbursedAmount ?? data.loanAmount,
+  );
   const totalDebtStr =
     formatCurrency(data.totalRepayment ?? scheduleTotal ?? data.loanAmount) ||
     loanAmount ||
     "";
-  const paymentPerPeriodStr =
-    formatCurrency(
-      data.paymentPerPeriod ??
-        (schedule.length > 0 ? scheduleTotal! / schedule.length : undefined)
-    );
+  const paymentPerPeriodStr = formatCurrency(
+    data.paymentPerPeriod ??
+      (schedule.length > 0 ? scheduleTotal! / schedule.length : undefined),
+  );
   const firstPaymentDateVal =
-    data.firstPaymentDate ||
-    data.loanDate ||
-    loanDate;
+    data.firstPaymentDate || data.loanDate || loanDate;
   const firstPaymentDateStr = formatDate(firstPaymentDateVal || null);
   const scheduleDates = schedule
     .map((p: any) => formatDate(p?.dueDate || ""))
@@ -613,8 +636,14 @@ export const fillOmamaContractTemplate = (
   // Fix typos in template for readability
   output = output.replace(/\bPENALLTY\b/gi, "PENALTY");
   output = output.replace(/\bPEANALTY\b/gi, "PENALTY");
-  output = output.replace(/domicilie\s+citationet\s+executandi/gi, "domicilium citandi et executandi");
-  output = output.replace(/domicile\s+citation\s+et\s+executandi/gi, "domicilium citandi et executandi");
+  output = output.replace(
+    /domicilie\s+citationet\s+executandi/gi,
+    "domicilium citandi et executandi",
+  );
+  output = output.replace(
+    /domicile\s+citation\s+et\s+executandi/gi,
+    "domicilium citandi et executandi",
+  );
 
   // Current date on user's machine (for declaration and THUS DONE)
   const currentDateStr = format(new Date(), "dd/MM/yyyy");
@@ -625,6 +654,7 @@ export const fillOmamaContractTemplate = (
   const occupationText =
     employmentStatus ||
     businessType ||
+    data.businessSector ||
     employerName ||
     findValueByKeyMatch(data.stateContext, /occupation|job|business|trade/i) ||
     findValueByKeyMatch(data.stateMetadata, /occupation|job|business|trade/i) ||
@@ -634,8 +664,13 @@ export const fillOmamaContractTemplate = (
   if (schedule.length > 0) {
     const rows = schedule
       .map(
-        (p: { dueDate?: string; paymentAmount?: number; principal?: number; interestAndFees?: number }) =>
-          `<tr><td>${escapeHtml(String(p.dueDate || ""))}</td><td>${escapeHtml(formatCurrency(p.paymentAmount))}</td><td>${escapeHtml(formatCurrency(p.principal))}</td><td>${escapeHtml(formatCurrency(p.interestAndFees))}</td></tr>`
+        (p: {
+          dueDate?: string;
+          paymentAmount?: number;
+          principal?: number;
+          interestAndFees?: number;
+        }) =>
+          `<tr><td>${escapeHtml(String(p.dueDate || ""))}</td><td>${escapeHtml(formatCurrency(p.paymentAmount))}</td><td>${escapeHtml(formatCurrency(p.principal))}</td><td>${escapeHtml(formatCurrency(p.interestAndFees))}</td></tr>`,
       )
       .join("");
 
@@ -646,22 +681,22 @@ export const fillOmamaContractTemplate = (
       // 2) Find empty tbody that appears after schedule table headers
       const scheduleTablePattern = new RegExp(
         `(Dates\\s+and\\s+Amounts|REPAYMENT\\s+DATES|Repayment\\s+Schedule|REPAYMENT\\s+SCHEDULE|Dates\\s*[/]\\s*Amounts|REPAYMENT\\s+DATES\\s+&\\s+INSTALMENTS|Instalments)[\\s\\S]{0,2000}?<tbody[^>]*>\\s*</tbody>`,
-        "i"
+        "i",
       );
       const scheduleMatch = output.match(scheduleTablePattern);
       if (scheduleMatch) {
-        output = output.replace(
-          scheduleTablePattern,
-          (match) =>
-            match.replace(/<tbody[^>]*>\s*<\/tbody>/, `<tbody>${rows}</tbody>`)
+        output = output.replace(scheduleTablePattern, (match) =>
+          match.replace(/<tbody[^>]*>\s*<\/tbody>/, `<tbody>${rows}</tbody>`),
         );
       } else {
         // 3) Tables without <tbody>: "Dates and Amounts" then </tr></table> – inject rows before </table>
-        const noTbodyMatch = output.match(/(Dates\s+and\s+Amounts[\s\S]*)(<\/tr>)\s*<\/table>/i);
+        const noTbodyMatch = output.match(
+          /(Dates\s+and\s+Amounts[\s\S]*)(<\/tr>)\s*<\/table>/i,
+        );
         if (noTbodyMatch) {
           output = output.replace(
             /(Dates\s+and\s+Amounts[\s\S]*)(<\/tr>)\s*<\/table>/i,
-            (_m, before, trClose) => `${before}${trClose}${rows}</table>`
+            (_m, before, trClose) => `${before}${trClose}${rows}</table>`,
           );
         } else {
           // 4) Fallback: first empty <tbody></tbody> in the document
@@ -670,7 +705,7 @@ export const fillOmamaContractTemplate = (
           if (firstEmpty) {
             output = output.replace(
               firstEmpty[0],
-              firstEmpty[0].replace(/>\s*<\/tbody/, `>${rows}</tbody`)
+              firstEmpty[0].replace(/>\s*<\/tbody/, `>${rows}</tbody`),
             );
           }
         }
@@ -678,56 +713,141 @@ export const fillOmamaContractTemplate = (
       // Force content below repayment table (not to the right): add clear after schedule table
       output = output.replace(
         /(REPAYMENT\s+DATES\s+&?\s*INSTALMENTS|Dates\s+and\s+Amounts)[\s\S]{0,4000}?(<\/tbody>\s*<\/table>|<\/tr>\s*<\/table>)/i,
-        (m) => `${m}<div style="clear:both;"></div>`
+        (m) => `${m}<div style="clear:both;"></div>`,
       );
     }
   }
 
   const UNDERLINE = (len: number) => "_".repeat(len);
 
-  const replaceToken = (token: string, value?: string | null, underlineLen: number = 20) => {
+  const replaceToken = (
+    token: string,
+    value?: string | null,
+    underlineLen: number = 20,
+  ) => {
     const replacement = value
       ? ` ${escapeHtml(String(value))} `
       : ` ${UNDERLINE(underlineLen)} `;
-    output = output.replace(new RegExp(`\\{\\{\\s*${token}\\s*\\}\\}`, "g"), replacement);
+    output = output.replace(
+      new RegExp(`\\{\\{\\s*${token}\\s*\\}\\}`, "g"),
+      replacement,
+    );
+  };
+
+  const replaceSignatureToken = (token: string, imgSrc?: string | null) => {
+    const replacement = imgSrc
+      ? `<img src="${escapeHtml(imgSrc)}" style="height:60px; max-width:200px; object-fit:contain; vertical-align:middle;" />`
+      : ` ${UNDERLINE(35)} `;
+    output = output.replace(
+      new RegExp(`\\{\\{\\s*${token}\\s*\\}\\}`, "g"),
+      replacement,
+    );
   };
 
   // Tenant logo
   if (logoUrl) {
-    output = output.replace(/\{\{\s*TENANT_LOGO_URL\s*\}\}/g, escapeHtml(logoUrl));
+    output = output.replace(
+      /\{\{\s*TENANT_LOGO_URL\s*\}\}/g,
+      escapeHtml(logoUrl),
+    );
   }
 
-  // Gender display – tick/bold the selected gender
+  // Gender display – show the resolved gender, fall back to "Male / Female" if unknown
   const normalizedGender = normalizeGender(gender);
-  const maleLabel = normalizedGender === "male"
-    ? '<span style="font-weight:bold;text-decoration:underline">Male &#10003;</span>'
-    : "Male";
-  const femaleLabel = normalizedGender === "female"
-    ? '<span style="font-weight:bold;text-decoration:underline">Female &#10003;</span>'
-    : "Female";
-  const genderDisplay = `${maleLabel} / ${femaleLabel}`;
+  const genderDisplay =
+    normalizedGender === "male"
+      ? "Male"
+      : normalizedGender === "female"
+        ? "Female"
+        : "Male / Female";
   output = output.replace(/\{\{\s*GENDER_DISPLAY\s*\}\}/g, genderDisplay);
+
+  // Title based on gender + marital status: Mr / Mrs / Miss
+  const normalizedMarital = maritalStatus
+    ? String(maritalStatus).trim().toLowerCase()
+    : "";
+  const isMarried =
+    normalizedMarital === "married" || normalizedMarital.includes("married");
+  let titleDisplay: string;
+  if (normalizedGender === "male") {
+    titleDisplay = "Mr";
+  } else if (normalizedGender === "female") {
+    titleDisplay = isMarried ? "Mrs" : "Miss";
+  } else {
+    titleDisplay = "Mr / Mrs / Miss";
+  }
+  output = output.replace(/\{\{\s*TITLE_DISPLAY\s*\}\}/g, titleDisplay);
 
   // Page 1: Loan Application Form
   replaceToken("SURNAME", surname, 25);
   replaceToken("FIRST_NAMES", firstNames, 25);
   replaceToken("ID_NUMBER", idNumber ? String(idNumber) : null, 20);
   replaceToken("DATE_OF_BIRTH", dateOfBirth, 15);
-  replaceToken("RESIDENTIAL_ADDRESS", residentialAddress ? String(residentialAddress) : null, 45);
+  replaceToken(
+    "RESIDENTIAL_ADDRESS",
+    residentialAddress ? String(residentialAddress) : null,
+    45,
+  );
   replaceToken("PHONE", phone ? String(phone) : null, 15);
   replaceToken("WORK_ADDRESS", workAddress ? String(workAddress) : null, 45);
   replaceToken("WORK_PHONE", workPhone ? String(workPhone) : null, 15);
-  replaceToken("MARITAL_STATUS", maritalStatus ? String(maritalStatus) : null, 20);
+  replaceToken(
+    "MARITAL_STATUS",
+    maritalStatus ? String(maritalStatus) : null,
+    20,
+  );
   replaceToken("SPOUSE_NAME", spouseName ? String(spouseName) : null, 30);
   replaceToken("SPOUSE_PHONE", spousePhone ? String(spousePhone) : null, 15);
-  replaceToken("CLOSEST_RELATIVE_NAME", closestRelativeName ? String(closestRelativeName) : null, 30);
-  replaceToken("CLOSEST_RELATIVE_PHONE", closestRelativePhone ? String(closestRelativePhone) : null, 15);
-  replaceToken("CLOSEST_RELATIVE_RELATIONSHIP", closestRelativeRelationship ? String(closestRelativeRelationship) : null, 30);
-  replaceToken("OCCUPATION", occupationText ? String(occupationText) : null, 35);
-  replaceToken("BUSINESS_LOCATION", businessLocation ? String(businessLocation) : null, 50);
-  replaceToken("YEARS_IN_BUSINESS", yearsInBusiness ? String(yearsInBusiness) : null, 10);
-  replaceToken("MONTHLY_INCOME", monthlyIncome ? formatMaybeCurrency(monthlyIncome) : null, 10);
-  replaceToken("REQUESTED_AMOUNT", requestedAmount ? formatCurrency(Number(requestedAmount)) : null, 12);
+  replaceToken(
+    "CLOSEST_RELATIVE_NAME",
+    closestRelativeName ? String(closestRelativeName) : null,
+    30,
+  );
+  replaceToken(
+    "CLOSEST_RELATIVE_PHONE",
+    closestRelativePhone ? String(closestRelativePhone) : null,
+    15,
+  );
+  replaceToken(
+    "CLOSEST_RELATIVE_RELATIONSHIP",
+    closestRelativeRelationship ? String(closestRelativeRelationship) : null,
+    30,
+  );
+  replaceToken(
+    "OCCUPATION",
+    occupationText ? String(occupationText) : null,
+    35,
+  );
+  replaceToken(
+    "BUSINESS_LOCATION",
+    businessLocation ? String(businessLocation) : null,
+    50,
+  );
+  replaceToken(
+    "BUSINESS_ADDRESS",
+    businessLocation ? String(businessLocation) : null,
+    50,
+  );
+  replaceToken(
+    "BUSINESS_SECTOR",
+    occupationText ? String(occupationText) : null,
+    30,
+  );
+  replaceToken(
+    "YEARS_IN_BUSINESS",
+    yearsInBusiness ? String(yearsInBusiness) : null,
+    10,
+  );
+  replaceToken(
+    "MONTHLY_INCOME",
+    monthlyIncome ? formatMaybeCurrency(monthlyIncome) : null,
+    10,
+  );
+  replaceToken(
+    "REQUESTED_AMOUNT",
+    requestedAmount ? formatCurrency(Number(requestedAmount)) : null,
+    12,
+  );
   replaceToken("LOAN_PURPOSE", loanPurpose ? String(loanPurpose) : null, 25);
 
   for (let i = 0; i < 5; i += 1) {
@@ -742,13 +862,17 @@ export const fillOmamaContractTemplate = (
   const normalizeRef = (ref: any) => {
     const name =
       ref?.name ||
-      [ref?.firstname, ref?.middlename, ref?.lastname].filter(Boolean).join(" ");
+      [ref?.firstname, ref?.middlename, ref?.lastname]
+        .filter(Boolean)
+        .join(" ");
     return {
       name,
-      occupation: ref?.occupation || ref?.job || ref?.work || ref?.employment || "",
+      occupation:
+        ref?.occupation || ref?.job || ref?.work || ref?.employment || "",
       relation: ref?.relationship || ref?.relation || "",
       address: ref?.address || ref?.location || "",
-      phone: ref?.phone || ref?.telephone || ref?.mobileNo || ref?.contact || "",
+      phone:
+        ref?.phone || ref?.telephone || ref?.mobileNo || ref?.contact || "",
     };
   };
   const ref1 = normalizeRef(Array.isArray(referees) ? referees[0] : {});
@@ -764,13 +888,17 @@ export const fillOmamaContractTemplate = (
   replaceToken("REF2_ADDRESS", ref2.address || null, 25);
   replaceToken("REF2_PHONE", ref2.phone || null, 20);
 
-  replaceToken("APPLICANT_SIGNATURE", null, 35);
+  replaceSignatureToken("APPLICANT_SIGNATURE", signatures?.borrower);
   replaceToken("DECLARATION_DATE", currentDateStr, 15);
   replaceToken("DECLARATION_PLACE", executionPlace || null, 25);
 
   // Acknowledgement of Debt / used across pages
   replaceToken("CLIENT_NAME", clientName, 40);
-  replaceToken("CLIENT_ADDRESS", residentialAddress ? String(residentialAddress) : null, 50);
+  replaceToken(
+    "CLIENT_ADDRESS",
+    residentialAddress ? String(residentialAddress) : null,
+    50,
+  );
   replaceToken("TOTAL_DEBT", totalDebtStr || null, 15);
 
   // Voluntary Surrender items
@@ -781,17 +909,27 @@ export const fillOmamaContractTemplate = (
   // Loan Agreement
   replaceToken("LOAN_AMOUNT", loanAmount || null, 15);
   replaceToken("PRINCIPAL_WORDS", principalWords || null, 35);
-  replaceToken("BORROWER_SIGNATURE", null, 35);
-  replaceToken("LENDER_SIGNATURE", data.loanOfficer || null, 35);
+  replaceSignatureToken("BORROWER_SIGNATURE", signatures?.borrower);
+  replaceSignatureToken("LENDER_SIGNATURE", signatures?.loanOfficer);
   replaceToken("DISBURSED_AMOUNT", disbursedAmountStr || null, 15);
-  replaceToken("SIGNED_BY", null, 25);
+  replaceSignatureToken("CASH_RECEIVED_SIGNATURE", signatures?.borrower);
   replaceToken("EXECUTION_PLACE", executionPlace || null, 25);
   replaceToken("EXECUTION_DATE", executionDate || currentDateStr, 15);
 
   // Misc tokens
-  replaceToken("ACCOUNT_NUMBER", accountNumber ? String(accountNumber) : null, 15);
+  replaceToken(
+    "ACCOUNT_NUMBER",
+    accountNumber ? String(accountNumber) : null,
+    15,
+  );
   replaceToken("LOAN_DATE", loanDate || null, 15);
-  replaceToken("BORROWING_COUNT", borrowingCount !== undefined && borrowingCount !== null ? String(borrowingCount) : null, 10);
+  replaceToken(
+    "BORROWING_COUNT",
+    borrowingCount !== undefined && borrowingCount !== null
+      ? String(borrowingCount)
+      : null,
+    10,
+  );
   replaceToken("LOAN_AMOUNT_2", null, 15);
   replaceToken("LOAN_DATE_2", null, 15);
   replaceToken("BORROWING_COUNT_2", null, 10);
@@ -820,19 +958,45 @@ export const fillOmamaContractTemplate = (
   replaceToken("PAYMENT_PER_PERIOD", paymentPerPeriodStr || null, 15);
   replaceToken("FIRST_PAYMENT_DATE", firstPaymentDateStr || null, 25);
   replaceToken("INTEREST_RATE", interestRateStr || null, 8);
-  replaceToken("EXECUTION_DAY", currentDay || executionDay ? String(currentDay || executionDay) : null, 8);
-  replaceToken("EXECUTION_MONTH", currentMonth || executionMonth ? String(currentMonth || executionMonth) : null, 15);
-  replaceToken("EXECUTION_YEAR", currentYear || executionYear ? String(currentYear || executionYear) : null, 8);
-  replaceToken("DEBTOR_SIGNATURE", null, 40);
+  replaceToken(
+    "EXECUTION_DAY",
+    currentDay || executionDay ? String(currentDay || executionDay) : null,
+    8,
+  );
+  replaceToken(
+    "EXECUTION_MONTH",
+    currentMonth || executionMonth
+      ? String(currentMonth || executionMonth)
+      : null,
+    15,
+  );
+  replaceToken(
+    "EXECUTION_YEAR",
+    currentYear || executionYear ? String(currentYear || executionYear) : null,
+    8,
+  );
+  replaceSignatureToken("DEBTOR_SIGNATURE", signatures?.borrower);
   replaceToken("AOD_WITNESS_1", null, 45);
   replaceToken("AOD_WITNESS_2", null, 45);
 
   // Guarantee
-  replaceToken("GUARANTOR_NAME", guarantorName ? String(guarantorName) : null, 40);
-  replaceToken("GUARANTOR_ADDRESS", guarantorAddress ? String(guarantorAddress) : null, 40);
+  replaceToken(
+    "GUARANTOR_NAME",
+    guarantorName ? String(guarantorName) : null,
+    40,
+  );
+  replaceToken(
+    "GUARANTOR_ADDRESS",
+    guarantorAddress ? String(guarantorAddress) : null,
+    40,
+  );
   replaceToken("GUARANTOR_ID", guarantorId ? String(guarantorId) : null, 20);
-  replaceToken("GUARANTOR_PHONE", guarantorPhone ? String(guarantorPhone) : null, 15);
-  replaceToken("GUARANTOR_SIGNATURE", null, 30);
+  replaceToken(
+    "GUARANTOR_PHONE",
+    guarantorPhone ? String(guarantorPhone) : null,
+    15,
+  );
+  replaceSignatureToken("GUARANTOR_SIGNATURE", signatures?.guarantor);
   replaceToken("GUARANTEE_DATE", executionDate || currentDateStr, 15);
   replaceToken("GUARANTEE_WITNESS_1", null, 30);
   replaceToken("GUARANTEE_WITNESS_1_DATE", null, 15);
@@ -843,12 +1007,14 @@ export const fillOmamaContractTemplate = (
   for (let i = 0; i < 5; i += 1) {
     replaceToken(`PLEDGE_ITEM_${i + 1}`, securityItems[i], 20);
   }
-  replaceToken("PLEDGER_SIGNATURE", null, 30);
-  replaceToken("PLEDGEE_SIGNATURE", data.loanOfficer || null, 30);
+  replaceSignatureToken("PLEDGER_SIGNATURE", signatures?.borrower);
+  replaceSignatureToken("PLEDGEE_SIGNATURE", signatures?.loanOfficer);
   replaceToken("PLEDGE_WITNESS_1", null, 25);
   replaceToken("PLEDGE_WITNESS_2", null, 25);
 
-  // Misc signature placeholders
+  // Voluntary surrender form signatures
+  replaceSignatureToken("SURRENDER_DEBTOR_SIGNATURE", signatures?.borrower);
+  replaceSignatureToken("SURRENDER_GUARANTOR_SIGNATURE", signatures?.guarantor);
   replaceToken("DEBTOR_WITNESS_1", null, 30);
   replaceToken("DEBTOR_WITNESS_2", null, 30);
   replaceToken("SURRENDER_WITNESS_1", null, 30);
@@ -870,10 +1036,7 @@ export const fillOmamaContractTemplate = (
   }
 
   // Catch any remaining unreplaced tokens
-  output = output.replace(
-    /\{\{\s*[A-Z_0-9]+\s*\}\}/g,
-    ` ${UNDERLINE(20)} `
-  );
+  output = output.replace(/\{\{\s*[A-Z_0-9]+\s*\}\}/g, ` ${UNDERLINE(20)} `);
 
   return output;
 };
