@@ -3,8 +3,6 @@ import { getSession } from "@/lib/auth";
 import { getSession as getCustomSession } from "@/app/actions/auth";
 import { getFineractTenantId } from "@/lib/fineract-tenant-service";
 import { getSearchHeaders } from "@/lib/fineract-search-auth";
-import { hasPermissionServer } from "@/lib/authorization";
-import { SpecificPermission } from "@/shared/types/auth";
 
 const baseUrl = process.env.FINERACT_BASE_URL || "http://10.10.0.143:8443";
 
@@ -233,14 +231,6 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    const hasPermission = await hasPermissionServer(SpecificPermission.CREATE_LOAN);
-    if (!hasPermission) {
-      return NextResponse.json(
-        { success: false, error: "You don't have permission to create loans" },
-        { status: 403 }
-      );
-    }
-
     const accessToken = await getAccessToken();
     const fineractTenantId = await getFineractTenantId();
 

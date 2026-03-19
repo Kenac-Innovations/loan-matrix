@@ -24,11 +24,6 @@ export function mapApiPermissionsToSpecific(
     APPROVE_LOAN: SpecificPermission.APPROVE_LOAN,
     REJECT_LOAN: SpecificPermission.REJECT_LOAN,
     DISBURSE_LOAN: SpecificPermission.DISBURSE_LOAN,
-    CREATE_LOANS: SpecificPermission.CREATE_LOAN,
-    AUTHORISE_LOANS_L1: SpecificPermission.APPROVE_LOAN,
-    AUTHORISE_LOANS_L2: SpecificPermission.APPROVE_LOAN,
-    APPROVE_LOANS: SpecificPermission.APPROVE_LOAN,
-    DISBURSE_LOANS: SpecificPermission.DISBURSE_LOAN,
 
     // Office permissions
     READ_OFFICE: SpecificPermission.READ_OFFICE,

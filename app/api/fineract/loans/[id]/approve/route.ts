@@ -1,7 +1,5 @@
 import { NextResponse } from 'next/server';
 import { fetchFineractAPI } from '@/lib/api';
-import { hasPermissionServer } from '@/lib/authorization';
-import { SpecificPermission } from '@/shared/types/auth';
 
 /**
  * GET /api/fineract/loans/[id]/approve
@@ -41,14 +39,6 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const hasPermission = await hasPermissionServer(SpecificPermission.APPROVE_LOAN);
-    if (!hasPermission) {
-      return NextResponse.json(
-        { error: "You don't have permission to approve loans" },
-        { status: 403 }
-      );
-    }
-
     const { id } = await params;
     const payload = await request.json();
     
