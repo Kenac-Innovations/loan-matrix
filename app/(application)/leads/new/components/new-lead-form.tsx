@@ -37,10 +37,19 @@ import {
   FileText,
   Info,
   Calendar,
+  Trash2,
 } from "lucide-react";
 import Link from "next/link";
 import type { AffordabilityResult } from "@/lib/affordability-calculator";
 import { FormValidationSummary } from "@/components/ui/form-validation-summary";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 // Define LoanOffer type locally
 interface LoanOffer {
@@ -163,6 +172,50 @@ export function NewLeadForm() {
   const [sharedFirstRepaymentOn, setSharedFirstRepaymentOn] = useState<
     Date | undefined
   >(undefined);
+  const [showWipeConfirm, setShowWipeConfirm] = useState(false);
+
+  const handleWipeLead = () => {
+    LeadLocalStorage.clear();
+
+    if (currentLeadId) {
+      try {
+        localStorage.removeItem(`lead_${currentLeadId}`);
+      } catch {}
+    }
+
+    setCurrentLeadId(null);
+    setClientCreatedInFineract(false);
+    setFineractClientId(null);
+    setLoanProductId(null);
+    setLoanTemplateData(null);
+    setRepaymentSchedule(null);
+    setLoanDetails(null);
+    setLoanTerms(null);
+    setAffordabilityResult(null);
+    setSelectedOffer(null);
+    setAllClientSectionsComplete(false);
+    setSharedFirstRepaymentOn(undefined);
+    setFormCompletionStatus({
+      client: false,
+      affordability: false,
+      loan: false,
+      terms: false,
+      schedule: false,
+      contracts: false,
+    });
+    setActiveTab("client");
+
+    form.reset();
+
+    window.history.replaceState(null, "", "/leads/new");
+
+    setShowWipeConfirm(false);
+
+    toast({
+      title: "Lead Cleared",
+      description: "All lead data has been wiped. You can start a fresh lead.",
+    });
+  };
 
   // Load leadId from URL or localStorage on mount
   useEffect(() => {
@@ -966,8 +1019,43 @@ export function NewLeadForm() {
               Create New Lead
             </h1>
           </div>
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={() => setShowWipeConfirm(true)}
+          >
+            <Trash2 className="h-4 w-4 mr-1" />
+            <span className="hidden sm:inline">Wipe & Start Over</span>
+            <span className="sm:hidden">Wipe</span>
+          </Button>
         </div>
       </div>
+
+      {/* Wipe Confirmation Dialog */}
+      <Dialog open={showWipeConfirm} onOpenChange={setShowWipeConfirm}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Wipe Current Lead?</DialogTitle>
+            <DialogDescription>
+              This will permanently clear all saved data for this lead, remove it
+              from local storage, and start a completely fresh lead. This action
+              cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              onClick={() => setShowWipeConfirm(false)}
+            >
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={handleWipeLead}>
+              <Trash2 className="h-4 w-4 mr-1" />
+              Wipe Lead
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Scrollable Content */}
       <div className="flex-1">

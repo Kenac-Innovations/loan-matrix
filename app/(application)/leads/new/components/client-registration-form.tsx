@@ -125,14 +125,22 @@ const clientFormSchema = z
     // Step 1: General Information
     officeId: z.string().min(1, "Office is required"),
     legalFormId: z.string().min(1, "Legal form is required"),
-    externalId: z.string().min(1, "National ID is required"),
-    firstname: z.string().min(1, "First name is required"),
+    externalId: z.string().optional(),
+
+    // Individual fields
+    firstname: z.string().optional(),
     middlename: z.string().optional(),
-    lastname: z.string().min(1, "Last name is required"),
-    dateOfBirth: z.date({
-      required_error: "Date of birth is required",
-    }),
+    lastname: z.string().optional(),
+    dateOfBirth: z.date().optional(),
     genderId: z.string().optional(),
+
+    // Entity fields
+    fullname: z.string().optional(),
+    tradingName: z.string().optional(),
+    registrationNumber: z.string().optional(),
+    dateOfIncorporation: z.date().optional(),
+    natureOfBusiness: z.string().optional(),
+
     isStaff: z.boolean().default(false),
     mobileNo: z
       .string()
@@ -199,7 +207,6 @@ const clientFormSchema = z
   })
   .refine(
     (data) => {
-      // If active is true, activationDate is required
       if (data.active && !data.activationDate) {
         return false;
       }
@@ -212,7 +219,6 @@ const clientFormSchema = z
   )
   .refine(
     (data) => {
-      // If openSavingsAccount is true, savingsProductId is required
       if (data.openSavingsAccount && !data.savingsProductId) {
         return false;
       }
@@ -222,6 +228,54 @@ const clientFormSchema = z
       message: "Savings product is required when opening a savings account",
       path: ["savingsProductId"],
     }
+  )
+  .refine(
+    (data) => {
+      const isEntity = data.legalFormId === "2";
+      if (!isEntity && !data.firstname) return false;
+      return true;
+    },
+    { message: "First name is required", path: ["firstname"] }
+  )
+  .refine(
+    (data) => {
+      const isEntity = data.legalFormId === "2";
+      if (!isEntity && !data.lastname) return false;
+      return true;
+    },
+    { message: "Last name is required", path: ["lastname"] }
+  )
+  .refine(
+    (data) => {
+      const isEntity = data.legalFormId === "2";
+      if (!isEntity && !data.dateOfBirth) return false;
+      return true;
+    },
+    { message: "Date of birth is required", path: ["dateOfBirth"] }
+  )
+  .refine(
+    (data) => {
+      const isEntity = data.legalFormId === "2";
+      if (!isEntity && !data.externalId) return false;
+      return true;
+    },
+    { message: "National ID is required", path: ["externalId"] }
+  )
+  .refine(
+    (data) => {
+      const isEntity = data.legalFormId === "2";
+      if (isEntity && !data.fullname) return false;
+      return true;
+    },
+    { message: "Business name is required", path: ["fullname"] }
+  )
+  .refine(
+    (data) => {
+      const isEntity = data.legalFormId === "2";
+      if (isEntity && !data.registrationNumber) return false;
+      return true;
+    },
+    { message: "Registration number is required", path: ["registrationNumber"] }
   );
 
 // Family member schema
@@ -1211,6 +1265,10 @@ export function ClientRegistrationForm({
 
   const checkPersonalSection = () => {
     const values = form.getValues();
+    const entityMode = values.legalFormId === "2";
+    if (entityMode) {
+      return !!(values.fullname && values.registrationNumber);
+    }
     return !!(
       values.firstname &&
       values.lastname &&
@@ -1794,6 +1852,11 @@ export function ClientRegistrationForm({
       firstname: "",
       middlename: "",
       lastname: "",
+      fullname: "",
+      tradingName: "",
+      registrationNumber: "",
+      dateOfIncorporation: undefined,
+      natureOfBusiness: "",
       isStaff: false,
       mobileNo: "",
       countryCode: tenantLocale.countryCode,
@@ -2205,6 +2268,11 @@ export function ClientRegistrationForm({
               lastname: lead.lastname || "",
               dateOfBirth: lead.dateOfBirth || undefined,
               genderId: lead.genderId?.toString() || undefined,
+              fullname: lead.fullname || "",
+              tradingName: lead.tradingName || "",
+              registrationNumber: lead.registrationNumber || "",
+              dateOfIncorporation: lead.dateOfIncorporation || undefined,
+              natureOfBusiness: lead.natureOfBusiness || "",
               isStaff: lead.isStaff || false,
               mobileNo: lead.mobileNo || "",
               countryCode: lead.countryCode || tenantLocale.countryCode,
@@ -2412,6 +2480,17 @@ export function ClientRegistrationForm({
                       localData?.lastname,
                       lead.lastname
                     ),
+                    fullname: getBestValue(
+                      fineractData?.fullname,
+                      localData?.fullname,
+                      lead.fullname
+                    ),
+                    tradingName: lead.tradingName || "",
+                    registrationNumber: lead.registrationNumber || "",
+                    dateOfIncorporation: lead.dateOfIncorporation
+                      ? new Date(lead.dateOfIncorporation)
+                      : undefined,
+                    natureOfBusiness: lead.natureOfBusiness || "",
                   };
 
                   // If we have Fineract data, client exists in Fineract
@@ -2576,6 +2655,11 @@ export function ClientRegistrationForm({
             firstname: "",
             middlename: "",
             lastname: "",
+            fullname: "",
+            tradingName: "",
+            registrationNumber: "",
+            dateOfIncorporation: undefined,
+            natureOfBusiness: "",
             isStaff: false,
             mobileNo: "",
             countryCode: "+263",
@@ -2607,6 +2691,8 @@ export function ClientRegistrationForm({
 
     setShowProspectDialog(false);
     setExistingProspectData(null);
+
+    window.location.href = "/leads/new";
   };
 
   const handleCloseProspectDialog = () => {
@@ -2626,6 +2712,11 @@ export function ClientRegistrationForm({
       "middlename",
       "dateOfBirth",
       "genderId",
+      "fullname",
+      "tradingName",
+      "registrationNumber",
+      "dateOfIncorporation",
+      "natureOfBusiness",
     ];
     const contactFields = ["mobileNo", "emailAddress", "countryCode"];
     const classificationFields = ["clientTypeId", "clientClassificationId"];
@@ -3196,6 +3287,11 @@ export function ClientRegistrationForm({
       firstname: "",
       middlename: "",
       lastname: "",
+      fullname: "",
+      tradingName: "",
+      registrationNumber: "",
+      dateOfIncorporation: undefined,
+      natureOfBusiness: "",
       isStaff: false,
       mobileNo: "",
       countryCode: tenantLocale.countryCode,
@@ -3441,6 +3537,13 @@ export function ClientRegistrationForm({
             localData?.middlename
           ),
           lastname: getBestValue(fineractData?.lastname, localData?.lastname),
+          fullname: getBestValue(fineractData?.fullname, localData?.fullname),
+          tradingName: localData?.tradingName || "",
+          registrationNumber: localData?.registrationNumber || "",
+          dateOfIncorporation: localData?.dateOfIncorporation
+            ? new Date(localData.dateOfIncorporation)
+            : undefined,
+          natureOfBusiness: localData?.natureOfBusiness || "",
           dateOfBirth: fineractData?.dateOfBirth
             ? new Date(fineractData.dateOfBirth)
             : localData?.dateOfBirth
@@ -3771,6 +3874,11 @@ export function ClientRegistrationForm({
       firstname: "",
       middlename: "",
       lastname: "",
+      fullname: "",
+      tradingName: "",
+      registrationNumber: "",
+      dateOfIncorporation: undefined,
+      natureOfBusiness: "",
       isStaff: false,
       mobileNo: "",
       countryCode: tenantLocale.countryCode,
@@ -3975,6 +4083,7 @@ export function ClientRegistrationForm({
   // Watch specific fields individually to avoid infinite loops
   const officeId = form.watch("officeId");
   const legalFormId = form.watch("legalFormId");
+  const isEntity = legalFormId === "2";
   const activationDate = form.watch("activationDate");
   const firstname = form.watch("firstname");
   const lastname = form.watch("lastname");
@@ -6232,7 +6341,7 @@ export function ClientRegistrationForm({
                             {/* Divider */}
                             <div className="my-8 border-t border-gray-300 dark:border-gray-700"></div>
 
-                            {/* Personal Information Section */}
+                            {/* Personal / Entity Information Section */}
                             <div className={getSectionClasses("personal")}>
                               <div className="border-b border-gray-200 dark:border-gray-700 pb-3 mb-6">
                                 <div className="flex items-center gap-2 mb-2">
@@ -6242,12 +6351,16 @@ export function ClientRegistrationForm({
                                     "pending" ? (
                                     <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400" />
                                   ) : (
-                                    <UserCheck className="h-5 w-5 text-red-500" />
+                                    isEntity ? (
+                                      <Building2 className="h-5 w-5 text-red-500" />
+                                    ) : (
+                                      <UserCheck className="h-5 w-5 text-red-500" />
+                                    )
                                   )}
                                   <h3
                                     className={`text-lg font-medium ${colors.textColor}`}
                                   >
-                                    Personal Information
+                                    {isEntity ? "Entity Information" : "Personal Information"}
                                   </h3>
                                   {getSectionStatus("personal") === "saved" && (
                                     <Badge className="ml-2 bg-green-500 text-white">
@@ -6264,440 +6377,511 @@ export function ClientRegistrationForm({
                                 <p
                                   className={`text-sm ${colors.textColorMuted}`}
                                 >
-                                  Client's personal identification details
+                                  {isEntity ? "Registered business details" : "Client's personal identification details"}
                                 </p>
                               </div>
 
-                              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                                {/* First Name */}
-                                <div className="space-y-3">
-                                  <Label
-                                    htmlFor="firstname"
-                                    className={colors.textColor}
-                                  >
-                                    First Name{" "}
-                                    <span className="text-red-500">*</span>
-                                  </Label>
-                                  <div className="relative">
-                                    <Input
-                                      id="firstname"
-                                      name="firstname"
-                                      placeholder="Enter first name"
-                                      className={getInputErrorStyling(
-                                        hasFieldError(
-                                          form,
-                                          "firstname",
-                                          externalForm
-                                        ),
-                                        `h-10 w-full border-${colors.borderColor} ${colors.inputBg}`
-                                      )}
-                                      {...(externalForm
-                                        ? externalForm.register("firstname", {
-                                            onBlur: (e: {
-                                              target: { value: any };
-                                            }) =>
-                                              handleFieldBlur(
-                                                "firstname",
-                                                e.target.value
-                                              ),
-                                          })
-                                        : form.register("firstname", {
-                                            onBlur: (e: {
-                                              target: { value: any };
-                                            }) =>
-                                              handleFieldBlur(
-                                                "firstname",
-                                                e.target.value
-                                              ),
-                                          }))}
-                                      disabled={isFormDisabled}
-                                    />
-                                    {lastSavedField === "firstname" &&
-                                      isAutoSaving && (
-                                        <div className="absolute right-2 top-1/2 -translate-y-1/2">
-                                          <div className="w-3 h-3 border border-gray-300 border-t-gray-600 rounded-full animate-spin"></div>
-                                        </div>
-                                      )}
-                                  </div>
-                                  <p
-                                    className={`text-xs ${colors.textColorMuted}`}
-                                  >
-                                    Client's legal first name
-                                  </p>
-                                  {hasFieldError(
-                                    form,
-                                    "firstname",
-                                    externalForm
-                                  ) && (
-                                    <div className="flex items-center gap-1 text-sm text-red-600">
-                                      <svg
-                                        className="h-3 w-3 flex-shrink-0"
-                                        fill="currentColor"
-                                        viewBox="0 0 20 20"
-                                      >
-                                        <path
-                                          fillRule="evenodd"
-                                          d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
-                                          clipRule="evenodd"
+                              {isEntity ? (
+                                <>
+                                  {/* Entity fields */}
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    {/* Registered Business Name */}
+                                    <div className="space-y-3">
+                                      <Label htmlFor="fullname" className={colors.textColor}>
+                                        Registered Business Name{" "}
+                                        <span className="text-red-500">*</span>
+                                      </Label>
+                                      <div className="relative">
+                                        <Input
+                                          id="fullname"
+                                          placeholder="Enter registered business name"
+                                          className={getInputErrorStyling(
+                                            hasFieldError(form, "fullname", externalForm),
+                                            `h-10 w-full border-${colors.borderColor} ${colors.inputBg}`
+                                          )}
+                                          {...(externalForm
+                                            ? externalForm.register("fullname", {
+                                                onBlur: (e: { target: { value: any } }) =>
+                                                  handleFieldBlur("fullname", e.target.value),
+                                              })
+                                            : form.register("fullname", {
+                                                onBlur: (e: { target: { value: any } }) =>
+                                                  handleFieldBlur("fullname", e.target.value),
+                                              }))}
+                                          disabled={isFormDisabled}
                                         />
-                                      </svg>
-                                      <span>
-                                        {getFieldError(
-                                          form,
-                                          "firstname",
-                                          externalForm
+                                        {lastSavedField === "fullname" && isAutoSaving && (
+                                          <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                                            <div className="w-3 h-3 border border-gray-300 border-t-gray-600 rounded-full animate-spin"></div>
+                                          </div>
                                         )}
-                                      </span>
+                                      </div>
+                                      <p className={`text-xs ${colors.textColorMuted}`}>
+                                        Official registered name of the business
+                                      </p>
+                                      {hasFieldError(form, "fullname", externalForm) && (
+                                        <p className="text-sm text-red-500">
+                                          {getFieldError(form, "fullname", externalForm)}
+                                        </p>
+                                      )}
                                     </div>
-                                  )}
-                                </div>
 
-                                {/* Middle Name */}
-                                <div className="space-y-3">
-                                  <Label
-                                    htmlFor="middlename"
-                                    className={colors.textColor}
-                                  >
-                                    Middle Name
-                                  </Label>
-                                  <div className="relative">
-                                    <Input
-                                      id="middlename"
-                                      name="middlename"
-                                      placeholder="Enter middle name"
-                                      className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
-                                      {...(externalForm
-                                        ? externalForm.register("middlename", {
-                                            onBlur: (e: {
-                                              target: { value: any };
-                                            }) =>
-                                              handleFieldBlur(
-                                                "middlename",
-                                                e.target.value
-                                              ),
-                                          })
-                                        : form.register("middlename", {
-                                            onBlur: (e: {
-                                              target: { value: any };
-                                            }) =>
-                                              handleFieldBlur(
-                                                "middlename",
-                                                e.target.value
-                                              ),
-                                          }))}
-                                      disabled={isFormDisabled}
-                                    />
-                                    {lastSavedField === "middlename" &&
-                                      isAutoSaving && (
-                                        <div className="absolute right-2 top-1/2 -translate-y-1/2">
-                                          <div className="w-3 h-3 border border-gray-300 border-t-gray-600 rounded-full animate-spin"></div>
-                                        </div>
-                                      )}
-                                  </div>
-                                  <p
-                                    className={`text-xs ${colors.textColorMuted}`}
-                                  >
-                                    Client's middle name (if applicable)
-                                  </p>
-                                </div>
-
-                                {/* Last Name */}
-                                <div className="space-y-3">
-                                  <Label
-                                    htmlFor="lastname"
-                                    className={colors.textColor}
-                                  >
-                                    Last Name{" "}
-                                    <span className="text-red-500">*</span>
-                                  </Label>
-                                  <div className="relative">
-                                    <Input
-                                      id="lastname"
-                                      name="lastname"
-                                      placeholder="Enter last name"
-                                      className={getInputErrorStyling(
-                                        hasFieldError(
-                                          form,
-                                          "lastname",
-                                          externalForm
-                                        ),
-                                        `h-10 w-full border-${colors.borderColor} ${colors.inputBg}`
-                                      )}
-                                      {...(externalForm
-                                        ? externalForm.register("lastname", {
-                                            onBlur: (e: {
-                                              target: { value: any };
-                                            }) =>
-                                              handleFieldBlur(
-                                                "lastname",
-                                                e.target.value
-                                              ),
-                                          })
-                                        : form.register("lastname", {
-                                            onBlur: (e: {
-                                              target: { value: any };
-                                            }) =>
-                                              handleFieldBlur(
-                                                "lastname",
-                                                e.target.value
-                                              ),
-                                          }))}
-                                      disabled={isFormDisabled}
-                                    />
-                                    {lastSavedField === "lastname" &&
-                                      isAutoSaving && (
-                                        <div className="absolute right-2 top-1/2 -translate-y-1/2">
-                                          <div className="w-3 h-3 border border-gray-300 border-t-gray-600 rounded-full animate-spin"></div>
-                                        </div>
-                                      )}
-                                  </div>
-                                  <p
-                                    className={`text-xs ${colors.textColorMuted}`}
-                                  >
-                                    Client's legal last name/surname
-                                  </p>
-                                  {hasFieldError(
-                                    form,
-                                    "lastname",
-                                    externalForm
-                                  ) && (
-                                    <div className="flex items-center gap-1 text-sm text-red-600">
-                                      <svg
-                                        className="h-3 w-3 flex-shrink-0"
-                                        fill="currentColor"
-                                        viewBox="0 0 20 20"
-                                      >
-                                        <path
-                                          fillRule="evenodd"
-                                          d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
-                                          clipRule="evenodd"
+                                    {/* Trading Name */}
+                                    <div className="space-y-3">
+                                      <Label htmlFor="tradingName" className={colors.textColor}>
+                                        Trading Name
+                                      </Label>
+                                      <div className="relative">
+                                        <Input
+                                          id="tradingName"
+                                          placeholder="Enter trading name (if different)"
+                                          className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
+                                          {...(externalForm
+                                            ? externalForm.register("tradingName", {
+                                                onBlur: (e: { target: { value: any } }) =>
+                                                  handleFieldBlur("tradingName", e.target.value),
+                                              })
+                                            : form.register("tradingName", {
+                                                onBlur: (e: { target: { value: any } }) =>
+                                                  handleFieldBlur("tradingName", e.target.value),
+                                              }))}
+                                          disabled={isFormDisabled}
                                         />
-                                      </svg>
-                                      <span>
-                                        {getFieldError(
-                                          form,
-                                          "lastname",
-                                          externalForm
+                                        {lastSavedField === "tradingName" && isAutoSaving && (
+                                          <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                                            <div className="w-3 h-3 border border-gray-300 border-t-gray-600 rounded-full animate-spin"></div>
+                                          </div>
                                         )}
-                                      </span>
+                                      </div>
+                                      <p className={`text-xs ${colors.textColorMuted}`}>
+                                        Trading name if different from registered name
+                                      </p>
                                     </div>
-                                  )}
-                                </div>
-                              </div>
+                                  </div>
 
-                              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                                {/* Date of Birth */}
-                                <div className="space-y-3">
-                                  <Label
-                                    htmlFor="dateOfBirth"
-                                    className={colors.textColor}
-                                  >
-                                    Date of Birth{" "}
-                                    <span className="text-red-500">*</span>
-                                  </Label>
+                                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-6">
+                                    {/* Registration Number */}
+                                    <div className="space-y-3">
+                                      <Label htmlFor="registrationNumber" className={colors.textColor}>
+                                        Registration Number{" "}
+                                        <span className="text-red-500">*</span>
+                                      </Label>
+                                      <div className="relative">
+                                        <Input
+                                          id="registrationNumber"
+                                          placeholder="Enter company registration number"
+                                          className={getInputErrorStyling(
+                                            hasFieldError(form, "registrationNumber", externalForm),
+                                            `h-10 w-full border-${colors.borderColor} ${colors.inputBg}`
+                                          )}
+                                          {...(externalForm
+                                            ? externalForm.register("registrationNumber", {
+                                                onBlur: (e: { target: { value: any } }) =>
+                                                  handleFieldBlur("registrationNumber", e.target.value),
+                                              })
+                                            : form.register("registrationNumber", {
+                                                onBlur: (e: { target: { value: any } }) =>
+                                                  handleFieldBlur("registrationNumber", e.target.value),
+                                              }))}
+                                          disabled={isFormDisabled}
+                                        />
+                                        {lastSavedField === "registrationNumber" && isAutoSaving && (
+                                          <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                                            <div className="w-3 h-3 border border-gray-300 border-t-gray-600 rounded-full animate-spin"></div>
+                                          </div>
+                                        )}
+                                      </div>
+                                      <p className={`text-xs ${colors.textColorMuted}`}>
+                                        Company registration / incorporation number
+                                      </p>
+                                      {hasFieldError(form, "registrationNumber", externalForm) && (
+                                        <p className="text-sm text-red-500">
+                                          {getFieldError(form, "registrationNumber", externalForm)}
+                                        </p>
+                                      )}
+                                    </div>
 
-                                  <Controller
-                                    control={form.control}
-                                    name="dateOfBirth"
-                                    render={({ field }) => (
-                                      <Popover>
-                                        <PopoverTrigger asChild>
-                                          <Button
-                                            variant="outline"
-                                            className={cn(
-                                              "h-10 w-full justify-start text-left font-normal",
-                                              !field.value &&
-                                                "text-muted-foreground",
-                                              `border-${colors.borderColor} ${colors.inputBg}`
-                                            )}
-                                            disabled={isFormDisabled}
-                                          >
-                                            <CalendarIcon className="mr-2 h-4 w-4" />
-                                            {field.value ? (
-                                              format(field.value, "PPP")
-                                            ) : (
-                                              <span>Pick a date</span>
-                                            )}
-                                          </Button>
-                                        </PopoverTrigger>
-                                        <PopoverContent
-                                          className="w-auto p-0"
-                                          align="start"
-                                        >
-                                          <Calendar
-                                            mode="single"
-                                            selected={field.value}
-                                            onSelect={(date) => {
-                                              field.onChange(date);
-                                              if (date) {
-                                                handleFieldBlur(
-                                                  "dateOfBirth",
-                                                  date
-                                                );
-                                              }
-                                            }}
-                                            disabled={(date) =>
-                                              date > new Date() ||
-                                              date < new Date("1900-01-01")
-                                            }
-                                            captionLayout="dropdown"
-                                          />
-                                        </PopoverContent>
-                                      </Popover>
-                                    )}
-                                  />
-                                  <p
-                                    className={`text-xs ${colors.textColorMuted}`}
-                                  >
-                                    Client's date of birth for verification
-                                  </p>
-                                  {form.formState.errors.dateOfBirth && (
-                                    <p className="text-sm text-red-500">
-                                      {
-                                        form.formState.errors.dateOfBirth
-                                          .message
-                                      }
-                                    </p>
-                                  )}
-                                </div>
-
-                                {/* Gender */}
-                                <div className="space-y-3">
-                                  <Label
-                                    htmlFor="genderId"
-                                    className={colors.textColor}
-                                  >
-                                    Gender{" "}
-                                    <span className="text-red-500">*</span>
-                                  </Label>
-
-                                  <Controller
-                                    control={form.control}
-                                    name="genderId"
-                                    render={({ field }) => (
-                                      <SearchableSelect
-                                        options={genderOptions}
-                                        value={field.value?.toString()}
-                                        onValueChange={(value) => {
-                                          field.onChange(value);
-                                          handleFieldBlur("genderId", value);
-                                        }}
-                                        placeholder="Select gender"
-                                        className={`border-${colors.borderColor} ${colors.inputBg}`}
-                                        onAddNew={() =>
-                                          setShowAddGenderDialog(true)
-                                        }
-                                        addNewLabel="Add new gender"
-                                        disabled={isFormDisabled}
+                                    {/* Date of Incorporation */}
+                                    <div className="space-y-3">
+                                      <Label htmlFor="dateOfIncorporation" className={colors.textColor}>
+                                        Date of Incorporation
+                                      </Label>
+                                      <Controller
+                                        control={form.control}
+                                        name="dateOfIncorporation"
+                                        render={({ field }) => (
+                                          <Popover>
+                                            <PopoverTrigger asChild>
+                                              <Button
+                                                variant="outline"
+                                                className={cn(
+                                                  "h-10 w-full justify-start text-left font-normal",
+                                                  !field.value && "text-muted-foreground",
+                                                  `border-${colors.borderColor} ${colors.inputBg}`
+                                                )}
+                                                disabled={isFormDisabled}
+                                              >
+                                                <CalendarIcon className="mr-2 h-4 w-4" />
+                                                {field.value ? (
+                                                  format(field.value, "PPP")
+                                                ) : (
+                                                  <span>Pick a date</span>
+                                                )}
+                                              </Button>
+                                            </PopoverTrigger>
+                                            <PopoverContent className="w-auto p-0" align="start">
+                                              <Calendar
+                                                mode="single"
+                                                selected={field.value}
+                                                onSelect={(date) => {
+                                                  field.onChange(date);
+                                                  if (date) {
+                                                    handleFieldBlur("dateOfIncorporation", date);
+                                                  }
+                                                }}
+                                                disabled={(date) =>
+                                                  date > new Date() || date < new Date("1900-01-01")
+                                                }
+                                                captionLayout="dropdown"
+                                              />
+                                            </PopoverContent>
+                                          </Popover>
+                                        )}
                                       />
-                                    )}
-                                  />
-                                  <p
-                                    className={`text-xs ${colors.textColorMuted}`}
-                                  >
-                                    Client's gender for demographic purposes
-                                  </p>
-                                  {form.formState.errors.genderId && (
-                                    <p className="text-sm text-red-500">
-                                      {form.formState.errors.genderId.message}
-                                    </p>
-                                  )}
-                                </div>
-
-                                {/* External ID (National ID) */}
-                                <div className="space-y-3">
-                                  <Label
-                                    htmlFor="externalId"
-                                    className={colors.textColor}
-                                  >
-                                    National ID{" "}
-                                    <span className="text-red-500">*</span>
-                                  </Label>
-                                  <div className="relative">
-                                    <Input
-                                      id="externalId"
-                                      placeholder="Enter national ID (e.g. 48-147220J12)"
-                                      className={getInputErrorStyling(
-                                        hasFieldError(
-                                          form,
-                                          "externalId",
-                                          externalForm
-                                        ),
-                                        `h-10 w-full border-${colors.borderColor} ${colors.inputBg}`
-                                      )}
-                                      {...(externalForm
-                                        ? externalForm.register("externalId", {
-                                            onBlur: (e: {
-                                              target: { value: any };
-                                            }) =>
-                                              handleFieldBlur(
-                                                "externalId",
-                                                e.target.value
-                                              ),
-                                            pattern: {
-                                              value:
-                                                /^[0-9]{2}-[0-9]{6}[A-Za-z][0-9]{2}$/,
-                                              message:
-                                                "National ID must be in format 48-147220J12",
-                                            },
-                                          })
-                                        : form.register("externalId", {
-                                            onBlur: (e: {
-                                              target: { value: any };
-                                            }) =>
-                                              handleFieldBlur(
-                                                "externalId",
-                                                e.target.value
-                                              ),
-                                            pattern: {
-                                              value:
-                                                /^[0-9]{2}-[0-9]{6}[A-Za-z][0-9]{2}$/,
-                                              message:
-                                                "National ID must be in format 48-147220J12",
-                                            },
-                                          }))}
-                                      disabled={true}
-                                    />
-                                    {lastSavedField === "externalId" &&
-                                      isAutoSaving && (
-                                        <div className="absolute right-2 top-1/2 -translate-y-1/2">
-                                          <div className="w-3 h-3 border border-gray-300 border-t-gray-600 rounded-full animate-spin"></div>
-                                        </div>
-                                      )}
-                                  </div>
-                                  <p
-                                    className={`text-xs ${colors.textColorMuted}`}
-                                  >
-                                    Government-issued identification number
-                                  </p>
-                                  {hasFieldError(
-                                    form,
-                                    "externalId",
-                                    externalForm
-                                  ) && (
-                                    <div className="flex items-center gap-1 text-sm text-red-600">
-                                      <svg
-                                        className="h-3 w-3 flex-shrink-0"
-                                        fill="currentColor"
-                                        viewBox="0 0 20 20"
-                                      >
-                                        <path
-                                          fillRule="evenodd"
-                                          d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
-                                          clipRule="evenodd"
-                                        />
-                                      </svg>
-                                      <span>
-                                        {getFieldError(
-                                          form,
-                                          "externalId",
-                                          externalForm
-                                        )}
-                                      </span>
+                                      <p className={`text-xs ${colors.textColorMuted}`}>
+                                        Date the business was incorporated
+                                      </p>
                                     </div>
-                                  )}
-                                </div>
-                              </div>
+
+                                    {/* Nature of Business */}
+                                    <div className="space-y-3">
+                                      <Label htmlFor="natureOfBusiness" className={colors.textColor}>
+                                        Nature of Business
+                                      </Label>
+                                      <div className="relative">
+                                        <Input
+                                          id="natureOfBusiness"
+                                          placeholder="Enter nature of business"
+                                          className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
+                                          {...(externalForm
+                                            ? externalForm.register("natureOfBusiness", {
+                                                onBlur: (e: { target: { value: any } }) =>
+                                                  handleFieldBlur("natureOfBusiness", e.target.value),
+                                              })
+                                            : form.register("natureOfBusiness", {
+                                                onBlur: (e: { target: { value: any } }) =>
+                                                  handleFieldBlur("natureOfBusiness", e.target.value),
+                                              }))}
+                                          disabled={isFormDisabled}
+                                        />
+                                        {lastSavedField === "natureOfBusiness" && isAutoSaving && (
+                                          <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                                            <div className="w-3 h-3 border border-gray-300 border-t-gray-600 rounded-full animate-spin"></div>
+                                          </div>
+                                        )}
+                                      </div>
+                                      <p className={`text-xs ${colors.textColorMuted}`}>
+                                        Business sector or activity description
+                                      </p>
+                                    </div>
+                                  </div>
+
+                                  {/* External ID for Entity */}
+                                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-6">
+                                    <div className="space-y-3">
+                                      <Label htmlFor="externalId" className={colors.textColor}>
+                                        External ID
+                                      </Label>
+                                      <div className="relative">
+                                        <Input
+                                          id="externalId"
+                                          placeholder="Enter external reference ID"
+                                          className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
+                                          {...(externalForm
+                                            ? externalForm.register("externalId", {
+                                                onBlur: (e: { target: { value: any } }) =>
+                                                  handleFieldBlur("externalId", e.target.value),
+                                              })
+                                            : form.register("externalId", {
+                                                onBlur: (e: { target: { value: any } }) =>
+                                                  handleFieldBlur("externalId", e.target.value),
+                                              }))}
+                                          disabled={isFormDisabled}
+                                        />
+                                      </div>
+                                      <p className={`text-xs ${colors.textColorMuted}`}>
+                                        Optional external reference identifier
+                                      </p>
+                                    </div>
+                                  </div>
+                                </>
+                              ) : (
+                                <>
+                                  {/* Individual fields */}
+                                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                    {/* First Name */}
+                                    <div className="space-y-3">
+                                      <Label htmlFor="firstname" className={colors.textColor}>
+                                        First Name{" "}
+                                        <span className="text-red-500">*</span>
+                                      </Label>
+                                      <div className="relative">
+                                        <Input
+                                          id="firstname"
+                                          name="firstname"
+                                          placeholder="Enter first name"
+                                          className={getInputErrorStyling(
+                                            hasFieldError(form, "firstname", externalForm),
+                                            `h-10 w-full border-${colors.borderColor} ${colors.inputBg}`
+                                          )}
+                                          {...(externalForm
+                                            ? externalForm.register("firstname", {
+                                                onBlur: (e: { target: { value: any } }) =>
+                                                  handleFieldBlur("firstname", e.target.value),
+                                              })
+                                            : form.register("firstname", {
+                                                onBlur: (e: { target: { value: any } }) =>
+                                                  handleFieldBlur("firstname", e.target.value),
+                                              }))}
+                                          disabled={isFormDisabled}
+                                        />
+                                        {lastSavedField === "firstname" && isAutoSaving && (
+                                          <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                                            <div className="w-3 h-3 border border-gray-300 border-t-gray-600 rounded-full animate-spin"></div>
+                                          </div>
+                                        )}
+                                      </div>
+                                      <p className={`text-xs ${colors.textColorMuted}`}>
+                                        Client's legal first name
+                                      </p>
+                                      {hasFieldError(form, "firstname", externalForm) && (
+                                        <p className="text-sm text-red-500">
+                                          {getFieldError(form, "firstname", externalForm)}
+                                        </p>
+                                      )}
+                                    </div>
+
+                                    {/* Middle Name */}
+                                    <div className="space-y-3">
+                                      <Label htmlFor="middlename" className={colors.textColor}>
+                                        Middle Name
+                                      </Label>
+                                      <div className="relative">
+                                        <Input
+                                          id="middlename"
+                                          name="middlename"
+                                          placeholder="Enter middle name"
+                                          className={`h-10 w-full border-${colors.borderColor} ${colors.inputBg}`}
+                                          {...(externalForm
+                                            ? externalForm.register("middlename", {
+                                                onBlur: (e: { target: { value: any } }) =>
+                                                  handleFieldBlur("middlename", e.target.value),
+                                              })
+                                            : form.register("middlename", {
+                                                onBlur: (e: { target: { value: any } }) =>
+                                                  handleFieldBlur("middlename", e.target.value),
+                                              }))}
+                                          disabled={isFormDisabled}
+                                        />
+                                        {lastSavedField === "middlename" && isAutoSaving && (
+                                          <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                                            <div className="w-3 h-3 border border-gray-300 border-t-gray-600 rounded-full animate-spin"></div>
+                                          </div>
+                                        )}
+                                      </div>
+                                      <p className={`text-xs ${colors.textColorMuted}`}>
+                                        Client's middle name (if applicable)
+                                      </p>
+                                    </div>
+
+                                    {/* Last Name */}
+                                    <div className="space-y-3">
+                                      <Label htmlFor="lastname" className={colors.textColor}>
+                                        Last Name{" "}
+                                        <span className="text-red-500">*</span>
+                                      </Label>
+                                      <div className="relative">
+                                        <Input
+                                          id="lastname"
+                                          name="lastname"
+                                          placeholder="Enter last name"
+                                          className={getInputErrorStyling(
+                                            hasFieldError(form, "lastname", externalForm),
+                                            `h-10 w-full border-${colors.borderColor} ${colors.inputBg}`
+                                          )}
+                                          {...(externalForm
+                                            ? externalForm.register("lastname", {
+                                                onBlur: (e: { target: { value: any } }) =>
+                                                  handleFieldBlur("lastname", e.target.value),
+                                              })
+                                            : form.register("lastname", {
+                                                onBlur: (e: { target: { value: any } }) =>
+                                                  handleFieldBlur("lastname", e.target.value),
+                                              }))}
+                                          disabled={isFormDisabled}
+                                        />
+                                        {lastSavedField === "lastname" && isAutoSaving && (
+                                          <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                                            <div className="w-3 h-3 border border-gray-300 border-t-gray-600 rounded-full animate-spin"></div>
+                                          </div>
+                                        )}
+                                      </div>
+                                      <p className={`text-xs ${colors.textColorMuted}`}>
+                                        Client's legal last name/surname
+                                      </p>
+                                      {hasFieldError(form, "lastname", externalForm) && (
+                                        <p className="text-sm text-red-500">
+                                          {getFieldError(form, "lastname", externalForm)}
+                                        </p>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-6">
+                                    {/* Date of Birth */}
+                                    <div className="space-y-3">
+                                      <Label htmlFor="dateOfBirth" className={colors.textColor}>
+                                        Date of Birth{" "}
+                                        <span className="text-red-500">*</span>
+                                      </Label>
+                                      <Controller
+                                        control={form.control}
+                                        name="dateOfBirth"
+                                        render={({ field }) => (
+                                          <Popover>
+                                            <PopoverTrigger asChild>
+                                              <Button
+                                                variant="outline"
+                                                className={cn(
+                                                  "h-10 w-full justify-start text-left font-normal",
+                                                  !field.value && "text-muted-foreground",
+                                                  `border-${colors.borderColor} ${colors.inputBg}`
+                                                )}
+                                                disabled={isFormDisabled}
+                                              >
+                                                <CalendarIcon className="mr-2 h-4 w-4" />
+                                                {field.value ? (
+                                                  format(field.value, "PPP")
+                                                ) : (
+                                                  <span>Pick a date</span>
+                                                )}
+                                              </Button>
+                                            </PopoverTrigger>
+                                            <PopoverContent className="w-auto p-0" align="start">
+                                              <Calendar
+                                                mode="single"
+                                                selected={field.value}
+                                                onSelect={(date) => {
+                                                  field.onChange(date);
+                                                  if (date) {
+                                                    handleFieldBlur("dateOfBirth", date);
+                                                  }
+                                                }}
+                                                disabled={(date) =>
+                                                  date > new Date() || date < new Date("1900-01-01")
+                                                }
+                                                captionLayout="dropdown"
+                                              />
+                                            </PopoverContent>
+                                          </Popover>
+                                        )}
+                                      />
+                                      <p className={`text-xs ${colors.textColorMuted}`}>
+                                        Client's date of birth for verification
+                                      </p>
+                                      {form.formState.errors.dateOfBirth && (
+                                        <p className="text-sm text-red-500">
+                                          {form.formState.errors.dateOfBirth.message}
+                                        </p>
+                                      )}
+                                    </div>
+
+                                    {/* Gender */}
+                                    <div className="space-y-3">
+                                      <Label htmlFor="genderId" className={colors.textColor}>
+                                        Gender{" "}
+                                        <span className="text-red-500">*</span>
+                                      </Label>
+                                      <Controller
+                                        control={form.control}
+                                        name="genderId"
+                                        render={({ field }) => (
+                                          <SearchableSelect
+                                            options={genderOptions}
+                                            value={field.value?.toString()}
+                                            onValueChange={(value) => {
+                                              field.onChange(value);
+                                              handleFieldBlur("genderId", value);
+                                            }}
+                                            placeholder="Select gender"
+                                            className={`border-${colors.borderColor} ${colors.inputBg}`}
+                                            onAddNew={() => setShowAddGenderDialog(true)}
+                                            addNewLabel="Add new gender"
+                                            disabled={isFormDisabled}
+                                          />
+                                        )}
+                                      />
+                                      <p className={`text-xs ${colors.textColorMuted}`}>
+                                        Client's gender for demographic purposes
+                                      </p>
+                                      {form.formState.errors.genderId && (
+                                        <p className="text-sm text-red-500">
+                                          {form.formState.errors.genderId.message}
+                                        </p>
+                                      )}
+                                    </div>
+
+                                    {/* External ID (National ID) */}
+                                    <div className="space-y-3">
+                                      <Label htmlFor="externalId" className={colors.textColor}>
+                                        National ID{" "}
+                                        <span className="text-red-500">*</span>
+                                      </Label>
+                                      <div className="relative">
+                                        <Input
+                                          id="externalId"
+                                          placeholder="Enter national ID (e.g. 48-147220J12)"
+                                          className={getInputErrorStyling(
+                                            hasFieldError(form, "externalId", externalForm),
+                                            `h-10 w-full border-${colors.borderColor} ${colors.inputBg}`
+                                          )}
+                                          {...(externalForm
+                                            ? externalForm.register("externalId", {
+                                                onBlur: (e: { target: { value: any } }) =>
+                                                  handleFieldBlur("externalId", e.target.value),
+                                                pattern: {
+                                                  value: /^[0-9]{2}-[0-9]{6}[A-Za-z][0-9]{2}$/,
+                                                  message: "National ID must be in format 48-147220J12",
+                                                },
+                                              })
+                                            : form.register("externalId", {
+                                                onBlur: (e: { target: { value: any } }) =>
+                                                  handleFieldBlur("externalId", e.target.value),
+                                                pattern: {
+                                                  value: /^[0-9]{2}-[0-9]{6}[A-Za-z][0-9]{2}$/,
+                                                  message: "National ID must be in format 48-147220J12",
+                                                },
+                                              }))}
+                                          disabled={true}
+                                        />
+                                        {lastSavedField === "externalId" && isAutoSaving && (
+                                          <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                                            <div className="w-3 h-3 border border-gray-300 border-t-gray-600 rounded-full animate-spin"></div>
+                                          </div>
+                                        )}
+                                      </div>
+                                      <p className={`text-xs ${colors.textColorMuted}`}>
+                                        Government-issued identification number
+                                      </p>
+                                      {hasFieldError(form, "externalId", externalForm) && (
+                                        <p className="text-sm text-red-500">
+                                          {getFieldError(form, "externalId", externalForm)}
+                                        </p>
+                                      )}
+                                    </div>
+                                  </div>
+                                </>
+                              )}
                             </div>
 
                             {/* Divider */}
@@ -6718,7 +6902,7 @@ export function ClientRegistrationForm({
                                   <h3
                                     className={`text-lg font-medium ${colors.textColor}`}
                                   >
-                                    Contact Information
+                                    {isEntity ? "Business Contact" : "Contact Information"}
                                   </h3>
                                   {getSectionStatus("contact") === "saved" && (
                                     <Badge className="ml-2 bg-green-500 text-white">
@@ -6735,7 +6919,7 @@ export function ClientRegistrationForm({
                                 <p
                                   className={`text-sm ${colors.textColorMuted}`}
                                 >
-                                  Client's contact details for communication
+                                  {isEntity ? "Business contact details for communication" : "Client's contact details for communication"}
                                 </p>
                               </div>
 
@@ -7470,6 +7654,12 @@ export function ClientRegistrationForm({
                                           formValues.activationDate
                                             ? new Date(
                                                 formValues.activationDate
+                                              )
+                                            : undefined,
+                                        dateOfIncorporation:
+                                          formValues.dateOfIncorporation
+                                            ? new Date(
+                                                formValues.dateOfIncorporation
                                               )
                                             : undefined,
                                         savingsProductId:
