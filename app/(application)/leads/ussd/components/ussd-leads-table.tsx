@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useCurrency } from "@/contexts/currency-context";
 import {
   Table,
   TableBody,
@@ -65,6 +66,7 @@ const payoutMethodConfig = {
 };
 
 export function UssdLeadsTable({ initialData }: UssdLeadsTableProps) {
+  const { locale: tenantLocale } = useCurrency();
   const [applications, setApplications] = useState<UssdLoanApplication[]>(initialData.applications);
   const [selectedApplication, setSelectedApplication] = useState<UssdLoanApplication | null>(null);
   const [actionDialog, setActionDialog] = useState<{
@@ -130,11 +132,22 @@ export function UssdLeadsTable({ initialData }: UssdLeadsTableProps) {
   };
 
   const formatPhoneNumber = (phone: string) => {
-    // Format phone number for display
-    if (phone.startsWith('+263')) {
-      return `+263 ${phone.slice(4, 7)} ${phone.slice(7, 10)} ${phone.slice(10)}`;
+    if (!phone) return "";
+    const code = tenantLocale.countryCode;
+    const codeDigits = code.replace("+", "");
+    let digits = phone.replace(/\D/g, "");
+
+    if (digits.startsWith(codeDigits)) {
+      digits = digits.slice(codeDigits.length);
     }
-    return phone;
+    if (digits.startsWith("0") && digits.length > 1) {
+      digits = digits.slice(1);
+    }
+
+    if (digits.length >= 7) {
+      return `${code} ${digits.slice(0, 2)} ${digits.slice(2)}`;
+    }
+    return `${code} ${digits}`;
   };
 
   const formatDate = (date: Date) => {

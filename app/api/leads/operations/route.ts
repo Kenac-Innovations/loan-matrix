@@ -89,17 +89,22 @@ const clientFormSchema = z.object({
   officeName: z.string().optional(),
   legalFormId: z.number(),
   legalFormName: z.string().optional(),
-  externalId: z.string(),
-  firstname: z.string(),
+  externalId: z.string().optional(),
+  firstname: z.string().optional(),
   middlename: z.string().optional(),
-  lastname: z.string(),
+  lastname: z.string().optional(),
   dateOfBirth: z.coerce.date().optional(),
   gender: z.union([z.string(), z.number()]).optional().transform(val => val !== undefined ? String(val) : undefined),
   genderId: z.number().optional(),
+  fullname: z.string().optional(),
+  tradingName: z.string().optional(),
+  registrationNumber: z.string().optional(),
+  dateOfIncorporation: z.coerce.date().optional(),
+  natureOfBusiness: z.string().optional(),
   isStaff: z.boolean().default(false),
   mobileNo: z.string(),
   countryCode: z.string().default("+260"),
-  emailAddress: z.string().email(),
+  emailAddress: z.union([z.string().email(), z.literal("")]).default(""),
   clientTypeId: z.number().optional(),
   clientTypeName: z.string().optional(),
   clientClassificationId: z.number().optional(),
@@ -242,6 +247,11 @@ async function handleSaveDraft(data: any, leadId?: string) {
           dateOfBirth: validatedData.dateOfBirth || undefined,
           gender: validatedData.gender,
           genderId: validatedData.genderId || undefined,
+          fullname: validatedData.fullname,
+          tradingName: validatedData.tradingName,
+          registrationNumber: validatedData.registrationNumber,
+          dateOfIncorporation: validatedData.dateOfIncorporation || undefined,
+          natureOfBusiness: validatedData.natureOfBusiness,
           isStaff: validatedData.isStaff,
           mobileNo: validatedData.mobileNo,
           countryCode: validatedData.countryCode,
@@ -290,6 +300,11 @@ async function handleSaveDraft(data: any, leadId?: string) {
           dateOfBirth: validatedData.dateOfBirth || undefined,
           gender: validatedData.gender,
           genderId: validatedData.genderId || undefined,
+          fullname: validatedData.fullname,
+          tradingName: validatedData.tradingName,
+          registrationNumber: validatedData.registrationNumber,
+          dateOfIncorporation: validatedData.dateOfIncorporation || undefined,
+          natureOfBusiness: validatedData.natureOfBusiness,
           isStaff: validatedData.isStaff,
           mobileNo: validatedData.mobileNo,
           countryCode: validatedData.countryCode,
@@ -460,9 +475,15 @@ async function handleCreateLeadWithClient(data: any) {
     if (!validatedData.legalFormId) {
       throw new Error("Legal Form ID is required for Fineract client creation");
     }
-    if (!validatedData.firstname || !validatedData.lastname) {
+    const isEntityLead = validatedData.legalFormId === 2;
+    if (!isEntityLead && (!validatedData.firstname || !validatedData.lastname)) {
       throw new Error(
         "First name and last name are required for Fineract client creation"
+      );
+    }
+    if (isEntityLead && !validatedData.fullname) {
+      throw new Error(
+        "Business name is required for Fineract entity client creation"
       );
     }
 
@@ -564,33 +585,14 @@ async function handleCreateLeadWithClient(data: any) {
       }
     }
 
-    // Prepare client data for Fineract
-    const clientData = {
+    // Prepare client data for Fineract (entity vs individual)
+    const clientData: Record<string, any> = {
       officeId: validatedData.officeId,
       legalFormId: validatedData.legalFormId,
-      firstname: validatedData.firstname,
-      lastname: validatedData.lastname,
-      ...(validatedData.middlename && {
-        middlename: validatedData.middlename,
-      }),
-      ...(validatedData.mobileNo && {
-        mobileNo: validatedData.mobileNo,
-      }),
-      ...(validatedData.emailAddress && {
-        emailAddress: validatedData.emailAddress,
-      }),
-      ...(validatedData.dateOfBirth && {
-        dateOfBirth: formatDateForFineract(validatedData.dateOfBirth),
-      }),
-      ...(validatedData.clientTypeId && {
-        clientTypeId: validatedData.clientTypeId,
-      }),
-      ...(validatedData.genderId && {
-        genderId: validatedData.genderId,
-      }),
-      ...(validatedData.externalId && {
-        externalId: validatedData.externalId,
-      }),
+      ...(validatedData.mobileNo && { mobileNo: validatedData.mobileNo }),
+      ...(validatedData.emailAddress && { emailAddress: validatedData.emailAddress }),
+      ...(validatedData.clientTypeId && { clientTypeId: validatedData.clientTypeId }),
+      ...(validatedData.externalId && { externalId: validatedData.externalId }),
       active: validatedData.active || false,
       ...(validatedData.active && {
         activationDate:
@@ -603,6 +605,16 @@ async function handleCreateLeadWithClient(data: any) {
         validatedData.submittedOnDate?.toISOString().split("T")[0] ||
         new Date().toISOString().split("T")[0],
     };
+
+    if (isEntityLead) {
+      clientData.fullname = validatedData.fullname;
+    } else {
+      clientData.firstname = validatedData.firstname;
+      clientData.lastname = validatedData.lastname;
+      if (validatedData.middlename) clientData.middlename = validatedData.middlename;
+      if (validatedData.dateOfBirth) clientData.dateOfBirth = formatDateForFineract(validatedData.dateOfBirth);
+      if (validatedData.genderId) clientData.genderId = validatedData.genderId;
+    }
 
     // Create client in Fineract
     console.log(
@@ -646,6 +658,11 @@ async function handleCreateLeadWithClient(data: any) {
           dateOfBirth: validatedData.dateOfBirth || undefined,
           gender: validatedData.gender,
           genderId: validatedData.genderId || undefined,
+          fullname: validatedData.fullname,
+          tradingName: validatedData.tradingName,
+          registrationNumber: validatedData.registrationNumber,
+          dateOfIncorporation: validatedData.dateOfIncorporation || undefined,
+          natureOfBusiness: validatedData.natureOfBusiness,
           isStaff: validatedData.isStaff,
           mobileNo: validatedData.mobileNo,
           countryCode: validatedData.countryCode,
@@ -677,8 +694,8 @@ async function handleCreateLeadWithClient(data: any) {
           fineractAccountNo: fineractClient.resourceExternalId || null,
           clientCreatedInFineract: true,
           clientCreationDate: new Date(),
-          status: "DRAFT", // Set to DRAFT after successful creation
-          currentStep: 2, // Move to next step after client creation
+          status: "DRAFT",
+          currentStep: 2,
         },
       });
 
@@ -836,21 +853,14 @@ async function handleCreateClientInFineract(leadId: string) {
       });
     }
 
-    // Prepare client data for Fineract
-    const clientData = {
+    // Prepare client data for Fineract (entity vs individual)
+    const isEntitySubmit = lead.legalFormId === 2;
+    const clientData: Record<string, any> = {
       officeId: lead.officeId,
       legalFormId: lead.legalFormId,
-      fullname: `${lead.firstname} ${lead.lastname}`,
-      firstname: lead.firstname,
-      lastname: lead.lastname,
-      ...(lead.middlename && { middlename: lead.middlename }),
       mobileNo: lead.mobileNo,
-      emailAddress: lead.emailAddress,
-      dateOfBirth: lead.dateOfBirth
-        ? formatDateForFineract(lead.dateOfBirth)
-        : undefined,
+      ...(lead.emailAddress && { emailAddress: lead.emailAddress }),
       clientTypeId: lead.clientTypeId,
-      genderId: lead.genderId,
       ...(lead.externalId && { externalId: lead.externalId }),
       active: lead.active || false,
       ...(lead.active && {
@@ -864,6 +874,17 @@ async function handleCreateClientInFineract(leadId: string) {
         ? formatDateForFineract(lead.submittedOnDate)
         : undefined,
     };
+
+    if (isEntitySubmit) {
+      clientData.fullname = lead.fullname;
+    } else {
+      clientData.fullname = `${lead.firstname} ${lead.lastname}`;
+      clientData.firstname = lead.firstname;
+      clientData.lastname = lead.lastname;
+      if (lead.middlename) clientData.middlename = lead.middlename;
+      if (lead.dateOfBirth) clientData.dateOfBirth = formatDateForFineract(lead.dateOfBirth);
+      if (lead.genderId) clientData.genderId = lead.genderId;
+    }
 
     // Create client in Fineract
     const fineractService = await getFineractServiceWithSession();
@@ -914,19 +935,26 @@ async function handleUpdateClient(data: any, leadId?: string) {
       throw new Error("Fineract client ID is required for update");
     }
 
-    if (!data.externalId) {
+    const isEntityUpdate = data.legalFormId === 2;
+
+    if (!isEntityUpdate && !data.externalId) {
       console.error("==========> Missing externalId");
       throw new Error("External ID is required for update");
     }
 
-    if (!data.firstname) {
+    if (!isEntityUpdate && !data.firstname) {
       console.error("==========> Missing firstname");
       throw new Error("First name is required for update");
     }
 
-    if (!data.lastname) {
+    if (!isEntityUpdate && !data.lastname) {
       console.error("==========> Missing lastname");
       throw new Error("Last name is required for update");
+    }
+
+    if (isEntityUpdate && !data.fullname) {
+      console.error("==========> Missing fullname for entity");
+      throw new Error("Business name is required for entity update");
     }
 
     console.log("==========> All required fields validated successfully");
@@ -966,26 +994,19 @@ async function handleUpdateClient(data: any, leadId?: string) {
       return accountStr.padStart(9, "0");
     };
 
-    const fineractUpdateData = {
+    const fineractUpdateData: Record<string, any> = {
       legalFormId: data.legalFormId,
       isStaff: data.isStaff || false,
       active: data.active !== false,
       externalId: data.externalId,
       mobileNo: data.mobileNo,
       emailAddress: data.emailAddress,
-      firstname: data.firstname,
-      middlename: data.middlename,
-      lastname: data.lastname,
-      dateOfBirth: data.dateOfBirth
-        ? formatDateForFineract(data.dateOfBirth)
-        : undefined,
       submittedOnDate: data.submittedOnDate
         ? formatDateForFineract(data.submittedOnDate)
         : undefined,
       activationDate: data.activationDate
         ? formatDateForFineract(data.activationDate)
         : undefined,
-      ...(data.genderId && { genderId: data.genderId }),
       ...(data.clientTypeId && { clientTypeId: data.clientTypeId }),
       ...(data.fineractAccountNo && {
         accountNo: formatAccountNumber(data.fineractAccountNo),
@@ -994,6 +1015,16 @@ async function handleUpdateClient(data: any, leadId?: string) {
       locale: "en",
       clientNonPersonDetails: {},
     };
+
+    if (isEntityUpdate) {
+      fineractUpdateData.fullname = data.fullname;
+    } else {
+      fineractUpdateData.firstname = data.firstname;
+      fineractUpdateData.middlename = data.middlename;
+      fineractUpdateData.lastname = data.lastname;
+      if (data.dateOfBirth) fineractUpdateData.dateOfBirth = formatDateForFineract(data.dateOfBirth);
+      if (data.genderId) fineractUpdateData.genderId = data.genderId;
+    }
 
     console.log("==========> DEBUG: Fineract Update Payload:");
     console.log(
@@ -1069,6 +1100,16 @@ async function handleUpdateClient(data: any, leadId?: string) {
                 : undefined,
               gender: data.gender,
               genderId: data.genderId,
+
+              // Entity information
+              fullname: data.fullname,
+              tradingName: data.tradingName,
+              registrationNumber: data.registrationNumber,
+              dateOfIncorporation: data.dateOfIncorporation
+                ? new Date(data.dateOfIncorporation)
+                : undefined,
+              natureOfBusiness: data.natureOfBusiness,
+
               isStaff: data.isStaff || false,
 
               // Contact information
@@ -1148,6 +1189,16 @@ async function handleUpdateClient(data: any, leadId?: string) {
                 : undefined,
               gender: data.gender,
               genderId: data.genderId,
+
+              // Entity information
+              fullname: data.fullname,
+              tradingName: data.tradingName,
+              registrationNumber: data.registrationNumber,
+              dateOfIncorporation: data.dateOfIncorporation
+                ? new Date(data.dateOfIncorporation)
+                : undefined,
+              natureOfBusiness: data.natureOfBusiness,
+
               isStaff: data.isStaff || false,
 
               // Contact information

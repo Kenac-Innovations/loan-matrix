@@ -332,8 +332,9 @@ export function RepaymentScheduleForm({
         interestCalculationPeriodType: loanTerms.interestCalculationPeriod
           ? parseInt(loanTerms.interestCalculationPeriod)
           : loanTemplate?.interestCalculationPeriodType?.id || 1,
-        loanIdToClose: loanTerms.loanIdToClose || "",
-        isTopup: loanTerms.isTopup ? true : "",
+        ...(loanTerms.isTopup && loanTerms.loanIdToClose
+          ? { isTopup: true, loanIdToClose: parseInt(loanTerms.loanIdToClose) }
+          : {}),
         transactionProcessingStrategyCode:
           loanTerms.repaymentStrategy ||
           loanTemplate?.transactionProcessingStrategyCode ||

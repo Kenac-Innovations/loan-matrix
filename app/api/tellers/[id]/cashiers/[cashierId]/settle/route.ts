@@ -4,7 +4,6 @@ import { prisma } from "@/lib/prisma";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
 import { getSession } from "@/lib/auth";
 import { isPaymentTypeCash } from "@/lib/cash-repayment-teller";
-import { getOrgRawCurrencyCode } from "@/lib/currency-utils";
 import { sendLoanStatusSms } from "@/lib/notification-service";
 
 /**
@@ -411,49 +410,6 @@ export async function POST(
       // Allow settlement with closed session (return to vault after close)
       console.log(
         `Allowing settlement with closed session ${closedSession.id}`
-      );
-    }
-
-    // Check cashier's available balance from Fineract (source of truth)
-    let cashierBalance = 0;
-    try {
-      const fineractService = await getFineractServiceWithSession();
-      const rawCurrency = await getOrgRawCurrencyCode();
-      const summary = await fineractService.getCashierSummaryAndTransactions(
-        teller.fineractTellerId,
-        fineractCashierId,
-        rawCurrency
-      );
-      cashierBalance = summary.netCash || 0;
-      console.log(`Fineract balance for cashier ${fineractCashierId}: ${cashierBalance}`);
-    } catch (err) {
-      console.error("Error fetching Fineract balance, falling back to local DB:", err);
-      // Fallback to local DB if Fineract fails
-      const cashierAllocations = await prisma.cashAllocation.findMany({
-        where: {
-          tellerId: teller.id,
-          cashierId: cashier.id,
-          tenantId: tenant.id,
-          status: "ACTIVE",
-        },
-      });
-      cashierBalance = cashierAllocations.reduce(
-        (sum, alloc) => sum + alloc.amount,
-        0
-      );
-    }
-
-    if (parseFloat(amount) > cashierBalance) {
-      return NextResponse.json(
-        {
-          error: "Insufficient balance",
-          details: `Cashier balance (Fineract): ${cashierBalance.toFixed(
-            2
-          )} ${currency}, Requested: ${parseFloat(amount).toFixed(
-            2
-          )} ${currency}`,
-        },
-        { status: 400 }
       );
     }
 

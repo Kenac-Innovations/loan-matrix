@@ -2,7 +2,7 @@
  * Sets the locale settings for the omama tenant.
  * Run with: npx tsx scripts/set-omama-locale.ts
  */
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient } from "@/app/generated/prisma";
 
 const prisma = new PrismaClient();
 
@@ -27,6 +27,13 @@ async function main() {
       phoneDigits: 9,
       phoneFormat: "XX XXX XXXX",
       phonePlaceholder: "771234567",
+      emailOptional: true,
+      mandatoryDatatables: [
+        "Business Info",
+        "Family Situation",
+        "Proposed Security",
+        "Referees",
+      ],
     },
   };
 
