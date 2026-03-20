@@ -33,6 +33,7 @@ export interface Lead {
   payoutStatus?: string | null; // PENDING, PAID, VOIDED
   /** Preferred payment type from affordability: CASH, MOBILE_MONEY, BANK_TRANSFER */
   preferredPaymentMethod?: string | null;
+  isTopup?: boolean;
 }
 
 export interface PipelineStage {

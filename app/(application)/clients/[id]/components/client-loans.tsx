@@ -66,6 +66,7 @@ interface FineractLoan {
     totalOutstanding: number;
     totalOverdue: number;
   };
+  isTopup?: boolean;
 }
 
 interface ClientLoansProps {
@@ -426,8 +427,15 @@ export function ClientLoans({ clientId }: ClientLoansProps) {
                     <TableRow key={loan.id}>
                       <TableCell>
                         <div>
-                          <div className="font-medium">
-                            {loan.loanProductName}
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium">
+                              {loan.loanProductName}
+                            </span>
+                            {loan.isTopup && (
+                              <Badge className="bg-amber-500/15 text-amber-600 border-amber-300 text-[10px] px-1.5 py-0 font-medium">
+                                Top-Up
+                              </Badge>
+                            )}
                           </div>
                           <div className="text-sm text-muted-foreground">
                             {loan.interestRatePerPeriod}% •{" "}

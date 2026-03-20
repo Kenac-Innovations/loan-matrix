@@ -37,6 +37,30 @@ import {
   getEmploymentDetailColumnNames,
 } from "@/components/datatables/EmploymentDetailsFields";
 
+const isMaritalStatusField = (columnName: string): boolean => {
+  const lower = columnName.toLowerCase();
+  return lower.includes("marital") || lower === "marriage_status";
+};
+
+const isSpouseField = (columnName: string): boolean => {
+  const lower = columnName.toLowerCase();
+  return lower.includes("spouse") || lower.includes("husband") || lower.includes("wife");
+};
+
+const isMarriedValue = (value: any, header: any): boolean => {
+  if (value == null) return false;
+  if (header?.columnDisplayType === "CODELOOKUP" && header?.columnValues) {
+    const match = header.columnValues.find(
+      (opt: any) => opt.id === value || opt.id === Number(value)
+    );
+    const name = (match?.name || match?.value || "").toLowerCase();
+    return name.includes("married") && !name.includes("unmarried") && !name.includes("not married");
+  }
+  return String(value).toLowerCase().includes("married") &&
+    !String(value).toLowerCase().includes("unmarried") &&
+    !String(value).toLowerCase().includes("not married");
+};
+
 // Helper function to check if a column is a phone/mobile number field
 const isPhoneNumberField = (columnName: string): boolean => {
   const lowerName = columnName.toLowerCase();
@@ -126,6 +150,22 @@ export function DynamicDatatableContent({
   const [newCodeValueDescription, setNewCodeValueDescription] = useState("");
   const [addingCodeValue, setAddingCodeValue] = useState(false);
   const { toast } = useToast();
+
+  // Check if spouse fields should be visible based on marital status
+  const shouldShowSpouseFields = useCallback((rowCells?: any[]) => {
+    const maritalHeader = headers.find((h: any) => isMaritalStatusField(h.columnName));
+    if (!maritalHeader) return true; // no marital column — show everything
+    const maritalColName = maritalHeader.columnName;
+
+    // Check editedData first (edit mode), then row cells (display mode)
+    const maritalValue = editedData[maritalColName]
+      ?? (rowCells && headers.length > 0
+        ? rowCells[headers.findIndex((h: any) => h.columnName === maritalColName)]
+        : undefined);
+
+    if (maritalValue == null) return false;
+    return isMarriedValue(maritalValue, maritalHeader);
+  }, [headers, editedData]);
 
   // Store callbacks in refs to avoid stale closures and infinite loops
   const onEditingChangeRef = useRef(onEditingChange);
@@ -1140,6 +1180,11 @@ export function DynamicDatatableContent({
 
             if (isSystemColumn) return null;
 
+            // Hide spouse fields unless marital status is "Married"
+            if (isSpouseField(columnName) && !shouldShowSpouseFields()) {
+              return null;
+            }
+
             // Skip bank detail fields - they're rendered by BankDetailsFields
             if (bankDetailColumnNames.includes(columnName)) return null;
 
@@ -1454,6 +1499,11 @@ export function DynamicDatatableContent({
                     (!isEditing &&
                       (cell === null || cell === undefined || cell === ""))
                   ) {
+                    return null;
+                  }
+
+                  // Hide spouse fields unless marital status is "Married"
+                  if (isSpouseField(header?.columnName || "") && !shouldShowSpouseFields(row)) {
                     return null;
                   }
 

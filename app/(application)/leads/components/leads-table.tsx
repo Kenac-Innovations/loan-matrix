@@ -227,6 +227,11 @@ export function LeadsTable({ initialData }: LeadsTableProps) {
             <span className={isNavigating ? "opacity-50" : ""}>
               {getValue()}
             </span>
+            {row.original.isTopup && (
+              <Badge className="bg-amber-500/15 text-amber-600 border-amber-300 text-[10px] px-1.5 py-0 font-medium">
+                Top-Up
+              </Badge>
+            )}
           </div>
         );
       },

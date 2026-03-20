@@ -136,12 +136,16 @@ export async function POST(
 
         console.log(`Updated loan ${loanId} with external ID set to loan ID`);
 
-        // Update the lead with the loan ID and fineractLoanId for reference
+        // Update the lead with loan ID, client ID, and submission tracking
         await prisma.lead.update({
           where: { id: leadId },
           data: {
             fineractLoanId: loanId,
             loanSubmittedToFineract: true,
+            loanSubmissionDate: new Date(),
+            fineractClientId: loanData.clientId,
+            clientCreatedInFineract: true,
+            clientCreationDate: lead.clientCreationDate || new Date(),
             stateMetadata: {
               ...((lead.stateMetadata as any) || {}),
               loanId: loanId,

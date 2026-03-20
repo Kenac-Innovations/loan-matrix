@@ -99,11 +99,8 @@ import {
 import {
   autoSaveField,
   getLeadStageHistory,
-  cancelProspect,
-  getLeadById,
 } from "@/app/actions/client-actions-with-autosave";
-import { LeadLocalStorage } from "@/lib/lead-local-storage";
-import { ProspectContinuationDialog } from "@/app/(application)/leads/new/components/prospect-continuation-dialog";
+
 import { useToast } from "@/hooks/use-toast";
 import { useCurrency } from "@/contexts/currency-context";
 import { useThemeColors } from "@/lib/theme-utils";
@@ -150,7 +147,7 @@ const clientFormSchema = z
         return digitsOnly.length >= 7 && digitsOnly.length <= 12;
       }, "Please enter a valid phone number"),
     countryCode: z.string().default("+260"),
-    emailAddress: z.string().email("Invalid email address"),
+    emailAddress: z.union([z.string().email("Invalid email address"), z.literal("")]).default(""),
     clientTypeId: z.string().optional(),
     clientClassificationId: z.string().optional(),
     submittedOnDate: z
@@ -1279,7 +1276,7 @@ export function ClientRegistrationForm({
 
   const checkContactSection = () => {
     const values = form.getValues();
-    return !!(values.mobileNo && values.emailAddress);
+    return !!(values.mobileNo && (tenantLocale.emailOptional || values.emailAddress));
   };
 
   const checkClassificationSection = () => {
@@ -1306,14 +1303,13 @@ export function ClientRegistrationForm({
     return true;
   };
 
-  // Define mandatory datatables that must have data before proceeding to affordability
-  // TODO: Make mandatory datatables configurable via tenant settings
-  const mandatoryDatatables = [
+  const defaultMandatoryDatatables = [
     "Banking Details",
     "Employment Info",
     "Next of Kin",
     "Supervisor Info",
   ];
+  const mandatoryDatatables = tenantLocale.mandatoryDatatables || defaultMandatoryDatatables;
 
   // Check if a datatable name matches any of the mandatory ones
   const isDatatableMandatory = (tableName: string) => {
@@ -1812,18 +1808,6 @@ export function ClientRegistrationForm({
     useState(false);
   const [isAddingNew, setIsAddingNew] = useState(false);
 
-  // Local storage and prospect continuation state
-  const [showProspectDialog, setShowProspectDialog] = useState(false);
-  const [hasSeenProspectDialog, setHasSeenProspectDialog] = useState(false);
-  const [existingProspectData, setExistingProspectData] = useState<{
-    leadId: string;
-    firstname?: string;
-    lastname?: string;
-    externalId?: string;
-    emailAddress?: string;
-    mobileNo?: string;
-    timestamp: number;
-  } | null>(null);
   const [currentLeadId, setCurrentLeadId] = useState<string | undefined>(
     leadId
   );
@@ -1838,9 +1822,6 @@ export function ClientRegistrationForm({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leadId, currentLeadId]);
-
-  // Use ref to track if we've already checked for prospect dialog (only check once)
-  const hasCheckedProspectDialog = useRef(false);
 
   // Initialize internal form - always call useForm to comply with React hooks rules
   const internalForm = useForm<ClientFormValues>({
@@ -2057,86 +2038,6 @@ export function ClientRegistrationForm({
     value: product.id.toString(),
     label: product.name,
   }));
-
-  // Check for existing prospects on mount - ONLY ONCE
-  useEffect(() => {
-    // Only run this check once on initial mount
-    if (hasCheckedProspectDialog.current) {
-      console.log("Already checked for prospect dialog, skipping");
-      return;
-    }
-
-    hasCheckedProspectDialog.current = true;
-
-    const checkExistingProspect = async () => {
-      console.log("Checking for existing prospect on initial mount...", {
-        leadId,
-        currentLeadId,
-        localStorageExists: LeadLocalStorage.exists(),
-        isExpired: LeadLocalStorage.isExpired(),
-      });
-
-      // Only show dialog if:
-      // 1. No leadId in URL (new form)
-      // 2. There's a draft in localStorage
-      // 3. The localStorage draft is NOT the current lead being worked on
-      if (
-        !leadId &&
-        !hasSeenProspectDialog &&
-        LeadLocalStorage.exists() &&
-        !LeadLocalStorage.isExpired()
-      ) {
-        const existingData = LeadLocalStorage.load();
-        console.log("Found existing data in localStorage:", existingData);
-
-        if (existingData) {
-          // Check if this is the SAME lead we're already working on
-          if (existingData.leadId === currentLeadId) {
-            console.log(
-              "Same lead in localStorage - already working on it, skipping dialog"
-            );
-            return;
-          }
-
-          // Different lead - show the dialog
-          try {
-            const result = await getLeadById(existingData.leadId);
-            console.log("Server response for existing lead:", result);
-
-            if (result.success && result.lead) {
-              setExistingProspectData({
-                leadId: existingData.leadId,
-                firstname: result.lead.firstname || undefined,
-                lastname: result.lead.lastname || undefined,
-                externalId: result.lead.externalId || undefined,
-                emailAddress: result.lead.emailAddress || undefined,
-                mobileNo: result.lead.mobileNo || undefined,
-                timestamp: existingData.timestamp,
-              });
-              setShowProspectDialog(true);
-              setHasSeenProspectDialog(true);
-              console.log("Showing prospect continuation dialog");
-            } else {
-              console.log("Lead not found on server, clearing localStorage");
-              LeadLocalStorage.clear();
-            }
-          } catch (error) {
-            console.error("Error fetching existing prospect:", error);
-            LeadLocalStorage.clear();
-          }
-        }
-      } else {
-        console.log("No existing prospect check needed:", {
-          hasLeadId: !!leadId,
-          hasSeenDialog: hasSeenProspectDialog,
-          localStorageExists: LeadLocalStorage.exists(),
-          isExpired: LeadLocalStorage.isExpired(),
-        });
-      }
-    };
-
-    checkExistingProspect();
-  }, []); // Empty dependency array - only run once on mount
 
   // Auto-search for client when externalId is provided in URL (from client details page)
   const hasTriggeredAutoSearch = useRef(false);
@@ -2589,117 +2490,6 @@ export function ClientRegistrationForm({
     loadStageHistory();
   }, [currentLeadId]);
 
-  // Handle prospect continuation
-  const handleContinueProspect = async () => {
-    console.log("Continuing with existing prospect:", existingProspectData);
-
-    if (existingProspectData) {
-      // Set the current lead ID and navigate to the existing prospect
-      setCurrentLeadId(existingProspectData.leadId);
-      onLeadIdChange?.(existingProspectData.leadId);
-
-      // Update the URL to reflect the leadId
-      const newUrl = `/leads/new?id=${existingProspectData.leadId}`;
-      router.replace(newUrl);
-
-      // Load the lead data to get the external ID
-      try {
-        const lead = await getLead(existingProspectData.leadId);
-        if (lead && lead.externalId) {
-          // Pre-populate the search field with the external ID
-          setNationalIdLookup(lead.externalId);
-        }
-      } catch (error) {
-        console.error("Error loading lead data for search field:", error);
-      }
-
-      // Skip the search step since we're resuming an existing prospect
-      setClientLookupStatus("found");
-      setIsFormDisabled(false);
-
-      setShowProspectDialog(false);
-
-      success({
-        title: "Prospect Restored",
-        description: "Continuing with your existing prospect.",
-      });
-    }
-  };
-
-  const handleCancelProspect = async (reason: string) => {
-    console.log("Canceling existing prospect with reason:", reason);
-
-    if (existingProspectData) {
-      try {
-        // Cancel the prospect in the database
-        const result = await cancelProspect(
-          existingProspectData.leadId,
-          reason
-        );
-
-        if (result.success) {
-          // Clear local storage
-          LeadLocalStorage.clear();
-
-          success({
-            title: "Prospect Canceled",
-            description:
-              "The previous prospect has been canceled. You can now start a new one.",
-          });
-
-          // Reset the form for a new prospect
-          form.reset({
-            officeId: "1",
-            legalFormId: "1",
-            externalId: "",
-            firstname: "",
-            middlename: "",
-            lastname: "",
-            fullname: "",
-            tradingName: "",
-            registrationNumber: "",
-            dateOfIncorporation: undefined,
-            natureOfBusiness: "",
-            isStaff: false,
-            mobileNo: "",
-            countryCode: "+263",
-            emailAddress: "",
-            submittedOnDate: new Date(),
-            active: true,
-            activationDate: new Date(),
-            openSavingsAccount: false,
-            currentStep: 1,
-          });
-
-          setFamilyMembers([]);
-          setCurrentLeadId(undefined);
-        } else {
-          error({
-            title: "Error",
-            description: result.error || "Failed to cancel prospect",
-          });
-        }
-      } catch (err) {
-        console.error("Error canceling prospect:", err);
-        error({
-          title: "Error",
-          description:
-            "An unexpected error occurred while canceling the prospect",
-        });
-      }
-    }
-
-    setShowProspectDialog(false);
-    setExistingProspectData(null);
-
-    window.location.href = "/leads/new";
-  };
-
-  const handleCloseProspectDialog = () => {
-    setShowProspectDialog(false);
-    setHasSeenProspectDialog(true);
-  };
-
   // Handle field blur for auto-save
   // Helper function to determine which section a field belongs to
   const getSectionForField = (
@@ -2763,14 +2553,6 @@ export function ClientRegistrationForm({
           setCurrentLeadId(leadId);
           onLeadIdChange?.(leadId);
         }
-
-        // Save to local storage
-        LeadLocalStorage.save({
-          leadId: leadId!,
-          formData: formData,
-          timestamp: Date.now(),
-          step: "lead",
-        });
 
         // Mark the relevant section as saved if it's complete
         const section = getSectionForField(fieldName);
@@ -3232,10 +3014,6 @@ export function ClientRegistrationForm({
       validationError("Please enter a national ID number");
       return;
     }
-
-    // Clear localStorage draft when starting a new search
-    LeadLocalStorage.clear();
-    console.log("Cleared localStorage draft for new client search");
 
     // Clear window.fineractClientId and React state
     (window as any).fineractClientId = null;
@@ -3727,14 +3505,6 @@ export function ClientRegistrationForm({
             setCurrentLeadId(saveResult.leadId);
             onLeadIdChange?.(saveResult.leadId);
 
-            // Save to localStorage for persistence
-            LeadLocalStorage.save({
-              leadId: saveResult.leadId,
-              formData: formValues,
-              timestamp: Date.now(),
-              step: "client",
-            });
-
             console.log(
               "==========> Lookup data saved as draft with leadId:",
               saveResult.leadId
@@ -4169,6 +3939,8 @@ export function ClientRegistrationForm({
     selfieImage,
     existingIdentifiers,
     clientCreatedInFineract,
+    dataTables,
+    clientAddress,
   ]);
 
   const handleSelfieFileSelect = (e: ChangeEvent<HTMLInputElement>) => {
@@ -4203,15 +3975,29 @@ export function ClientRegistrationForm({
     stream.getTracks().forEach((track) => track.stop());
   };
 
+  const assignStreamToVideo = async (stream: MediaStream) => {
+    // Wait for the video ref to become available (dialog rendering)
+    for (let i = 0; i < 20; i++) {
+      if (videoRef.current) break;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = stream;
+      try {
+        await videoRef.current.play();
+      } catch {
+        // autoPlay attribute will handle it
+      }
+    }
+  };
+
   const attemptCameraAccess = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
       });
       setCameraPermissionDenied(false);
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-      }
+      await assignStreamToVideo(stream);
     } catch (err: any) {
       console.error("Error accessing camera:", err);
 
@@ -4232,9 +4018,7 @@ export function ClientRegistrationForm({
         try {
           const stream = await navigator.mediaDevices.getUserMedia({ video: true });
           setCameraPermissionDenied(false);
-          if (videoRef.current) {
-            videoRef.current.srcObject = stream;
-          }
+          await assignStreamToVideo(stream);
           return;
         } catch {
           error({
@@ -4273,7 +4057,7 @@ export function ClientRegistrationForm({
     setCapturedImage(null);
     setCameraPermissionDenied(false);
 
-    setTimeout(() => attemptCameraAccess(), 100);
+    attemptCameraAccess();
   };
 
   const handleStopCamera = () => {
@@ -4295,32 +4079,7 @@ export function ClientRegistrationForm({
 
   const handleRetakePhoto = async () => {
     setCapturedImage(null);
-    // Restart camera
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
-      });
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-      }
-    } catch (err: any) {
-      console.error("Error accessing camera:", err);
-      
-      let errorMessage = "Could not access camera. Please check permissions.";
-      
-      if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
-        errorMessage = "Camera permission was denied. Please allow camera access in your browser settings.";
-      } else if (err.name === "NotFoundError") {
-        errorMessage = "No camera found on this device.";
-      } else if (err.name === "NotReadableError") {
-        errorMessage = "Camera is in use by another application.";
-      }
-      
-      error({
-        title: "Camera Error",
-        description: errorMessage,
-      });
-    }
+    await attemptCameraAccess();
   };
 
   const handleUploadSelfie = async () => {
@@ -5461,16 +5220,6 @@ export function ClientRegistrationForm({
 
   return (
     <>
-      {/* Prospect Continuation Dialog */}
-      <div className="flex items-center justify-center p-4">
-        <ProspectContinuationDialog
-          isOpen={showProspectDialog}
-          onContinue={handleContinueProspect}
-          onCancel={handleCancelProspect}
-          onClose={handleCloseProspectDialog}
-          prospectData={existingProspectData || undefined}
-        />
-      </div>
       <div className="space-y-6">
         {isLoading ? (
           <SkeletonForm />
@@ -7069,13 +6818,13 @@ export function ClientRegistrationForm({
                                     className={colors.textColor}
                                   >
                                     Email Address{" "}
-                                    <span className="text-red-500">*</span>
+                                    {!tenantLocale.emailOptional && <span className="text-red-500">*</span>}
                                   </Label>
                                   <div className="relative">
                                     <Input
                                       id="emailAddress"
-                                      type="email"
-                                      placeholder="Enter email address"
+                                      type={tenantLocale.emailOptional ? "text" : "email"}
+                                      placeholder={tenantLocale.emailOptional ? "Enter email address (optional)" : "Enter email address"}
                                       className={getInputErrorStyling(
                                         hasFieldError(
                                           form,
@@ -7527,10 +7276,18 @@ export function ClientRegistrationForm({
                                     // Client exists, save as draft using autoSaveField
                                     setIsSaving(true);
                                     try {
+                                      const resolvedClientId =
+                                        fineractClientId ||
+                                        (window as any).fineractClientId ||
+                                        null;
                                       const saveResult = await autoSaveField(
                                         {
                                           ...formValues,
-                                          fieldName: "all", // Indicate saving all fields
+                                          fieldName: "all",
+                                          ...(resolvedClientId && {
+                                            fineractClientId:
+                                              Number(resolvedClientId),
+                                          }),
                                         },
                                         currentLeadId
                                       );
@@ -8299,6 +8056,7 @@ export function ClientRegistrationForm({
                                             ref={videoRef}
                                             autoPlay
                                             playsInline
+                                            muted
                                             className="w-full h-full object-cover"
                                           />
                                         </div>
@@ -9319,9 +9077,18 @@ export function ClientRegistrationForm({
                                             <Button
                                               type="button"
                                               variant="outline"
-                                              onClick={() =>
-                                                setShowAddIdentifierDialog(true)
-                                              }
+                                              onClick={() => {
+                                                const externalId = form.getValues("externalId") || nationalIdLookup || "";
+                                                const nationalIdType = allDocumentTypes.find(
+                                                  (dt: any) => (dt.name || dt.value || "").toLowerCase().includes("national id")
+                                                );
+                                                setNewIdentifier((prev) => ({
+                                                  ...prev,
+                                                  documentKey: externalId,
+                                                  documentTypeId: nationalIdType ? nationalIdType.id.toString() : prev.documentTypeId,
+                                                }));
+                                                setShowAddIdentifierDialog(true);
+                                              }}
                                               disabled={!fineractClientId}
                                               className="flex items-center gap-2"
                                             >

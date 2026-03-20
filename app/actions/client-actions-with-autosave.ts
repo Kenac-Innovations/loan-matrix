@@ -19,6 +19,11 @@ const clientFormSchema = z.object({
   dateOfBirth: z.coerce.date().optional(),
   gender: z.union([z.string(), z.number()]).optional().transform(val => val !== undefined ? String(val) : undefined),
   genderId: z.number().optional(),
+  fullname: z.string().optional(),
+  tradingName: z.string().optional(),
+  registrationNumber: z.string().optional(),
+  dateOfIncorporation: z.coerce.date().optional(),
+  natureOfBusiness: z.string().optional(),
   isStaff: z.boolean().default(false),
   mobileNo: z.union([z.string(), z.number()]).optional().transform(val => val !== undefined ? String(val) : undefined),
   countryCode: z.string().default("+260"),
@@ -40,6 +45,8 @@ const clientFormSchema = z.object({
   savingsProductName: z.string().optional(),
   currentStep: z.number().default(1),
   fieldName: z.string().optional(), // The field that was just updated
+  fineractClientId: z.number().optional(),
+  fineractAccountNo: z.string().optional(),
 });
 
 // Auto-save action
@@ -138,6 +145,21 @@ export async function autoSaveField(
           ...(validatedData.genderId !== undefined && {
             genderId: validatedData.genderId,
           }),
+          ...(validatedData.fullname !== undefined && {
+            fullname: validatedData.fullname,
+          }),
+          ...(validatedData.tradingName !== undefined && {
+            tradingName: validatedData.tradingName,
+          }),
+          ...(validatedData.registrationNumber !== undefined && {
+            registrationNumber: validatedData.registrationNumber,
+          }),
+          ...(validatedData.dateOfIncorporation !== undefined && {
+            dateOfIncorporation: validatedData.dateOfIncorporation,
+          }),
+          ...(validatedData.natureOfBusiness !== undefined && {
+            natureOfBusiness: validatedData.natureOfBusiness,
+          }),
           ...(validatedData.isStaff !== undefined && {
             isStaff: validatedData.isStaff,
           }),
@@ -183,6 +205,14 @@ export async function autoSaveField(
           ...(validatedData.currentStep !== undefined && {
             currentStep: validatedData.currentStep,
           }),
+          ...(validatedData.fineractClientId !== undefined && {
+            fineractClientId: validatedData.fineractClientId,
+            clientCreatedInFineract: true,
+            clientCreationDate: now,
+          }),
+          ...(validatedData.fineractAccountNo !== undefined && {
+            fineractAccountNo: validatedData.fineractAccountNo,
+          }),
           lastModified: now,
         },
       });
@@ -209,6 +239,11 @@ export async function autoSaveField(
             dateOfBirth: validatedData.dateOfBirth || null,
             gender: validatedData.gender || null,
             genderId: validatedData.genderId || null,
+            fullname: validatedData.fullname || null,
+            tradingName: validatedData.tradingName || null,
+            registrationNumber: validatedData.registrationNumber || null,
+            dateOfIncorporation: validatedData.dateOfIncorporation || null,
+            natureOfBusiness: validatedData.natureOfBusiness || null,
             isStaff: validatedData.isStaff || false,
             mobileNo: validatedData.mobileNo || null,
             countryCode: validatedData.countryCode || "+260",
@@ -226,10 +261,8 @@ export async function autoSaveField(
             savingsProductId: validatedData.savingsProductId || null,
             savingsProductName: validatedData.savingsProductName || null,
             currentStep: validatedData.currentStep || 1,
-            status: "PROSPECT", // Set initial status as PROSPECT
-            lastModified: now, // Track when the lead was created
-            // Use userId directly in unchecked create
-            userId: userId,
+            status: "PROSPECT",
+            lastModified: now,
           },
         });
 
@@ -260,6 +293,11 @@ export async function autoSaveField(
             dateOfBirth: validatedData.dateOfBirth || null,
             gender: validatedData.gender || null,
             genderId: validatedData.genderId || null,
+            fullname: validatedData.fullname || null,
+            tradingName: validatedData.tradingName || null,
+            registrationNumber: validatedData.registrationNumber || null,
+            dateOfIncorporation: validatedData.dateOfIncorporation || null,
+            natureOfBusiness: validatedData.natureOfBusiness || null,
             isStaff: validatedData.isStaff || false,
             mobileNo: validatedData.mobileNo || null,
             countryCode: validatedData.countryCode || "+260",
@@ -277,9 +315,8 @@ export async function autoSaveField(
             savingsProductId: validatedData.savingsProductId || null,
             savingsProductName: validatedData.savingsProductName || null,
             currentStep: validatedData.currentStep || 1,
-            status: "PROSPECT", // Set initial status as PROSPECT
-            lastModified: now, // Track when the lead was created
-            // No userId - we'll use a direct database query to bypass the schema validation
+            status: "PROSPECT",
+            lastModified: now,
           };
 
           // Use Prisma's executeRaw to insert directly into the database

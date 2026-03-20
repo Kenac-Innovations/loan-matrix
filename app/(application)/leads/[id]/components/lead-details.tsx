@@ -24,6 +24,7 @@ import {
   Clock,
   CheckCircle,
   ArrowRight,
+  ArrowUpCircle,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import {
@@ -429,10 +430,20 @@ export function LeadDetails({ leadId }: LeadDetailsProps) {
             {loanInfo?.loanDetails && (
               <Card>
                 <CardHeader>
-                  <CardTitle>Loan Details</CardTitle>
-                  <CardDescription>
-                    Product and disbursement information
-                  </CardDescription>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle>Loan Details</CardTitle>
+                      <CardDescription>
+                        Product and disbursement information
+                      </CardDescription>
+                    </div>
+                    {loanInfo?.loanTerms?.isTopup && (
+                      <Badge className="bg-amber-500 hover:bg-amber-600 text-white border-0 gap-1">
+                        <ArrowUpCircle className="h-3 w-3" />
+                        Top-Up
+                      </Badge>
+                    )}
+                  </div>
                 </CardHeader>
                 <CardContent>
                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">

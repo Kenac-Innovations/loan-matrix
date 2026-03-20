@@ -2126,11 +2126,6 @@ export function LoanContracts({
         onComplete();
       }
 
-      // Clear local storage for this lead
-      if (leadId) {
-        localStorage.removeItem(`lead_${leadId}`);
-      }
-
       // Redirect to lead detail page after a short delay to show the success message
       setTimeout(() => {
         if (leadId) {

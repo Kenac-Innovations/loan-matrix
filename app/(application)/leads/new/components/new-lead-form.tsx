@@ -68,7 +68,7 @@ import { LoanTermsForm } from "@/app/(application)/leads/new/components/loan-ter
 import { RepaymentScheduleForm } from "@/app/(application)/leads/new/components/repayment-schedule-form";
 import { LoanContracts } from "@/app/(application)/leads/new/components/loan-contracts";
 import { toast } from "@/components/ui/use-toast";
-import { LeadLocalStorage } from "@/lib/lead-local-storage";
+
 
 // Define the type for the client form data
 type ClientFormData = {
@@ -104,7 +104,7 @@ const leadFormSchema = z.object({
       return digitsOnly.length >= 7 && digitsOnly.length <= 12;
     }, "Please enter a valid phone number"),
   countryCode: z.string().default("+260"),
-  emailAddress: z.string().email({ message: "Valid email is required" }),
+  emailAddress: z.union([z.string().email({ message: "Valid email is required" }), z.literal("")]).default(""),
   clientTypeId: z.string().optional(),
   clientClassificationId: z.string().optional(),
   submittedOnDate: z.date().default(() => new Date()),
@@ -175,14 +175,6 @@ export function NewLeadForm() {
   const [showWipeConfirm, setShowWipeConfirm] = useState(false);
 
   const handleWipeLead = () => {
-    LeadLocalStorage.clear();
-
-    if (currentLeadId) {
-      try {
-        localStorage.removeItem(`lead_${currentLeadId}`);
-      } catch {}
-    }
-
     setCurrentLeadId(null);
     setClientCreatedInFineract(false);
     setFineractClientId(null);
@@ -222,13 +214,8 @@ export function NewLeadForm() {
     const loadLeadData = async () => {
       console.log("=== LOAD LEAD DATA START ===");
       // Check for both 'id' and 'leadId' URL parameters for compatibility
-      const leadIdFromUrl =
+      const leadId =
         searchParams?.get("id") || searchParams?.get("leadId");
-      const leadIdFromStorage = LeadLocalStorage.getLeadId();
-      console.log("Lead ID from URL:", leadIdFromUrl);
-      console.log("Lead ID from localStorage:", leadIdFromStorage);
-
-      const leadId = leadIdFromUrl || leadIdFromStorage;
       console.log("Final lead ID to use:", leadId);
 
       if (leadId) {
@@ -257,13 +244,9 @@ export function NewLeadForm() {
               setFineractClientId((window as any).fineractClientId);
             }
           } else if (leadResponse.status === 404) {
-            // Lead no longer exists in database - clear stale data
-            console.log(
-              "==========> Lead not found (404), clearing stale localStorage data",
-            );
-            LeadLocalStorage.clear();
+            console.log("Lead not found (404)");
             setCurrentLeadId(null);
-            return; // Exit early if lead not found
+            return;
           }
         } catch (error) {
           console.error("Error loading lead data:", error);
@@ -900,8 +883,6 @@ export function NewLeadForm() {
               }`,
       });
 
-      // Clear local storage after URL is updated
-      LeadLocalStorage.clear();
     } catch (error: any) {
       console.error("Error creating lead:", error);
 

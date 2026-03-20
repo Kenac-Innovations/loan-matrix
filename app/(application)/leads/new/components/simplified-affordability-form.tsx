@@ -62,20 +62,7 @@ const affordabilitySchema = z
   .refine((data) => data.netMonthlyIncome <= data.grossMonthlyIncome, {
     message: "Net monthly income cannot be greater than gross monthly income",
     path: ["netMonthlyIncome"],
-  })
-  .refine(
-    (data) =>
-      data.mobileInOwnName &&
-      data.hasProofOfIncome &&
-      data.hasValidNationalId &&
-      data.identityVerified &&
-      data.employmentVerified &&
-      data.incomeVerified,
-    {
-      message: "All verification checkboxes must be checked to proceed",
-      path: ["incomeVerified"], // Show error on the last checkbox
-    }
-  );
+  });
 
 type AffordabilityFormValues = z.infer<typeof affordabilitySchema>;
 
@@ -93,7 +80,7 @@ export function SimplifiedAffordabilityForm({
   const [isSaving, setIsSaving] = useState(false);
   const [isCompleted, setIsCompleted] = useState(false);
   const { toast } = useToast();
-  const { currencyCode: orgCurrency } = useCurrency();
+  const { currencyCode: orgCurrency, locale: tenantLocale } = useCurrency();
   const [grossInputValue, setGrossInputValue] = useState("");
   const [netInputValue, setNetInputValue] = useState("");
   const [sectionCompletion, setSectionCompletion] = useState({
@@ -161,15 +148,15 @@ export function SimplifiedAffordabilityForm({
     const incomeComplete =
       watchedValues.grossMonthlyIncome > 0 &&
       watchedValues.netMonthlyIncome > 0;
-    // All verification checkboxes and preferred payment type must be set to be complete
-    const verificationComplete =
-      watchedValues.mobileInOwnName &&
-      watchedValues.hasProofOfIncome &&
-      watchedValues.hasValidNationalId &&
-      watchedValues.identityVerified &&
-      watchedValues.employmentVerified &&
-      watchedValues.incomeVerified &&
-      !!watchedValues.preferredPaymentMethod;
+    const verificationComplete = tenantLocale.emailOptional
+      ? !!watchedValues.preferredPaymentMethod
+      : watchedValues.mobileInOwnName &&
+        watchedValues.hasProofOfIncome &&
+        watchedValues.hasValidNationalId &&
+        watchedValues.identityVerified &&
+        watchedValues.employmentVerified &&
+        watchedValues.incomeVerified &&
+        !!watchedValues.preferredPaymentMethod;
 
     setSectionCompletion({
       income: incomeComplete,
@@ -184,6 +171,7 @@ export function SimplifiedAffordabilityForm({
     watchedValues.identityVerified,
     watchedValues.employmentVerified,
     watchedValues.incomeVerified,
+    tenantLocale.emailOptional,
   ]);
 
   // Helper function to get section status
@@ -610,7 +598,7 @@ export function SimplifiedAffordabilityForm({
                   htmlFor="mobileInOwnName"
                   className="font-normal cursor-pointer"
                 >
-                  Mobile in own name
+                  Mobile phone registered in own name
                 </Label>
               </div>
 
