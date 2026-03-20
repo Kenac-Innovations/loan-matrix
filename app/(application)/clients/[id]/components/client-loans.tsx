@@ -1,7 +1,5 @@
 "use client";
 
-import { useCurrency } from "@/contexts/currency-context";
-
 import useSWR from 'swr';
 import Link from "next/link";
 import {
@@ -13,7 +11,6 @@ import {
   TrendingDown,
   Clock,
   ExternalLink,
-  FileText,
 } from "lucide-react";
 import {
   Card,
@@ -31,7 +28,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Button } from "@/components/ui/button";
 
 interface FineractLoan {
   id: number;
@@ -50,12 +46,6 @@ interface FineractLoan {
     value: string;
     active: boolean;
     closed: boolean;
-    overpaid?: boolean;
-    pendingApproval?: boolean;
-    waitingForDisbursal?: boolean;
-    closedObligationsMet?: boolean;
-    closedWrittenOff?: boolean;
-    closedRescheduled?: boolean;
   };
   timeline: {
     submittedOnDate: string;
@@ -109,90 +99,42 @@ export function ClientLoans({ clientId }: ClientLoansProps) {
       rawLoans = data.loanAccounts;
     }
     
-    const CUTOFF = new Date("2026-01-01T00:00:00Z");
-
-    const parseFineractDate = (d: any): Date | null => {
-      if (!d) return null;
-      if (Array.isArray(d) && d.length >= 3) return new Date(d[0], d[1] - 1, d[2]);
-      if (typeof d === "string") return new Date(d);
-      return null;
-    };
-
-    // Filter by disbursement date, falling back to submission date for undisbursed loans
-    return rawLoans
-      .filter((loan: any) => {
-        const date = parseFineractDate(loan.timeline?.actualDisbursementDate)
-          ?? parseFineractDate(loan.timeline?.submittedOnDate);
-        return !date || date >= CUTOFF;
-      })
-      .map((loan: any) => ({
-        id: loan.id,
-        accountNo: loan.accountNo,
-        loanProductName: loan.productName || loan.loanProductName,
-        principal: loan.originalLoan || loan.principal,
-        approvedPrincipal: loan.originalLoan || loan.approvedPrincipal || loan.principal,
-        interestRatePerPeriod: loan.interestRatePerPeriod || 0,
-        numberOfRepayments: loan.numberOfRepayments || 0,
-        status: {
-          id: loan.status?.id || 0,
-          code: loan.status?.code || "",
-          value: loan.status?.value || "",
-          active: loan.status?.active || false,
-          closed: loan.status?.closed || false,
-          overpaid: loan.status?.overpaid || false,
-          pendingApproval: loan.status?.pendingApproval || false,
-          waitingForDisbursal: loan.status?.waitingForDisbursal || false,
-          closedObligationsMet: loan.status?.closedObligationsMet || false,
-          closedWrittenOff: loan.status?.closedWrittenOff || false,
-          closedRescheduled: loan.status?.closedRescheduled || false,
-        },
-        timeline: {
-          submittedOnDate: loan.timeline?.submittedOnDate || "",
-          approvedOnDate: loan.timeline?.approvedOnDate || "",
-          actualDisbursementDate: loan.timeline?.actualDisbursementDate || "",
-          expectedMaturityDate: loan.timeline?.expectedMaturityDate || "",
-        },
-        summary: {
-          principalOutstanding: loan.loanBalance || 0,
-          totalOutstanding: loan.loanBalance || 0,
-          totalOverdue: loan.inArrears ? (loan.loanBalance || 0) : 0,
-        },
-      }));
+    // Transform the loan data to match the expected interface
+    return rawLoans.map((loan: any) => ({
+      id: loan.id,
+      accountNo: loan.accountNo,
+      loanProductName: loan.productName || loan.loanProductName,
+      principal: loan.originalLoan || loan.principal,
+      approvedPrincipal: loan.originalLoan || loan.approvedPrincipal || loan.principal,
+      interestRatePerPeriod: loan.interestRatePerPeriod || 0,
+      numberOfRepayments: loan.numberOfRepayments || 0,
+      currency: loan.currency ? { code: loan.currency.code } : undefined,
+      status: {
+        id: loan.status?.id || 0,
+        code: loan.status?.code || "",
+        value: loan.status?.value || "",
+        active: loan.status?.active || false,
+        closed: loan.status?.closed || false,
+      },
+      timeline: {
+        submittedOnDate: loan.timeline?.submittedOnDate || "",
+        approvedOnDate: loan.timeline?.approvedOnDate || "",
+        actualDisbursementDate: loan.timeline?.actualDisbursementDate || "",
+        expectedMaturityDate: loan.timeline?.expectedMaturityDate || "",
+      },
+      summary: {
+        principalOutstanding: loan.loanBalance || 0,
+        totalOutstanding: loan.loanBalance || 0,
+        totalOverdue: loan.inArrears ? (loan.loanBalance || 0) : 0,
+      },
+    }));
   })();
 
   const getStatusBadge = (status: FineractLoan["status"]) => {
-    if (status.overpaid) {
-      return (
-        <Badge variant="outline" className="bg-emerald-600 text-white border-0">
-          Overpaid
-        </Badge>
-      );
-    }
     if (status.active) {
       return (
         <Badge variant="outline" className="bg-green-500 text-white border-0">
           Active
-        </Badge>
-      );
-    }
-    if (status.closedObligationsMet) {
-      return (
-        <Badge variant="outline" className="bg-slate-500 text-white border-0">
-          Closed - Obligations Met
-        </Badge>
-      );
-    }
-    if (status.closedWrittenOff) {
-      return (
-        <Badge variant="outline" className="bg-red-500 text-white border-0">
-          Written Off
-        </Badge>
-      );
-    }
-    if (status.closedRescheduled) {
-      return (
-        <Badge variant="outline" className="bg-amber-500 text-white border-0">
-          Rescheduled
         </Badge>
       );
     }
@@ -203,14 +145,14 @@ export function ClientLoans({ clientId }: ClientLoansProps) {
         </Badge>
       );
     }
-    if (status.waitingForDisbursal || status.code === "loanStatusType.approved") {
+    if (status.code === "loanStatusType.approved") {
       return (
         <Badge variant="outline" className="bg-blue-500 text-white border-0">
           Approved
         </Badge>
       );
     }
-    if (status.pendingApproval || status.code === "loanStatusType.pending") {
+    if (status.code === "loanStatusType.pending") {
       return (
         <Badge variant="outline" className="bg-yellow-500 text-white border-0">
           Pending
@@ -224,15 +166,14 @@ export function ClientLoans({ clientId }: ClientLoansProps) {
     );
   };
 
-  // Normalize currency code - converts deprecated ZMK to current code
-  const { currencyCode: orgCurrency } = useCurrency();
+  // Normalize currency code - converts deprecated ZMK to ZMW
   const normalizeCurrencyCode = (code: string | undefined | null): string => {
-    if (!code) return orgCurrency;
+    if (!code) return "ZMW";
     if (code.toUpperCase() === "ZMK") return "ZMW";
     return code;
   };
 
-  const formatCurrency = (amount: number, currencyCode: string = orgCurrency) => {
+  const formatCurrency = (amount: number, currencyCode: string = "ZMW") => {
     // Return empty string if amount is undefined, null, NaN, or 0
     if (amount === undefined || amount === null || isNaN(amount) || amount === 0) {
       return "";
@@ -254,7 +195,7 @@ export function ClientLoans({ clientId }: ClientLoansProps) {
     });
   };
 
-  // Calculate summary metrics (uses first loan's currency when displaying - assumes same currency for aggregated totals)
+  // Calculate summary metrics
   const totalPrincipal = loans.reduce((sum, loan) => sum + loan.principal, 0);
   const totalOutstanding = loans.reduce(
     (sum, loan) => sum + loan.summary.totalOutstanding,
@@ -265,7 +206,13 @@ export function ClientLoans({ clientId }: ClientLoansProps) {
     0
   );
   const activeLoans = loans.filter((loan) => loan.status.active).length;
-  const summaryCurrency = loans[0]?.currency?.code ?? "ZMW";
+
+  // Get currency for display - use first loan's currency when all share same currency
+  const summaryCurrency =
+    loans.length > 0 &&
+    loans.every((l) => !l.currency || l.currency.code === loans[0]?.currency?.code)
+      ? loans[0]?.currency?.code
+      : undefined;
 
   if (isLoading) {
     return (
@@ -380,28 +327,11 @@ export function ClientLoans({ clientId }: ClientLoansProps) {
 
       {/* Loans Table */}
       <Card>
-        <CardHeader className="flex flex-row items-start justify-between">
-          <div className="space-y-1">
-            <CardTitle>Loan Details</CardTitle>
-            <CardDescription>
-              Complete list of loans for this client
-            </CardDescription>
-          </div>
-          {loans.length > 0 && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() =>
-                window.open(
-                  `/api/fineract/clients/${clientId}/statement?format=html`,
-                  "_blank"
-                )
-              }
-            >
-              <FileText className="h-4 w-4 mr-2" />
-              Consolidated Statement
-            </Button>
-          )}
+        <CardHeader>
+          <CardTitle>Loan Details</CardTitle>
+          <CardDescription>
+            Complete list of loans for this client
+          </CardDescription>
         </CardHeader>
         <CardContent>
           {loans.length === 0 ? (
