@@ -1,5 +1,6 @@
 "use client";
 
+import { useCurrency } from "@/contexts/currency-context";
 import * as React from "react";
 import { Badge } from "@/components/ui/badge";
 import { GenericDataTable } from "@/components/tables/generic-data-table";
@@ -30,6 +31,7 @@ interface LoansDataTableProps {
 }
 
 export function LoansDataTable({ data }: LoansDataTableProps) {
+  const { currencyCode: orgCurrency } = useCurrency();
   const [customFilters, setCustomFilters] = useState<DataTableFilter[]>([
     { columnId: "status", value: "", type: "select" },
     { columnId: "currency", value: "", type: "select" },
@@ -61,11 +63,11 @@ export function LoansDataTable({ data }: LoansDataTableProps) {
         if (typeof loan.currency === "object" && loan.currency !== null) {
         return (loan.currency as any).code || String(loan.currency);
       }
-        return String(loan.currency || "ZMW");
+        return String(loan.currency || orgCurrency);
       })
       .filter(Boolean);
     return Array.from(new Set(currencies));
-  }, [data]);
+  }, [data, orgCurrency]);
 
   const columns: DataTableColumn<Loan>[] = [
     {
@@ -150,7 +152,7 @@ export function LoansDataTable({ data }: LoansDataTableProps) {
           const loanCurrency =
             typeof loan.currency === "object" && loan.currency !== null
               ? (loan.currency as any).code || String(loan.currency)
-              : String(loan.currency || "ZMW");
+              : String(loan.currency || orgCurrency);
           return loanCurrency === currency;
         }).length;
         return {
@@ -165,7 +167,7 @@ export function LoansDataTable({ data }: LoansDataTableProps) {
       header: "Principal",
       cell: ({ getValue, row }) => {
         const amount = parseFloat(getValue()) || 0;
-        const currency = row.original.currency || "ZMW";
+        const currency = row.original.currency || orgCurrency;
         const formatted = formatCurrency(amount, currency);
         return <div className="text-right font-medium">{formatted}</div>;
       },
@@ -176,7 +178,7 @@ export function LoansDataTable({ data }: LoansDataTableProps) {
       header: "Outstanding",
       cell: ({ getValue, row }) => {
         const amount = parseFloat(getValue()) || 0;
-        const currency = row.original.currency || "ZMW";
+        const currency = row.original.currency || orgCurrency;
         const formatted = formatCurrency(amount, currency);
         return <div className="text-right font-medium">{formatted}</div>;
       },

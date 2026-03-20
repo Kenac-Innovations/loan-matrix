@@ -1,5 +1,6 @@
 "use client";
 
+import { useCurrency } from "@/contexts/currency-context";
 import { useState, useEffect, use } from "react";
 import Link from "next/link";
 import {
@@ -65,6 +66,7 @@ export default function TellerTransactionsPage({
   params: Promise<{ id: string }>;
 }) {
   const { id: tellerId } = use(params);
+  const { currencyCode: orgCurrency } = useCurrency();
   const [teller, setTeller] = useState<TellerInfo | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
@@ -143,7 +145,7 @@ export default function TellerTransactionsPage({
     });
   };
 
-  const currency = transactions[0]?.currency || "ZMW";
+  const currency = transactions[0]?.currency || orgCurrency;
 
   if (loading) {
     return (

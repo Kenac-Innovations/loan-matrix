@@ -3,17 +3,32 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   output: "standalone",
   eslint: {
-    // Warning: This allows production builds to successfully complete even if
-    // your project has ESLint errors.
     ignoreDuringBuilds: true,
   },
   typescript: {
-    // Warning: This allows production builds to successfully complete even if
-    // your project has type errors.
     ignoreBuildErrors: true,
   },
   experimental: {
     optimizePackageImports: ["@radix-ui/react-icons"],
+  },
+  headers: async () => [
+    {
+      source: "/((?!_next/static|_next/image|favicon.ico|auth|static).*)",
+      headers: [
+        {
+          key: "Cache-Control",
+          value: "no-store, no-cache, must-revalidate, proxy-revalidate",
+        },
+        { key: "Pragma", value: "no-cache" },
+        { key: "Expires", value: "0" },
+      ],
+    },
+  ],
+  compiler: {
+    removeConsole:
+      process.env.NODE_ENV === "production"
+        ? { exclude: ["error", "warn"] }
+        : false,
   },
   webpack: (config) => {
     config.resolve.fallback = {

@@ -1,5 +1,6 @@
 "use client";
 
+import { useCurrency } from "@/contexts/currency-context";
 import { useState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
@@ -90,6 +91,7 @@ export function AffordabilityCalculator({
   onCalculationComplete,
   className,
 }: AffordabilityCalculatorProps) {
+  const { currencyCode: orgCurrency } = useCurrency();
   const [calculationResult, setCalculationResult] =
     useState<AffordabilityResult | null>(null);
   const [selectedOffer, setSelectedOffer] = useState<LoanOffer | null>(null);
@@ -262,7 +264,7 @@ export function AffordabilityCalculator({
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("en-US", {
       style: "currency",
-      currency: "ZMW",
+      currency: orgCurrency,
       minimumFractionDigits: 0,
       maximumFractionDigits: 0,
     }).format(amount);

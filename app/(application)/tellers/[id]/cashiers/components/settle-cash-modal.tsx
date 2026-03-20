@@ -1,5 +1,6 @@
 "use client";
 
+import { useCurrency } from "@/contexts/currency-context";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -33,6 +34,7 @@ interface Currency {
 interface FineractSummary {
   sumCashAllocation: number;
   sumCashSettlement: number;
+  sumOutwardCash?: number;
   netCash: number;
   tellerName?: string;
   cashierName?: string;
@@ -53,6 +55,7 @@ export function SettleCashModal({
   cashierName,
 }: SettleCashModalProps) {
   const router = useRouter();
+  const { currencyCode: orgCurrency } = useCurrency();
   const [loading, setLoading] = useState(false);
   const [loadingData, setLoadingData] = useState(false);
   const [currencies, setCurrencies] = useState<Currency[]>([]);
@@ -144,6 +147,7 @@ export function SettleCashModal({
         setSummary({
           sumCashAllocation: data.sumCashAllocation || 0,
           sumCashSettlement: data.sumCashSettlement || 0,
+          sumOutwardCash: data.sumOutwardCash ?? 0,
           netCash: data.netCash || 0,
           tellerName: data.tellerName,
           cashierName: data.cashierName,
@@ -229,15 +233,16 @@ export function SettleCashModal({
     try {
       return new Intl.NumberFormat("en-US", {
         style: "currency",
-        currency: currencyCode || "ZMW",
+        currency: currencyCode || orgCurrency,
       }).format(amount);
     } catch {
-      return `${currencyCode || "ZMW"} ${amount.toFixed(2)}`;
+      return `${currencyCode || orgCurrency} ${amount.toFixed(2)}`;
     }
   };
 
   const cashIn = summary?.sumCashAllocation || 0;
-  const cashOut = summary?.sumCashSettlement || 0;
+  const cashOut =
+    (summary?.sumCashSettlement || 0) + (summary?.sumOutwardCash ?? 0);
   const balance = summary?.netCash || 0;
   const settleAmount = parseFloat(formData.amount || "0");
   const remainingBalance = balance - settleAmount;

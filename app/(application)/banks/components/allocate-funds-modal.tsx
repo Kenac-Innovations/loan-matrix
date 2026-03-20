@@ -1,5 +1,6 @@
 "use client";
 
+import { useCurrency } from "@/contexts/currency-context";
 import { useState, useEffect } from "react";
 import {
   Dialog,
@@ -64,6 +65,7 @@ export function AllocateFundsModal({
   bankOfficeId,
   onSuccess,
 }: AllocateFundsModalProps) {
+  const { currencyCode: orgCurrency } = useCurrency();
   const [loading, setLoading] = useState(false);
   const [currencies, setCurrencies] = useState<Currency[]>([]);
   const [glAccounts, setGlAccounts] = useState<GLAccount[]>([]);
@@ -78,7 +80,7 @@ export function AllocateFundsModal({
 
   const [formData, setFormData] = useState({
     amount: "",
-    currency: "ZMW",
+    currency: orgCurrency,
     sourceGlAccountId: "",
     officeId: "",
     paymentTypeId: "",
@@ -103,7 +105,7 @@ export function AllocateFundsModal({
       // Reset form when modal closes
       setFormData({
         amount: "",
-        currency: "ZMW",
+        currency: orgCurrency,
         sourceGlAccountId: "",
         officeId: bankOfficeId?.toString() || "",
         paymentTypeId: "",

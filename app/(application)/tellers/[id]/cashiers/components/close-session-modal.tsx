@@ -1,5 +1,6 @@
 "use client";
 
+import { useCurrency } from "@/contexts/currency-context";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -48,6 +49,7 @@ export function CloseSessionModal({
   cashierName,
 }: CloseSessionModalProps) {
   const router = useRouter();
+  const { currencyCode: orgCurrency } = useCurrency();
   const [loading, setLoading] = useState(false);
   const [loadingData, setLoadingData] = useState(false);
   const [currencies, setCurrencies] = useState<Currency[]>([]);
@@ -195,17 +197,18 @@ export function CloseSessionModal({
     try {
       return new Intl.NumberFormat("en-US", {
         style: "currency",
-        currency: currencyCode || "ZMW",
+        currency: currencyCode || orgCurrency,
       }).format(amount);
     } catch {
-      return `${currencyCode || "ZMW"} ${amount.toFixed(2)}`;
+      return `${currencyCode || orgCurrency} ${amount.toFixed(2)}`;
     }
   };
 
   // Calculate values from Fineract data
   const openingFloat = summary?.sumCashAllocation || 0;
   const cashIn = summary?.sumCashAllocation || 0; // Total allocated
-  const cashOut = summary?.sumCashSettlement || 0; // Total settled
+  const cashOut =
+    (summary?.sumCashSettlement || 0) + (summary?.sumOutwardCash ?? 0);
   const expectedBalance = summary?.netCash || 0;
 
   const difference =

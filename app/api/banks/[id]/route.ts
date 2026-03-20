@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
 import { getSession } from "@/lib/auth";
 import { fetchFineractAPI } from "@/lib/api";
+import { getOrgDefaultCurrencyCode } from "@/lib/currency-utils";
 
 /**
  * GET /api/banks/[id]
@@ -15,7 +16,10 @@ export async function GET(
   try {
     const params = await context.params;
     const { id } = params;
-    const tenant = await getTenantFromHeaders();
+    const [tenant, orgCurrency] = await Promise.all([
+      getTenantFromHeaders(),
+      getOrgDefaultCurrencyCode(),
+    ]);
 
     if (!tenant) {
       return NextResponse.json({ error: "Tenant not found" }, { status: 404 });
@@ -49,26 +53,27 @@ export async function GET(
       return NextResponse.json({ error: "Bank not found" }, { status: 404 });
     }
 
-    // Calculate teller allocations from local database
-    // Opening balances are excluded from allocatedToTellers as they represent
-    // existing cash at tellers, not allocations from the bank
+    // Only count vault allocations that actually drew from the bank (same logic as allocate route)
+    const isFromBank = (alloc: { notes?: string | null; allocatedBy?: string | null }) => {
+      const n = (alloc.notes ?? "").toLowerCase();
+      if (n.includes("opening balance") || alloc.allocatedBy === "SYSTEM-IMPORT") return false;
+      if (alloc.allocatedBy === "SYSTEM-REVERSAL") return false;
+      if (n.includes("return from") || n.includes("session close") || n.includes("returned to vault")) return false;
+      return true;
+    };
+
     let allocatedToTellers = 0;
     const tellersWithBalances = bank.tellers.map((teller) => {
-      // Total vault balance includes opening balances (for teller display)
+      // Total vault balance includes all allocations (for teller display)
       const tellerVaultBalance = teller.cashAllocations.reduce(
         (sum, alloc) => sum + alloc.amount,
         0
       );
-      
-      // Only count allocations FROM BANK (exclude opening balances)
-      // Opening balances are identified by: notes containing "opening balance" OR allocatedBy = "SYSTEM-IMPORT"
+
       const bankAllocationsOnly = teller.cashAllocations
-        .filter((alloc) => 
-          !alloc.notes?.toLowerCase().includes("opening balance") && 
-          alloc.allocatedBy !== "SYSTEM-IMPORT"
-        )
+        .filter(isFromBank)
         .reduce((sum, alloc) => sum + alloc.amount, 0);
-      
+
       allocatedToTellers += bankAllocationsOnly;
 
       return {
@@ -84,7 +89,7 @@ export async function GET(
 
     // Get bank balance from Fineract GL account if configured, otherwise use local allocations
     let totalAllocated = 0;
-    let currency = "ZMW";
+    let currency = orgCurrency;
     let glAccountBalance = null;
 
     if (bank.glAccountId) {
@@ -108,7 +113,7 @@ export async function GET(
           
           const latestEntry = journalData.pageItems[0];
           totalAllocated = calculatedBalance;
-          currency = latestEntry.currency?.code || "ZMW";
+          currency = latestEntry.currency?.code || orgCurrency;
           glAccountBalance = {
             balance: totalAllocated,
             currency,
@@ -125,7 +130,7 @@ export async function GET(
           // No journal entries yet, balance is 0
           glAccountBalance = {
             balance: 0,
-            currency: "ZMW",
+            currency: orgCurrency,
             source: "fineract",
             lastEntry: null,
           };
@@ -137,7 +142,7 @@ export async function GET(
           (sum, alloc) => sum + alloc.amount,
           0
         );
-        currency = bank.allocations[0]?.currency || "ZMW";
+        currency = bank.allocations[0]?.currency || orgCurrency;
         glAccountBalance = {
           balance: totalAllocated,
           currency,
@@ -151,7 +156,7 @@ export async function GET(
         (sum, alloc) => sum + alloc.amount,
         0
       );
-      currency = bank.allocations[0]?.currency || "ZMW";
+      currency = bank.allocations[0]?.currency || orgCurrency;
     }
 
     const availableBalance = totalAllocated - allocatedToTellers;

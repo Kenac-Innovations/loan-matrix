@@ -16,6 +16,24 @@ export interface TenantFeatures {
   accounting: boolean;
   /** Enable reports module */
   reports: boolean;
+  /** Enable managed receipt number ranges for cash transactions */
+  receiptRanges: boolean;
+}
+
+/**
+ * Strategy for calculating the default first repayment date.
+ *
+ * - "cutoff": If today >= cutoffDay, last day of next month; otherwise last day of current month.
+ * - "month-after-disbursement": One calendar month after the expected disbursement date.
+ */
+export type FirstRepaymentDateStrategy =
+  | "cutoff"
+  | "month-after-disbursement";
+
+export interface FirstRepaymentDateConfig {
+  strategy: FirstRepaymentDateStrategy;
+  /** Day-of-month cutoff (only used with "cutoff" strategy). Defaults to 16. */
+  cutoffDay?: number;
 }
 
 /**
@@ -30,6 +48,8 @@ export interface TenantSettings {
   conversionTarget?: number;
   /** Processing time target (days) */
   processingTimeTarget?: number;
+  /** How to calculate the default first repayment date */
+  firstRepaymentDate?: FirstRepaymentDateConfig;
 }
 
 /**
@@ -43,6 +63,7 @@ export const DEFAULT_FEATURES: TenantFeatures = {
   aiAssistant: true,
   accounting: true,
   reports: true,
+  receiptRanges: false,
 };
 
 export interface TenantInfo {
@@ -51,4 +72,8 @@ export interface TenantInfo {
   slug: string;
   domain?: string | null;
   settings?: TenantSettings;
+  /** Document service file URL for org logo (when set) */
+  logoFileUrl?: string | null;
+  /** Document service link ID (UUID) for logo */
+  logoLinkId?: string | null;
 }

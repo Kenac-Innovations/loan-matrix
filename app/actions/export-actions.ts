@@ -40,7 +40,9 @@ export async function generateCSVExport(
           stringValue = (value as any).value || (value as any).code || (value as any).name || String(value);
         } else {
           stringValue = String(value);
-        }
+        } 
+
+        
         
         // Escape CSV special characters
         return stringValue.includes(",") || stringValue.includes('"') || stringValue.includes("\n")

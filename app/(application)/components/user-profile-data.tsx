@@ -1,4 +1,5 @@
 import { getSession, getCurrentUserDetails } from "@/lib/auth";
+import { getTenantFromHeaders } from "@/lib/tenant-service";
 
 // Define the role interface based on the authentication response
 export interface Role {
@@ -19,6 +20,8 @@ export type UserProfileData = {
     isSelfServiceUser?: boolean;
   };
   tenantId: string;
+  /** Organization logo URL from document service (when set) */
+  tenantLogoUrl?: string | null;
   isLoggedIn: boolean;
 };
 
@@ -71,6 +74,7 @@ export async function getUserProfileData(): Promise<UserProfileData> {
         const username = userData.username;
         const isSelfServiceUser = userData.isSelfServiceUser;
 
+        const tenant = await getTenantFromHeaders();
         return {
           user: {
             name,
@@ -81,7 +85,8 @@ export async function getUserProfileData(): Promise<UserProfileData> {
             username,
             isSelfServiceUser,
           },
-          tenantId: "default", // You might want to fetch this from an API
+          tenantId: tenant?.slug ?? "default",
+          tenantLogoUrl: tenant?.logoFileUrl ?? null,
           isLoggedIn: true,
         };
       } catch (error) {
@@ -102,6 +107,7 @@ export async function getUserProfileData(): Promise<UserProfileData> {
         ];
         const role = roles.length > 0 ? roles[0].name : "User"; // For backward compatibility
 
+        const tenant = await getTenantFromHeaders();
         return {
           user: {
             name,
@@ -110,15 +116,18 @@ export async function getUserProfileData(): Promise<UserProfileData> {
             role,
             officeName: session.user.officeName,
           },
-          tenantId: "default",
+          tenantId: tenant?.slug ?? "default",
+          tenantLogoUrl: tenant?.logoFileUrl ?? null,
           isLoggedIn: true,
         };
       }
     } else {
       // Return default values when not authenticated
+      const tenant = await getTenantFromHeaders();
       return {
         user: defaultUser,
-        tenantId: "default",
+        tenantId: tenant?.slug ?? "default",
+        tenantLogoUrl: tenant?.logoFileUrl ?? null,
         isLoggedIn: false,
       };
     }
@@ -129,6 +138,7 @@ export async function getUserProfileData(): Promise<UserProfileData> {
     return {
       user: defaultUser,
       tenantId: "default",
+      tenantLogoUrl: null,
       isLoggedIn: false,
     };
   }

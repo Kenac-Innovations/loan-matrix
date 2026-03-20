@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchFineractAPI } from "@/lib/api";
 import { prisma } from "@/lib/prisma";
-import { getTenantBySlug } from "@/lib/tenant-service";
+import { getTenantBySlug, extractTenantSlugFromRequest } from "@/lib/tenant-service";
+import { sendLoanStatusSms } from "@/lib/notification-service";
 
 // POST /api/fineract/loans/[id]/action - Perform an action on a loan
 export async function POST(
@@ -26,11 +27,7 @@ export async function POST(
       );
     }
 
-    // Get tenant
-    const tenantSlug =
-      request.headers.get("x-tenant-slug") ||
-      request.nextUrl.hostname.split(".")[0] ||
-      "goodfellow";
+    const tenantSlug = extractTenantSlugFromRequest(request);
 
     // Build the request body based on action
     let actionBody: any = {};
@@ -130,6 +127,50 @@ export async function POST(
     } catch (transitionError) {
       console.error("Error transitioning lead stage:", transitionError);
       // Don't fail the request if stage transition fails
+    }
+
+    // Send SMS to applicant for approve / reject / disburse (Loan Matrix loans only)
+    if (["approve", "reject", "disburse"].includes(action)) {
+      try {
+        const tenant = await getTenantBySlug(tenantSlug);
+        if (tenant) {
+          const lead = await prisma.lead.findFirst({
+            where: {
+              tenantId: tenant.id,
+              fineractLoanId: parseInt(loanId),
+            },
+            select: {
+              firstname: true,
+              middlename: true,
+              lastname: true,
+              mobileNo: true,
+              requestedAmount: true,
+            },
+          });
+          if (lead?.mobileNo) {
+            const clientName = [lead.firstname, lead.middlename, lead.lastname]
+              .filter(Boolean)
+              .join(" ");
+            const amount = Number(lead.requestedAmount) || 0;
+            const smsType =
+              action === "approve"
+                ? "approved"
+                : action === "reject"
+                  ? "rejected"
+                  : "disbursed";
+            await sendLoanStatusSms({
+              type: smsType,
+              clientName: clientName || "Customer",
+              phone: lead.mobileNo,
+              amount,
+              reason: action === "reject" ? (note || "No reason provided") : undefined,
+              tenantId: tenant.slug,
+            });
+          }
+        }
+      } catch (smsError) {
+        console.error("Failed to send loan status SMS:", smsError);
+      }
     }
 
     return NextResponse.json({

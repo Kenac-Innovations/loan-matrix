@@ -1199,10 +1199,14 @@ export class FineractAPIService {
   async getCashierSummaryAndTransactions(
     tellerId: number,
     cashierId: number,
-    currencyCode: string = "ZMW"
+    currencyCode: string,
+    options?: { offset?: number; limit?: number }
   ): Promise<any> {
     try {
-      const url = `/tellers/${tellerId}/cashiers/${cashierId}/summaryandtransactions?currencyCode=${currencyCode}`;
+      const params = new URLSearchParams({ currencyCode });
+      if (options?.offset != null) params.set("offset", String(options.offset));
+      if (options?.limit != null) params.set("limit", String(options.limit));
+      const url = `/tellers/${tellerId}/cashiers/${cashierId}/summaryandtransactions?${params}`;
       console.log("Fetching cashier summary and transactions:", url);
       const response: AxiosResponse<any> = await this.client.get(url);
       console.log(
@@ -1223,7 +1227,7 @@ export class FineractAPIService {
   async getCashierTransactions(
     tellerId: number,
     cashierId: number,
-    currencyCode: string = "ZMW",
+    currencyCode: string,
     fromDate?: string,
     toDate?: string
   ): Promise<any[]> {
@@ -1413,7 +1417,7 @@ export function getFineractService(
   // If we have an auth token, create a new instance with it
   if (authToken) {
     const config: FineractConfig = {
-      baseUrl: process.env.FINERACT_BASE_URL || "https://demo.fineract.dev",
+      baseUrl: process.env.FINERACT_BASE_URL || "http://mifos-be.kenac.co.zw",
       username: "", // Not needed when using token
       password: "", // Not needed when using token
       tenantId: tenantId || process.env.FINERACT_TENANT_ID || "goodfellow",
@@ -1424,7 +1428,7 @@ export function getFineractService(
   // Fallback to singleton with env credentials
   if (!fineractService) {
     const config: FineractConfig = {
-      baseUrl: process.env.FINERACT_BASE_URL || "https://demo.fineract.dev",
+      baseUrl: process.env.FINERACT_BASE_URL || "http://mifos-be.kenac.co.zw",
       username: process.env.FINERACT_USERNAME || "mifos",
       password: process.env.FINERACT_PASSWORD || "password",
       tenantId: tenantId || process.env.FINERACT_TENANT_ID || "goodfellow",

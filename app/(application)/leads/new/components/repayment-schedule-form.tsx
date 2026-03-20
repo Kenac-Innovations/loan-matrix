@@ -1,5 +1,6 @@
 "use client";
 
+import { useCurrency } from "@/contexts/currency-context";
 import { useState, useEffect, useCallback } from "react";
 import { normalizeCurrencyCode } from "@/lib/format-currency";
 import { Button } from "@/components/ui/button";
@@ -103,6 +104,7 @@ export function RepaymentScheduleForm({
 }: RepaymentScheduleFormProps) {
   console.log("RepaymentScheduleForm props:", { leadId, clientId });
 
+  const { currencyCode: orgCurrency } = useCurrency();
   const [repaymentSchedule, setRepaymentSchedule] =
     useState<RepaymentSchedule | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -123,7 +125,7 @@ export function RepaymentScheduleForm({
   const [selectedChargeOption, setSelectedChargeOption] = useState<string>("");
   const [newChargeAmount, setNewChargeAmount] = useState<string>("");
   const [newChargeDueDate, setNewChargeDueDate] = useState<Date | undefined>(
-    undefined
+    undefined,
   );
 
   // Load loan terms and loan details
@@ -134,7 +136,7 @@ export function RepaymentScheduleForm({
       try {
         // Load loan details first to get disbursement date
         const detailsResponse = await fetch(
-          `/api/leads/${leadId}/loan-details`
+          `/api/leads/${leadId}/loan-details`,
         );
         let disbursementDate = format(new Date(), "dd MMMM yyyy");
         let templateData: any = null;
@@ -150,16 +152,16 @@ export function RepaymentScheduleForm({
                 new Date(
                   typeof detailsResult.data.disbursementOn === "string"
                     ? detailsResult.data.disbursementOn
-                    : detailsResult.data.disbursementOn
+                    : detailsResult.data.disbursementOn,
                 ),
-                "dd MMMM yyyy"
+                "dd MMMM yyyy",
               );
             }
 
             // Load loan template if we have clientId and productId
             if (clientId && detailsResult.data.productId) {
               const templateResponse = await fetch(
-                `/api/fineract/loans/template?clientId=${clientId}&productId=${detailsResult.data.productId}&activeOnly=true&staffInSelectedOfficeOnly=true&templateType=individual`
+                `/api/fineract/loans/template?clientId=${clientId}&productId=${detailsResult.data.productId}&activeOnly=true&staffInSelectedOfficeOnly=true&templateType=individual`,
               );
               if (templateResponse.ok) {
                 templateData = await templateResponse.json();
@@ -187,7 +189,7 @@ export function RepaymentScheduleForm({
                   name: charge.name || "Unknown Charge",
                   amount: charge.amount || 0,
                   dueDate: charge.dueDate || disbursementDate,
-                })
+                }),
               );
               setEditableCharges(savedCharges);
             } else if (
@@ -202,7 +204,7 @@ export function RepaymentScheduleForm({
                   amount: charge.amount || 0,
                   dueDate: disbursementDate,
                   originalCharge: charge,
-                })
+                }),
               );
               setEditableCharges(initialCharges);
             }
@@ -228,7 +230,7 @@ export function RepaymentScheduleForm({
 
     if (!productIdStr || productIdStr === "" || productIdStr === "0") {
       setError(
-        "Product ID is required. Please ensure loan details are saved correctly."
+        "Product ID is required. Please ensure loan details are saved correctly.",
       );
       return;
     }
@@ -238,7 +240,7 @@ export function RepaymentScheduleForm({
 
     if (isNaN(productId) || productId <= 0) {
       setError(
-        "Invalid Product ID. Please ensure loan details are saved correctly."
+        "Invalid Product ID. Please ensure loan details are saved correctly.",
       );
       return;
     }
@@ -253,9 +255,9 @@ export function RepaymentScheduleForm({
             new Date(
               typeof loanDetails.submittedOn === "string"
                 ? loanDetails.submittedOn
-                : loanDetails.submittedOn
+                : loanDetails.submittedOn,
             ),
-            "dd MMMM yyyy"
+            "dd MMMM yyyy",
           )
         : format(new Date(), "dd MMMM yyyy");
 
@@ -264,9 +266,9 @@ export function RepaymentScheduleForm({
             new Date(
               typeof loanDetails.disbursementOn === "string"
                 ? loanDetails.disbursementOn
-                : loanDetails.disbursementOn
+                : loanDetails.disbursementOn,
             ),
-            "dd MMMM yyyy"
+            "dd MMMM yyyy",
           )
         : format(new Date(), "dd MMMM yyyy");
 
@@ -286,7 +288,6 @@ export function RepaymentScheduleForm({
         submittedOnDate: submittedDate,
         expectedDisbursementDate: disbursementDate,
         externalId: "",
-        linkAccountId: loanDetails.linkSavings || "",
         createStandingInstructionAtDisbursement:
           loanDetails.createStandingInstructions ? "true" : "",
         loanTermFrequency: loanTerms.loanTerm || 1,
@@ -306,9 +307,9 @@ export function RepaymentScheduleForm({
               new Date(
                 typeof loanTerms.firstRepaymentOn === "string"
                   ? loanTerms.firstRepaymentOn
-                  : loanTerms.firstRepaymentOn
+                  : loanTerms.firstRepaymentOn,
               ),
-              "dd MMMM yyyy"
+              "dd MMMM yyyy",
             )
           : null,
         interestChargedFromDate: loanTerms.interestChargedFrom
@@ -316,9 +317,9 @@ export function RepaymentScheduleForm({
               new Date(
                 typeof loanTerms.interestChargedFrom === "string"
                   ? loanTerms.interestChargedFrom
-                  : loanTerms.interestChargedFrom
+                  : loanTerms.interestChargedFrom,
               ),
-              "dd MMMM yyyy"
+              "dd MMMM yyyy",
             )
           : null,
         interestType: loanTerms.interestMethod
@@ -331,8 +332,8 @@ export function RepaymentScheduleForm({
         interestCalculationPeriodType: loanTerms.interestCalculationPeriod
           ? parseInt(loanTerms.interestCalculationPeriod)
           : loanTemplate?.interestCalculationPeriodType?.id || 1,
-        loanIdToClose: "",
-        isTopup: "",
+        loanIdToClose: loanTerms.loanIdToClose || "",
+        isTopup: loanTerms.isTopup ? true : "",
         transactionProcessingStrategyCode:
           loanTerms.repaymentStrategy ||
           loanTemplate?.transactionProcessingStrategyCode ||
@@ -358,7 +359,7 @@ export function RepaymentScheduleForm({
 
       console.log(
         "Schedule calculation payload:",
-        JSON.stringify(payload, null, 2)
+        JSON.stringify(payload, null, 2),
       );
       console.log("ProductId in payload:", payload.productId);
 
@@ -404,7 +405,7 @@ export function RepaymentScheduleForm({
                   e.defaultUserMessage ||
                   e.userMessage ||
                   e.developerMessage ||
-                  e.message
+                  e.message,
               )
               .filter(Boolean);
 
@@ -647,28 +648,32 @@ export function RepaymentScheduleForm({
                     Principal
                   </p>
                   <p className="text-lg font-semibold">
-                    {normalizeCurrencyCode(repaymentSchedule.currency?.code) || "ZMW"}{" "}
+                    {normalizeCurrencyCode(repaymentSchedule.currency?.code) ||
+                      orgCurrency}{" "}
                     {formatCurrency(repaymentSchedule.totalPrincipalExpected)}
                   </p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground mb-1">Interest</p>
                   <p className="text-lg font-semibold">
-                    {normalizeCurrencyCode(repaymentSchedule.currency?.code) || "ZMW"}{" "}
+                    {normalizeCurrencyCode(repaymentSchedule.currency?.code) ||
+                      orgCurrency}{" "}
                     {formatCurrency(repaymentSchedule.totalInterestCharged)}
                   </p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground mb-1">Fees</p>
                   <p className="text-lg font-semibold">
-                    {normalizeCurrencyCode(repaymentSchedule.currency?.code) || "ZMW"}{" "}
+                    {normalizeCurrencyCode(repaymentSchedule.currency?.code) ||
+                      orgCurrency}{" "}
                     {formatCurrency(repaymentSchedule.totalFeeChargesCharged)}
                   </p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground mb-1">Total</p>
                   <p className="text-lg font-semibold">
-                    {normalizeCurrencyCode(repaymentSchedule.currency?.code) || "ZMW"}{" "}
+                    {normalizeCurrencyCode(repaymentSchedule.currency?.code) ||
+                      orgCurrency}{" "}
                     {formatCurrency(repaymentSchedule.totalRepaymentExpected)}
                   </p>
                 </div>
@@ -706,7 +711,7 @@ export function RepaymentScheduleForm({
                         ?.filter(
                           (period) =>
                             period.period !== undefined &&
-                            !period.downPaymentPeriod
+                            !period.downPaymentPeriod,
                         )
                         .map((period, index) => (
                           <TableRow key={index}>
@@ -718,7 +723,7 @@ export function RepaymentScheduleForm({
                               {formatCurrency(
                                 period.principalDue ||
                                   period.principalDisbursed ||
-                                  0
+                                  0,
                               )}
                             </TableCell>
                             <TableCell className="text-right">
@@ -731,12 +736,12 @@ export function RepaymentScheduleForm({
                               {formatCurrency(
                                 period.totalDueForPeriod ||
                                   period.totalOriginalDueForPeriod ||
-                                  0
+                                  0,
                               )}
                             </TableCell>
                             <TableCell className="text-right">
                               {formatCurrency(
-                                period.principalLoanBalanceOutstanding || 0
+                                period.principalLoanBalanceOutstanding || 0,
                               )}
                             </TableCell>
                           </TableRow>

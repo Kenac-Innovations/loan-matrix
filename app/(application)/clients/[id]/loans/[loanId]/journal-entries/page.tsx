@@ -1,5 +1,7 @@
 "use client";
 
+import { useCurrency } from "@/contexts/currency-context";
+
 import { useState, useEffect } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -156,14 +158,15 @@ export default function JournalEntriesPage() {
     }) + " 00:00:00";
   };
 
-  // Normalize currency code - converts deprecated ZMK to ZMW
+  // Normalize currency code - converts deprecated ZMK to current code
+  const { currencyCode: orgCurrency } = useCurrency();
   const normalizeCurrencyCode = (code: string | undefined | null): string => {
-    if (!code) return "ZMW";
+    if (!code) return orgCurrency;
     if (code.toUpperCase() === "ZMK") return "ZMW";
     return code;
   };
 
-  const formatCurrency = (amount: number, currencyCode: string = "ZMW"): string => {
+  const formatCurrency = (amount: number, currencyCode: string = orgCurrency): string => {
     const normalizedCode = normalizeCurrencyCode(currencyCode);
     return new Intl.NumberFormat("en-US", {
       style: "currency",

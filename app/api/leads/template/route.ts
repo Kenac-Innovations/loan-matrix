@@ -67,11 +67,13 @@ export async function GET() {
             : [],
 
           activationDate: fineractData.activationDate
-            ? new Date(
-                fineractData.activationDate[0],
-                fineractData.activationDate[1] - 1,
-                fineractData.activationDate[2]
-              )
+            ? Array.isArray(fineractData.activationDate)
+              ? new Date(
+                  fineractData.activationDate[0],
+                  fineractData.activationDate[1] - 1,
+                  fineractData.activationDate[2]
+                ).toISOString()
+              : String(fineractData.activationDate)
             : null,
         };
 

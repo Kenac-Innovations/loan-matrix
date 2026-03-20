@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { extractTenantSlug } from "@/lib/tenant-service";
+import { extractTenantSlugFromRequest } from "@/lib/tenant-service";
 import { getSession } from "@/lib/auth";
-import { getFineractService } from "@/lib/fineract-api";
+import { getFineractServiceWithSession } from "@/lib/fineract-api";
 import { getFineractTenantId } from "@/lib/fineract-tenant-service";
 
-const FINERACT_BASE_URL = process.env.FINERACT_BASE_URL || "http://10.10.0.143";
+const FINERACT_BASE_URL = process.env.FINERACT_BASE_URL || "http://mifos-be.kenac.co.zw";
 
 /**
  * GET /api/leads/[id]/complete-details
@@ -19,10 +19,7 @@ export async function GET(
     const params = await context.params;
     const { id: leadId } = params;
 
-    // Extract tenant slug from request for internal API calls
-    const host = request.headers.get("host") || "localhost:3000";
-    const tenantSlug =
-      request.headers.get("x-tenant-slug") || extractTenantSlug(host);
+    const tenantSlug = extractTenantSlugFromRequest(request);
 
     console.log("=== FETCHING COMPLETE DETAILS FOR LEAD ===");
     console.log("Lead ID:", leadId);
@@ -55,6 +52,14 @@ export async function GET(
       id: lead.id,
       name: `${lead.firstname} ${lead.lastname}`,
       fineractClientId: lead.fineractClientId,
+      officeId: lead.officeId,
+      officeName: lead.officeName,
+      genderId: lead.genderId,
+      gender: lead.gender,
+      clientTypeId: lead.clientTypeId,
+      clientTypeName: lead.clientTypeName,
+      userId: lead.userId,
+      createdByUserName: lead.createdByUserName,
     });
 
     // Parse state metadata to get loan details
@@ -142,41 +147,106 @@ export async function GET(
       fineractLoan: null,
     };
 
-    // Get session for Fineract API calls
-    const session = await getSession();
-    const accessToken =
-      session?.base64EncodedAuthenticationKey || session?.accessToken;
-
-    console.log("Session for Fineract calls:", {
-      hasSession: !!session,
-      hasAccessToken: !!accessToken,
-      sessionUserId: session?.user?.id,
-    });
-
     // Get the mapped Fineract tenant ID early (e.g., "goodfellow" -> "goodfellow-training")
     const fineractTenantId = await getFineractTenantId();
-    console.log("Using Fineract tenant ID:", fineractTenantId);
 
-    // Fetch Fineract client data if available
-    if (lead.fineractClientId && accessToken) {
+    // Use service-level credentials (same as page.tsx) for reliable Fineract access
+    let fineractService: Awaited<ReturnType<typeof getFineractServiceWithSession>> | null = null;
+    let accessToken: string | null = null;
+    try {
+      fineractService = await getFineractServiceWithSession();
+      // Get session token for raw fetch calls
+      const session = await getSession();
+      accessToken =
+        session?.base64EncodedAuthenticationKey || session?.accessToken || null;
+      // Fallback to service token for raw fetch calls too
+      if (!accessToken) {
+        accessToken = "bWlmb3M6cGFzc3dvcmQ=";
+      }
+    } catch (err) {
+      console.error("Failed to init Fineract service:", err);
+    }
+
+    if (lead.fineractClientId && fineractService) {
       try {
         console.log(
           "Fetching Fineract client data for ID:",
           lead.fineractClientId
         );
 
-        // IMPORTANT: Use fineractTenantId (mapped) not tenantSlug (unmapped)
-        const fineractService = getFineractService(
-          accessToken,
-          fineractTenantId
-        );
         const clientData = await fineractService.getClient(
           lead.fineractClientId
         );
         response.fineractClient = clientData;
-        console.log("Fineract client data fetched successfully");
-      } catch (err) {
-        console.error("Error fetching Fineract client:", err);
+        console.log("Fineract client data fetched successfully by ID");
+      } catch (err: any) {
+        console.error("Error fetching Fineract client by ID:", err?.status || err?.message);
+
+        // Fallback: search by external ID (NRC) if client ID lookup failed
+        if (lead.externalId) {
+          try {
+            console.log("Trying to find Fineract client by external ID:", lead.externalId);
+            const searchUrl = `${FINERACT_BASE_URL}/fineract-provider/api/v1/clients?externalId=${encodeURIComponent(lead.externalId)}`;
+            const searchResponse = await fetch(searchUrl, {
+              method: "GET",
+              headers: {
+                Authorization: `Basic ${accessToken}`,
+                "Fineract-Platform-TenantId": fineractTenantId,
+                Accept: "application/json",
+              },
+              cache: "no-store",
+            });
+
+            if (searchResponse.ok) {
+              const searchData = await searchResponse.json();
+              const clients = Array.isArray(searchData)
+                ? searchData
+                : searchData?.pageItems || [];
+              const matchingClient = clients.find(
+                (c: any) => c.externalId === lead.externalId
+              );
+              if (matchingClient?.id) {
+                const fullClient = await fineractService.getClient(matchingClient.id);
+                response.fineractClient = fullClient;
+                console.log("Fineract client found by external ID:", matchingClient.id);
+              }
+            }
+          } catch (searchErr) {
+            console.error("Error searching Fineract client by external ID:", searchErr);
+          }
+        }
+      }
+    } else if (!lead.fineractClientId && lead.externalId && fineractService) {
+      // No fineractClientId stored, try searching by external ID
+      try {
+        console.log("No fineractClientId, searching by external ID:", lead.externalId);
+        const searchUrl = `${FINERACT_BASE_URL}/fineract-provider/api/v1/clients?externalId=${encodeURIComponent(lead.externalId)}`;
+        const searchResponse = await fetch(searchUrl, {
+          method: "GET",
+          headers: {
+            Authorization: `Basic ${accessToken}`,
+            "Fineract-Platform-TenantId": fineractTenantId,
+            Accept: "application/json",
+          },
+          cache: "no-store",
+        });
+
+        if (searchResponse.ok) {
+          const searchData = await searchResponse.json();
+          const clients = Array.isArray(searchData)
+            ? searchData
+            : searchData?.pageItems || [];
+          const matchingClient = clients.find(
+            (c: any) => c.externalId === lead.externalId
+          );
+          if (matchingClient?.id) {
+            const fullClient = await fineractService.getClient(matchingClient.id);
+            response.fineractClient = fullClient;
+            console.log("Fineract client found by external ID:", matchingClient.id);
+          }
+        }
+      } catch (searchErr) {
+        console.error("Error searching Fineract client by external ID:", searchErr);
       }
     } else {
       console.log(
@@ -185,13 +255,124 @@ export async function GET(
       );
     }
 
+    // Enrich lead response from Fineract client data (Fineract is source of truth)
+    if (response.fineractClient) {
+      const clientData = response.fineractClient;
+      if (clientData.firstname) {
+        response.lead.firstname = clientData.firstname;
+      }
+      if (clientData.lastname) {
+        response.lead.lastname = clientData.lastname;
+      }
+      if (clientData.externalId) {
+        response.lead.externalId = clientData.externalId;
+      }
+      if (clientData.mobileNo) {
+        response.lead.mobileNo = clientData.mobileNo;
+      }
+      if (clientData.dateOfBirth) {
+        response.lead.dateOfBirth = clientData.dateOfBirth;
+      }
+      if (clientData.gender?.name) {
+        response.lead.gender = clientData.gender.name;
+      }
+      if (clientData.officeName) {
+        response.lead.officeName = clientData.officeName;
+      }
+      if (clientData.clientType?.name) {
+        response.lead.clientTypeName = clientData.clientType.name;
+      }
+      if (clientData.clientClassification?.name) {
+        response.lead.clientClassificationName = clientData.clientClassification.name;
+      }
+    }
+
+    // If still missing names, resolve from Fineract APIs using stored IDs
+    if (fineractService && (!response.lead.gender || !response.lead.officeName || !response.lead.clientTypeName)) {
+      try {
+        const templateUrl = `${FINERACT_BASE_URL}/fineract-provider/api/v1/clients/template`;
+        const fineractHeaders = {
+          Authorization: `Basic ${accessToken}`,
+          "Fineract-Platform-TenantId": fineractTenantId,
+          Accept: "application/json",
+        };
+
+        const fetchOpts = { method: "GET" as const, headers: fineractHeaders, cache: "no-store" as const };
+
+        const [templateResponse, officesResponse] = await Promise.all([
+          fetch(templateUrl, fetchOpts),
+          !response.lead.officeName && lead.officeId
+            ? fetch(`${FINERACT_BASE_URL}/fineract-provider/api/v1/offices`, fetchOpts)
+            : Promise.resolve(null),
+        ]);
+
+        if (templateResponse.ok) {
+          const template = await templateResponse.json();
+
+          if (!response.lead.gender && lead.genderId && template.genderOptions) {
+            const gender = template.genderOptions.find((g: any) => g.id === lead.genderId);
+            if (gender) response.lead.gender = gender.name;
+          }
+          if (!response.lead.clientTypeName && lead.clientTypeId && template.clientTypeOptions) {
+            const clientType = template.clientTypeOptions.find((t: any) => t.id === lead.clientTypeId);
+            if (clientType) response.lead.clientTypeName = clientType.name;
+          }
+          if (!response.lead.clientClassificationName && lead.clientClassificationId && template.clientClassificationOptions) {
+            const classification = template.clientClassificationOptions.find((c: any) => c.id === lead.clientClassificationId);
+            if (classification) response.lead.clientClassificationName = classification.name;
+          }
+        }
+
+        if (officesResponse?.ok) {
+          const offices = await officesResponse.json();
+          const officeList = Array.isArray(offices) ? offices : [];
+          const office = officeList.find((o: any) => o.id === lead.officeId);
+          if (office) response.lead.officeName = office.name;
+        }
+
+        console.log("Resolved from Fineract:", {
+          gender: response.lead.gender,
+          officeName: response.lead.officeName,
+          clientTypeName: response.lead.clientTypeName,
+        });
+      } catch (templateErr) {
+        console.error("Error fetching Fineract template for name resolution:", templateErr);
+      }
+    }
+
+    // Resolve userId to a display name if createdByUserName is missing
+    if (!response.lead.createdByUserName && lead.userId && accessToken) {
+      const numericId = Number(lead.userId);
+      if (!Number.isNaN(numericId)) {
+        try {
+          const userUrl = `${FINERACT_BASE_URL}/fineract-provider/api/v1/users/${numericId}`;
+          const userResponse = await fetch(userUrl, {
+            method: "GET",
+            headers: {
+              Authorization: `Basic ${accessToken}`,
+              "Fineract-Platform-TenantId": fineractTenantId,
+              Accept: "application/json",
+            },
+            cache: "no-store",
+          });
+          if (userResponse.ok) {
+            const userData = await userResponse.json();
+            const displayName =
+              [userData.firstname, userData.lastname].filter(Boolean).join(" ") ||
+              userData.username ||
+              lead.userId;
+            response.lead.createdByUserName = displayName;
+          }
+        } catch (userErr) {
+          console.error("Error fetching Fineract user for originator:", userErr);
+        }
+      }
+    }
+
     // Fetch Fineract loan data by external ID (lead ID)
     let loanFetched = false;
 
-    if (accessToken) {
-      // IMPORTANT: Use fineractTenantId (mapped) not tenantSlug (unmapped) for the service
-      const fineractService = getFineractService(accessToken, fineractTenantId);
-
+    if (fineractService) {
       try {
         console.log("Fetching loan by external ID (lead ID):", leadId);
 
@@ -281,6 +462,21 @@ export async function GET(
         }
       } catch (err) {
         console.error("Error fetching Fineract loan by external ID:", err);
+      }
+    }
+
+    // Fallback: fetch loan directly by stored fineractLoanId if external ID search failed
+    if (!loanFetched && lead.fineractLoanId && fineractService) {
+      try {
+        console.log("Fetching loan directly by stored fineractLoanId:", lead.fineractLoanId);
+        const fullLoanData = await fineractService.getLoan(lead.fineractLoanId);
+        if (fullLoanData) {
+          response.fineractLoan = fullLoanData;
+          loanFetched = true;
+          console.log("Fineract loan fetched by stored ID:", fullLoanData.id);
+        }
+      } catch (loanErr) {
+        console.error("Error fetching loan by stored ID:", loanErr);
       }
     }
 

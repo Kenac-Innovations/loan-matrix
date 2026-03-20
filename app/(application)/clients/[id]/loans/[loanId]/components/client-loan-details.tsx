@@ -1,7 +1,10 @@
 "use client";
 
+import { useCurrency } from "@/contexts/currency-context";
+
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -20,7 +23,10 @@ import { RepaymentModal } from "./repayment-modal";
 import { PaymentModal } from "./payment-modal";
 import { InterestPaymentWaiverModal } from "./interest-payment-waiver-modal";
 import { PayoutRefundModal } from "./payout-refund-modal";
+import { ReversePayoutModal } from "./reverse-payout-modal";
 import { MerchantIssuedRefundModal } from "./merchant-issued-refund-modal";
+import { CreditBalanceRefundModal } from "@/app/(application)/leads/[id]/components/credit-balance-refund-modal";
+import { TransferFundsModal } from "@/app/(application)/leads/[id]/components/transfer-funds-modal";
 import { WaiveInterestModal } from "./waive-interest-modal";
 import { RescheduleModal } from "./reschedule-modal";
 import { DisburseModal } from "./disburse-modal";
@@ -222,7 +228,11 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
   // Separate modal states
   const [showInterestPaymentWaiverModal, setShowInterestPaymentWaiverModal] = useState(false);
   const [showPayoutRefundModal, setShowPayoutRefundModal] = useState(false);
+  const [showReversePayoutModal, setShowReversePayoutModal] = useState(false);
+  const [reversedPayout, setReversedPayout] = useState<{ voidedAt: string; voidReason?: string | null; amount: number; currency: string } | null>(null);
   const [showMerchantIssuedRefundModal, setShowMerchantIssuedRefundModal] = useState(false);
+  const [showCreditBalanceRefundModal, setShowCreditBalanceRefundModal] = useState(false);
+  const [showTransferFundsModal, setShowTransferFundsModal] = useState(false);
 
   // Write Off Modal State
   const [showWriteOffModal, setShowWriteOffModal] = useState(false);
@@ -348,6 +358,12 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
               </svg>
               Make Repayment
             </button>
+            <button class="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 text-sm" data-action="reverse-payout">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/>
+              </svg>
+              Reverse payout
+            </button>
             <button class="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 text-sm" data-action="undo-disbursal">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M3 7v6h6"/>
@@ -437,6 +453,18 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                       <line x1="12" y1="17" x2="12" y2="21"/>
                     </svg>
                     Merchant Issued Refund
+                  </button>
+                  <button class="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 text-sm" data-action="transfer-funds" id="transfer-funds-btn" style="display:none">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M8 3L4 7l4 4"/><path d="M4 7h16"/><path d="M16 21l4-4-4-4"/><path d="M20 17H4"/>
+                    </svg>
+                    Transfer Funds
+                  </button>
+                  <button class="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 text-sm" data-action="credit-balance-refund" id="credit-balance-refund-btn" style="display:none">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <circle cx="8" cy="8" r="6"/><path d="M18.09 10.37A6 6 0 1 1 10.34 18"/><path d="M7 6h1v4"/><path d="m16.71 13.88.7.71-2.82 2.82"/>
+                    </svg>
+                    Credit Balance Refund
                   </button>
                 </div>
               </div>
@@ -686,6 +714,9 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
               case 'make-repayment':
                 setShowRepaymentModal(true);
                 break;
+              case 'reverse-payout':
+                setShowReversePayoutModal(true);
+                break;
               case 'undo-disbursal':
                 openUndoDisbursalModal();
                 break;
@@ -718,6 +749,12 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                 break;
               case 'merchant-issued-refund':
                 setShowMerchantIssuedRefundModal(true);
+                break;
+              case 'transfer-funds':
+                setShowTransferFundsModal(true);
+                break;
+              case 'credit-balance-refund':
+                setShowCreditBalanceRefundModal(true);
                 break;
               case 'more':
                 // Submenu handled by hover events
@@ -807,7 +844,6 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
         setLoading(true);
         setError(null);
 
-        // Fetch client details
         const clientResponse = await fetch(`/api/clients/${clientId}`);
         if (!clientResponse.ok) {
           throw new Error(`Failed to fetch client details: ${clientResponse.statusText}`);
@@ -815,30 +851,31 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
         const clientData = await clientResponse.json();
         setClient(clientData);
 
-        // Fetch loan details with associations
         const loanResponse = await fetch(`/api/fineract/loans/${loanId}?associations=all&exclude=guarantors,futureSchedule`);
         if (!loanResponse.ok) {
           throw new Error(`Failed to fetch loan details: ${loanResponse.statusText}`);
         }
         const loanData = await loanResponse.json();
-        
-        // Log the response structure for debugging
-        console.log('Loan API Response:', loanData);
-        
-        // Handle the API response structure
-        // The API response might have repaymentSchedule at the root level
-        if (loanData.repaymentSchedule && !loanData.repaymentSchedule.periods) {
-          // If repaymentSchedule exists but doesn't have periods, it might be the old structure
-          console.log('Using legacy schedule structure');
-        } else if (loanData.repaymentSchedule && loanData.repaymentSchedule.periods) {
-          console.log('Using new repaymentSchedule structure with periods');
-        } else {
-          console.log('No repaymentSchedule found in response');
-        }
-        
+
         setLoan(loanData);
-        
-        // Update approve button state based on loan status
+
+        const payoutRes = await fetch(`/api/loans/${loanId}/payout`).catch(() => null);
+        if (payoutRes?.ok) {
+          const payoutData = await payoutRes.json();
+          if (payoutData?.status === "REVERSED" && payoutData?.voidedAt) {
+            setReversedPayout({
+              voidedAt: payoutData.voidedAt,
+              voidReason: payoutData.voidReason ?? null,
+              amount: payoutData.amount ?? 0,
+              currency: payoutData.currency ?? "ZMW",
+            });
+          } else {
+            setReversedPayout(null);
+          }
+        } else {
+          setReversedPayout(null);
+        }
+
         const approveButton = document.getElementById('approve-loan-btn');
         if (approveButton) {
           const isPendingApproval = loanData?.status?.pendingApproval === true;
@@ -850,7 +887,6 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
           }
         }
 
-        // Status-based gating for actions
         const dropdownEl = document.getElementById('loan-actions-dropdown');
         if (dropdownEl) {
           const approveBtn = document.getElementById('approve-loan-btn') as HTMLButtonElement | null;
@@ -869,7 +905,6 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
             disburseBtn.classList.toggle('cursor-not-allowed', !isWaitingForDisbursal);
           }
 
-          // If pending approval, disable all other actions except approve
           if (isPendingApproval) {
             dropdownEl.querySelectorAll('[data-action]')
               .forEach((el) => {
@@ -880,8 +915,35 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                 }
               });
           }
-        }
 
+          const isOverpaid =
+            loanData?.status?.overpaid === true ||
+            (loanData?.summary &&
+              loanData.summary.totalRepayment > 0 &&
+              loanData.summary.totalOutstanding === 0 &&
+              loanData.summary.totalRepayment >
+                loanData.summary.totalExpectedRepayment);
+
+          const transferFundsBtn = document.getElementById('transfer-funds-btn');
+          const creditBalanceRefundBtn = document.getElementById('credit-balance-refund-btn');
+
+          if (isOverpaid) {
+            if (transferFundsBtn) transferFundsBtn.style.display = '';
+            if (creditBalanceRefundBtn) creditBalanceRefundBtn.style.display = '';
+
+            dropdownEl.querySelectorAll('[data-action]')
+              .forEach((el) => {
+                const action = (el as HTMLElement).getAttribute('data-action');
+                if (action !== 'transfer-funds' && action !== 'credit-balance-refund') {
+                  (el as HTMLButtonElement).setAttribute('disabled', 'true');
+                  el.classList.add('opacity-50', 'cursor-not-allowed');
+                }
+              });
+          } else {
+            if (transferFundsBtn) transferFundsBtn.style.display = 'none';
+            if (creditBalanceRefundBtn) creditBalanceRefundBtn.style.display = 'none';
+          }
+        }
       } catch (err) {
         console.error("Error fetching data:", err);
         setError(err instanceof Error ? err.message : "An error occurred");
@@ -905,27 +967,33 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
     return "N/A";
   };
 
-  // Normalize currency code - converts deprecated ZMK to ZMW
+  // Normalize currency code - converts deprecated ZMK to current code
+  const { currencyCode: orgCurrency } = useCurrency();
   const normalizeCurrencyCode = (code: string | undefined | null): string => {
-    if (!code) return "ZMW";
+    if (!code) return orgCurrency;
     if (code.toUpperCase() === "ZMK") return "ZMW";
     return code;
   };
 
-  const formatCurrency = (amount: number | undefined | null, currencyCode: string = "ZMW"): string => {
-    // Return blank if amount is undefined, null, NaN, or 0
-    if (amount === undefined || amount === null || isNaN(amount) || amount === 0) {
-      return "";
+  const loanCurrencyCode = loan?.currency?.code || orgCurrency;
+
+  const formatCurrency = (amount: number | undefined | null, currencyCode?: string): string => {
+    if (amount === undefined || amount === null || Number.isNaN(amount)) {
+      return "-";
     }
     
-    const normalizedCode = normalizeCurrencyCode(currencyCode);
+    const normalizedCode = normalizeCurrencyCode(currencyCode || loanCurrencyCode);
     
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: normalizedCode,
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(amount);
+    try {
+      return new Intl.NumberFormat("en-US", {
+        style: "currency",
+        currency: normalizedCode,
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      }).format(amount);
+    } catch {
+      return `${normalizedCode} ${amount.toFixed(2)}`;
+    }
   };
 
   // Fetch collaterals for the loan
@@ -1846,7 +1914,7 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
         pdf.setTextColor(0, 0, 0);
 
         // Summary section
-        const currencyCode = loan.currency?.code || 'USD';
+        const currencyCode = loan.currency?.code || orgCurrency;
         const totalAmount = filteredTransactions.reduce((sum: number, t: any) => sum + (t.amount || 0), 0);
         const totalPrincipal = filteredTransactions.reduce((sum: number, t: any) => sum + (t.principalPortion || 0), 0);
         const totalInterest = filteredTransactions.reduce((sum: number, t: any) => sum + (t.interestPortion || 0), 0);
@@ -2677,8 +2745,59 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
     );
   }
 
+  const loanStatusValue = loan.status?.value || "Unknown";
+  const loanStatusConfig = (() => {
+    const s = loan.status;
+    if (s?.overpaid) return { label: "Overpaid", bg: "bg-emerald-500", bgLight: "bg-emerald-50 dark:bg-emerald-950/40", border: "border-emerald-200 dark:border-emerald-800", text: "text-emerald-700 dark:text-emerald-300" };
+    if (s?.active) return { label: loanStatusValue, bg: "bg-green-500", bgLight: "bg-green-50 dark:bg-green-950/40", border: "border-green-200 dark:border-green-800", text: "text-green-700 dark:text-green-300" };
+    if (s?.closedObligationsMet) return { label: "Closed - Obligations Met", bg: "bg-slate-500", bgLight: "bg-slate-50 dark:bg-slate-950/40", border: "border-slate-200 dark:border-slate-800", text: "text-slate-700 dark:text-slate-300" };
+    if (s?.closedWrittenOff) return { label: "Closed - Written Off", bg: "bg-red-500", bgLight: "bg-red-50 dark:bg-red-950/40", border: "border-red-200 dark:border-red-800", text: "text-red-700 dark:text-red-300" };
+    if (s?.closedRescheduled) return { label: "Closed - Rescheduled", bg: "bg-amber-500", bgLight: "bg-amber-50 dark:bg-amber-950/40", border: "border-amber-200 dark:border-amber-800", text: "text-amber-700 dark:text-amber-300" };
+    if (s?.closed) return { label: loanStatusValue, bg: "bg-gray-500", bgLight: "bg-gray-50 dark:bg-gray-950/40", border: "border-gray-200 dark:border-gray-800", text: "text-gray-700 dark:text-gray-300" };
+    if (s?.waitingForDisbursal) return { label: "Approved - Awaiting Disbursement", bg: "bg-blue-500", bgLight: "bg-blue-50 dark:bg-blue-950/40", border: "border-blue-200 dark:border-blue-800", text: "text-blue-700 dark:text-blue-300" };
+    if (s?.pendingApproval) return { label: "Pending Approval", bg: "bg-yellow-500", bgLight: "bg-yellow-50 dark:bg-yellow-950/40", border: "border-yellow-200 dark:border-yellow-800", text: "text-yellow-700 dark:text-yellow-300" };
+    return { label: loanStatusValue, bg: "bg-gray-500", bgLight: "bg-gray-50 dark:bg-gray-950/40", border: "border-gray-200 dark:border-gray-800", text: "text-gray-700 dark:text-gray-300" };
+  })();
+
   return (
     <div className="space-y-6">
+      {/* Loan Status Banner */}
+      <div className={`rounded-lg border ${loanStatusConfig.border} ${loanStatusConfig.bgLight} px-5 py-3 flex items-center justify-between`}>
+        <div className="flex items-center gap-3">
+          <span className={`inline-flex h-3 w-3 rounded-full ${loanStatusConfig.bg} shrink-0`} />
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <p className={`text-sm font-semibold ${loanStatusConfig.text}`}>{loanStatusConfig.label}</p>
+              <span className="text-xs text-muted-foreground">&middot;</span>
+              <p className="text-sm font-medium">{loan.loanProductName || loan.productName}</p>
+            </div>
+            <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
+              <span>{loan.accountNo}</span>
+              {loan.externalId && (
+                <>
+                  <span>&middot;</span>
+                  <Link
+                    href={`/leads/${loan.externalId}`}
+                    className="text-blue-600 dark:text-blue-400 hover:underline inline-flex items-center gap-1"
+                  >
+                    View Lead
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                  </Link>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+        <div className="flex items-center gap-4 text-xs text-muted-foreground">
+          {loan.timeline?.actualDisbursementDate && (
+            <span>Disbursed: {formatDate(loan.timeline.actualDisbursementDate)}</span>
+          )}
+          {loan.timeline?.expectedMaturityDate && (
+            <span>Maturity: {formatDate(loan.timeline.expectedMaturityDate)}</span>
+          )}
+        </div>
+      </div>
+
       {/* Quick Stats Cards */}
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
         <Card className="border-0 shadow-sm bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-950 dark:to-blue-900">
@@ -2687,7 +2806,7 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
               <div>
                 <p className="text-sm font-medium text-blue-600 dark:text-blue-400">Principal Amount</p>
                 <p className="text-2xl font-bold text-blue-900 dark:text-blue-100">
-                  {formatCurrency(loan.principal || 0, loan.currency?.code || 'USD')}
+                  {formatCurrency(loan.principal ?? 0)}
                 </p>
               </div>
               <div className="h-12 w-12 rounded-lg bg-blue-500 flex items-center justify-center">
@@ -2703,7 +2822,7 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
               <div>
                 <p className="text-sm font-medium text-green-600 dark:text-green-400">Outstanding Balance</p>
                 <p className="text-2xl font-bold text-green-900 dark:text-green-100">
-                  {formatCurrency(loan.summary?.totalOutstanding || 0, loan.currency?.code || 'USD')}
+                  {formatCurrency(loan.summary?.totalOutstanding ?? 0)}
                 </p>
               </div>
               <div className="h-12 w-12 rounded-lg bg-green-500 flex items-center justify-center">
@@ -2943,48 +3062,48 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                   <TableBody>
                     <TableRow className="border-b">
                       <TableCell className="font-semibold">Principal</TableCell>
-                      <TableCell className="font-medium">{formatCurrency(loan.principal, loan.currency?.code || 'USD')}</TableCell>
-                      <TableCell className="font-medium">{formatCurrency(loan.summary?.principalPaid || 0, loan.currency?.code || 'USD')}</TableCell>
-                      <TableCell className="font-medium">{formatCurrency(loan.summary?.principalWrittenOff || 0, loan.currency?.code || 'USD')}</TableCell>
-                      <TableCell className="font-medium">{formatCurrency(loan.summary?.principalWrittenOff || 0, loan.currency?.code || 'USD')}</TableCell>
-                      <TableCell className="font-medium">{formatCurrency(loan.summary?.principalOutstanding || 0, loan.currency?.code || 'USD')}</TableCell>
-                      <TableCell className="font-medium">{formatCurrency(loan.summary?.principalOverdue || 0, loan.currency?.code || 'USD')}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.principal ?? 0)}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary?.principalPaid ?? 0)}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency((loan.summary as any)?.principalWaived ?? 0)}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary?.principalWrittenOff ?? 0)}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary?.principalOutstanding ?? 0)}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary?.principalOverdue ?? 0)}</TableCell>
                     </TableRow>
                     <TableRow className="border-b">
                       <TableCell className="font-semibold">Interest</TableCell>
-                      <TableCell className="font-medium">{formatCurrency(loan.summary?.interestCharged || 0, loan.currency?.code || 'USD')}</TableCell>
-                      <TableCell className="font-medium">{formatCurrency(loan.summary?.interestPaid || 0, loan.currency?.code || 'USD')}</TableCell>
-                      <TableCell className="font-medium">{formatCurrency(loan.summary?.interestWaived || 0, loan.currency?.code || 'USD')}</TableCell>
-                      <TableCell className="font-medium">{formatCurrency(loan.summary?.interestWrittenOff || 0, loan.currency?.code || 'USD')}</TableCell>
-                      <TableCell className="font-medium">{formatCurrency(loan.summary?.interestOutstanding || 0, loan.currency?.code || 'USD')}</TableCell>
-                      <TableCell className="font-medium">{formatCurrency(loan.summary?.interestOverdue || 0, loan.currency?.code || 'USD')}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary?.interestCharged ?? 0)}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary?.interestPaid ?? 0)}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary?.interestWaived ?? 0)}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary?.interestWrittenOff ?? 0)}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary?.interestOutstanding ?? 0)}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary?.interestOverdue ?? 0)}</TableCell>
                     </TableRow>
                     <TableRow className="border-b">
                       <TableCell className="font-semibold">Fees</TableCell>
-                      <TableCell className="font-medium">{formatCurrency(loan.summary?.feeChargesCharged || 0, loan.currency?.code || 'USD')}</TableCell>
-                      <TableCell className="font-medium">{formatCurrency(loan.summary?.feeChargesPaid || 0, loan.currency?.code || 'USD')}</TableCell>
-                      <TableCell className="font-medium">{formatCurrency(loan.summary?.feeChargesWaived || 0, loan.currency?.code || 'USD')}</TableCell>
-                      <TableCell className="font-medium">{formatCurrency(loan.summary?.feeChargesWrittenOff || 0, loan.currency?.code || 'USD')}</TableCell>
-                      <TableCell className="font-medium">{formatCurrency(loan.summary?.feeChargesOutstanding || 0, loan.currency?.code || 'USD')}</TableCell>
-                      <TableCell className="font-medium">{formatCurrency(loan.summary?.feeChargesOverdue || 0, loan.currency?.code || 'USD')}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary?.feeChargesCharged ?? 0)}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary?.feeChargesPaid ?? 0)}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary?.feeChargesWaived ?? 0)}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary?.feeChargesWrittenOff ?? 0)}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary?.feeChargesOutstanding ?? 0)}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary?.feeChargesOverdue ?? 0)}</TableCell>
                     </TableRow>
                     <TableRow className="border-b">
                       <TableCell className="font-semibold">Penalties</TableCell>
-                      <TableCell className="font-medium">{formatCurrency(loan.summary?.penaltyChargesCharged || 0, loan.currency?.code || 'USD')}</TableCell>
-                      <TableCell className="font-medium">{formatCurrency(loan.summary?.penaltyChargesPaid || 0, loan.currency?.code || 'USD')}</TableCell>
-                      <TableCell className="font-medium">{formatCurrency(loan.summary?.penaltyChargesWaived || 0, loan.currency?.code || 'USD')}</TableCell>
-                      <TableCell className="font-medium">{formatCurrency(loan.summary?.penaltyChargesWrittenOff || 0, loan.currency?.code || 'USD')}</TableCell>
-                      <TableCell className="font-medium">{formatCurrency(loan.summary?.penaltyChargesOutstanding || 0, loan.currency?.code || 'USD')}</TableCell>
-                      <TableCell className="font-medium">{formatCurrency(loan.summary?.penaltyChargesOverdue || 0, loan.currency?.code || 'USD')}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary?.penaltyChargesCharged ?? 0)}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary?.penaltyChargesPaid ?? 0)}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary?.penaltyChargesWaived ?? 0)}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary?.penaltyChargesWrittenOff ?? 0)}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary?.penaltyChargesOutstanding ?? 0)}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(loan.summary?.penaltyChargesOverdue ?? 0)}</TableCell>
                     </TableRow>
                     <TableRow className="bg-muted/50 font-bold">
                       <TableCell>Total</TableCell>
-                      <TableCell>{formatCurrency(loan.summary?.totalExpectedRepayment || 0, loan.currency?.code || 'USD')}</TableCell>
-                      <TableCell>{formatCurrency(loan.summary?.totalRepayment || 0, loan.currency?.code || 'USD')}</TableCell>
-                      <TableCell>{formatCurrency(loan.summary?.totalWaived || 0, loan.currency?.code || 'USD')}</TableCell>
-                      <TableCell>{formatCurrency(loan.summary?.totalWrittenOff || 0, loan.currency?.code || 'USD')}</TableCell>
-                      <TableCell>{formatCurrency(loan.summary?.totalOutstanding || 0, loan.currency?.code || 'USD')}</TableCell>
-                      <TableCell>{formatCurrency(loan.summary?.totalOverdue || 0, loan.currency?.code || 'USD')}</TableCell>
+                      <TableCell>{formatCurrency(loan.summary?.totalExpectedRepayment ?? 0)}</TableCell>
+                      <TableCell>{formatCurrency(loan.summary?.totalRepayment ?? 0)}</TableCell>
+                      <TableCell>{formatCurrency(loan.summary?.totalWaived ?? 0)}</TableCell>
+                      <TableCell>{formatCurrency(loan.summary?.totalWrittenOff ?? 0)}</TableCell>
+                      <TableCell>{formatCurrency(loan.summary?.totalOutstanding ?? 0)}</TableCell>
+                      <TableCell>{formatCurrency(loan.summary?.totalOverdue ?? 0)}</TableCell>
                     </TableRow>
                   </TableBody>
                 </Table>
@@ -3013,15 +3132,29 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                 </div>
                 <div className="space-y-1">
                   <p className="text-xs font-medium text-muted-foreground">Loan Purpose</p>
-                  <p className="text-sm font-medium">{loan.loanPurpose?.name || "N/A"}</p>
+                  <p className="text-sm font-medium">{loan.loanPurpose?.name || loan.loanPurposeName || "N/A"}</p>
                 </div>
                 <div className="space-y-1">
                   <p className="text-xs font-medium text-muted-foreground">Loan Officer</p>
-                  <p className="text-sm font-medium">{loan.loanOfficerName || "N/A"}</p>
+                  <p className="text-sm font-medium">
+                    {loan.loanOfficerName || [loan.timeline?.submittedByFirstname, loan.timeline?.submittedByLastname].filter(Boolean).join(" ") || loan.timeline?.submittedByUsername || "N/A"}
+                  </p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-muted-foreground">Created By</p>
+                  <p className="text-sm font-medium">
+                    {[loan.timeline?.submittedByFirstname, loan.timeline?.submittedByLastname].filter(Boolean).join(" ") || loan.timeline?.submittedByUsername || "N/A"}
+                  </p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-muted-foreground">Approved By</p>
+                  <p className="text-sm font-medium">
+                    {[loan.timeline?.approvedByFirstname, loan.timeline?.approvedByLastname].filter(Boolean).join(" ") || loan.timeline?.approvedByUsername || "N/A"}
+                  </p>
                 </div>
                 <div className="space-y-1">
                   <p className="text-xs font-medium text-muted-foreground">Currency</p>
-                  <p className="text-sm font-medium">{loan.currency?.name || 'US Dollar'} {loan.currency?.code || 'USD'}</p>
+                  <p className="text-sm font-medium">{loan.currency?.name || '-'} ({loan.currency?.code || orgCurrency})</p>
                 </div>
                 <div className="space-y-1">
                   <p className="text-xs font-medium text-muted-foreground">External Id</p>
@@ -3029,11 +3162,11 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                 </div>
                 <div className="space-y-1">
                   <p className="text-xs font-medium text-muted-foreground">Proposed Amount</p>
-                  <p className="text-sm font-medium">{formatCurrency(loan.proposedPrincipal || 0, loan.currency?.code || 'USD')}</p>
+                  <p className="text-sm font-medium">{formatCurrency(loan.proposedPrincipal ?? 0)}</p>
                 </div>
                 <div className="space-y-1">
                   <p className="text-xs font-medium text-muted-foreground">Approved Amount</p>
-                  <p className="text-sm font-medium">{formatCurrency(loan.approvedPrincipal || 0, loan.currency?.code || 'USD')}</p>
+                  <p className="text-sm font-medium">{formatCurrency(loan.approvedPrincipal ?? 0)}</p>
                 </div>
               </div>
             </CardContent>
@@ -3180,8 +3313,9 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                 transactions={loan.transactions || []}
                 clientId={clientId}
                 loanId={loanId}
-                currencyCode={loan.currency?.code || 'USD'}
+                currencyCode={loan.currency?.code || orgCurrency}
                 onExport={() => setShowExportDialog(true)}
+                reversedPayout={reversedPayout}
               />
             </CardContent>
           </Card>
@@ -3278,7 +3412,7 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                         <TableRow key={index}>
                           <TableCell className="font-medium">{charge.name}</TableCell>
                           <TableCell>{charge.chargeCalculationType?.value || charge.type || "N/A"}</TableCell>
-                          <TableCell>{formatCurrency(charge.amount, loan.currency?.code || 'USD')}</TableCell>
+                          <TableCell>{formatCurrency(charge.amount ?? 0)}</TableCell>
                           <TableCell>{charge.collectedOn || "Overdue Fees"}</TableCell>
                         </TableRow>
                       ))
@@ -3372,10 +3506,10 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                           <TableCell>{charge.chargeTimeType?.value || "N/A"}</TableCell>
                           <TableCell>{charge.dueDate ? formatDate(charge.dueDate) : "N/A"}</TableCell>
                           <TableCell>{charge.chargeCalculationType?.value || "N/A"}</TableCell>
-                          <TableCell>{formatCurrency(charge.amount, loan.currency?.code || 'USD')}</TableCell>
-                          <TableCell>{formatCurrency(charge.amountPaid || 0, loan.currency?.code || 'USD')}</TableCell>
-                          <TableCell>{formatCurrency(charge.amountWaived || 0, loan.currency?.code || 'USD')}</TableCell>
-                          <TableCell>{formatCurrency(charge.amountOutstanding || charge.amount, loan.currency?.code || 'USD')}</TableCell>
+                          <TableCell>{formatCurrency(charge.amount ?? 0)}</TableCell>
+                          <TableCell>{formatCurrency(charge.amountPaid ?? 0)}</TableCell>
+                          <TableCell>{formatCurrency(charge.amountWaived ?? 0)}</TableCell>
+                          <TableCell>{formatCurrency(charge.amountOutstanding ?? charge.amount ?? 0)}</TableCell>
                           <TableCell>
                             <div className="flex space-x-1">
                               <Button variant="outline" size="sm" className="h-8 w-8 p-0">
@@ -3781,11 +3915,7 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
         isOpen={showRepaymentModal}
         onClose={() => setShowRepaymentModal(false)}
         loanId={loanId}
-        onSuccess={() => {
-          // Refresh loan data and switch to transactions tab
-          window.location.reload();
-          setActiveTab("transactions");
-        }}
+        onSuccess={() => setShowRepaymentModal(false)}
       />
 
       {/* Loan Approval Modal */}
@@ -3849,13 +3979,56 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
         }}
       />
 
+      {/* Reverse Payout Modal */}
+      <ReversePayoutModal
+        isOpen={showReversePayoutModal}
+        onClose={() => setShowReversePayoutModal(false)}
+        loanId={loanId}
+        clientName={client?.displayName}
+        onSuccess={() => {
+          window.location.reload();
+          setActiveTab("transactions");
+        }}
+      />
+
       {/* Merchant Issued Refund Modal */}
       <MerchantIssuedRefundModal
         isOpen={showMerchantIssuedRefundModal}
         onClose={() => setShowMerchantIssuedRefundModal(false)}
         loanId={loanId}
         onSuccess={() => {
-          // Refresh loan data and switch to transactions tab
+          window.location.reload();
+          setActiveTab("transactions");
+        }}
+      />
+
+      {/* Credit Balance Refund Modal */}
+      <CreditBalanceRefundModal
+        isOpen={showCreditBalanceRefundModal}
+        onClose={() => setShowCreditBalanceRefundModal(false)}
+        loanId={loanId}
+        onSuccess={() => {
+          window.location.reload();
+          setActiveTab("transactions");
+        }}
+      />
+
+      {/* Transfer Funds Modal */}
+      <TransferFundsModal
+        isOpen={showTransferFundsModal}
+        onClose={() => setShowTransferFundsModal(false)}
+        loanId={loanId}
+        clientId={clientId}
+        overpaidAmount={
+          loan?.summary?.totalOverpaid ||
+          (loan?.summary?.totalRepayment &&
+          loan?.summary?.totalExpectedRepayment &&
+          loan.summary.totalRepayment > loan.summary.totalExpectedRepayment
+            ? loan.summary.totalRepayment - loan.summary.totalExpectedRepayment
+            : 0)
+        }
+        currencySymbol={loan?.currency?.displaySymbol || "K"}
+        onSuccess={() => {
           window.location.reload();
           setActiveTab("transactions");
         }}

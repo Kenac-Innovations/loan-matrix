@@ -2,13 +2,15 @@ name: loan-matrix CI/CD
 
 on:
   push:
-    branches: [ dev, qa, prod ]
+    branches: [main, master, dev, qa, uat]
   pull_request:
-    branches: [ dev, qa, prod ]
+    branches: [main, master, dev, qa, uat]
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
+  IMAGE_NAME: ghcr.io/kenac-innovations/loan-matrix
+  HARBOR_REGISTRY: harbor.kenac.co.zw
+  HARBOR_IMAGE: harbor.kenac.co.zw/kenac/loan-matrix
 
 jobs:
   build-and-deploy:
@@ -27,22 +29,33 @@ jobs:
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
 
-    - name: Log in to Container Registry
+    - name: Log in to GHCR
       uses: docker/login-action@v3
       with:
         registry: ${{ env.REGISTRY }}
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
 
+    - name: Log in to Harbor Registry
+      if: github.event_name == 'push'
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.HARBOR_REGISTRY }}
+        username: ${{ secrets.HARBOR_USERNAME }}
+        password: ${{ secrets.HARBOR_PASSWORD }}
+
     - name: Extract metadata
       id: meta
       uses: docker/metadata-action@v5
       with:
-        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+        images: |
+          ${{ env.IMAGE_NAME }}
+          ${{ env.HARBOR_IMAGE }}
         tags: |
           type=ref,event=branch
           type=ref,event=pr
           type=sha,prefix={{branch}}-
+          type=raw,value=latest,enable={{is_default_branch}}
 
     - name: Checkout application repository
       uses: actions/checkout@v4
@@ -56,25 +69,30 @@ jobs:
       with:
         context: ./app-source
         file: ./app-source/Dockerfile
-        push: true
+        push: ${{ github.event_name == 'push' }}
         tags: ${{ steps.meta.outputs.tags }}
         labels: ${{ steps.meta.outputs.labels }}
         cache-from: type=gha
         cache-to: type=gha,mode=max
+        provenance: false
+        sbom: false
 
-    # GitOps automation steps
     - name: Determine environment
+      if: github.event_name == 'push'
       id: env
       run: |
         if [[ "${{ github.ref_name }}" == "main" || "${{ github.ref_name }}" == "master" ]]; then
           echo "environment=prod" >> $GITHUB_OUTPUT
-        elif [[ "${{ github.ref_name }}" == "dev" ]]; then
-          echo "environment=dev" >> $GITHUB_OUTPUT
-        else
+        elif [[ "${{ github.ref_name }}" == "qa" ]]; then
           echo "environment=qa" >> $GITHUB_OUTPUT
+        elif [[ "${{ github.ref_name }}" == "uat" ]]; then
+          echo "environment=uat" >> $GITHUB_OUTPUT
+        else
+          echo "environment=dev" >> $GITHUB_OUTPUT
         fi
 
     - name: Extract image tag
+      if: github.event_name == 'push'
       id: image-tag
       run: |
         TAGS="${{ steps.meta.outputs.tags }}"
@@ -97,6 +115,7 @@ jobs:
         repository: Kenac-Innovations/kenac-gitops
 
     - name: Checkout GitOps repository
+      if: github.event_name == 'push'
       uses: actions/checkout@v4
       with:
         repository: Kenac-Innovations/kenac-gitops
@@ -104,6 +123,7 @@ jobs:
         path: gitops-repo
 
     - name: Update image tag in GitOps repo
+      if: github.event_name == 'push'
       run: |
         cd gitops-repo
         
@@ -127,12 +147,14 @@ jobs:
           sudo chmod +x /usr/local/bin/yq
         fi
         
+        yq eval ".image.repository = \"harbor.kenac.co.zw/kenac/loan-matrix\"" -i "$VALUES_FILE"
         yq eval ".image.tag = \"$NEW_TAG\"" -i "$VALUES_FILE"
         
         echo "Updated values file:"
         cat "$VALUES_FILE"
 
     - name: Commit and push changes
+      if: github.event_name == 'push'
       run: |
         cd gitops-repo
         
@@ -158,9 +180,11 @@ jobs:
         git push origin master
 
     - name: Deployment summary
+      if: github.event_name == 'push'
       run: |
-        echo "🚀 Deployment Summary:"
+        echo "Deployment Summary:"
         echo "- Environment: ${{ steps.env.outputs.environment }}"
         echo "- Image Tag: ${{ steps.image-tag.outputs.tag }}"
-        echo "- GitOps repo updated successfully"
+        echo "- Pushed to: GHCR + Harbor"
+        echo "- GitOps repo updated (pulling from Harbor)"
         echo "- ArgoCD will automatically sync the changes"

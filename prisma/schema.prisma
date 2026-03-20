@@ -14,6 +14,8 @@ model Tenant {
   slug                   String                  @unique
   domain                 String?
   settings               Json?
+  logoLinkId             String?                 // Document service link ID (UUID) for logo
+  logoFileUrl            String?                 // Document service file URL for display
   isActive               Boolean                 @default(true)
   createdAt              DateTime                @default(now())
   updatedAt              DateTime                @updatedAt
@@ -26,9 +28,27 @@ model Tenant {
   slaConfigs             SLAConfig[]
   teams                  Team[]
   validationRules        ValidationRule[]
+  receiptRanges          ReceiptRange[]
+  usedReceipts           UsedReceipt[]
+  loanContractTemplates  LoanContractTemplate[]
 
   @@index([slug])
   @@index([isActive])
+}
+
+model LoanContractTemplate {
+  id         String   @id @default(cuid())
+  tenantId   String
+  name       String   // e.g. "Full Loan Template"
+  slug       String   // e.g. "full-loan" - used to identify which template to show
+  content    String   @db.Text // HTML content
+  isDefault  Boolean  @default(false) // if true, use as main contract for this tenant
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, slug])
+  @@index([tenantId])
 }
 
 model PipelineStage {
@@ -142,6 +162,8 @@ model Lead {
   identityVerified           Boolean?            @default(false)
   employmentVerified         Boolean?            @default(false)
   incomeVerified             Boolean?            @default(false)
+  /** Preferred payment method for payout (same options as payout modal): CASH, MOBILE_MONEY, BANK_TRANSFER */
+  preferredPaymentMethod     String?
   clientCreatedInFineract    Boolean             @default(false)
   clientCreationDate         DateTime?
   fineractAccountNo          String?
@@ -557,7 +579,7 @@ model BankAllocation {
   tenantId      String
   bankId        String
   amount        Float
-  currency      String   @default("ZMW")
+  currency      String   @default("ZMW") // DB-level fallback only; app code provides currency from Fineract
   allocatedDate DateTime @default(now())
   allocatedBy   String
   notes         String?
@@ -634,7 +656,7 @@ model CashAllocation {
   cashierId             String? // null for teller vault allocations, set for cashier allocations
   fineractAllocationId Int?     @unique
   amount               Float
-  currency             String   @default("ZMW")
+  currency             String   @default("ZMW") // DB-level fallback only; app code provides currency from Fineract
   allocatedDate        DateTime @default(now())
   allocatedBy          String
   notes                String?
@@ -731,8 +753,8 @@ model LoanPayout {
   clientName       String
   loanAccountNo    String
   amount           Float
-  currency         String          @default("ZMW")
-  status           String          @default("PENDING") // PENDING, PAID, VOIDED
+  currency         String          @default("ZMW") // DB-level fallback only; app code provides currency from Fineract
+  status           String          @default("PENDING") // PENDING, PAID, VOIDED, REVERSED
   paymentMethod    String?         // CASH, MOBILE_MONEY, BANK_TRANSFER
   paidAt           DateTime?
   paidBy           String?         // User who processed payout
@@ -821,4 +843,84 @@ enum AlertType {
   REMINDER    // Reminder notification
   APPROVAL    // Approval request
   SYSTEM      // System notification
+}
+
+// ─── Bulk Repayment (Collections) ───────────────────────────────────────────
+
+model BulkRepaymentUpload {
+  id            String               @id @default(cuid())
+  tenantId      String
+  fileName      String
+  uploadedBy    String
+  status        String               @default("STAGING") // STAGING, PROCESSING, COMPLETED, FAILED
+  totalRows     Int                  @default(0)
+  queuedCount   Int                  @default(0)
+  successCount  Int                  @default(0)
+  failedCount   Int                  @default(0)
+  totalAmount   Decimal              @default(0) @db.Decimal(19, 4)
+  columnMapping Json?
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+  items         BulkRepaymentItem[]
+
+  @@index([tenantId, status])
+  @@index([createdAt])
+}
+
+model BulkRepaymentItem {
+  id              String              @id @default(cuid())
+  uploadId        String
+  upload          BulkRepaymentUpload @relation(fields: [uploadId], references: [id], onDelete: Cascade)
+  rowNumber       Int
+  loanId          Int
+  loanAccountNo   String?
+  clientName      String?
+  amount          Decimal             @db.Decimal(19, 4)
+  paymentTypeId   Int?
+  paymentTypeName String?
+  accountNumber   String?
+  chequeNumber    String?
+  routingCode     String?
+  receiptNumber   String?
+  bankNumber      String?
+  note            String?
+  transactionDate DateTime?
+  status          String              @default("STAGED") // STAGED, QUEUED, PROCESSING, SUCCESS, FAILED
+  errorMessage    String?
+  fineractTxnId   String?
+  processedAt     DateTime?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  @@index([uploadId, status])
+  @@index([loanId])
+}
+
+model ReceiptRange {
+  id         String   @id @default(cuid())
+  tenantId   String
+  tenant     Tenant   @relation(fields: [tenantId], references: [id])
+  prefix     String?
+  rangeStart Int
+  rangeEnd   Int
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([tenantId, isActive])
+}
+
+model UsedReceipt {
+  id              String   @id @default(cuid())
+  tenantId        String
+  tenant          Tenant   @relation(fields: [tenantId], references: [id])
+  receiptNumber   String
+  transactionType String   // REPAYMENT, DISBURSEMENT
+  fineractTxnId   String?
+  loanId          Int?
+  usedBy          String?
+  usedAt          DateTime @default(now())
+
+  @@unique([tenantId, receiptNumber])
+  @@index([tenantId])
 }

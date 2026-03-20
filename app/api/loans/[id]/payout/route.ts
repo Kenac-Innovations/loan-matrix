@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
 import { getSession } from "@/lib/auth";
 import { getFineractServiceWithSession } from "@/lib/fineract-api";
+import { getOrgDefaultCurrencyCode } from "@/lib/currency-utils";
 
 /**
  * GET /api/loans/[id]/payout
@@ -120,6 +121,7 @@ export async function POST(
       return NextResponse.json({ error: "Invalid loan ID" }, { status: 400 });
     }
 
+    const orgCurrency = await getOrgDefaultCurrencyCode();
     let payout = await prisma.loanPayout.findUnique({
       where: {
         tenantId_fineractLoanId: {
@@ -147,7 +149,7 @@ export async function POST(
                 loanDetails.principal ||
                 loanDetails.approvedPrincipal ||
                 0,
-              currency: loanDetails.currency?.code || "ZMW",
+              currency: loanDetails.currency?.code || orgCurrency,
               status: "PENDING",
             },
           });
@@ -215,9 +217,9 @@ export async function POST(
         );
       }
 
-      if (payout.status === "VOIDED") {
+      if (payout.status === "VOIDED" || payout.status === "REVERSED") {
         return NextResponse.json(
-          { error: "This loan payout has been voided" },
+          { error: "This loan payout has been voided or reversed" },
           { status: 400 }
         );
       }

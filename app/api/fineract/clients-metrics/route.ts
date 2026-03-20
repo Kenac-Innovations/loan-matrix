@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { getSession as getCustomSession } from "@/app/actions/auth";
 import { getFineractTenantId } from "@/lib/fineract-tenant-service";
+import { getOrgDefaultCurrencyCode } from "@/lib/currency-utils";
 
 const baseUrl = process.env.FINERACT_BASE_URL || "http://10.10.0.143:8443";
 
@@ -88,11 +89,12 @@ export async function GET() {
       { method: "GET", headers, cache: "no-store" }
     );
 
+    const orgCurrency = await getOrgDefaultCurrencyCode();
     let totalPortfolioValue = 0;
     let totalOutstanding = 0;
     let averageLoanAmount = 0;
     let riskClients = 0;
-    let currency = "ZMW";
+    let currency = orgCurrency;
     let loansCount = 0;
     let activeLoansCount = 0;
 
@@ -103,7 +105,7 @@ export async function GET() {
 
       // Get currency from first loan
       if (loans.length > 0 && loans[0].currency) {
-        currency = loans[0].currency.code || loans[0].currency || "ZMW";
+        currency = loans[0].currency.code || loans[0].currency || orgCurrency;
       }
 
       // Calculate portfolio metrics
@@ -197,7 +199,7 @@ export async function GET() {
       averageLoanAmount: 0,
       clientGrowthRate: 0,
       riskClients: 0,
-      currency: "ZMW",
+      currency: orgCurrency,
       loansCount: 0,
       activeLoansCount: 0,
     };

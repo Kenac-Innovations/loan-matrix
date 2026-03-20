@@ -1,5 +1,6 @@
 "use client";
 
+import { useCurrency } from "@/contexts/currency-context";
 import { useEffect, useState } from "react";
 import {
   Card,
@@ -89,6 +90,7 @@ interface AffordabilityData {
 }
 
 export function LeadAffordability({ leadId }: LeadAffordabilityProps) {
+  const { currencyCode: orgCurrency } = useCurrency();
   const [affordabilityData, setAffordabilityData] =
     useState<AffordabilityData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -256,7 +258,7 @@ export function LeadAffordability({ leadId }: LeadAffordabilityProps) {
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("en-US", {
       style: "currency",
-      currency: "ZMW",
+      currency: orgCurrency,
       minimumFractionDigits: 0,
       maximumFractionDigits: 0,
     }).format(amount);

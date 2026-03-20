@@ -1,20 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getTenantBySlug } from "@/lib/tenant-service";
+import { getTenantBySlug, extractTenantSlugFromRequest } from "@/lib/tenant-service";
 import { format } from "date-fns";
 import { fetchFineractAPI } from "@/lib/api";
+import { getOrgDefaultCurrencyCode } from "@/lib/currency-utils";
 import { getSession } from "@/lib/auth";
 
 export async function GET(
   request: NextRequest,
-  context: { params: Promise<{ id: string }> }
+  context: { params: Promise<{ id: string }> },
 ) {
   try {
     const params = await context.params;
     const { id: leadId } = params;
     console.log("Fetching contract data for leadId:", leadId);
 
-    const tenantSlug = request.headers.get("x-tenant-slug") || "goodfellow";
+    const tenantSlug = extractTenantSlugFromRequest(request);
     console.log("Tenant slug:", tenantSlug);
     const tenant = await getTenantBySlug(tenantSlug);
 
@@ -42,6 +43,10 @@ export async function GET(
         dateOfBirth: true,
         gender: true,
         genderId: true,
+        mobileNo: true,
+        countryCode: true,
+        accountNumber: true,
+        fineractAccountNo: true,
         fineractClientId: true,
         officeName: true,
 
@@ -54,13 +59,30 @@ export async function GET(
         fundId: true,
         submittedOnDate: true,
         expectedDisbursementDate: true,
+        requestedAmount: true,
 
         // Affordability
+        annualIncome: true,
         monthlyIncome: true,
         grossMonthlyIncome: true,
+        monthlyExpenses: true,
+        employmentStatus: true,
+        employerName: true,
+        yearsEmployed: true,
+        yearsAtCurrentJob: true,
+        businessType: true,
+        businessOwnership: true,
+        collateralType: true,
+        collateralValue: true,
+        bankName: true,
+        existingLoans: true,
+        hasExistingLoans: true,
+        nationality: true,
 
         // State metadata (contains loan terms)
         stateMetadata: true,
+        stateContext: true,
+        familyMembers: true,
       },
     });
 
@@ -68,7 +90,7 @@ export async function GET(
       console.error("Lead not found with ID:", leadId);
       return NextResponse.json(
         { success: false, error: "Lead not found" },
-        { status: 404 }
+        { status: 404 },
       );
     }
 
@@ -77,7 +99,7 @@ export async function GET(
     // Warn if tenant mismatch (but don't block the request)
     if (lead.tenantId !== tenant.id) {
       console.warn(
-        `⚠️ Tenant mismatch for lead ${leadId}: lead.tenantId=${lead.tenantId}, expected=${tenant.id}`
+        `⚠️ Tenant mismatch for lead ${leadId}: lead.tenantId=${lead.tenantId}, expected=${tenant.id}`,
       );
     }
 
@@ -87,9 +109,10 @@ export async function GET(
       `${request.nextUrl.origin}/api/leads/${leadId}/loan-details`,
       {
         headers: {
-          "x-tenant-slug": tenantSlug,
+          origin: request.headers.get("origin") || "",
+          referer: request.headers.get("referer") || "",
         },
-      }
+      },
     );
     const loanDetailsResult = await loanDetailsResponse.json();
     const loanDetails = loanDetailsResult.success
@@ -103,9 +126,10 @@ export async function GET(
       `${request.nextUrl.origin}/api/leads/${leadId}/loan-terms`,
       {
         headers: {
-          "x-tenant-slug": tenantSlug,
+          origin: request.headers.get("origin") || "",
+          referer: request.headers.get("referer") || "",
         },
-      }
+      },
     );
     const loanTermsResult = await loanTermsResponse.json();
     const loanTerms = loanTermsResult.success ? loanTermsResult.data : null;
@@ -120,7 +144,7 @@ export async function GET(
           error:
             "Missing Fineract Client ID. Please complete the client details first.",
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -132,7 +156,7 @@ export async function GET(
           error:
             "Missing loan product information. Please complete the loan details first.",
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -143,7 +167,7 @@ export async function GET(
           success: false,
           error: "Missing loan terms. Please complete the loan terms first.",
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -156,16 +180,106 @@ export async function GET(
           `${request.nextUrl.origin}/api/fineract/clients/${lead.fineractClientId}`,
           {
             headers: {
-              "x-tenant-slug": tenantSlug,
+              origin: request.headers.get("origin") || "",
+          referer: request.headers.get("referer") || "",
             },
-          }
+          },
         );
         if (clientDetailsResponse.ok) {
           fineractClient = await clientDetailsResponse.json();
-          console.log("Fineract client fetched, gender:", fineractClient?.gender);
+          console.log(
+            "Fineract client fetched, gender:",
+            fineractClient?.gender,
+          );
         }
       } catch (err) {
         console.error("Error fetching Fineract client details:", err);
+      }
+    }
+
+    // Fetch client addresses from Fineract for residential/work address
+    let residentialAddress: string | null = null;
+    let workAddress: string | null = null;
+    if (lead.fineractClientId) {
+      try {
+        const addresses = await fetchFineractAPI(
+          `/client/${lead.fineractClientId}/addresses`,
+        );
+        const addressList = Array.isArray(addresses) ? addresses : [];
+        for (const addr of addressList) {
+          const parts = [
+            addr.addressLine1,
+            addr.addressLine2,
+            addr.addressLine3,
+            addr.city,
+            addr.townVillage,
+            addr.district,
+          ].filter(Boolean);
+          const fullAddress = parts.join(", ");
+          const typeName = (addr.addressType?.name || addr.addressType || "")
+            .toString()
+            .toLowerCase();
+          if (
+            typeName.includes("home") ||
+            typeName.includes("residence") ||
+            typeName.includes("physical") ||
+            !residentialAddress
+          ) {
+            if (!residentialAddress && fullAddress) residentialAddress = fullAddress;
+          }
+          if (
+            typeName.includes("work") ||
+            typeName.includes("office") ||
+            typeName.includes("business")
+          ) {
+            if (fullAddress) workAddress = fullAddress;
+          }
+        }
+        if (!residentialAddress && addressList.length > 0) {
+          const first = addressList[0];
+          residentialAddress = [
+            first.addressLine1,
+            first.addressLine2,
+            first.addressLine3,
+            first.city,
+            first.townVillage,
+          ]
+            .filter(Boolean)
+            .join(", ");
+        }
+      } catch (err) {
+        console.error("Error fetching client addresses:", err);
+      }
+    }
+
+    // Derive spouse and closest relative from family members
+    const familyMembers = (lead.familyMembers || []) as Array<{
+      firstname: string;
+      middlename?: string | null;
+      lastname: string;
+      relationship?: string | null;
+      mobileNo?: string | null;
+    }>;
+    const spouseRelation = ["spouse", "wife", "husband", "partner"];
+    let spouseName: string | null = null;
+    let spousePhone: string | null = null;
+    let closestRelativeName: string | null = null;
+    let closestRelativePhone: string | null = null;
+    let closestRelativeRelationship: string | null = null;
+    for (const fm of familyMembers) {
+      const rel = (fm.relationship || "").toLowerCase();
+      const name = [fm.firstname, fm.middlename, fm.lastname]
+        .filter(Boolean)
+        .join(" ");
+      if (spouseRelation.some((r) => rel.includes(r))) {
+        if (!spouseName) {
+          spouseName = name || null;
+          spousePhone = (fm.mobileNo as string) || null;
+        }
+      } else if (!closestRelativeName && name) {
+        closestRelativeName = name;
+        closestRelativePhone = (fm.mobileNo as string) || null;
+        closestRelativeRelationship = (fm.relationship as string) || null;
       }
     }
 
@@ -176,9 +290,10 @@ export async function GET(
         `${request.nextUrl.origin}/api/fineract/clients/template`,
         {
           headers: {
-            "x-tenant-slug": tenantSlug,
+            origin: request.headers.get("origin") || "",
+          referer: request.headers.get("referer") || "",
           },
-        }
+        },
       );
       if (clientTemplateResponse.ok) {
         clientTemplate = await clientTemplateResponse.json();
@@ -195,9 +310,10 @@ export async function GET(
           `${request.nextUrl.origin}/api/fineract/loans/template?clientId=${lead.fineractClientId}&productId=${loanDetails.productId}&activeOnly=true&staffInSelectedOfficeOnly=true&templateType=individual`,
           {
             headers: {
-              "x-tenant-slug": tenantSlug,
+              origin: request.headers.get("origin") || "",
+          referer: request.headers.get("referer") || "",
             },
-          }
+          },
         );
         if (templateResponse.ok) {
           loanTemplate = await templateResponse.json();
@@ -265,8 +381,8 @@ export async function GET(
           interestCalculationPeriodType: loanTerms.interestCalculationPeriod
             ? parseInt(loanTerms.interestCalculationPeriod)
             : loanTemplate?.interestCalculationPeriodType?.id || 1,
-          loanIdToClose: "",
-          isTopup: "",
+          loanIdToClose: loanTerms.loanIdToClose || "",
+          isTopup: loanTerms.isTopup ? true : "",
           transactionProcessingStrategyCode:
             loanTerms.repaymentStrategy ||
             loanTemplate?.transactionProcessingStrategyCode ||
@@ -291,10 +407,11 @@ export async function GET(
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              "x-tenant-slug": tenantSlug,
+              origin: request.headers.get("origin") || "",
+          referer: request.headers.get("referer") || "",
             },
             body: JSON.stringify(payload),
-          }
+          },
         );
 
         if (scheduleResponse.ok) {
@@ -311,10 +428,11 @@ export async function GET(
       .join(" ");
 
     // Normalize ZMK to ZMW (Fineract uses legacy ZMK code)
+    const orgCurrency = await getOrgDefaultCurrencyCode();
     const rawCurrency =
       loanTemplate?.currency?.code ||
       repaymentSchedule?.currency?.code ||
-      "ZMW";
+      orgCurrency;
     const currency = rawCurrency === "ZMK" ? "ZMW" : rawCurrency;
     const principal = loanTerms?.principal || 0;
     const interest = repaymentSchedule?.totalInterestCharged || 0;
@@ -334,7 +452,7 @@ export async function GET(
       repaymentSchedule?.periods
         ?.filter(
           (period: any) =>
-            period.period !== undefined && !period.downPaymentPeriod
+            period.period !== undefined && !period.downPaymentPeriod,
         )
         .map((period: any) => ({
           paymentNumber: period.period,
@@ -343,9 +461,9 @@ export async function GET(
                 new Date(
                   period.dueDate[0],
                   period.dueDate[1] - 1,
-                  period.dueDate[2]
+                  period.dueDate[2],
                 ),
-                "dd/MM/yyyy"
+                "dd/MM/yyyy",
               )
             : format(new Date(period.dueDate), "dd/MM/yyyy"),
           paymentAmount:
@@ -375,7 +493,7 @@ export async function GET(
     const tenure =
       loanTerms?.loanTerm && loanTerms?.termFrequency
         ? `${loanTerms.loanTerm} ${getFrequencyLabel(
-            parseInt(loanTerms.termFrequency)
+            parseInt(loanTerms.termFrequency),
           )}`
         : `${numberOfPayments} ${repaymentFrequency}`;
 
@@ -397,20 +515,29 @@ export async function GET(
       const session = await getSession();
       if (session?.user?.userId) {
         // Fetch user details from Fineract to get firstname and lastname
-        const userDetails = await fetchFineractAPI(`/users/${session.user.userId}`);
+        const userDetails = await fetchFineractAPI(
+          `/users/${session.user.userId}`,
+        );
         if (userDetails?.firstname || userDetails?.lastname) {
-          loanOfficerName = [userDetails.firstname, userDetails.lastname]
-            .filter(Boolean)
-            .join(" ") || "N/A";
-          console.log("Loan Officer Name from logged-in user:", loanOfficerName);
+          loanOfficerName =
+            [userDetails.firstname, userDetails.lastname]
+              .filter(Boolean)
+              .join(" ") || "N/A";
+          console.log(
+            "Loan Officer Name from logged-in user:",
+            loanOfficerName,
+          );
         }
       }
     } catch (err) {
-      console.error("Error fetching logged-in user details for loan officer:", err);
+      console.error(
+        "Error fetching logged-in user details for loan officer:",
+        err,
+      );
       // Fallback to loan template lookup if user details fetch fails
       if (loanTemplate?.loanOfficerOptions && loanDetails?.loanOfficer) {
         const officer = loanTemplate.loanOfficerOptions.find(
-          (o: any) => o.id.toString() === loanDetails.loanOfficer
+          (o: any) => o.id.toString() === loanDetails.loanOfficer,
         );
         loanOfficerName = officer?.displayName || "N/A";
       }
@@ -420,7 +547,7 @@ export async function GET(
     let loanPurposeName = "N/A";
     if (loanTemplate?.loanPurposeOptions && loanDetails?.loanPurpose) {
       const purpose = loanTemplate.loanPurposeOptions.find(
-        (p: any) => p.id.toString() === loanDetails.loanPurpose
+        (p: any) => p.id.toString() === loanDetails.loanPurpose,
       );
       loanPurposeName = purpose?.name || "N/A";
     }
@@ -430,7 +557,7 @@ export async function GET(
       .filter(
         (c) =>
           !c.name.toLowerCase().includes("monthly") &&
-          !c.name.toLowerCase().includes("recurring")
+          !c.name.toLowerCase().includes("recurring"),
       )
       .reduce((sum, c) => sum + c.amount, 0);
     const disbursedAmount = principal - upfrontFees;
@@ -448,7 +575,7 @@ export async function GET(
     } else if (lead.genderId && clientTemplate?.genderOptions) {
       // Last resort: lookup genderId in template options
       const genderOption = clientTemplate.genderOptions.find(
-        (g: any) => g.id === lead.genderId
+        (g: any) => g.id === lead.genderId,
       );
       genderName = genderOption?.name || "N/A";
       console.log("Gender from template lookup:", genderName);
@@ -463,39 +590,50 @@ export async function GET(
         console.log("Fetching datatables for client:", lead.fineractClientId);
 
         // Use fetchFineractAPI directly to avoid session context issues with internal fetch calls
-        const datatables = await fetchFineractAPI(`/datatables?apptable=m_client`);
-        console.log("Available datatables:", datatables.map((dt: any) => dt.registeredTableName));
+        const datatables = await fetchFineractAPI(
+          `/datatables?apptable=m_client`,
+        );
+        console.log(
+          "Available datatables:",
+          datatables.map((dt: any) => dt.registeredTableName),
+        );
 
         // Find Employment Information datatable (may have different prefixes like cd_, dt_, m_)
-        const employmentTable = datatables.find(
-          (dt: any) => {
-            const tableName = dt.registeredTableName?.toLowerCase() || "";
-            const displayName = dt.displayName?.toLowerCase() || "";
-            // Match "Employment Information" or "Employment_Information" or similar
-            return tableName.includes("employment") || 
-                   displayName.includes("employment") ||
-                   tableName.includes("employer");
-          }
-        );
+        const employmentTable = datatables.find((dt: any) => {
+          const tableName = dt.registeredTableName?.toLowerCase() || "";
+          const displayName = dt.displayName?.toLowerCase() || "";
+          // Match "Employment Information" or "Employment_Information" or similar
+          return (
+            tableName.includes("employment") ||
+            displayName.includes("employment") ||
+            tableName.includes("employer")
+          );
+        });
 
         if (employmentTable) {
           console.log(
             "Found Employment Information datatable:",
-            employmentTable.registeredTableName
+            employmentTable.registeredTableName,
           );
 
           // Fetch employment data for this client using fetchFineractAPI directly
           const employmentData = await fetchFineractAPI(
-            `/datatables/${encodeURIComponent(employmentTable.registeredTableName)}/${lead.fineractClientId}?genericResultSet=true`
+            `/datatables/${encodeURIComponent(employmentTable.registeredTableName)}/${lead.fineractClientId}?genericResultSet=true`,
           );
-          console.log("Employment data fetched:", JSON.stringify(employmentData, null, 2));
+          console.log(
+            "Employment data fetched:",
+            JSON.stringify(employmentData, null, 2),
+          );
 
           // Extract employer details from the datatable data
           if (employmentData.data && employmentData.data.length > 0) {
             const headers = employmentData.columnHeaders || [];
             const firstRow = employmentData.data[0]?.row || [];
 
-            console.log("Column headers:", headers.map((h: any) => h.columnName));
+            console.log(
+              "Column headers:",
+              headers.map((h: any) => h.columnName),
+            );
             console.log("First row data:", firstRow);
 
             // Find column indices for employer and employee number fields
@@ -503,7 +641,8 @@ export async function GET(
             // - "Employer_Name" or "Employer Name" for employer
             // - "Employee_Number" or "Employee Number" for employee number
             headers.forEach((header: any, index: number) => {
-              const columnName = header.columnName?.toLowerCase().replace(/\s+/g, '_') || "";
+              const columnName =
+                header.columnName?.toLowerCase().replace(/\s+/g, "_") || "";
               const rawColumnName = header.columnName || "";
               const value = firstRow[index];
 
@@ -541,10 +680,10 @@ export async function GET(
                 const value = firstRow[index];
                 // Match columns like "employer_name", "employername", etc. but not "employer_id"
                 if (
-                  columnName.includes("employer") && 
+                  columnName.includes("employer") &&
                   (columnName.includes("name") || !columnName.includes("id")) &&
-                  value && 
-                  typeof value === "string" && 
+                  value &&
+                  typeof value === "string" &&
                   value.length > 0
                 ) {
                   employerName = value;
@@ -559,25 +698,52 @@ export async function GET(
                 const columnName = header.columnName?.toLowerCase() || "";
                 const value = firstRow[index];
                 if (
-                  (columnName.includes("employee") && columnName.includes("num")) ||
+                  (columnName.includes("employee") &&
+                    columnName.includes("num")) ||
                   columnName.includes("staff_no") ||
                   columnName.includes("emp_no")
                 ) {
                   if (value) {
                     employeeNo = value.toString();
-                    console.log("Found employee number (fallback):", employeeNo);
+                    console.log(
+                      "Found employee number (fallback):",
+                      employeeNo,
+                    );
                   }
                 }
               });
             }
           }
         } else {
-          console.log("Employment Information datatable not found in available tables");
+          console.log(
+            "Employment Information datatable not found in available tables",
+          );
         }
       } catch (err) {
         console.error("Error fetching employment info:", err);
       }
     }
+
+    const loanDateFormatted =
+      lead.expectedDisbursementDate
+        ? format(new Date(lead.expectedDisbursementDate), "dd/MM/yyyy")
+        : lead.submittedOnDate
+          ? format(new Date(lead.submittedOnDate), "dd/MM/yyyy")
+          : format(new Date(), "dd/MM/yyyy");
+
+    const nominalInterestRate =
+      loanTerms?.nominalInterestRate ?? repaymentSchedule?.annualInterestRate ?? 0;
+    const executionPlace = lead.officeName || "Head Office";
+    const executionDate = loanDateFormatted;
+    const executionDay = lead.expectedDisbursementDate
+      ? format(new Date(lead.expectedDisbursementDate), "d")
+      : format(new Date(), "d");
+    const executionMonth = lead.expectedDisbursementDate
+      ? format(new Date(lead.expectedDisbursementDate), "MMMM")
+      : format(new Date(), "MMMM");
+    const executionYear = lead.expectedDisbursementDate
+      ? format(new Date(lead.expectedDisbursementDate), "yyyy")
+      : format(new Date(), "yyyy");
 
     const contractData = {
       // Client Information
@@ -609,10 +775,11 @@ export async function GET(
         formattedSchedule.length > 0
           ? formattedSchedule.reduce(
               (sum: number, p: any) => sum + p.paymentAmount,
-              0
+              0,
             ) / formattedSchedule.length
           : totalRepayment / numberOfPayments,
       monthlyPercentageRate: monthlyPercentageRate,
+      nominalInterestRate,
 
       // Schedule
       repaymentSchedule: formattedSchedule,
@@ -625,6 +792,78 @@ export async function GET(
       branch: lead.officeName || "Head Office",
       loanOfficer: loanOfficerName,
       loanPurpose: loanPurposeName,
+      executionPlace,
+      executionDate,
+      executionDay,
+      executionMonth,
+      executionYear,
+
+      // Address & family (for contract prepopulation)
+      residentialAddress:
+        residentialAddress ||
+        (lead.stateContext as any)?.residentialAddress ||
+        (lead.stateContext as any)?.physicalAddress ||
+        (lead.stateMetadata as any)?.residentialAddress ||
+        null,
+      workAddress:
+        workAddress ||
+        (lead.stateContext as any)?.workAddress ||
+        (lead.stateMetadata as any)?.workAddress ||
+        null,
+      spouseName:
+        spouseName ||
+        (lead.stateContext as any)?.spouseName ||
+        (lead.stateMetadata as any)?.spouseName ||
+        null,
+      spousePhone:
+        spousePhone ||
+        (lead.stateContext as any)?.spousePhone ||
+        (lead.stateMetadata as any)?.spousePhone ||
+        null,
+      closestRelativeName:
+        closestRelativeName ||
+        (lead.stateContext as any)?.closestRelativeName ||
+        (lead.stateMetadata as any)?.closestRelativeName ||
+        null,
+      closestRelativePhone:
+        closestRelativePhone ||
+        (lead.stateContext as any)?.closestRelativePhone ||
+        (lead.stateMetadata as any)?.closestRelativePhone ||
+        null,
+      closestRelativeRelationship:
+        closestRelativeRelationship ||
+        (lead.stateContext as any)?.closestRelativeRelationship ||
+        (lead.stateMetadata as any)?.closestRelativeRelationship ||
+        null,
+
+      // Extra fields for tenant-specific templates
+      firstname: lead.firstname || null,
+      middlename: lead.middlename || null,
+      lastname: lead.lastname || null,
+      mobileNo: lead.mobileNo || null,
+      countryCode: lead.countryCode || null,
+      accountNumber: lead.fineractAccountNo || lead.accountNumber || null,
+      loanDate: loanDateFormatted,
+      requestedAmount: lead.requestedAmount ?? null,
+      annualIncome: lead.annualIncome ?? null,
+      monthlyIncome: lead.monthlyIncome ?? null,
+      grossMonthlyIncome: lead.grossMonthlyIncome ?? null,
+      monthlyExpenses: lead.monthlyExpenses ?? null,
+      employmentStatus: lead.employmentStatus || null,
+      employerName: lead.employerName || employerName || null,
+      yearsEmployed: lead.yearsEmployed ?? null,
+      yearsAtCurrentJob: lead.yearsAtCurrentJob || null,
+      businessType: lead.businessType || null,
+      businessOwnership: lead.businessOwnership ?? null,
+      collateralType: lead.collateralType || null,
+      collateralValue: lead.collateralValue ?? null,
+      bankName: lead.bankName || null,
+      existingLoans: lead.existingLoans ?? null,
+      hasExistingLoans: lead.hasExistingLoans ?? null,
+      nationality: lead.nationality || null,
+      familyMembers: lead.familyMembers || [],
+      stateContext: lead.stateContext || null,
+      stateMetadata: lead.stateMetadata || null,
     };
 
     return NextResponse.json({
@@ -640,7 +879,7 @@ export async function GET(
         success: false,
         error: `Failed to fetch contract data: ${errorMessage}`,
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

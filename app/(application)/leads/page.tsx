@@ -12,14 +12,14 @@ export const metadata: Metadata = {
 export default async function LeadsPage() {
   return (
     <>
-      <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
+      <div className="flex flex-col justify-between gap-3 sm:gap-4 md:flex-row md:items-center">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">Lead Management</h2>
-          <p className="text-muted-foreground">
+          <h2 className="text-xl sm:text-2xl font-bold tracking-tight">Lead Management</h2>
+          <p className="text-sm sm:text-base text-muted-foreground">
             Track leads through the loan processing pipeline
           </p>
         </div>
-        <Button className="bg-blue-500 hover:bg-blue-600" asChild>
+        <Button className="bg-blue-500 hover:bg-blue-600 w-full sm:w-auto" asChild>
           <Link href="/leads/new">
             <Plus className="mr-2 h-4 w-4" />
             Add New Lead
@@ -27,7 +27,7 @@ export default async function LeadsPage() {
         </Button>
       </div>
 
-      <div className="mt-6">
+      <div className="mt-4 sm:mt-6">
         <LeadsStatusTabs />
       </div>
     </>

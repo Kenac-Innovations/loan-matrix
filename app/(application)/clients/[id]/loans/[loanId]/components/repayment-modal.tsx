@@ -1,5 +1,7 @@
 "use client";
 
+import { useCurrency } from "@/contexts/currency-context";
+
 import { useState, useEffect, useMemo } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -8,8 +10,9 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { Calendar, Coins, DollarSign, Percent, AlertCircle, CheckCircle } from "lucide-react";
+import { Calendar, Coins, DollarSign, Percent, AlertCircle, CheckCircle, Loader2 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { useReceiptValidation } from "@/hooks/use-receipt-validation";
 
 interface RepaymentTemplate {
   type: {
@@ -51,6 +54,20 @@ interface PaymentType {
   isCashPayment?: boolean;
 }
 
+interface Teller {
+  id: string;
+  fineractTellerId?: number;
+  name: string;
+  officeName?: string;
+}
+
+interface Cashier {
+  id: string | number;
+  dbId?: string;
+  staffName: string;
+  sessionStatus?: string;
+}
+
 export function RepaymentModal({ isOpen, onClose, loanId, onSuccess }: RepaymentModalProps) {
   const [template, setTemplate] = useState<RepaymentTemplate | null>(null);
   const [loading, setLoading] = useState(false);
@@ -58,7 +75,25 @@ export function RepaymentModal({ isOpen, onClose, loanId, onSuccess }: Repayment
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [paymentTypes, setPaymentTypes] = useState<PaymentType[]>([]);
-  
+
+  const {
+    receiptRangesEnabled,
+    isValidating: isValidatingReceipt,
+    validationResult: receiptValidation,
+    validate: validateReceipt,
+    validateDebounced: validateReceiptDebounced,
+    markUsed: markReceiptUsed,
+    clearValidation: clearReceiptValidation,
+  } = useReceiptValidation();
+
+  // Teller and cashier selection (for cash payments - stored but not sent to Fineract repayment)
+  const [tellers, setTellers] = useState<Teller[]>([]);
+  const [cashiers, setCashiers] = useState<Cashier[]>([]);
+  const [selectedTeller, setSelectedTeller] = useState<string>("");
+  const [selectedCashier, setSelectedCashier] = useState<string>("");
+  const [loadingTellers, setLoadingTellers] = useState(false);
+  const [loadingCashiers, setLoadingCashiers] = useState(false);
+
   // Form state
   const [formData, setFormData] = useState({
     transactionDate: "",
@@ -101,6 +136,52 @@ export function RepaymentModal({ isOpen, onClose, loanId, onSuccess }: Repayment
     };
     fetchPaymentTypes();
   }, [isOpen]);
+
+  const fetchTellers = async () => {
+    setLoadingTellers(true);
+    try {
+      const response = await fetch("/api/tellers");
+      if (response.ok) {
+        const data = await response.json();
+        setTellers(data || []);
+      }
+    } catch (error) {
+      console.error("Error fetching tellers:", error);
+    } finally {
+      setLoadingTellers(false);
+    }
+  };
+
+  const fetchCashiers = async (tellerId: string) => {
+    setLoadingCashiers(true);
+    try {
+      const response = await fetch(`/api/tellers/${tellerId}/cashiers`);
+      if (response.ok) {
+        const data = await response.json();
+        const activeCashiers = (Array.isArray(data) ? data : []).filter(
+          (c: Cashier) => c.sessionStatus === "ACTIVE"
+        );
+        setCashiers(activeCashiers);
+      }
+    } catch (error) {
+      console.error("Error fetching cashiers:", error);
+    } finally {
+      setLoadingCashiers(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isOpen) fetchTellers();
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (selectedTeller) {
+      fetchCashiers(selectedTeller);
+    } else {
+      setCashiers([]);
+      setSelectedCashier("");
+    }
+  }, [selectedTeller]);
 
   const fetchRepaymentTemplate = async () => {
     try {
@@ -146,6 +227,14 @@ export function RepaymentModal({ isOpen, onClose, loanId, onSuccess }: Repayment
     });
   }, [template, paymentTypes]);
 
+  const selectedPaymentTypeIsCash = useMemo(() => {
+    if (!formData.paymentTypeId) return false;
+    const option = mergedPaymentTypeOptions.find(
+      (o) => o.id.toString() === formData.paymentTypeId
+    );
+    return !!option?.isCashPayment;
+  }, [formData.paymentTypeId, mergedPaymentTypeOptions]);
+
   const handleSubmit = async () => {
     try {
       setSubmitting(true);
@@ -159,6 +248,29 @@ export function RepaymentModal({ isOpen, onClose, loanId, onSuccess }: Repayment
       if (!formData.paymentTypeId) {
         setError("Payment type is required so the teller balance can be updated.");
         return;
+      }
+
+      if (selectedPaymentTypeIsCash) {
+        if (!selectedTeller) {
+          setError("Please select a teller for cash repayments.");
+          return;
+        }
+        if (!selectedCashier) {
+          setError("Please select a cashier with an active session for cash repayments.");
+          return;
+        }
+        // Validate receipt number if receipt ranges are enabled
+        if (receiptRangesEnabled) {
+          if (!formData.receiptNumber.trim()) {
+            setError("Receipt number is required for cash transactions.");
+            return;
+          }
+          const result = await validateReceipt(formData.receiptNumber);
+          if (!result.valid) {
+            setError(result.error || "Invalid receipt number");
+            return;
+          }
+        }
       }
 
       // Format date for Fineract - ISO format
@@ -177,6 +289,8 @@ export function RepaymentModal({ isOpen, onClose, loanId, onSuccess }: Repayment
       if (formData.externalId) payload.externalId = formData.externalId;
       payload.paymentTypeId = parseInt(formData.paymentTypeId, 10);
       if (formData.note) payload.note = formData.note;
+
+      // Do NOT send tellerId/cashierId in repayment - Fineract returns 400. Store only; use for allocate after 200.
 
       // Add payment details if enabled
       if (formData.showPaymentDetails) {
@@ -202,9 +316,59 @@ export function RepaymentModal({ isOpen, onClose, loanId, onSuccess }: Repayment
 
       const result = await response.json();
       console.log("Repayment submitted successfully:", result);
-      
+
+      // Mark receipt number as used
+      if (receiptRangesEnabled && formData.receiptNumber.trim()) {
+        await markReceiptUsed({
+          receiptNumber: formData.receiptNumber.trim(),
+          transactionType: "REPAYMENT",
+          fineractTxnId: result.resourceId?.toString(),
+          loanId,
+        });
+      }
+
+      // After 200: call allocate with stored teller/cashier (never sent in repayment payload)
+      if (selectedPaymentTypeIsCash && selectedTeller && selectedCashier) {
+        const amount = parseFloat(formData.transactionAmount);
+        const currency = template?.currency?.code ?? orgCurrency;
+        const normalizedCurrency = currency?.toUpperCase() === "ZMK" ? "ZMW" : currency ?? orgCurrency;
+        const date = formData.transactionDate || new Date().toISOString().split("T")[0];
+
+        try {
+          const allocRes = await fetch(
+            `/api/tellers/${selectedTeller}/cashiers/${selectedCashier}/allocate`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                amount,
+                currency,
+                date,
+                notes: "Loan repayment",
+                source: "repayment",
+              }),
+            }
+          );
+          if (!allocRes.ok) {
+            const errData = await allocRes.json();
+            setError(
+              `Repayment recorded, but till balance was not updated: ${errData.error || allocRes.statusText}`
+            );
+            setSubmitting(false);
+            return;
+          }
+        } catch (allocErr) {
+          console.error("Allocate after repayment failed:", allocErr);
+          setError(
+            "Repayment recorded, but till balance was not updated. Please allocate manually."
+          );
+          setSubmitting(false);
+          return;
+        }
+      }
+
       setSuccess(true);
-      
+
       // Close modal after a short delay
       setTimeout(() => {
         onSuccess();
@@ -235,18 +399,21 @@ export function RepaymentModal({ isOpen, onClose, loanId, onSuccess }: Repayment
       receiptNumber: "",
       bankNumber: "",
     });
+    setSelectedTeller("");
+    setSelectedCashier("");
     setError(null);
     setSuccess(false);
   };
 
-  // Normalize currency code - converts deprecated ZMK to ZMW
+  // Normalize currency code - converts deprecated ZMK to current code
+  const { currencyCode: orgCurrency } = useCurrency();
   const normalizeCurrencyCode = (code: string | undefined | null): string => {
-    if (!code) return "ZMW";
+    if (!code) return orgCurrency;
     if (code.toUpperCase() === "ZMK") return "ZMW";
     return code;
   };
 
-  const formatCurrency = (amount: number, currencyCode: string = "ZMW"): string => {
+  const formatCurrency = (amount: number, currencyCode: string = orgCurrency): string => {
     return new Intl.NumberFormat("en-US", {
       style: "currency",
       currency: normalizeCurrencyCode(currencyCode),
@@ -383,7 +550,17 @@ export function RepaymentModal({ isOpen, onClose, loanId, onSuccess }: Repayment
             {/* Payment Type */}
             <div className="space-y-2">
               <Label htmlFor="payment-type">Payment Type</Label>
-              <Select value={formData.paymentTypeId} onValueChange={(value) => setFormData(prev => ({ ...prev, paymentTypeId: value }))}>
+              <Select
+                value={formData.paymentTypeId}
+                onValueChange={(value) => {
+                  setFormData((prev) => ({ ...prev, paymentTypeId: value }));
+                  const option = mergedPaymentTypeOptions.find((o) => o.id.toString() === value);
+                  if (!option?.isCashPayment) {
+                    setSelectedTeller("");
+                    setSelectedCashier("");
+                  }
+                }}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="Select payment type" />
                 </SelectTrigger>
@@ -406,6 +583,120 @@ export function RepaymentModal({ isOpen, onClose, loanId, onSuccess }: Repayment
                 Required. Select a cash payment method to update the teller balance.
               </p>
             </div>
+
+            {/* Teller and Cashier selection (for cash payments) */}
+            {selectedPaymentTypeIsCash && (
+              <div className="space-y-4 p-4 border rounded-lg bg-muted/30">
+                <Label className="text-sm font-medium">
+                  Cash till location (required for teller balance)
+                </Label>
+                <div className="space-y-2">
+                  <Label>Teller *</Label>
+                  <Select value={selectedTeller} onValueChange={setSelectedTeller}>
+                    <SelectTrigger>
+                      <SelectValue
+                        placeholder={
+                          loadingTellers ? "Loading tellers..." : "Select a teller"
+                        }
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {tellers.map((teller) => (
+                        <SelectItem
+                          key={teller.id}
+                          value={teller.fineractTellerId?.toString() || teller.id}
+                        >
+                          {teller.name}
+                          {teller.officeName ? ` - ${teller.officeName}` : ""}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Cashier *</Label>
+                  <Select
+                    value={selectedCashier}
+                    onValueChange={setSelectedCashier}
+                    disabled={!selectedTeller || loadingCashiers}
+                  >
+                    <SelectTrigger>
+                      <SelectValue
+                        placeholder={
+                          !selectedTeller
+                            ? "Select a teller first"
+                            : loadingCashiers
+                            ? "Loading cashiers..."
+                            : cashiers.length === 0
+                            ? "No cashiers with active sessions"
+                            : "Select a cashier"
+                        }
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {cashiers.map((cashier) => (
+                        <SelectItem
+                          key={cashier.dbId || cashier.id}
+                          value={String(cashier.id)}
+                        >
+                          {cashier.staffName}
+                          {cashier.sessionStatus === "ACTIVE" && (
+                            <span className="ml-2 text-xs text-muted-foreground">
+                              (Active)
+                            </span>
+                          )}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {selectedTeller && cashiers.length === 0 && !loadingCashiers && (
+                  <p className="text-sm text-amber-600">
+                    No cashiers have active sessions. Start a session first.
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Receipt Number — shown prominently for tenants with receipt ranges on cash payments */}
+            {receiptRangesEnabled && selectedPaymentTypeIsCash && (
+              <div className="space-y-2 p-4 border rounded-lg bg-muted/30">
+                <Label htmlFor="receipt-number-top">
+                  Receipt Number <span className="text-red-500">*</span>
+                </Label>
+                <div className="relative">
+                  <Input
+                    id="receipt-number-top"
+                    value={formData.receiptNumber}
+                    onChange={(e) => {
+                      setFormData(prev => ({ ...prev, receiptNumber: e.target.value }));
+                      clearReceiptValidation();
+                      if (e.target.value.trim()) validateReceiptDebounced(e.target.value);
+                    }}
+                    placeholder="Enter receipt number"
+                    className={
+                      receiptValidation
+                        ? receiptValidation.valid
+                          ? "border-green-500 pr-8"
+                          : "border-red-500 pr-8"
+                        : ""
+                    }
+                  />
+                  {isValidatingReceipt && (
+                    <Loader2 className="absolute right-2 top-2.5 h-4 w-4 animate-spin text-muted-foreground" />
+                  )}
+                  {!isValidatingReceipt && receiptValidation?.valid && (
+                    <CheckCircle className="absolute right-2 top-2.5 h-4 w-4 text-green-500" />
+                  )}
+                  {!isValidatingReceipt && receiptValidation && !receiptValidation.valid && (
+                    <AlertCircle className="absolute right-2 top-2.5 h-4 w-4 text-red-500" />
+                  )}
+                </div>
+                {receiptValidation && !receiptValidation.valid && (
+                  <p className="text-xs text-red-500">{receiptValidation.error}</p>
+                )}
+              </div>
+            )}
 
             {/* Show Payment Details Toggle */}
             <div className="flex items-center space-x-2">
@@ -449,15 +740,17 @@ export function RepaymentModal({ isOpen, onClose, loanId, onSuccess }: Repayment
                       placeholder="Enter routing code"
                     />
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="receipt-number">Receipt #</Label>
-                    <Input
-                      id="receipt-number"
-                      value={formData.receiptNumber}
-                      onChange={(e) => setFormData(prev => ({ ...prev, receiptNumber: e.target.value }))}
-                      placeholder="Enter receipt number"
-                    />
-                  </div>
+                  {!receiptRangesEnabled && (
+                    <div className="space-y-2">
+                      <Label htmlFor="receipt-number">Receipt #</Label>
+                      <Input
+                        id="receipt-number"
+                        value={formData.receiptNumber}
+                        onChange={(e) => setFormData(prev => ({ ...prev, receiptNumber: e.target.value }))}
+                        placeholder="Enter receipt number"
+                      />
+                    </div>
+                  )}
                   <div className="space-y-2">
                     <Label htmlFor="bank-number">Bank #</Label>
                     <Input
@@ -489,9 +782,15 @@ export function RepaymentModal({ isOpen, onClose, loanId, onSuccess }: Repayment
           <Button variant="outline" onClick={onClose} disabled={submitting}>
             Cancel
           </Button>
-          <Button 
-            onClick={handleSubmit} 
-            disabled={submitting || !formData.transactionDate || !formData.transactionAmount}
+          <Button
+            onClick={handleSubmit}
+            disabled={
+              submitting ||
+              !formData.transactionDate ||
+              !formData.transactionAmount ||
+              !formData.paymentTypeId ||
+              (selectedPaymentTypeIsCash && (!selectedTeller || !selectedCashier))
+            }
             className="bg-blue-600 hover:bg-blue-700"
           >
             {submitting ? (

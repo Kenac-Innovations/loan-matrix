@@ -27,6 +27,9 @@ import {
   Eye,
   Trash2,
   Plus,
+  Camera,
+  Settings,
+  RefreshCw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -102,6 +105,7 @@ import {
 import { LeadLocalStorage } from "@/lib/lead-local-storage";
 import { ProspectContinuationDialog } from "@/app/(application)/leads/new/components/prospect-continuation-dialog";
 import { useToast } from "@/hooks/use-toast";
+import { useCurrency } from "@/contexts/currency-context";
 import { useThemeColors } from "@/lib/theme-utils";
 import { Calendar } from "@/components/ui/calender";
 import { SkeletonForm } from "./client-registration-form-skeleton";
@@ -135,14 +139,25 @@ const clientFormSchema = z
       .min(1, "Mobile number is required")
       .refine((val) => {
         const digitsOnly = val.replace(/\D/g, "");
-        // Zambia mobile numbers must be exactly 9 digits after +260
-        return digitsOnly.length === 9;
-      }, "Phone number must be exactly 9 digits (e.g., 977123456)"),
-    countryCode: z.string().default("+260"), // Zambia
+        return digitsOnly.length >= 7 && digitsOnly.length <= 12;
+      }, "Please enter a valid phone number"),
+    countryCode: z.string().default("+260"),
     emailAddress: z.string().email("Invalid email address"),
     clientTypeId: z.string().optional(),
     clientClassificationId: z.string().optional(),
-    submittedOnDate: z.date().default(() => new Date()),
+    submittedOnDate: z
+      .date({
+        required_error: "Submitted on date is required",
+      })
+      .default(() => new Date())
+      .refine(
+        (d) => {
+          const today = new Date();
+          today.setHours(23, 59, 59, 999);
+          return d.getTime() <= today.getTime();
+        },
+        { message: "Submitted date cannot be in the future" }
+      ),
 
     // Financial Information
     monthlyIncomeRange: z.string().optional(),
@@ -266,73 +281,81 @@ const savingsProductSchema = z.object({
 
 type ClientFormValues = z.infer<typeof clientFormSchema>;
 
-// TODO: Make country code configuration (DEFAULT_COUNTRY_CODE, allowed countries) configurable via tenant settings or environment variables
-// Currently hardcoded to Zambia (+260) only
+// Phone country codes available for new lead / client phone number
+const PHONE_COUNTRY_CODES = [
+  { code: "+260", label: "🇿🇲 +260 (Zambia)" },
+  { code: "+263", label: "🇿🇼 +263 (Zimbabwe)" },
+  { code: "+44", label: "🇬🇧 +44 (UK)" },
+];
 
-// Default country code - Zambia
-const DEFAULT_COUNTRY_CODE = "+260";
-
-// Phone number parsing utility - Zambia only
-// Normalizes phone numbers to exactly 9 digits after +260
+// Phone number parsing utility - works with any country code
 const parsePhoneNumber = (
-  phoneNumber: string
+  phoneNumber: string,
+  currentCountryCode: string = "+260"
 ): { countryCode: string; number: string } => {
-  if (!phoneNumber) return { countryCode: DEFAULT_COUNTRY_CODE, number: "" };
+  if (!phoneNumber) return { countryCode: currentCountryCode, number: "" };
 
-  // Remove all non-digit characters for parsing
   let digitsOnly = phoneNumber.replace(/\D/g, "");
 
-  // Check if number starts with Zambia country code (260)
-  if (digitsOnly.startsWith("260")) {
-    digitsOnly = digitsOnly.substring(3);
+  // Try to detect country code from known codes (longest match first)
+  const sortedCodes = [...PHONE_COUNTRY_CODES].sort(
+    (a, b) => b.code.length - a.code.length
+  );
+  for (const { code } of sortedCodes) {
+    const codeDigits = code.replace("+", "");
+    if (digitsOnly.startsWith(codeDigits)) {
+      digitsOnly = digitsOnly.substring(codeDigits.length);
+      if (digitsOnly.startsWith("0") && digitsOnly.length > 1) {
+        digitsOnly = digitsOnly.substring(1);
+      }
+      return { countryCode: code, number: digitsOnly };
+    }
   }
 
-  // Remove leading 0 if present (e.g., 0977123456 -> 977123456)
-  if (digitsOnly.length === 10 && digitsOnly.startsWith("0")) {
+  // Strip the current country code prefix if present
+  const currentDigits = currentCountryCode.replace("+", "");
+  if (digitsOnly.startsWith(currentDigits)) {
+    digitsOnly = digitsOnly.substring(currentDigits.length);
+  }
+
+  if (digitsOnly.startsWith("0") && digitsOnly.length > 1) {
     digitsOnly = digitsOnly.substring(1);
   }
 
-  // Return the normalized 9-digit number
-  return { countryCode: DEFAULT_COUNTRY_CODE, number: digitsOnly };
+  return { countryCode: currentCountryCode, number: digitsOnly };
 };
 
-// Validate Zambia phone number format - must be exactly 9 digits
-const validateZambiaPhoneNumber = (number: string): boolean => {
+// Validate phone number format
+const validatePhoneNumber = (number: string, expectedDigits: number = 9): boolean => {
   const digitsOnly = number.replace(/\D/g, "");
-  // Zambia mobile numbers must be exactly 9 digits after +260 (e.g., 977123456)
-  // If user entered with leading 0 (e.g., 0977123456), strip the 0
-  if (digitsOnly.length === 9) {
+  if (digitsOnly.length === expectedDigits) {
     return true;
   }
-  // Handle case where user entered 10 digits starting with 0
-  if (digitsOnly.length === 10 && digitsOnly.startsWith("0")) {
-    return true; // Will be normalized to 9 digits
+  // Handle case where user entered digits starting with 0
+  if (digitsOnly.length === expectedDigits + 1 && digitsOnly.startsWith("0")) {
+    return true;
   }
   return false;
 };
 
-// Format phone number for display - Zambia format (XX XXX XXXX)
-// Must be exactly 9 digits after +260
-const formatPhoneNumber = (number: string): string => {
+// Format phone number for display
+const formatPhoneNumber = (number: string, maxDigits: number = 9): string => {
   if (!number) return "";
   let digitsOnly = number.replace(/\D/g, "");
 
-  // Remove leading 0 if present (convert 09XXXXXXXX to 9XXXXXXXX)
-  if (digitsOnly.startsWith("0") && digitsOnly.length === 10) {
+  // Remove leading 0 if present
+  if (digitsOnly.startsWith("0") && digitsOnly.length === maxDigits + 1) {
     digitsOnly = digitsOnly.substring(1);
   }
 
-  // Cap at 9 digits max (Zambia mobile numbers are exactly 9 digits after +260)
-  if (digitsOnly.length > 9) {
-    digitsOnly = digitsOnly.substring(0, 9);
+  // Cap at max digits
+  if (digitsOnly.length > maxDigits) {
+    digitsOnly = digitsOnly.substring(0, maxDigits);
   }
 
-  // Zambia mobile numbers are 9 digits: format as 9X XXX XXXX
+  // Format as XX XXX XXXX for 9-digit numbers
   if (digitsOnly.length === 9) {
-    return `${digitsOnly.slice(0, 2)} ${digitsOnly.slice(
-      2,
-      5
-    )} ${digitsOnly.slice(5)}`;
+    return `${digitsOnly.slice(0, 2)} ${digitsOnly.slice(2, 5)} ${digitsOnly.slice(5)}`;
   }
   // Return partial number as-is while typing
   return digitsOnly;
@@ -368,6 +391,7 @@ interface ClientRegistrationFormProps {
   setClientCreatedInFineract?: (value: boolean) => void;
   isSubmitting?: boolean;
   onAllSectionsComplete?: (isComplete: boolean) => void;
+  onLeadIdChange?: (leadId: string) => void;
 }
 
 export function ClientRegistrationForm({
@@ -377,6 +401,7 @@ export function ClientRegistrationForm({
   clientCreatedInFineract = false,
   onClientCreated,
   onFormSubmit,
+  onLeadIdChange,
   setFormCompletionStatus,
   setClientCreatedInFineract,
   isSubmitting = false,
@@ -393,6 +418,7 @@ export function ClientRegistrationForm({
   const router = useRouter();
   const searchParams = useSearchParams();
   const colors = useThemeColors();
+  const { locale: tenantLocale } = useCurrency();
 
   // State for multi-step form
   const [currentStep, setCurrentStep] = useState(1);
@@ -1120,6 +1146,7 @@ export function ClientRegistrationForm({
   const [uploadingDocuments, setUploadingDocuments] = useState(false);
   const [showCameraModal, setShowCameraModal] = useState(false);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
+  const [cameraPermissionDenied, setCameraPermissionDenied] = useState(false);
   const [identifiersTemplate, setIdentifiersTemplate] = useState<any>(null);
   const [showDocumentTypeDialog, setShowDocumentTypeDialog] = useState(false);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
@@ -1769,7 +1796,7 @@ export function ClientRegistrationForm({
       lastname: "",
       isStaff: false,
       mobileNo: "",
-      countryCode: "+260", // Zambia
+      countryCode: tenantLocale.countryCode,
       emailAddress: "",
       submittedOnDate: new Date(),
       active: true,
@@ -2121,9 +2148,14 @@ export function ClientRegistrationForm({
           setClientClassifications(formData.clientClassifications);
           setSavingsProducts(formData.savingsProducts);
 
-          // Set activation date if provided
+          // Set activation date if provided (convert to Date if it's a string/number from JSON)
           if (formData.activationDate) {
-            form.setValue("activationDate", formData.activationDate);
+            const activationDate = formData.activationDate instanceof Date
+              ? formData.activationDate
+              : new Date(formData.activationDate);
+            if (!isNaN(activationDate.getTime())) {
+              form.setValue("activationDate", activationDate);
+            }
           }
         } else {
           // Otherwise fetch data from server actions
@@ -2175,7 +2207,7 @@ export function ClientRegistrationForm({
               genderId: lead.genderId?.toString() || undefined,
               isStaff: lead.isStaff || false,
               mobileNo: lead.mobileNo || "",
-              countryCode: lead.countryCode || "+260", // Default to Zambia
+              countryCode: lead.countryCode || tenantLocale.countryCode,
               emailAddress: lead.emailAddress || "",
               clientTypeId: lead.clientTypeId?.toString() || undefined,
               clientClassificationId:
@@ -2485,6 +2517,7 @@ export function ClientRegistrationForm({
     if (existingProspectData) {
       // Set the current lead ID and navigate to the existing prospect
       setCurrentLeadId(existingProspectData.leadId);
+      onLeadIdChange?.(existingProspectData.leadId);
 
       // Update the URL to reflect the leadId
       const newUrl = `/leads/new?id=${existingProspectData.leadId}`;
@@ -2637,6 +2670,7 @@ export function ClientRegistrationForm({
           setIsSettingLeadIdFromAutoSave(true);
           // If no leadId yet, update URL and state with the new leadId
           setCurrentLeadId(leadId);
+          onLeadIdChange?.(leadId);
         }
 
         // Save to local storage
@@ -2672,33 +2706,24 @@ export function ClientRegistrationForm({
 
   // Handle phone number changes with automatic country code detection
   const handlePhoneNumberChange = (value: string) => {
-    // Parse the phone number to detect country code
-    const parsed = parsePhoneNumber(value);
+    const currentCountryCode = form.getValues("countryCode");
+    const parsed = parsePhoneNumber(value, currentCountryCode);
 
-    // Update country code if detected (and different from current)
-    if (parsed.countryCode) {
-      const currentCountryCode = externalForm
-        ? externalForm.getValues("countryCode")
-        : form.getValues("countryCode");
-
-      if (parsed.countryCode !== currentCountryCode) {
-        if (externalForm) {
-          externalForm.setValue("countryCode", parsed.countryCode);
-        } else {
-          form.setValue("countryCode", parsed.countryCode);
-        }
+    // Only update country code if a different known code was detected from the input
+    if (parsed.countryCode !== currentCountryCode) {
+      form.setValue("countryCode", parsed.countryCode);
+      if (externalForm) {
+        externalForm.setValue("countryCode", parsed.countryCode);
       }
     }
 
-    // Format and set the phone number (without country code)
     const formattedNumber = formatPhoneNumber(parsed.number);
     if (externalForm) {
       externalForm.setValue("mobileNo", formattedNumber, {
         shouldValidate: false,
       });
-    } else {
-      form.setValue("mobileNo", formattedNumber, { shouldValidate: false });
     }
+    form.setValue("mobileNo", formattedNumber, { shouldValidate: false });
   };
 
   // Fetch clients for the client picker (same logic as clients page)
@@ -2933,7 +2958,8 @@ export function ClientRegistrationForm({
               form.setValue("emailAddress", fineractData.emailAddress);
             }
             if (fineractData.mobileNo) {
-              const parsed = parsePhoneNumber(fineractData.mobileNo);
+              const currentCode = form.getValues("countryCode") || tenantLocale.countryCode;
+              const parsed = parsePhoneNumber(fineractData.mobileNo, currentCode);
               form.setValue("mobileNo", formatPhoneNumber(parsed.number));
               form.setValue("countryCode", parsed.countryCode);
             }
@@ -3172,7 +3198,7 @@ export function ClientRegistrationForm({
       lastname: "",
       isStaff: false,
       mobileNo: "",
-      countryCode: "+260", // Zambia
+      countryCode: tenantLocale.countryCode,
       emailAddress: "",
       submittedOnDate: new Date(),
       active: true,
@@ -3439,21 +3465,14 @@ export function ClientRegistrationForm({
             const existingCountryCode = getBestValue(
               fineractData?.countryCode,
               localData?.countryCode,
-              "+263"
+              tenantLocale.countryCode
             );
 
-            // If we have a phone number, try to parse it
             if (phoneNumber) {
-              const parsed = parsePhoneNumber(phoneNumber);
-              // If parsing detected a country code, use it; otherwise use existing
-              const finalCountryCode =
-                parsed.countryCode !== "+263" || !existingCountryCode
-                  ? parsed.countryCode
-                  : existingCountryCode;
-
+              const parsed = parsePhoneNumber(phoneNumber, existingCountryCode);
               return {
                 mobileNo: formatPhoneNumber(parsed.number),
-                countryCode: finalCountryCode,
+                countryCode: parsed.countryCode,
               };
             }
 
@@ -3603,6 +3622,7 @@ export function ClientRegistrationForm({
           if (saveResult.success && saveResult.leadId) {
             // Update currentLeadId with the newly created lead
             setCurrentLeadId(saveResult.leadId);
+            onLeadIdChange?.(saveResult.leadId);
 
             // Save to localStorage for persistence
             LeadLocalStorage.save({
@@ -3753,7 +3773,7 @@ export function ClientRegistrationForm({
       lastname: "",
       isStaff: false,
       mobileNo: "",
-      countryCode: "+260", // Zambia
+      countryCode: tenantLocale.countryCode,
       emailAddress: "",
       submittedOnDate: new Date(),
       active: true,
@@ -3902,6 +3922,7 @@ export function ClientRegistrationForm({
 
       effectiveLeadId = saveResult.leadId;
       setCurrentLeadId(effectiveLeadId);
+      if (effectiveLeadId) onLeadIdChange?.(effectiveLeadId);
     }
 
     try {
@@ -4073,8 +4094,56 @@ export function ClientRegistrationForm({
     stream.getTracks().forEach((track) => track.stop());
   };
 
+  const attemptCameraAccess = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
+      });
+      setCameraPermissionDenied(false);
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+    } catch (err: any) {
+      console.error("Error accessing camera:", err);
+
+      if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
+        setCameraPermissionDenied(true);
+        return;
+      } else if (err.name === "NotFoundError" || err.name === "DevicesNotFoundError") {
+        error({
+          title: "Camera Error",
+          description: "No camera found on this device. Please connect a camera and try again.",
+        });
+      } else if (err.name === "NotReadableError" || err.name === "TrackStartError") {
+        error({
+          title: "Camera Error",
+          description: "Camera is in use by another application. Please close other apps using the camera and try again.",
+        });
+      } else if (err.name === "OverconstrainedError") {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+          setCameraPermissionDenied(false);
+          if (videoRef.current) {
+            videoRef.current.srcObject = stream;
+          }
+          return;
+        } catch {
+          error({
+            title: "Camera Error",
+            description: "Could not access camera with any settings.",
+          });
+        }
+      } else {
+        error({
+          title: "Camera Error",
+          description: "Could not access camera. Please check permissions.",
+        });
+      }
+      setShowCameraModal(false);
+    }
+  };
+
   const handleStartCamera = async () => {
-    // Check if we're in a secure context (HTTPS or localhost)
     if (!window.isSecureContext) {
       error({
         title: "Camera Not Available",
@@ -4083,7 +4152,6 @@ export function ClientRegistrationForm({
       return;
     }
 
-    // Check if mediaDevices API is available
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       error({
         title: "Camera Not Supported",
@@ -4094,65 +4162,9 @@ export function ClientRegistrationForm({
 
     setShowCameraModal(true);
     setCapturedImage(null);
+    setCameraPermissionDenied(false);
 
-    // Wait for modal to open before accessing camera
-    setTimeout(async () => {
-      try {
-        // First check permission status if available
-        if (navigator.permissions) {
-          try {
-            const permissionStatus = await navigator.permissions.query({ name: "camera" as PermissionName });
-            if (permissionStatus.state === "denied") {
-              error({
-                title: "Camera Permission Denied",
-                description: "Camera access was denied. Please allow camera access in your browser settings and try again.",
-              });
-              setShowCameraModal(false);
-              return;
-            }
-          } catch {
-            // permissions.query might not be supported for camera in some browsers, continue anyway
-          }
-        }
-
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
-        });
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-        }
-      } catch (err: any) {
-        console.error("Error accessing camera:", err);
-        
-        let errorMessage = "Could not access camera. Please check permissions.";
-        
-        if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
-          errorMessage = "Camera permission was denied. Please click the camera icon in your browser's address bar to allow access, then try again.";
-        } else if (err.name === "NotFoundError" || err.name === "DevicesNotFoundError") {
-          errorMessage = "No camera found on this device. Please connect a camera and try again.";
-        } else if (err.name === "NotReadableError" || err.name === "TrackStartError") {
-          errorMessage = "Camera is in use by another application. Please close other apps using the camera and try again.";
-        } else if (err.name === "OverconstrainedError") {
-          errorMessage = "Camera does not support the required settings. Trying with default settings...";
-          // Try again with basic constraints
-          try {
-            const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-            if (videoRef.current) {
-              videoRef.current.srcObject = stream;
-            }
-            return; // Success with basic constraints
-          } catch {
-            errorMessage = "Could not access camera with any settings.";
-          }
-        }
-        
-        error({
-          title: "Camera Error",
-          description: errorMessage,
-        });
-        setShowCameraModal(false);
-      }
-    }, 100);
+    setTimeout(() => attemptCameraAccess(), 100);
   };
 
   const handleStopCamera = () => {
@@ -5863,7 +5875,7 @@ export function ClientRegistrationForm({
                       className="w-full"
                     >
                       <TabsList
-                        className={`grid${
+                        className={`grid ${
                           clientCreatedInFineract
                             ? "grid-cols-3"
                             : "grid-cols-2"
@@ -6739,26 +6751,40 @@ export function ClientRegistrationForm({
                                   </Label>
                                   <div className="flex space-x-2">
                                     <Controller
-                                      control={form.control}
+                                      control={
+                                        externalForm
+                                          ? externalForm.control
+                                          : form.control
+                                      }
                                       name="countryCode"
                                       render={({ field }) => (
                                         <Select
-                                          onValueChange={field.onChange}
-                                          defaultValue={field.value}
+                                          onValueChange={(value) => {
+                                            field.onChange(value);
+                                            form.setValue("countryCode", value);
+                                            if (externalForm) {
+                                              externalForm.setValue(
+                                                "countryCode",
+                                                value
+                                              );
+                                            }
+                                          }}
+                                          value={field.value}
                                           disabled={isFormDisabled}
                                         >
                                           <SelectTrigger
                                             className={`h-10 w-24 sm:w-28 lg:w-32 border-${colors.borderColor} ${colors.inputBg} flex-shrink-0`}
                                           >
-                                            <SelectValue placeholder="+260" />
+                                            <SelectValue placeholder={tenantLocale.countryCode} />
                                           </SelectTrigger>
                                           <SelectContent
                                             className={`border-${colors.borderColor} ${colors.dropdownBg} ${colors.textColor}`}
                                           >
-                                            {/* TODO: Make country options configurable via tenant settings */}
-                                            <SelectItem value="+260">
-                                              🇿🇲 +260
-                                            </SelectItem>
+                                            {PHONE_COUNTRY_CODES.map(({ code, label }) => (
+                                              <SelectItem key={code} value={code}>
+                                                {label}
+                                              </SelectItem>
+                                            ))}
                                           </SelectContent>
                                         </Select>
                                       )}
@@ -6766,8 +6792,8 @@ export function ClientRegistrationForm({
                                     <div className="relative">
                                       <Input
                                         id="mobileNo"
-                                        placeholder="9X XXX XXXX"
-                                        maxLength={12}
+                                        placeholder={tenantLocale.phonePlaceholder}
+                                        maxLength={tenantLocale.phoneDigits + 3}
                                         className={getInputErrorStyling(
                                           hasFieldError(
                                             form,
@@ -7172,7 +7198,8 @@ export function ClientRegistrationForm({
                                             selected={field.value}
                                             onSelect={field.onChange}
                                             disabled={(date) =>
-                                              date < new Date()
+                                              date > new Date() ||
+                                              date < new Date("1900-01-01")
                                             }
                                             captionLayout="dropdown"
                                             initialFocus
@@ -7184,7 +7211,7 @@ export function ClientRegistrationForm({
                                   <p
                                     className={`text-xs ${colors.textColorMuted}`}
                                   >
-                                    Date when application was submitted
+                                    Date when application was submitted (back dating allowed)
                                   </p>
                                   {form.formState.errors.submittedOnDate && (
                                     <p className="text-sm text-red-500">
@@ -7519,6 +7546,7 @@ export function ClientRegistrationForm({
                                       // Update lead ID if returned and update URL
                                       if (result.leadId) {
                                         setCurrentLeadId(result.leadId);
+                                        onLeadIdChange?.(result.leadId);
                                         // Update URL with the new lead ID using replaceState for reliability
                                         console.log(
                                           "==========> Updating URL with leadId:",
@@ -8006,7 +8034,6 @@ export function ClientRegistrationForm({
                                   onOpenChange={(open) => {
                                     setShowCameraModal(open);
                                     if (!open) {
-                                      // Stop camera when modal closes
                                       if (videoRef.current) {
                                         const stream = videoRef.current
                                           .srcObject as MediaStream;
@@ -8015,24 +8042,68 @@ export function ClientRegistrationForm({
                                           .forEach((track) => track.stop());
                                       }
                                       setCapturedImage(null);
+                                      setCameraPermissionDenied(false);
                                     }
                                   }}
                                 >
                                   <DialogContent className="max-w-2xl">
                                     <DialogHeader>
                                       <DialogTitle className={colors.textColor}>
-                                        Capture Selfie
+                                        {cameraPermissionDenied ? "Camera Permission Required" : "Capture Selfie"}
                                       </DialogTitle>
                                       <DialogDescription
                                         className={colors.textColorMuted}
                                       >
-                                        {capturedImage
-                                          ? "Review your photo. You can retake or confirm."
-                                          : "Position your face in the frame and click capture."}
+                                        {cameraPermissionDenied
+                                          ? "Camera access was blocked. Please follow the steps below to enable it."
+                                          : capturedImage
+                                            ? "Review your photo. You can retake or confirm."
+                                            : "Position your face in the frame and click capture."}
                                       </DialogDescription>
                                     </DialogHeader>
                                     <div className="space-y-4">
-                                      {!capturedImage ? (
+                                      {cameraPermissionDenied ? (
+                                        <div className="space-y-4">
+                                          <div className="flex items-center gap-3 p-4 rounded-lg bg-amber-50 border border-amber-200 dark:bg-amber-950/30 dark:border-amber-800">
+                                            <Camera className="h-6 w-6 text-amber-600 flex-shrink-0" />
+                                            <p className="text-sm text-amber-800 dark:text-amber-200">
+                                              Your browser has blocked camera access for this site. You need to manually allow it in your browser settings.
+                                            </p>
+                                          </div>
+                                          <div className="space-y-3 p-4 rounded-lg bg-muted/50">
+                                            <h4 className="font-medium text-sm flex items-center gap-2">
+                                              <Settings className="h-4 w-4" />
+                                              How to enable camera access:
+                                            </h4>
+                                            <div className="space-y-4 text-sm text-muted-foreground">
+                                              <div>
+                                                <p className="font-medium text-foreground mb-1">Chrome / Edge:</p>
+                                                <ol className="list-decimal list-inside space-y-1 ml-2">
+                                                  <li>Click the <strong>lock icon</strong> (or tune icon) in the address bar</li>
+                                                  <li>Find <strong>Camera</strong> and set it to <strong>Allow</strong></li>
+                                                  <li>Click the <strong>Try Again</strong> button below</li>
+                                                </ol>
+                                              </div>
+                                              <div>
+                                                <p className="font-medium text-foreground mb-1">Safari:</p>
+                                                <ol className="list-decimal list-inside space-y-1 ml-2">
+                                                  <li>Go to <strong>Safari &gt; Settings &gt; Websites &gt; Camera</strong></li>
+                                                  <li>Find this site and set it to <strong>Allow</strong></li>
+                                                  <li>Click the <strong>Try Again</strong> button below</li>
+                                                </ol>
+                                              </div>
+                                              <div>
+                                                <p className="font-medium text-foreground mb-1">Firefox:</p>
+                                                <ol className="list-decimal list-inside space-y-1 ml-2">
+                                                  <li>Click the <strong>lock icon</strong> in the address bar</li>
+                                                  <li>Click <strong>Clear permissions</strong> or find Camera and set to <strong>Allow</strong></li>
+                                                  <li>Click the <strong>Try Again</strong> button below</li>
+                                                </ol>
+                                              </div>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      ) : !capturedImage ? (
                                         <div className="relative w-full aspect-video bg-black rounded-lg overflow-hidden">
                                           <video
                                             ref={videoRef}
@@ -8052,7 +8123,25 @@ export function ClientRegistrationForm({
                                       )}
                                     </div>
                                     <DialogFooter>
-                                      {!capturedImage ? (
+                                      {cameraPermissionDenied ? (
+                                        <>
+                                          <Button
+                                            type="button"
+                                            variant="outline"
+                                            onClick={handleStopCamera}
+                                          >
+                                            Cancel
+                                          </Button>
+                                          <Button
+                                            type="button"
+                                            onClick={() => attemptCameraAccess()}
+                                            className="bg-blue-500 hover:bg-blue-600 flex items-center gap-2"
+                                          >
+                                            <RefreshCw className="h-4 w-4" />
+                                            Try Again
+                                          </Button>
+                                        </>
+                                      ) : !capturedImage ? (
                                         <>
                                           <Button
                                             type="button"

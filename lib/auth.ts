@@ -145,6 +145,7 @@ export const authOptions: NextAuthOptions = {
           }
 
           const data = await response.json();
+          console.log("=== AUTH LOGIN ===", data.username, "roles:", JSON.stringify(data.roles));
           console.log("Auth Debug - Response data keys:", Object.keys(data));
           console.log(
             "Auth Debug - base64EncodedAuthenticationKey from Fineract:",
@@ -173,6 +174,66 @@ export const authOptions: NextAuthOptions = {
             data.permissions
           );
 
+          // If auth response has empty roles, fetch from user details endpoint as fallback
+          let userRoles = data.roles || [];
+          if (userRoles.length === 0 && data.userId) {
+            try {
+              console.log("Auth Debug - Roles empty from auth endpoint, fetching from /users/" + data.userId);
+              const userDetailUrl = `${baseUrl}/fineract-provider/api/v1/users/${data.userId}`;
+              let userDetailResponse;
+
+              if (baseUrl.startsWith("http://")) {
+                const http = require("http");
+                const url = require("url");
+                const parsedUrl = url.parse(userDetailUrl);
+                userDetailResponse = await new Promise<any>((resolve, reject) => {
+                  const req = http.request({
+                    hostname: parsedUrl.hostname,
+                    port: parsedUrl.port || 80,
+                    path: parsedUrl.path,
+                    method: "GET",
+                    headers: {
+                      Accept: "application/json",
+                      Authorization: `Basic ${computedBasicAuth}`,
+                      "Fineract-Platform-TenantId": fineractTenantId,
+                    },
+                  }, (res: any) => {
+                    let body = "";
+                    res.on("data", (chunk: any) => { body += chunk; });
+                    res.on("end", () => {
+                      resolve({
+                        ok: res.statusCode >= 200 && res.statusCode < 300,
+                        json: async () => JSON.parse(body),
+                      });
+                    });
+                  });
+                  req.on("error", reject);
+                  req.end();
+                });
+              } else {
+                userDetailResponse = await fetch(userDetailUrl, {
+                  method: "GET",
+                  headers: {
+                    Accept: "application/json",
+                    Authorization: `Basic ${computedBasicAuth}`,
+                    "Fineract-Platform-TenantId": fineractTenantId,
+                  },
+                  agent: new https.Agent({ rejectUnauthorized: false }),
+                });
+              }
+
+              if (userDetailResponse.ok) {
+                const userData = await userDetailResponse.json();
+                if (userData.selectedRoles && userData.selectedRoles.length > 0) {
+                  userRoles = userData.selectedRoles;
+                  console.log("Auth Debug - Fetched roles from user details:", userRoles.map((r: any) => r.name));
+                }
+              }
+            } catch (roleError) {
+              console.error("Auth Debug - Failed to fetch user roles fallback:", roleError);
+            }
+          }
+
           // Return the user object with all the authentication data
           return {
             id: data.userId.toString(),
@@ -180,14 +241,13 @@ export const authOptions: NextAuthOptions = {
             name: data.username,
             email: data.username,
             accessToken,
-            base64EncodedAuthenticationKey: computedBasicAuth, // Use computed token, not Fineract's
+            base64EncodedAuthenticationKey: computedBasicAuth,
             officeId: data.officeId,
             officeName: data.officeName,
-            roles: data.roles,
+            roles: userRoles,
             permissions: mappedPermissions,
-            rawPermissions: data.permissions, // Keep the original permissions
-            shouldRenewPassword: data.shouldRenewPassword, //TODO handle scenario where user must set a new password
-            //TODO handle scenario where 2FA is enabled and required
+            rawPermissions: data.permissions,
+            shouldRenewPassword: data.shouldRenewPassword,
             isTwoFactorAuthenticationRequired:
               data.isTwoFactorAuthenticationRequired,
           };
@@ -203,6 +263,28 @@ export const authOptions: NextAuthOptions = {
     }),
   ],
   callbacks: {
+    async redirect({ url, baseUrl }) {
+      // Allow relative URLs (they resolve against the browser's current origin)
+      if (url.startsWith("/")) return url;
+
+      try {
+        const urlObj = new URL(url);
+        const baseObj = new URL(baseUrl);
+
+        if (
+          urlObj.hostname.endsWith(".kenacloanmatrix.com") ||
+          urlObj.hostname.endsWith(".kenac.co.zw") ||
+          urlObj.hostname === baseObj.hostname ||
+          urlObj.hostname === "localhost"
+        ) {
+          return url;
+        }
+      } catch {
+        // Malformed URL — fall through to default
+      }
+
+      return baseUrl;
+    },
     async jwt({ token, user }) {
       try {
         // Add user data to the token right after sign in
@@ -301,16 +383,15 @@ export async function isAuthenticated() {
  */
 export async function getCurrentUserDetails(userId: String) {
   try {
-    // Use the hardcoded Basic authentication token from the curl command
+    const { getFineractTenantId } = await import("./fineract-tenant-service");
+    const fineractTenantId = await getFineractTenantId();
     const fineractBaseURL =
       process.env.FINERACT_BASE_URL || "http://41.174.125.165:4032";
     const url = `${fineractBaseURL}/fineract-provider/api/v1/users/${userId}`;
     const headers = {
       Accept: "application/json, text/plain, */*",
       Authorization: "Basic bWlmb3M6cGFzc3dvcmQ=",
-      "Fineract-Platform-TenantId": "goodfellow",
-      Origin: "http://localhost:4200",
-      Referer: "http://localhost:4200/",
+      "Fineract-Platform-TenantId": fineractTenantId,
     };
 
     let response;

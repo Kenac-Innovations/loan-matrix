@@ -1,39 +1,22 @@
-import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { User, Users, Home } from 'lucide-react';
-import Link from 'next/link';
+import { FileQuestion } from 'lucide-react';
 
 export default function ClientNotFound() {
   return (
     <div className="flex items-center justify-center min-h-[50vh] p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <div className="mx-auto w-12 h-12 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center mb-4">
-            <User className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+          <div className="mx-auto w-12 h-12 rounded-full bg-red-100 dark:bg-red-900/40 flex items-center justify-center mb-4">
+            <FileQuestion className="w-6 h-6 text-red-600 dark:text-red-400" />
           </div>
-          <CardTitle className="text-xl font-semibold">Client Not Found</CardTitle>
+          <CardTitle className="text-xl font-semibold">Page Not Found</CardTitle>
         </CardHeader>
-        <CardContent className="text-center space-y-4">
+        <CardContent className="text-center">
           <p className="text-sm text-muted-foreground">
-            The client you're looking for doesn't exist or has been removed.
+            The resource you're looking for doesn't exist or has been removed.
           </p>
-          <div className="space-y-2">
-            <Button asChild className="w-full">
-              <Link href="/clients">
-                <Users className="w-4 h-4 mr-2" />
-                All Clients
-              </Link>
-            </Button>
-            <Button variant="outline" asChild className="w-full">
-              <Link href="/dashboard">
-                <Home className="w-4 h-4 mr-2" />
-                Go to Dashboard
-              </Link>
-            </Button>
-          </div>
         </CardContent>
       </Card>
     </div>
   );
 }
-

@@ -108,13 +108,6 @@ function getAlertIcon(type: string) {
   }
 }
 
-// Local system role interface
-interface LocalSystemRole {
-  id: string;
-  name: string;
-  displayName: string;
-  description: string | null;
-}
 
 export function UserProfileClient({ userProfileData }: UserProfileClientProps) {
   const pathname = usePathname();
@@ -128,26 +121,42 @@ export function UserProfileClient({ userProfileData }: UserProfileClientProps) {
   const profileRef = useRef<HTMLDivElement>(null);
   const { theme } = useTheme();
 
-  // Local system roles state
-  const [localRoles, setLocalRoles] = useState<LocalSystemRole[]>([]);
-  const [localRolesLoading, setLocalRolesLoading] = useState(true);
+  // Fineract roles state
+  const [fineractRoles, setFineractRoles] = useState<Array<{ id: number; name: string; description?: string; disabled?: boolean }>>([]);
+  const [rolesLoading, setRolesLoading] = useState(true);
 
-  // Fetch local system roles
+  // Fetch roles from Fineract (with local DB fallback)
   useEffect(() => {
-    async function fetchLocalRoles() {
+    async function fetchRoles() {
       try {
-        const response = await fetch("/api/users/roles");
-        if (response.ok) {
-          const data = await response.json();
-          setLocalRoles(data.roles || []);
+        const fineractRes = await fetch("/api/auth/fineract-roles");
+        if (fineractRes.ok) {
+          const fineractData = await fineractRes.json();
+          if (fineractData.roles && fineractData.roles.length > 0) {
+            setFineractRoles(fineractData.roles);
+            setRolesLoading(false);
+            return;
+          }
+        }
+        // Fallback to local DB roles if Fineract returns nothing
+        const localRes = await fetch("/api/users/roles");
+        if (localRes.ok) {
+          const localData = await localRes.json();
+          if (localData.roles && localData.roles.length > 0) {
+            setFineractRoles(localData.roles.map((r: any) => ({
+              id: r.id,
+              name: r.displayName || r.name,
+              description: r.description,
+            })));
+          }
         }
       } catch (error) {
-        console.error("Error fetching local roles:", error);
+        console.error("Error fetching roles:", error);
       } finally {
-        setLocalRolesLoading(false);
+        setRolesLoading(false);
       }
     }
-    fetchLocalRoles();
+    fetchRoles();
   }, []);
 
   // Use the notifications hook with SSE (Fineract notifications)
@@ -565,13 +574,12 @@ export function UserProfileClient({ userProfileData }: UserProfileClientProps) {
                   </div>
                 </div>
                 <div className="mt-3 flex flex-wrap gap-1">
-                  {localRolesLoading ? (
+                  {rolesLoading ? (
                     <Badge className="bg-muted text-muted-foreground border-0 text-xs">
                       Loading...
                     </Badge>
-                  ) : localRoles.length > 0 ? (
-                    localRoles.map((role, index) => {
-                      // Define different colors for different roles
+                  ) : fineractRoles.length > 0 ? (
+                    fineractRoles.map((role, index) => {
                       const colors = [
                         "bg-blue-500",
                         "bg-green-500",
@@ -589,7 +597,7 @@ export function UserProfileClient({ userProfileData }: UserProfileClientProps) {
                           className={`${colors[colorIndex]} text-white border-0 text-xs`}
                           title={role.description || role.name}
                         >
-                          {role.displayName}
+                          {role.name}
                         </Badge>
                       );
                     })

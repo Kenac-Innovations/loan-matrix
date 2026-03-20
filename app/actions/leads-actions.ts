@@ -6,6 +6,7 @@ import {
   getTenantBySlug,
   getTenantFromHeaders,
 } from "@/lib/tenant-service";
+import { getOrgDefaultCurrencyCode } from "@/lib/currency-utils";
 import { UssdLeadsMetrics, UssdLoanApplication } from "./ussd-leads-actions";
 import { Lead, PipelineStage } from "@/shared/types/lead";
 import { getSession } from "@/lib/auth";
@@ -283,6 +284,9 @@ export async function getLeadsData(
       },
     });
 
+    // Resolve org default currency once before mapping
+    const orgCurrency = await getOrgDefaultCurrencyCode();
+
     // Transform leads data for frontend
     const transformedLeads: Lead[] = leads.map((lead) => {
       const stageTransition = lead.stateTransitions[0];
@@ -361,8 +365,8 @@ export async function getLeadsData(
         amountNum = lead.requestedAmount;
       }
 
-      // Format amount with currency (default to ZMW)
-      const currency = stateMetadata.currency || "ZMW";
+      // Format amount with currency (default to org currency from Fineract)
+      const currency = stateMetadata.currency || orgCurrency;
       const amount =
         amountNum > 0
           ? `${currency} ${amountNum
@@ -410,6 +414,7 @@ export async function getLeadsData(
         assignedToUserId: lead.assignedToUserId,
         assignedToUserName: lead.assignedToUserName,
         assignedAt: lead.assignedAt,
+        preferredPaymentMethod: lead.preferredPaymentMethod ?? null,
       };
     });
 

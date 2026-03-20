@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getFineractServiceWithSession } from "@/lib/fineract-api";
 import { prisma } from "@/lib/prisma";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
+import { getOrgDefaultCurrencyCode, getOrgRawCurrencyCode } from "@/lib/currency-utils";
 
 /**
  * GET /api/tellers/[id]/cashiers
@@ -14,7 +15,11 @@ export async function GET(
   try {
     const params = await context.params;
     let { id: tellerId } = params;
-    const tenant = await getTenantFromHeaders();
+    const [tenant, orgCurrency, rawCurrencyCode] = await Promise.all([
+      getTenantFromHeaders(),
+      getOrgDefaultCurrencyCode(),
+      getOrgRawCurrencyCode(),
+    ]);
 
     if (!tenant) {
       return NextResponse.json({ error: "Tenant not found" }, { status: 404 });
@@ -154,13 +159,12 @@ export async function GET(
           ? sessionStatusMap.get(dbCashier.id)
           : null;
 
-        // Get balance from Fineract (source of truth)
         let fineractBalance = 0;
         try {
           const summary = await fineractService.getCashierSummaryAndTransactions(
             teller.fineractTellerId!,
             fc.id,
-            "ZMW"
+            rawCurrencyCode
           );
           fineractBalance = summary.netCash || 0;
         } catch (err) {
@@ -177,7 +181,7 @@ export async function GET(
           balance: fineractBalance,
           currentAllocation: {
             amount: fineractBalance,
-            currency: "ZMW",
+            currency: orgCurrency,
           },
         };
       })

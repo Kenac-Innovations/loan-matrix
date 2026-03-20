@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
 import { getSession } from "@/lib/auth";
+import { getOrgDefaultCurrencyCode } from "@/lib/currency-utils";
 
 /**
  * GET /api/banks/[id]/tellers
@@ -14,7 +15,10 @@ export async function GET(
   try {
     const params = await context.params;
     const { id: bankId } = params;
-    const tenant = await getTenantFromHeaders();
+    const [tenant, orgCurrency] = await Promise.all([
+      getTenantFromHeaders(),
+      getOrgDefaultCurrencyCode(),
+    ]);
 
     if (!tenant) {
       return NextResponse.json({ error: "Tenant not found" }, { status: 404 });
@@ -78,7 +82,7 @@ export async function GET(
         );
 
         const availableBalance = vaultBalance - allocatedToCashiers;
-        const currency = teller.cashAllocations[0]?.currency || "ZMW";
+        const currency = teller.cashAllocations[0]?.currency || orgCurrency;
 
         return {
           id: teller.id,

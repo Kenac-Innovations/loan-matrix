@@ -41,6 +41,7 @@ import {
 } from "chart.js";
 import { Bar, Doughnut, PolarArea, Radar } from "react-chartjs-2";
 import { useChartTheme } from "@/lib/chart-theme-utils";
+import { useCurrency } from "@/contexts/currency-context";
 
 ChartJS.register(
   CategoryScale,
@@ -158,6 +159,7 @@ export function LeadDetails({ leadId }: LeadDetailsProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { colors, getOptions } = useChartTheme();
+  const { currencyCode } = useCurrency();
 
   useEffect(() => {
     const fetchLeadData = async () => {
@@ -215,13 +217,13 @@ export function LeadDetails({ leadId }: LeadDetailsProps) {
   const financialData = {
     creditScore: leadData.creditScore || 0,
     annualIncome: leadData.annualIncome
-      ? `ZMW ${leadData.annualIncome.toLocaleString()}`
+      ? `${currencyCode} ${leadData.annualIncome.toLocaleString()}`
       : "Not provided",
     monthlyIncome: leadData.monthlyIncome
-      ? `ZMW ${leadData.monthlyIncome.toLocaleString()}`
+      ? `${currencyCode} ${leadData.monthlyIncome.toLocaleString()}`
       : "Not provided",
     monthlyExpenses: leadData.monthlyExpenses
-      ? `ZMW ${leadData.monthlyExpenses.toLocaleString()}`
+      ? `${currencyCode} ${leadData.monthlyExpenses.toLocaleString()}`
       : "Not provided",
     employmentStatus: leadData.employmentStatus || "Not specified",
     employerName: leadData.employerName || "Not provided",
@@ -231,8 +233,8 @@ export function LeadDetails({ leadId }: LeadDetailsProps) {
     bankName: leadData.bankName || "Not provided",
     existingLoans: leadData.existingLoans || 0,
     totalDebt: leadData.totalDebt
-      ? `ZMW ${leadData.totalDebt.toLocaleString()}`
-      : "ZMW 0",
+      ? `${currencyCode} ${leadData.totalDebt.toLocaleString()}`
+      : `${currencyCode} 0`,
     debtToIncomeRatio:
       leadData.monthlyIncome && leadData.totalDebt
         ? `${Math.round(
@@ -244,7 +246,7 @@ export function LeadDetails({ leadId }: LeadDetailsProps) {
   // Use real loan request data
   const loanData = {
     requestedAmount: leadData.requestedAmount
-      ? `ZMW ${leadData.requestedAmount.toLocaleString()}`
+      ? `${currencyCode} ${leadData.requestedAmount.toLocaleString()}`
       : "Not specified",
     loanPurpose: leadData.loanPurpose || "Not specified",
     loanTerm: leadData.loanTerm
@@ -252,7 +254,7 @@ export function LeadDetails({ leadId }: LeadDetailsProps) {
       : "Not specified",
     collateralType: leadData.collateralType || "Not specified",
     collateralValue: leadData.collateralValue
-      ? `ZMW ${leadData.collateralValue.toLocaleString()}`
+      ? `${currencyCode} ${leadData.collateralValue.toLocaleString()}`
       : "Not specified",
   };
 
@@ -513,7 +515,7 @@ export function LeadDetails({ leadId }: LeadDetailsProps) {
                       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
                         <div className="text-center p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
                           <p className="text-2xl font-bold text-blue-600">
-                            ZMW{" "}
+                            {currencyCode}{" "}
                             {loanInfo.loanTerms.principal?.toLocaleString() ||
                               0}
                           </p>
@@ -569,7 +571,7 @@ export function LeadDetails({ leadId }: LeadDetailsProps) {
                                 >
                                   <div>{charge.chargeName || "N/A"}</div>
                                   <div className="font-medium">
-                                    ZMW {charge.amount?.toLocaleString() || 0}
+                                    {currencyCode} {charge.amount?.toLocaleString() || 0}
                                   </div>
                                   <div className="text-muted-foreground">
                                     {charge.dueDate || "N/A"}
@@ -602,7 +604,7 @@ export function LeadDetails({ leadId }: LeadDetailsProps) {
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-muted/50 rounded-lg">
                         <div className="text-center">
                           <p className="text-lg font-bold">
-                            ZMW{" "}
+                            {currencyCode}{" "}
                             {loanInfo.repaymentSchedule.totalPrincipalExpected?.toLocaleString() ||
                               0}
                           </p>
@@ -612,7 +614,7 @@ export function LeadDetails({ leadId }: LeadDetailsProps) {
                         </div>
                         <div className="text-center">
                           <p className="text-lg font-bold text-green-600">
-                            ZMW{" "}
+                            {currencyCode}{" "}
                             {loanInfo.repaymentSchedule.totalInterestCharged?.toLocaleString() ||
                               0}
                           </p>
@@ -622,7 +624,7 @@ export function LeadDetails({ leadId }: LeadDetailsProps) {
                         </div>
                         <div className="text-center">
                           <p className="text-lg font-bold text-orange-600">
-                            ZMW{" "}
+                            {currencyCode}{" "}
                             {loanInfo.repaymentSchedule.totalFeeChargesCharged?.toLocaleString() ||
                               0}
                           </p>
@@ -632,7 +634,7 @@ export function LeadDetails({ leadId }: LeadDetailsProps) {
                         </div>
                         <div className="text-center">
                           <p className="text-lg font-bold text-blue-600">
-                            ZMW{" "}
+                            {currencyCode}{" "}
                             {loanInfo.repaymentSchedule.totalRepaymentExpected?.toLocaleString() ||
                               0}
                           </p>
@@ -669,19 +671,19 @@ export function LeadDetails({ leadId }: LeadDetailsProps) {
                                     {period.dueDate?.join("-") || "N/A"}
                                   </td>
                                   <td className="px-4 py-2 text-right">
-                                    ZMW{" "}
+                                    {currencyCode}{" "}
                                     {period.principalDue?.toLocaleString() || 0}
                                   </td>
                                   <td className="px-4 py-2 text-right">
-                                    ZMW {period.interestDue?.toLocaleString() || 0}
+                                    {currencyCode} {period.interestDue?.toLocaleString() || 0}
                                   </td>
                                   <td className="px-4 py-2 text-right">
-                                    ZMW{" "}
+                                    {currencyCode}{" "}
                                     {period.feeChargesDue?.toLocaleString() ||
                                       0}
                                   </td>
                                   <td className="px-4 py-2 text-right font-medium">
-                                    ZMW{" "}
+                                    {currencyCode}{" "}
                                     {period.totalDueForPeriod?.toLocaleString() ||
                                       0}
                                   </td>
@@ -865,7 +867,7 @@ export function LeadDetails({ leadId }: LeadDetailsProps) {
                       ],
                       datasets: [
                         {
-                          label: "Amount (ZMW)",
+                          label: `Amount (${currencyCode})`,
                           data: [
                             leadData.monthlyIncome || 0,
                             leadData.monthlyExpenses || 0,
@@ -894,7 +896,7 @@ export function LeadDetails({ leadId }: LeadDetailsProps) {
                         tooltip: {
                           callbacks: {
                             label: function (context: any) {
-                              return `ZMW ${context.parsed.y.toLocaleString()}`;
+                              return `${currencyCode} ${context.parsed.y.toLocaleString()}`;
                             },
                           },
                         },
@@ -904,7 +906,7 @@ export function LeadDetails({ leadId }: LeadDetailsProps) {
                           beginAtZero: true,
                           ticks: {
                             callback: function (value: any) {
-                              return "ZMW " + value.toLocaleString();
+                              return currencyCode + " " + value.toLocaleString();
                             },
                           },
                         },
@@ -1066,9 +1068,9 @@ export function LeadDetails({ leadId }: LeadDetailsProps) {
                         <p className="font-medium">
                           {leadData.monthlyIncomeRange
                             ? leadData.monthlyIncomeRange
-                                .replace("under_", "Under ZMW ")
-                                .replace("over_", "Over ZMW ")
-                                .replace("_", " - ZMW ")
+                                .replace("under_", `Under ${currencyCode} `)
+                                .replace("over_", `Over ${currencyCode} `)
+                                .replace("_", ` - ${currencyCode} `)
                             : "Not provided"}
                         </p>
                       </div>
@@ -1102,8 +1104,8 @@ export function LeadDetails({ leadId }: LeadDetailsProps) {
                         </p>
                         <p className="font-medium">
                           {leadData.monthlyDebtPayments
-                            ? `ZMW ${leadData.monthlyDebtPayments.toLocaleString()}`
-                            : "ZMW 0"}
+                            ? `${currencyCode} ${leadData.monthlyDebtPayments.toLocaleString()}`
+                            : `${currencyCode} 0`}
                         </p>
                       </div>
                       <div>

@@ -4,6 +4,7 @@ import { PrismaClient } from "@/app/generated/prisma";
 import { getFineractServiceWithSession } from "@/lib/fineract-api";
 import { prisma } from "@/lib/prisma";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
+import { getOrgDefaultCurrencyCode, getOrgRawCurrencyCode } from "@/lib/currency-utils";
 import { unstable_noStore as noStore } from "next/cache";
 
 const db = prisma as PrismaClient;
@@ -73,7 +74,8 @@ export async function getTellerFromFineract(id: string) {
     let vaultBalance = 0;
     let availableBalance = 0;
     let allocatedToCashiers = 0;
-    let currency = "ZMW";
+    const orgCurrency = await getOrgDefaultCurrencyCode();
+    let currency = orgCurrency;
     let recentSettlements: any[] = [];
 
     try {
@@ -106,7 +108,7 @@ export async function getTellerFromFineract(id: string) {
             (sum: number, alloc: { amount: number }) => sum + alloc.amount,
             0
           );
-          currency = dbTeller.cashAllocations[0]?.currency || "ZMW";
+          currency = dbTeller.cashAllocations[0]?.currency || orgCurrency;
 
           const cashierAllocations = await db.cashAllocation.findMany({
             where: {
@@ -136,15 +138,13 @@ export async function getTellerFromFineract(id: string) {
             let fineractAllocated = 0;
             for (const fc of fineractCashiers || []) {
               try {
+                const rawCurrency = await getOrgRawCurrencyCode();
                 const summary = await fineractService.getCashierSummaryAndTransactions(
                   tellerId,
                   fc.id,
-                  "ZMW"
+                  rawCurrency
                 );
-                fineractAllocated += Math.max(
-                  summary.sumCashAllocation || 0,
-                  summary.netCash || 0
-                );
+                fineractAllocated += summary.netCash ?? summary.sumCashAllocation ?? 0;
               } catch (err) {
                 console.error(`Error getting Fineract summary for cashier ${fc.id}:`, err);
               }

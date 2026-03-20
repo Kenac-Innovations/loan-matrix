@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { Loader2, AlertCircle, Edit2, Save, X, Plus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/select";
 import { SearchableSelect } from "@/components/searchable-select";
 import { useToast } from "@/hooks/use-toast";
+import { useCurrency } from "@/contexts/currency-context";
 import { format } from "date-fns";
 import {
   Dialog,
@@ -110,6 +111,8 @@ export function DynamicDatatableContent({
   clientName,
   clientType,
 }: DynamicDatatableContentProps) {
+  const { locale: tenantLocale } = useCurrency();
+
   // Initialize state from server-provided data if available
   const [headers, setHeaders] = useState<any[]>(
     initialData?.columnHeaders || []
@@ -151,14 +154,11 @@ export function DynamicDatatableContent({
   }, [editingRowIndex]);
 
   useEffect(() => {
-    // Skip initial fetch if we have server-provided data
-    if (initialData) {
-      return;
-    }
-
     const load = async () => {
       try {
-        setLoading(true);
+        if (!initialData) {
+          setLoading(true);
+        }
         setError(null);
         const res = await fetch(
           `/api/fineract/datatables/${encodeURIComponent(
@@ -172,16 +172,17 @@ export function DynamicDatatableContent({
         setHeaders(data.columnHeaders || []);
         const mapped: any[][] = (data.data || []).map((r: any) => r.row);
         setRows(mapped);
-        // Store full row data including IDs and metadata
         setRowData(data.data || []);
       } catch (e: any) {
-        setError(e.message || "Unknown error");
+        if (!initialData) {
+          setError(e.message || "Unknown error");
+        }
       } finally {
         setLoading(false);
       }
     };
     load();
-  }, [datatableName, clientId, initialData]);
+  }, [datatableName, clientId]);
 
   // Helper to check if column is a branch code field (should not format with commas)
   const isBranchCodeColumn = (columnName?: string): boolean => {
@@ -418,12 +419,12 @@ export function DynamicDatatableContent({
     setEditedData({});
   };
 
-  const handleFieldChange = (columnName: string, value: any) => {
+  const handleFieldChange = useCallback((columnName: string, value: any) => {
     setEditedData((prev) => ({
       ...prev,
       [columnName]: value,
     }));
-  };
+  }, []);
 
   const saveRow = async (rowIndex: number) => {
     setSaving(true);
@@ -777,7 +778,7 @@ export function DynamicDatatableContent({
           </Label>
           <div className="flex">
             <div className="flex items-center px-3 border border-r-0 rounded-l-md bg-muted text-muted-foreground text-sm">
-              +260
+              {tenantLocale.countryCode}
             </div>
             <Input
               type="tel"
@@ -1507,7 +1508,7 @@ export function DynamicDatatableContent({
                   if (isPhoneNumberField(header?.columnName || "")) {
                     const formattedPhone = formatZambianPhoneDisplay(String(displayValue ?? ""));
                     cellValue = formattedPhone ? (
-                      <span className="font-medium">+260 {formattedPhone}</span>
+                      <span className="font-medium">{tenantLocale.countryCode} {formattedPhone}</span>
                     ) : (
                       <span className="text-muted-foreground italic">—</span>
                     );

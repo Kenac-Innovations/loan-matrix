@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getFineractServiceWithSession } from "@/lib/fineract-api";
 import { prisma } from "@/lib/prisma";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
+import { getOrgDefaultCurrencyCode, getOrgRawCurrencyCode } from "@/lib/currency-utils";
 
 /**
  * GET /api/tellers/[id]
@@ -132,8 +133,8 @@ export async function GET(
     }
 
     // Calculate balances - available must DECREASE when loans are disbursed, and handle deposits
-    // allocatedToCashiers = sum of max(sumCashAllocation, netCash) per cashier
-    const currency = "ZMW";
+    // allocatedToCashiers = cash currently in cashier tills; use netCash (current balance), not sumCashAllocation (cumulative)
+    const currency = await getOrgDefaultCurrencyCode();
     
     const vaultBalance = dbTeller.cashAllocations.reduce(
       (sum, alloc) => sum + alloc.amount,
@@ -168,15 +169,13 @@ export async function GET(
         let fineractAllocated = 0;
         for (const fc of fineractCashiers) {
           try {
+            const rawCurrency = await getOrgRawCurrencyCode();
             const summary = await fineractService.getCashierSummaryAndTransactions(
               dbTeller.fineractTellerId,
               fc.id,
-              "ZMW"
+              rawCurrency
             );
-            fineractAllocated += Math.max(
-              summary.sumCashAllocation || 0,
-              summary.netCash || 0
-            );
+            fineractAllocated += summary.netCash ?? summary.sumCashAllocation ?? 0;
           } catch (err) {
             console.error(`Error getting Fineract summary for cashier ${fc.id}:`, err);
           }
@@ -222,17 +221,20 @@ export async function GET(
           dbTeller.fineractTellerId
         );
 
-        // Merge Fineract data with database data
+        // Merge Fineract data with database data.
+        // Keep our computed balances (vault, allocated, available) so they are not overwritten by Fineract's getTeller response.
         return NextResponse.json({
           ...baseResponse,
           ...fineractTeller,
-          // Ensure database ID and related data are preserved
           id: dbTeller.id,
-          // Use Fineract data if available, otherwise use database
           startDate: fineractTeller.startDate || dbTeller.startDate,
           endDate: fineractTeller.endDate || dbTeller.endDate,
           officeName: fineractTeller.officeName || dbTeller.officeName,
           status: fineractTeller.status || dbTeller.status,
+          vaultBalance: baseResponse.vaultBalance,
+          allocatedToCashiers: baseResponse.allocatedToCashiers,
+          availableBalance: baseResponse.availableBalance,
+          currentAllocation: baseResponse.currentAllocation,
         });
       } catch (error) {
         console.error("Error fetching from Fineract:", error);

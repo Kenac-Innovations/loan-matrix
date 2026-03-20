@@ -1,5 +1,6 @@
 "use client";
 
+import { useCurrency } from "@/contexts/currency-context";
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
@@ -24,10 +25,11 @@ export default function TransactionDetailsPage() {
   const loanId = params.loanId as string;
   const transactionId = Number(params.transactionId as string);
 
+  const { currencyCode: orgCurrency } = useCurrency();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [transaction, setTransaction] = useState<any | null>(null);
-  const [loanCurrency, setLoanCurrency] = useState<string>("ZMW");
+  const [loanCurrency, setLoanCurrency] = useState<string>("");
   const [showChargeback, setShowChargeback] = useState(false);
   const [showUndo, setShowUndo] = useState(false);
   const [paymentTypes, setPaymentTypes] = useState<Array<{ id: number; name: string }>>([]);
@@ -44,7 +46,7 @@ export default function TransactionDetailsPage() {
         const res = await fetch(`/api/fineract/loans/${loanId}?associations=all&exclude=guarantors,futureSchedule`);
         if (!res.ok) throw new Error(`Failed to fetch loan: ${res.statusText}`);
         const data: LoanResponse = await res.json();
-        setLoanCurrency(data.currency?.code || "ZMW");
+        setLoanCurrency(data.currency?.code || orgCurrency);
         const tx = (data.transactions || []).find((t: any) => Number(t.id) === transactionId);
         setTransaction(tx || null);
         if (!tx) setError("Transaction not found");

@@ -11,6 +11,9 @@ import {
   Briefcase,
   Shield,
   AlertCircle,
+  Banknote,
+  Smartphone,
+  Building2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -34,6 +37,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
+import { useCurrency } from "@/contexts/currency-context";
 
 // Form validation schema based on the provided JSON structure
 const affordabilitySchema = z
@@ -45,6 +49,9 @@ const affordabilitySchema = z
       .number()
       .min(1, "Net monthly income must be greater than 0"),
     nationality: z.string().optional(),
+    preferredPaymentMethod: z.enum(["CASH", "MOBILE_MONEY", "BANK_TRANSFER"], {
+      required_error: "Preferred payment type is required",
+    }),
     mobileInOwnName: z.boolean().default(false),
     hasProofOfIncome: z.boolean().default(false),
     hasValidNationalId: z.boolean().default(false),
@@ -86,6 +93,7 @@ export function SimplifiedAffordabilityForm({
   const [isSaving, setIsSaving] = useState(false);
   const [isCompleted, setIsCompleted] = useState(false);
   const { toast } = useToast();
+  const { currencyCode: orgCurrency } = useCurrency();
   const [grossInputValue, setGrossInputValue] = useState("");
   const [netInputValue, setNetInputValue] = useState("");
   const [sectionCompletion, setSectionCompletion] = useState({
@@ -153,14 +161,15 @@ export function SimplifiedAffordabilityForm({
     const incomeComplete =
       watchedValues.grossMonthlyIncome > 0 &&
       watchedValues.netMonthlyIncome > 0;
-    // All verification checkboxes must be checked to be complete
+    // All verification checkboxes and preferred payment type must be set to be complete
     const verificationComplete =
       watchedValues.mobileInOwnName &&
       watchedValues.hasProofOfIncome &&
       watchedValues.hasValidNationalId &&
       watchedValues.identityVerified &&
       watchedValues.employmentVerified &&
-      watchedValues.incomeVerified;
+      watchedValues.incomeVerified &&
+      !!watchedValues.preferredPaymentMethod;
 
     setSectionCompletion({
       income: incomeComplete,
@@ -386,7 +395,7 @@ export function SimplifiedAffordabilityForm({
             </Label>
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">
-                ZMW
+                {orgCurrency}
               </span>
               <Controller
                 control={form.control}
@@ -436,7 +445,7 @@ export function SimplifiedAffordabilityForm({
             </Label>
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">
-                ZMW
+                {orgCurrency}
               </span>
               <Controller
                 control={form.control}
@@ -529,10 +538,57 @@ export function SimplifiedAffordabilityForm({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="Zambian">Zambian</SelectItem>
+                    <SelectItem value="Zimbabwean">Zimbabwean</SelectItem>
                   </SelectContent>
                 </Select>
               )}
             />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="preferredPaymentMethod">Preferred Payment Type <span className="text-red-500">*</span></Label>
+            <p className="text-xs text-muted-foreground">
+              How the client will receive funds (same options as payout modal).
+            </p>
+            <Controller
+              control={form.control}
+              name="preferredPaymentMethod"
+              render={({ field }) => (
+                <Select
+                  value={field.value ?? ""}
+                  onValueChange={(v) => field.onChange(v || undefined)}
+                >
+                  <SelectTrigger id="preferredPaymentMethod" className={form.formState.errors.preferredPaymentMethod ? "border-red-500" : ""}>
+                    <SelectValue placeholder="Select payment type..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="CASH">
+                      <span className="flex items-center gap-2">
+                        <Banknote className="h-4 w-4 text-green-600" />
+                        Cash
+                      </span>
+                    </SelectItem>
+                    <SelectItem value="MOBILE_MONEY">
+                      <span className="flex items-center gap-2">
+                        <Smartphone className="h-4 w-4 text-blue-600" />
+                        Mobile Money
+                      </span>
+                    </SelectItem>
+                    <SelectItem value="BANK_TRANSFER">
+                      <span className="flex items-center gap-2">
+                        <Building2 className="h-4 w-4 text-purple-600" />
+                        Bank Transfer
+                      </span>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
+            />
+            {form.formState.errors.preferredPaymentMethod && (
+              <p className="text-sm text-red-500">
+                {form.formState.errors.preferredPaymentMethod.message}
+              </p>
+            )}
           </div>
 
           {/* Verification Checkboxes */}

@@ -4,6 +4,8 @@ import {
   generateLoanStatementHTML,
   transformFineractLoanToStatement,
 } from "@/lib/loan-statement-template";
+import { getTenantFromHeaders } from "@/lib/tenant-service";
+import { getSession, getCurrentUserDetails } from "@/lib/auth";
 
 const baseUrl = process.env.FINERACT_BASE_URL || "http://10.10.0.143:8443";
 
@@ -93,11 +95,24 @@ export async function GET(
       }
     }
 
-    // Company info - can be customized per tenant
+    const tenant = await getTenantFromHeaders();
     const companyInfo = {
-      name: "GOODFELLOW FINANCE LIMITED",
-      logoUrl: "/kenac_logo.png",
+      name: tenant?.name || "Organization",
+      logoUrl: tenant?.logoFileUrl || undefined,
     };
+
+    const session = await getSession();
+    let preparedBy: string | undefined;
+    if (session?.user?.id) {
+      try {
+        const userData = await getCurrentUserDetails(session.user.id);
+        const firstName = userData.firstname || "";
+        const lastName = userData.lastname || "";
+        preparedBy = `${firstName} ${lastName}`.trim() || session.user.name || undefined;
+      } catch {
+        preparedBy = session.user.name || undefined;
+      }
+    }
 
     // Filter transactions by date if provided
     let transactions = loanData.transactions || [];
@@ -136,7 +151,9 @@ export async function GET(
       clientData,
       companyInfo,
       formattedFromDate,
-      formattedToDate
+      formattedToDate,
+      undefined,
+      preparedBy
     );
 
     // Return based on requested format

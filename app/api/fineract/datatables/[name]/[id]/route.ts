@@ -14,9 +14,12 @@ export async function GET(
     const data = await fetchFineractAPI(
       `/datatables/${encodeURIComponent(name)}/${encodeURIComponent(
         id
-      )}?${query.toString()}`
+      )}?${query.toString()}`,
+      { cache: "no-store" }
     );
-    return NextResponse.json(data);
+    return NextResponse.json(data, {
+      headers: { "Cache-Control": "no-store" },
+    });
   } catch (error: any) {
     return NextResponse.json(
       { error: error?.message || "Failed to fetch datatable data" },

@@ -266,6 +266,21 @@ export function LeadsTable({ initialData }: LeadsTableProps) {
       filterOptions: LOAN_STATUS_OPTIONS,
     },
     {
+      id: "preferredPaymentMethod",
+      accessorKey: "preferredPaymentMethod",
+      header: "Payment Type",
+      cell: ({ row }) => {
+        const value = row.original.preferredPaymentMethod;
+        if (!value) return <span className="text-muted-foreground text-xs">-</span>;
+        const labels: Record<string, string> = {
+          CASH: "Cash",
+          MOBILE_MONEY: "Mobile Money",
+          BANK_TRANSFER: "Bank Transfer",
+        };
+        return <span className="text-xs font-medium">{labels[value] ?? value}</span>;
+      },
+    },
+    {
       id: "payoutStatus",
       accessorKey: "payoutStatus",
       header: "Payout",

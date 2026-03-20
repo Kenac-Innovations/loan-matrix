@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
 import { getSession } from "@/lib/auth";
 import { fetchFineractAPI } from "@/lib/api";
+import { getOrgDefaultCurrencyCode } from "@/lib/currency-utils";
 
 /**
  * GET /api/banks
@@ -15,6 +16,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Tenant not found" }, { status: 404 });
     }
 
+    const orgCurrency = await getOrgDefaultCurrencyCode();
     const { searchParams } = new URL(request.url);
     const status = searchParams.get("status");
     const officeId = searchParams.get("officeId");
@@ -67,19 +69,21 @@ export async function GET(request: NextRequest) {
           },
         });
 
-        // Exclude opening balances from allocatedToTellers
-        // Opening balances are existing cash at tellers, not allocations from the bank
-        // Opening balances are identified by: notes containing "opening balance" OR allocatedBy = "SYSTEM-IMPORT"
+        // Only count allocations that drew from the bank (exclude opening balance, returns from cashiers)
+        const isFromBank = (alloc: { notes?: string | null; allocatedBy?: string | null }) => {
+          const n = (alloc.notes ?? "").toLowerCase();
+          if (n.includes("opening balance") || alloc.allocatedBy === "SYSTEM-IMPORT") return false;
+          if (alloc.allocatedBy === "SYSTEM-REVERSAL") return false;
+          if (n.includes("return from") || n.includes("session close") || n.includes("returned to vault")) return false;
+          return true;
+        };
         const allocatedToTellers = tellerAllocations
-          .filter((alloc) => 
-            !alloc.notes?.toLowerCase().includes("opening balance") && 
-            alloc.allocatedBy !== "SYSTEM-IMPORT"
-          )
+          .filter(isFromBank)
           .reduce((sum, alloc) => sum + alloc.amount, 0);
 
         // Get bank balance from Fineract GL account if configured
         let totalAllocated = 0;
-        let currency = "ZMW";
+        let currency = orgCurrency;
         let balanceSource = "local";
 
         if (bank.glAccountId) {
@@ -103,7 +107,7 @@ export async function GET(request: NextRequest) {
               
               const latestEntry = journalData.pageItems[0];
               totalAllocated = calculatedBalance;
-              currency = latestEntry.currency?.code || "ZMW";
+              currency = latestEntry.currency?.code || orgCurrency;
               balanceSource = "fineract_calculated";
             }
           } catch (error) {
@@ -113,7 +117,7 @@ export async function GET(request: NextRequest) {
               (sum, alloc) => sum + alloc.amount,
               0
             );
-            currency = bank.allocations[0]?.currency || "ZMW";
+            currency = bank.allocations[0]?.currency || orgCurrency;
             balanceSource = "local_fallback";
           }
         } else {
@@ -122,7 +126,7 @@ export async function GET(request: NextRequest) {
             (sum, alloc) => sum + alloc.amount,
             0
           );
-          currency = bank.allocations[0]?.currency || "ZMW";
+          currency = bank.allocations[0]?.currency || orgCurrency;
         }
 
         const availableBalance = totalAllocated - allocatedToTellers;

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getTenantBySlug } from "@/lib/tenant-service";
+import { getTenantBySlug, extractTenantSlugFromRequest } from "@/lib/tenant-service";
 import { buildCDEPayload, fetchFineractLoanForLead } from "@/lib/cde-utils";
 
 export async function POST(
@@ -15,8 +15,7 @@ export async function POST(
     const data = await request.json();
     console.log("Received data:", data);
 
-    // Get tenant from x-tenant-slug header or default to "goodfellow"
-    const tenantSlug = request.headers.get("x-tenant-slug") || "goodfellow";
+    const tenantSlug = extractTenantSlugFromRequest(request);
     console.log("Tenant slug:", tenantSlug);
 
     const tenant = await getTenantBySlug(tenantSlug);
@@ -73,6 +72,7 @@ export async function POST(
         grossMonthlyIncome: data.grossMonthlyIncome,
         monthlyIncome: data.netMonthlyIncome,
         nationality: data.nationality || null,
+        preferredPaymentMethod: data.preferredPaymentMethod || null,
         mobileInOwnName: data.mobileInOwnName || false,
         hasProofOfIncome: data.hasProofOfIncome || false,
         hasValidNationalId: data.hasValidNationalId || false,
@@ -179,6 +179,7 @@ export async function GET(
         grossMonthlyIncome: true,
         monthlyIncome: true,
         nationality: true,
+        preferredPaymentMethod: true,
         mobileInOwnName: true,
         hasProofOfIncome: true,
         hasValidNationalId: true,
@@ -204,6 +205,7 @@ export async function GET(
         grossMonthlyIncome: lead.grossMonthlyIncome || 0,
         netMonthlyIncome: lead.monthlyIncome || 0,
         nationality: lead.nationality || "",
+        preferredPaymentMethod: lead.preferredPaymentMethod || undefined,
         mobileInOwnName: lead.mobileInOwnName || false,
         hasProofOfIncome: lead.hasProofOfIncome || false,
         hasValidNationalId: lead.hasValidNationalId || false,

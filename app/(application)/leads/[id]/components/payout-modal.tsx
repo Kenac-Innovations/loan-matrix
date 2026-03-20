@@ -1,5 +1,7 @@
 "use client";
 
+import { useCurrency } from "@/contexts/currency-context";
+
 import { useState, useEffect } from "react";
 import {
   Dialog,
@@ -59,7 +61,7 @@ export function PayoutModal({
   clientName,
   loanAccountNo,
   principal,
-  currency = "ZMW",
+  currency,
   onSuccess,
 }: PayoutModalProps) {
   const router = useRouter();
@@ -174,9 +176,10 @@ export function PayoutModal({
     }
   };
 
-  // Normalize currency code - converts deprecated ZMK to ZMW
+  // Normalize currency code - converts deprecated ZMK to current code
+  const { currencyCode: orgCurrency } = useCurrency();
   const normalizeCurrencyCode = (code: string | undefined | null): string => {
-    if (!code) return "ZMW";
+    if (!code) return orgCurrency;
     if (code.toUpperCase() === "ZMK") return "ZMW";
     return code;
   };
@@ -311,8 +314,18 @@ export function PayoutModal({
   );
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
+    <Dialog
+      open={open}
+      onOpenChange={(openState) => {
+        if (loading) return;
+        onOpenChange(openState);
+      }}
+    >
+      <DialogContent
+        className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto"
+        onPointerDownOutside={(e) => loading && e.preventDefault()}
+        onEscapeKeyDown={(e) => loading && e.preventDefault()}
+      >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Banknote className="h-5 w-5 text-green-600" />
@@ -341,7 +354,16 @@ export function PayoutModal({
             </div>
           </div>
         ) : (
-          <div className="space-y-4 py-4">
+          <div className="space-y-4 py-4 relative">
+            {/* Loading overlay when submitting */}
+            {loading && (
+              <div className="absolute inset-0 bg-background/80 backdrop-blur-[1px] z-10 flex items-center justify-center rounded-lg">
+                <div className="flex flex-col items-center gap-3 p-4">
+                  <Loader2 className="h-10 w-10 animate-spin text-green-600" />
+                  <p className="text-sm font-medium">Processing payout...</p>
+                </div>
+              </div>
+            )}
             {/* Loan Summary */}
             <div className="p-4 bg-muted/50 rounded-lg space-y-2">
               <div className="flex justify-between">
@@ -378,6 +400,7 @@ export function PayoutModal({
                     );
                     setError(null);
                   }}
+                  disabled={loading}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Select payment method..." />
@@ -426,6 +449,7 @@ export function PayoutModal({
                   <Select
                     value={selectedTeller}
                     onValueChange={setSelectedTeller}
+                    disabled={loading}
                   >
                     <SelectTrigger>
                       <SelectValue
@@ -456,7 +480,7 @@ export function PayoutModal({
                   <Select
                     value={selectedCashier}
                     onValueChange={setSelectedCashier}
-                    disabled={!selectedTeller || loadingCashiers}
+                    disabled={!selectedTeller || loadingCashiers || loading}
                   >
                     <SelectTrigger>
                       <SelectValue
@@ -526,6 +550,7 @@ export function PayoutModal({
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 rows={2}
+                disabled={loading}
               />
             </div>
 

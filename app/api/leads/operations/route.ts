@@ -3,22 +3,71 @@ import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 import { getFineractServiceWithSession } from "@/lib/fineract-api";
 import { getSession } from "@/lib/auth";
+import {
+  getTenantFromHeaders,
+  getTenantBySlug,
+  extractTenantSlug,
+} from "@/lib/tenant-service";
+
+// Helper to resolve the current tenant, optionally using the raw request
+// so we can read middleware-set and proxy-set headers directly.
+async function resolveCurrentTenant(tx?: any, req?: Request) {
+  if (req) {
+    const origin = req.headers.get("origin");
+    const referer = req.headers.get("referer");
+    const host = req.headers.get("host");
+    console.log("[resolveCurrentTenant] headers:", { origin, referer, host, hasReq: !!req });
+
+    if (origin) {
+      try {
+        const t = await getTenantBySlug(extractTenantSlug(new URL(origin).hostname));
+        if (t) return t;
+      } catch {}
+    }
+    if (referer) {
+      try {
+        const t = await getTenantBySlug(extractTenantSlug(new URL(referer).hostname));
+        if (t) return t;
+      } catch {}
+    }
+  }
+
+  try {
+    const tenant = await getTenantFromHeaders();
+    if (tenant) return tenant;
+  } catch {}
+
+  const fallbackSlug = process.env.FINERACT_TENANT_ID || "goodfellow";
+  const db = tx || prisma;
+  const fallbackTenant = await db.tenant.findFirst({
+    where: { slug: fallbackSlug, isActive: true },
+    select: { id: true, name: true, slug: true, domain: true, settings: true },
+  });
+  if (!fallbackTenant) {
+    throw new Error(
+      `Tenant '${fallbackSlug}' not found. Please ensure the tenant exists in the database.`
+    );
+  }
+  return fallbackTenant;
+}
 
 // Helper function to format dates for Fineract API
 const formatDateForFineract = (
-  date: Date | string | null | undefined
+  date: Date | string | number | null | undefined
 ): string => {
   // Handle null, undefined, or empty values
-  if (!date) {
+  if (date === null || date === undefined) {
     return new Date().toISOString().split("T")[0];
   }
 
-  // Convert string to Date if needed
+  // Convert to Date object based on input type
   let dateObj: Date;
-  if (typeof date === "string") {
-    dateObj = new Date(date);
-  } else if (date instanceof Date) {
+  if (date instanceof Date) {
     dateObj = date;
+  } else if (typeof date === "string") {
+    dateObj = new Date(date);
+  } else if (typeof date === "number") {
+    dateObj = new Date(date);
   } else {
     console.error("==========> Invalid date type:", typeof date, date);
     return new Date().toISOString().split("T")[0];
@@ -34,7 +83,7 @@ const formatDateForFineract = (
   return dateObj.toISOString().split("T")[0];
 };
 
-// Client form schema
+// Client form schema - uses z.coerce.date() to handle strings, numbers, and Date objects
 const clientFormSchema = z.object({
   officeId: z.number(),
   officeName: z.string().optional(),
@@ -44,20 +93,20 @@ const clientFormSchema = z.object({
   firstname: z.string(),
   middlename: z.string().optional(),
   lastname: z.string(),
-  dateOfBirth: z.date().optional(),
-  gender: z.string().optional(),
+  dateOfBirth: z.coerce.date().optional(),
+  gender: z.union([z.string(), z.number()]).optional().transform(val => val !== undefined ? String(val) : undefined),
   genderId: z.number().optional(),
   isStaff: z.boolean().default(false),
   mobileNo: z.string(),
-  countryCode: z.string().default("+1"),
+  countryCode: z.string().default("+260"),
   emailAddress: z.string().email(),
   clientTypeId: z.number().optional(),
   clientTypeName: z.string().optional(),
   clientClassificationId: z.number().optional(),
   clientClassificationName: z.string().optional(),
-  submittedOnDate: z.date().default(() => new Date()),
+  submittedOnDate: z.coerce.date().default(() => new Date()),
   active: z.boolean().default(true),
-  activationDate: z.date().optional(),
+  activationDate: z.coerce.date().optional(),
   openSavingsAccount: z.boolean().default(false),
   savingsProductId: z.number().optional(),
   savingsProductName: z.string().optional(),
@@ -74,11 +123,16 @@ const clientFormSchema = z.object({
   businessType: z.string().optional(),
 });
 
+// Holds the current request so resolveCurrentTenant can read headers
+// without changing every handler's signature.
+let _currentRequest: Request | undefined;
+
 /**
  * POST /api/leads/operations
  * Handles lead operations like save draft, submit, etc.
  */
 export async function POST(request: Request) {
+  _currentRequest = request;
   try {
     const body = await request.json();
     const { operation, data, leadId } = body;
@@ -168,16 +222,9 @@ async function handleSaveDraft(data: any, leadId?: string) {
     }
     const userId = session.user.id;
 
-    // Get the default tenant ID
-    const defaultTenant = await prisma.tenant.findUnique({
-      where: { slug: "goodfellow" },
-    });
-
-    if (!defaultTenant) {
-      throw new Error("Default tenant not found. Please run database seed.");
-    }
-
-    const tenantId = defaultTenant.id;
+    // Resolve current tenant from subdomain/headers
+    const currentTenant = await resolveCurrentTenant(undefined, _currentRequest);
+    const tenantId = currentTenant.id;
 
     if (leadId) {
       // Update existing lead
@@ -439,15 +486,9 @@ async function handleCreateLeadWithClient(data: any) {
             }
             const userId = session.user.id;
 
-            const defaultTenant = await tx.tenant.findUnique({
-              where: { slug: "goodfellow" },
-            });
-
-            if (!defaultTenant) {
-              throw new Error("Default tenant not found. Please run database seed.");
-            }
-
-            const tenantId = defaultTenant.id;
+            // Resolve current tenant from subdomain/headers
+            const currentTenant = await resolveCurrentTenant(tx, _currentRequest);
+            const tenantId = currentTenant.id;
 
             // Create lead in database with existing Fineract client data
             const newLead = await tx.lead.create({
@@ -585,16 +626,9 @@ async function handleCreateLeadWithClient(data: any) {
       }
       const userId = session.user.id;
 
-      // Get the default tenant ID
-      const defaultTenant = await tx.tenant.findUnique({
-        where: { slug: "goodfellow" },
-      });
-
-      if (!defaultTenant) {
-        throw new Error("Default tenant not found. Please run database seed.");
-      }
-
-      const tenantId = defaultTenant.id;
+      // Resolve current tenant from subdomain/headers
+      const currentTenant = await resolveCurrentTenant(tx, _currentRequest);
+      const tenantId = currentTenant.id;
 
       // Create lead in database with Fineract data
       const newLead = await tx.lead.create({
@@ -725,7 +759,16 @@ async function handleCreateLeadWithClient(data: any) {
       error.response?.data || error.message?.includes("Fineract");
     let errorMessage = error.message || "Failed to create lead and client";
 
-    if (isFineractError) {
+    // Clarify when the error is from the Fineract backend's database (not Loan Matrix .env)
+    if (
+      error.message?.includes("database server") &&
+      error.message?.includes("credentials for")
+    ) {
+      errorMessage =
+        "The Fineract/Mifos backend (" +
+        (process.env.FINERACT_BASE_URL || "mifos-be") +
+        ") could not connect to its database. Update the database credentials on the Fineract server (host 10.10.0.143:5432, user postgres), not in Loan Matrix .env.";
+    } else if (isFineractError) {
       const fineractError = error.response?.data;
       if (fineractError?.errors && Array.isArray(fineractError.errors)) {
         // Extract specific validation errors from Fineract
@@ -1066,16 +1109,8 @@ async function handleUpdateClient(data: any, leadId?: string) {
         // CREATE new lead (fallback for backward compatibility)
         console.log("==========> No leadId provided, creating new lead...");
         result = await prisma.$transaction(async (tx) => {
-          // Get the default tenant for the lead
-          const defaultTenant = await tx.tenant.findUnique({
-            where: { slug: "goodfellow" },
-          });
-
-          if (!defaultTenant) {
-            throw new Error(
-              "Default tenant not found. Please run database seed."
-            );
-          }
+          // Resolve current tenant from subdomain/headers
+          const currentTenant = await resolveCurrentTenant(tx, _currentRequest);
 
           // Get current user ID from session
           const session = await getSession();
@@ -1089,7 +1124,7 @@ async function handleUpdateClient(data: any, leadId?: string) {
             data: {
               // User and tenant identification
               userId: userId,
-              tenantId: defaultTenant.id,
+              tenantId: currentTenant.id,
 
               // Client identification
               externalId: data.externalId,

@@ -22,6 +22,7 @@ import { AffordabilityConfig } from "./components/affordability-config";
 import { NotificationConfig } from "./components/notification-config";
 import { CreditScoringConfig } from "./components/credit-scoring-config";
 import { MetricsConfig } from "./components/metrics-config";
+import { TenantLogoUpload } from "./components/tenant-logo-upload";
 
 export default function ConfigPage() {
   const [saved, setSaved] = useState(false);
@@ -78,7 +79,7 @@ export default function ConfigPage() {
       )}
 
       <Tabs defaultValue="pipeline" className="w-full">
-        <TabsList className="grid grid-cols-9 w-full max-w-6xl">
+        <TabsList className="grid grid-cols-10 w-full max-w-6xl">
           <TabsTrigger
             value="pipeline"
             className="data-[state=active]:bg-blue-500"
@@ -129,6 +130,12 @@ export default function ConfigPage() {
             className="data-[state=active]:bg-blue-500"
           >
             Credit Scoring
+          </TabsTrigger>
+          <TabsTrigger
+            value="organization"
+            className="data-[state=active]:bg-blue-500"
+          >
+            Organization
           </TabsTrigger>
         </TabsList>
         <TabsContent value="pipeline">
@@ -248,6 +255,9 @@ export default function ConfigPage() {
               <CreditScoringConfig />
             </CardContent>
           </Card>
+        </TabsContent>
+        <TabsContent value="organization">
+          <TenantLogoUpload />
         </TabsContent>
       </Tabs>
     </div>

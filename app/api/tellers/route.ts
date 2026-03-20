@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getFineractServiceWithSession } from "@/lib/fineract-api";
 import { prisma } from "@/lib/prisma";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
+import { getOrgDefaultCurrencyCode, getOrgRawCurrencyCode } from "@/lib/currency-utils";
 
 /**
  * GET /api/tellers
@@ -16,6 +17,8 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const officeId = searchParams.get("officeId");
+
+    const orgCurrency = await getOrgDefaultCurrencyCode();
 
     // Get tellers from Fineract - this is the source of truth
     const fineractService = await getFineractServiceWithSession();
@@ -170,15 +173,13 @@ export async function GET(request: NextRequest) {
           const summaries = await Promise.all(
             fineractCashiers.map(async (fc: any) => {
               try {
+                const rawCurrency = await getOrgRawCurrencyCode();
                 const summary = await fineractService.getCashierSummaryAndTransactions(
                   dbTeller.fineractTellerId!,
                   fc.id,
-                  "ZMW"
+                  rawCurrency
                 );
-                return Math.max(
-                  summary.sumCashAllocation || 0,
-                  summary.netCash || 0
-                );
+                return summary.netCash ?? summary.sumCashAllocation ?? 0;
               } catch (err) {
                 return 0;
               }
@@ -189,7 +190,7 @@ export async function GET(request: NextRequest) {
         }
 
         const availableBalance = vaultBalance - allocatedToCashiers;
-        const currency = "ZMW";
+        const currency = orgCurrency;
 
         return {
           fineractTellerId: dbTeller.fineractTellerId,

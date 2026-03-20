@@ -1,5 +1,6 @@
 import type React from "react";
 import { getUserProfileData } from "./components/user-profile-data";
+import { getTenantFromHeaders } from "@/lib/tenant-service";
 
 import Image from "next/image";
 import AIAssistant from "@/components/ai-assistant";
@@ -7,7 +8,7 @@ import { Suspense } from "react";
 
 // Client components
 import { UserProfileClient } from "./components/user-profile-client";
-import { MobileSidebar } from "./components/mobile-sidebar";
+import { MobileSidebarWrapper } from "./components/mobile-sidebar-wrapper";
 import { SidebarNav } from "./components/sidebar-nav";
 import { ChatProvider } from "@/contexts/chat-context";
 import { TenantDisplay } from "@/components/tenant-display";
@@ -18,8 +19,11 @@ export default async function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  // Fetch user profile data
-  const userProfileData = await getUserProfileData();
+  const [userProfileData, tenant] = await Promise.all([
+    getUserProfileData(),
+    getTenantFromHeaders(),
+  ]);
+  const tenantLogoUrl = tenant?.logoFileUrl ?? null;
 
   return (
     <ChatProvider>
@@ -29,22 +33,34 @@ export default async function DashboardLayout({
           <div className="hidden lg:block lg:w-64 bg-background border-border border-r h-screen sticky top-0 z-30 overflow-y-auto">
             <div className="flex h-16 items-center justify-center border-b border-white/20 dark:border-white/10 px-4 sticky top-0 bg-white/70 dark:bg-gray-900/70 backdrop-blur-md z-10">
               <div className="flex items-center">
-                <Image
-                  src="/kenac_logo_light.png"
-                  alt="Kenac Logo"
-                  width={120}
-                  height={40}
-                  className="dark:hidden"
-                  priority
-                />
-                <Image
-                  src="/kenac_logo.png"
-                  alt="Kenac Logo"
-                  width={120}
-                  height={40}
-                  className="hidden dark:block"
-                  priority
-                />
+                {tenantLogoUrl ? (
+                  <img
+                    src={tenantLogoUrl}
+                    alt={`${tenant?.name ?? "Organization"} Logo`}
+                    width={120}
+                    height={40}
+                    className="h-10 w-auto object-contain"
+                  />
+                ) : (
+                  <>
+                    <Image
+                      src="/kenac_logo_light.png"
+                      alt="Kenac Logo"
+                      width={120}
+                      height={40}
+                      className="dark:hidden"
+                      priority
+                    />
+                    <Image
+                      src="/kenac_logo.png"
+                      alt="Kenac Logo"
+                      width={120}
+                      height={40}
+                      className="hidden dark:block"
+                      priority
+                    />
+                  </>
+                )}
               </div>
             </div>
             <TenantDisplay />
@@ -54,7 +70,7 @@ export default async function DashboardLayout({
           </div>
 
           {/* Mobile Sidebar */}
-          <MobileSidebar userProfileData={userProfileData} />
+          <MobileSidebarWrapper userProfileData={userProfileData} tenantLogoUrl={tenantLogoUrl} />
 
           {/* Main Content */}
           <div className="relative flex-1 h-screen overflow-y-auto">

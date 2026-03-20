@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useCurrency } from "@/contexts/currency-context";
+import { useState, useEffect, useMemo } from "react";
 import {
   Dialog,
   DialogContent,
@@ -14,6 +15,8 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { formatDate } from "@/lib/format-date";
 import { Loader2 } from "lucide-react";
+import { GenericDataTable } from "@/components/tables/generic-data-table";
+import { DataTableColumn } from "@/shared/types/data-table";
 
 interface Transaction {
   id: number;
@@ -61,6 +64,7 @@ export function TransactionsModal({
   cashierId,
   cashierName,
 }: TransactionsModalProps) {
+  const { currencyCode: orgCurrency } = useCurrency();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [summary, setSummary] = useState<any>(null);
   const [loading, setLoading] = useState(false);
@@ -86,8 +90,7 @@ export function TransactionsModal({
         
         setCurrencies(currencyList);
         
-        // Set default currency if not already set
-        if (currencyList.length > 0 && !currencyCode) {
+        if (!currencyCode && currencyList.length > 0) {
           setCurrencyCode(currencyList[0].code);
         }
       }
@@ -176,7 +179,7 @@ export function TransactionsModal({
   const formatAmount = (amount: number, currency?: string) => {
     return new Intl.NumberFormat("en-US", {
       style: "currency",
-      currency: currency || "ZMW",
+      currency: currency || orgCurrency,
     }).format(amount);
   };
 
@@ -209,6 +212,60 @@ export function TransactionsModal({
   const getTransactionNotes = (tx: Transaction) => {
     return tx.txnNote || tx.notes || "—";
   };
+
+  const columns: DataTableColumn<Transaction>[] = useMemo(
+    () => [
+      {
+        id: "date",
+        header: "Date",
+        accessorKey: "createdDate" as keyof Transaction,
+        enableSorting: true,
+        cell: ({ row }) => {
+          const tx = row.original;
+          const date = tx.txnDate || tx.transactionDate || tx.createdDate;
+          return (
+            <span className="text-sm">
+              {formatTransactionDate(date)}
+            </span>
+          );
+        },
+      },
+      {
+        id: "type",
+        header: "Type",
+        accessorKey: "txnType" as keyof Transaction,
+        enableSorting: true,
+        cell: ({ row }) => getTransactionTypeBadge(row.original),
+      },
+      {
+        id: "amount",
+        header: "Amount",
+        accessorKey: "txnAmount" as keyof Transaction,
+        enableSorting: true,
+        meta: { align: "right" },
+        cell: ({ row }) => (
+          <span className="text-sm font-medium text-right block">
+            {formatAmount(
+              row.original.txnAmount || row.original.amount || 0,
+              currencyCode
+            )}
+          </span>
+        ),
+      },
+      {
+        id: "notes",
+        header: "Notes",
+        accessorKey: "txnNote" as keyof Transaction,
+        enableSorting: true,
+        cell: ({ row }) => (
+          <span className="text-sm text-muted-foreground truncate max-w-[200px] block">
+            {getTransactionNotes(row.original)}
+          </span>
+        ),
+      },
+    ],
+    [currencyCode]
+  );
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -267,7 +324,10 @@ export function TransactionsModal({
               <div className="text-center p-3 bg-red-50 rounded-lg">
                 <div className="text-xs text-muted-foreground">Cash Out</div>
                 <div className="text-lg font-bold text-red-600">
-                  {formatAmount(summary.sumCashSettlement || 0, currencyCode)}
+                  {formatAmount(
+                    (summary.sumCashSettlement || 0) + (summary.sumOutwardCash || 0),
+                    currencyCode
+                  )}
                 </div>
               </div>
               <div className="text-center p-3 bg-muted rounded-lg">
@@ -283,56 +343,23 @@ export function TransactionsModal({
           </div>
         )}
 
-        {/* Transactions Table */}
-        <div className="mt-4">
-          {loading ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-            </div>
-          ) : transactions.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              No transactions found
-            </div>
-          ) : (
-            <div className="border rounded-lg overflow-hidden">
-              <table className="w-full">
-                <thead className="bg-muted">
-                  <tr>
-                    <th className="px-4 py-3 text-left text-sm font-medium">
-                      Date
-                    </th>
-                    <th className="px-4 py-3 text-left text-sm font-medium">
-                      Type
-                    </th>
-                    <th className="px-4 py-3 text-right text-sm font-medium">
-                      Amount
-                    </th>
-                    <th className="px-4 py-3 text-left text-sm font-medium">
-                      Notes
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {transactions.map((tx, index) => (
-                    <tr key={tx.id || index} className="hover:bg-muted/50">
-                      <td className="px-4 py-3 text-sm">
-                        {formatTransactionDate(getTransactionDate(tx))}
-                      </td>
-                      <td className="px-4 py-3 text-sm">
-                        {getTransactionTypeBadge(tx)}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-right font-medium">
-                        {formatAmount(getTransactionAmount(tx), currencyCode)}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-muted-foreground">
-                        {getTransactionNotes(tx)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+        {/* Transactions Table – TanStack DataTable with pagination */}
+        <div className="mt-4 max-h-[400px] overflow-auto">
+          <GenericDataTable<Transaction>
+            data={transactions}
+            columns={columns}
+            enablePagination={true}
+            pageSize={10}
+            hideSearch={true}
+            enableExport={true}
+            exportFileName={`cashier-${cashierId}-transactions`}
+            enableFilters={false}
+            enableColumnVisibility={false}
+            isLoading={loading}
+            emptyMessage="No transactions found"
+            defaultSorting={[{ id: "date", desc: true }]}
+            tableId={`cashier-transactions-modal-${tellerId}-${cashierId}`}
+          />
         </div>
 
         {/* Summary */}

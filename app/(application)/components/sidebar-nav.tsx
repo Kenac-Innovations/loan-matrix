@@ -6,6 +6,7 @@ import {
   Bot,
   CreditCard,
   FileText,
+  Receipt,
   TrendingUp,
   Users,
   Landmark,
@@ -66,6 +67,16 @@ export function SidebarNav() {
         Loans
       </Link>
 
+      <MenuItemWithSubmenu
+        icon={<Receipt />}
+        label="Collections"
+        href="/collections"
+        subMenuItems={[
+          { label: "Expected Payments", href: "/collections" },
+          { label: "Bulk Receipting", href: "/collections/bulk-receipting" },
+        ]}
+      />
+
       <div className="space-y-1">
         <MenuItemWithSubmenu
           icon={<Users />}
@@ -85,6 +96,9 @@ export function SidebarNav() {
         subMenuItems={[
           { label: "Banks", href: "/banks" },
           { label: "Tellers", href: "/tellers" },
+          ...(isEnabled("receiptRanges")
+            ? [{ label: "Receipt Ranges", href: "/banks/receipts" }]
+            : []),
         ]}
       />
 
