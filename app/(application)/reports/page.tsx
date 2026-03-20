@@ -53,6 +53,12 @@ import {
   List,
 } from "lucide-react";
 import { toast } from "@/components/ui/use-toast";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { ReportsDataTable } from "./components/reports-data-table";
 
 interface FineractReport {
@@ -122,6 +128,12 @@ export default function ReportsPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(10);
+  const [moreReportsModal, setMoreReportsModal] = useState<{
+    open: boolean;
+    category: string;
+    reports: FineractReport[];
+  }>({ open: false, category: "", reports: [] });
+  const [moreReportsModalSearch, setMoreReportsModalSearch] = useState("");
 
   // Load available reports on component mount
   useEffect(() => {
@@ -625,7 +637,16 @@ export default function ReportsPage() {
                                 </div>
                               ))}
                               {reports.length > 3 && (
-                                <p className="text-xs text-muted-foreground text-center">
+                                <p
+                                  className="text-xs text-muted-foreground text-center cursor-pointer hover:text-foreground hover:underline transition-colors"
+                                  onClick={() =>
+                                    setMoreReportsModal({
+                                      open: true,
+                                      category,
+                                      reports: reports.slice(3),
+                                    })
+                                  }
+                                >
                                   +{reports.length - 3} more reports
                                 </p>
                               )}
@@ -650,6 +671,78 @@ export default function ReportsPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* More Reports Modal */}
+      <Dialog
+        open={moreReportsModal.open}
+        onOpenChange={(open) => {
+          setMoreReportsModal((prev) => ({ ...prev, open }));
+          if (!open) setMoreReportsModalSearch("");
+        }}
+      >
+        <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              {moreReportsModal.category} Reports
+            </DialogTitle>
+          </DialogHeader>
+          <div className="relative mt-2">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search reports..."
+              value={moreReportsModalSearch}
+              onChange={(e) => setMoreReportsModalSearch(e.target.value)}
+              className="pl-9"
+            />
+          </div>
+          <div className="space-y-3 mt-4">
+            {(() => {
+              const filteredReports = moreReportsModal.reports.filter(
+                (report) =>
+                  report.reportName
+                    .toLowerCase()
+                    .includes(moreReportsModalSearch.toLowerCase()) ||
+                  report.reportType
+                    .toLowerCase()
+                    .includes(moreReportsModalSearch.toLowerCase())
+              );
+              if (filteredReports.length === 0) {
+                return (
+                  <p className="text-sm text-muted-foreground text-center py-6">
+                    No reports match your search.
+                  </p>
+                );
+              }
+              return filteredReports.map((report) => (
+                <div
+                  key={report.id}
+                  className="flex items-center justify-between rounded-md border p-2 cursor-pointer hover:bg-muted/50 transition-colors"
+                  onClick={() => {
+                    window.location.href = `/reports/${encodeURIComponent(
+                      report.reportName
+                    )}`;
+                  }}
+                >
+                  <div>
+                    <p className="text-sm font-medium">{report.reportName}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {report.reportType}
+                    </p>
+                  </div>
+                  {report.coreReport && (
+                    <Badge
+                      variant="outline"
+                      className="bg-blue-500 text-white border-0 text-xs"
+                    >
+                      Core
+                    </Badge>
+                  )}
+                </div>
+              ));
+            })()}
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
