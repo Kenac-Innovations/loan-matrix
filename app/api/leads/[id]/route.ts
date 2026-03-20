@@ -35,6 +35,16 @@ export async function GET(
       return NextResponse.json({ error: "Lead not found" }, { status: 404 });
     }
 
+    // Fetch tenant settings for email-optional check
+    const tenant = lead.tenantId
+      ? await prisma.tenant.findUnique({
+          where: { id: lead.tenantId },
+          select: { settings: true },
+        })
+      : null;
+    const tenantSettings = tenant?.settings as any;
+    const emailOptional = !!tenantSettings?.locale?.emailOptional;
+
     // Calculate some derived fields
     const timeInCurrentStage =
       lead.currentStage && lead.stateTransitions.length > 0
@@ -57,7 +67,7 @@ export async function GET(
         hasRequiredFields: !!(
           lead.firstname &&
           lead.lastname &&
-          lead.emailAddress
+          (emailOptional || lead.emailAddress)
         ),
         stageHistory: lead.stateTransitions.map((transition) => ({
           ...transition,

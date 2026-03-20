@@ -415,6 +415,7 @@ export async function getLeadsData(
         assignedToUserName: lead.assignedToUserName,
         assignedAt: lead.assignedAt,
         preferredPaymentMethod: lead.preferredPaymentMethod ?? null,
+        isTopup: loanTerms.isTopup || false,
       };
     });
 

@@ -257,6 +257,12 @@ export interface FineractLoan {
     canDefineInstallmentAmount: boolean;
     canUseForTopup: boolean;
     isTopup: boolean;
+    topupDetails?: {
+      loanIdToClose?: number;
+      accountNoToClose?: string;
+      topupAmount?: number;
+    };
+    clientId?: number;
     closureDate: string | number[];
     inArrears: boolean;
     overdueCharges: any[];

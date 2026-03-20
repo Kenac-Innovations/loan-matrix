@@ -87,6 +87,11 @@ model Lead {
   officeName                 String?
   legalFormId                Int?
   legalFormName              String?
+  fullname                   String?
+  tradingName                String?
+  registrationNumber         String?
+  dateOfIncorporation        DateTime?
+  natureOfBusiness           String?
   externalId                 String?
   firstname                  String?
   middlename                 String?

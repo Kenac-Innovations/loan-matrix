@@ -78,7 +78,7 @@ export default async function DashboardLayout({
             <UserProfileClient userProfileData={userProfileData} />
 
             {/* Main Content - scrolls under the header */}
-            <main className="p-8 min-h-[calc(100vh-4rem)]">
+            <main className="p-4 md:p-6 lg:p-8 min-h-[calc(100vh-4rem)]">
               <Suspense fallback={<div>Loading...</div>}>{children}</Suspense>
             </main>
           </div>

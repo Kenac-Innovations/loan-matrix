@@ -3,7 +3,7 @@
 import { useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { AlertTriangle, RefreshCw, Users } from 'lucide-react';
+import { AlertTriangle, RefreshCw } from 'lucide-react';
 
 export default function ClientsError({
   error,
@@ -45,14 +45,6 @@ export default function ClientsError({
             <Button onClick={reset} size="sm">
               <RefreshCw className="w-4 h-4 mr-2" />
               Try again
-            </Button>
-            <Button 
-              variant="outline" 
-              onClick={() => window.location.href = '/dashboard'}
-              size="sm"
-            >
-              <Users className="w-4 h-4 mr-2" />
-              Go to Dashboard
             </Button>
           </div>
         </CardContent>
