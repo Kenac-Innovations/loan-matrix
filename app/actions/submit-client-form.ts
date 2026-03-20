@@ -12,22 +12,33 @@ export async function submitClientForm(formData: FormData) {
     const data = {
       officeId: parseInt(formData.get("officeId") as string),
       legalFormId: parseInt(formData.get("legalFormId") as string),
-      externalId: formData.get("externalId") as string,
-      firstname: formData.get("firstname") as string,
+      externalId: (formData.get("externalId") as string) || undefined,
+      firstname: (formData.get("firstname") as string) || undefined,
       middlename: (formData.get("middlename") as string) || undefined,
-      lastname: formData.get("lastname") as string,
+      lastname: (formData.get("lastname") as string) || undefined,
       dateOfBirth: formData.get("dateOfBirth")
         ? new Date(formData.get("dateOfBirth") as string)
         : undefined,
-      genderId: parseInt(formData.get("genderId") as string),
+      genderId: formData.get("genderId")
+        ? parseInt(formData.get("genderId") as string)
+        : undefined,
+      fullname: (formData.get("fullname") as string) || undefined,
+      tradingName: (formData.get("tradingName") as string) || undefined,
+      registrationNumber: (formData.get("registrationNumber") as string) || undefined,
+      dateOfIncorporation: formData.get("dateOfIncorporation")
+        ? new Date(formData.get("dateOfIncorporation") as string)
+        : undefined,
+      natureOfBusiness: (formData.get("natureOfBusiness") as string) || undefined,
       isStaff: formData.get("isStaff") === "on",
       mobileNo: formData.get("mobileNo") as string,
       countryCode: (formData.get("countryCode") as string) || "+263",
       emailAddress: formData.get("emailAddress") as string,
-      clientTypeId: parseInt(formData.get("clientTypeId") as string),
-      clientClassificationId: parseInt(
-        formData.get("clientClassificationId") as string
-      ),
+      clientTypeId: formData.get("clientTypeId")
+        ? parseInt(formData.get("clientTypeId") as string)
+        : undefined,
+      clientClassificationId: formData.get("clientClassificationId")
+        ? parseInt(formData.get("clientClassificationId") as string)
+        : undefined,
       submittedOnDate: formData.get("submittedOnDate")
         ? new Date(formData.get("submittedOnDate") as string)
         : new Date(),

@@ -26,6 +26,8 @@ export interface TenantLocale {
   phoneDigits: number;
   phoneFormat: string;
   phonePlaceholder: string;
+  emailOptional?: boolean;
+  mandatoryDatatables?: string[];
 }
 
 const DEFAULT_LOCALE: TenantLocale = {
@@ -159,6 +161,8 @@ export function CurrencyProvider({ children }: { children: ReactNode }) {
             phoneDigits: localeData.phoneDigits || DEFAULT_LOCALE.phoneDigits,
             phoneFormat: localeData.phoneFormat || DEFAULT_LOCALE.phoneFormat,
             phonePlaceholder: localeData.phonePlaceholder || DEFAULT_LOCALE.phonePlaceholder,
+            emailOptional: !!localeData.emailOptional,
+            mandatoryDatatables: Array.isArray(localeData.mandatoryDatatables) ? localeData.mandatoryDatatables : undefined,
           });
         } catch {
           console.error("Error parsing tenant locale");

@@ -176,22 +176,13 @@ export async function GET(
     if (lead.fineractClientId) {
       try {
         console.log("Fetching Fineract client details for gender...");
-        const clientDetailsResponse = await fetch(
-          `${request.nextUrl.origin}/api/fineract/clients/${lead.fineractClientId}`,
-          {
-            headers: {
-              origin: request.headers.get("origin") || "",
-          referer: request.headers.get("referer") || "",
-            },
-          },
+        fineractClient = await fetchFineractAPI(
+          `/clients/${lead.fineractClientId}`,
         );
-        if (clientDetailsResponse.ok) {
-          fineractClient = await clientDetailsResponse.json();
-          console.log(
-            "Fineract client fetched, gender:",
-            fineractClient?.gender,
-          );
-        }
+        console.log(
+          "Fineract client fetched, gender:",
+          fineractClient?.gender,
+        );
       } catch (err) {
         console.error("Error fetching Fineract client details:", err);
       }
@@ -562,18 +553,20 @@ export async function GET(
       .reduce((sum, c) => sum + c.amount, 0);
     const disbursedAmount = principal - upfrontFees;
 
-    // Get gender name - priority: Fineract client > lead.gender > genderId lookup
+    // Get gender name - priority: Fineract client > genderId map > lead.gender > template lookup
     let genderName = "N/A";
+    const FINERACT_GENDER_MAP: Record<number, string> = { 15: "Male", 16: "Female" };
+    console.log("Gender debug:", { gender: lead.gender, genderId: lead.genderId, fineractGender: fineractClient?.gender });
     if (fineractClient?.gender?.name) {
-      // Best source: Fineract client has gender object with name
       genderName = fineractClient.gender.name;
       console.log("Gender from Fineract client:", genderName);
-    } else if (lead.gender) {
-      // Fallback: lead.gender string field
+    } else if (lead.genderId && FINERACT_GENDER_MAP[lead.genderId]) {
+      genderName = FINERACT_GENDER_MAP[lead.genderId];
+      console.log("Gender from genderId map:", genderName);
+    } else if (lead.gender && lead.gender !== "null" && lead.gender !== "N/A") {
       genderName = lead.gender;
       console.log("Gender from lead.gender:", genderName);
     } else if (lead.genderId && clientTemplate?.genderOptions) {
-      // Last resort: lookup genderId in template options
       const genderOption = clientTemplate.genderOptions.find(
         (g: any) => g.id === lead.genderId,
       );
@@ -581,15 +574,29 @@ export async function GET(
       console.log("Gender from template lookup:", genderName);
     }
 
-    // Fetch Employment Information datatable for employer details
+    // Fetch all Fineract client datatables for contract data
     let employerName: string | undefined = undefined;
     let employeeNo: string | undefined = undefined;
+    let dtMaritalStatus: string | undefined = undefined;
+    let dtSpouseName: string | undefined = undefined;
+    let dtSpousePhone: string | undefined = undefined;
+    let dtClosestRelativeName: string | undefined = undefined;
+    let dtClosestRelativePhone: string | undefined = undefined;
+    let dtClosestRelativeRelationship: string | undefined = undefined;
+    let dtBusinessSector: string | undefined = undefined;
+    let dtBusinessAddress: string | undefined = undefined;
+    let dtCollaterals: Array<{ description?: string }> = [];
+    let dtReferees: Array<{
+      name?: string;
+      occupation?: string;
+      relation?: string;
+      address?: string;
+      phone?: string;
+    }> = [];
 
     if (lead.fineractClientId) {
       try {
         console.log("Fetching datatables for client:", lead.fineractClientId);
-
-        // Use fetchFineractAPI directly to avoid session context issues with internal fetch calls
         const datatables = await fetchFineractAPI(
           `/datatables?apptable=m_client`,
         );
@@ -598,129 +605,178 @@ export async function GET(
           datatables.map((dt: any) => dt.registeredTableName),
         );
 
-        // Find Employment Information datatable (may have different prefixes like cd_, dt_, m_)
-        const employmentTable = datatables.find((dt: any) => {
-          const tableName = dt.registeredTableName?.toLowerCase() || "";
-          const displayName = dt.displayName?.toLowerCase() || "";
-          // Match "Employment Information" or "Employment_Information" or similar
-          return (
-            tableName.includes("employment") ||
-            displayName.includes("employment") ||
-            tableName.includes("employer")
-          );
-        });
-
-        if (employmentTable) {
-          console.log(
-            "Found Employment Information datatable:",
-            employmentTable.registeredTableName,
-          );
-
-          // Fetch employment data for this client using fetchFineractAPI directly
-          const employmentData = await fetchFineractAPI(
-            `/datatables/${encodeURIComponent(employmentTable.registeredTableName)}/${lead.fineractClientId}?genericResultSet=true`,
-          );
-          console.log(
-            "Employment data fetched:",
-            JSON.stringify(employmentData, null, 2),
-          );
-
-          // Extract employer details from the datatable data
-          if (employmentData.data && employmentData.data.length > 0) {
-            const headers = employmentData.columnHeaders || [];
-            const firstRow = employmentData.data[0]?.row || [];
-
-            console.log(
-              "Column headers:",
-              headers.map((h: any) => h.columnName),
+        const resolveCodeValue = (header: any, rawValue: any): string => {
+          if (rawValue == null) return "";
+          if (
+            header.columnDisplayType === "CODELOOKUP" &&
+            Array.isArray(header.columnValues)
+          ) {
+            const match = header.columnValues.find(
+              (cv: any) => cv.id === rawValue || cv.id === Number(rawValue),
             );
-            console.log("First row data:", firstRow);
-
-            // Find column indices for employer and employee number fields
-            // Column names from Employment Information datatable:
-            // - "Employer_Name" or "Employer Name" for employer
-            // - "Employee_Number" or "Employee Number" for employee number
-            headers.forEach((header: any, index: number) => {
-              const columnName =
-                header.columnName?.toLowerCase().replace(/\s+/g, "_") || "";
-              const rawColumnName = header.columnName || "";
-              const value = firstRow[index];
-
-              console.log(`Column ${index}: ${rawColumnName} = ${value}`);
-
-              // Look for "Employer_Name" or "Employer Name" column (exact match for the name field)
-              if (
-                columnName === "employer_name" ||
-                rawColumnName === "Employer_Name" ||
-                rawColumnName === "Employer Name"
-              ) {
-                if (value && !employerName) {
-                  employerName = value.toString();
-                  console.log("Found Employer Name:", employerName);
-                }
-              }
-
-              // Look for "Employee_Number" or "Employee Number" column
-              if (
-                columnName === "employee_number" ||
-                rawColumnName === "Employee_Number" ||
-                rawColumnName === "Employee Number"
-              ) {
-                if (value && !employeeNo) {
-                  employeeNo = value.toString();
-                  console.log("Found Employee Number:", employeeNo);
-                }
-              }
-            });
-
-            // Fallback: If we still don't have employer, try to find any column with "employer" and "name" in it
-            if (!employerName) {
-              headers.forEach((header: any, index: number) => {
-                const columnName = header.columnName?.toLowerCase() || "";
-                const value = firstRow[index];
-                // Match columns like "employer_name", "employername", etc. but not "employer_id"
-                if (
-                  columnName.includes("employer") &&
-                  (columnName.includes("name") || !columnName.includes("id")) &&
-                  value &&
-                  typeof value === "string" &&
-                  value.length > 0
-                ) {
-                  employerName = value;
-                  console.log("Found employer (fallback):", employerName);
-                }
-              });
-            }
-
-            // Fallback: If we still don't have employee number, try other patterns
-            if (!employeeNo) {
-              headers.forEach((header: any, index: number) => {
-                const columnName = header.columnName?.toLowerCase() || "";
-                const value = firstRow[index];
-                if (
-                  (columnName.includes("employee") &&
-                    columnName.includes("num")) ||
-                  columnName.includes("staff_no") ||
-                  columnName.includes("emp_no")
-                ) {
-                  if (value) {
-                    employeeNo = value.toString();
-                    console.log(
-                      "Found employee number (fallback):",
-                      employeeNo,
-                    );
-                  }
-                }
-              });
-            }
+            return match?.value || match?.name || String(rawValue);
           }
-        } else {
-          console.log(
-            "Employment Information datatable not found in available tables",
-          );
+          return String(rawValue);
+        };
+
+        for (const dt of datatables) {
+          const tableName = dt.registeredTableName || "";
+          const lowerName = tableName.toLowerCase();
+          try {
+            const dtData = await fetchFineractAPI(
+              `/datatables/${encodeURIComponent(tableName)}/${lead.fineractClientId}?genericResultSet=true`,
+            );
+            const headers = dtData?.columnHeaders || [];
+            const rows = dtData?.data || [];
+            if (rows.length === 0) continue;
+
+            const getVal = (row: any[], colMatch: (name: string) => boolean) => {
+              const idx = headers.findIndex((h: any) =>
+                colMatch((h.columnName || "").toLowerCase().replace(/\s+/g, "_")),
+              );
+              return idx >= 0 ? row[idx] : undefined;
+            };
+
+            const getResolvedVal = (
+              row: any[],
+              colMatch: (name: string) => boolean,
+            ): string => {
+              const idx = headers.findIndex((h: any) =>
+                colMatch((h.columnName || "").toLowerCase().replace(/\s+/g, "_")),
+              );
+              if (idx < 0) return "";
+              return resolveCodeValue(headers[idx], row[idx]);
+            };
+
+            // --- Employment Information ---
+            if (
+              lowerName.includes("employment") ||
+              lowerName.includes("employer")
+            ) {
+              const firstRow = rows[0]?.row || [];
+              if (!employerName) {
+                const val = getVal(firstRow, (n) => n.includes("employer"));
+                if (val) employerName = resolveCodeValue(
+                  headers[headers.findIndex((h: any) =>
+                    (h.columnName || "").toLowerCase().replace(/\s+/g, "_").includes("employer"),
+                  )],
+                  val,
+                );
+              }
+              if (!employeeNo) {
+                const val = getVal(
+                  firstRow,
+                  (n) => n.includes("employee") && n.includes("num"),
+                );
+                if (val) employeeNo = String(val);
+              }
+            }
+
+            // --- Business Info ---
+            if (lowerName.includes("business")) {
+              const firstRow = rows[0]?.row || [];
+              if (!dtBusinessSector) {
+                dtBusinessSector = getResolvedVal(
+                  firstRow,
+                  (n) => n.includes("business") && (n.includes("sector") || n.includes("type")),
+                );
+              }
+              if (!dtBusinessAddress) {
+                const val = getVal(firstRow, (n) => n === "address" || n.includes("address"));
+                if (val) dtBusinessAddress = String(val);
+              }
+            }
+
+            // --- Family Situation ---
+            if (lowerName.includes("family")) {
+              const firstRow = rows[0]?.row || [];
+              if (!dtMaritalStatus) {
+                dtMaritalStatus = getResolvedVal(
+                  firstRow,
+                  (n) => n.includes("marital"),
+                );
+              }
+              if (!dtSpouseName) {
+                const val = getVal(firstRow, (n) => n.includes("spouse") && n.includes("name"));
+                if (val) dtSpouseName = String(val);
+              }
+              if (!dtSpousePhone) {
+                const val = getVal(
+                  firstRow,
+                  (n) => n.includes("spouse") && (n.includes("phone") || n.includes("tel")),
+                );
+                if (val) dtSpousePhone = String(val);
+              }
+              if (!dtClosestRelativeName) {
+                const val = getVal(
+                  firstRow,
+                  (n) => n.includes("closest") && n.includes("name"),
+                );
+                if (val) dtClosestRelativeName = String(val);
+              }
+              if (!dtClosestRelativePhone) {
+                const val = getVal(
+                  firstRow,
+                  (n) => n.includes("closest") && (n.includes("phone") || n.includes("tel")),
+                );
+                if (val) dtClosestRelativePhone = String(val);
+              }
+              if (!dtClosestRelativeRelationship) {
+                dtClosestRelativeRelationship = getResolvedVal(
+                  firstRow,
+                  (n) => n.includes("relation"),
+                );
+              }
+            }
+
+            // --- Proposed Security (multi-row) ---
+            if (lowerName.includes("security") || lowerName.includes("collateral")) {
+              for (const rowObj of rows) {
+                const row = rowObj?.row || [];
+                const desc = getVal(row, (n) => n.includes("description") || n === "description");
+                if (desc) dtCollaterals.push({ description: String(desc) });
+              }
+            }
+
+            // --- Referees (multi-row) ---
+            if (lowerName.includes("referee")) {
+              for (const rowObj of rows) {
+                const row = rowObj?.row || [];
+                const name = getVal(row, (n) => n === "name");
+                const occupation = getVal(row, (n) => n === "occupation");
+                const relation = getResolvedVal(row, (n) => n.includes("relation"));
+                const address = getVal(row, (n) => n === "address");
+                const phone = getVal(
+                  row,
+                  (n) => n.includes("telephone") || n.includes("phone") || n.includes("tel"),
+                );
+                dtReferees.push({
+                  name: name ? String(name) : undefined,
+                  occupation: occupation ? String(occupation) : undefined,
+                  relation: relation || undefined,
+                  address: address ? String(address) : undefined,
+                  phone: phone ? String(phone) : undefined,
+                });
+              }
+            }
+          } catch (err) {
+            console.warn(`Failed to fetch datatable "${tableName}":`, err);
+          }
         }
+
+        console.log("Datatable extraction complete:", {
+          employerName,
+          employeeNo,
+          dtBusinessSector,
+          dtBusinessAddress,
+          dtMaritalStatus,
+          dtSpouseName,
+          dtClosestRelativeName,
+          dtCollaterals: dtCollaterals.length,
+          dtReferees: dtReferees.length,
+        });
       } catch (err) {
-        console.error("Error fetching employment info:", err);
+        console.error("Error fetching client datatables:", err);
       }
     }
 
@@ -798,7 +854,7 @@ export async function GET(
       executionMonth,
       executionYear,
 
-      // Address & family (for contract prepopulation)
+      // Address & family (for contract prepopulation — Fineract datatables take priority)
       residentialAddress:
         residentialAddress ||
         (lead.stateContext as any)?.residentialAddress ||
@@ -807,34 +863,45 @@ export async function GET(
         null,
       workAddress:
         workAddress ||
+        dtBusinessAddress ||
         (lead.stateContext as any)?.workAddress ||
         (lead.stateMetadata as any)?.workAddress ||
         null,
       spouseName:
+        dtSpouseName ||
         spouseName ||
         (lead.stateContext as any)?.spouseName ||
         (lead.stateMetadata as any)?.spouseName ||
         null,
       spousePhone:
+        dtSpousePhone ||
         spousePhone ||
         (lead.stateContext as any)?.spousePhone ||
         (lead.stateMetadata as any)?.spousePhone ||
         null,
       closestRelativeName:
+        dtClosestRelativeName ||
         closestRelativeName ||
         (lead.stateContext as any)?.closestRelativeName ||
         (lead.stateMetadata as any)?.closestRelativeName ||
         null,
       closestRelativePhone:
+        dtClosestRelativePhone ||
         closestRelativePhone ||
         (lead.stateContext as any)?.closestRelativePhone ||
         (lead.stateMetadata as any)?.closestRelativePhone ||
         null,
       closestRelativeRelationship:
+        dtClosestRelativeRelationship ||
         closestRelativeRelationship ||
         (lead.stateContext as any)?.closestRelativeRelationship ||
         (lead.stateMetadata as any)?.closestRelativeRelationship ||
         null,
+      maritalStatus: dtMaritalStatus || null,
+      businessSector: dtBusinessSector || null,
+      businessAddress: dtBusinessAddress || null,
+      collaterals: dtCollaterals.length > 0 ? dtCollaterals : null,
+      referees: dtReferees.length > 0 ? dtReferees : null,
 
       // Extra fields for tenant-specific templates
       firstname: lead.firstname || null,

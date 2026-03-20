@@ -38,13 +38,6 @@ export default function Error({
             <Button onClick={reset} className="w-full">
               Try again
             </Button>
-            <Button 
-              variant="outline" 
-              onClick={() => window.location.href = '/dashboard'}
-              className="w-full"
-            >
-              Go to Dashboard
-            </Button>
           </div>
         </CardContent>
       </Card>

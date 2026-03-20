@@ -65,8 +65,9 @@ export async function POST(
         interestChargedFrom: data.interestChargedFrom,
         balloonRepaymentAmount: data.balloonRepaymentAmount,
         collaterals: data.collaterals,
-        // Include charges in saved loan terms
         charges: data.charges || [],
+        isTopup: data.isTopup || false,
+        loanIdToClose: data.loanIdToClose || "",
       },
     };
     

@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<style>
+  @page { size: A4; margin: 20mm 15mm 20mm 15mm; }
+  body { font-family: 'Times New Roman', Times, serif; font-size: 11pt; line-height: 1.5; color: #000; margin: 0; padding: 0; }
+  .page { page-break-after: always; page-break-inside: avoid; padding: 40px 40px; position: relative; min-height: 900px; box-sizing: border-box; }
+  .page:last-child { page-break-after: auto; }
+  @media screen {
+    .page { border: 1px solid #ccc; margin-bottom: 30px; background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+  }
+  .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; padding-bottom: 5px; opacity: 0.55; }
+  .header-left { display: flex; align-items: flex-start; gap: 8px; }
+  .header-left img { width: 140px; height: auto; }
+  .header-left .registered { font-size: 8pt; color: #888; margin-top: 2px; }
+  .header-right { text-align: right; font-size: 9.5pt; line-height: 1.4; color: #555; }
+  .header-right a { color: #4a7ab5; }
+  h1, h2, h3 { margin: 0; }
+  h1 { font-size: 20pt; text-align: center; margin: 30px 0 20px; font-weight: bold; }
+  h2 { font-size: 14pt; margin: 20px 0 10px; }
+  h3 { font-size: 11pt; margin: 10px 0 5px; }
+  .center { text-align: center; }
+  .bold { font-weight: bold; }
+  .underline { text-decoration: underline; }
+  .italic { font-style: italic; }
+  p { margin: 6px 0; }
+  ol { padding-left: 40px; margin: 10px 0; }
+  ol li { margin-bottom: 10px; text-align: justify; }
+  .signature-line { display: inline-block; min-width: 200px; border-bottom: 1px solid #000; }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0; }
+  table.bordered td, table.bordered th { border: 1px solid #000; padding: 5px 8px; text-align: center; font-size: 10pt; }
+  table.bordered th { font-weight: bold; }
+  .two-col { display: flex; gap: 30px; }
+  .two-col > div { flex: 1; }
+  .field-row { margin: 8px 0; line-height: 1.8; }
+  .penalty-table td { border: 1px solid #000; padding: 8px 10px; font-size: 10pt; vertical-align: top; }
+  .penalty-table { width: auto; }
+  .gender-choice.selected { font-weight: bold; text-decoration: underline; }
+  .watermark { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); opacity: 0.06; z-index: 0; pointer-events: none; }
+  .watermark img { width: 450px; height: auto; }
+  .content { position: relative; z-index: 1; }
+</style>
+</head>
+<body>
+
+<!-- ======================== PAGE 1: LOAN APPLICATION FORM ======================== -->
+<div class="page">
+  <div class="header">
+    <div class="header-left">
+      <div>
+        <img src="{{TENANT_LOGO_URL}}" alt="Omama Finance" />
+        <div class="registered">(Registered Microfinance Institution)</div>
+      </div>
+    </div>
+    <div class="header-right">
+      48 Glen Garry<br/>Highlands<br/>Harare<br/>+263778709007/+263774370923<br/><a href="mailto:info@omamafinance.co.zw">info@omamafinance.co.zw</a>
+    </div>
+  </div>
+  <div class="watermark"><img src="{{TENANT_LOGO_URL}}" alt="" /></div>
+  <div class="content">
+    <h2 class="center" style="margin-top:20px;">Omama Microfinance (Pvt) Ltd</h2>
+    <h3 class="bold" style="margin-bottom:15px;">LOAN APPLICATION FORM (USD LOAN): <span style="font-size:12pt">FIRST TIME</span></h3>
+
+    <div class="field-row">
+      <strong>1. &nbsp; Personal Details:</strong> <strong>Surname:</strong>  {{SURNAME}}  <strong>First names:</strong>  {{FIRST_NAMES}}  <strong>ID</strong> {{ID_NUMBER}} 
+    </div>
+
+    <div class="field-row">
+      <strong>2.</strong> &nbsp; <strong>Title:</strong> {{TITLE_DISPLAY}} &nbsp; <strong>Gender:</strong> {{GENDER_DISPLAY}} &nbsp; <strong>Date of Birth</strong> {{DATE_OF_BIRTH}} 
+    </div>
+
+    <div class="field-row" style="margin-left:25px;">
+      <strong>Physical Res. Address</strong>  {{RESIDENTIAL_ADDRESS}}  <strong>Phone</strong>  {{PHONE}} 
+    </div>
+    <div class="field-row" style="margin-left:25px;">
+      <strong>Place of work &amp; Physical Address</strong> {{BUSINESS_ADDRESS}}
+    </div>
+
+    <div class="field-row">
+      <strong>3. &nbsp; Family Situation:</strong> <strong>Marital status:</strong>  {{MARITAL_STATUS}}
+    </div>
+    <div class="field-row" style="margin-left:25px;">
+      <strong>If you are married, Name of wife/husband</strong>  {{SPOUSE_NAME}} <strong>Tel:</strong>  {{SPOUSE_PHONE}} 
+    </div>
+    <div class="field-row" style="margin-left:25px;">
+      <strong>Name of closest relative:</strong>  {{CLOSEST_RELATIVE_NAME}} <strong>Tel:</strong>  {{CLOSEST_RELATIVE_PHONE}} 
+    </div>
+    <div class="field-row" style="margin-left:25px;">
+      <strong>Relation/</strong><em>Ndiani wenyu?</em>  {{CLOSEST_RELATIVE_RELATIONSHIP}} 
+    </div>
+
+    <div class="field-row">
+      <strong>4. &nbsp; Business /Employment:</strong> <strong>What business or job do you do?</strong> &nbsp;<em>Munoita nezvei?</em>  {{OCCUPATION}} 
+    </div>
+    <div class="field-row" style="margin-left:25px; text-align: justify;">
+      <strong>Where do you operate your business from or where is your work place</strong> /<em>Munoiitira basa renyu papi? Semuenzaniso sekuti &ldquo;MuChivhu, paFlea Market yeparank&rdquo;, kana kuti &ldquo;paGokwe pabus terminus?&rdquo; Kana kuti &lsquo;kana kuti pa Njelele School&rsquo;</em><br/> {{BUSINESS_LOCATION}}
+    </div>
+    <div class="field-row" style="margin-left:25px;">
+      <strong>sales or &nbsp;salary</strong> $ {{MONTHLY_INCOME}} pm.
+    </div>
+
+    <div class="field-row">
+      <strong>5. &nbsp; Required Loan Amount/</strong><em>Munoda marii?</em> $ {{REQUESTED_AMOUNT}}  <strong>Loan Purpose/</strong><em>Munoda kuishandisei ?</em> {{LOAN_PURPOSE}} 
+    </div>
+    <div class="field-row">
+      <strong>6. &nbsp; Proposed Security:</strong>
+    </div>
+    <div class="field-row" style="margin-left:25px;">
+      1. {{SECURITY_1}} <br/>
+      2. {{SECURITY_2}} <br/>
+      3. {{SECURITY_3}} <br/>
+      4. {{SECURITY_4}} <br/>
+      5. {{SECURITY_5}} <br/>
+    </div>
+
+    <div class="field-row" style="margin-top:15px;">
+      <strong>7. &nbsp; REFEREES:</strong> Please state two contactable non-family members who have known you for at least the last two years / <em>Tipeiwo mazita evanhu vasiri hama dzenyu vaviri vanokuzivai hunhu hwenyu mubhizimusi. <strong>Vese vanofanirwa kubatika pafoni.</strong></em>
+    </div>
+    <div style="display:flex; gap:30px; margin-left:25px; margin-top:8px;">
+      <div style="flex:1;">
+        <strong>Name:</strong>  {{REF1_NAME}} <br/>
+        <strong>Occupation/</strong><em>Basa Rake</em>:  {{REF1_OCCUPATION}} <br/>
+        <strong>Relation to applicant:</strong>  {{REF1_RELATION}} <br/>
+        <strong>Address:</strong>  {{REF1_ADDRESS}} <br/>
+        <strong>Telephone No:</strong>  {{REF1_PHONE}} 
+      </div>
+      <div style="flex:1;">
+        <strong>Name:</strong>  {{REF2_NAME}} <br/>
+        <strong>Occupation/</strong><em>Basa rake</em>:  {{REF2_OCCUPATION}} <br/>
+        <strong>Relation to applicant:</strong>  {{REF2_RELATION}} <br/>
+        <strong>Address:</strong>  {{REF2_ADDRESS}} <br/>
+        <strong>Telephone No:</strong>  {{REF2_PHONE}} 
+      </div>
+    </div>
+
+    <div class="field-row" style="margin-top:15px; text-align: justify;">
+      <strong>8. &nbsp; Declaration & Signature/</strong><em>Mhiko nesignature yenyu.</em> I confirm that neither I nor my partner(s) have ever been declared insolvent and that the above information is true and correct. I herewith give Omama Finance permission to conduct a credit history check as well as any other enquiries they may deem necessary to process this application. <strong>Signature Applicant</strong> (sainai apa):  {{APPLICANT_SIGNATURE}}  <strong>Date</strong> (isai zuva ranhasi):  {{DECLARATION_DATE}}  <strong>Place</strong> (nyorai nzvimbo kana Guta ramuri)  {{DECLARATION_PLACE}} 
+    </div>
+  </div>
+</div>
+
+<!-- ======================== PAGE 2: ACKNOWLEDGEMENT OF DEBT ======================== -->
+<div class="page">
+  <div class="header">
+    <div class="header-left">
+      <div>
+        <img src="{{TENANT_LOGO_URL}}" alt="Omama Finance" />
+        <div class="registered">(Registered Microfinance Institution)</div>
+      </div>
+    </div>
+    <div class="header-right">
+      48 Glen Garry<br/>Highlands<br/>Harare<br/>+263778709007/+263774370923<br/><a href="mailto:info@omamafinance.co.zw">info@omamafinance.co.zw</a>
+    </div>
+  </div>
+  <div class="watermark"><img src="{{TENANT_LOGO_URL}}" alt="" /></div>
+  <div class="content">
+    <h1 style="font-size:18pt; margin:30px 0 25px;">ACKNOWLEDGEMENT OF DEBT</h1>
+
+    <p style="line-height:2.5;">
+      I {{CLIENT_NAME}} ID Number {{ID_NUMBER}} 
+    </p>
+    <p style="line-height:2.5;">
+      acknowledge my indebtedness to <strong>OMAMA FINANCE</strong> in the sum of USD$.  {{TOTAL_DEBT}}  and
+    </p>
+    <p style="line-height:2.5;">
+      agree to pay a minimum amount in reduction of the debt of USD$  {{PAYMENT_PER_PERIOD}}  per month, the first
+    </p>
+    <p style="line-height:2.5;">
+      payment to be made by the {{FIRST_PAYMENT_DATE}} until the outstanding balance is paid in full in terms
+    </p>
+    <p>
+      of principal, interest and penalty charges (if any).
+    </p>
+
+    <p style="margin-top:15px;">I accept that the conditions attaching to the acceptance of the aforesaid instalments are as follows:</p>
+
+    <ol style="margin-top:10px;">
+      <li>That I sign the bottom of this acknowledgement as proof of my liability to Omama Finance in respect of the capital debt together with all costs, charges and interest.</li>
+      <li>That I pay all legal costs at a legal practitioner and client scale, including collection commission at the rate specified by the Law Society of Zimbabwe.</li>
+      <li>That should I default in the payment of any one instalment, the full balance will immediately become due and legal proceedings will be instituted without further notice.</li>
+      <li>That I shall pay interest on the full balance outstanding from time to time at the rate of {{INTEREST_RATE}} % per month.</li>
+      <li>That in the event that it becomes necessary to take legal proceedings against me, I hereby consent to the jurisdiction of the Harare Magistrate Court, and choose domicilium citandi et executandi<br/>
+        at {{CLIENT_ADDRESS}} 
+      </li>
+    </ol>
+
+    <p style="margin-top:25px; line-height:2.2;">
+      THUS DONE and AGREED AT  {{EXECUTION_PLACE}} this {{EXECUTION_DAY}} day of  {{EXECUTION_MONTH}}  {{EXECUTION_YEAR}} 
+    </p>
+
+    <p style="margin-top:20px; line-height:2.2;">
+      I  {{CLIENT_NAME}} (NAME IN FULL) the above-named debtor, for and on behalf of the above named debtor and duly authorized hereto accept the above mentioned conditions.
+    </p>
+
+    <p style="margin-top:30px;">
+       {{DEBTOR_SIGNATURE}}  (Signature)
+    </p>
+  </div>
+</div>
+
+<!-- ======================== PAGE 3: LOAN AGREEMENT AND PROMISSORY NOTE ======================== -->
+<div class="page">
+  <div class="header">
+    <div class="header-left">
+      <div>
+        <img src="{{TENANT_LOGO_URL}}" alt="Omama Finance" />
+        <div class="registered">(Registered Microfinance Institution)</div>
+      </div>
+    </div>
+    <div class="header-right">
+      48 Glen Garry<br/>Highlands<br/>Harare<br/>+263778709007/+263774370923<br/><a href="mailto:info@omamafinance.co.zw">info@omamafinance.co.zw</a>
+    </div>
+  </div>
+  <div class="watermark"><img src="{{TENANT_LOGO_URL}}" alt="" /></div>
+  <div class="content">
+    <p class="bold">CBD BRANCH</p>
+
+    <h3 class="bold" style="margin-top:10px;">LOAN AGREEMENT AND PROMISSORY NOTE: FOR REAL UNITED STATES DOLLARS (NOT RTGS$):</h3>
+
+    <p style="margin-top:10px;">THIS LOAN AGREEMENT AND PROMISSORY NOTE is made between</p>
+    <p> {{CLIENT_NAME}} (Borrower) of <em>domicilium citandi</em> (address)</p>
+    <p> {{CLIENT_ADDRESS}} </p>
+    <p><strong>OMAMA FINANCE</strong> (Lender).</p>
+    <p>Principal US$ (NOT RTGS$)  {{LOAN_AMOUNT}}  Word {{PRINCIPAL_WORDS}}  Loan Purpose:  {{LOAN_PURPOSE}} </p>
+    <p style="text-align:justify;">
+      The monthly compound charges on the balance are: interest 12% and admin 5%. Related to this cash handling charges are 3% and estab fee 5%. Part or the entire amount payable may be repaid in advance without any variation to the full monthly charge. This credit facility is charged based on a 30-day month. Default penalty is 10% on the missed instalment, minimum $10. The costs of arranging for the loan (pre-loan costs) which include due diligence assessments, security valuations, any necessary travel/ field trips etc are borne by the client at cost, the minimum being 5% of the loan principal. If a missed instalment is not cured within 7 days, the entire loan balance becomes due and payable. All loan recovery costs are borne by the client. Repayment dates are as follows:
+    </p>
+
+    <table class="bordered">
+      <thead>
+        <tr>
+          <th>Due Date</th>
+          <th>Total Payment</th>
+          <th>Principal</th>
+          <th>Interest &amp; Fees</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{REPAYMENT_SCHEDULE_ROWS}}
+      </tbody>
+    </table>
+
+    <p style="text-align:justify;">
+      <strong>Security:</strong> The Borrower&rsquo;s personal and business assets are the collateral security on this and all future loans. Some of the pledged assets include:
+    </p>
+    <p>
+      1. {{SECURITY_1}} <br/>
+      2. {{SECURITY_2}} <br/>
+      3. {{SECURITY_3}} <br/>
+      4. {{SECURITY_4}} <br/>
+      5. {{SECURITY_5}} <br/>
+    </p>
+
+    <p style="text-align:justify;">
+      The Lender may share the Borrower&rsquo;s information with relevant third parties for credit reference and/or loan recovery purposes at any opportune point in time. The Borrower authorises the Lender to collect all sums due including all charges by effecting a stop order deduction through the bank or employer platforms (e.g. SSB etc) or both to satisfy this or any other outstanding debt. This contract may only be varied by both parties agreeing in writing. Any part of this contract that is rendered as void or voidable does not affect the other parts of the contract. The Magistrate&rsquo;s Courts of the Republic of Zimbabwe have jurisdiction over this contract, regardless of the size of the amounts involved.
+    </p>
+
+    <p>Signature: Borrower {{BORROWER_SIGNATURE}}  Lender {{LENDER_SIGNATURE}} </p>
+    
+    <br/>
+    <p>Cash Received: US$(NOT RTGS$)  {{DISBURSED_AMOUNT}}  Signed {{CASH_RECEIVED_SIGNATURE}} </p>
+    <br/>
+    <p>PLACE:  {{EXECUTION_PLACE}} DATE ALL THIS DONE:  {{EXECUTION_DATE}} </p>
+  </div>
+</div>
+
+<!-- ======================== PAGE 4: VOLUNTARY SURRENDER FORM ======================== -->
+<div class="page">
+  <div class="header">
+    <div class="header-left">
+      <div>
+        <img src="{{TENANT_LOGO_URL}}" alt="Omama Finance" />
+        <div class="registered">(Registered Microfinance Institution)</div>
+      </div>
+    </div>
+    <div class="header-right">
+      48 Glen Garry<br/>Highlands<br/>Harare<br/>+263778709007/+263774370923<br/><a href="mailto:info@omamafinance.co.zw">info@omamafinance.co.zw</a>
+    </div>
+  </div>
+  <div class="watermark"><img src="{{TENANT_LOGO_URL}}" alt="" /></div>
+  <div class="content">
+    <h1 style="font-size:20pt; margin:30px 0 20px;">VOLUNTARY SURRENDER FORM</h1>
+
+    <p>I {{CLIENT_NAME}}  of &nbsp; {{CLIENT_ADDRESS}}  do hereby voluntarily surrender the items listed below to Omama Finance with the following understanding:</p>
+
+    <ol style="margin-top:10px;">
+      <li>That I am fully aware that I owe Omama Finance to the tune of $ {{TOTAL_DEBT}} </li>
+      <li>That Omama Finance will hold my assets till the loan, together with interest and administrative costs and/ or all my guarantee liabilities are fully repaid.</li>
+      <li>I do hereby indemnify Omama Finance of any charges or damage to property which may arise during cartage and storage of the said property.</li>
+      <li>That Omama Finance is hereby grunted authority to dispose of assets to defray expenses should I fail to settle my debt according to (2) above.</li>
+      <li>I leave it to the discretion of Omama Finance as to how much they will sell my assets and will still be liable for my debt should my assets fail to meet the capital sum inclusive of costs.</li>
+      <li>That the magistrate&rsquo;s court rules and procedures bind me to this agreement and Omama Finance Pvt Ltd can invoke SCI or warrant of arrest should I breach this agreement.</li>
+      <li>That I am liable for all messenger of court charges together with interest on my capital debt.</li>
+    </ol>
+
+    <div style="display:flex; gap:40px; margin:15px 0;">
+      <div style="flex:1;">
+        1. {{VOL_ITEM_1}} <br/><br/>
+        2. {{VOL_ITEM_2}} <br/><br/>
+        3. {{VOL_ITEM_3}} <br/><br/>
+        4. {{VOL_ITEM_4}} 
+      </div>
+      <div style="flex:1;">
+        5. {{VOL_ITEM_5}} <br/><br/>
+        6.   {{VOL_ITEM_6}} <br/><br/>
+        7. {{VOL_ITEM_7}} <br/><br/>
+        8. {{VOL_ITEM_8}} 
+      </div>
+    </div>
+
+    <p class="bold italic">I have read and understood the above and hereby voluntarily sign this form.</p>
+
+    <div style="display:flex; justify-content:space-between; margin-top:30px;">
+      <div>
+        <strong>Debtor</strong><br/><br/>
+        1 {{SURRENDER_DEBTOR_SIGNATURE}} <br/><br/>
+      </div>
+      <div>
+        <strong>Guarantor</strong><br/><br/>
+        1 {{SURRENDER_GUARANTOR_SIGNATURE}} <br/><br/>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ======================== PAGE 5: PLEDGE AGREEMENT (Beginning — WHEREAS, clauses 1-5) ======================== -->
+<div class="page">
+  <div class="header">
+    <div class="header-left">
+      <div>
+        <img src="{{TENANT_LOGO_URL}}" alt="Omama Finance" />
+        <div class="registered">(Registered Microfinance Institution)</div>
+      </div>
+    </div>
+    <div class="header-right">
+      48 Glen Garry<br/>Highlands<br/>Harare<br/>+263778709007/+263774370923<br/><a href="mailto:info@omamafinance.co.zw">info@omamafinance.co.zw</a>
+    </div>
+  </div>
+  <div class="watermark"><img src="{{TENANT_LOGO_URL}}" alt="" /></div>
+  <div class="content">
+    <p class="bold" style="font-size:13pt;">PLEDGE AGREEMENT BETWEEN: (NAME) {{CLIENT_NAME}} </p>
+
+    <p>I.D  {{ID_NUMBER}}  (The &ldquo;Pledger&rdquo;) AND <strong>Omama Finance</strong> (The &ldquo;Pledgee&rdquo;).</p>
+
+    
+    <p>Regarding: </p>
+    <p style="margin-left:70px;">1.  {{PLEDGE_ITEM_1}}</p>
+    <p style="margin-left:70px;">2.  {{PLEDGE_ITEM_2}}</p>
+    <p style="margin-left:70px;">3.  {{PLEDGE_ITEM_3}}</p>
+    <p style="margin-left:70px;">4.  {{PLEDGE_ITEM_4}}</p>
+    <p style="margin-left:70px;">5.  {{PLEDGE_ITEM_5}}</p>
+    
+
+    <p>Referred to hereinafter as &ldquo;the Security&rdquo;.</p>
+
+    <p class="bold">WHEREAS:</p>
+    <p style="text-align:justify;">
+      <strong>A)</strong> Pledger holds that he/she owns or will own the Security. <strong>B)</strong> The Pledger and the Pledgee will henceforth be entering into loan agreements (&ldquo;the Loan Agreements&rdquo;) and/or the Pledgee will issue loans specific to third parties guaranteed by the Pledger, in terms of which the Pledgee has agreed to advance loans of various amounts now and in future to the Pledger or to third parties to be guaranteed by the Pledger (&lsquo;the Loan&rsquo;). The pledge also contracts that this pledge instrument will remain valid for all future loans issued by the pledger in the said manner unless and until a Certificate of Liability Discharge has been issued by the pledgee to the pledger. <strong>IT IS AGREED AS FOLLOWS:</strong>
+    </p>
+
+    <ol>
+      <li><strong>Pledges</strong> a) Pledger pledges the Security to the Pledgee. Such Pledges will be immediate. b) The validity and effect of the Pledges shall be independent from the validity and the effect of any other pledges.</li>
+      <li><strong>Acceptance of the Pledge</strong> a) The Pledgee accepts the pledges for himself, his assignees or his successors (and the masculine here also means the feminine). b) The Pledger hereby expressly agrees that the Pledges will continue as the Security in the event of a full or partial assignment of the Loan.</li>
+      <li><strong>Purpose of the Pledge:</strong> The Pledges are to secure the prompt and complete satisfaction of the Interest, any relevant Charges, Loan Recovery Charges and the Capital under the Loan.</li>
+      <li style="text-align:justify;"><strong>Undertakings by the Pledger:</strong> The Pledger hereby undertakes to the Pledgee as follows: a) Except as permitted in writing by the Pledgee, not to sell, transfer, lease or otherwise dispose of the Security; b)Except as permitted in writing by the Pledgee, not to encumber the Security in any way; c) To refrain from any acts or omissions which may result in the Pledger&rsquo;s loss of ownership of the Security or adversely affect the value thereof or would defeat, impair or circumvent in any way the rights created or granted under this Agreement; d)To execute all documents without delay and do all things necessary to perfect the Security created by the Pledges or to facilitate the enforcement or realization of the Security created by the Pledges; e)To hold the items pledged as security in safe custody on behalf of the Pledgee until the Loan obligation is fully satisfied, albeit with the Pledger&rsquo;s permission to use the same in the ordinary course of business and for the purposes of supporting the Pledger&rsquo;s normal life. f) Not to do or cause anything to be done that will materially adversely affect the Security or the rights of the Pledgee under the Agreement or which in any way materially depreciates, jeopardizes or otherwise prejudices the Security; g) To ensure that all rights granted to the Pledgee hereunder are in prior ranking to the rights of any third parties.</li>
+      <li style="text-align:justify;"><strong>Representations and warranties:</strong> The Pledger represent and warrants to the Pledgee that: <strong>a)</strong> the Pledger is the sole owner of the Security; that the Security is free of any liens or encumbrances or any other rights of third parties (of any form) other than the Pledges created hereunder; <strong>b)</strong> The Pledger is not subject to any restrictions preventing him from transferring or pledging the Security; <strong>c)</strong> The Security is freely transferrable; <strong>d)</strong>He will keep the Security in the same good order and condition, subject to normal wear</li>
+    </ol>
+  </div>
+</div>
+
+<!-- ======================== PAGE 6: PLEDGE AGREEMENT (Middle — clauses 5d cont'd through 12) ======================== -->
+<div class="page">
+  <div class="header">
+    <div class="header-left">
+      <div>
+        <img src="{{TENANT_LOGO_URL}}" alt="Omama Finance" />
+        <div class="registered">(Registered Microfinance Institution)</div>
+      </div>
+    </div>
+    <div class="header-right">
+      48 Glen Garry<br/>Highlands<br/>Harare<br/>+263778709007/+263774370923<br/><a href="mailto:info@omamafinance.co.zw">info@omamafinance.co.zw</a>
+    </div>
+  </div>
+  <div class="watermark"><img src="{{TENANT_LOGO_URL}}" alt="" /></div>
+  <div class="content">
+    <p style="text-align:justify; margin-left:25px;">
+      and tear, as when this Agreement is entered into or he will surrender the physical security with to the Pledgee; <strong>e)</strong> In the event of the theft or destruction of the Security the Pledger will immediately make a police report of the matter and will keep the Pledgee informed of progress.
+    </p>
+
+    <ol start="6">
+      <li style="text-align:justify;"><strong>Enforcement of the Pledges</strong> a) If the Interest and / or the Capital have become due and payable, then in order to enforce the Pledges, the Pledgee may avail itself of all rights and remedies that a pledgee has upon default of a pledger, including, without limitation, the right to cause the Security to be sold) If the requirements set out above are met, the Pledgee is entitled to exercise its rights without obtaining an enforceable judgement or other instrument. c) The enforcement of the Pledges shall only be permissible:
+        <p style="margin-left:30px;">
+          <em>i. After the Pledger has failed to make payments as the fall payments due as agreed; and</em><br/>
+          <em>ii. If the Pledgee has indicated in writing the outstanding amount which has given rise to the threat of enforcement.</em>
+        </p>
+        <p style="text-align:justify;">d)The Pledgee shall not be required to give such notices if the Pledger has generally ceased to make payment of his debts as and when they become due or insolvency proceedings are taken against the Pledger. e) The Pledgee may elect, entirely at own discretion, which of the security interests shall be enforced and when. f) The Pledger shall give all necessary assistance to the Pledgee to enable the prompt and proper enforcement of the Pledges g) The Pledger hereby waive all defences of void ability and set-off.</p>
+      </li>
+      <li><strong>Release</strong> a) After payment of the Interest and the Capital in full the Pledges will fully expire by operation of law. b) Upon request of the Pledger the Pledgee will confirm the expiration of the Pledges.</li>
+      <li style="text-align:justify;"><strong>Indemnity</strong> a) The Pledgee will not be liable for any loss, damages, expenses, actions, claims, demands and / or liabilities suffered or incurred by or made against the Pledger. b) The Pledger indemnify the Pledgee against any and all loss, damages, expenses, actions, claims, demands and liabilities incurred by the Pledgee for anything done or omitted in the exercise or purported exercise of the powers contained herein and occasioned by any breach of the Pledger of any of its obligations or undertakings contained herein.</li>
+      <li style="text-align:justify;"><strong>Legal successor</strong> This Agreement creates rights and obligations of the parties hereto and of their respective successors. A) The Pledgee may transfer his/her rights and obligations under this Agreement at any time. The Pledger hereby irrevocably grants his consent to the relevant third party becoming a party in lieu of and as successor to the Pledgee&rsquo;s) The Pledger shall not transfer his rights and obligations hereunder without the prior written consent of the Pledgee. c)This Agreement will continue in the event of a change of shareholders or legal form and in the event of a universal succession on the part of the Pledgee or Pledger.</li>
+      <li style="text-align:justify;"><strong>Duration and independence</strong> a) This Agreement will remain in full force and effect until complete, unconditional and irrevocable satisfaction of the Interest and the Principal. b) This Agreement will create a continuing security interest and no change, amendment or supplement whatsoever in the Loan or any document relating thereto shall affect its validity or scope or the obligations imposed by it.</li>
+      <li><strong>Costs and expenses:</strong> Any costs relating to the execution or registration of this Agreement shall be for the sole account of the Pledger.</li>
+      <li style="text-align:justify;"><strong>Partial Invalidity:</strong> Should any term or provision of this Agreement be or become in whole or in part invalid or impracticable, the remaining provisions will not be affected. Any invalid term or/and provision of this</li>
+    </ol>
+  </div>
+</div>
+
+<!-- ======================== PAGE 7: PLEDGE AGREEMENT (End — clauses 13-14, Signatures) ======================== -->
+<div class="page">
+  <div class="header">
+    <div class="header-left">
+      <div>
+        <img src="{{TENANT_LOGO_URL}}" alt="Omama Finance" />
+        <div class="registered">(Registered Microfinance Institution)</div>
+      </div>
+    </div>
+    <div class="header-right">
+      48 Glen Garry<br/>Highlands<br/>Harare<br/>+263778709007/+263774370923<br/><a href="mailto:info@omamafinance.co.zw">info@omamafinance.co.zw</a>
+    </div>
+  </div>
+  <div class="watermark"><img src="{{TENANT_LOGO_URL}}" alt="" /></div>
+  <div class="content">
+    <p style="text-align:justify; margin-left:25px;">
+      Agreement shall be replaced by a valid term or/and provision which come(s) as close as possible to the intent of the parties and the commercial purpose of this Agreement
+    </p>
+
+    <ol start="13">
+      <li style="text-align:justify;"><strong>Miscellaneous:</strong> a) Any amendment of or change to this Agreement must be made in writing) Any non-exercise or late exercise of rights by the Pledger or the Pledgee shall not constitute a waiver of such rights or consent to any breach of contract. The total or partial non-exercise of rights shall not prevent the Pledgee or any assignees from exercising such rights later.</li>
+      <li style="text-align:justify;"><strong>Applicable law and jurisdiction</strong> a) This Loan shall be governed by, and construed in accordance with, the laws of Zimbabwe. b) The Magistrate&rsquo;s Court of the Republic of Zimbabwe shall have jurisdiction over matters arising out of this pledge.</li>
+    </ol>
+
+    <br/>
+    <p class="bold">SIGNATURES</p>
+    <br/>
+    <p>As Pledger:  {{PLEDGER_SIGNATURE}}  At  {{EXECUTION_PLACE}}  on {{EXECUTION_DATE}} </p>
+    <br/>
+    <p>As Pledgee:  {{PLEDGEE_SIGNATURE}}  At  {{EXECUTION_PLACE}}  on {{EXECUTION_DATE}} </p>
+    <br/><br/>
+    
+  </div>
+</div>
+
+<!-- ======================== PAGE 8: LETTER OF CONTINUING GUARANTEE (Page 1 of 2) ======================== -->
+<div class="page">
+  <div class="header">
+    <div class="header-left">
+      <div>
+        <img src="{{TENANT_LOGO_URL}}" alt="Omama Finance" />
+        <div class="registered">(Registered Microfinance Institution)</div>
+      </div>
+    </div>
+    <div class="header-right">
+      48 Glen Garry<br/>Highlands<br/>Harare<br/>+263778709007/+263774370923<br/><a href="mailto:info@omamafinance.co.zw">info@omamafinance.co.zw</a>
+    </div>
+  </div>
+  <div class="watermark"><img src="{{TENANT_LOGO_URL}}" alt="" /></div>
+  <div class="content">
+    <p class="bold" style="font-size:12pt;">Letter of Continuing Guarantee</p>
+
+    <p style="text-align:justify; line-height: 1.8;">
+      1. I {{GUARANTOR_NAME}} of {{GUARANTOR_ADDRESS}} (domicilium
+      citandi/ serving address) ID no {{GUARANTOR_ID}}  Tel  {{GUARANTOR_PHONE}}  in consideration of you,
+      OmamaFianace (Pvt) Ltd, entering into Loan Agreements from this date  {{EXECUTION_DATE}} (date), it
+      being request hereunder, whereby you agree to grant, extend or continue to make available credit facilities to
+    </p>
+    <p style="text-align:justify; line-height: 1.8;">
+       {{CLIENT_NAME}}  (hereinafter called the &ldquo;<strong>Borrower</strong>&rdquo;), I hereby
+      unconditionally guarantee, agree with you, myself taking full responsibility as the principal debtor and not merely as surety, on your written demand to pay and discharge, whether at the Final Maturity Date of the Loan Agreement or earlier (by reason of acceleration) and at all times thereafter, the following (hereinafter called the &ldquo;<strong>Indebtedness</strong>&rdquo;):
+    </p>
+
+    <p style="text-align:justify;">
+      a) all loans advanced by you to the Borrower now and in future b) interest and all sums due from me to you under this Guarantee or the outstanding balance thereof from the period from the date of demand by you as aforesaid or from the date of discontinuance of this Guarantee by me, until the date when such sums are discharged in full at a rate or rates at which the Borrower would have been liable to pay interest in respect of the monies guaranteed; and d) all costs and expenses arising out of or in connection with your recovery or attempted recovery of monies due to you and your prosecuting against the Borrower or myself under the Loan Agreement and this Guarantee, as the case may be.
+    </p>
+
+    <p style="text-align:justify;">
+      2. My liability under this Guarantee shall extend to cover all monies owing to you by the Borrower or any liabilities incurred by you in connection with your making available credit facilities to the Borrower arising or incurred at any date before the discontinuance of this Guarantee, notwithstanding that such credit facilities are void or voidable for any reason whatsoever or have ceased or have been terminated either at the instigation of you or the Borrower, or from the operation of any applicable law.
+    </p>
+
+    <p style="text-align:justify;">
+      3. I agree to be liable as the sole or principal debtor to you for the discharge of the Indebtedness secured hereunder so that this Guarantee may be enforced against me without your first instituting legal proceedings against the Borrower in the first instance and this Guarantee shall be binding on me notwithstanding that the Borrower is not so bound either because the Borrower is an infant or under a disability or is an unincorporated body which is under no liability to discharge obligations undertaken or purported to be undertaken on its behalf or for any other reason whatsoever.
+    </p>
+
+    <p style="text-align:justify;">
+      4. You may at all times without prejudice to this Guarantee and without discharging or in any way prejudicing or waiving any claims you may have hereunder or in any way affecting my liability hereunder: a) determine and vary any terms and conditions of the Loan Agreement with the Borrower, including, without limitation, increasing any credit to the Borrower; b) grant to the Borrower or to any other person any time of indulgence; c) deal with, exchange, release, modify or abstain from perfecting or enforcing any security or other guarantees or rights which you may now or hereafter have from or against the Borrower or any other person; and d) compound with the Borrower or with any other person or guarantor.
+    </p>
+
+    <p style="text-align:justify;">
+      5. This Guarantee shall not be affected by any failure on your part to take any security or by the invalidity of any security taken or by any existing or future agreement by you as to the application of any advance made or to be made to the Borrower. My liability hereunder shall not be discharged or in any way affected by any act or omission on your part under or in relation to this Guarantee or by any course of dealing between you and me.
+    </p>
+  </div>
+</div>
+
+<!-- ======================== PAGE 9: LETTER OF CONTINUING GUARANTEE (Page 2 of 2) ======================== -->
+<div class="page">
+  <div class="header">
+    <div class="header-left">
+      <div>
+        <img src="{{TENANT_LOGO_URL}}" alt="Omama Finance" />
+        <div class="registered">(Registered Microfinance Institution)</div>
+      </div>
+    </div>
+    <div class="header-right">
+      48 Glen Garry<br/>Highlands<br/>Harare<br/>+263778709007/+263774370923<br/><a href="mailto:info@omamafinance.co.zw">info@omamafinance.co.zw</a>
+    </div>
+  </div>
+  <div class="watermark"><img src="{{TENANT_LOGO_URL}}" alt="" /></div>
+  <div class="content">
+    <p style="text-align:justify;">6. This Guarantee shall not be considered satisfied or discharged by any intermediate payment or satisfaction of the whole or any part of the Indebtedness or by any other matter or thing whatsoever but shall constitute and be a continuing guarantee and to cover the ultimate balance of the Indebtedness and shall be binding upon me and my personal representatives until the expiration of 14 business days after the receipt by you from my personal representatives of acknowledged notice in writing to discontinue it and after I would have fully met my obligations under this guarantee.</p>
+    <p style="text-align:justify;">7. Without prejudice to any other rights that you may have under this Guarantee or the Loan Agreement, a discontinuation of this Guarantee by me, in the case of an individual, shall operate as an event of default. The Indebtedness hereunder shall become due and immediately repayable.</p>
+    <p style="text-align:justify;">8. This Guarantee shall be in addition to and is not to prejudice or be prejudiced by any other guarantee or other security whether by way of mortgage, charge, lien or otherwise which you may now or at any time hereafter take or hold from the Borrower or any other party for all or any part of the Indebtedness and on discharge by payment or otherwise shall remain your property.</p>
+    <p style="text-align:justify;">9. If any one or more of the provisions of this Guarantee or any part or parts hereof shall be declared or adjudged to be illegal, invalid or unenforceable under any applicable law, such illegality, invalidity or unenforceability shall not vitiate any other provisions of this Guarantee and this Guarantee shall be construed as if such illegal, invalid or unenforceable provisions were not contained herein.</p>
+    <p style="text-align:justify;">10. I will at all times, now and hereafter, indemnify and hold you harmless from and against all loss and damage arising out of or in connection with this Guarantee and the Loan Agreement and against all claims, liability, demands, actions or suits, whether groundless or otherwise, and all liabilities, payments, costs, charges and expenses including, but is not limited to, attorney&rsquo;s fee and costs incurred by you on account of or in connection with this Guarantee or the transactions or assertions of rights contemplated or permitted hereunder.</p>
+    <p style="text-align:justify;">11. No delay on your part in the exercise of any right or remedy shall operate as a waiver or constitute a discharge of either of my obligations hereunder.</p>
+    <p style="text-align:justify;">12. You may assign all or a part only of your rights under this Guarantee to any person without my prior consent or approval.</p>
+    <p style="text-align:justify;">13. This Guarantee shall be binding upon myself and upon my heirs, executors, successors and assigns, and shall inure to the benefits of your successors and assigns; all references to the Borrower and to myself shall be deemed to include successors, assigns, receivers or trustees, as the case may be, of the Borrower and myself.</p>
+    <p style="text-align:justify;">14. I hereby confirm that I have read and understood the contents of this agreement and Omama Finance (Pvt) Ltd are absolved of the responsibility to advise me or seek my signatures once again when granting the Borrower future loans even if the credit limit is increased as this stands as a continuing guarantee.</p>
+
+    <br/><br/>
+    <p>Signed:  {{GUARANTOR_SIGNATURE}} (Guarantor) Date:  {{GUARANTEE_DATE}} </p>
+      </div>
+</div>
+
+</body>
+</html>

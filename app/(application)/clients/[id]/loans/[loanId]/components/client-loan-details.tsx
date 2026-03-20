@@ -838,121 +838,121 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
     };
   }, [loan, clientId, loanId, setShowRepaymentModal]);
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        setLoading(true);
-        setError(null);
+  const fetchLoanData = async () => {
+    try {
+      setLoading(true);
+      setError(null);
 
-        const clientResponse = await fetch(`/api/clients/${clientId}`);
-        if (!clientResponse.ok) {
-          throw new Error(`Failed to fetch client details: ${clientResponse.statusText}`);
-        }
-        const clientData = await clientResponse.json();
-        setClient(clientData);
+      const clientResponse = await fetch(`/api/clients/${clientId}`);
+      if (!clientResponse.ok) {
+        throw new Error(`Failed to fetch client details: ${clientResponse.statusText}`);
+      }
+      const clientData = await clientResponse.json();
+      setClient(clientData);
 
-        const loanResponse = await fetch(`/api/fineract/loans/${loanId}?associations=all&exclude=guarantors,futureSchedule`);
-        if (!loanResponse.ok) {
-          throw new Error(`Failed to fetch loan details: ${loanResponse.statusText}`);
-        }
-        const loanData = await loanResponse.json();
+      const loanResponse = await fetch(`/api/fineract/loans/${loanId}?associations=all&exclude=guarantors,futureSchedule`);
+      if (!loanResponse.ok) {
+        throw new Error(`Failed to fetch loan details: ${loanResponse.statusText}`);
+      }
+      const loanData = await loanResponse.json();
 
-        setLoan(loanData);
+      setLoan(loanData);
 
-        const payoutRes = await fetch(`/api/loans/${loanId}/payout`).catch(() => null);
-        if (payoutRes?.ok) {
-          const payoutData = await payoutRes.json();
-          if (payoutData?.status === "REVERSED" && payoutData?.voidedAt) {
-            setReversedPayout({
-              voidedAt: payoutData.voidedAt,
-              voidReason: payoutData.voidReason ?? null,
-              amount: payoutData.amount ?? 0,
-              currency: payoutData.currency ?? "ZMW",
-            });
-          } else {
-            setReversedPayout(null);
-          }
+      const payoutRes = await fetch(`/api/loans/${loanId}/payout`).catch(() => null);
+      if (payoutRes?.ok) {
+        const payoutData = await payoutRes.json();
+        if (payoutData?.status === "REVERSED" && payoutData?.voidedAt) {
+          setReversedPayout({
+            voidedAt: payoutData.voidedAt,
+            voidReason: payoutData.voidReason ?? null,
+            amount: payoutData.amount ?? 0,
+            currency: payoutData.currency ?? "ZMW",
+          });
         } else {
           setReversedPayout(null);
         }
-
-        const approveButton = document.getElementById('approve-loan-btn');
-        if (approveButton) {
-          const isPendingApproval = loanData?.status?.pendingApproval === true;
-          approveButton.disabled = !isPendingApproval;
-          if (!isPendingApproval) {
-            approveButton.classList.add('opacity-50', 'cursor-not-allowed');
-          } else {
-            approveButton.classList.remove('opacity-50', 'cursor-not-allowed');
-          }
-        }
-
-        const dropdownEl = document.getElementById('loan-actions-dropdown');
-        if (dropdownEl) {
-          const approveBtn = document.getElementById('approve-loan-btn') as HTMLButtonElement | null;
-          const disburseBtn = document.getElementById('disburse-loan-btn') as HTMLButtonElement | null;
-          const isPendingApproval = loanData?.status?.pendingApproval === true;
-          const isWaitingForDisbursal = loanData?.status?.waitingForDisbursal === true;
-
-          if (approveBtn) {
-            approveBtn.disabled = !isPendingApproval;
-            approveBtn.classList.toggle('opacity-50', !isPendingApproval);
-            approveBtn.classList.toggle('cursor-not-allowed', !isPendingApproval);
-          }
-          if (disburseBtn) {
-            disburseBtn.disabled = !isWaitingForDisbursal;
-            disburseBtn.classList.toggle('opacity-50', !isWaitingForDisbursal);
-            disburseBtn.classList.toggle('cursor-not-allowed', !isWaitingForDisbursal);
-          }
-
-          if (isPendingApproval) {
-            dropdownEl.querySelectorAll('[data-action]')
-              .forEach((el) => {
-                const action = (el as HTMLElement).getAttribute('data-action');
-                if (action !== 'approve-loan') {
-                  (el as HTMLButtonElement).setAttribute('disabled', 'true');
-                  el.classList.add('opacity-50', 'cursor-not-allowed');
-                }
-              });
-          }
-
-          const isOverpaid =
-            loanData?.status?.overpaid === true ||
-            (loanData?.summary &&
-              loanData.summary.totalRepayment > 0 &&
-              loanData.summary.totalOutstanding === 0 &&
-              loanData.summary.totalRepayment >
-                loanData.summary.totalExpectedRepayment);
-
-          const transferFundsBtn = document.getElementById('transfer-funds-btn');
-          const creditBalanceRefundBtn = document.getElementById('credit-balance-refund-btn');
-
-          if (isOverpaid) {
-            if (transferFundsBtn) transferFundsBtn.style.display = '';
-            if (creditBalanceRefundBtn) creditBalanceRefundBtn.style.display = '';
-
-            dropdownEl.querySelectorAll('[data-action]')
-              .forEach((el) => {
-                const action = (el as HTMLElement).getAttribute('data-action');
-                if (action !== 'transfer-funds' && action !== 'credit-balance-refund') {
-                  (el as HTMLButtonElement).setAttribute('disabled', 'true');
-                  el.classList.add('opacity-50', 'cursor-not-allowed');
-                }
-              });
-          } else {
-            if (transferFundsBtn) transferFundsBtn.style.display = 'none';
-            if (creditBalanceRefundBtn) creditBalanceRefundBtn.style.display = 'none';
-          }
-        }
-      } catch (err) {
-        console.error("Error fetching data:", err);
-        setError(err instanceof Error ? err.message : "An error occurred");
-      } finally {
-        setLoading(false);
+      } else {
+        setReversedPayout(null);
       }
-    };
 
-    fetchData();
+      const approveButton = document.getElementById('approve-loan-btn');
+      if (approveButton) {
+        const isPendingApproval = loanData?.status?.pendingApproval === true;
+        approveButton.disabled = !isPendingApproval;
+        if (!isPendingApproval) {
+          approveButton.classList.add('opacity-50', 'cursor-not-allowed');
+        } else {
+          approveButton.classList.remove('opacity-50', 'cursor-not-allowed');
+        }
+      }
+
+      const dropdownEl = document.getElementById('loan-actions-dropdown');
+      if (dropdownEl) {
+        const approveBtn = document.getElementById('approve-loan-btn') as HTMLButtonElement | null;
+        const disburseBtn = document.getElementById('disburse-loan-btn') as HTMLButtonElement | null;
+        const isPendingApproval = loanData?.status?.pendingApproval === true;
+        const isWaitingForDisbursal = loanData?.status?.waitingForDisbursal === true;
+
+        if (approveBtn) {
+          approveBtn.disabled = !isPendingApproval;
+          approveBtn.classList.toggle('opacity-50', !isPendingApproval);
+          approveBtn.classList.toggle('cursor-not-allowed', !isPendingApproval);
+        }
+        if (disburseBtn) {
+          disburseBtn.disabled = !isWaitingForDisbursal;
+          disburseBtn.classList.toggle('opacity-50', !isWaitingForDisbursal);
+          disburseBtn.classList.toggle('cursor-not-allowed', !isWaitingForDisbursal);
+        }
+
+        if (isPendingApproval) {
+          dropdownEl.querySelectorAll('[data-action]')
+            .forEach((el) => {
+              const action = (el as HTMLElement).getAttribute('data-action');
+              if (action !== 'approve-loan') {
+                (el as HTMLButtonElement).setAttribute('disabled', 'true');
+                el.classList.add('opacity-50', 'cursor-not-allowed');
+              }
+            });
+        }
+
+        const isOverpaid =
+          loanData?.status?.overpaid === true ||
+          (loanData?.summary &&
+            loanData.summary.totalRepayment > 0 &&
+            loanData.summary.totalOutstanding === 0 &&
+            loanData.summary.totalRepayment >
+              loanData.summary.totalExpectedRepayment);
+
+        const transferFundsBtn = document.getElementById('transfer-funds-btn');
+        const creditBalanceRefundBtn = document.getElementById('credit-balance-refund-btn');
+
+        if (isOverpaid) {
+          if (transferFundsBtn) transferFundsBtn.style.display = '';
+          if (creditBalanceRefundBtn) creditBalanceRefundBtn.style.display = '';
+
+          dropdownEl.querySelectorAll('[data-action]')
+            .forEach((el) => {
+              const action = (el as HTMLElement).getAttribute('data-action');
+              if (action !== 'transfer-funds' && action !== 'credit-balance-refund') {
+                (el as HTMLButtonElement).setAttribute('disabled', 'true');
+                el.classList.add('opacity-50', 'cursor-not-allowed');
+              }
+            });
+        } else {
+          if (transferFundsBtn) transferFundsBtn.style.display = 'none';
+          if (creditBalanceRefundBtn) creditBalanceRefundBtn.style.display = 'none';
+        }
+      }
+    } catch (err) {
+      console.error("Error fetching data:", err);
+      setError(err instanceof Error ? err.message : "An error occurred");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchLoanData();
   }, [clientId, loanId]);
 
   const formatDate = (date: string | number[] | undefined): string => {
@@ -3915,7 +3915,10 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
         isOpen={showRepaymentModal}
         onClose={() => setShowRepaymentModal(false)}
         loanId={loanId}
-        onSuccess={() => setShowRepaymentModal(false)}
+        onSuccess={() => {
+          setShowRepaymentModal(false);
+          fetchLoanData();
+        }}
       />
 
       {/* Loan Approval Modal */}
