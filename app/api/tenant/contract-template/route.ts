@@ -83,14 +83,18 @@ async function fetchLogoAsDataUrl(url: string): Promise<string | null> {
   return doGet(url, MAX_REDIRECTS);
 }
 
-const LOCAL_TEMPLATE_DIR = path.join(process.cwd(), "templates", "omama-full-loan");
-const LOCAL_TEMPLATE_FILE = "full-loan-template-from-db.html";
+const TENANT_TEMPLATES: Record<string, { dir: string; file: string; name: string }> = {
+  omama: {
+    dir: path.join(process.cwd(), "templates", "omama-full-loan"),
+    file: "full-loan-template-from-db.html",
+    name: "Omama Full Loan Contract",
+  },
+};
 
 /**
  * GET /api/tenant/contract-template?slug=full-loan
  * Returns the loan contract template HTML for the current tenant.
- * Reads from the local template file (templates/omama-full-loan/) with
- * images inlined as base64.
+ * Only tenants with a configured template get one; others receive null.
  */
 export async function GET(request: NextRequest) {
   try {
@@ -106,7 +110,12 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ html: null, name: null });
     }
 
-    const html = loadLocalTemplate(LOCAL_TEMPLATE_DIR, LOCAL_TEMPLATE_FILE);
+    const templateConfig = TENANT_TEMPLATES[tenant.slug];
+    if (!templateConfig) {
+      return NextResponse.json({ html: null, name: null });
+    }
+
+    const html = loadLocalTemplate(templateConfig.dir, templateConfig.file);
     if (!html) {
       return NextResponse.json({ html: null, name: null });
     }
@@ -118,7 +127,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       html,
-      name: "Omama Full Loan Contract",
+      name: templateConfig.name,
       slug,
       logoUrl,
     });
