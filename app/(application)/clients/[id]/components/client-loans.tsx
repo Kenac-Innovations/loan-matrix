@@ -37,6 +37,9 @@ interface FineractLoan {
   approvedPrincipal: number;
   interestRatePerPeriod: number;
   numberOfRepayments: number;
+  currency?: {
+    code: string;
+  };
   status: {
     id: number;
     code: string;
@@ -105,6 +108,7 @@ export function ClientLoans({ clientId }: ClientLoansProps) {
       approvedPrincipal: loan.originalLoan || loan.approvedPrincipal || loan.principal,
       interestRatePerPeriod: loan.interestRatePerPeriod || 0,
       numberOfRepayments: loan.numberOfRepayments || 0,
+      currency: loan.currency,
       status: {
         id: loan.status?.id || 0,
         code: loan.status?.code || "",
@@ -191,7 +195,7 @@ export function ClientLoans({ clientId }: ClientLoansProps) {
     });
   };
 
-  // Calculate summary metrics
+  // Calculate summary metrics (uses first loan's currency when displaying - assumes same currency for aggregated totals)
   const totalPrincipal = loans.reduce((sum, loan) => sum + loan.principal, 0);
   const totalOutstanding = loans.reduce(
     (sum, loan) => sum + loan.summary.totalOutstanding,
@@ -202,6 +206,7 @@ export function ClientLoans({ clientId }: ClientLoansProps) {
     0
   );
   const activeLoans = loans.filter((loan) => loan.status.active).length;
+  const summaryCurrency = loans[0]?.currency?.code ?? "ZMW";
 
   if (isLoading) {
     return (
@@ -271,7 +276,7 @@ export function ClientLoans({ clientId }: ClientLoansProps) {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {formatCurrency(totalPrincipal)}
+              {formatCurrency(totalPrincipal, summaryCurrency)}
             </div>
             <p className="text-xs text-muted-foreground">Approved amount</p>
           </CardContent>
@@ -284,7 +289,7 @@ export function ClientLoans({ clientId }: ClientLoansProps) {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {formatCurrency(totalOutstanding)}
+              {formatCurrency(totalOutstanding, summaryCurrency)}
             </div>
             <p className="text-xs text-muted-foreground">Current balance</p>
           </CardContent>
@@ -301,7 +306,7 @@ export function ClientLoans({ clientId }: ClientLoansProps) {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {formatCurrency(totalOverdue)}
+              {formatCurrency(totalOverdue, summaryCurrency)}
             </div>
             <p
               className={`text-xs ${
@@ -365,17 +370,17 @@ export function ClientLoans({ clientId }: ClientLoansProps) {
                       </TableCell>
                       <TableCell>
                         <div className="font-medium">
-                          {formatCurrency(loan.principal)}
+                          {formatCurrency(loan.principal, loan.currency?.code)}
                         </div>
                       </TableCell>
                       <TableCell>
                         <div>
                           <div className="font-medium">
-                            {formatCurrency(loan.summary.totalOutstanding)}
+                            {formatCurrency(loan.summary.totalOutstanding, loan.currency?.code)}
                           </div>
                           {loan.summary.totalOverdue > 0 && (
                             <div className="text-sm text-red-500">
-                              {formatCurrency(loan.summary.totalOverdue)}{" "}
+                              {formatCurrency(loan.summary.totalOverdue, loan.currency?.code)}{" "}
                               overdue
                             </div>
                           )}
