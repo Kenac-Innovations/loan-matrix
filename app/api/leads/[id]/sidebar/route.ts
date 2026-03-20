@@ -259,17 +259,19 @@ export async function GET(
     } catch (error) {
       console.error("Error fetching validations:", error);
       // Fallback validations based on lead data
+      const tenantSettings = tenant.settings as any;
+      const emailOptional = !!tenantSettings?.locale?.emailOptional;
       validations = [
         {
           name: "Required Fields",
           status:
-            lead.firstname && lead.lastname && lead.emailAddress
+            lead.firstname && lead.lastname && (emailOptional || lead.emailAddress)
               ? "passed"
               : "failed",
         },
         {
           name: "Contact Information",
-          status: lead.emailAddress && lead.mobileNo ? "passed" : "warning",
+          status: (emailOptional || lead.emailAddress) && lead.mobileNo ? "passed" : "warning",
         },
       ];
     }

@@ -137,19 +137,19 @@ td, th {
 				<strong><em><span style="width:36pt; display:inline-block">&#xa0;</span></em></strong><strong><em><span style="width:36pt; display:inline-block">&#xa0;</span></em></strong><strong><em><span style="width:36pt; display:inline-block">&#xa0;</span></em></strong><strong><em><span style="width:36pt; display:inline-block">&#xa0;</span></em></strong><strong><em><span style="width:36pt; display:inline-block">&#xa0;</span></em></strong><strong><em><span style="width:36pt; display:inline-block">&#xa0;</span></em></strong><strong><em><span style="width:36pt; display:inline-block">&#xa0;</span></em></strong><strong><em>&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0; </em></strong>
 			</p>
 			<p style="margin-bottom:0pt; line-height:200%; font-size:10pt">
-				<strong>NAME OF INDIVIDUAL: ................................................................................</strong>
+				<strong>NAME OF INDIVIDUAL: {{CLIENT_NAME}}</strong>
 			</p>
 			<p style="margin-bottom:0pt; line-height:200%; font-size:10pt">
-				<strong>CELL NUMBER ...................................................ACC No..................................................................</strong>
+				<strong>CELL NUMBER {{PHONE}} ACC No. {{ACCOUNT_NUMBER}}</strong>
 			</p>
 			<p style="margin-bottom:0pt; line-height:150%; font-size:10pt">
 				<strong>LOAN 1</strong><strong><span style="width:228.53pt; display:inline-block">&#xa0;</span></strong><strong> LOAN 2</strong>
 			</p>
 			<p style="margin-bottom:0pt; line-height:150%; font-size:10pt">
-				LOAN PRINCIPAL $.....................LOAN DATE&#xa0;&#xa0;&#xa0; /&#xa0;&#xa0;&#xa0;&#xa0;&#xa0; / 2026<span style="width:31.37pt; display:inline-block">&#xa0;</span>LOAN PRINCIPAL$.....................LOAN DATE...............
+				LOAN PRINCIPAL ${{LOAN_AMOUNT}} LOAN DATE {{LOAN_DATE}}<span style="width:31.37pt; display:inline-block">&#xa0;</span>LOAN PRINCIPAL${{LOAN_AMOUNT_2}} LOAN DATE {{LOAN_DATE_2}}
 			</p>
 			<p style="margin-bottom:0pt; line-height:150%; font-size:10pt">
-				No of times borrowing...............<span style="width:130.1pt; display:inline-block">&#xa0;</span>No of times borrowing...............…
+				No of times borrowing {{BORROWING_COUNT}}<span style="width:130.1pt; display:inline-block">&#xa0;</span>No of times borrowing {{BORROWING_COUNT_2}}
 			</p>
 			<p style="margin-bottom:0pt; line-height:150%; font-size:9pt">
 				&#xa0;
@@ -1352,46 +1352,46 @@ td, th {
 			</p>
 			<ol style="margin:0pt; padding-left:0pt">
 				<li style="margin-left:12.74pt; line-height:115%; padding-left:5.26pt; font-size:10pt; font-weight:bold">
-					Personal Details: <span style="font-weight:normal">Surname: ___________________First names: ____________________ID________________</span> 
+					Personal Details: <span style="font-weight:normal">Surname: {{SURNAME}} First names: {{FIRST_NAMES}} ID {{ID_NUMBER}}</span> 
 				</li>
 				<li style="margin-left:12.74pt; line-height:115%; padding-left:5.26pt; font-size:10pt; font-weight:bold">
-					Title: <span style="font-weight:normal">Mr/Mrs., Miss, Dr, Reverend, other </span>(Tick):&#xa0; Gender<span style="font-weight:normal">:</span><span style="font-weight:normal">&#xa0; </span><span style="font-weight:normal">Male /Female.</span><span style="font-weight:normal">&#xa0;&#xa0;&#xa0; </span><span style="font-weight:normal">Date of Birth________________</span>
+					Title: <span style="font-weight:normal">Mr/Mrs., Miss, Dr, Reverend, other </span>(Tick):&#xa0; Gender<span style="font-weight:normal">:</span><span style="font-weight:normal">&#xa0; </span><span style="font-weight:normal">{{GENDER_DISPLAY}}</span><span style="font-weight:normal">&#xa0;&#xa0;&#xa0; </span><span style="font-weight:normal">Date of Birth {{DATE_OF_BIRTH}}</span>
 				</li>
 			</ol>
 			<p style="line-height:115%; font-size:10pt">
-				&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0; Physical Res. Address __________________________________________&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0; Phone&#xa0;&#xa0; ____________
+				&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0; Physical Res. Address {{RESIDENTIAL_ADDRESS}}&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0; Phone&#xa0;&#xa0; {{PHONE}}
 			</p>
 			<p style="line-height:115%; font-size:10pt">
-				&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0; Place of work &amp; Physical Address____________________________________________Phone_________
+				&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0; Place of work &amp; Physical Address {{BUSINESS_ADDRESS}} Phone {{WORK_PHONE}}
 			</p>
 			<ol start="3" style="margin:0pt; padding-left:0pt">
 				<li class="ListParagraph" style="margin-left:12.74pt; line-height:115%; padding-left:5.26pt; font-size:10pt; font-weight:bold">
-					Family Situation: <span style="font-weight:normal">Marital status: _____________________ Married/Single/Divorced/Widowed</span> (Tick)
+					Family Situation: <span style="font-weight:normal">Marital status: {{MARITAL_STATUS}} Married/Single/Divorced/Widowed</span> (Tick)
 				</li>
 			</ol>
 			<p style="line-height:115%; font-size:10pt">
-				&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0; If you are married, Name of wife/husband _____________________Tel: ___________________ 
+				&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0; If you are married, Name of wife/husband {{SPOUSE_NAME}} Tel: {{SPOUSE_PHONE}} 
 			</p>
 			<p style="line-height:115%; font-size:10pt">
-				&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0; Name of closest relative: _______________________Tel: ______________
+				&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0; Name of closest relative: {{CLOSEST_RELATIVE_NAME}} Tel: {{CLOSEST_RELATIVE_PHONE}}
 			</p>
 			<p style="line-height:115%; font-size:10pt">
-				&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0; Relation/<em>Ndiani wenyu?</em><em>&#xa0; </em>_____________________________&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0; 
+				&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0; Relation/<em>Ndiani wenyu?</em><em>&#xa0; </em>{{CLOSEST_RELATIVE_RELATIONSHIP}}&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0; 
 			</p>
 			<ol start="4" style="margin:0pt; padding-left:0pt">
 				<li style="margin-left:12.74pt; line-height:115%; padding-left:5.26pt; font-size:10pt; font-weight:bold">
-					Business /Employment<span style="font-weight:normal">: What business or job do you do?</span><span style="font-weight:normal">&#xa0; </span><em><span style="font-weight:normal; ">Munoita nezvei? _____________________________</span></em>
+					Business /Employment<span style="font-weight:normal">: What business or job do you do?</span><span style="font-weight:normal">&#xa0; </span><em><span style="font-weight:normal; ">Munoita nezvei? {{BUSINESS_SECTOR}}</span></em>
 				</li>
 			</ol>
 			<p style="margin-left:18pt; line-height:115%; font-size:10pt">
-				Where do you operate your business from or where is your work place /<em>Munoiitira basa renyu papi?</em><em>&#xa0; </em><em>Semuenzaniso sekuti “MuChivhu, paFlea Market yeparank”, kana kuti “paGokwe pabus terminus</em>?” Kana kuti ‘<em>kana kuti pa Njelele School’</em>__________________________________________________________
+				Where do you operate your business from or where is your work place /<em>Munoiitira basa renyu papi?</em><em>&#xa0; </em><em>Semuenzaniso sekuti “MuChivhu, paFlea Market yeparank”, kana kuti “paGokwe pabus terminus</em>?” Kana kuti ‘<em>kana kuti pa Njelele School’</em> {{BUSINESS_ADDRESS}}
 			</p>
 			<p style="line-height:115%; font-size:10pt">
-				&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0; Years/Months in Business or at work /<em>Mava nemakore muchita basa iri? </em>:<strong> </strong>________ sales or&#xa0; salary $_________pm.
+				&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0; Years/Months in Business or at work /<em>Mava nemakore muchita basa iri? </em>:<strong> </strong>{{YEARS_IN_BUSINESS}} sales or&#xa0; salary ${{MONTHLY_INCOME}}pm.
 			</p>
 			<ol start="5" style="margin:0pt; padding-left:0pt">
 				<li class="ListParagraph" style="margin-left:12.74pt; margin-bottom:0pt; line-height:115%; padding-left:5.26pt; font-size:10pt; font-weight:bold">
-					&#xa0;Required Loan Amount<span style="font-weight:normal">/</span><em><span style="font-weight:normal; ">Munoda marii? </span></em><span style="font-weight:normal">$______ Loan Purpose/</span><em><span style="font-weight:normal; ">Munoda kuishandisei ?__________________</span></em>
+					&#xa0;Required Loan Amount<span style="font-weight:normal">/</span><em><span style="font-weight:normal; ">Munoda marii? </span></em><span style="font-weight:normal">${{REQUESTED_AMOUNT}} Loan Purpose/</span><em><span style="font-weight:normal; ">Munoda kuishandisei ? {{LOAN_PURPOSE}}</span></em>
 				</li>
 				<li class="ListParagraph" style="margin-left:12.74pt; margin-bottom:0pt; line-height:115%; padding-left:5.26pt; font-size:10pt; font-weight:bold">
 					Proposed Security: 
@@ -1401,7 +1401,7 @@ td, th {
 				&#xa0;
 			</p>
 			<p class="ListParagraph" style="margin-left:18pt; line-height:115%; font-size:10pt">
-				1…………………………………2…………………………………3……………………………………..4………………………………..5………………………………………
+				1. {{SECURITY_1}} 2. {{SECURITY_2}} 3. {{SECURITY_3}} 4. {{SECURITY_4}} 5. {{SECURITY_5}}
 			</p>
 			<ol start="7" style="margin:0pt; padding-left:0pt">
 				<li style="margin-left:12.74pt; line-height:115%; padding-left:5.26pt; font-size:10pt; font-weight:bold; font-style:italic">
@@ -1409,19 +1409,19 @@ td, th {
 				</li>
 			</ol>
 			<p style="margin-left:4.5pt; line-height:115%; font-size:10pt">
-				&#xa0;&#xa0;&#xa0;&#xa0;&#xa0; Name: ____________________________ Name: ___________________________________
+				&#xa0;&#xa0;&#xa0;&#xa0;&#xa0; Name: {{REF1_NAME}} Name: {{REF2_NAME}}
 			</p>
 			<p style="margin-left:4.5pt; line-height:115%; font-size:10pt">
-				&#xa0;&#xa0;&#xa0;&#xa0;&#xa0; Occupation/<em>Basa Rake</em>: _____________________Occupation/<em>Basa rake</em>: _________________
+				&#xa0;&#xa0;&#xa0;&#xa0;&#xa0; Occupation/<em>Basa Rake</em>: {{REF1_OCCUPATION}} Occupation/<em>Basa rake</em>: {{REF2_OCCUPATION}}
 			</p>
 			<p style="margin-left:4.5pt; line-height:115%; font-size:10pt">
-				&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0; Relation to applicant:&#xa0; __________________ Relation to applicant:&#xa0; ________________________
+				&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0; Relation to applicant:&#xa0; {{REF1_RELATION}} Relation to applicant:&#xa0; {{REF2_RELATION}}
 			</p>
 			<p style="margin-left:4.5pt; line-height:115%; font-size:10pt">
-				&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0; Address:&#xa0; _____________________________ Address:&#xa0; _________________________________
+				&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0; Address:&#xa0; {{REF1_ADDRESS}} Address:&#xa0; {{REF2_ADDRESS}}
 			</p>
 			<p style="margin-left:4.5pt; line-height:115%; font-size:10pt">
-				&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0; Telephone No: ________________________ Telephone No: ____________________________
+				&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0; Telephone No: {{REF1_PHONE}} Telephone No: {{REF2_PHONE}}
 			</p>
 			<ol start="8" style="margin:0pt; padding-left:0pt">
 				<li style="margin-left:12.74pt; text-align:justify; line-height:115%; padding-left:5.26pt; font-size:10pt; font-weight:bold">
@@ -1456,25 +1456,25 @@ td, th {
 				&#xa0;
 			</p>
 			<p class="BodyText" style="margin-left:6pt; margin-bottom:0pt; text-align:justify; line-height:normal">
-				I............................................................................ID Number..........................................................................
+				I {{CLIENT_NAME}} ID Number {{ID_NUMBER}}
 			</p>
 			<p class="BodyText" style="margin-bottom:0pt; text-align:justify; line-height:normal">
 				&#xa0;
 			</p>
 			<p class="BodyText" style="margin-left:6pt; margin-bottom:0pt; text-align:justify; line-height:normal">
-				acknowledge my indebtedness to <strong>OMAMA FINANCE </strong>in the sum<span style="letter-spacing:-0.5pt"> </span>of<span style="letter-spacing:0.15pt"> </span>USD$.<span style="width:111.59pt; font-family:'Lucida Console'; font-size:10pt; display:inline-block">..................</span>and
+				acknowledge my indebtedness to <strong>OMAMA FINANCE </strong>in the sum<span style="letter-spacing:-0.5pt"> </span>of<span style="letter-spacing:0.15pt"> </span>USD$ {{LOAN_AMOUNT}} and
 			</p>
 			<p class="BodyText" style="margin-top:0.5pt; margin-bottom:0pt; text-align:justify; line-height:normal; font-size:10.5pt">
 				&#xa0;
 			</p>
 			<p class="BodyText" style="margin-left:6pt; margin-bottom:0pt; text-align:justify; line-height:normal">
-				agree to pay a minimum amount in reduction of the debt<span style="letter-spacing:-1.55pt"> </span>of<span style="letter-spacing:0.15pt"> </span>USD$<span style="width:87.25pt; font-family:'Lucida Console'; font-size:10pt; display:inline-block">..............</span>per month, the<span style="letter-spacing:-0.65pt"> </span>first
+				agree to pay a minimum amount in reduction of the debt<span style="letter-spacing:-1.55pt"> </span>of<span style="letter-spacing:0.15pt"> </span>USD$ {{PAYMENT_PER_PERIOD}} per month, the<span style="letter-spacing:-0.65pt"> </span>first
 			</p>
 			<p class="BodyText" style="margin-top:0.05pt; margin-bottom:0pt; text-align:justify; line-height:normal">
 				&#xa0;
 			</p>
 			<p class="BodyText" style="margin-left:6pt; margin-bottom:0pt; text-align:justify; line-height:normal">
-				payment to be made<span style="letter-spacing:-0.05pt"> </span>by<span style="letter-spacing:-0.4pt"> </span>the<span style="width:115.87pt; font-family:'Lucida Console'; font-size:10pt; display:inline-block">...................</span>until the outstanding balance is paid in full in<span style="letter-spacing:-1.5pt"> </span>terms
+				payment to be made<span style="letter-spacing:-0.05pt"> </span>by<span style="letter-spacing:-0.4pt"> </span>the {{FIRST_PAYMENT_DATE}} until the outstanding balance is paid in full in<span style="letter-spacing:-1.5pt"> </span>terms
 			</p>
 			<p class="BodyText" style="margin-bottom:0pt; text-align:justify; line-height:normal">
 				&#xa0;
@@ -1509,22 +1509,22 @@ td, th {
 				&#xa0;
 			</p>
 			<p class="ListParagraph" style="margin-right:6.7pt; margin-left:42pt; text-align:justify; line-height:normal">
-				&#xa0;<span style="letter-spacing:-0.05pt">at..........................................................................................................................................................</span>
+				&#xa0;<span style="letter-spacing:-0.05pt">at {{CLIENT_ADDRESS}}</span>
 			</p>
 			<p class="BodyText" style="margin-left:42pt; text-align:justify; line-height:normal">
-				THUS DONE and AGREED AT<span style="letter-spacing:-1.05pt"> </span>......................this……………. day<span style="letter-spacing:-0.4pt"> </span>of<span style="width:125.94pt; font-family:'Lucida Console'; font-size:10pt; display:inline-block">....................</span>2026
+				THUS DONE and AGREED AT {{EXECUTION_PLACE}} this {{EXECUTION_DAY}} day of {{EXECUTION_MONTH}} 2026
 			</p>
 			<p class="BodyText" style="margin-top:0.05pt; text-align:justify; line-height:normal">
 				&#xa0;
 			</p>
 			<p class="BodyText" style="margin-left:42pt; line-height:normal">
-				I<span style="width:300.53pt; font-family:'Lucida Console'; font-size:10pt; display:inline-block">.................................................</span>(NAME IN<span style="letter-spacing:-0.45pt"> </span>FULL) the above-named debtor, for and on behalf of the above named debtor and duly authorized hereto accept the above mentioned conditions.
+				I {{CLIENT_NAME}} (NAME IN<span style="letter-spacing:-0.45pt"> </span>FULL) the above-named debtor, for and on behalf of the above named debtor and duly authorized hereto accept the above mentioned conditions.
 			</p>
 			<p class="BodyText" style="margin-top:0.45pt; text-align:justify; line-height:normal; font-size:10.5pt">
 				&#xa0;
 			</p>
 			<p class="BodyText" style="margin-top:0.05pt; margin-right:250.25pt; margin-left:6pt; text-align:justify; line-height:normal">
-				……………………………………………………. (Signature)
+				{{CLIENT_NAME}} (Signature)
 			</p>
 			<p class="BodyText" style="margin-top:0.05pt; margin-right:250.25pt; margin-left:6pt; text-align:justify; line-height:normal">
 				&#xa0;
@@ -1578,19 +1578,19 @@ td, th {
 				&#xa0;
 			</p>
 			<p style="margin-left:3.6pt; margin-bottom:0pt">
-				……………..…………………………………………….…………………………………(Borrower)&#xa0; of <em>domicilium citandi </em>(address) 
+				{{CLIENT_NAME}} (Borrower)&#xa0; of <em>domicilium citandi </em>(address) 
 			</p>
 			<p style="margin-left:3.6pt; margin-bottom:0pt">
 				&#xa0;
 			</p>
 			<p style="margin-left:3.6pt; margin-bottom:0pt">
-				……………………………………………………………………………................................................................................................... 
+				……{{CLIENT_ADDRESS}} 
 			</p>
 			<p style="margin-left:3.6pt; margin-bottom:0pt">
 				<strong>OMAMA FINANCE </strong>(Lender). <strong><em>&#xa0;</em></strong> 
 			</p>
 			<p style="margin-left:3.6pt; text-align:justify; line-height:150%">
-				<strong>Principal US$ (NOT RTGS$) …………………….….. Word………………………………………………………………………………..……… Loan Purpose: ……………………….. </strong>The monthly compound charges on the balance are: interest 12% and admin 5%. Related to this cash handling charges are 3% and estab fee 5%. Part or the entire amount payable may be repaid in advance without any variation to the full monthly charge. This credit facility is charged based on a 30-day month. Default penalty is 10% on the missed instalment, minimum $10. The costs of arranging for the loan (pre-loan costs) which include due diligence assessments, security valuations, any necessary travel/ field trips etc are borne by the client at cost, the minimum being 5% of the loan principal.&#xa0; If a missed instalment is not cured within 7 days, the entire loan balance becomes due and payable. All loan recovery costs are borne by the client.<strong> </strong>Repayment dates are as follows:&#xa0; 
+				<strong><strong>Principal US$ (NOT RTGS$) {{LOAN_AMOUNT}} Word: {{PRINCIPAL_WORDS}} Loan Purpose: {{LOAN_PURPOSE}} </strong>The monthly compound charges on the balance are: interest 12% and admin 5%. Related to this cash handling charges are 3% and estab fee 5%. Part or the entire amount payable may be repaid in advance without any variation to the full monthly charge. This credit facility is charged based on a 30-day month. Default penalty is 10% on the missed instalment, minimum $10. The costs of arranging for the loan (pre-loan costs) which include due diligence assessments, security valuations, any necessary travel/ field trips etc are borne by the client at cost, the minimum being 5% of the loan principal.&#xa0; If a missed instalment is not cured within 7 days, the entire loan balance becomes due and payable. All loan recovery costs are borne by the client.<strong> </strong>Repayment dates are as follows:&#xa0; 
 			</p>
 			<table style="width:518.5pt; margin-bottom:0pt; border:0.75pt solid #000000; padding:0pt; border-collapse:collapse">
 				<tr style="height:19.7pt">
@@ -1664,7 +1664,7 @@ td, th {
 				<strong>Security: </strong>The Borrower’s personal and business assets are the collateral security on this and all future loans.&#xa0; Some of the pledged assets include:&#xa0; 
 			</p>
 			<p style="margin-left:4.35pt">
-				1 ............................................................&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0; 2 ..................................................&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0; 3 ................................................&#xa0; 
+				1. {{SECURITY_1}} &#xa0;&#xa0;&#xa0;&#xa0; 2. {{SECURITY_2}} &#xa0;&#xa0;&#xa0;&#xa0; 3. {{SECURITY_3}} 
 			</p>
 			<p style="margin-bottom:2.8pt; text-align:justify; line-height:150%">
 				The Lender may share the Borrower’s information with relevant third parties for credit reference and/or loan recovery purposes at any opportune point in time. The Borrower authorises the Lender to collect all sums due including all charges by effecting a stop order deduction through the bank or employer platforms (e.g. SSB etc) or both to satisfy this or any other outstanding debt.&#xa0;&#xa0; This contract may only be varied by both parties agreeing in writing.&#xa0; Any part of this contract that is rendered as void or voidable does not affect the other parts of the contract. The Magistrate’s Courts of the Republic of Zimbabwe have jurisdiction over this contract, regardless of the size of the amounts involved.&#xa0; 
@@ -1676,7 +1676,7 @@ td, th {
 				<strong>Witnesses: 1……………………………………………………………… Witness 2…………………………………….</strong><strong>&#xa0; </strong>
 			</p>
 			<p style="margin-bottom:11.3pt; line-height:200%">
-				<strong>Cash Received: US$(NOT RTGS$) ................................ Signed…………………………………….</strong><strong>&#xa0;&#xa0;&#xa0; </strong>
+				<strong>Cash Received: US$(NOT RTGS$) {{LOAN_AMOUNT}} Signed…………………………………….</strong><strong>&#xa0;&#xa0;&#xa0; </strong>
 			</p>
 			<p style="margin-bottom:8.1pt; line-height:200%">
 				<strong>PLACE: ……………………………………………DATE ALL THIS DONE: ………………………………………….</strong><strong>&#xa0; </strong>
@@ -1704,11 +1704,11 @@ td, th {
 				<strong>VOLUNTARY SURRENDER FORM</strong>
 			</p>
 			<p style="text-align:justify">
-				I……………………………………………………………………………………. of …………………………………………………………………… do hereby voluntarily surrender the items listed below to Omama Finance with the following understanding:
+				I {{CLIENT_NAME}} of {{CLIENT_ADDRESS}} do hereby voluntarily surrender the items listed below to Omama Finance with the following understanding:
 			</p>
 			<ol style="margin:0pt; padding-left:0pt">
 				<li style="margin-left:31.35pt; text-align:justify; padding-left:4.65pt">
-					That I am fully aware that I owe Omama Finance to the tune of $……………………………………………
+					That I am fully aware that I owe Omama Finance to the tune of ${{TOTAL_DEBT}}…………
 				</li>
 				<li style="margin-left:31.35pt; text-align:justify; padding-left:4.65pt">
 					That Omama Finance will hold my assets till the loan, together with interest and administrative costs and/ or all my guarantee liabilities are fully repaid.
@@ -1785,16 +1785,16 @@ td, th {
 		</div>
 		<p class="omama-subtitle">(Registered Microfinance Institution)</p>
 <p style="margin-left:13.7pt; margin-bottom:0.3pt; text-indent:-0.5pt; line-height:200%">
-				<strong>PLEDGE AGREEMENT BETWEEN: (NAME)__________________________________________________________</strong>
+				<strong>PLEDGE AGREEMENT BETWEEN: (NAME) {{CLIENT_NAME}}</strong>
 			</p>
 			<p style="margin-left:13.7pt; margin-bottom:0.3pt; text-indent:-0.5pt; line-height:200%">
-				<strong>&#xa0;</strong><strong>I.D ________________________________ </strong>(The "<strong>Pledger</strong>”) AND<strong> Omama Finance</strong> (The "<strong>Pledgee</strong>"). <span style="width:12.14pt; text-indent:0pt; display:inline-block">&#xa0;</span>
+				<strong>&#xa0;</strong><strong>I.D {{ID_NUMBER}} </strong>(The "<strong>Pledger</strong>”) AND<strong> Omama Finance</strong> (The "<strong>Pledgee</strong>"). <span style="width:12.14pt; text-indent:0pt; display:inline-block">&#xa0;</span>
 			</p>
 			<p style="margin-left:13.7pt; margin-bottom:0.3pt; text-indent:-0.5pt; line-height:200%">
-				<strong>Regarding: </strong><strong><span style="width:7.27pt; text-indent:0pt; display:inline-block">&#xa0;</span></strong><strong>1. ______________________</strong><strong>&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0; </strong><strong>2. _____________________</strong><strong>&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0; </strong><strong>3. __________________</strong>
+				<strong>Regarding: </strong><strong><span style="width:7.27pt; text-indent:0pt; display:inline-block">&#xa0;</span></strong><strong>1. {{PLEDGE_ITEM_1}}</strong><strong>&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0; </strong><strong>2. {{PLEDGE_ITEM_2}}</strong><strong>&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0; </strong><strong>3. {{PLEDGE_ITEM_3}}</strong>
 			</p>
 			<p style="margin-bottom:0.3pt; line-height:200%">
-				<strong>&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0; </strong><strong>4.</strong><strong>&#xa0; </strong><strong>_______________________</strong><strong>&#xa0;&#xa0;&#xa0;&#xa0;&#xa0; </strong><strong>5. _____________________ </strong>
+				<strong>&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0;&#xa0; </strong><strong>4. {{PLEDGE_ITEM_4}}</strong><strong>&#xa0;&#xa0;&#xa0;&#xa0;&#xa0; </strong><strong>5. {{PLEDGE_ITEM_5}} </strong>
 			</p>
 			<p style="margin-bottom:0.3pt; text-align:justify; line-height:108%">
 				&#xa0;&#xa0;&#xa0;&#xa0; Referred to hereinafter as “the Security”.<strong> </strong>&#xa0;
@@ -1954,10 +1954,10 @@ td, th {
 				<strong>Letter of Continuing Guarantee</strong><strong>&#xa0; </strong>
 			</p>
 			<p style="margin-left:18pt; margin-bottom:1.3pt; text-indent:-18pt; line-height:150%">
-				<strong>1. </strong>I_______________________________________________of________________________________(domicilium citandi/ serving address) ID no____________________ Tel ______________ in consideration of you, OmamaFianace (Pvt) Ltd ,&#xa0; entering into Loan Agreements from this date _______________________(date), it being request hereunder,&#xa0; whereby you agree to grant, extend or continue to make available credit facilities to&#xa0;&#xa0; 
+				<strong>1. </strong>I {{GUARANTOR_NAME}} of {{GUARANTOR_ADDRESS}} (domicilium citandi/ serving address) ID no {{GUARANTOR_ID}} Tel {{GUARANTOR_PHONE}} in consideration of you, OmamaFianace (Pvt) Ltd ,&#xa0; entering into Loan Agreements from this date {{GUARANTEE_DATE}} (date), it being request hereunder,&#xa0; whereby you agree to grant, extend or continue to make available credit facilities to&#xa0;&#xa0; 
 			</p>
 			<p style="margin-left:11.75pt; text-indent:-0.5pt; text-align:justify; line-height:150%">
-				&#xa0;_______________________________________________ (hereinafter called the “<strong>Borrower</strong>”), I hereby unconditionally guarantee, agree with you, myself taking full responsibility as the principal debtor and not merely as surety, on your written demand to pay and discharge, whether at the Final Maturity Date of the Loan Agreement or earlier (by reason of acceleration) and at all times thereafter, the following (hereinafter called the “<strong>Indebtedness</strong>”):&#xa0; 
+				&#xa0;{{CLIENT_NAME}} (hereinafter called the “<strong>Borrower</strong>”), I hereby unconditionally guarantee, agree with you, myself taking full responsibility as the principal debtor and not merely as surety, on your written demand to pay and discharge, whether at the Final Maturity Date of the Loan Agreement or earlier (by reason of acceleration) and at all times thereafter, the following (hereinafter called the “<strong>Indebtedness</strong>”):&#xa0; 
 			</p>
 			<p style="margin-left:12.6pt; text-indent:-0.5pt; text-align:justify">
 				a) all loans advanced by you to the Borrower&#xa0; now and in future b) interest and all sums due from me to you under this Guarantee or the outstanding balance thereof from time to time during the period from the date of demand by you as aforesaid or from the date of discontinuance of this Guarantee by me, until the date when such sums are discharged in full at a rate or rates at which the Borrower would have been liable to pay interest in respect of the monies guaranteed; and d) all costs and expenses arising out of or in connection with your recovery or attempted recovery of monies due to you and your prosecuting against the Borrower or myself under the Loan Agreement and this Guarantee, as the case may be.&#xa0; 
@@ -2044,25 +2044,25 @@ td, th {
 				<strong>&#xa0;</strong>
 			</p>
 			<p class="BodyText" style="margin-left:6pt; margin-bottom:0pt; text-align:justify">
-				I............................................................................ID Number..........................................................................
+				I {{CLIENT_NAME}} ID Number {{ID_NUMBER}}
 			</p>
 			<p class="BodyText" style="margin-bottom:0pt; text-align:justify">
 				&#xa0;
 			</p>
 			<p class="BodyText" style="margin-left:6pt; margin-bottom:0pt; text-align:justify">
-				acknowledge my indebtedness to <strong>OMAMA FINANCE </strong>in the sum<span style="letter-spacing:-0.5pt"> </span>of<span style="letter-spacing:0.15pt"> </span>USD$.<span style="width:111.59pt; font-family:'Lucida Console'; font-size:10pt; display:inline-block">..................</span>and
+				acknowledge my indebtedness to <strong>OMAMA FINANCE </strong>in the sum<span style="letter-spacing:-0.5pt"> </span>of<span style="letter-spacing:0.15pt"> </span>USD$ {{LOAN_AMOUNT}} and
 			</p>
 			<p class="BodyText" style="margin-top:0.5pt; margin-bottom:0pt; text-align:justify; line-height:115%; font-size:10.5pt">
 				&#xa0;
 			</p>
 			<p class="BodyText" style="margin-left:6pt; margin-bottom:0pt; text-align:justify">
-				agree to pay a minimum amount in reduction of the debt<span style="letter-spacing:-1.55pt"> </span>of<span style="letter-spacing:0.15pt"> </span>USD$<span style="width:87.25pt; font-family:'Lucida Console'; font-size:10pt; display:inline-block">..............</span>per month, the<span style="letter-spacing:-0.65pt"> </span>first
+				agree to pay a minimum amount in reduction of the debt<span style="letter-spacing:-1.55pt"> </span>of<span style="letter-spacing:0.15pt"> </span>USD$ {{PAYMENT_PER_PERIOD}} per month, the<span style="letter-spacing:-0.65pt"> </span>first
 			</p>
 			<p class="BodyText" style="margin-top:0.05pt; margin-bottom:0pt; text-align:justify">
 				&#xa0;
 			</p>
 			<p class="BodyText" style="margin-left:6pt; margin-bottom:0pt; text-align:justify">
-				payment to be made<span style="letter-spacing:-0.05pt"> </span>by<span style="letter-spacing:-0.4pt"> </span>the<span style="width:115.87pt; font-family:'Lucida Console'; font-size:10pt; display:inline-block">...................</span>until the outstanding balance is paid in full in<span style="letter-spacing:-1.5pt"> </span>terms
+				payment to be made<span style="letter-spacing:-0.05pt"> </span>by<span style="letter-spacing:-0.4pt"> </span>the {{FIRST_PAYMENT_DATE}} until the outstanding balance is paid in full in<span style="letter-spacing:-1.5pt"> </span>terms
 			</p>
 			<p class="BodyText" style="margin-bottom:0pt; text-align:justify">
 				&#xa0;
@@ -2097,7 +2097,7 @@ td, th {
 				<span style="letter-spacing:-0.05pt">&#xa0;</span>
 			</p>
 			<p class="ListParagraph" style="margin-right:6.7pt; margin-left:42pt; margin-bottom:0pt; text-align:justify; line-height:normal">
-				<span style="letter-spacing:-0.05pt">at..........................................................................................................................................................</span>
+				<span style="letter-spacing:-0.05pt">at {{CLIENT_ADDRESS}}</span>
 			</p>
 			<p class="BodyText" style="margin-top:0.2pt; margin-left:42pt; margin-bottom:0pt; text-align:justify; line-height:normal">
 				&#xa0;
@@ -2106,13 +2106,13 @@ td, th {
 				&#xa0;
 			</p>
 			<p class="BodyText" style="margin-left:42pt; margin-bottom:0pt; text-align:justify; line-height:normal">
-				THUS DONE and AGREED AT<span style="letter-spacing:-1.05pt"> </span>......................this……………. day<span style="letter-spacing:-0.4pt"> </span>of<span style="width:125.94pt; font-family:'Lucida Console'; font-size:10pt; display:inline-block">....................</span>202…
+				THUS DONE and AGREED AT {{EXECUTION_PLACE}} this {{EXECUTION_DAY}} day of {{EXECUTION_MONTH}} 2026
 			</p>
 			<p class="BodyText" style="margin-top:0.05pt; text-align:justify; line-height:normal">
 				&#xa0;
 			</p>
 			<p class="BodyText" style="text-align:justify; line-height:normal">
-				I,.<span style="width:337.01pt; font-family:'Lucida Console'; font-size:10pt; display:inline-block">.......................................................</span>(NAME IN<span style="letter-spacing:-0.45pt"> </span>FULL)
+				I, {{CLIENT_NAME}} (NAME IN<span style="letter-spacing:-0.45pt"> </span>FULL)
 			</p>
 			<p class="BodyText" style="margin-right:4.6pt; text-align:justify; line-height:normal">
 				the above-named debtor, for and on behalf of the above-named debtor and duly authorized hereto accept the above-mentioned conditions.
@@ -2121,7 +2121,7 @@ td, th {
 				&#xa0;
 			</p>
 			<p class="BodyText" style="margin-top:0.05pt; margin-right:250.25pt; text-align:justify; line-height:normal">
-				……………………………………………………. (Signature)
+				{{CLIENT_NAME}} (Signature)
 			</p>
 			<p class="BodyText" style="text-align:justify; line-height:normal">
 				&#xa0;

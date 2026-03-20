@@ -83,6 +83,7 @@ export interface ContractData {
   annualIncome?: number | null;
   monthlyIncome?: number | null;
   grossMonthlyIncome?: number | null;
+  monthlyIncomeRange?: string | null;
   monthlyExpenses?: number | null;
   employmentStatus?: string | null;
   employerName?: string | null;
@@ -103,7 +104,17 @@ export interface ContractData {
   closestRelativeName?: string | null;
   closestRelativePhone?: string | null;
   closestRelativeRelationship?: string | null;
-  referees?: Array<{ name?: string; phone?: string }> | null;
+  referees?: Array<{
+    name?: string;
+    occupation?: string;
+    relation?: string;
+    address?: string;
+    phone?: string;
+  }> | null;
+  maritalStatus?: string | null;
+  businessSector?: string | null;
+  businessAddress?: string | null;
+  collaterals?: Array<{ description?: string }> | null;
   familyMembers?: FamilyMember[] | null;
   stateContext?: Record<string, any> | null;
   stateMetadata?: Record<string, any> | null;
