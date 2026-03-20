@@ -251,16 +251,18 @@ model SLAConfig {
 }
 
 model Team {
-  id               String       @id @default(cuid())
-  tenantId         String
-  name             String
-  description      String?
-  pipelineStageIds String[]
-  isActive         Boolean      @default(true)
-  createdAt        DateTime     @default(now())
-  updatedAt        DateTime     @updatedAt
-  tenant           Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  members          TeamMember[]
+  id                 String       @id @default(cuid())
+  tenantId           String
+  name               String
+  description        String?
+  pipelineStageIds   String[]
+  assignmentStrategy String       @default("round_robin") // round_robin | least_loaded | manual | specific_member
+  assignmentConfig   Json?        // e.g. { specificMemberId: "...", lastAssignedIndex: 0 }
+  isActive           Boolean      @default(true)
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+  tenant             Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  members            TeamMember[]
 
   @@unique([tenantId, name])
   @@index([tenantId, isActive])

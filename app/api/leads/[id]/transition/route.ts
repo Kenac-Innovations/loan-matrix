@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { leadStateManager } from "@/lib/lead-state-manager";
+import { TeamAwareStateMachineService } from "@/lib/team-state-machine-service";
 import { getSession as getCustomSession } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
 
 /**
  * POST /api/leads/[id]/transition
- * Manually transition a lead to a new stage
+ * Transition a lead to a new stage (by stage name for backward compat, or by stageId)
  */
 export async function POST(
   request: NextRequest,
@@ -20,43 +21,65 @@ export async function POST(
     }
 
     const body = await request.json();
-    const { targetStageName, reason, metadata } = body;
+    const { targetStageName, targetStageId, reason, metadata } = body;
 
-    if (!targetStageName) {
+    if (!targetStageName && !targetStageId) {
       return NextResponse.json(
-        { error: "targetStageName is required" },
+        { error: "targetStageName or targetStageId is required" },
         { status: 400 }
       );
     }
 
-    console.log("=== MANUAL TRANSITION REQUEST ===");
-    console.log("Lead ID:", leadId);
-    console.log("Target Stage:", targetStageName);
-    console.log("User ID:", session.user.id);
-    console.log("Reason:", reason);
+    let resolvedStageId = targetStageId;
 
-    const result = await leadStateManager.manualTransition(
+    // Resolve stage name to ID if needed
+    if (!resolvedStageId && targetStageName) {
+      const lead = await prisma.lead.findUnique({
+        where: { id: leadId },
+        select: { tenantId: true },
+      });
+
+      if (!lead) {
+        return NextResponse.json({ error: "Lead not found" }, { status: 404 });
+      }
+
+      const stage = await prisma.pipelineStage.findFirst({
+        where: {
+          tenantId: lead.tenantId,
+          name: targetStageName,
+          isActive: true,
+        },
+      });
+
+      if (!stage) {
+        return NextResponse.json(
+          { error: `Stage "${targetStageName}" not found` },
+          { status: 404 }
+        );
+      }
+
+      resolvedStageId = stage.id;
+    }
+
+    const result = await TeamAwareStateMachineService.executeTransition({
       leadId,
-      targetStageName,
-      session.user.id,
+      targetStageId: resolvedStageId,
+      event: "MANUAL_TRANSITION",
+      triggeredBy: session.user.id,
       reason,
-      metadata
-    );
+    });
 
     if (result.success) {
       return NextResponse.json({
         success: true,
-        newStage: result.newStage,
-        stageName: result.stageName,
+        newStage: result.lead?.currentStageId,
+        stageName: result.lead?.currentStage?.name,
         message: result.message,
+        assignedMember: result.assignedMember,
       });
     } else {
       return NextResponse.json(
-        {
-          success: false,
-          message: result.message,
-          errors: result.errors,
-        },
+        { success: false, message: result.message },
         { status: 400 }
       );
     }
@@ -75,7 +98,7 @@ export async function POST(
 
 /**
  * GET /api/leads/[id]/transition
- * Get available transitions for a lead
+ * Get available transitions for a lead with team context
  */
 export async function GET(
   request: NextRequest,
@@ -90,9 +113,13 @@ export async function GET(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const transitions = await leadStateManager.getAvailableTransitions(leadId);
+    const transitions =
+      await TeamAwareStateMachineService.getAvailableTransitionsWithTeams(
+        leadId,
+        session.user.id
+      );
 
-    return NextResponse.json(transitions);
+    return NextResponse.json({ transitions });
   } catch (error) {
     console.error("Error getting available transitions:", error);
     return NextResponse.json(

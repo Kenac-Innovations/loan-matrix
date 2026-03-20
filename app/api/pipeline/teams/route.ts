@@ -54,6 +54,8 @@ export async function GET(request: NextRequest) {
         (id) => stageMap.get(id) || id
       ),
       pipelineStageIds: team.pipelineStageIds || [],
+      assignmentStrategy: team.assignmentStrategy || "round_robin",
+      assignmentConfig: team.assignmentConfig || {},
       members: team.members.map((member) => ({
         id: member.id,
         name: member.name,
@@ -157,6 +159,8 @@ export async function PUT(request: NextRequest) {
               name: team.name,
               description: team.description || "",
               pipelineStageIds,
+              assignmentStrategy: team.assignmentStrategy || "round_robin",
+              assignmentConfig: team.assignmentConfig || {},
             },
           });
 
@@ -179,6 +183,8 @@ export async function PUT(request: NextRequest) {
               name: team.name,
               description: team.description || "",
               pipelineStageIds,
+              assignmentStrategy: team.assignmentStrategy || "round_robin",
+              assignmentConfig: team.assignmentConfig || {},
             },
           });
 

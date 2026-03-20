@@ -18,6 +18,7 @@ import { LeadCDE } from "./components/lead-cde";
 import { LeadCommunications } from "./components/lead-communications";
 import { LeadSidebar } from "./components/lead-sidebar";
 import { LeadAdditionalInfo } from "./components/lead-additional-info";
+import StateTransitionManager from "./components/state-transition-manager";
 import {
   ArrowLeft,
   FileText,
@@ -574,17 +575,24 @@ export default async function LeadDetailPage({
                   </p>
                 </div>
               </div>
-              <LeadActions
-                leadId={id}
-                loanStatus={fineractLoanStatus}
-                loanId={fineractLoanId}
-                loanPrincipal={fineractLoanPrincipal}
-                loanAccountNo={fineractLoanAccountNo}
-                clientName={clientName}
-                currency={fineractLoanCurrency}
-                assignedToUserId={lead.assignedToUserId}
-                fineractClientId={lead.fineractClientId}
-              />
+              <div className="flex items-center gap-2">
+                <StateTransitionManager
+                  leadId={id}
+                  currentStage={currentStage}
+                  currentStageColor={lead.currentStage?.color}
+                />
+                <LeadActions
+                  leadId={id}
+                  loanStatus={fineractLoanStatus}
+                  loanId={fineractLoanId}
+                  loanPrincipal={fineractLoanPrincipal}
+                  loanAccountNo={fineractLoanAccountNo}
+                  clientName={clientName}
+                  currency={fineractLoanCurrency}
+                  assignedToUserId={lead.assignedToUserId}
+                  fineractClientId={lead.fineractClientId}
+                />
+              </div>
             </div>
           </div>
         </div>

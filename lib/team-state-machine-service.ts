@@ -1,4 +1,5 @@
 import { prisma } from "./prisma";
+import type { AssignmentStrategy, AssignmentConfig } from "@/shared/defaults/team-config";
 
 export interface StateTransitionRequest {
   leadId: string;
@@ -6,6 +7,7 @@ export interface StateTransitionRequest {
   event?: string;
   context?: any;
   triggeredBy: string;
+  reason?: string;
 }
 
 export interface StateTransitionResult {
@@ -14,6 +16,7 @@ export interface StateTransitionResult {
   lead?: any;
   transition?: any;
   assignedTeam?: any;
+  assignedMember?: { id: string; userId: string; name: string } | null;
 }
 
 export interface TeamPermissionCheck {
@@ -23,10 +26,244 @@ export interface TeamPermissionCheck {
   message: string;
 }
 
+interface AssignmentResult {
+  memberId: string;
+  memberUserId: string;
+  memberName: string;
+  teamId: string;
+  teamName: string;
+}
+
 export class TeamAwareStateMachineService {
   /**
-   * Validates if a state transition is allowed with team permissions
+   * Execute a full state transition: validate -> move stage -> auto-assign -> audit trail
    */
+  static async executeTransition(
+    request: StateTransitionRequest
+  ): Promise<StateTransitionResult> {
+    try {
+      const lead = await prisma.lead.findUnique({
+        where: { id: request.leadId },
+        include: { currentStage: true },
+      });
+
+      if (!lead) {
+        return { success: false, message: "Lead not found" };
+      }
+
+      // 1. Validate the transition (stage rules + team permissions)
+      const validation = await this.validateTransitionWithTeams(
+        lead.currentStageId,
+        request.targetStageId,
+        lead.tenantId,
+        request.triggeredBy
+      );
+
+      if (!validation.isValid) {
+        return { success: false, message: validation.message };
+      }
+
+      // 2. Determine assignment for the target stage
+      const assignment = await this.resolveAssignment(
+        request.leadId,
+        request.targetStageId,
+        lead.tenantId
+      );
+
+      // 3. Move the lead to the new stage + assign in one transaction
+      const [updatedLead, transition] = await prisma.$transaction([
+        prisma.lead.update({
+          where: { id: request.leadId },
+          data: {
+            currentStageId: request.targetStageId,
+            assignedToUserId: assignment ? (Number.isFinite(Number(assignment.memberUserId)) ? Number(assignment.memberUserId) : null) : null,
+            assignedToUserName: assignment?.memberName ?? null,
+            assignedAt: assignment ? new Date() : null,
+            assignedByUserId: request.triggeredBy,
+            stateMetadata: {
+              lastTransition: new Date().toISOString(),
+              lastTransitionEvent: request.event || "MANUAL_TRANSITION",
+              reason: request.reason,
+              assignedTeam: assignment
+                ? { id: assignment.teamId, name: assignment.teamName }
+                : null,
+            },
+            lastModified: new Date(),
+          },
+          include: { currentStage: true },
+        }),
+        prisma.stateTransition.create({
+          data: {
+            leadId: request.leadId,
+            tenantId: lead.tenantId,
+            fromStageId: lead.currentStageId,
+            toStageId: request.targetStageId,
+            event: request.event || "MANUAL_TRANSITION",
+            triggeredBy: request.triggeredBy,
+            metadata: {
+              reason: request.reason,
+              teamInfo: validation.teamInfo,
+              assignment: assignment
+                ? {
+                    teamId: assignment.teamId,
+                    teamName: assignment.teamName,
+                    memberId: assignment.memberId,
+                    memberName: assignment.memberName,
+                  }
+                : null,
+              timestamp: new Date().toISOString(),
+            },
+          },
+          include: { fromStage: true, toStage: true },
+        }),
+      ]);
+
+      return {
+        success: true,
+        message: assignment
+          ? `Lead moved to ${updatedLead.currentStage?.name} and assigned to ${assignment.memberName} (${assignment.teamName})`
+          : `Lead moved to ${updatedLead.currentStage?.name}`,
+        lead: updatedLead,
+        transition,
+        assignedTeam: validation.teamInfo,
+        assignedMember: assignment
+          ? { id: assignment.memberId, userId: assignment.memberUserId, name: assignment.memberName }
+          : null,
+      };
+    } catch (error) {
+      console.error("Error executing transition:", error);
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : "Unknown error",
+      };
+    }
+  }
+
+  /**
+   * Resolve which team member should be assigned when a lead enters a stage.
+   * Returns null if strategy is "manual" or no teams are configured.
+   */
+  static async resolveAssignment(
+    leadId: string,
+    targetStageId: string,
+    tenantId: string
+  ): Promise<AssignmentResult | null> {
+    const teams = await this.getTeamsForStage(targetStageId, tenantId);
+
+    if (teams.length === 0) return null;
+
+    // Use the first team that owns this stage
+    const team = teams[0];
+    const activeMembers = team.members.filter((m: any) => m.isActive);
+
+    if (activeMembers.length === 0) return null;
+
+    const strategy = (team.assignmentStrategy || "round_robin") as AssignmentStrategy;
+    const config = (team.assignmentConfig || {}) as AssignmentConfig;
+
+    let selectedMember: any = null;
+
+    switch (strategy) {
+      case "round_robin":
+        selectedMember = await this.assignRoundRobin(team, activeMembers, config);
+        break;
+      case "least_loaded":
+        selectedMember = await this.assignLeastLoaded(team, activeMembers, tenantId);
+        break;
+      case "specific_member":
+        selectedMember = this.assignSpecificMember(activeMembers, config);
+        break;
+      case "manual":
+        return null;
+      default:
+        selectedMember = activeMembers[0];
+    }
+
+    if (!selectedMember) return null;
+
+    return {
+      memberId: selectedMember.id,
+      memberUserId: selectedMember.userId,
+      memberName: selectedMember.name,
+      teamId: team.id,
+      teamName: team.name,
+    };
+  }
+
+  /**
+   * Round robin: rotate through members in order, persisting the index.
+   */
+  private static async assignRoundRobin(
+    team: any,
+    members: any[],
+    config: AssignmentConfig
+  ): Promise<any> {
+    const lastIndex = config.lastAssignedIndex ?? -1;
+    const nextIndex = (lastIndex + 1) % members.length;
+
+    await prisma.team.update({
+      where: { id: team.id },
+      data: {
+        assignmentConfig: {
+          ...config,
+          lastAssignedIndex: nextIndex,
+        },
+      },
+    });
+
+    return members[nextIndex];
+  }
+
+  /**
+   * Least loaded: assign to the member with the fewest active (non-final) leads.
+   */
+  private static async assignLeastLoaded(
+    team: any,
+    members: any[],
+    tenantId: string
+  ): Promise<any> {
+    const finalStages = await prisma.pipelineStage.findMany({
+      where: { tenantId, isFinalState: true },
+      select: { id: true },
+    });
+    const finalStageIds = finalStages.map((s) => s.id);
+
+    const counts = await Promise.all(
+      members.map(async (member: any) => {
+        const count = await prisma.lead.count({
+          where: {
+            tenantId,
+            assignedToUserName: member.name,
+            currentStageId: finalStageIds.length > 0
+              ? { notIn: finalStageIds }
+              : undefined,
+          },
+        });
+        return { member, count };
+      })
+    );
+
+    counts.sort((a, b) => a.count - b.count);
+    return counts[0]?.member ?? members[0];
+  }
+
+  /**
+   * Specific member: always assign to a configured person.
+   */
+  private static assignSpecificMember(
+    members: any[],
+    config: AssignmentConfig
+  ): any {
+    if (config.specificMemberId) {
+      return members.find((m: any) => m.id === config.specificMemberId) ?? members[0];
+    }
+    return members[0];
+  }
+
+  // ---------------------------------------------------------------------------
+  // Validation
+  // ---------------------------------------------------------------------------
+
   static async validateTransitionWithTeams(
     currentStageId: string | null,
     targetStageId: string,
@@ -34,7 +271,6 @@ export class TeamAwareStateMachineService {
     userId?: string
   ): Promise<{ isValid: boolean; message: string; teamInfo?: any }> {
     try {
-      // First validate basic state machine rules
       const basicValidation = await this.validateBasicTransition(
         currentStageId,
         targetStageId,
@@ -45,7 +281,6 @@ export class TeamAwareStateMachineService {
         return basicValidation;
       }
 
-      // Check team permissions for the target stage
       const teamPermission = await this.checkTeamPermissions(
         targetStageId,
         tenantId,
@@ -53,10 +288,7 @@ export class TeamAwareStateMachineService {
       );
 
       if (!teamPermission.canTransition) {
-        return {
-          isValid: false,
-          message: teamPermission.message,
-        };
+        return { isValid: false, message: teamPermission.message };
       }
 
       return {
@@ -66,68 +298,43 @@ export class TeamAwareStateMachineService {
       };
     } catch (error) {
       console.error("Error validating transition with teams:", error);
-      return {
-        isValid: false,
-        message: "Error validating transition",
-      };
+      return { isValid: false, message: "Error validating transition" };
     }
   }
 
-  /**
-   * Basic state machine validation (without team checks)
-   */
   static async validateBasicTransition(
     currentStageId: string | null,
     targetStageId: string,
     tenantId: string
   ): Promise<{ isValid: boolean; message: string }> {
     try {
-      // Get the current stage (if any)
       const currentStage = currentStageId
-        ? await prisma.pipelineStage.findUnique({
-            where: { id: currentStageId },
-          })
+        ? await prisma.pipelineStage.findUnique({ where: { id: currentStageId } })
         : null;
 
-      // Get the target stage
       const targetStage = await prisma.pipelineStage.findUnique({
         where: { id: targetStageId },
       });
 
       if (!targetStage) {
-        return {
-          isValid: false,
-          message: "Target stage not found",
-        };
+        return { isValid: false, message: "Target stage not found" };
       }
 
       if (targetStage.tenantId !== tenantId) {
-        return {
-          isValid: false,
-          message: "Target stage does not belong to the current tenant",
-        };
+        return { isValid: false, message: "Target stage does not belong to the current tenant" };
       }
 
-      // If no current stage, can only transition to initial stages
       if (!currentStage) {
         if (!targetStage.isInitialState) {
-          return {
-            isValid: false,
-            message: "Can only transition to initial stages from no stage",
-          };
+          return { isValid: false, message: "Can only transition to initial stages from no stage" };
         }
         return { isValid: true, message: "Valid initial transition" };
       }
 
-      // Cannot transition from final states
       if (currentStage.isFinalState) {
-        return {
-          isValid: false,
-          message: "Cannot transition from final states",
-        };
+        return { isValid: false, message: "Cannot transition from final states" };
       }
 
-      // Check if the transition is allowed
       if (!currentStage.allowedTransitions.includes(targetStageId)) {
         return {
           isValid: false,
@@ -138,47 +345,29 @@ export class TeamAwareStateMachineService {
       return { isValid: true, message: "Valid transition" };
     } catch (error) {
       console.error("Error validating basic transition:", error);
-      return {
-        isValid: false,
-        message: "Error validating transition",
-      };
+      return { isValid: false, message: "Error validating transition" };
     }
   }
 
-  /**
-   * Check team permissions for a stage transition
-   */
   static async checkTeamPermissions(
     stageId: string,
     tenantId: string,
     userId?: string
   ): Promise<TeamPermissionCheck> {
     try {
-      // Find teams responsible for this stage
       const teams = await prisma.team.findMany({
         where: {
           tenantId,
           isActive: true,
-          pipelineStageIds: {
-            has: stageId,
-          },
+          pipelineStageIds: { has: stageId },
         },
-        include: {
-          members: {
-            where: { isActive: true },
-          },
-        },
+        include: { members: { where: { isActive: true } } },
       });
 
       if (teams.length === 0) {
-        // No teams assigned to this stage - allow transition
-        return {
-          canTransition: true,
-          message: "No team restrictions for this stage",
-        };
+        return { canTransition: true, message: "No team restrictions for this stage" };
       }
 
-      // If no userId provided, return team info but allow transition
       if (!userId) {
         return {
           canTransition: true,
@@ -188,7 +377,6 @@ export class TeamAwareStateMachineService {
         };
       }
 
-      // Check if user is a member of any assigned team
       const userTeams = teams.filter((team) =>
         team.members.some((member) => member.userId === userId)
       );
@@ -212,127 +400,29 @@ export class TeamAwareStateMachineService {
       };
     } catch (error) {
       console.error("Error checking team permissions:", error);
-      return {
-        canTransition: false,
-        message: "Error checking team permissions",
-      };
+      return { canTransition: false, message: "Error checking team permissions" };
     }
   }
 
-  /**
-   * Execute a state transition with team validation
-   */
-  static async executeTransition(
-    request: StateTransitionRequest
-  ): Promise<StateTransitionResult> {
-    try {
-      // Get the lead
-      const lead = await prisma.lead.findUnique({
-        where: { id: request.leadId },
-        include: { currentStage: true },
-      });
+  // ---------------------------------------------------------------------------
+  // Query helpers
+  // ---------------------------------------------------------------------------
 
-      if (!lead) {
-        return {
-          success: false,
-          message: "Lead not found",
-        };
-      }
-
-      // Validate the transition with team permissions
-      const validation = await this.validateTransitionWithTeams(
-        lead.currentStageId,
-        request.targetStageId,
-        lead.tenantId,
-        request.triggeredBy
-      );
-
-      if (!validation.isValid) {
-        return {
-          success: false,
-          message: validation.message,
-        };
-      }
-
-      // Execute the transition
-      const updatedLead = await prisma.lead.update({
-        where: { id: request.leadId },
-        data: {
-          currentStageId: request.targetStageId,
-          stateContext: request.context || lead.stateContext,
-          lastModified: new Date(),
-        },
-        include: { currentStage: true },
-      });
-
-      // Record the state transition
-      const transition = await prisma.stateTransition.create({
-        data: {
-          leadId: request.leadId,
-          tenantId: lead.tenantId,
-          fromStageId: lead.currentStageId,
-          toStageId: request.targetStageId,
-          event: request.event || "MANUAL_TRANSITION",
-          context: request.context,
-          triggeredBy: request.triggeredBy,
-          metadata: {
-            teamInfo: validation.teamInfo,
-            timestamp: new Date(),
-          },
-        },
-        include: {
-          fromStage: true,
-          toStage: true,
-        },
-      });
-
-      return {
-        success: true,
-        message: "Transition executed successfully",
-        lead: updatedLead,
-        transition,
-        assignedTeam: validation.teamInfo,
-      };
-    } catch (error) {
-      console.error("Error executing transition:", error);
-      return {
-        success: false,
-        message: error instanceof Error ? error.message : "Unknown error",
-      };
-    }
-  }
-
-  /**
-   * Get teams assigned to a specific stage
-   */
   static async getTeamsForStage(stageId: string, tenantId: string) {
-    return await prisma.team.findMany({
+    return prisma.team.findMany({
       where: {
         tenantId,
         isActive: true,
-        pipelineStageIds: {
-          has: stageId,
-        },
+        pipelineStageIds: { has: stageId },
       },
-      include: {
-        members: {
-          where: { isActive: true },
-        },
-      },
+      include: { members: { where: { isActive: true } } },
     });
   }
 
-  /**
-   * Get all teams for a tenant with their assigned stages
-   */
   static async getTeamsWithStages(tenantId: string) {
     const teams = await prisma.team.findMany({
       where: { tenantId, isActive: true },
-      include: {
-        members: {
-          where: { isActive: true },
-        },
-      },
+      include: { members: { where: { isActive: true } } },
     });
 
     const stages = await prisma.pipelineStage.findMany({
@@ -349,34 +439,8 @@ export class TeamAwareStateMachineService {
   }
 
   /**
-   * Auto-assign lead to team when transitioning to a stage
-   */
-  static async autoAssignToTeam(leadId: string, stageId: string) {
-    try {
-      const lead = await prisma.lead.findUnique({
-        where: { id: leadId },
-        select: { tenantId: true },
-      });
-
-      if (!lead) return null;
-
-      const teams = await this.getTeamsForStage(stageId, lead.tenantId);
-
-      if (teams.length > 0) {
-        // For now, assign to the first team
-        // In the future, this could be more sophisticated (load balancing, etc.)
-        return teams[0];
-      }
-
-      return null;
-    } catch (error) {
-      console.error("Error auto-assigning to team:", error);
-      return null;
-    }
-  }
-
-  /**
-   * Get available transitions for a lead with team context
+   * Get available transitions for a lead with team + assignment context.
+   * This is what the UI calls to show the "Move to Next Stage" options.
    */
   static async getAvailableTransitionsWithTeams(
     leadId: string,
@@ -388,42 +452,38 @@ export class TeamAwareStateMachineService {
         include: { currentStage: true },
       });
 
-      if (!lead || !lead.currentStage) {
-        return [];
-      }
+      if (!lead || !lead.currentStage) return [];
 
-      const availableTransitions = [];
+      const results = [];
 
       for (const targetStageId of lead.currentStage.allowedTransitions) {
-        const validation = await this.validateTransitionWithTeams(
-          lead.currentStageId,
-          targetStageId,
-          lead.tenantId,
-          userId
-        );
+        const targetStage = await prisma.pipelineStage.findUnique({
+          where: { id: targetStageId },
+        });
 
-        if (validation.isValid) {
-          const targetStage = await prisma.pipelineStage.findUnique({
-            where: { id: targetStageId },
-          });
+        if (!targetStage || !targetStage.isActive) continue;
 
-          const teams = await this.getTeamsForStage(
-            targetStageId,
-            lead.tenantId
-          );
+        const teams = await this.getTeamsForStage(targetStageId, lead.tenantId);
+        const receivingTeam = teams[0] ?? null;
 
-          availableTransitions.push({
-            stageId: targetStageId,
-            stageName: targetStage?.name,
-            stageColor: targetStage?.color,
-            assignedTeams: teams,
-            canTransition: validation.isValid,
-            message: validation.message,
-          });
-        }
+        results.push({
+          stageId: targetStageId,
+          stageName: targetStage.name,
+          stageColor: targetStage.color,
+          stageDescription: targetStage.description,
+          isFinalState: targetStage.isFinalState,
+          receivingTeam: receivingTeam
+            ? {
+                id: receivingTeam.id,
+                name: receivingTeam.name,
+                assignmentStrategy: receivingTeam.assignmentStrategy,
+                memberCount: receivingTeam.members.length,
+              }
+            : null,
+        });
       }
 
-      return availableTransitions;
+      return results;
     } catch (error) {
       console.error("Error getting available transitions:", error);
       return [];
@@ -431,5 +491,4 @@ export class TeamAwareStateMachineService {
   }
 }
 
-// Export singleton instance
 export const teamAwareStateMachineService = new TeamAwareStateMachineService();

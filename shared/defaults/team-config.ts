@@ -6,12 +6,21 @@ export interface TeamMember {
   avatar?: string;
 }
 
+export type AssignmentStrategy = "round_robin" | "least_loaded" | "manual" | "specific_member";
+
+export interface AssignmentConfig {
+  specificMemberId?: string;
+  lastAssignedIndex?: number;
+}
+
 export interface Team {
   id: string;
   name: string;
   description: string;
   members: TeamMember[];
   pipelineStages: string[];
+  assignmentStrategy?: AssignmentStrategy;
+  assignmentConfig?: AssignmentConfig;
 }
 
 export const defaultTeams: Team[] = [

@@ -21,8 +21,16 @@ import {
   defaultRoles,
   type TeamMember,
   type Team,
+  type AssignmentStrategy,
 } from "@/shared/defaults/team-config";
 import { toast } from "sonner";
+
+const ASSIGNMENT_STRATEGIES: { value: AssignmentStrategy; label: string; description: string }[] = [
+  { value: "round_robin", label: "Round Robin", description: "Rotate evenly through team members" },
+  { value: "least_loaded", label: "Least Loaded", description: "Assign to member with fewest active leads" },
+  { value: "manual", label: "Manual", description: "No auto-assignment; team lead picks up leads" },
+  { value: "specific_member", label: "Specific Member", description: "Always assign to one person" },
+];
 
 interface PipelineStage {
   id: string;
@@ -42,6 +50,7 @@ export function TeamConfig() {
     description: "",
     members: [],
     pipelineStages: [],
+    assignmentStrategy: "round_robin",
   });
 
   const [newMember, setNewMember] = useState<Partial<TeamMember>>({
@@ -115,10 +124,11 @@ export function TeamConfig() {
       description: newTeam.description || "",
       members: newTeam.members || [],
       pipelineStages: newTeam.pipelineStages || [],
+      assignmentStrategy: newTeam.assignmentStrategy || "round_robin",
     };
 
     setTeams([...teams, team]);
-    setNewTeam({ name: "", description: "", members: [], pipelineStages: [] });
+    setNewTeam({ name: "", description: "", members: [], pipelineStages: [], assignmentStrategy: "round_robin" });
     markChanged();
   };
 
@@ -271,6 +281,12 @@ export function TeamConfig() {
                       </span>
                     )}
                   </div>
+                </div>
+                <div>
+                  <h5 className="text-sm font-medium mb-1">Assignment Strategy:</h5>
+                  <Badge variant="outline" className="text-xs">
+                    {ASSIGNMENT_STRATEGIES.find((s) => s.value === team.assignmentStrategy)?.label || "Round Robin"}
+                  </Badge>
                 </div>
                 <div>
                   <h5 className="text-sm font-medium mb-2">Team Members:</h5>
@@ -449,6 +465,34 @@ export function TeamConfig() {
                     </span>
                   )}
                 </div>
+              </div>
+
+              <div className="grid gap-2">
+                <Label>Assignment Strategy</Label>
+                <Select
+                  value={editingTeam ? (editingTeam.assignmentStrategy || "round_robin") : (newTeam.assignmentStrategy || "round_robin")}
+                  onValueChange={(value: AssignmentStrategy) => {
+                    if (editingTeam) {
+                      setEditingTeam({ ...editingTeam, assignmentStrategy: value });
+                    } else {
+                      setNewTeam({ ...newTeam, assignmentStrategy: value });
+                    }
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select strategy" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ASSIGNMENT_STRATEGIES.map((s) => (
+                      <SelectItem key={s.value} value={s.value}>
+                        <div>
+                          <span className="font-medium">{s.label}</span>
+                          <span className="text-muted-foreground ml-2 text-xs">— {s.description}</span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
               <div className="border-t pt-4 mt-2">
