@@ -40,6 +40,7 @@ import RecoverFromGuarantorModal from "@/components/RecoverFromGuarantorModal";
 import SellLoanModal from "@/components/SellLoanModal";
 import { TransactionsDataTable } from "./transactions-data-table";
 import { FineractClient, FineractLoan } from "@/shared/types";
+import { getTransactionTypeDisplayLabel } from "@/lib/format-transaction";
 
 interface ClientLoanDetailsProps {
   clientId: number;
@@ -1959,7 +1960,7 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
           transaction.officeName || '',
           transaction.externalId || '',
           transaction.date ? formatDate(transaction.date) : '',
-          transaction.type?.value || '',
+          getTransactionTypeDisplayLabel(transaction.type) || '',
           formatCurrency(transaction.amount, currencyCode),
           formatCurrency(transaction.principalPortion, currencyCode),
           formatCurrency(transaction.interestPortion, currencyCode),
