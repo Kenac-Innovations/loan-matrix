@@ -22,6 +22,7 @@ import {
   Clock,
   ShieldAlert,
   ShieldCheck,
+  X,
 } from "lucide-react";
 import {
   Tooltip,
@@ -29,6 +30,15 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 
 interface LeadDocumentsProps {
   leadId: string;
@@ -113,6 +123,10 @@ export function LeadDocuments({
   const [hasFetched, setHasFetched] = useState(
     initialClientDocuments.length > 0 || initialLoanDocuments.length > 0
   );
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [selectedRequiredDoc, setSelectedRequiredDoc] = useState<string>("");
+  const [uploading, setUploading] = useState(false);
+  const [uploadDescription, setUploadDescription] = useState("");
 
   useEffect(() => {
     fetch("/api/pipeline/required-documents")
@@ -310,6 +324,60 @@ export function LeadDocuments({
     }
   };
 
+  const isDocUploaded = (reqName: string) => {
+    const target = reqName.toLowerCase();
+    return documents.some((d) => d.name.toLowerCase().includes(target)) ||
+      clientDocuments.some((d) => (d.name || d.fileName || "").toLowerCase().includes(target));
+  };
+
+  const handleUploadDocument = async (files: FileList | null) => {
+    if (!files || files.length === 0 || !fineractClientId) return;
+
+    setUploading(true);
+    try {
+      for (const file of Array.from(files)) {
+        const docName = selectedRequiredDoc && selectedRequiredDoc !== "__other__"
+          ? `${selectedRequiredDoc} - ${file.name}`
+          : file.name;
+
+        const formData = new FormData();
+        formData.append("name", docName);
+        formData.append("file", file);
+        if (uploadDescription) {
+          formData.append("description", uploadDescription);
+        }
+
+        const response = await fetch(
+          `/api/fineract/clients/${fineractClientId}/documents`,
+          { method: "POST", body: formData }
+        );
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          console.error("Upload failed:", errorData);
+          setError(`Failed to upload ${file.name}`);
+          continue;
+        }
+      }
+
+      // Refresh client documents
+      const res = await fetch(`/api/fineract/clients/${fineractClientId}/documents`);
+      if (res.ok) {
+        const data = await res.json();
+        setClientDocuments(Array.isArray(data) ? data : data.pageItems || data.content || []);
+      }
+
+      setShowUploadModal(false);
+      setSelectedRequiredDoc("");
+      setUploadDescription("");
+    } catch (err) {
+      console.error("Error uploading document:", err);
+      setError("An error occurred during upload");
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const formatFileSize = (bytes: number): string => {
     if (bytes === 0) return "0 Bytes";
     const k = 1024;
@@ -425,7 +493,11 @@ export function LeadDocuments({
             {documents.length > 0 && ` (${documents.length} documents)`}
           </CardDescription>
         </div>
-        <Button className="bg-blue-500 hover:bg-blue-600">
+        <Button
+          className="bg-blue-500 hover:bg-blue-600"
+          onClick={() => setShowUploadModal(true)}
+          disabled={!fineractClientId}
+        >
           <Upload className="mr-2 h-4 w-4" />
           Upload Document
         </Button>
@@ -743,7 +815,11 @@ export function LeadDocuments({
                 Upload documents to get started with the loan application
                 process.
               </p>
-              <Button className="bg-blue-500 hover:bg-blue-600">
+              <Button
+                className="bg-blue-500 hover:bg-blue-600"
+                onClick={() => setShowUploadModal(true)}
+                disabled={!fineractClientId}
+              >
                 <Upload className="mr-2 h-4 w-4" />
                 Upload First Document
               </Button>
@@ -938,6 +1014,137 @@ export function LeadDocuments({
           )}
         </div>
       </CardContent>
+
+      {/* Upload Document Modal */}
+      {showUploadModal && (
+        <div
+          className="fixed inset-0 bg-background/80 backdrop-blur-sm flex items-center justify-center z-50"
+          onClick={() => setShowUploadModal(false)}
+        >
+          <div
+            className="bg-card border rounded-lg shadow-lg p-6 w-full max-w-md mx-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-lg font-semibold">Upload Document</h3>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setShowUploadModal(false);
+                  setSelectedRequiredDoc("");
+                  setUploadDescription("");
+                }}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+
+            <div className="space-y-4">
+              {/* Document Type Selector */}
+              {requiredDocs.length > 0 && (
+                <div>
+                  <Label className="text-sm font-medium">
+                    Document Type <span className="text-red-500">*</span>
+                  </Label>
+                  <Select
+                    value={selectedRequiredDoc}
+                    onValueChange={setSelectedRequiredDoc}
+                  >
+                    <SelectTrigger className="w-full mt-1">
+                      <SelectValue placeholder="Select document type..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {requiredDocs.map((doc) => {
+                        const uploaded = isDocUploaded(doc.name);
+                        return (
+                          <SelectItem
+                            key={doc.id}
+                            value={doc.name}
+                            disabled={uploaded}
+                          >
+                            <span className="flex items-center gap-2">
+                              {uploaded && <CheckCircle2 className="h-3 w-3 text-green-500" />}
+                              {doc.name}
+                              {doc.isRequired && !uploaded && (
+                                <span className="text-red-500 text-xs">Required</span>
+                              )}
+                              {uploaded && (
+                                <span className="text-green-600 text-xs">Uploaded</span>
+                              )}
+                            </span>
+                          </SelectItem>
+                        );
+                      })}
+                      <SelectItem value="__other__">Other Document</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              {/* Description */}
+              <div>
+                <Label className="text-sm font-medium">Description</Label>
+                <Input
+                  value={uploadDescription}
+                  onChange={(e) => setUploadDescription(e.target.value)}
+                  placeholder="Optional description"
+                  className="mt-1"
+                />
+              </div>
+
+              {/* File Selection */}
+              <div>
+                <Label className="text-sm font-medium">
+                  File <span className="text-red-500">*</span>
+                </Label>
+                <div className="mt-1">
+                  <label
+                    className={`flex items-center justify-center gap-2 p-4 border-2 border-dashed rounded-lg cursor-pointer transition-colors ${
+                      uploading || (requiredDocs.length > 0 && !selectedRequiredDoc)
+                        ? "opacity-50 cursor-not-allowed border-muted"
+                        : "hover:border-blue-400 hover:bg-blue-50/50 dark:hover:bg-blue-950/20 border-muted-foreground/30"
+                    }`}
+                  >
+                    <Upload className="h-5 w-5 text-muted-foreground" />
+                    <span className="text-sm text-muted-foreground">
+                      {uploading
+                        ? "Uploading..."
+                        : selectedRequiredDoc && selectedRequiredDoc !== "__other__"
+                        ? `Click to upload ${selectedRequiredDoc}`
+                        : "Click to select file"}
+                    </span>
+                    <input
+                      type="file"
+                      className="hidden"
+                      disabled={uploading || (requiredDocs.length > 0 && !selectedRequiredDoc)}
+                      onChange={(e) => handleUploadDocument(e.target.files)}
+                    />
+                  </label>
+                  {requiredDocs.length > 0 && !selectedRequiredDoc && (
+                    <p className="text-xs text-amber-600 mt-1">
+                      Select a document type before uploading
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end mt-6">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowUploadModal(false);
+                  setSelectedRequiredDoc("");
+                  setUploadDescription("");
+                }}
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </Card>
   );
 }

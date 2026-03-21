@@ -77,6 +77,8 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
     description: "",
     file: null as File | null,
   });
+  const [requiredDocs, setRequiredDocs] = useState<{ id: string; name: string; isRequired: boolean; isActive: boolean }[]>([]);
+  const [selectedDocType, setSelectedDocType] = useState<string>("");
   const [notes, setNotes] = useState<any[]>([]);
   const [loadingNotes, setLoadingNotes] = useState(false);
   const [submittingNote, setSubmittingNote] = useState(false);
@@ -298,6 +300,13 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
       fetchDocuments();
     }
   }, [activeTab, loan]);
+
+  useEffect(() => {
+    fetch("/api/pipeline/required-documents")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data) => setRequiredDocs(data.filter((d: any) => d.isActive)))
+      .catch(() => {});
+  }, []);
 
   // Fetch notes data when notes tab is active
   useEffect(() => {
@@ -1533,8 +1542,11 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
 
     setSubmittingDocument(true);
     try {
+      const docName = selectedDocType && selectedDocType !== "__other__"
+        ? `${selectedDocType} - ${documentForm.fileName}`
+        : documentForm.fileName;
       const formData = new FormData();
-      formData.append('name', documentForm.fileName);
+      formData.append('name', docName);
       formData.append('file', documentForm.file);
       if (documentForm.description) {
         formData.append('description', documentForm.description);
@@ -1552,7 +1564,7 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
           description: "", 
           file: null 
         });
-        // Refresh documents list
+        setSelectedDocType("");
         fetchDocuments();
         // Show success notification
         toast({
@@ -4455,43 +4467,77 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
             </div>
 
             <div className="space-y-4">
+              {/* Document Type Selector */}
+              {requiredDocs.length > 0 && (
+                <div>
+                  <Label className="text-sm font-medium">
+                    Document Type <span className="text-red-500">*</span>
+                  </Label>
+                  <Select
+                    value={selectedDocType}
+                    onValueChange={(value) => {
+                      setSelectedDocType(value);
+                      if (value && value !== "__other__" && !documentForm.fileName) {
+                        setDocumentForm({ ...documentForm, fileName: value });
+                      }
+                    }}
+                  >
+                    <SelectTrigger className="w-full mt-1">
+                      <SelectValue placeholder="Select document type..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {requiredDocs.map((doc) => {
+                        const uploaded = documents.some((d: any) =>
+                          (d.name || d.fileName || "").toLowerCase().includes(doc.name.toLowerCase())
+                        );
+                        return (
+                          <SelectItem key={doc.id} value={doc.name} disabled={uploaded}>
+                            {doc.name}
+                            {doc.isRequired && !uploaded ? " (Required)" : ""}
+                            {uploaded ? " ✓" : ""}
+                          </SelectItem>
+                        );
+                      })}
+                      <SelectItem value="__other__">Other Document</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
               {/* File Name */}
               <div>
-                <label htmlFor="document-file-name" className="block text-sm font-medium text-foreground mb-1">
-                  File Name *
-                </label>
-                <input
-                  type="text"
+                <Label htmlFor="document-file-name" className="text-sm font-medium">
+                  File Name <span className="text-red-500">*</span>
+                </Label>
+                <Input
                   id="document-file-name"
                   value={documentForm.fileName}
                   onChange={(e) => setDocumentForm({...documentForm, fileName: e.target.value})}
-                  className="w-full px-3 py-2 border border-input bg-background rounded-md focus:outline-none focus:ring-2 focus:ring-ring focus:border-ring"
                   placeholder="Enter file name"
-                  required
+                  className="mt-1"
                 />
               </div>
 
               {/* Description */}
               <div>
-                <label htmlFor="document-description" className="block text-sm font-medium text-foreground mb-1">
+                <Label htmlFor="document-description" className="text-sm font-medium">
                   Description
-                </label>
-                <input
-                  type="text"
+                </Label>
+                <Input
                   id="document-description"
                   value={documentForm.description}
                   onChange={(e) => setDocumentForm({...documentForm, description: e.target.value})}
-                  className="w-full px-3 py-2 border border-input bg-background rounded-md focus:outline-none focus:ring-2 focus:ring-ring focus:border-ring"
-                  placeholder="Enter description"
+                  placeholder="Optional description"
+                  className="mt-1"
                 />
               </div>
 
               {/* File Selection */}
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1">
-                  File
-                </label>
-                <div className="flex items-center justify-between p-3 border border-input bg-background rounded-md">
+                <Label className="text-sm font-medium">
+                  File <span className="text-red-500">*</span>
+                </Label>
+                <div className="flex items-center justify-between p-3 mt-1 border border-input bg-background rounded-md">
                   <span className="text-sm text-muted-foreground">
                     {documentForm.file ? documentForm.file.name : "No file selected"}
                   </span>
@@ -4527,14 +4573,20 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                     description: "", 
                     file: null 
                   });
+                  setSelectedDocType("");
                 }}
               >
                 Cancel
               </Button>
               <Button
                 onClick={handleSubmitDocument}
-                disabled={!documentForm.fileName || !documentForm.file || submittingDocument}
-                className="bg-gray-400 text-white hover:bg-gray-500"
+                disabled={
+                  !documentForm.fileName ||
+                  !documentForm.file ||
+                  submittingDocument ||
+                  (requiredDocs.length > 0 && !selectedDocType)
+                }
+                className="bg-blue-500 text-white hover:bg-blue-600"
               >
                 {submittingDocument ? "Uploading..." : "Upload"}
               </Button>
