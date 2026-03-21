@@ -133,7 +133,6 @@ export async function PUT(request: NextRequest) {
         const isNew = stage.id.startsWith("new-");
 
         if (isNew) {
-          // Create new stage
           await tx.pipelineStage.create({
             data: {
               tenantId: tenant!.id,
@@ -145,10 +144,11 @@ export async function PUT(request: NextRequest) {
               isInitialState: stage.isInitialState || false,
               isFinalState: stage.isFinalState || false,
               allowedTransitions: stage.allowedTransitions || [],
+              fineractStatus: stage.fineractStatus || null,
+              fineractAction: stage.fineractAction || null,
             },
           });
         } else {
-          // Update existing stage
           await tx.pipelineStage.update({
             where: { id: stage.id },
             data: {
@@ -159,6 +159,8 @@ export async function PUT(request: NextRequest) {
               isInitialState: stage.isInitialState || false,
               isFinalState: stage.isFinalState || false,
               allowedTransitions: stage.allowedTransitions || [],
+              fineractStatus: stage.fineractStatus || null,
+              fineractAction: stage.fineractAction || null,
             },
           });
         }

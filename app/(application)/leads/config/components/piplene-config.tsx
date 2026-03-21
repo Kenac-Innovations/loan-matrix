@@ -27,6 +27,13 @@ import {
 import { ColourPicker } from "./colour-picker";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   defaultStages,
   defaultStageColors,
   type Stage,
@@ -60,6 +67,8 @@ export function PipelineConfig() {
               isInitialState: s.isInitialState || false,
               isFinalState: s.isFinalState || false,
               allowedTransitions: s.allowedTransitions || [],
+              fineractStatus: s.fineractStatus || null,
+              fineractAction: s.fineractAction || null,
               order: s.order,
             }))
           );
@@ -282,6 +291,11 @@ export function PipelineConfig() {
                                   Final
                                 </Badge>
                               )}
+                              {stage.fineractAction && (
+                                <Badge variant="outline" className="text-xs border-amber-300 text-amber-700 bg-amber-50">
+                                  Fineract: {stage.fineractAction}
+                                </Badge>
+                              )}
                             </div>
                             <div className="text-sm text-muted-foreground">
                               {stage.description}
@@ -376,36 +390,101 @@ export function PipelineConfig() {
                   </div>
 
                   {editingStage && (
-                    <div className="space-y-3">
-                      <div className="flex items-center space-x-2">
-                        <Checkbox
-                          id="isInitialState"
-                          checked={editingStage.isInitialState || false}
-                          onCheckedChange={(checked) =>
-                            setEditingStage({
-                              ...editingStage,
-                              isInitialState: checked as boolean,
-                            })
-                          }
-                        />
-                        <Label htmlFor="isInitialState" className="text-sm">
-                          Initial State (leads start here)
-                        </Label>
+                    <div className="space-y-4">
+                      <div className="space-y-3">
+                        <div className="flex items-center space-x-2">
+                          <Checkbox
+                            id="isInitialState"
+                            checked={editingStage.isInitialState || false}
+                            onCheckedChange={(checked) =>
+                              setEditingStage({
+                                ...editingStage,
+                                isInitialState: checked as boolean,
+                              })
+                            }
+                          />
+                          <Label htmlFor="isInitialState" className="text-sm">
+                            Initial State (leads start here)
+                          </Label>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <Checkbox
+                            id="isFinalState"
+                            checked={editingStage.isFinalState || false}
+                            onCheckedChange={(checked) =>
+                              setEditingStage({
+                                ...editingStage,
+                                isFinalState: checked as boolean,
+                              })
+                            }
+                          />
+                          <Label htmlFor="isFinalState" className="text-sm">
+                            Final State (leads end here)
+                          </Label>
+                        </div>
                       </div>
-                      <div className="flex items-center space-x-2">
-                        <Checkbox
-                          id="isFinalState"
-                          checked={editingStage.isFinalState || false}
-                          onCheckedChange={(checked) =>
-                            setEditingStage({
-                              ...editingStage,
-                              isFinalState: checked as boolean,
-                            })
-                          }
-                        />
-                        <Label htmlFor="isFinalState" className="text-sm">
-                          Final State (leads end here)
-                        </Label>
+
+                      <div className="border-t pt-4 space-y-3">
+                        <h4 className="text-sm font-medium text-muted-foreground">
+                          Fineract Integration
+                        </h4>
+                        <div className="grid gap-2">
+                          <Label htmlFor="fineractAction" className="text-sm">
+                            Action on Enter
+                          </Label>
+                          <Select
+                            value={editingStage.fineractAction || "none"}
+                            onValueChange={(val) =>
+                              setEditingStage({
+                                ...editingStage,
+                                fineractAction: val === "none" ? null : val,
+                              })
+                            }
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="No action" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none">No action</SelectItem>
+                              <SelectItem value="approve">Approve Loan</SelectItem>
+                              <SelectItem value="disburse">Disburse Loan</SelectItem>
+                              <SelectItem value="reject">Reject Loan</SelectItem>
+                              <SelectItem value="payout">Process Payout</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <p className="text-xs text-muted-foreground">
+                            Fineract API call triggered when a lead enters this stage
+                          </p>
+                        </div>
+                        <div className="grid gap-2">
+                          <Label htmlFor="fineractStatus" className="text-sm">
+                            Expected Fineract Status
+                          </Label>
+                          <Select
+                            value={editingStage.fineractStatus || "none"}
+                            onValueChange={(val) =>
+                              setEditingStage({
+                                ...editingStage,
+                                fineractStatus: val === "none" ? null : val,
+                              })
+                            }
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="None" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none">None</SelectItem>
+                              <SelectItem value="submitted_pending_approval">
+                                Submitted &amp; Pending Approval
+                              </SelectItem>
+                              <SelectItem value="approved">Approved</SelectItem>
+                              <SelectItem value="disbursed">Disbursed / Active</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <p className="text-xs text-muted-foreground">
+                            The Fineract loan status expected while a lead is in this stage
+                          </p>
+                        </div>
                       </div>
                     </div>
                   )}

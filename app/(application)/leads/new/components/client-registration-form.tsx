@@ -508,6 +508,21 @@ export function ClientRegistrationForm({
   // Fineract client ID - declared early so it can be used in useEffects
   const [fineractClientId, setFineractClientId] = useState<number | null>(null);
 
+  // Fetch required document configuration on mount
+  useEffect(() => {
+    fetch("/api/pipeline/required-documents")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data) => {
+        setRequiredDocs(
+          (Array.isArray(data) ? data : []).filter(
+            (d: any) => d.isActive && d.isRequired
+          )
+        );
+        setRequiredDocsLoaded(true);
+      })
+      .catch(() => setRequiredDocsLoaded(true));
+  }, []);
+
   // Update clientLookupStatus when clientCreatedInFineract changes
   useEffect(() => {
     if (clientCreatedInFineract) {
@@ -1189,12 +1204,15 @@ export function ClientRegistrationForm({
   >([]);
   const [existingIdentifiers, setExistingIdentifiers] = useState<any[]>([]);
   const [clientDocuments, setClientDocuments] = useState<any[]>([]);
+  const [requiredDocs, setRequiredDocs] = useState<{ id: string; name: string; category: string; expiryMonths: number | null; isRequired: boolean }[]>([]);
+  const [requiredDocsLoaded, setRequiredDocsLoaded] = useState(false);
   const [isLoadingKYC, setIsLoadingKYC] = useState(false);
   // Map of identifierId -> documents array
   const [identifierDocuments, setIdentifierDocuments] = useState<
     Map<number, any[]>
   >(new Map());
   const [uploadingDocuments, setUploadingDocuments] = useState(false);
+  const [selectedRequiredDoc, setSelectedRequiredDoc] = useState<string>("");
   const [showCameraModal, setShowCameraModal] = useState(false);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [cameraPermissionDenied, setCameraPermissionDenied] = useState(false);
@@ -1298,9 +1316,18 @@ export function ClientRegistrationForm({
     return existingIdentifiers.length > 0;
   };
 
+  const isDocMatchingRequired = (doc: any, reqName: string) => {
+    const name = (doc.name || "").toLowerCase();
+    const desc = (doc.description || "").toLowerCase();
+    const target = reqName.toLowerCase();
+    return name.startsWith(target) || name.includes(target) || desc.includes(target);
+  };
+
   const checkOtherDocumentsSection = () => {
-    // Optional section - always return true
-    return true;
+    if (!requiredDocsLoaded || requiredDocs.length === 0) return true;
+    return requiredDocs.every((req) =>
+      clientDocuments.some((d: any) => isDocMatchingRequired(d, req.name))
+    );
   };
 
   const defaultMandatoryDatatables = [
@@ -1443,7 +1470,7 @@ export function ClientRegistrationForm({
   };
 
   const checkKYCTabCompletion = () => {
-    return sectionCompletion.selfie && sectionCompletion.identityDocuments;
+    return sectionCompletion.selfie && sectionCompletion.identityDocuments && sectionCompletion.otherDocuments;
   };
 
   const checkAdditionalDetailsTabCompletion = () => {
@@ -4172,10 +4199,12 @@ export function ClientRegistrationForm({
 
     setUploadingDocuments(true);
     try {
-      // Upload each file directly to client documents endpoint
       const uploadPromises = validFiles.map(async (file) => {
+        const docName = selectedRequiredDoc && selectedRequiredDoc !== "__other__"
+          ? `${selectedRequiredDoc} - ${file.name}`
+          : file.name;
         const formData = new FormData();
-        formData.append("name", file.name);
+        formData.append("name", docName);
         formData.append("file", file);
 
         const response = await fetch(
@@ -4199,6 +4228,7 @@ export function ClientRegistrationForm({
       });
 
       await Promise.all(uploadPromises);
+      setSelectedRequiredDoc("");
 
       success({
         title: "Success",
@@ -9195,75 +9225,171 @@ export function ClientRegistrationForm({
                                 {/* Divider */}
                                 <div className="my-8 border-t border-gray-300 dark:border-gray-700"></div>
 
-                                {/* Other Documents Section */}
+                                {/* Required & Other Documents Section */}
                                 <div className="space-y-4">
                                   <div className="space-y-2">
                                     <Label
                                       className={`text-sm font-medium ${colors.textColor}`}
                                     >
-                                      Other Documents
-                                      {(() => {
-                                        // Filter documents that are not linked to any identifier
-                                        const otherDocuments =
-                                          clientDocuments.filter((doc: any) => {
-                                            if (!doc.name) return false;
-                                            const extractedId =
-                                              extractIdentifierIdFromFilename(
-                                                doc.name
-                                              );
-                                            // If document name doesn't start with IDENTIFIER_ or doesn't match any identifier ID, it's an "other" document
-                                            return !extractedId;
-                                          });
-                                        return otherDocuments.length > 0 ? (
-                                          <span className="ml-2 text-xs font-normal">
-                                            ({otherDocuments.length})
-                                          </span>
-                                        ) : null;
-                                      })()}
+                                      Required Documents
+                                      {requiredDocs.length > 0 && (
+                                        <span className="ml-2 text-xs font-normal text-red-500">
+                                          * mandatory
+                                        </span>
+                                      )}
                                     </Label>
                                     <p
                                       className={`text-xs ${colors.textColorMuted}`}
                                     >
-                                      Documents that are not linked to any
-                                      identifier
+                                      {requiredDocs.length > 0
+                                        ? "Upload the following documents to proceed. Name each uploaded file to match the required document name."
+                                        : "Supporting documents for this application"}
                                     </p>
                                   </div>
 
-                                  {/* Upload Document Button */}
-                                  <div className="flex items-center gap-2">
-                                    <label>
-                                      <Button
-                                        type="button"
-                                        variant="outline"
-                                        asChild
-                                        disabled={
-                                          !fineractClientId ||
-                                          uploadingDocuments
-                                        }
-                                        className="flex items-center gap-2 cursor-pointer"
-                                      >
-                                        <span>
-                                          <UserPlus className="h-4 w-4" />
-                                          {uploadingDocuments
-                                            ? "Uploading..."
-                                            : "Upload Document"}
-                                        </span>
-                                      </Button>
-                                      <input
-                                        type="file"
-                                        accept="image/*,application/pdf"
-                                        multiple
-                                        onChange={handleAddIdentityDocument}
-                                        className="hidden"
-                                        disabled={uploadingDocuments}
-                                      />
-                                    </label>
-                                    {uploadingDocuments && (
-                                      <div className="flex items-center gap-2 text-xs text-blue-500">
-                                        <Loader2 className="h-3 w-3 animate-spin" />
-                                        Uploading documents...
+                                  {/* Required Documents Checklist */}
+                                  {requiredDocs.length > 0 && (
+                                    <div className="space-y-2">
+                                      {requiredDocs.map((req) => {
+                                        const matchedDoc = clientDocuments.find(
+                                          (d: any) => isDocMatchingRequired(d, req.name)
+                                        );
+                                        const isUploaded = !!matchedDoc;
+                                        return (
+                                          <div
+                                            key={req.id}
+                                            className={`flex items-center gap-3 p-3 rounded-lg border text-sm ${
+                                              isUploaded
+                                                ? "border-green-300 bg-green-50 dark:bg-green-950/20"
+                                                : "border-amber-300 bg-amber-50 dark:bg-amber-950/20"
+                                            }`}
+                                          >
+                                            {isUploaded ? (
+                                              <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
+                                            ) : (
+                                              <AlertCircle className="h-4 w-4 text-amber-500 shrink-0" />
+                                            )}
+                                            <div className="flex-1 min-w-0">
+                                              <span className={`font-medium ${!isUploaded ? "text-amber-800 dark:text-amber-300" : "text-green-800 dark:text-green-300"}`}>
+                                                {req.name}
+                                              </span>
+                                              {req.expiryMonths && (
+                                                <span className="ml-2 text-[10px] text-gray-500">
+                                                  (valid for {req.expiryMonths} months)
+                                                </span>
+                                              )}
+                                              {isUploaded && matchedDoc && (
+                                                <span className="ml-2 text-xs text-green-600">
+                                                  — {matchedDoc.name || matchedDoc.fileName}
+                                                </span>
+                                              )}
+                                            </div>
+                                            {!isUploaded && (
+                                              <Badge variant="outline" className="text-[10px] border-red-300 text-red-600 bg-red-50 dark:bg-red-950/30 shrink-0">
+                                                Required
+                                              </Badge>
+                                            )}
+                                          </div>
+                                        );
+                                      })}
+                                      {(() => {
+                                        const uploadedCount = requiredDocs.filter((req) =>
+                                          clientDocuments.some(
+                                            (d: any) => isDocMatchingRequired(d, req.name)
+                                          )
+                                        ).length;
+                                        return (
+                                          <p className="text-xs text-gray-500 mt-1">
+                                            {uploadedCount}/{requiredDocs.length} required documents uploaded
+                                            {uploadedCount < requiredDocs.length && (
+                                              <span className="text-amber-600 ml-1">
+                                                — upload all to proceed
+                                              </span>
+                                            )}
+                                          </p>
+                                        );
+                                      })()}
+                                    </div>
+                                  )}
+
+                                  {/* Upload Document */}
+                                  <div className="space-y-2">
+                                    {requiredDocs.length > 0 && (
+                                      <div>
+                                        <Label className={`text-xs ${colors.textColorMuted} mb-1 block`}>
+                                          Select document type before uploading
+                                        </Label>
+                                        <Select
+                                          value={selectedRequiredDoc}
+                                          onValueChange={setSelectedRequiredDoc}
+                                        >
+                                          <SelectTrigger className="w-full sm:w-72">
+                                            <SelectValue placeholder="Select document type..." />
+                                          </SelectTrigger>
+                                          <SelectContent>
+                                            {requiredDocs.map((req) => {
+                                              const alreadyUploaded = clientDocuments.some(
+                                                (d: any) => isDocMatchingRequired(d, req.name)
+                                              );
+                                              return (
+                                                <SelectItem
+                                                  key={req.id}
+                                                  value={req.name}
+                                                  disabled={alreadyUploaded}
+                                                >
+                                                  {req.name}
+                                                  {alreadyUploaded ? " ✓" : ""}
+                                                </SelectItem>
+                                              );
+                                            })}
+                                            <SelectItem value="__other__">
+                                              Other Document
+                                            </SelectItem>
+                                          </SelectContent>
+                                        </Select>
                                       </div>
                                     )}
+                                    <div className="flex items-center gap-2">
+                                      <label>
+                                        <Button
+                                          type="button"
+                                          variant="outline"
+                                          asChild
+                                          disabled={
+                                            !fineractClientId ||
+                                            uploadingDocuments ||
+                                            (requiredDocs.length > 0 && !selectedRequiredDoc)
+                                          }
+                                          className="flex items-center gap-2 cursor-pointer"
+                                        >
+                                          <span>
+                                            <UserPlus className="h-4 w-4" />
+                                            {uploadingDocuments
+                                              ? "Uploading..."
+                                              : selectedRequiredDoc && selectedRequiredDoc !== "__other__"
+                                              ? `Upload ${selectedRequiredDoc}`
+                                              : "Upload Document"}
+                                          </span>
+                                        </Button>
+                                        <input
+                                          type="file"
+                                          accept="image/*,application/pdf"
+                                          multiple
+                                          onChange={handleAddIdentityDocument}
+                                          className="hidden"
+                                          disabled={
+                                            uploadingDocuments ||
+                                            (requiredDocs.length > 0 && !selectedRequiredDoc)
+                                          }
+                                        />
+                                      </label>
+                                      {uploadingDocuments && (
+                                        <div className="flex items-center gap-2 text-xs text-blue-500">
+                                          <Loader2 className="h-3 w-3 animate-spin" />
+                                          Uploading documents...
+                                        </div>
+                                      )}
+                                    </div>
                                   </div>
 
                                   {(() => {
@@ -9456,13 +9582,13 @@ export function ClientRegistrationForm({
                                           }
                                         )}
                                       </div>
-                                    ) : (
+                                    ) : requiredDocs.length === 0 ? (
                                       <p
                                         className={`text-sm ${colors.textColorMuted} italic`}
                                       >
                                         No other documents found.
                                       </p>
-                                    );
+                                    ) : null;
                                   })()}
                                 </div>
                               </>
@@ -9482,17 +9608,30 @@ export function ClientRegistrationForm({
                                 type="button"
                                 className="bg-blue-500 hover:bg-blue-600"
                                 onClick={async () => {
-                                  // Validate KYC sections before proceeding
-                                  // Check if selfie and identity documents are complete
                                   const selfieComplete = checkSelfieSection();
                                   const identityComplete =
                                     checkIdentityDocumentsSection();
+                                  const docsComplete = checkOtherDocumentsSection();
 
                                   if (!selfieComplete || !identityComplete) {
                                     error({
                                       title: "Incomplete KYC",
                                       description:
                                         "Please complete the selfie and identity documents sections before proceeding.",
+                                    });
+                                    return;
+                                  }
+
+                                  if (!docsComplete) {
+                                    const missing = requiredDocs.filter((req) =>
+                                      !clientDocuments.some(
+                                        (d: any) => isDocMatchingRequired(d, req.name)
+                                      )
+                                    );
+                                    error({
+                                      title: "Missing Required Documents",
+                                      description:
+                                        `Please upload: ${missing.map((d) => d.name).join(", ")}`,
                                     });
                                     return;
                                   }

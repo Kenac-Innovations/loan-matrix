@@ -10,14 +10,15 @@ import { TenantInfo } from "@/shared/types/tenant";
  * - localhost:3000 -> default (fallback)
  */
 export function extractTenantSlug(host: string): string {
-  if (!host) return "goodfellow";
+  const defaultSlug = process.env.FINERACT_TENANT_ID || "goodfellow";
+  if (!host) return defaultSlug;
 
   // Remove port if present
   const hostWithoutPort = host.split(":")[0];
 
   // Handle plain localhost (no subdomain)
   if (hostWithoutPort === "localhost" || hostWithoutPort === "127.0.0.1") {
-    return "goodfellow";
+    return defaultSlug;
   }
 
   // Handle subdomain.localhost (e.g. omama.localhost)
@@ -33,7 +34,7 @@ export function extractTenantSlug(host: string): string {
   }
 
   // If no subdomain, use default
-  return "goodfellow";
+  return defaultSlug;
 }
 
 /**
