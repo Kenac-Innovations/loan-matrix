@@ -21,7 +21,15 @@ export async function POST(
     }
 
     const body = await request.json();
-    const { targetStageName, targetStageId, reason, metadata, fineractOverrides } = body;
+    const {
+      targetStageName,
+      targetStageId,
+      reason,
+      metadata,
+      fineractOverrides,
+      overrideValidations,
+      overrideReason,
+    } = body;
 
     if (!targetStageName && !targetStageId) {
       return NextResponse.json(
@@ -30,9 +38,15 @@ export async function POST(
       );
     }
 
+    if (overrideValidations && !overrideReason?.trim()) {
+      return NextResponse.json(
+        { error: "Override reason is required when overriding validations" },
+        { status: 400 }
+      );
+    }
+
     let resolvedStageId = targetStageId;
 
-    // Resolve stage name to ID if needed
     if (!resolvedStageId && targetStageName) {
       const lead = await prisma.lead.findUnique({
         where: { id: leadId },
@@ -62,6 +76,7 @@ export async function POST(
     }
 
     // Check required documents before allowing transition
+    let overriddenDocs: string[] = [];
     const leadForDocs = await prisma.lead.findUnique({
       where: { id: leadId },
       select: { tenantId: true, fineractClientId: true },
@@ -73,13 +88,11 @@ export async function POST(
       });
 
       if (requiredDocs.length > 0) {
-        // Check local LeadDocument records
         const localDocs = await prisma.leadDocument.findMany({
           where: { leadId },
           select: { name: true, category: true },
         });
 
-        // Also check Fineract client documents if client exists
         let fineractDocs: { name: string }[] = [];
         if (leadForDocs.fineractClientId) {
           try {
@@ -107,29 +120,58 @@ export async function POST(
         });
 
         if (missingDocs.length > 0) {
-          return NextResponse.json(
-            {
-              success: false,
-              message: `Missing required documents: ${missingDocs.map((d) => d.name).join(", ")}`,
-              missingDocuments: missingDocs.map((d) => ({
-                name: d.name,
-                category: d.category,
-              })),
-            },
-            { status: 400 }
-          );
+          if (!overrideValidations) {
+            return NextResponse.json(
+              {
+                success: false,
+                message: `Missing required documents: ${missingDocs.map((d) => d.name).join(", ")}`,
+                missingDocuments: missingDocs.map((d) => ({
+                  name: d.name,
+                  category: d.category,
+                })),
+              },
+              { status: 400 }
+            );
+          }
+          overriddenDocs = missingDocs.map((d) => d.name);
         }
       }
     }
+
+    // Build the reason with override context
+    const overrideNote = overriddenDocs.length > 0
+      ? `[VALIDATION OVERRIDE] Missing documents: ${overriddenDocs.join(", ")}. Override reason: ${overrideReason}`
+      : null;
+
+    const combinedReason = [reason, overrideNote].filter(Boolean).join("\n\n");
 
     const result = await TeamAwareStateMachineService.executeTransition({
       leadId,
       targetStageId: resolvedStageId,
       event: "MANUAL_TRANSITION",
       triggeredBy: session.user.id,
-      reason,
+      reason: combinedReason || undefined,
       fineractOverrides,
     });
+
+    // Post override to Fineract notes if there was an override
+    if (overrideNote && result.success && leadForDocs?.fineractClientId) {
+      try {
+        const lead = await prisma.lead.findUnique({
+          where: { id: leadId },
+          select: { fineractLoanId: true },
+        });
+        if (lead?.fineractLoanId) {
+          const { fetchFineractAPI } = await import("@/lib/api");
+          await fetchFineractAPI(
+            `/loans/${lead.fineractLoanId}/notes`,
+            { method: "POST", body: JSON.stringify({ note: overrideNote }) }
+          );
+        }
+      } catch {
+        // Non-blocking — override still proceeds
+      }
+    }
 
     if (result.success) {
       return NextResponse.json({

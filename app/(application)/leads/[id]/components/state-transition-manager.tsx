@@ -112,6 +112,8 @@ export default function StateTransitionManager({
   const [loadingTellers, setLoadingTellers] = useState(false);
   const [loadingCashiers, setLoadingCashiers] = useState(false);
   const [missingDocs, setMissingDocs] = useState<{ name: string; category: string }[]>([]);
+  const [overrideValidations, setOverrideValidations] = useState(false);
+  const [overrideReason, setOverrideReason] = useState("");
 
   const { toast } = useToast();
   const router = useRouter();
@@ -190,6 +192,8 @@ export default function StateTransitionManager({
       setPayoutNotes("");
       setTellers([]);
       setCashiers([]);
+      setOverrideValidations(false);
+      setOverrideReason("");
     }
   }, [open, fetchAvailableTransitions, checkMissingDocuments]);
 
@@ -291,6 +295,8 @@ export default function StateTransitionManager({
           targetStageId: selectedTransition.stageId,
           reason: reason || undefined,
           fineractOverrides,
+          overrideValidations: overrideValidations && missingDocs.length > 0 ? true : undefined,
+          overrideReason: overrideValidations && missingDocs.length > 0 ? overrideReason : undefined,
         }),
       });
 
@@ -373,10 +379,16 @@ export default function StateTransitionManager({
           ) : (
             <div className="space-y-2">
               {missingDocs.length > 0 && (
-                <div className="rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/20 p-3 mb-2">
+                <div className={`rounded-md border p-3 mb-2 ${
+                  overrideValidations
+                    ? "border-orange-300 bg-orange-50 dark:bg-orange-950/20"
+                    : "border-amber-300 bg-amber-50 dark:bg-amber-950/20"
+                }`}>
                   <div className="flex items-start gap-2">
-                    <AlertCircle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
-                    <div>
+                    <AlertCircle className={`h-4 w-4 mt-0.5 shrink-0 ${
+                      overrideValidations ? "text-orange-600" : "text-amber-600"
+                    }`} />
+                    <div className="flex-1">
                       <p className="text-sm font-medium text-amber-800 dark:text-amber-400">
                         Missing Required Documents
                       </p>
@@ -385,9 +397,43 @@ export default function StateTransitionManager({
                           <li key={d.name}>• {d.name}</li>
                         ))}
                       </ul>
-                      <p className="text-xs text-amber-600 dark:text-amber-500 mt-1.5">
-                        Upload these documents before moving to the next stage.
-                      </p>
+
+                      <div className="mt-3 pt-3 border-t border-amber-200 dark:border-amber-800">
+                        <div className="flex items-center gap-2">
+                          <Checkbox
+                            id="override-validations"
+                            checked={overrideValidations}
+                            onCheckedChange={(checked) => {
+                              setOverrideValidations(!!checked);
+                              if (!checked) setOverrideReason("");
+                            }}
+                          />
+                          <Label
+                            htmlFor="override-validations"
+                            className="text-xs font-medium text-amber-800 dark:text-amber-400 cursor-pointer"
+                          >
+                            Override and proceed without these documents
+                          </Label>
+                        </div>
+
+                        {overrideValidations && (
+                          <div className="mt-2">
+                            <Label className="text-xs text-orange-700 dark:text-orange-400">
+                              Override Reason <span className="text-red-500">*</span>
+                            </Label>
+                            <Textarea
+                              placeholder="Explain why this override is necessary (will be recorded in notes)..."
+                              value={overrideReason}
+                              onChange={(e) => setOverrideReason(e.target.value)}
+                              rows={2}
+                              className="mt-1 text-sm border-orange-300 focus:ring-orange-500 bg-white dark:bg-background"
+                            />
+                            <p className="text-[10px] text-orange-600 dark:text-orange-500 mt-1">
+                              This override will be logged in transition history and Fineract notes.
+                            </p>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -779,7 +825,8 @@ export default function StateTransitionManager({
             disabled={
               loading ||
               !selectedTransition ||
-              missingDocs.length > 0 ||
+              (missingDocs.length > 0 && !overrideValidations) ||
+              (missingDocs.length > 0 && overrideValidations && !overrideReason?.trim()) ||
               (selectedTransition?.fineractAction === "payout" && !payoutMethod) ||
               (selectedTransition?.fineractAction === "payout" && payoutMethod === "CASH" && (!selectedTeller || !selectedCashier)) ||
               (selectedTransition?.fineractAction === "reject" && !reason?.trim())
