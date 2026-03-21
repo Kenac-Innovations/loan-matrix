@@ -19,7 +19,16 @@ import {
   CheckCircle2,
   AlertCircle,
   Loader2,
+  Clock,
+  ShieldAlert,
+  ShieldCheck,
 } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface LeadDocumentsProps {
   leadId: string;
@@ -45,6 +54,26 @@ interface Document {
   notes?: string;
   createdAt: string;
   updatedAt: string;
+}
+
+interface RequiredDocConfig {
+  id: string;
+  name: string;
+  description?: string;
+  category: string;
+  expiryMonths: number | null;
+  isRequired: boolean;
+  isActive: boolean;
+}
+
+function getExpiryInfo(createdAt: string, expiryMonths: number | null): { expiryDate: Date | null; isExpired: boolean; daysUntilExpiry: number | null } {
+  if (!expiryMonths) return { expiryDate: null, isExpired: false, daysUntilExpiry: null };
+  const created = new Date(createdAt);
+  const expiry = new Date(created);
+  expiry.setMonth(expiry.getMonth() + expiryMonths);
+  const now = new Date();
+  const daysUntilExpiry = Math.ceil((expiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+  return { expiryDate: expiry, isExpired: daysUntilExpiry <= 0, daysUntilExpiry };
 }
 
 interface FineractDocument {
@@ -76,6 +105,7 @@ export function LeadDocuments({
   const [fineractClientId, setFineractClientId] = useState<string | null>(
     initialClientId ? String(initialClientId) : null
   );
+  const [requiredDocs, setRequiredDocs] = useState<RequiredDocConfig[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingLoanDocs, setLoadingLoanDocs] = useState(false);
   const [loadingClientDocs, setLoadingClientDocs] = useState(false);
@@ -83,6 +113,13 @@ export function LeadDocuments({
   const [hasFetched, setHasFetched] = useState(
     initialClientDocuments.length > 0 || initialLoanDocuments.length > 0
   );
+
+  useEffect(() => {
+    fetch("/api/pipeline/required-documents")
+      .then((r) => r.ok ? r.json() : [])
+      .then((data) => setRequiredDocs(data.filter((d: RequiredDocConfig) => d.isActive)))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     const fetchDocuments = async () => {
@@ -395,6 +432,120 @@ export function LeadDocuments({
       </CardHeader>
       <CardContent>
         <div className="space-y-6">
+          {/* Required Documents Checklist */}
+          {requiredDocs.length > 0 && (
+            <div className="rounded-lg border bg-muted/30 p-4">
+              <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                <ShieldAlert className="h-4 w-4 text-amber-600" />
+                Required Documents Checklist
+              </h3>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {requiredDocs.map((req) => {
+                  const target = req.name.toLowerCase();
+                  const matchedLocalDoc = documents.find(
+                    (d) => d.name.toLowerCase().includes(target)
+                  );
+                  const matchedFineractDoc = clientDocuments.find(
+                    (d) => (d.name || d.fileName || "").toLowerCase().includes(target)
+                  );
+                  const isUploaded = !!matchedLocalDoc || !!matchedFineractDoc;
+                  const expiry = matchedLocalDoc && req.expiryMonths
+                    ? getExpiryInfo(matchedLocalDoc.createdAt, req.expiryMonths)
+                    : null;
+
+                  return (
+                    <div
+                      key={req.id}
+                      className={`flex items-center gap-2 p-2 rounded-md border text-sm ${
+                        isUploaded
+                          ? expiry?.isExpired
+                            ? "border-red-200 bg-red-50 dark:bg-red-950/20"
+                            : "border-green-200 bg-green-50 dark:bg-green-950/20"
+                          : req.isRequired
+                          ? "border-amber-200 bg-amber-50 dark:bg-amber-950/20"
+                          : "border-border bg-background"
+                      }`}
+                    >
+                      {isUploaded ? (
+                        expiry?.isExpired ? (
+                          <AlertCircle className="h-4 w-4 text-red-500 shrink-0" />
+                        ) : (
+                          <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
+                        )
+                      ) : (
+                        <div className={`h-4 w-4 rounded-full border-2 shrink-0 ${
+                          req.isRequired ? "border-amber-400" : "border-muted-foreground/30"
+                        }`} />
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <span className={`font-medium ${!isUploaded && req.isRequired ? "text-amber-700 dark:text-amber-400" : ""}`}>
+                          {req.name}
+                        </span>
+                        {req.isRequired && !isUploaded && (
+                          <span className="text-xs text-red-500 ml-1">*</span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        {isUploaded && expiry?.expiryDate && (
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Badge
+                                  variant="outline"
+                                  className={`text-[10px] px-1.5 py-0 ${
+                                    expiry.isExpired
+                                      ? "border-red-300 text-red-600 bg-red-50"
+                                      : (expiry.daysUntilExpiry ?? 0) <= 30
+                                      ? "border-amber-300 text-amber-600 bg-amber-50"
+                                      : "border-green-300 text-green-600 bg-green-50"
+                                  }`}
+                                >
+                                  <Clock className="h-2.5 w-2.5 mr-0.5" />
+                                  {expiry.isExpired
+                                    ? "Expired"
+                                    : `${expiry.daysUntilExpiry}d`}
+                                </Badge>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>
+                                  {expiry.isExpired
+                                    ? `Expired on ${expiry.expiryDate.toLocaleDateString()}`
+                                    : `Expires ${expiry.expiryDate.toLocaleDateString()} (${expiry.daysUntilExpiry} days)`}
+                                </p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        )}
+                        {!isUploaded && req.expiryMonths && (
+                          <span className="text-[10px] text-muted-foreground">{req.expiryMonths}mo validity</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              {(() => {
+                const requiredCount = requiredDocs.filter((r) => r.isRequired).length;
+                const uploadedRequired = requiredDocs.filter((r) => {
+                  if (!r.isRequired) return false;
+                  const t = r.name.toLowerCase();
+                  return documents.some((d) => d.name.toLowerCase().includes(t)) ||
+                    clientDocuments.some((d) => (d.name || d.fileName || "").toLowerCase().includes(t));
+                }).length;
+                return (
+                  <p className="text-xs text-muted-foreground mt-3">
+                    {uploadedRequired}/{requiredCount} required documents uploaded
+                    {uploadedRequired < requiredCount && (
+                      <span className="text-amber-600 ml-1">
+                        — {requiredCount - uploadedRequired} missing
+                      </span>
+                    )}
+                  </p>
+                );
+              })()}
+            </div>
+          )}
+
           {/* Client Documents Section */}
           {fineractClientId && (
             <div>
@@ -646,7 +797,7 @@ export function LeadDocuments({
                                   <p className="text-sm font-medium text-foreground">
                                     {doc.name}
                                   </p>
-                                  <div className="flex items-center gap-2 mt-1">
+                                  <div className="flex items-center gap-2 mt-1 flex-wrap">
                                     <Badge
                                       variant="outline"
                                       className="text-xs"
@@ -662,6 +813,44 @@ export function LeadDocuments({
                                         doc.createdAt
                                       ).toLocaleDateString()}
                                     </span>
+                                    {(() => {
+                                      const matchedReq = requiredDocs.find(
+                                        (r) => doc.name.toLowerCase().includes(r.name.toLowerCase())
+                                      );
+                                      if (!matchedReq?.expiryMonths) return null;
+                                      const expiry = getExpiryInfo(doc.createdAt, matchedReq.expiryMonths);
+                                      if (!expiry.expiryDate) return null;
+                                      return (
+                                        <TooltipProvider>
+                                          <Tooltip>
+                                            <TooltipTrigger asChild>
+                                              <Badge
+                                                variant="outline"
+                                                className={`text-[10px] px-1.5 py-0 ${
+                                                  expiry.isExpired
+                                                    ? "border-red-300 text-red-600 bg-red-50"
+                                                    : (expiry.daysUntilExpiry ?? 0) <= 30
+                                                    ? "border-amber-300 text-amber-600 bg-amber-50"
+                                                    : "border-green-300 text-green-600 bg-green-50"
+                                                }`}
+                                              >
+                                                <Clock className="h-2.5 w-2.5 mr-0.5" />
+                                                {expiry.isExpired
+                                                  ? "Expired"
+                                                  : `Expires ${expiry.expiryDate.toLocaleDateString()}`}
+                                              </Badge>
+                                            </TooltipTrigger>
+                                            <TooltipContent>
+                                              <p>
+                                                {expiry.isExpired
+                                                  ? `Expired on ${expiry.expiryDate.toLocaleDateString()}`
+                                                  : `Valid until ${expiry.expiryDate.toLocaleDateString()} (${expiry.daysUntilExpiry} days remaining)`}
+                                              </p>
+                                            </TooltipContent>
+                                          </Tooltip>
+                                        </TooltipProvider>
+                                      );
+                                    })()}
                                   </div>
                                   {doc.notes && (
                                     <p className="text-xs text-muted-foreground mt-1">

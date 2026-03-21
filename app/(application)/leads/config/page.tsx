@@ -23,6 +23,7 @@ import { NotificationConfig } from "./components/notification-config";
 import { CreditScoringConfig } from "./components/credit-scoring-config";
 import { MetricsConfig } from "./components/metrics-config";
 import { TenantLogoUpload } from "./components/tenant-logo-upload";
+import { RequiredDocumentsConfig } from "./components/required-documents-config";
 
 export default function ConfigPage() {
   const [saved, setSaved] = useState(false);
@@ -130,6 +131,12 @@ export default function ConfigPage() {
             className="data-[state=active]:bg-blue-500"
           >
             Credit Scoring
+          </TabsTrigger>
+          <TabsTrigger
+            value="documents"
+            className="data-[state=active]:bg-blue-500"
+          >
+            Documents
           </TabsTrigger>
           <TabsTrigger
             value="organization"
@@ -255,6 +262,9 @@ export default function ConfigPage() {
               <CreditScoringConfig />
             </CardContent>
           </Card>
+        </TabsContent>
+        <TabsContent value="documents">
+          <RequiredDocumentsConfig />
         </TabsContent>
         <TabsContent value="organization">
           <TenantLogoUpload />

@@ -19,6 +19,8 @@ import { LeadCommunications } from "./components/lead-communications";
 import { LeadSidebar } from "./components/lead-sidebar";
 import { LeadAdditionalInfo } from "./components/lead-additional-info";
 import StateTransitionManager from "./components/state-transition-manager";
+import { LeadMoreActions } from "./components/lead-more-actions";
+import { LeadNotes } from "./components/lead-notes";
 import {
   ArrowLeft,
   FileText,
@@ -31,6 +33,9 @@ import {
   Users,
   UserCheck,
   UserX,
+  CheckCircle2,
+  XCircle,
+  StickyNote,
 } from "lucide-react";
 import Link from "next/link";
 import {
@@ -420,6 +425,25 @@ export default async function LeadDetailPage({
     loanDocuments,
   } = await getLeadData(id);
   
+  const session = await getSession();
+  const currentUserId = session?.user?.id;
+
+  // Check if current user is in the team for the lead's current stage
+  let isUserInStageTeam = false;
+  if (lead?.currentStage && currentUserId) {
+    const stageTeams = await prisma.team.findMany({
+      where: {
+        tenantId: lead.tenantId,
+        pipelineStageIds: { has: lead.currentStage.id },
+        isActive: true,
+      },
+      include: { members: { where: { isActive: true } } },
+    });
+    isUserInStageTeam = stageTeams.some((team) =>
+      team.members.some((m: { userId: string }) => String(m.userId) === currentUserId)
+    );
+  }
+
   // Construct client name from lead data
   const clientName = lead 
     ? [lead.firstname, lead.middlename, lead.lastname].filter(Boolean).join(" ") || "Client"
@@ -529,23 +553,39 @@ export default async function LeadDetailPage({
                       </Badge>
                     ) : null}
                   </div>
-                  <p className="text-muted-foreground">
+                  <div className="flex items-center gap-2 flex-wrap text-muted-foreground text-sm mt-0.5">
                     {lead.externalId && (
-                      <span className="mr-3">
+                      <span>
                         ID:{" "}
                         <span className="font-mono font-medium text-foreground">
                           {lead.externalId}
                         </span>
                       </span>
                     )}
-                    <span className="mr-3">
-                      Stage:{" "}
-                      <span className="font-medium text-foreground">
-                        {currentStage}
-                      </span>
-                    </span>
+                    {lead.currentStage && (
+                      lead.currentStage.isFinalState ? (
+                        lead.currentStage.fineractAction === "reject" ? (
+                          <Badge className="bg-red-600 text-white border-0 text-xs gap-1">
+                            <XCircle className="h-3 w-3" />
+                            Rejected
+                          </Badge>
+                        ) : (
+                          <Badge className="bg-green-600 text-white border-0 text-xs gap-1">
+                            <CheckCircle2 className="h-3 w-3" />
+                            Pipeline Complete
+                          </Badge>
+                        )
+                      ) : (
+                        <Badge
+                          className="text-white border-0 text-xs"
+                          style={{ backgroundColor: lead.currentStage.color || "#6b7280" }}
+                        >
+                          {currentStage}
+                        </Badge>
+                      )
+                    )}
                     {lead.clientTypeName && (
-                      <span className="mr-3">
+                      <span>
                         Type:{" "}
                         <span className="font-medium text-foreground">
                           {lead.clientTypeName}
@@ -562,7 +602,7 @@ export default async function LeadDetailPage({
                         : method === "BANK_TRANSFER"
                         ? "bg-purple-100 text-purple-800 border-purple-200"
                         : "bg-gray-100 text-gray-800 border-gray-200";
-                      return <Badge className={`${cls} text-xs mr-2`}>{label}</Badge>;
+                      return <Badge className={`${cls} text-xs`}>{label}</Badge>;
                     })()}
                     {fineractLoanId && (
                       <span>
@@ -572,7 +612,7 @@ export default async function LeadDetailPage({
                         </span>
                       </span>
                     )}
-                  </p>
+                  </div>
                 </div>
               </div>
               <div className="flex items-center gap-2">
@@ -580,6 +620,10 @@ export default async function LeadDetailPage({
                   leadId={id}
                   currentStage={currentStage}
                   currentStageColor={lead.currentStage?.color}
+                  assignedToUserId={lead.assignedToUserId}
+                  currentUserId={currentUserId}
+                  isUserInStageTeam={isUserInStageTeam}
+                  fineractClientId={lead.fineractClientId}
                 />
                 <LeadActions
                   leadId={id}
@@ -592,11 +636,101 @@ export default async function LeadDetailPage({
                   assignedToUserId={lead.assignedToUserId}
                   fineractClientId={lead.fineractClientId}
                 />
+                <LeadMoreActions
+                  leadId={id}
+                  loanStatus={fineractLoanStatus}
+                  loanId={fineractLoanId}
+                  fineractClientId={lead.fineractClientId}
+                />
               </div>
             </div>
           </div>
         </div>
       </div>
+
+      {/* Pipeline Stage Progress */}
+      {stages.length > 0 && (
+        <div className="mt-4 px-2">
+          <div className="flex items-center w-full">
+            {(() => {
+              const isRejected = lead.currentStage?.fineractAction === "reject";
+              const normalStages = stages.filter((s) => s.fineractAction !== "reject");
+              const visibleStages = isRejected
+                ? [...normalStages, ...stages.filter((s) => s.fineractAction === "reject")]
+                : normalStages;
+              const currentOrder = lead.currentStage?.order ?? -1;
+              const isOnFinalStage = lead.currentStage?.isFinalState === true && !isRejected;
+              return visibleStages.map((stage, idx) => {
+                const isCurrent = stage.id === lead.currentStage?.id;
+                const isRejectStage = stage.fineractAction === "reject";
+                const isCompleted = isRejected
+                  ? (!isRejectStage && stage.order < currentOrder)
+                  : isOnFinalStage
+                  ? stage.order <= currentOrder
+                  : stage.order < currentOrder;
+                const isFuture = !isCompleted && !isCurrent;
+                const isLast = idx === visibleStages.length - 1;
+
+                return (
+                  <div key={stage.id} className="flex items-center flex-1 min-w-0">
+                    <div className="flex flex-col items-center shrink-0">
+                      <div
+                        className={`
+                          flex items-center justify-center rounded-full transition-all
+                          ${isCurrent && !isOnFinalStage && !isRejected ? "w-8 h-8 ring-2 ring-offset-2 ring-offset-background" : "w-5 h-5"}
+                          ${isCompleted && !isCurrent ? "opacity-70" : ""}
+                          ${isCurrent && isRejected ? "w-7 h-7" : ""}
+                        `}
+                        style={{
+                          backgroundColor: isCompleted || isCurrent ? (stage.color || "#6b7280") : "transparent",
+                          borderColor: stage.color || "#6b7280",
+                          borderWidth: isFuture ? "2px" : "0px",
+                          borderStyle: "solid",
+                          ...(isCurrent && !isOnFinalStage && !isRejected ? { ringColor: stage.color || "#6b7280" } : {}),
+                        }}
+                      >
+                        {isCompleted && (
+                          <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                          </svg>
+                        )}
+                        {isCurrent && isRejected && (
+                          <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        )}
+                        {isCurrent && !isOnFinalStage && !isRejected && (
+                          <div className="w-2.5 h-2.5 rounded-full bg-white" />
+                        )}
+                      </div>
+                      <span
+                        className={`
+                          text-[10px] mt-1 text-center leading-tight max-w-[72px] truncate
+                          ${isCurrent && !isOnFinalStage && !isRejected ? "font-semibold" : isCompleted ? "font-medium text-foreground" : isCurrent && isRejected ? "font-semibold" : "text-muted-foreground/60"}
+                        `}
+                        style={isCompleted || isCurrent ? { color: stage.color || undefined } : undefined}
+                        title={stage.name}
+                      >
+                        {stage.name}
+                      </span>
+                    </div>
+                    {!isLast && (
+                      <div className="flex-1 mx-1 h-0.5 rounded-full self-start mt-[10px]"
+                        style={{
+                          backgroundColor: isRejected && isCompleted && visibleStages[idx + 1]?.fineractAction === "reject"
+                            ? "#ef4444"
+                            : isCompleted ? (stage.color || "#6b7280") : "hsl(var(--border))",
+                          opacity: isCompleted ? 0.5 : 0.3,
+                        }}
+                      />
+                    )}
+                  </div>
+                );
+              });
+            })()}
+          </div>
+        </div>
+      )}
 
       <div className="mt-6 grid gap-6 grid-cols-1 lg:grid-cols-3">
         <div className="lg:col-span-2">
@@ -629,6 +763,10 @@ export default async function LeadDetailPage({
               <TabsTrigger value="affordability">
                 <Calculator className="mr-2 h-4 w-4" />
                 <span className="whitespace-nowrap">CDE</span>
+              </TabsTrigger>
+              <TabsTrigger value="notes">
+                <StickyNote className="mr-2 h-4 w-4" />
+                <span className="whitespace-nowrap">Notes</span>
               </TabsTrigger>
             </TabsList>
             <TabsContent value="details" className="mt-4">
@@ -673,6 +811,9 @@ export default async function LeadDetailPage({
             </TabsContent>
             <TabsContent value="affordability" className="mt-4">
               <LeadCDE leadId={id} />
+            </TabsContent>
+            <TabsContent value="notes" className="mt-4">
+              <LeadNotes leadId={id} fineractLoanId={fineractLoanId || null} />
             </TabsContent>
           </Tabs>
         </div>

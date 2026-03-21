@@ -1,5 +1,24 @@
 import { prisma } from "./prisma";
+import { getFineractServiceWithSession } from "./fineract-api";
 import type { AssignmentStrategy, AssignmentConfig } from "@/shared/defaults/team-config";
+
+export interface FineractOverrides {
+  approvalDate?: string;
+  disbursementDate?: string;
+  approvedAmount?: number;
+  note?: string;
+  paymentTypeId?: number;
+  accountNumber?: string;
+  checkNumber?: string;
+  routingCode?: string;
+  receiptNumber?: string;
+  bankNumber?: string;
+  rejectionDate?: string;
+  // Payout fields
+  payoutMethod?: "CASH" | "MOBILE_MONEY" | "BANK_TRANSFER";
+  tellerId?: string;
+  cashierId?: string;
+}
 
 export interface StateTransitionRequest {
   leadId: string;
@@ -8,6 +27,7 @@ export interface StateTransitionRequest {
   context?: any;
   triggeredBy: string;
   reason?: string;
+  fineractOverrides?: FineractOverrides;
 }
 
 export interface StateTransitionResult {
@@ -70,23 +90,84 @@ export class TeamAwareStateMachineService {
         lead.tenantId
       );
 
-      // 3. Move the lead to the new stage + assign in one transaction
+      // 3. If the target stage requires a Fineract action, execute it FIRST
+      //    so the transition is blocked if Fineract rejects the operation.
+      //    Payout is an internal action and is handled AFTER the DB transition.
+      const targetStage = await prisma.pipelineStage.findUnique({
+        where: { id: request.targetStageId },
+      });
+
+      let fineractResult: string | null = null;
+      const isFineractAction = targetStage?.fineractAction
+        && targetStage.fineractAction !== "payout"
+        && lead.fineractLoanId;
+
+      if (isFineractAction) {
+        console.log(`[StateTransition] Triggering Fineract action: ${targetStage.fineractAction} for loan ${lead.fineractLoanId}`, request.fineractOverrides);
+        try {
+          fineractResult = await this.triggerFineractAction(
+            targetStage.fineractAction!,
+            lead.fineractLoanId!,
+            request.fineractOverrides,
+            lead,
+            request.triggeredBy
+          );
+          console.log(`[StateTransition] Fineract action succeeded: ${fineractResult}`);
+        } catch (fineractError: any) {
+          const errorDetail =
+            fineractError?.response?.data?.errors?.[0]?.defaultUserMessage
+            || fineractError?.response?.data?.defaultUserMessage
+            || (fineractError instanceof Error ? fineractError.message : "Unknown error");
+          console.error("[StateTransition] Fineract action failed — blocking transition:", errorDetail);
+          return {
+            success: false,
+            message: `Fineract ${targetStage.fineractAction} failed: ${errorDetail}`,
+          };
+        }
+      }
+
+      // 3b. Internal payout — process BEFORE the DB transition so we can block on failure
+      if (targetStage?.fineractAction === "payout" && lead.fineractLoanId) {
+        console.log(`[StateTransition] Processing internal payout for loan ${lead.fineractLoanId}`);
+        try {
+          fineractResult = await this.processInternalPayout(
+            lead,
+            request.fineractOverrides,
+            request.triggeredBy
+          );
+          console.log(`[StateTransition] Internal payout succeeded: ${fineractResult}`);
+        } catch (payoutError: any) {
+          const errorDetail =
+            payoutError?.response?.data?.errors?.[0]?.defaultUserMessage
+            || payoutError?.response?.data?.defaultUserMessage
+            || (payoutError instanceof Error ? payoutError.message : "Unknown error");
+          console.error("[StateTransition] Payout failed — blocking transition:", errorDetail);
+          return {
+            success: false,
+            message: `Payout failed: ${errorDetail}`,
+          };
+        }
+      }
+
+      // 4. Actions succeeded (or weren't needed) — now commit the DB transition
       const [updatedLead, transition] = await prisma.$transaction([
         prisma.lead.update({
           where: { id: request.leadId },
           data: {
             currentStageId: request.targetStageId,
-            assignedToUserId: assignment ? (Number.isFinite(Number(assignment.memberUserId)) ? Number(assignment.memberUserId) : null) : null,
-            assignedToUserName: assignment?.memberName ?? null,
-            assignedAt: assignment ? new Date() : null,
-            assignedByUserId: request.triggeredBy,
+            assignedToUserId: null,
+            assignedToUserName: null,
+            assignedAt: null,
+            assignedByUserId: null,
             stateMetadata: {
               lastTransition: new Date().toISOString(),
               lastTransitionEvent: request.event || "MANUAL_TRANSITION",
               reason: request.reason,
-              assignedTeam: assignment
-                ? { id: assignment.teamId, name: assignment.teamName }
-                : null,
+              previousAssignment: {
+                userId: lead.assignedToUserId,
+                userName: lead.assignedToUserName,
+              },
+              fineractResult: fineractResult || undefined,
             },
             lastModified: new Date(),
           },
@@ -103,14 +184,7 @@ export class TeamAwareStateMachineService {
             metadata: {
               reason: request.reason,
               teamInfo: validation.teamInfo,
-              assignment: assignment
-                ? {
-                    teamId: assignment.teamId,
-                    teamName: assignment.teamName,
-                    memberId: assignment.memberId,
-                    memberName: assignment.memberName,
-                  }
-                : null,
+              fineractResult: fineractResult || undefined,
               timestamp: new Date().toISOString(),
             },
           },
@@ -118,17 +192,34 @@ export class TeamAwareStateMachineService {
         }),
       ]);
 
+      const baseMsg = fineractResult
+        ? `Lead moved to ${targetStage?.name}. ${fineractResult}`
+        : `Lead moved to ${targetStage?.name} — awaiting assignment`;
+
+      // Post transition note to Fineract loan if available
+      if (lead.fineractLoanId && request.reason) {
+        const noteText = `[Stage Transition] ${transition.fromStage?.name || "Unknown"} → ${transition.toStage?.name || "Unknown"}\n${request.reason}`;
+        this.postFineractNote(lead.fineractLoanId, noteText).catch((err) =>
+          console.error("[StateTransition] Failed to post Fineract note:", err)
+        );
+      }
+
+      // Notify team members of the receiving stage
+      this.notifyTeamMembers(
+        lead.tenantId,
+        request.targetStageId,
+        lead,
+        targetStage?.name || "Unknown Stage",
+        request.triggeredBy
+      ).catch((err) => console.error("[StateTransition] Failed to send notifications:", err));
+
       return {
         success: true,
-        message: assignment
-          ? `Lead moved to ${updatedLead.currentStage?.name} and assigned to ${assignment.memberName} (${assignment.teamName})`
-          : `Lead moved to ${updatedLead.currentStage?.name}`,
+        message: baseMsg,
         lead: updatedLead,
         transition,
         assignedTeam: validation.teamInfo,
-        assignedMember: assignment
-          ? { id: assignment.memberId, userId: assignment.memberUserId, name: assignment.memberName }
-          : null,
+        assignedMember: null,
       };
     } catch (error) {
       console.error("Error executing transition:", error);
@@ -281,20 +372,28 @@ export class TeamAwareStateMachineService {
         return basicValidation;
       }
 
-      const teamPermission = await this.checkTeamPermissions(
-        targetStageId,
-        tenantId,
-        userId
-      );
+      // Permission check is against the CURRENT stage's team:
+      // only members of the team owning the current stage can push the lead forward.
+      if (currentStageId) {
+        const teamPermission = await this.checkTeamPermissions(
+          currentStageId,
+          tenantId,
+          userId
+        );
 
-      if (!teamPermission.canTransition) {
-        return { isValid: false, message: teamPermission.message };
+        if (!teamPermission.canTransition) {
+          return { isValid: false, message: teamPermission.message };
+        }
       }
+
+      // Look up the receiving team (for audit/assignment purposes only)
+      const receivingTeams = await this.getTeamsForStage(targetStageId, tenantId);
+      const receivingTeam = receivingTeams[0] ?? null;
 
       return {
         isValid: true,
         message: "Valid transition with team permissions",
-        teamInfo: teamPermission.assignedTeam,
+        teamInfo: receivingTeam,
       };
     } catch (error) {
       console.error("Error validating transition with teams:", error);
@@ -349,6 +448,11 @@ export class TeamAwareStateMachineService {
     }
   }
 
+  /**
+   * Checks whether the user belongs to a team that owns the given stage.
+   * Called with the CURRENT stage so only the team handling the lead right now
+   * can push it forward — regardless of which team owns the target stage.
+   */
   static async checkTeamPermissions(
     stageId: string,
     tenantId: string,
@@ -386,9 +490,9 @@ export class TeamAwareStateMachineService {
           canTransition: false,
           assignedTeam: teams[0],
           teamMembers: teams[0].members,
-          message: `User is not a member of teams assigned to this stage: ${teams
+          message: `You are not a member of the team currently handling this stage (${teams
             .map((t) => t.name)
-            .join(", ")}`,
+            .join(", ")})`,
         };
       }
 
@@ -401,6 +505,323 @@ export class TeamAwareStateMachineService {
     } catch (error) {
       console.error("Error checking team permissions:", error);
       return { canTransition: false, message: "Error checking team permissions" };
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Fineract integration
+  // ---------------------------------------------------------------------------
+
+  private static async triggerFineractAction(
+    action: string,
+    fineractLoanId: number,
+    overrides?: FineractOverrides,
+    lead?: any,
+    triggeredBy?: string
+  ): Promise<string> {
+    const fineract = await getFineractServiceWithSession();
+
+    const formatDateForFineract = (isoDate: string): string => {
+      const d = new Date(isoDate);
+      const months = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+      return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
+    };
+
+    const formatFineractDateArr = (dateArr: number[] | undefined): string | undefined => {
+      if (!dateArr || dateArr.length < 3) return undefined;
+      const [y, m, d] = dateArr;
+      const months = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+      return `${d} ${months[m - 1]} ${y}`;
+    };
+
+    // Fetch loan details as fallback for dates
+    let loanDetails: any = null;
+    try {
+      loanDetails = await fineract.getLoan(fineractLoanId);
+    } catch (e) {
+      console.warn("[StateTransition] Could not fetch loan details for date resolution:", e);
+    }
+
+    switch (action) {
+      case "approve": {
+        const approveDate = overrides?.approvalDate
+          ? formatDateForFineract(overrides.approvalDate)
+          : formatFineractDateArr(loanDetails?.timeline?.submittedOnDate);
+        await fineract.approveLoan(fineractLoanId, approveDate);
+        return `Fineract loan #${fineractLoanId} approved`;
+      }
+      case "disburse": {
+        const disburseDate = overrides?.disbursementDate
+          ? formatDateForFineract(overrides.disbursementDate)
+          : formatFineractDateArr(loanDetails?.timeline?.expectedDisbursementDate)
+            || formatFineractDateArr(loanDetails?.timeline?.approvedOnDate);
+        await fineract.disburseLoan(fineractLoanId, disburseDate, {
+          paymentTypeId: overrides?.paymentTypeId,
+          accountNumber: overrides?.accountNumber,
+          checkNumber: overrides?.checkNumber,
+          routingCode: overrides?.routingCode,
+          receiptNumber: overrides?.receiptNumber,
+          bankNumber: overrides?.bankNumber,
+          note: overrides?.note,
+        });
+        return `Fineract loan #${fineractLoanId} disbursed`;
+      }
+      case "reject": {
+        const rejectDate = overrides?.rejectionDate
+          ? formatDateForFineract(overrides.rejectionDate)
+          : formatFineractDateArr(loanDetails?.timeline?.submittedOnDate);
+        await fineract.rejectLoan(fineractLoanId, rejectDate, overrides?.note);
+        return `Fineract loan #${fineractLoanId} rejected`;
+      }
+      default:
+        console.warn(`Unknown fineractAction: ${action}`);
+        return `Unknown Fineract action: ${action}`;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // In-app notifications
+  // ---------------------------------------------------------------------------
+
+  private static async postFineractNote(fineractLoanId: number, note: string) {
+    try {
+      const { fetchFineractAPI } = await import("@/lib/api");
+      await fetchFineractAPI(`/loans/${fineractLoanId}/notes`, {
+        method: "POST",
+        body: JSON.stringify({ note }),
+      });
+      console.log(`[StateTransition] Posted note to Fineract loan #${fineractLoanId}`);
+    } catch (err) {
+      console.error(`[StateTransition] Failed to post note to Fineract loan #${fineractLoanId}:`, err);
+    }
+  }
+
+  private static async notifyTeamMembers(
+    tenantId: string,
+    targetStageId: string,
+    lead: any,
+    stageName: string,
+    triggeredBy: string
+  ): Promise<void> {
+    const teams = await prisma.team.findMany({
+      where: {
+        tenantId,
+        isActive: true,
+        pipelineStageIds: { has: targetStageId },
+      },
+      include: { members: { where: { isActive: true } } },
+    });
+
+    const clientName = lead.firstname
+      ? [lead.firstname, lead.middlename, lead.lastname].filter(Boolean).join(" ")
+      : lead.externalId || "Unknown";
+
+    const alerts = teams.flatMap((team) =>
+      team.members
+        .filter((m) => m.userId && String(m.userId) !== String(triggeredBy))
+        .map((m) => ({
+          tenantId,
+          mifosUserId: Number(m.userId),
+          type: "TASK" as const,
+          title: `New lead in ${stageName}`,
+          message: `${clientName} has moved to ${stageName} and is awaiting action.`,
+          actionUrl: `/leads/${lead.id}`,
+          actionLabel: "View Lead",
+          metadata: {
+            leadId: lead.id,
+            stageId: targetStageId,
+            stageName,
+            teamId: team.id,
+            teamName: team.name,
+          },
+          createdBy: "system",
+        }))
+    );
+
+    if (alerts.length > 0) {
+      await prisma.alert.createMany({ data: alerts });
+      console.log(`[StateTransition] Sent ${alerts.length} notification(s) to team members for stage ${stageName}`);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Internal payout (not a Fineract action)
+  // ---------------------------------------------------------------------------
+
+  private static async processInternalPayout(
+    lead: any,
+    overrides?: FineractOverrides,
+    triggeredBy?: string
+  ): Promise<string> {
+    const fineractLoanId = lead.fineractLoanId;
+
+    // Check if already paid out — skip re-processing
+    const existingPayout = await prisma.loanPayout.findUnique({
+      where: {
+        tenantId_fineractLoanId: { tenantId: lead.tenantId, fineractLoanId },
+      },
+    });
+    if (existingPayout?.status === "PAID") {
+      console.log(`[Payout] Loan ${fineractLoanId} already paid out — skipping`);
+      return `Payout already processed for loan #${fineractLoanId}`;
+    }
+
+    if (!overrides?.payoutMethod) {
+      throw new Error("Payment method is required for payout");
+    }
+    const clientName = lead.firstname
+      ? [lead.firstname, lead.middlename, lead.lastname].filter(Boolean).join(" ")
+      : "Client";
+
+    // Get loan details from Fineract, with lead.requestedAmount as fallback
+    let amount = 0;
+    let currencyCode = "ZMW";
+    let accountNo = "";
+    try {
+      const fineract = await getFineractServiceWithSession();
+      const loanDetails = await fineract.getLoan(fineractLoanId);
+      amount =
+        loanDetails?.netDisbursalAmount ||
+        loanDetails?.approvedPrincipal ||
+        loanDetails?.principal ||
+        loanDetails?.proposedPrincipal ||
+        0;
+      currencyCode = loanDetails?.currency?.code || "ZMW";
+      accountNo = loanDetails?.accountNo || "";
+      console.log(`[Payout] Fineract loan ${fineractLoanId} amounts:`, {
+        netDisbursalAmount: loanDetails?.netDisbursalAmount,
+        approvedPrincipal: loanDetails?.approvedPrincipal,
+        principal: loanDetails?.principal,
+        proposedPrincipal: loanDetails?.proposedPrincipal,
+        resolved: amount,
+      });
+    } catch (e) {
+      console.warn("[Payout] Could not fetch loan details, using defaults:", e);
+    }
+
+    // Fallback to lead's requested amount if Fineract returned 0
+    if (!amount && lead.requestedAmount) {
+      amount = lead.requestedAmount;
+      console.log(`[Payout] Using lead.requestedAmount as fallback: ${amount}`);
+    }
+
+    if (!amount) {
+      throw new Error("Could not determine payout amount — loan amount is 0");
+    }
+
+    if (overrides.payoutMethod === "CASH") {
+      if (!overrides.tellerId || !overrides.cashierId) {
+        throw new Error("Teller and cashier are required for cash payout");
+      }
+
+      // Resolve teller — the UI sends Fineract teller IDs
+      const fineractTellerId = Number(overrides.tellerId);
+      const teller = await prisma.teller.findFirst({
+        where: {
+          tenantId: lead.tenantId,
+          fineractTellerId,
+        },
+      });
+
+      if (!teller) {
+        throw new Error(`Teller not found for Fineract ID ${fineractTellerId}`);
+      }
+
+      // Resolve cashier — the UI sends DB cashier IDs (dbId) or Fineract IDs
+      const cashierIdStr = String(overrides.cashierId);
+      let cashier = await prisma.cashier.findFirst({
+        where: { id: cashierIdStr, tellerId: teller.id, tenantId: lead.tenantId },
+      });
+      if (!cashier) {
+        const numId = Number(cashierIdStr);
+        if (!isNaN(numId)) {
+          cashier = await prisma.cashier.findFirst({
+            where: { fineractCashierId: numId, tellerId: teller.id, tenantId: lead.tenantId },
+          });
+        }
+      }
+
+      const fineractCashierId = cashier?.fineractCashierId || Number(cashierIdStr);
+
+      // Format date for Fineract
+      const now = new Date();
+      const months = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+      const txnDate = `${now.getDate()} ${months[now.getMonth()]} ${now.getFullYear()}`;
+
+      // Settle via Fineract teller/cashier
+      const fineract = await getFineractServiceWithSession();
+      await fineract.settleCashForCashier(
+        teller.fineractTellerId!,
+        fineractCashierId,
+        {
+          txnAmount: String(amount),
+          currencyCode,
+          txnNote: overrides.note || `Loan Disbursement Payout — ${clientName}`,
+          txnDate,
+        }
+      );
+
+      // Create / update payout record
+      await prisma.loanPayout.upsert({
+        where: {
+          tenantId_fineractLoanId: { tenantId: lead.tenantId, fineractLoanId },
+        },
+        create: {
+          tenantId: lead.tenantId,
+          fineractLoanId,
+          fineractClientId: lead.fineractClientId,
+          clientName,
+          loanAccountNo: accountNo,
+          amount,
+          currency: currencyCode,
+          status: "PAID",
+          paymentMethod: "CASH",
+          paidAt: new Date(),
+          paidBy: triggeredBy || "system",
+          notes: overrides.note || "Cash payout via teller",
+        },
+        update: {
+          status: "PAID",
+          paymentMethod: "CASH",
+          paidAt: new Date(),
+          paidBy: triggeredBy || "system",
+          notes: overrides.note || "Cash payout via teller",
+        },
+      });
+
+      return `Payout of ${currencyCode} ${amount.toLocaleString()} processed via Cash`;
+    } else {
+      // Non-cash (Mobile Money / Bank Transfer)
+      const methodLabel = overrides.payoutMethod === "MOBILE_MONEY" ? "Mobile Money" : "Bank Transfer";
+
+      await prisma.loanPayout.upsert({
+        where: {
+          tenantId_fineractLoanId: { tenantId: lead.tenantId, fineractLoanId },
+        },
+        create: {
+          tenantId: lead.tenantId,
+          fineractLoanId,
+          fineractClientId: lead.fineractClientId,
+          clientName,
+          loanAccountNo: accountNo,
+          amount,
+          currency: currencyCode,
+          status: "PAID",
+          paymentMethod: overrides.payoutMethod,
+          paidAt: new Date(),
+          paidBy: triggeredBy || "system",
+          notes: overrides.note || `Payout via ${methodLabel}`,
+        },
+        update: {
+          status: "PAID",
+          paymentMethod: overrides.payoutMethod,
+          paidAt: new Date(),
+          paidBy: triggeredBy || "system",
+          notes: overrides.note || `Payout via ${methodLabel}`,
+        },
+      });
+
+      return `Payout of ${currencyCode} ${amount.toLocaleString()} marked as paid via ${methodLabel}`;
     }
   }
 
@@ -472,6 +893,7 @@ export class TeamAwareStateMachineService {
           stageColor: targetStage.color,
           stageDescription: targetStage.description,
           isFinalState: targetStage.isFinalState,
+          fineractAction: targetStage.fineractAction || null,
           receivingTeam: receivingTeam
             ? {
                 id: receivingTeam.id,

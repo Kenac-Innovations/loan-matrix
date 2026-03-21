@@ -470,11 +470,13 @@ export function ComprehensiveLeadDetails({
     ? `${lead.countryCode} ${lead.mobileNo}`
     : "Not provided";
 
-  // Get requested amount from loanTerms.principal if requestedAmount is 0 or missing
   const requestedAmount =
     lead.requestedAmount && lead.requestedAmount > 0
       ? lead.requestedAmount
-      : loanInfo?.loanTerms?.principal || 0;
+      : fineractLoan?.approvedPrincipal
+        || fineractLoan?.principal
+        || loanInfo?.loanTerms?.principal
+        || 0;
 
   // Get Fineract loan status
   const fineractLoanStatus = fineractLoan?.status?.value || null;
