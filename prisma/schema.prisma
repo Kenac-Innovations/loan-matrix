@@ -31,6 +31,7 @@ model Tenant {
   receiptRanges          ReceiptRange[]
   usedReceipts           UsedReceipt[]
   loanContractTemplates  LoanContractTemplate[]
+  requiredDocuments      RequiredDocument[]
 
   @@index([slug])
   @@index([isActive])
@@ -62,6 +63,8 @@ model PipelineStage {
   isInitialState     Boolean           @default(false)
   isFinalState       Boolean           @default(false)
   allowedTransitions String[]
+  fineractStatus     String?           // Maps to Fineract loan lifecycle: submitted_pending_approval | approved | disbursed
+  fineractAction     String?           // Action to trigger on Fineract when a lead ENTERS this stage: approve | disburse
   createdAt          DateTime          @default(now())
   updatedAt          DateTime          @updatedAt
   leadsInThisStage   Lead[]            @relation("LeadCurrentStage")
@@ -256,16 +259,18 @@ model SLAConfig {
 }
 
 model Team {
-  id               String       @id @default(cuid())
-  tenantId         String
-  name             String
-  description      String?
-  pipelineStageIds String[]
-  isActive         Boolean      @default(true)
-  createdAt        DateTime     @default(now())
-  updatedAt        DateTime     @updatedAt
-  tenant           Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  members          TeamMember[]
+  id                 String       @id @default(cuid())
+  tenantId           String
+  name               String
+  description        String?
+  pipelineStageIds   String[]
+  assignmentStrategy String       @default("round_robin") // round_robin | least_loaded | manual | specific_member
+  assignmentConfig   Json?        // e.g. { specificMemberId: "...", lastAssignedIndex: 0 }
+  isActive           Boolean      @default(true)
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+  tenant             Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  members            TeamMember[]
 
   @@unique([tenantId, name])
   @@index([tenantId, isActive])
@@ -331,6 +336,24 @@ model LeadDocument {
   @@index([tenantId])
   @@index([category])
   @@index([status])
+}
+
+model RequiredDocument {
+  id           String   @id @default(cuid())
+  tenantId     String
+  name         String
+  description  String?
+  category     String
+  expiryMonths Int?
+  isRequired   Boolean  @default(true)
+  isActive     Boolean  @default(true)
+  order        Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, name])
+  @@index([tenantId, isActive])
 }
 
 model LeadCommunication {

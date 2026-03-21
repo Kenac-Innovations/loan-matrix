@@ -159,12 +159,16 @@ export async function saveDraft(
       return { success: true, leadId };
     } else {
       console.log("==========> Creating new lead...");
-      // Create new lead
+      const initialStage = await prisma.pipelineStage.findFirst({
+        where: { tenantId, isInitialState: true, isActive: true },
+        select: { id: true },
+      });
       const lead = await prisma.lead.create({
         data: {
           userId,
           createdByUserName,
           tenantId,
+          currentStageId: initialStage?.id ?? null,
           officeId: validatedData.officeId,
           officeName: validatedData.officeName,
           legalFormId: validatedData.legalFormId,

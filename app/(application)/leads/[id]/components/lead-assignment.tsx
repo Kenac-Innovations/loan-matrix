@@ -29,24 +29,19 @@ import {
   Banknote,
 } from "lucide-react";
 
-interface MifosUser {
-  id: number;
-  username: string;
-  firstname: string;
-  lastname: string;
-  displayName: string;
-  email?: string;
-  officeId: number;
-  officeName?: string;
-  roles?: string[];
-}
-
 interface LoanActionInfo {
   approvedBy: string | null;
   approvedOnDate: string | null;
   disbursedBy: string | null;
   disbursedOnDate: string | null;
   loanStatus: string | null;
+}
+
+interface StageTeamMember {
+  id: string;
+  name: string;
+  role: string;
+  userId: string;
 }
 
 interface LeadAssignmentProps {
@@ -57,9 +52,11 @@ interface LeadAssignmentProps {
     userName: string | null;
     assignedAt: string | null;
   };
-  currentUserId?: number; // Current logged-in Mifos user ID
+  currentUserId?: number;
   onAssignmentChange?: () => void;
   loanActionInfo?: LoanActionInfo;
+  isUserInStageTeam?: boolean;
+  stageTeamMembers?: StageTeamMember[];
 }
 
 export function LeadAssignment({
@@ -69,11 +66,11 @@ export function LeadAssignment({
   currentUserId,
   onAssignmentChange,
   loanActionInfo,
+  isUserInStageTeam = false,
+  stageTeamMembers = [],
 }: LeadAssignmentProps) {
-  const [users, setUsers] = useState<MifosUser[]>([]);
   const [selectedUserId, setSelectedUserId] = useState<string>("");
   const [isLoading, setIsLoading] = useState(false);
-  const [isFetchingUsers, setIsFetchingUsers] = useState(false);
   const [isAssigned, setIsAssigned] = useState(!!currentAssignment?.userId);
   const [assignedUser, setAssignedUser] = useState<{
     userId: number | null;
@@ -85,36 +82,6 @@ export function LeadAssignment({
   const isCurrentUserAssigned =
     currentUserId && assignedUser?.userId === currentUserId;
 
-  // Check if loan is disbursed (active status means disbursed)
-  const isDisbursed =
-    loanActionInfo?.loanStatus?.toLowerCase() === "active" ||
-    loanActionInfo?.loanStatus?.toLowerCase().includes("disbursed");
-
-  // Fetch Mifos users
-  const fetchUsers = async () => {
-    setIsFetchingUsers(true);
-    try {
-      const response = await fetch("/api/fineract/users");
-      if (response.ok) {
-        const data = await response.json();
-        setUsers(data.users || []);
-      } else {
-        console.error("Failed to fetch users");
-        toast.error("Failed to fetch users");
-      }
-    } catch (error) {
-      console.error("Error fetching users:", error);
-      toast.error("Error fetching users");
-    } finally {
-      setIsFetchingUsers(false);
-    }
-  };
-
-  useEffect(() => {
-    if (isSubmitted) {
-      fetchUsers();
-    }
-  }, [isSubmitted]);
 
   // Update local state when currentAssignment changes
   useEffect(() => {
@@ -131,11 +98,11 @@ export function LeadAssignment({
 
     setIsLoading(true);
     try {
-      const selectedUser = users.find(
-        (u) => u.id.toString() === selectedUserId
+      const selectedMember = stageTeamMembers.find(
+        (m) => m.userId === selectedUserId
       );
-      if (!selectedUser) {
-        toast.error("Selected user not found");
+      if (!selectedMember) {
+        toast.error("Selected user not found in this team");
         return;
       }
 
@@ -143,8 +110,8 @@ export function LeadAssignment({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          mifosUserId: selectedUser.id,
-          mifosUserName: selectedUser.displayName,
+          mifosUserId: Number(selectedMember.userId),
+          mifosUserName: selectedMember.name,
           assignedByUserId: currentUserId?.toString() || null,
         }),
       });
@@ -157,8 +124,7 @@ export function LeadAssignment({
           userName: data.lead.assignedToUserName,
           assignedAt: data.lead.assignedAt,
         });
-        toast.success(`Lead assigned to ${selectedUser.displayName}`);
-        // Dispatch event to notify all components to refresh
+        toast.success(`Lead assigned to ${selectedMember.name}`);
         window.dispatchEvent(
           new CustomEvent("assignment-change", {
             detail: { leadId, userId: data.lead.assignedToUserId },
@@ -184,9 +150,11 @@ export function LeadAssignment({
       return;
     }
 
-    const currentUser = users.find((u) => u.id === currentUserId);
-    if (!currentUser) {
-      toast.error("Current user not found in user list");
+    const currentMember = stageTeamMembers.find(
+      (m) => String(m.userId) === String(currentUserId)
+    );
+    if (!currentMember) {
+      toast.error("You are not a member of the team for this stage");
       return;
     }
 
@@ -196,8 +164,8 @@ export function LeadAssignment({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          mifosUserId: currentUser.id,
-          mifosUserName: currentUser.displayName,
+          mifosUserId: Number(currentMember.userId),
+          mifosUserName: currentMember.name,
           assignedByUserId: currentUserId.toString(),
         }),
       });
@@ -284,12 +252,7 @@ export function LeadAssignment({
             <Users className="h-5 w-5 text-muted-foreground" />
             <CardTitle className="text-lg">Assignment</CardTitle>
           </div>
-          {isDisbursed ? (
-            <Badge className="bg-green-500 text-white">
-              <Banknote className="h-3 w-3 mr-1" />
-              Disbursed
-            </Badge>
-          ) : isAssigned && assignedUser?.userName ? (
+          {isAssigned && assignedUser?.userName ? (
             <Badge
               variant="outline"
               className="bg-green-50 text-green-700 border-green-200"
@@ -300,9 +263,7 @@ export function LeadAssignment({
           ) : null}
         </div>
         <CardDescription>
-          {isDisbursed
-            ? "Loan has been disbursed - no further assignments allowed"
-            : isAssigned
+          {isAssigned
             ? "This lead is currently assigned for review"
             : "Assign this lead to a user for review and action"}
         </CardDescription>
@@ -373,8 +334,8 @@ export function LeadAssignment({
           </div>
         )}
 
-        {/* Assignment Controls - Only show if not disbursed */}
-        {!isDisbursed && (
+        {/* Assignment Controls - Only show if user is in the stage's team */}
+        {isUserInStageTeam && (
           <>
             {isAssigned && assignedUser?.userName ? (
               <div className="pt-2 border-t">
@@ -382,21 +343,19 @@ export function LeadAssignment({
                   <Select
                     value={selectedUserId}
                     onValueChange={setSelectedUserId}
-                    disabled={isFetchingUsers || isLoading}
+                    disabled={isLoading}
                   >
                     <SelectTrigger className="flex-1">
                       <SelectValue placeholder="Reassign to..." />
                     </SelectTrigger>
                     <SelectContent>
-                      {users.map((user) => (
-                        <SelectItem key={user.id} value={user.id.toString()}>
+                      {stageTeamMembers.map((member) => (
+                        <SelectItem key={member.userId} value={member.userId}>
                           <div className="flex items-center gap-2">
-                            <span>{user.displayName}</span>
-                            {user.officeName && (
-                              <span className="text-xs text-muted-foreground">
-                                ({user.officeName})
-                              </span>
-                            )}
+                            <span>{member.name}</span>
+                            <span className="text-xs text-muted-foreground">
+                              ({member.role})
+                            </span>
                           </div>
                         </SelectItem>
                       ))}
@@ -430,27 +389,25 @@ export function LeadAssignment({
                   <Select
                     value={selectedUserId}
                     onValueChange={setSelectedUserId}
-                    disabled={isFetchingUsers || isLoading}
+                    disabled={isLoading}
                   >
                     <SelectTrigger className="flex-1">
                       <SelectValue
                         placeholder={
-                          isFetchingUsers
-                            ? "Loading users..."
-                            : "Select user..."
+                          stageTeamMembers.length === 0
+                            ? "No team members"
+                            : "Select team member..."
                         }
                       />
                     </SelectTrigger>
                     <SelectContent>
-                      {users.map((user) => (
-                        <SelectItem key={user.id} value={user.id.toString()}>
+                      {stageTeamMembers.map((member) => (
+                        <SelectItem key={member.userId} value={member.userId}>
                           <div className="flex items-center gap-2">
-                            <span>{user.displayName}</span>
-                            {user.officeName && (
-                              <span className="text-xs text-muted-foreground">
-                                ({user.officeName})
-                              </span>
-                            )}
+                            <span>{member.name}</span>
+                            <span className="text-xs text-muted-foreground">
+                              ({member.role})
+                            </span>
                           </div>
                         </SelectItem>
                       ))}
@@ -483,6 +440,11 @@ export function LeadAssignment({
               </div>
             )}
           </>
+        )}
+        {!isUserInStageTeam && (
+          <div className="text-xs text-muted-foreground text-center py-2 bg-muted/40 rounded-md">
+            You are not in the team for the current stage
+          </div>
         )}
       </CardContent>
     </Card>
