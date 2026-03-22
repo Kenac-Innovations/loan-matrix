@@ -216,8 +216,8 @@ export default function ReportsPage() {
         });
         setParameters(defaultParams);
 
-        // Load options for select parameters
-        await loadParameterOptions(params);
+        // Load options for select parameters (pass defaultParams for cascading: e.g. loanOfficerIdSelectAll needs R_officeId)
+        await loadParameterOptions(params, defaultParams);
       } else {
         setReportParameters([]);
       }
@@ -233,19 +233,35 @@ export default function ReportsPage() {
     }
   };
 
-  const loadParameterOptions = async (params: ReportParameter[]) => {
+  const loadParameterOptions = async (
+    params: ReportParameter[],
+    currentParamValues: Record<string, string> = {}
+  ) => {
     const options: Record<string, ParameterOption[]> = {};
 
     for (const param of params) {
-      if (
-        param.parameter_displayType === "select" &&
-        (param.selectOne === "Y" || param.selectAll === "Y")
-      ) {
+      // Fetch options for all select parameters (incl. parType etc. where selectOne/selectAll may be null)
+      if (param.parameter_displayType === "select") {
         try {
+          // Build params for dependent selects (e.g. loanOfficerIdSelectAll needs R_officeId)
+          const fetchParams: Record<string, string> = { ...currentParamValues };
+          if (param.parentparametername) {
+            const parentParam = params.find(
+              (p) => p.parameter_name === param.parentparametername
+            );
+            if (parentParam && !fetchParams[parentParam.parameter_variable]) {
+              fetchParams[parentParam.parameter_variable] =
+                parentParam.parameter_variable === "officeId" ? "1" : "";
+            }
+          }
+
+          const searchParams = new URLSearchParams({
+            action: "parameterOptions",
+            parameterName: param.parameter_name,
+            ...fetchParams,
+          });
           const response = await fetch(
-            `/api/fineract/reports?action=parameterOptions&parameterName=${encodeURIComponent(
-              param.parameter_name
-            )}`
+            `/api/fineract/reports?${searchParams.toString()}`
           );
           if (response.ok) {
             const optionData = await response.json();
@@ -350,11 +366,70 @@ export default function ReportsPage() {
     URL.revokeObjectURL(url);
   };
 
-  const handleParameterChange = (paramVariable: string, value: string) => {
-    setParameters((prev) => ({
-      ...prev,
-      [paramVariable]: value,
-    }));
+  const handleParameterChange = async (
+    paramVariable: string,
+    value: string
+  ) => {
+    const newParams = { ...parameters, [paramVariable]: value };
+
+    // Cascading: reload options for params that depend on this one (e.g. Loan Officer depends on Office)
+    const parentParam = reportParameters.find(
+      (p) => p.parameter_variable === paramVariable
+    );
+    const parentName = parentParam?.parameter_name;
+    const toReload = reportParameters.filter(
+      (p) =>
+        p.parameter_displayType === "select" &&
+        (p.selectOne === "Y" || p.selectAll === "Y") &&
+        p.parentparametername === parentName
+    );
+
+    if (toReload.length > 0) {
+      toReload.forEach((p) => {
+        newParams[p.parameter_variable] = "";
+      });
+      const newOptions = { ...parameterOptions };
+      for (const param of toReload) {
+        try {
+          const fetchParams: Record<string, string> = { ...newParams };
+          if (param.parentparametername) {
+            const parent = reportParameters.find(
+              (p) => p.parameter_name === param.parentparametername
+            );
+            if (parent && !fetchParams[parent.parameter_variable]) {
+              fetchParams[parent.parameter_variable] =
+                parent.parameter_variable === "officeId" ? "1" : "";
+            }
+          }
+          const searchParams = new URLSearchParams({
+            action: "parameterOptions",
+            parameterName: param.parameter_name,
+            ...fetchParams,
+          });
+          const response = await fetch(
+            `/api/fineract/reports?${searchParams.toString()}`
+          );
+          if (response.ok) {
+            const optionData = await response.json();
+            newOptions[param.parameter_name] =
+              optionData.data && optionData.data.length > 0
+                ? optionData.data.map((item: any) => ({
+                    id: item.row[0],
+                    tc: item.row[1],
+                  }))
+                : [];
+          }
+        } catch (error) {
+          console.error(
+            `Error reloading options for ${param.parameter_name}:`,
+            error
+          );
+        }
+      }
+      setParameterOptions(newOptions);
+    }
+
+    setParameters(newParams);
   };
 
   const renderParameterInput = (param: ReportParameter) => {

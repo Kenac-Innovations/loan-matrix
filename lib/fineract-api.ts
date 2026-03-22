@@ -769,10 +769,24 @@ export class FineractAPIService {
   }
 
   // Get parameter options (for select dropdowns)
-  async getParameterOptions(parameterName: string): Promise<any> {
-    const response = await this.client.get(
-      `/runreports/${parameterName}?parameterType=true`
-    );
+  // Pass parent/dependent params (e.g. R_officeId) for cascading selects like loanOfficerIdSelectAll
+  async getParameterOptions(
+    parameterName: string,
+    params: Record<string, any> = {}
+  ): Promise<any> {
+    const searchParams = new URLSearchParams();
+    searchParams.set("parameterType", "true");
+
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== "") {
+        const paramKey = key.startsWith("R_") ? key : `R_${key}`;
+        searchParams.append(paramKey, value.toString());
+      }
+    });
+
+    const queryString = searchParams.toString();
+    const url = `/runreports/${encodeURIComponent(parameterName)}?${queryString}`;
+    const response = await this.client.get(url);
     return response.data;
   }
 
