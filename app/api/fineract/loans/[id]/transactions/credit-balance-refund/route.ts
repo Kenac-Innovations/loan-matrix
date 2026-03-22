@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchFineractAPI } from "@/lib/api";
+import { getFineractErrorMessage } from "@/lib/fineract-error";
 
 export async function POST(
   request: NextRequest,
@@ -20,12 +21,10 @@ export async function POST(
     return NextResponse.json(data);
   } catch (error: any) {
     console.error("Error creating credit balance refund:", error);
-    if (error.status && error.errorData) {
-      return NextResponse.json(error.errorData, { status: error.status });
-    }
+    const status = error.status || 500;
     return NextResponse.json(
-      { error: error.message || "Failed to create credit balance refund" },
-      { status: 500 }
+      { error: getFineractErrorMessage(error) },
+      { status }
     );
   }
 }
