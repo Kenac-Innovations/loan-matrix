@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { fineractFetch } from "@/lib/fineract-fetch";
 import {
   Dialog,
   DialogContent,
@@ -91,18 +92,13 @@ export default function SellLoanModal({
         transferExternalId: form.transferExternalId || undefined,
       };
 
-      const response = await fetch(`/api/fineract/external-asset-owners/transfers/loans/${loanId}/sale`, {
+      const response = await fineractFetch(`/api/fineract/external-asset-owners/transfers/loans/${loanId}/sale`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify(payload),
       });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error?.defaultUserMessage || `Failed to sell loan: ${response.statusText}`);
-      }
 
       const result = await response.json();
       

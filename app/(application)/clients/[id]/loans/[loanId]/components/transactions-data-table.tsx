@@ -13,6 +13,7 @@ import { MoreVertical } from "lucide-react";
 import { Transaction } from "@/shared/types/transaction";
 import { formatCurrency } from "@/lib/format-currency";
 import { formatDate } from "@/lib/format-date";
+import { getTransactionTypeDisplayLabel } from "@/lib/format-transaction";
 import { GenericDataTable } from "@/components/tables/generic-data-table";
 import { DataTableColumn, DataTableFilter } from "@/shared/types/data-table";
 
@@ -70,12 +71,18 @@ export function TransactionsDataTable({
     }
   ]);
 
-  // Get unique transaction types for filter options
+  // Get unique transaction types for filter options (show "Admin Fee" for repayment at disbursement)
   const transactionTypes = useMemo(() => {
     const types = Array.from(
-      new Set(displayTransactions.map((t) => t.type?.value).filter(Boolean))
+      new Set(displayTransactions.map((t) => getTransactionTypeDisplayLabel(t.type)).filter(Boolean))
     );
-    return types.sort().map(type => ({ label: type || '', value: type || '' }));
+    return types.sort().map((displayLabel) => {
+      // Use actual type.value for filtering; "Admin Fee" maps to "Repayment (at time of disbursement)"
+      const filterValue = displayLabel === "Admin Fee"
+        ? "Repayment (at time of disbursement)"
+        : displayLabel;
+      return { label: displayLabel, value: filterValue };
+    }).filter((t) => t.label !== "Admin Fee"); // Admin Fee is in hardcoded filterOptions
   }, [displayTransactions]);
 
   const getTransactionRef = (transaction: Transaction): string | undefined => {
@@ -119,14 +126,15 @@ export function TransactionsDataTable({
       accessorKey: "type",
       cell: ({ getValue }) => {
         const type = getValue() as Transaction["type"];
-        return type?.value || "";
+        return getTransactionTypeDisplayLabel(type);
       },
+      getExportValue: (row) => getTransactionTypeDisplayLabel(row.type),
       filterType: "select",
       filterOptions: [
         { label: "All Types", value: "all" },
         { label: "Disbursement", value: "disbursement" },
         { label: "Repayment", value: "repayment" },
-        { label: "Repayment (at disbursement)", value: "repaymentAtDisbursement" },
+        { label: "Admin Fee", value: "Repayment (at time of disbursement)" },
         { label: "Accrual", value: "accrual" },
         ...transactionTypes,
       ],

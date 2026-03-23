@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { fineractFetch } from "@/lib/fineract-fetch";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -48,12 +49,7 @@ export default function CloseModal({ isOpen, onClose, loanId, onSuccess }: Close
   const fetchTemplate = async () => {
     try {
       setTemplateLoading(true);
-      const response = await fetch(`/api/fineract/loans/${loanId}/transactions/template?command=close`);
-      
-      if (!response.ok) {
-        throw new Error(`Failed to fetch template: ${response.statusText}`);
-      }
-
+      const response = await fineractFetch(`/api/fineract/loans/${loanId}/transactions/template?command=close`);
       const template: CloseTemplateResponse = await response.json();
       
       // Auto-populate the closed on date from the response
@@ -70,7 +66,7 @@ export default function CloseModal({ isOpen, onClose, loanId, onSuccess }: Close
       console.error("Error fetching template:", error);
       toast({
         title: "Error",
-        description: "Failed to fetch close template. Please try again.",
+        description: error instanceof Error ? error.message : "Failed to fetch close template. Please try again.",
         variant: "destructive",
       });
     } finally {
@@ -106,18 +102,13 @@ export default function CloseModal({ isOpen, onClose, loanId, onSuccess }: Close
         transactionDate: formattedDate
       };
 
-      const response = await fetch(`/api/fineract/loans/${loanId}/transactions?command=close`, {
+      await fineractFetch(`/api/fineract/loans/${loanId}/transactions?command=close`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(payload),
       });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || `Failed to close loan: ${response.statusText}`);
-      }
 
       toast({
         title: "Success",
