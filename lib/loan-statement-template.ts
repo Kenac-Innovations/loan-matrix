@@ -498,7 +498,7 @@ export function generateLoanStatementHTML(data: LoanStatementData): string {
       </div>
     </div>
   </div>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+  <script src="/html2pdf.bundle.min.js"></script>
   <script>
     (function() {
       var btn = document.getElementById('download-pdf-btn');
