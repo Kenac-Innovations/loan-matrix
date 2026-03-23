@@ -1292,7 +1292,7 @@ const CURRENCY_PATTERNS = [
   "overdue",
 ];
 const PERCENTAGE_PATTERNS = ["interest_rate", "rate_", "_rate", "percent", "%"];
-const SKIP_NUMBER_FORMAT_PATTERNS = ["id", "account", "phone", "mobile"];
+const SKIP_NUMBER_FORMAT_PATTERNS = ["id", "account", "phone", "mobile", "nrc", "external"];
 const PHONE_PATTERNS = ["phone", "mobile", "cell", "tel"];
 
 function isCurrencyColumn(colLower: string): boolean {
