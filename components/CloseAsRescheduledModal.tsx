@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { fineractFetch } from "@/lib/fineract-fetch";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -64,19 +65,14 @@ export default function CloseAsRescheduledModal({
   const fetchCloseAsRescheduledTemplate = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`/api/fineract/loans/${loanId}/transactions/template?command=close-rescheduled`);
-      
-      if (!response.ok) {
-        throw new Error(`Failed to fetch close as rescheduled template: ${response.statusText}`);
-      }
-
+      const response = await fineractFetch(`/api/fineract/loans/${loanId}/transactions/template?command=close-rescheduled`);
       const data = await response.json();
       setTemplate(data);
     } catch (error) {
       console.error("Error fetching close as rescheduled template:", error);
       toast({
         title: "Error",
-        description: "Failed to load close as rescheduled template. Please try again.",
+        description: error instanceof Error ? error.message : "Failed to load close as rescheduled template. Please try again.",
         variant: "destructive",
       });
     } finally {
@@ -112,20 +108,13 @@ export default function CloseAsRescheduledModal({
         transactionDate: formattedDate,
       };
 
-      const response = await fetch(`/api/fineract/loans/${loanId}/transactions?command=close-rescheduled`, {
+      await fineractFetch(`/api/fineract/loans/${loanId}/transactions?command=close-rescheduled`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(payload),
       });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || `Failed to submit close as rescheduled: ${response.statusText}`);
-      }
-
-      const result = await response.json();
       
       toast({
         title: "Success",

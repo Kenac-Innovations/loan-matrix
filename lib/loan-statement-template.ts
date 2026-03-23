@@ -329,10 +329,67 @@ export function generateLoanStatementHTML(data: LoanStatementData): string {
         -webkit-print-color-adjust: exact;
         print-color-adjust: exact;
       }
+      
+      .statement-toolbar {
+        display: none !important;
+      }
+    }
+    
+    /* Statement toolbar - hidden when printing */
+    .statement-toolbar {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      display: flex;
+      gap: 10px;
+      padding: 12px 20px;
+      margin: -20px -20px 20px -20px;
+      background: #f5f5f5;
+      border-bottom: 1px solid #ddd;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    }
+    
+    .statement-toolbar button,
+    .statement-toolbar a {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 16px;
+      font-size: 13px;
+      font-family: inherit;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      background: #fff;
+      color: #333;
+      cursor: pointer;
+      text-decoration: none;
+    }
+    
+    .statement-toolbar button:hover,
+    .statement-toolbar a:hover {
+      background: #e8e8e8;
+      border-color: #999;
+    }
+    
+    .statement-toolbar-tip {
+      flex: 1;
+      font-size: 12px;
+      color: #555;
+      line-height: 1.4;
     }
   </style>
 </head>
 <body>
+  <div class="statement-toolbar">
+    <span class="statement-toolbar-tip">To hide browser-added headers and footers (URL, date, page numbers), open "More settings" in the print dialog and turn off "Headers and footers".</span>
+    <button type="button" onclick="window.print()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polyline points="6 9 6 2 18 2 18 9"/>
+        <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
+      </svg>
+      Print
+    </button>
+  </div>
   <div class="container">
     <!-- Header Section -->
     <div class="header">

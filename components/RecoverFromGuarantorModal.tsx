@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { fineractFetch } from "@/lib/fineract-fetch";
 import {
   Dialog,
   DialogContent,
@@ -31,18 +32,13 @@ export default function RecoverFromGuarantorModal({
   const handleConfirm = async () => {
     setIsSubmitting(true);
     try {
-      const response = await fetch(`/api/fineract/loans/${loanId}/recover-guarantees`, {
+      const response = await fineractFetch(`/api/fineract/loans/${loanId}/recover-guarantees`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({}),
       });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to recover from guarantor");
-      }
 
       const data = await response.json();
       
