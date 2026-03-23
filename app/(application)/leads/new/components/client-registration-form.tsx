@@ -453,6 +453,7 @@ export function ClientRegistrationForm({
   const [selectedClientId, setSelectedClientId] = useState<number | null>(null);
   const [isFormDisabled, setIsFormDisabled] = useState(false);
   const [activeClientTab, setActiveClientTab] = useState("general");
+  const [isCreateClientSubmitting, setIsCreateClientSubmitting] = useState(false);
   
   // Fineract client ID - declared early so it can be used in useEffects
   const [fineractClientId, setFineractClientId] = useState<number | null>(null);
@@ -5786,6 +5787,25 @@ export function ClientRegistrationForm({
 
               return (
                 <FormWrapper {...formProps}>
+                  {/* Unclosable loading modal to prevent double-click on Create Client (standalone page only) */}
+                  {isCreateClientSubmitting && !externalForm && (
+                    <div
+                      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm"
+                      aria-live="polite"
+                      aria-busy="true"
+                      style={{ pointerEvents: "all" }}
+                    >
+                      <div className="flex flex-col items-center gap-4 rounded-lg bg-background px-8 py-6 shadow-2xl">
+                        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+                        <p className="text-lg font-medium text-foreground">
+                          Creating client...
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          Please wait, do not close or refresh.
+                        </p>
+                      </div>
+                    </div>
+                  )}
                   {/* Hidden field for current lead ID */}
                   <input
                     type="hidden"
@@ -7277,17 +7297,25 @@ export function ClientRegistrationForm({
                             <Button
                               type="button"
                               className={`transition-all duration-300 ease-in-out ${
-                                isSubmitting
+                                isSubmitting || isCreateClientSubmitting
                                   ? "bg-blue-600 cursor-not-allowed opacity-75"
                                   : clientLookupStatus === "found"
                                   ? "bg-green-600 hover:bg-green-700"
                                   : "bg-blue-500 hover:bg-blue-600"
                               }`}
                               disabled={
-                                isSubmitting || isFormDisabled || isSaving
+                                isSubmitting ||
+                                isFormDisabled ||
+                                isSaving ||
+                                isCreateClientSubmitting
                               }
                               onClick={async (e) => {
                                 e.preventDefault();
+
+                                // Show unclosable loading modal immediately on standalone create page to prevent double-click
+                                if (!externalForm) {
+                                  setIsCreateClientSubmitting(true);
+                                }
 
                                 // Capture form element BEFORE any async operations
                                 // (React synthetic events are recycled after await, making e.currentTarget null)
@@ -7329,6 +7357,7 @@ export function ClientRegistrationForm({
                                     description:
                                       "Please fix all errors in the form before proceeding to the next step. Check the console for details.",
                                   });
+                                  if (!externalForm) setIsCreateClientSubmitting(false);
                                   return;
                                 }
 
@@ -7386,9 +7415,11 @@ export function ClientRegistrationForm({
                                         description:
                                           "Failed to save changes. Please try again.",
                                       });
+                                      if (!externalForm) setIsCreateClientSubmitting(false);
                                       return; // Don't navigate if save fails
                                     } finally {
                                       setIsSaving(false);
+                                      if (!externalForm) setIsCreateClientSubmitting(false);
                                     }
                                   } else if (externalForm && onFormSubmit) {
                                     // Client doesn't exist yet, submit the form to create it
@@ -7605,9 +7636,11 @@ export function ClientRegistrationForm({
                                           createError.message ||
                                           "Failed to create client in Fineract. Please try again.",
                                       });
+                                      if (!externalForm) setIsCreateClientSubmitting(false);
                                       return; // Don't navigate if creation fails
                                     } finally {
                                       setIsSaving(false);
+                                      if (!externalForm) setIsCreateClientSubmitting(false);
                                     }
                                   } else {
                                     // For non-external form with existing client, trigger form submission
@@ -7653,6 +7686,9 @@ export function ClientRegistrationForm({
                                     description:
                                       "Failed to save changes. Please try again.",
                                   });
+                                  if (!externalForm) setIsCreateClientSubmitting(false);
+                                } finally {
+                                  if (!externalForm) setIsCreateClientSubmitting(false);
                                 }
                               }}
                             >
