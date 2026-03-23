@@ -81,7 +81,7 @@ const TABS: TabConfig[] = [
   },
   {
     id: "pending",
-    label: "Pending Approval",
+    label: "Appraisal",
     report: "pending",
     bgColor: "bg-yellow-500 dark:bg-yellow-600",
     activeBg: "data-[state=active]:bg-yellow-500 dark:data-[state=active]:bg-yellow-600",
@@ -90,7 +90,7 @@ const TABS: TabConfig[] = [
   },
   {
     id: "approved",
-    label: "Approved",
+    label: "Disbursement",
     report: "approved",
     bgColor: "bg-blue-500 dark:bg-blue-600",
     activeBg: "data-[state=active]:bg-blue-500 dark:data-[state=active]:bg-blue-600",
@@ -99,7 +99,7 @@ const TABS: TabConfig[] = [
   },
   {
     id: "disbursed",
-    label: "Disbursed",
+    label: "Payout",
     report: "disbursed",
     bgColor: "bg-green-500 dark:bg-green-600",
     activeBg: "data-[state=active]:bg-green-500 dark:data-[state=active]:bg-green-600",
@@ -108,7 +108,7 @@ const TABS: TabConfig[] = [
   },
   {
     id: "payout",
-    label: "Paid Out",
+    label: "Completed",
     report: "payout",
     bgColor: "bg-emerald-600 dark:bg-emerald-700",
     activeBg: "data-[state=active]:bg-emerald-600 dark:data-[state=active]:bg-emerald-700",
@@ -656,7 +656,7 @@ export function LeadsStatusTabs() {
     // Pipeline stage + progress column (skip for drafts)
     if (tabReport !== "drafts") columns.push({
       id: "_pipeline",
-      header: "Pipeline",
+      header: "Progress",
       enableSorting: true,
       cell: ({ row }) => {
         const rowData = row.original;
@@ -685,17 +685,12 @@ export function LeadsStatusTabs() {
             : null;
 
         return (
-          <div className="group relative min-w-[140px]">
-            <div className="flex items-center gap-1.5 mb-1">
+          <div className="group relative min-w-[120px]">
+            <div className="flex items-center gap-2">
               <div
                 className="w-2 h-2 rounded-full shrink-0"
                 style={{ backgroundColor: prog.stageColor }}
               />
-              <span className="text-xs font-medium truncate leading-tight">
-                {prog.stageName}
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
               <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
                 <div
                   className="h-full rounded-full transition-all"
@@ -709,7 +704,7 @@ export function LeadsStatusTabs() {
                 {prog.isFinal ? "100" : prog.progressPct}%
               </span>
             </div>
-            <div className="flex items-center gap-1 mt-0.5">
+            <div className="flex items-center gap-1 mt-1">
               <Timer className="h-2.5 w-2.5 shrink-0" style={{ color: "currentColor" }} />
               <span className={cn("text-[10px] tabular-nums", slaColor)}>
                 {slaLabel}
@@ -721,10 +716,11 @@ export function LeadsStatusTabs() {
               )}
             </div>
 
-            {/* Hover tooltip with transitions */}
+            {/* Hover tooltip with stage name + transitions */}
             {transitionsHtml && (
               <div className="hidden group-hover:block absolute z-50 left-0 top-full mt-1 w-64 bg-popover border rounded-lg shadow-lg p-3">
-                <p className="text-xs font-medium mb-2">Transition History</p>
+                <p className="text-xs font-medium mb-1">{prog.stageName}</p>
+                <p className="text-[11px] text-muted-foreground mb-2">Transition History</p>
                 <div className="space-y-1.5 max-h-40 overflow-y-auto">
                   {transitionsHtml.map((t: any, i: number) => (
                     <div
@@ -1094,7 +1090,7 @@ export function LeadsStatusTabs() {
               {pipelineStats.slaStatus}
             </div>
             <p className="text-[10px] sm:text-xs text-muted-foreground mt-1">
-              {pipelineStats.pending} pending approval
+              {pipelineStats.pending} in appraisal
             </p>
           </CardContent>
         </Card>
@@ -1106,7 +1102,7 @@ export function LeadsStatusTabs() {
             <div>
               <CardTitle className="text-base sm:text-lg">Loan Applications</CardTitle>
               <CardDescription className="text-xs sm:text-sm">
-                View loan applications by status for the selected period
+                View loan applications by stage for the selected period
               </CardDescription>
             </div>
             <div className="flex items-center gap-2">
