@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAccessToken, getFineractTenantId } from "@/lib/api";
 import {
   generateLoanStatementHTML,
-  getStatementContainerAndStyles,
   transformFineractLoanToStatement,
 } from "@/lib/loan-statement-template";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
@@ -168,17 +167,6 @@ export async function GET(
           clientName: loanData.clientName,
           status: loanData.status?.value,
         },
-      });
-    }
-
-    // Embeddable format for React pages (e.g. with react-to-pdf)
-    if (format === "html-embed") {
-      const { container, styles } = getStatementContainerAndStyles(statementData);
-      return NextResponse.json({
-        success: true,
-        container,
-        styles,
-        accountNumber: loanData.accountNo,
       });
     }
 
