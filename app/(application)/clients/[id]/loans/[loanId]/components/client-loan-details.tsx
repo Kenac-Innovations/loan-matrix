@@ -311,6 +311,41 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
   useEffect(() => {
     const container = document.getElementById('loan-actions-container');
     if (container && loan) {
+      const isClosed = loan?.status?.closed === true;
+
+      // When loan is closed, only show: Goodwill credit, Interest payment waiver, Payout refund, Merchant issued refund
+      const closedActionsOnly = `
+        <div class="py-2">
+          <button class="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 text-sm" data-action="goodwill-credit">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 2v20m9-2-3-3m-6 3-3-3"/>
+            </svg>
+            Goodwill Credit
+          </button>
+          <button class="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 text-sm" data-action="interest-payment-waiver">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M18 6L6 18M6 6l12 12"/>
+            </svg>
+            Interest Payment Waiver
+          </button>
+          <button class="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 text-sm" data-action="payout-refund">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 7v6h6"/>
+              <path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/>
+            </svg>
+            Payout Refund
+          </button>
+          <button class="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 text-sm" data-action="merchant-issued-refund">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+              <line x1="8" y1="21" x2="16" y2="21"/>
+              <line x1="12" y1="17" x2="12" y2="21"/>
+            </svg>
+            Merchant Issued Refund
+          </button>
+        </div>
+      `;
+
       // Create the loan actions element with dropdown
       const actionsDiv = document.createElement('div');
       actionsDiv.className = 'relative';
@@ -323,6 +358,7 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
           <span>Loan Actions</span>
         </button>
         <div class="absolute top-full right-0 mt-2 w-56 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 hidden" id="loan-actions-dropdown">
+          ${isClosed ? closedActionsOnly : `
           <div class="py-2">
             <button class="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed" data-action="approve-loan" id="approve-loan-btn">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -571,6 +607,7 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
               </div>
             </div>
           </div>
+          `}
         </div>
       `;
       
