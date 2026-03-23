@@ -382,6 +382,14 @@ export function generateLoanStatementHTML(data: LoanStatementData): string {
 <body>
   <div class="statement-toolbar">
     <span class="statement-toolbar-tip">To hide browser-added headers and footers (URL, date, page numbers), open "More settings" in the print dialog and turn off "Headers and footers".</span>
+    <button type="button" id="download-pdf-btn" data-filename="loan-statement-${data.accountNumber}.pdf">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+        <polyline points="7 10 12 15 17 10"/>
+        <line x1="12" y1="15" x2="12" y2="3"/>
+      </svg>
+      Download PDF
+    </button>
     <button type="button" onclick="window.print()">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <polyline points="6 9 6 2 18 2 18 9"/>
@@ -490,6 +498,34 @@ export function generateLoanStatementHTML(data: LoanStatementData): string {
       </div>
     </div>
   </div>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+  <script>
+    (function() {
+      var btn = document.getElementById('download-pdf-btn');
+      if (!btn) return;
+      var filename = btn.getAttribute('data-filename') || 'loan-statement.pdf';
+      btn.onclick = function() {
+        btn.disabled = true;
+        btn.textContent = 'Generating…';
+        var opt = {
+          margin: 10,
+          filename: filename,
+          image: { type: 'jpeg', quality: 0.98 },
+          html2canvas: { scale: 2, useCORS: true },
+          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+          pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
+        };
+        var svgHtml = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Download PDF';
+        html2pdf().set(opt).from(document.querySelector('.container')).save().then(function() {
+          btn.disabled = false;
+          btn.innerHTML = svgHtml;
+        }).catch(function() {
+          btn.disabled = false;
+          btn.innerHTML = svgHtml;
+        });
+      };
+    })();
+  </script>
 </body>
 </html>`;
 }
