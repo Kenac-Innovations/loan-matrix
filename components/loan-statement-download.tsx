@@ -69,8 +69,8 @@ export function LoanStatementDownload({
   const handleViewStatement = async () => {
     setIsLoading(true);
     try {
-      // Open statement in new tab
-      window.open(`/api/fineract/loans/${loanId}/statement?format=html`, "_blank");
+      // Open statement page in new tab (has react-to-pdf download button)
+      window.open(`/loans/${loanId}/statement`, "_blank");
     } catch (error) {
       console.error("Error viewing statement:", error);
       toast.error("Failed to view statement");
@@ -161,7 +161,7 @@ export function ViewStatementButton({
   const handleClick = () => {
     setIsLoading(true);
     try {
-      window.open(`/api/fineract/loans/${loanId}/statement?format=html`, "_blank");
+      window.open(`/loans/${loanId}/statement`, "_blank");
     } catch (error) {
       console.error("Failed to open statement:", error);
       toast.error("Failed to open statement");
