@@ -788,8 +788,8 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                 console.log("Loan Screen Report");
                 break;
               case 'view-statement':
-                // Open loan statement page in new tab (has react-to-pdf download button)
-                window.open(`/loans/${loanId}/statement`, '_blank');
+                // Open loan statement in new tab
+                window.open(`/api/fineract/loans/${loanId}/statement?format=html`, '_blank');
                 break;
               case 'view-guarantors':
                 setShowGuarantorsModal(true);
