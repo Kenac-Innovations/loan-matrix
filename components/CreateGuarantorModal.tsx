@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { fineractFetch } from "@/lib/fineract-fetch";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -99,12 +100,7 @@ export default function CreateGuarantorModal({ isOpen, onClose, loanId, onSucces
   const fetchTemplate = async () => {
     try {
       setTemplateLoading(true);
-      const response = await fetch(`/api/fineract/loans/${loanId}/guarantors/template`);
-      
-      if (!response.ok) {
-        throw new Error(`Failed to fetch template: ${response.statusText}`);
-      }
-
+      const response = await fineractFetch(`/api/fineract/loans/${loanId}/guarantors/template`);
       const data: GuarantorTemplate = await response.json();
       setTemplate(data);
       
@@ -116,7 +112,7 @@ export default function CreateGuarantorModal({ isOpen, onClose, loanId, onSucces
       console.error("Error fetching template:", error);
       toast({
         title: "Error",
-        description: "Failed to fetch guarantor template. Please try again.",
+        description: error instanceof Error ? error.message : "Failed to fetch guarantor template. Please try again.",
         variant: "destructive",
       });
     } finally {
@@ -191,18 +187,13 @@ export default function CreateGuarantorModal({ isOpen, onClose, loanId, onSucces
         };
       }
 
-      const response = await fetch(`/api/fineract/loans/${loanId}/guarantors`, {
+      const response = await fineractFetch(`/api/fineract/loans/${loanId}/guarantors`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(payload),
       });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || `Failed to create guarantor: ${response.statusText}`);
-      }
 
       const result = await response.json();
       

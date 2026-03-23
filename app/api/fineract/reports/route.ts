@@ -66,9 +66,23 @@ export async function GET(request: NextRequest) {
           { status: 400 }
         );
       }
+      // Extract parent/dependent params (e.g. officeId for loanOfficerIdSelectAll)
+      const optionParams: Record<string, any> = {};
+      searchParams.forEach((value, key) => {
+        if (
+          key !== "parameterName" &&
+          key !== "action" &&
+          value !== undefined &&
+          value !== null &&
+          value !== ""
+        ) {
+          optionParams[key] = value;
+        }
+      });
       try {
         const options = await fineractService.getParameterOptions(
-          parameterName
+          parameterName,
+          optionParams
         );
         return NextResponse.json(options);
       } catch (error: any) {

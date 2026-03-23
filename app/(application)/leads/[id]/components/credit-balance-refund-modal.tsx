@@ -1,6 +1,7 @@
 "use client";
 
 import { useCurrency } from "@/contexts/currency-context";
+import { fineractFetch } from "@/lib/fineract-fetch";
 import { useState, useEffect } from "react";
 import {
   Dialog,
@@ -78,13 +79,9 @@ export function CreditBalanceRefundModal({
       setLoading(true);
       setError(null);
 
-      const response = await fetch(
+      const response = await fineractFetch(
         `/api/fineract/loans/${loanId}/transactions/credit-balance-refund-template`
       );
-      if (!response.ok) {
-        throw new Error(`Failed to fetch template: ${response.statusText}`);
-      }
-
       const data: RefundTemplate = await response.json();
       setTemplate(data);
 
@@ -134,7 +131,7 @@ export function CreditBalanceRefundModal({
 
       if (formData.note) payload.note = formData.note;
 
-      const response = await fetch(
+      await fineractFetch(
         `/api/fineract/loans/${loanId}/transactions/credit-balance-refund`,
         {
           method: "POST",
@@ -142,15 +139,6 @@ export function CreditBalanceRefundModal({
           body: JSON.stringify(payload),
         }
       );
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(
-          errorData.defaultUserMessage ||
-            errorData.error ||
-            `Failed to submit credit balance refund: ${response.statusText}`
-        );
-      }
 
       setSuccess(true);
 
