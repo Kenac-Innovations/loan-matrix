@@ -26,7 +26,6 @@ import {
   TrendingUp,
   Target,
   Timer,
-  Wallet,
   ArrowRight,
 } from "lucide-react";
 import { format, startOfDay, endOfDay } from "date-fns";
@@ -105,15 +104,6 @@ const TABS: TabConfig[] = [
     activeBg: "data-[state=active]:bg-green-500 dark:data-[state=active]:bg-green-600",
     inactiveText: "text-green-700 dark:text-green-400",
     icon: <CheckCircle2 className="h-4 w-4" />,
-  },
-  {
-    id: "payout",
-    label: "Completed",
-    report: "payout",
-    bgColor: "bg-emerald-600 dark:bg-emerald-700",
-    activeBg: "data-[state=active]:bg-emerald-600 dark:data-[state=active]:bg-emerald-700",
-    inactiveText: "text-emerald-700 dark:text-emerald-400",
-    icon: <Wallet className="h-4 w-4" />,
   },
   {
     id: "rejected",
@@ -222,7 +212,6 @@ export function LeadsStatusTabs() {
     pending: null,
     approved: null,
     disbursed: null,
-    payout: null,
     rejected: null,
   });
   const [tabCounts, setTabCounts] = useState<Record<string, number>>({
@@ -230,7 +219,6 @@ export function LeadsStatusTabs() {
     pending: 0,
     approved: 0,
     disbursed: 0,
-    payout: 0,
     rejected: 0,
   });
   const [loading, setLoading] = useState<Record<string, boolean>>({
@@ -238,7 +226,6 @@ export function LeadsStatusTabs() {
     pending: false,
     approved: false,
     disbursed: false,
-    payout: false,
     rejected: false,
   });
   const [errors, setErrors] = useState<Record<string, string | null>>({
@@ -246,7 +233,6 @@ export function LeadsStatusTabs() {
     pending: null,
     approved: null,
     disbursed: null,
-    payout: null,
     rejected: null,
   });
   const [navigatingRowId, setNavigatingRowId] = useState<string | null>(null);
@@ -261,7 +247,6 @@ export function LeadsStatusTabs() {
     pending: { branch: "all", loanProduct: "all", submittedBy: "all", stage: "all" },
     approved: { branch: "all", loanProduct: "all", submittedBy: "all", stage: "all" },
     disbursed: { branch: "all", loanProduct: "all", submittedBy: "all", stage: "all" },
-    payout: { branch: "all", loanProduct: "all", submittedBy: "all", stage: "all" },
     rejected: { branch: "all", loanProduct: "all", submittedBy: "all", stage: "all" },
   });
 
@@ -547,7 +532,6 @@ export function LeadsStatusTabs() {
     const pendingData = getRoleScopedData(tabData.pending?.data || []);
     const approvedData = getRoleScopedData(tabData.approved?.data || []);
     const disbursedData = getRoleScopedData(tabData.disbursed?.data || []);
-    const payoutData = getRoleScopedData(tabData.payout?.data || []);
     const rejectedData = getRoleScopedData(tabData.rejected?.data || []);
     
     // Debug log
@@ -557,13 +541,11 @@ export function LeadsStatusTabs() {
       rawPending: tabData.pending?.data?.length || 0,
       rawApproved: tabData.approved?.data?.length || 0,
       rawDisbursed: tabData.disbursed?.data?.length || 0,
-      rawPayout: tabData.payout?.data?.length || 0,
       rawRejected: tabData.rejected?.data?.length || 0,
       scopedDrafts: draftsData.length,
       scopedPending: pendingData.length,
       scopedApproved: approvedData.length,
       scopedDisbursed: disbursedData.length,
-      scopedPayout: payoutData.length,
       scopedRejected: rejectedData.length,
     });
     
@@ -572,7 +554,6 @@ export function LeadsStatusTabs() {
     const filteredPending = getFilteredData("pending", pendingData);
     const filteredApproved = getFilteredData("approved", approvedData);
     const filteredDisbursed = getFilteredData("disbursed", disbursedData);
-    const filteredPayout = getFilteredData("payout", payoutData);
     const filteredRejected = getFilteredData("rejected", rejectedData);
     
     // Total leads (all statuses)
@@ -602,7 +583,6 @@ export function LeadsStatusTabs() {
       pending: filteredPending.length,
       approved: filteredApproved.length,
       disbursed: filteredDisbursed.length,
-      payout: filteredPayout.length,
       rejected: filteredRejected.length,
       conversionRate,
       submissionRate,
