@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchFineractAPI } from "@/lib/api";
+import { getFineractErrorMessage } from "@/lib/fineract-error";
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,12 +14,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(data);
   } catch (error: any) {
     console.error("Error creating account transfer:", error);
-    if (error.status && error.errorData) {
-      return NextResponse.json(error.errorData, { status: error.status });
-    }
+    const status = error.status || 500;
     return NextResponse.json(
-      { error: error.message || "Failed to create account transfer" },
-      { status: 500 }
+      { error: getFineractErrorMessage(error) },
+      { status }
     );
   }
 }
