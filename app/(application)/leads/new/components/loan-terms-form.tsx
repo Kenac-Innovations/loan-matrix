@@ -46,6 +46,37 @@ function formatRepaymentStrategyName(name: string): string {
     .replace(/Penalty/gi, "Interest on Unpaid Balance");
 }
 
+type PeriodTypeOption = { id: number; code: string; value: string };
+
+/**
+ * Fineract returns separate dropdown option lists for term period vs repayment period.
+ * IDs are not always the same row in each list, but `code` (and usually `value`) align.
+ * Returns the repayment-frequency option id string to keep Repaid Every in sync with Term Options.
+ */
+function repaymentFrequencyIdForTermFrequencySelection(
+  termFrequencyIdStr: string,
+  termOptions: PeriodTypeOption[] | undefined,
+  repaymentOptions: PeriodTypeOption[] | undefined
+): string | undefined {
+  if (!termOptions?.length || !repaymentOptions?.length) return undefined;
+  const selected = termOptions.find((o) => o.id.toString() === termFrequencyIdStr);
+  if (!selected) return undefined;
+
+  if (selected.code) {
+    const byCode = repaymentOptions.find((o) => o.code === selected.code);
+    if (byCode) return byCode.id.toString();
+  }
+  const byValue = repaymentOptions.find(
+    (o) => o.value?.toLowerCase() === selected.value?.toLowerCase()
+  );
+  if (byValue) return byValue.id.toString();
+
+  const bySameId = repaymentOptions.find((o) => o.id === selected.id);
+  if (bySameId) return bySameId.id.toString();
+
+  return undefined;
+}
+
 // Form validation schema for loan terms
 const loanTermsSchema = z.object({
   // Principal
@@ -1704,14 +1735,30 @@ export function LoanTermsForm({
                   <Select
                     onValueChange={(val) => {
                       field.onChange(val);
-                      updateFrequencyValues({ termFrequency: val });
+                      const repaymentId = repaymentFrequencyIdForTermFrequencySelection(
+                        val,
+                        loanTemplate.termFrequencyTypeOptions,
+                        loanTemplate.repaymentFrequencyTypeOptions
+                      );
+                      if (repaymentId) {
+                        form.setValue("repaymentFrequency", repaymentId, {
+                          shouldDirty: true,
+                          shouldValidate: true,
+                        });
+                        updateFrequencyValues({
+                          termFrequency: val,
+                          repaymentFrequency: repaymentId,
+                        });
+                      } else {
+                        updateFrequencyValues({ termFrequency: val });
+                      }
                     }}
                     value={
+                      field.value ||
+                      frequencyState.termFrequency ||
                       templateDerivedValues.termFrequency ||
-                      frequencyValuesRef.current.termFrequency ||
-                      frequencyState.termFrequency
+                      ""
                     }
-                    disabled
                   >
                     <SelectTrigger className="h-10 w-full">
                       <SelectValue placeholder="Select frequency" />
@@ -1756,7 +1803,6 @@ export function LoanTermsForm({
                 id="numberOfRepayments"
                 type="number"
                 className="h-10"
-                disabled
                 {...form.register("numberOfRepayments", {
                   valueAsNumber: true,
                 })}
@@ -1776,23 +1822,38 @@ export function LoanTermsForm({
                 control={form.control}
                 name="firstRepaymentOn"
                 render={({ field }) => (
+                  <Popover>
+                    <PopoverTrigger asChild>
                       <Button
                         variant="outline"
-                    disabled
                         className={cn(
-                      "h-10 w-full justify-start text-left font-normal cursor-not-allowed opacity-70",
+                          "h-10 w-full justify-start text-left font-normal",
                           !field.value && "text-muted-foreground"
                         )}
                       >
                         <CalendarIcon className="mr-2 h-4 w-4" />
                         {field.value
                           ? format(field.value, "PPP")
-                      : "Set on Loan tab"}
+                          : "Pick a date"}
                       </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0">
+                      <Calendar
+                        mode="single"
+                        selected={field.value}
+                        onSelect={(date) => {
+                          field.onChange(date);
+                          if (date) onFirstRepaymentDateChange?.(date);
+                        }}
+                        disabled={(date) => date < new Date("1900-01-01")}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
                 )}
               />
               <p className="text-xs text-muted-foreground">
-                Set on the Loan tab - syncs automatically
+                Also stays in sync when set on the Loan tab
               </p>
             </div>
 
@@ -1811,7 +1872,6 @@ export function LoanTermsForm({
                     <PopoverTrigger asChild>
                       <Button
                         variant="outline"
-                        disabled
                         className={cn(
                           "h-10 w-full justify-start text-left font-normal",
                           !field.value && "text-muted-foreground"
@@ -1854,7 +1914,6 @@ export function LoanTermsForm({
                 id="repaymentEvery"
                 type="number"
                 className="h-10"
-                disabled
                 {...form.register("repaymentEvery", { valueAsNumber: true })}
               />
               {form.formState.errors.repaymentEvery && (
@@ -1881,13 +1940,14 @@ export function LoanTermsForm({
                       updateFrequencyValues({ repaymentFrequency: val });
                     }}
                     value={
+                      field.value ||
+                      frequencyState.repaymentFrequency ||
                       templateDerivedValues.repaymentFrequency ||
-                      frequencyValuesRef.current.repaymentFrequency ||
-                      frequencyState.repaymentFrequency
+                      ""
                     }
                     disabled
                   >
-                    <SelectTrigger className="h-10 w-full">
+                    <SelectTrigger className="h-10 w-full cursor-not-allowed opacity-70">
                       <SelectValue placeholder="Select frequency" />
                     </SelectTrigger>
                     <SelectContent>
@@ -1925,8 +1985,7 @@ export function LoanTermsForm({
                 render={({ field }) => (
                   <Select
                     onValueChange={field.onChange}
-                    value={field.value}
-                    disabled
+                    value={field.value || ""}
                   >
                     <SelectTrigger className="h-10 w-full">
                       <SelectValue placeholder="Select On" />
@@ -1961,8 +2020,7 @@ export function LoanTermsForm({
                 render={({ field }) => (
                   <Select
                     onValueChange={field.onChange}
-                    value={field.value}
-                    disabled
+                    value={field.value || ""}
                   >
                     <SelectTrigger className="h-10 w-full">
                       <SelectValue placeholder="Select Day" />
@@ -2036,7 +2094,6 @@ export function LoanTermsForm({
                 type="number"
                 step="0.01"
                 className="h-10"
-                disabled
                 {...form.register("nominalInterestRate", {
                   valueAsNumber: true,
                 })}
@@ -2065,11 +2122,11 @@ export function LoanTermsForm({
                       updateFrequencyValues({ interestRateFrequency: val });
                     }}
                     value={
+                      field.value ||
+                      frequencyState.interestRateFrequency ||
                       templateDerivedValues.interestRateFrequency ||
-                      frequencyValuesRef.current.interestRateFrequency ||
-                      frequencyState.interestRateFrequency
+                      ""
                     }
-                    disabled
                   >
                     <SelectTrigger className="h-10 w-full">
                       <SelectValue placeholder="Select frequency" />
@@ -2110,11 +2167,11 @@ export function LoanTermsForm({
                       updateFrequencyValues({ interestMethod: val });
                     }}
                     value={
+                      field.value ||
+                      frequencyState.interestMethod ||
                       templateDerivedValues.interestMethod ||
-                      frequencyValuesRef.current.interestMethod ||
-                      frequencyState.interestMethod
+                      ""
                     }
-                    disabled
                   >
                     <SelectTrigger className="h-10 w-full">
                       <SelectValue placeholder="Select method" />
@@ -2153,11 +2210,11 @@ export function LoanTermsForm({
                       updateFrequencyValues({ amortization: val });
                     }}
                     value={
+                      field.value ||
+                      frequencyState.amortization ||
                       templateDerivedValues.amortization ||
-                      frequencyValuesRef.current.amortization ||
-                      frequencyState.amortization
+                      ""
                     }
-                    disabled
                   >
                     <SelectTrigger className="h-10 w-full">
                       <SelectValue placeholder="Select amortization" />
