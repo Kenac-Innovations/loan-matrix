@@ -46,6 +46,7 @@ interface LeadDocumentsProps {
   fineractLoanId?: number | null;
   initialClientDocuments?: any[];
   initialLoanDocuments?: any[];
+  readOnly?: boolean;
 }
 
 interface Document {
@@ -105,6 +106,7 @@ export function LeadDocuments({
   fineractLoanId: initialLoanId,
   initialClientDocuments = [],
   initialLoanDocuments = [],
+  readOnly = false,
 }: LeadDocumentsProps) {
   const [documents, setDocuments] = useState<Document[]>([]);
   const [loanDocuments, setLoanDocuments] = useState<FineractDocument[]>(initialLoanDocuments);
@@ -292,6 +294,7 @@ export function LeadDocuments({
       }
       // Remove document from state
       setDocuments(documents.filter((doc) => doc.id !== documentId));
+      window.dispatchEvent(new Event("lead-data-changed"));
     } catch (err) {
       console.error("Error deleting document:", err);
     }
@@ -367,6 +370,7 @@ export function LeadDocuments({
         setClientDocuments(Array.isArray(data) ? data : data.pageItems || data.content || []);
       }
 
+      window.dispatchEvent(new Event("lead-data-changed"));
       setShowUploadModal(false);
       setSelectedRequiredDoc("");
       setUploadDescription("");
@@ -493,14 +497,16 @@ export function LeadDocuments({
             {documents.length > 0 && ` (${documents.length} documents)`}
           </CardDescription>
         </div>
-        <Button
-          className="bg-blue-500 hover:bg-blue-600"
-          onClick={() => setShowUploadModal(true)}
-          disabled={!fineractClientId}
-        >
-          <Upload className="mr-2 h-4 w-4" />
-          Upload Document
-        </Button>
+        {!readOnly && (
+          <Button
+            className="bg-blue-500 hover:bg-blue-600"
+            onClick={() => setShowUploadModal(true)}
+            disabled={!fineractClientId}
+          >
+            <Upload className="mr-2 h-4 w-4" />
+            Upload Document
+          </Button>
+        )}
       </CardHeader>
       <CardContent>
         <div className="space-y-6">
@@ -815,14 +821,16 @@ export function LeadDocuments({
                 Upload documents to get started with the loan application
                 process.
               </p>
-              <Button
-                className="bg-blue-500 hover:bg-blue-600"
-                onClick={() => setShowUploadModal(true)}
-                disabled={!fineractClientId}
-              >
-                <Upload className="mr-2 h-4 w-4" />
-                Upload First Document
-              </Button>
+              {!readOnly && (
+                <Button
+                  className="bg-blue-500 hover:bg-blue-600"
+                  onClick={() => setShowUploadModal(true)}
+                  disabled={!fineractClientId}
+                >
+                  <Upload className="mr-2 h-4 w-4" />
+                  Upload First Document
+                </Button>
+              )}
             </div>
           ) : (
             <div>
