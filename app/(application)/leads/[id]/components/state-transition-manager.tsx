@@ -114,6 +114,7 @@ export default function StateTransitionManager({
   const [loadingTellers, setLoadingTellers] = useState(false);
   const [loadingCashiers, setLoadingCashiers] = useState(false);
   const [failedValidations, setFailedValidations] = useState<{ tab: string; checks: { id: string; label: string; message: string; severity?: string }[] }[]>([]);
+  const hasBlockingValidations = failedValidations.some((tv) => tv.checks.some((c) => c.severity === "error"));
   const [overrideValidations, setOverrideValidations] = useState(false);
   const [overrideReason, setOverrideReason] = useState("");
 
@@ -285,8 +286,8 @@ export default function StateTransitionManager({
           targetStageId: selectedTransition.stageId,
           reason: reason || undefined,
           fineractOverrides,
-          overrideValidations: overrideValidations && failedValidations.length > 0 ? true : undefined,
-          overrideReason: overrideValidations && failedValidations.length > 0 ? overrideReason : undefined,
+          overrideValidations: overrideValidations && hasBlockingValidations ? true : undefined,
+          overrideReason: overrideValidations && hasBlockingValidations ? overrideReason : undefined,
         }),
       });
 
@@ -368,76 +369,6 @@ export default function StateTransitionManager({
             </div>
           ) : (
             <div className="space-y-2">
-              {failedValidations.length > 0 && (
-                <div className={`rounded-md border p-3 mb-2 ${
-                  overrideValidations
-                    ? "border-orange-300 bg-orange-50 dark:bg-orange-950/20"
-                    : "border-red-300 bg-red-50 dark:bg-red-950/20"
-                }`}>
-                  <div className="flex items-start gap-2">
-                    <AlertCircle className={`h-4 w-4 mt-0.5 shrink-0 ${
-                      overrideValidations ? "text-orange-600" : "text-red-600"
-                    }`} />
-                    <div className="flex-1">
-                      <p className="text-sm font-medium text-red-800 dark:text-red-400">
-                        {failedValidations.reduce((sum, t) => sum + t.checks.length, 0)} validation{failedValidations.reduce((sum, t) => sum + t.checks.length, 0) !== 1 ? "s" : ""} must be resolved before transitioning
-                      </p>
-                      <div className="mt-2 space-y-2 max-h-48 overflow-y-auto">
-                        {failedValidations.map((tv) => (
-                          <div key={tv.tab}>
-                            <p className="text-xs font-semibold text-red-700 dark:text-red-400 capitalize">{tv.tab}</p>
-                            <ul className="text-xs text-red-600 dark:text-red-400 mt-0.5 space-y-0.5 ml-3">
-                              {tv.checks.map((c) => (
-                                <li key={c.id} className="flex items-start gap-1.5">
-                                  <span className="shrink-0 mt-0.5">•</span>
-                                  <span>{c.message}</span>
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                        ))}
-                      </div>
-
-                      <div className="mt-3 pt-3 border-t border-red-200 dark:border-red-800">
-                        <div className="flex items-center gap-2">
-                          <Checkbox
-                            id="override-validations"
-                            checked={overrideValidations}
-                            onCheckedChange={(checked) => {
-                              setOverrideValidations(!!checked);
-                              if (!checked) setOverrideReason("");
-                            }}
-                          />
-                          <Label
-                            htmlFor="override-validations"
-                            className="text-xs font-medium text-red-800 dark:text-red-400 cursor-pointer"
-                          >
-                            Override and proceed anyway
-                          </Label>
-                        </div>
-
-                        {overrideValidations && (
-                          <div className="mt-2">
-                            <Label className="text-xs text-orange-700 dark:text-orange-400">
-                              Override Reason <span className="text-red-500">*</span>
-                            </Label>
-                            <Textarea
-                              placeholder="Explain why this override is necessary (will be recorded in notes)..."
-                              value={overrideReason}
-                              onChange={(e) => setOverrideReason(e.target.value)}
-                              rows={2}
-                              className="mt-1 text-sm border-orange-300 focus:ring-orange-500 bg-white dark:bg-background"
-                            />
-                            <p className="text-[10px] text-orange-600 dark:text-orange-500 mt-1">
-                              This override will be logged in transition history and Fineract notes.
-                            </p>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
               <Label className="text-sm">Move to:</Label>
               <div className="grid gap-2">
                 {transitions.map((t) => {
@@ -849,6 +780,81 @@ export default function StateTransitionManager({
               />
             </div>
           )}
+
+          {/* Validation Override */}
+          {selectedTransition && failedValidations.length > 0 && !selectedTransition.isBackward && (
+            <div className={`rounded-md border p-3 ${
+              overrideValidations
+                ? "border-orange-300 bg-orange-50 dark:bg-orange-950/20"
+                : hasBlockingValidations
+                ? "border-red-300 bg-red-50 dark:bg-red-950/20"
+                : "border-yellow-300 bg-yellow-50 dark:bg-yellow-950/20"
+            }`}>
+              <div className="flex items-start gap-2">
+                <AlertCircle className={`h-4 w-4 mt-0.5 shrink-0 ${
+                  overrideValidations ? "text-orange-600" : hasBlockingValidations ? "text-red-600" : "text-yellow-600"
+                }`} />
+                <div className="flex-1">
+                  <p className={`text-sm font-medium ${hasBlockingValidations ? "text-red-800 dark:text-red-400" : "text-yellow-800 dark:text-yellow-400"}`}>
+                    {failedValidations.reduce((sum, t) => sum + t.checks.length, 0)} validation{failedValidations.reduce((sum, t) => sum + t.checks.length, 0) !== 1 ? "s" : ""} {hasBlockingValidations ? "need attention" : "(warnings)"}
+                  </p>
+                  <div className="mt-2 space-y-2 max-h-32 overflow-y-auto">
+                    {failedValidations.map((tv) => (
+                      <div key={tv.tab}>
+                        <p className="text-xs font-semibold capitalize" style={{ color: tv.checks.some(c => c.severity === "error") ? undefined : "rgb(161, 98, 7)" }}>
+                          {tv.tab}
+                        </p>
+                        <ul className="text-xs mt-0.5 space-y-0.5 ml-3">
+                          {tv.checks.map((c) => (
+                            <li key={c.id} className={`flex items-start gap-1.5 ${c.severity === "error" ? "text-red-600 dark:text-red-400" : "text-yellow-600 dark:text-yellow-400"}`}>
+                              <span className="shrink-0 mt-0.5">{c.severity === "error" ? "✕" : "⚠"}</span>
+                              <span>{c.message}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ))}
+                  </div>
+
+                  {hasBlockingValidations && (
+                    <div className="mt-3 pt-3 border-t border-red-200 dark:border-red-800">
+                      <div className="flex items-center gap-2">
+                        <Checkbox
+                          id="override-validations"
+                          checked={overrideValidations}
+                          onCheckedChange={(checked) => {
+                            setOverrideValidations(!!checked);
+                            if (!checked) setOverrideReason("");
+                          }}
+                        />
+                        <Label
+                          htmlFor="override-validations"
+                          className="text-xs font-medium text-red-800 dark:text-red-400 cursor-pointer"
+                        >
+                          Override and proceed anyway
+                        </Label>
+                      </div>
+
+                      {overrideValidations && (
+                        <div className="mt-2">
+                          <Label className="text-xs text-orange-700 dark:text-orange-400">
+                            Override Reason <span className="text-red-500">*</span>
+                          </Label>
+                          <Textarea
+                            placeholder="Explain why this override is necessary..."
+                            value={overrideReason}
+                            onChange={(e) => setOverrideReason(e.target.value)}
+                            rows={2}
+                            className="mt-1 text-sm border-orange-300 focus:ring-orange-500 bg-white dark:bg-background"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         <DialogFooter>
@@ -860,8 +866,8 @@ export default function StateTransitionManager({
             disabled={
               loading ||
               !selectedTransition ||
-              (failedValidations.length > 0 && !selectedTransition?.isBackward && !overrideValidations) ||
-              (failedValidations.length > 0 && !selectedTransition?.isBackward && overrideValidations && !overrideReason?.trim()) ||
+              (hasBlockingValidations && !selectedTransition?.isBackward && !overrideValidations) ||
+              (hasBlockingValidations && !selectedTransition?.isBackward && overrideValidations && !overrideReason?.trim()) ||
               (!selectedTransition?.isBackward && selectedTransition?.fineractAction === "payout" && !payoutMethod) ||
               (!selectedTransition?.isBackward && selectedTransition?.fineractAction === "payout" && payoutMethod === "CASH" && (!selectedTeller || !selectedCashier)) ||
               (!selectedTransition?.isBackward && selectedTransition?.fineractAction === "reject" && !reason?.trim())
