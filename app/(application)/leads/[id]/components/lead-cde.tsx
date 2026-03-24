@@ -229,7 +229,7 @@ export function LeadCDE({ leadId }: LeadCDEProps) {
             <CardTitle>Credit Scoring</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
               <div>
                 <p className="text-sm text-muted-foreground">Credit Score</p>
                 <p className="text-2xl font-bold text-blue-600">
@@ -303,7 +303,7 @@ export function LeadCDE({ leadId }: LeadCDEProps) {
             <CardTitle>Affordability Assessment</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
               <div>
                 <p className="text-sm text-muted-foreground">DTI Ratio</p>
                 <p className="text-xl font-bold">
@@ -364,7 +364,7 @@ export function LeadCDE({ leadId }: LeadCDEProps) {
             <CardTitle>Pricing & Risk Assessment</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
               <div>
                 <p className="text-sm text-muted-foreground">APR</p>
                 <p className="text-2xl font-bold text-red-600">

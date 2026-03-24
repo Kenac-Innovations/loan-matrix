@@ -45,14 +45,15 @@ export async function GET(
       return NextResponse.json({ error: "Lead not found" }, { status: 404 });
     }
 
-    // Fetch validation rules for the current stage and tenant
+    // Fetch pipeline validation rules (tab=null means pipeline-level, not tab-level)
     const validationRules = await prisma.validationRule.findMany({
       where: {
         tenantId: lead.tenantId,
         enabled: true,
+        tab: null,
         OR: [
           { pipelineStageId: lead.currentStageId },
-          { pipelineStageId: null }, // Global rules
+          { pipelineStageId: null },
         ],
       },
       orderBy: { order: "asc" },

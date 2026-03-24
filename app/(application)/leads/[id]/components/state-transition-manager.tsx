@@ -29,6 +29,7 @@ import {
   Loader2,
   CheckCircle,
   ArrowRight,
+  ArrowLeft,
   Users,
   UserCircle,
   RotateCcw,
@@ -40,6 +41,7 @@ import {
   Smartphone,
   Building2,
   AlertCircle,
+  Undo2,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 
@@ -50,6 +52,8 @@ interface AvailableTransition {
   stageDescription: string | null;
   isFinalState: boolean;
   fineractAction: string | null;
+  isBackward?: boolean;
+  undoAction?: string | null;
   receivingTeam: {
     id: string;
     name: string;
@@ -65,7 +69,6 @@ interface StateTransitionManagerProps {
   assignedToUserId?: number | null;
   currentUserId?: string;
   isUserInStageTeam?: boolean;
-  fineractClientId?: number | null;
   onTransitionComplete?: () => void;
 }
 
@@ -83,7 +86,6 @@ export default function StateTransitionManager({
   assignedToUserId,
   currentUserId,
   isUserInStageTeam = false,
-  fineractClientId,
   onTransitionComplete,
 }: StateTransitionManagerProps) {
   const [open, setOpen] = useState(false);
@@ -111,7 +113,7 @@ export default function StateTransitionManager({
   const [payoutNotes, setPayoutNotes] = useState("");
   const [loadingTellers, setLoadingTellers] = useState(false);
   const [loadingCashiers, setLoadingCashiers] = useState(false);
-  const [missingDocs, setMissingDocs] = useState<{ name: string; category: string }[]>([]);
+  const [failedValidations, setFailedValidations] = useState<{ tab: string; checks: { id: string; label: string; message: string; severity?: string }[] }[]>([]);
   const [overrideValidations, setOverrideValidations] = useState(false);
   const [overrideReason, setOverrideReason] = useState("");
 
@@ -133,49 +135,37 @@ export default function StateTransitionManager({
     }
   }, [leadId]);
 
-  const checkMissingDocuments = useCallback(async () => {
+  const checkValidations = useCallback(async () => {
     try {
-      const fetches: Promise<Response>[] = [
-        fetch("/api/pipeline/required-documents"),
-        fetch(`/api/leads/${leadId}/documents`),
-      ];
-      if (fineractClientId) {
-        fetches.push(fetch(`/api/fineract/clients/${fineractClientId}/documents`));
+      const res = await fetch(`/api/leads/${leadId}/tab-validations`, { cache: "no-store" });
+      if (!res.ok) { setFailedValidations([]); return; }
+      const data = await res.json();
+      const failed: typeof failedValidations = [];
+      for (const tv of data.tabs || []) {
+        if (tv.tab === "validations") continue;
+        const failedChecks = (tv.checks || []).filter((c: any) => !c.passed);
+        if (failedChecks.length > 0) {
+          failed.push({
+            tab: tv.tab,
+            checks: failedChecks.map((c: any) => ({
+              id: c.id,
+              label: c.label,
+              message: c.message,
+              severity: c.severity,
+            })),
+          });
+        }
       }
-
-      const [reqRes, docsRes, fineractDocsRes] = await Promise.all(fetches);
-      if (!reqRes.ok) return;
-      const requiredDocs = (await reqRes.json()).filter(
-        (d: any) => d.isActive && d.isRequired
-      );
-      const uploadedDocs = docsRes.ok ? await docsRes.json() : [];
-      const localDocs = Array.isArray(uploadedDocs) ? uploadedDocs : uploadedDocs.documents || [];
-
-      let fineractDocs: any[] = [];
-      if (fineractDocsRes?.ok) {
-        const fData = await fineractDocsRes.json();
-        fineractDocs = Array.isArray(fData) ? fData : fData?.pageItems || fData?.content || [];
-      }
-
-      const allDocs = [
-        ...localDocs.map((d: any) => ({ name: d.name || "" })),
-        ...fineractDocs.map((d: any) => ({ name: d.name || d.fileName || "" })),
-      ];
-
-      const missing = requiredDocs.filter((req: any) => {
-        const target = req.name?.toLowerCase();
-        return !allDocs.some((d: any) => d.name.toLowerCase().includes(target));
-      });
-      setMissingDocs(missing.map((d: any) => ({ name: d.name, category: d.category })));
+      setFailedValidations(failed);
     } catch {
-      setMissingDocs([]);
+      setFailedValidations([]);
     }
-  }, [leadId, fineractClientId]);
+  }, [leadId]);
 
   useEffect(() => {
     if (open) {
       fetchAvailableTransitions();
-      checkMissingDocuments();
+      checkValidations();
       setSelectedTransition(null);
       setReason("");
       setFineractDate(new Date().toISOString().split("T")[0]);
@@ -195,7 +185,7 @@ export default function StateTransitionManager({
       setOverrideValidations(false);
       setOverrideReason("");
     }
-  }, [open, fetchAvailableTransitions, checkMissingDocuments]);
+  }, [open, fetchAvailableTransitions, checkValidations]);
 
   useEffect(() => {
     if (selectedTransition?.fineractAction === "disburse" && paymentTypes.length === 0) {
@@ -295,8 +285,8 @@ export default function StateTransitionManager({
           targetStageId: selectedTransition.stageId,
           reason: reason || undefined,
           fineractOverrides,
-          overrideValidations: overrideValidations && missingDocs.length > 0 ? true : undefined,
-          overrideReason: overrideValidations && missingDocs.length > 0 ? overrideReason : undefined,
+          overrideValidations: overrideValidations && failedValidations.length > 0 ? true : undefined,
+          overrideReason: overrideValidations && failedValidations.length > 0 ? overrideReason : undefined,
         }),
       });
 
@@ -378,27 +368,37 @@ export default function StateTransitionManager({
             </div>
           ) : (
             <div className="space-y-2">
-              {missingDocs.length > 0 && (
+              {failedValidations.length > 0 && (
                 <div className={`rounded-md border p-3 mb-2 ${
                   overrideValidations
                     ? "border-orange-300 bg-orange-50 dark:bg-orange-950/20"
-                    : "border-amber-300 bg-amber-50 dark:bg-amber-950/20"
+                    : "border-red-300 bg-red-50 dark:bg-red-950/20"
                 }`}>
                   <div className="flex items-start gap-2">
                     <AlertCircle className={`h-4 w-4 mt-0.5 shrink-0 ${
-                      overrideValidations ? "text-orange-600" : "text-amber-600"
+                      overrideValidations ? "text-orange-600" : "text-red-600"
                     }`} />
                     <div className="flex-1">
-                      <p className="text-sm font-medium text-amber-800 dark:text-amber-400">
-                        Missing Required Documents
+                      <p className="text-sm font-medium text-red-800 dark:text-red-400">
+                        {failedValidations.reduce((sum, t) => sum + t.checks.length, 0)} validation{failedValidations.reduce((sum, t) => sum + t.checks.length, 0) !== 1 ? "s" : ""} must be resolved before transitioning
                       </p>
-                      <ul className="text-xs text-amber-700 dark:text-amber-500 mt-1 space-y-0.5">
-                        {missingDocs.map((d) => (
-                          <li key={d.name}>• {d.name}</li>
+                      <div className="mt-2 space-y-2 max-h-48 overflow-y-auto">
+                        {failedValidations.map((tv) => (
+                          <div key={tv.tab}>
+                            <p className="text-xs font-semibold text-red-700 dark:text-red-400 capitalize">{tv.tab}</p>
+                            <ul className="text-xs text-red-600 dark:text-red-400 mt-0.5 space-y-0.5 ml-3">
+                              {tv.checks.map((c) => (
+                                <li key={c.id} className="flex items-start gap-1.5">
+                                  <span className="shrink-0 mt-0.5">•</span>
+                                  <span>{c.message}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
                         ))}
-                      </ul>
+                      </div>
 
-                      <div className="mt-3 pt-3 border-t border-amber-200 dark:border-amber-800">
+                      <div className="mt-3 pt-3 border-t border-red-200 dark:border-red-800">
                         <div className="flex items-center gap-2">
                           <Checkbox
                             id="override-validations"
@@ -410,9 +410,9 @@ export default function StateTransitionManager({
                           />
                           <Label
                             htmlFor="override-validations"
-                            className="text-xs font-medium text-amber-800 dark:text-amber-400 cursor-pointer"
+                            className="text-xs font-medium text-red-800 dark:text-red-400 cursor-pointer"
                           >
-                            Override and proceed without these documents
+                            Override and proceed anyway
                           </Label>
                         </div>
 
@@ -494,6 +494,18 @@ export default function StateTransitionManager({
                                 Reject
                               </Badge>
                             )}
+                            {t.isBackward && (
+                              <Badge variant="outline" className="text-xs border-orange-300 text-orange-700 bg-orange-50">
+                                <ArrowLeft className="h-3 w-3 mr-1" />
+                                Back
+                              </Badge>
+                            )}
+                            {t.undoAction && (
+                              <Badge variant="outline" className="text-xs border-red-300 text-red-700 bg-red-50">
+                                <Undo2 className="h-3 w-3 mr-1" />
+                                Undo {t.undoAction === "approve" ? "Approval" : t.undoAction === "disburse" ? "Disbursement" : t.undoAction === "payout" ? "Payout" : t.undoAction}
+                              </Badge>
+                            )}
                           </div>
                           {t.stageDescription && (
                             <p className="text-xs text-muted-foreground mt-1 ml-5">
@@ -557,8 +569,31 @@ export default function StateTransitionManager({
             </div>
           )}
 
+          {/* Undo Action Warning */}
+          {selectedTransition?.undoAction && (
+            <div className="rounded-lg border border-orange-300 bg-orange-50/50 dark:border-orange-800 dark:bg-orange-950/30 p-4">
+              <div className="flex items-start gap-2">
+                <Undo2 className="h-4 w-4 text-orange-600 mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-sm font-medium text-orange-800 dark:text-orange-300">
+                    This will undo the {selectedTransition.undoAction === "approve" ? "loan approval" : selectedTransition.undoAction === "disburse" ? "loan disbursement" : selectedTransition.undoAction === "payout" ? "loan payout" : selectedTransition.undoAction} in Fineract
+                  </p>
+                  <p className="text-xs text-orange-600 dark:text-orange-400 mt-1">
+                    {selectedTransition.undoAction === "approve"
+                      ? "The loan will return to \"Submitted and pending approval\" status."
+                      : selectedTransition.undoAction === "disburse"
+                      ? "The loan will return to \"Approved\" status and the disbursement will be reversed."
+                      : selectedTransition.undoAction === "payout"
+                      ? "The payout record will be reversed and cashier transactions will be undone."
+                      : "The previous action will be reversed."}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Fineract Action Fields — approve / disburse / reject */}
-          {selectedTransition?.fineractAction && selectedTransition.fineractAction !== "payout" && (
+          {selectedTransition?.fineractAction && selectedTransition.fineractAction !== "payout" && !selectedTransition.isBackward && (
             <div className={`rounded-lg border p-4 space-y-3 ${
               selectedTransition.fineractAction === "reject"
                 ? "border-red-200 bg-red-50/50 dark:border-red-800 dark:bg-red-950/30"
@@ -631,7 +666,7 @@ export default function StateTransitionManager({
                   </div>
 
                   {showPaymentDetails && (
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div className="space-y-1">
                         <Label className="text-xs">Account #</Label>
                         <Input value={accountNumber} onChange={(e) => setAccountNumber(e.target.value)} placeholder="Optional" />
@@ -660,7 +695,7 @@ export default function StateTransitionManager({
           )}
 
           {/* Payout Action Fields */}
-          {selectedTransition?.fineractAction === "payout" && (
+          {selectedTransition?.fineractAction === "payout" && !selectedTransition.isBackward && (
             <div className="rounded-lg border border-green-200 bg-green-50/50 dark:border-green-800 dark:bg-green-950/30 p-4 space-y-3">
               <div className="flex items-center gap-2">
                 <Banknote className="h-4 w-4 text-green-600" />
@@ -825,14 +860,16 @@ export default function StateTransitionManager({
             disabled={
               loading ||
               !selectedTransition ||
-              (missingDocs.length > 0 && !overrideValidations) ||
-              (missingDocs.length > 0 && overrideValidations && !overrideReason?.trim()) ||
-              (selectedTransition?.fineractAction === "payout" && !payoutMethod) ||
-              (selectedTransition?.fineractAction === "payout" && payoutMethod === "CASH" && (!selectedTeller || !selectedCashier)) ||
-              (selectedTransition?.fineractAction === "reject" && !reason?.trim())
+              (failedValidations.length > 0 && !selectedTransition?.isBackward && !overrideValidations) ||
+              (failedValidations.length > 0 && !selectedTransition?.isBackward && overrideValidations && !overrideReason?.trim()) ||
+              (!selectedTransition?.isBackward && selectedTransition?.fineractAction === "payout" && !payoutMethod) ||
+              (!selectedTransition?.isBackward && selectedTransition?.fineractAction === "payout" && payoutMethod === "CASH" && (!selectedTeller || !selectedCashier)) ||
+              (!selectedTransition?.isBackward && selectedTransition?.fineractAction === "reject" && !reason?.trim())
             }
             className={
-              selectedTransition?.fineractAction === "reject"
+              selectedTransition?.isBackward
+                ? "bg-orange-600 hover:bg-orange-700"
+                : selectedTransition?.fineractAction === "reject"
                 ? "bg-red-600 hover:bg-red-700"
                 : selectedTransition?.fineractAction === "payout"
                 ? "bg-green-600 hover:bg-green-700"
@@ -842,7 +879,11 @@ export default function StateTransitionManager({
             {loading ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                {selectedTransition?.fineractAction === "approve"
+                {selectedTransition?.isBackward
+                  ? selectedTransition.undoAction
+                    ? "Undoing & Moving Back..."
+                    : "Moving Back..."
+                  : selectedTransition?.fineractAction === "approve"
                   ? "Approving..."
                   : selectedTransition?.fineractAction === "disburse"
                   ? "Disbursing..."
@@ -854,7 +895,9 @@ export default function StateTransitionManager({
               </>
             ) : (
               <>
-                {selectedTransition?.fineractAction === "approve" ? (
+                {selectedTransition?.isBackward ? (
+                  <Undo2 className="mr-2 h-4 w-4" />
+                ) : selectedTransition?.fineractAction === "approve" ? (
                   <ShieldCheck className="mr-2 h-4 w-4" />
                 ) : selectedTransition?.fineractAction === "disburse" ? (
                   <Banknote className="mr-2 h-4 w-4" />
@@ -865,7 +908,11 @@ export default function StateTransitionManager({
                 ) : (
                   <CheckCircle className="mr-2 h-4 w-4" />
                 )}
-                {selectedTransition?.fineractAction === "approve"
+                {selectedTransition?.isBackward
+                  ? selectedTransition.undoAction
+                    ? `Undo ${selectedTransition.undoAction === "approve" ? "Approval" : selectedTransition.undoAction === "disburse" ? "Disbursement" : selectedTransition.undoAction === "payout" ? "Payout" : selectedTransition.undoAction} & Move Back`
+                    : "Move Back"
+                  : selectedTransition?.fineractAction === "approve"
                   ? "Approve & Move"
                   : selectedTransition?.fineractAction === "disburse"
                   ? "Disburse & Move"

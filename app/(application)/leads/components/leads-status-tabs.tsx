@@ -1085,7 +1085,7 @@ export function LeadsStatusTabs() {
                 View loan applications by stage for the selected period
               </CardDescription>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <Popover>
                 <PopoverTrigger asChild>
                   <Button

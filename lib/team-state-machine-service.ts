@@ -90,17 +90,49 @@ export class TeamAwareStateMachineService {
         lead.tenantId
       );
 
-      // 3. If the target stage requires a Fineract action, execute it FIRST
-      //    so the transition is blocked if Fineract rejects the operation.
-      //    Payout is an internal action and is handled AFTER the DB transition.
+      // 3. Determine if moving backward from a stage that had a Fineract action.
+      //    If the CURRENT stage executed an action (approve/disburse/payout),
+      //    undo it before proceeding.
       const targetStage = await prisma.pipelineStage.findUnique({
         where: { id: request.targetStageId },
       });
 
       let fineractResult: string | null = null;
+      const currentFineractAction = lead.currentStage?.fineractAction;
+      const isBackward = targetStage && lead.currentStage
+        && (targetStage.order ?? 999) < (lead.currentStage.order ?? 0);
+
+      if (isBackward && currentFineractAction && lead.fineractLoanId) {
+        console.log(`[StateTransition] Backward move detected: undoing ${currentFineractAction} for loan ${lead.fineractLoanId}`);
+        try {
+          const undoResult = await this.undoFineractAction(
+            currentFineractAction,
+            lead.fineractLoanId,
+            lead,
+            request.reason
+          );
+          console.log(`[StateTransition] Undo succeeded: ${undoResult}`);
+          fineractResult = undoResult;
+        } catch (undoError: any) {
+          const errorDetail =
+            undoError?.response?.data?.errors?.[0]?.defaultUserMessage
+            || undoError?.response?.data?.defaultUserMessage
+            || (undoError instanceof Error ? undoError.message : "Unknown error");
+          console.error("[StateTransition] Undo Fineract action failed — blocking transition:", errorDetail);
+          return {
+            success: false,
+            message: `Cannot move back: undo ${currentFineractAction} failed — ${errorDetail}`,
+          };
+        }
+      }
+
+      // 3a. If the TARGET stage requires a Fineract action, execute it FIRST
+      //     so the transition is blocked if Fineract rejects the operation.
+      //     Payout is an internal action and is handled separately.
       const isFineractAction = targetStage?.fineractAction
         && targetStage.fineractAction !== "payout"
-        && lead.fineractLoanId;
+        && lead.fineractLoanId
+        && !isBackward;
 
       if (isFineractAction) {
         console.log(`[StateTransition] Triggering Fineract action: ${targetStage.fineractAction} for loan ${lead.fineractLoanId}`, request.fineractOverrides);
@@ -127,7 +159,7 @@ export class TeamAwareStateMachineService {
       }
 
       // 3b. Internal payout — process BEFORE the DB transition so we can block on failure
-      if (targetStage?.fineractAction === "payout" && lead.fineractLoanId) {
+      if (targetStage?.fineractAction === "payout" && lead.fineractLoanId && !isBackward) {
         console.log(`[StateTransition] Processing internal payout for loan ${lead.fineractLoanId}`);
         try {
           fineractResult = await this.processInternalPayout(
@@ -580,6 +612,81 @@ export class TeamAwareStateMachineService {
   }
 
   // ---------------------------------------------------------------------------
+  // Fineract undo actions (backward transitions)
+  // ---------------------------------------------------------------------------
+
+  private static async undoFineractAction(
+    action: string,
+    fineractLoanId: number,
+    lead: any,
+    reason?: string
+  ): Promise<string> {
+    const { fetchFineractAPI } = await import("@/lib/api");
+
+    switch (action) {
+      case "approve": {
+        await fetchFineractAPI(`/loans/${fineractLoanId}?command=undoapproval`, {
+          method: "POST",
+          body: JSON.stringify({ note: reason || "Approval undone — lead moved back" }),
+        });
+        return `Fineract loan #${fineractLoanId} approval undone`;
+      }
+      case "disburse": {
+        await fetchFineractAPI(`/loans/${fineractLoanId}?command=undodisbursal`, {
+          method: "POST",
+          body: JSON.stringify({ note: reason || "Disbursement undone — lead moved back" }),
+        });
+        return `Fineract loan #${fineractLoanId} disbursement undone`;
+      }
+      case "payout": {
+        // Reverse the payout: find the payout record, reverse the cashier transaction, and mark as reversed
+        const payout = await prisma.loanPayout.findUnique({
+          where: {
+            tenantId_fineractLoanId: { tenantId: lead.tenantId, fineractLoanId },
+          },
+        });
+
+        if (payout && payout.status === "PAID") {
+          // If it was a cash payout with a cashier transaction, reverse the journal entry
+          if (payout.fineractTransactionId) {
+            try {
+              await fetchFineractAPI(
+                `/journalentries/${payout.fineractTransactionId}?command=reverse`,
+                {
+                  method: "POST",
+                  body: JSON.stringify({
+                    comments: reason || "Payout reversed — lead moved back",
+                  }),
+                }
+              );
+            } catch (err) {
+              console.warn(`[Undo Payout] Could not reverse journal entry ${payout.fineractTransactionId}:`, err);
+            }
+          }
+
+          // Mark payout as reversed
+          await prisma.loanPayout.update({
+            where: { id: payout.id },
+            data: {
+              status: "REVERSED",
+              notes: `${payout.notes || ""}\n[REVERSED] ${reason || "Lead moved back"}`.trim(),
+            },
+          });
+        }
+
+        return `Payout reversed for loan #${fineractLoanId}`;
+      }
+      case "reject": {
+        console.warn("[Undo] Cannot undo rejection in Fineract — skipping");
+        return `Rejection cannot be undone in Fineract for loan #${fineractLoanId}`;
+      }
+      default:
+        console.warn(`[Undo] Unknown fineractAction to undo: ${action}`);
+        return `No undo needed for action: ${action}`;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
   // In-app notifications
   // ---------------------------------------------------------------------------
 
@@ -875,6 +982,8 @@ export class TeamAwareStateMachineService {
 
       if (!lead || !lead.currentStage) return [];
 
+      const currentOrder = lead.currentStage.order ?? 0;
+      const currentFineractAction = lead.currentStage.fineractAction || null;
       const results = [];
 
       for (const targetStageId of lead.currentStage.allowedTransitions) {
@@ -886,6 +995,7 @@ export class TeamAwareStateMachineService {
 
         const teams = await this.getTeamsForStage(targetStageId, lead.tenantId);
         const receivingTeam = teams[0] ?? null;
+        const isBackward = (targetStage.order ?? 999) < currentOrder;
 
         results.push({
           stageId: targetStageId,
@@ -894,6 +1004,8 @@ export class TeamAwareStateMachineService {
           stageDescription: targetStage.description,
           isFinalState: targetStage.isFinalState,
           fineractAction: targetStage.fineractAction || null,
+          isBackward,
+          undoAction: isBackward && currentFineractAction ? currentFineractAction : null,
           receivingTeam: receivingTeam
             ? {
                 id: receivingTeam.id,
