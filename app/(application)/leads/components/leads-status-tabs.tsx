@@ -80,7 +80,7 @@ const TABS: TabConfig[] = [
   },
   {
     id: "pending",
-    label: "Appraisal",
+    label: "Pending Approval",
     report: "pending",
     bgColor: "bg-yellow-500 dark:bg-yellow-600",
     activeBg: "data-[state=active]:bg-yellow-500 dark:data-[state=active]:bg-yellow-600",
@@ -89,7 +89,7 @@ const TABS: TabConfig[] = [
   },
   {
     id: "approved",
-    label: "Disbursement",
+    label: "Approved",
     report: "approved",
     bgColor: "bg-blue-500 dark:bg-blue-600",
     activeBg: "data-[state=active]:bg-blue-500 dark:data-[state=active]:bg-blue-600",
@@ -1070,7 +1070,7 @@ export function LeadsStatusTabs() {
               {pipelineStats.slaStatus}
             </div>
             <p className="text-[10px] sm:text-xs text-muted-foreground mt-1">
-              {pipelineStats.pending} in appraisal
+              {pipelineStats.pending} pending approval
             </p>
           </CardContent>
         </Card>
