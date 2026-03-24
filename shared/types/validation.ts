@@ -1,33 +1,51 @@
-interface ValidationRule {
+export interface ValidationConditionRule {
+  field: string;
+  operator: string;
+  value?: any;
+}
+
+export interface ValidationConditions {
+  type: "AND" | "OR";
+  rules: ValidationConditionRule[];
+}
+
+export interface ValidationActions {
+  onPass: { message: string };
+  onFail: {
+    message: string;
+    suggestedAction?: string;
+    actionUrl?: string;
+  };
+}
+
+export interface ValidationRule {
   id: string;
   name: string;
   description: string;
-  field: string;
-  operator: string;
-  value: any;
-  errorMessage: string;
-  isActive: boolean;
-  severity: ValidationSeverity;
-  tenantId: string;
-  createdBy: string;
-  createdAt: Date;
-  updatedAt: Date;
-  pipelineStageId: string | null;
+  conditions: ValidationConditions;
+  actions: ValidationActions;
+  severity: "info" | "warning" | "error";
+  enabled: boolean;
+  order: number;
+  pipelineStageId?: string | null;
+  tab?: string | null;
+}
+
+export interface ValidationResult {
+  id: string;
+  name: string;
+  description: string;
+  status: "passed" | "failed" | "warning";
+  message?: string;
+  suggestedAction?: string;
+  actionUrl?: string;
+  severity: "info" | "warning" | "error";
 }
 
 export enum ValidationSeverity {
   ERROR = "ERROR",
   WARNING = "WARNING",
   INFO = "INFO",
-}
-
-interface ValidationResult {
-  ruleId: string;
-  ruleName: string;
-  status: ValidationStatus;
-  message: string;
-  field?: string;
-  value?: any;
 }
 
 export enum ValidationStatus {

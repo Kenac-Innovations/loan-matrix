@@ -229,6 +229,7 @@ model ValidationRule {
   severity        String         @default("warning")
   enabled         Boolean        @default(true)
   order           Int            @default(0)
+  tab             String?        // Which tab this validation appears on: details, documents, communication, appraisal, notes
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
   pipelineStage   PipelineStage? @relation(fields: [pipelineStageId], references: [id], onDelete: Cascade)
@@ -236,6 +237,7 @@ model ValidationRule {
 
   @@index([tenantId, enabled])
   @@index([tenantId, pipelineStageId])
+  @@index([tenantId, tab])
 }
 
 model SLAConfig {

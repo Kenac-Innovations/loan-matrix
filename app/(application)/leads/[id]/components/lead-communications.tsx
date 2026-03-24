@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -37,8 +37,19 @@ import {
   CheckCircle,
   XCircle,
   AlertCircle,
+  Mic,
+  Trash2,
+  Users,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
+
+const CONTACT_PERSON_OPTIONS = [
+  { value: "BORROWER", label: "Borrower" },
+  { value: "GUARANTOR", label: "Guarantor" },
+  { value: "REFERENCE", label: "Reference" },
+  { value: "EMPLOYER", label: "Employer" },
+  { value: "OTHER", label: "Other" },
+];
 
 interface Communication {
   id: string;
@@ -58,6 +69,13 @@ interface Communication {
   provider?: string;
   createdBy: string;
   assignedTo?: string;
+  metadata?: {
+    contactPerson?: string;
+    contactPersonName?: string;
+  };
+  attachments?: {
+    voiceNote?: { name: string; data: string; mimeType: string };
+  };
   createdAt: string;
   updatedAt: string;
 }
@@ -87,9 +105,10 @@ interface LeadInfo {
 
 interface LeadCommunicationsProps {
   leadId: string;
+  readOnly?: boolean;
 }
 
-export function LeadCommunications({ leadId }: LeadCommunicationsProps) {
+export function LeadCommunications({ leadId, readOnly = false }: LeadCommunicationsProps) {
   const [communications, setCommunications] = useState<Communication[]>([]);
   const [summary, setSummary] = useState<CommunicationSummary | null>(null);
   const [leadInfo, setLeadInfo] = useState<LeadInfo | null>(null);
@@ -106,7 +125,12 @@ export function LeadCommunications({ leadId }: LeadCommunicationsProps) {
     content: "",
     toEmail: "",
     toPhone: "",
+    contactPerson: "BORROWER",
+    contactPersonName: "",
   });
+  const [voiceNoteFile, setVoiceNoteFile] = useState<File | null>(null);
+  const [voiceNotePreview, setVoiceNotePreview] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     fetchCommunications();
@@ -147,6 +171,18 @@ export function LeadCommunications({ leadId }: LeadCommunicationsProps) {
 
   const handleCreateCommunication = async () => {
     try {
+      let voiceNoteData: { name: string; data: string; mimeType: string } | null = null;
+      if (voiceNoteFile) {
+        const base64 = await fileToBase64(voiceNoteFile);
+        voiceNoteData = {
+          name: voiceNoteFile.name,
+          data: base64,
+          mimeType: voiceNoteFile.type,
+        };
+      }
+
+      const contactLabel = CONTACT_PERSON_OPTIONS.find((o) => o.value === newComm.contactPerson)?.label || newComm.contactPerson;
+
       const response = await fetch(`/api/leads/${leadId}/communications`, {
         method: "POST",
         headers: {
@@ -154,8 +190,20 @@ export function LeadCommunications({ leadId }: LeadCommunicationsProps) {
           "x-tenant-slug": "default",
         },
         body: JSON.stringify({
-          ...newComm,
-          createdBy: "current-user", // In a real app, get from auth context
+          type: newComm.type,
+          direction: newComm.direction,
+          subject: newComm.subject,
+          content: newComm.content,
+          toEmail: newComm.toEmail,
+          toPhone: newComm.toPhone,
+          metadata: {
+            contactPerson: newComm.contactPerson,
+            contactPersonName: newComm.contactPerson === "OTHER"
+              ? newComm.contactPersonName
+              : contactLabel,
+          },
+          attachments: voiceNoteData ? { voiceNote: voiceNoteData } : undefined,
+          createdBy: "current-user",
         }),
       });
 
@@ -163,7 +211,6 @@ export function LeadCommunications({ leadId }: LeadCommunicationsProps) {
         throw new Error("Failed to create communication");
       }
 
-      // Reset form and refresh data
       setNewComm({
         type: "EMAIL",
         direction: "OUTBOUND",
@@ -171,14 +218,37 @@ export function LeadCommunications({ leadId }: LeadCommunicationsProps) {
         content: "",
         toEmail: leadInfo?.email || "",
         toPhone: leadInfo?.phone || "",
+        contactPerson: "BORROWER",
+        contactPersonName: "",
       });
+      setVoiceNoteFile(null);
+      setVoiceNotePreview(null);
       setIsDialogOpen(false);
       fetchCommunications();
+      window.dispatchEvent(new Event("lead-data-changed"));
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Failed to create communication"
       );
     }
+  };
+
+  const handleVoiceNoteSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) {
+      setError("Voice note must be under 10MB");
+      return;
+    }
+    setVoiceNoteFile(file);
+    setVoiceNotePreview(URL.createObjectURL(file));
+  };
+
+  const clearVoiceNote = () => {
+    setVoiceNoteFile(null);
+    if (voiceNotePreview) URL.revokeObjectURL(voiceNotePreview);
+    setVoiceNotePreview(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   const getTypeIcon = (type: string) => {
@@ -336,21 +406,23 @@ export function LeadCommunications({ leadId }: LeadCommunicationsProps) {
 
       {/* Communications List */}
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
+        <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
           <CardTitle>Communication History</CardTitle>
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-            <DialogTrigger asChild>
-              <Button>
-                <Plus className="h-4 w-4 mr-2" />
-                New Communication
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-md">
+            {!readOnly && (
+              <DialogTrigger asChild>
+                <Button>
+                  <Plus className="h-4 w-4 mr-2" />
+                  New Communication
+                </Button>
+              </DialogTrigger>
+            )}
+            <DialogContent className="max-w-lg">
               <DialogHeader>
                 <DialogTitle>New Communication</DialogTitle>
               </DialogHeader>
               <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <Label htmlFor="type">Type</Label>
                     <Select
@@ -390,6 +462,42 @@ export function LeadCommunications({ leadId }: LeadCommunicationsProps) {
                   </div>
                 </div>
 
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="contactPerson">Communication With</Label>
+                    <Select
+                      value={newComm.contactPerson}
+                      onValueChange={(value) =>
+                        setNewComm((prev) => ({ ...prev, contactPerson: value, contactPersonName: "" }))
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {CONTACT_PERSON_OPTIONS.map((opt) => (
+                          <SelectItem key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {newComm.contactPerson === "OTHER" && (
+                    <div>
+                      <Label htmlFor="contactPersonName">Name</Label>
+                      <Input
+                        id="contactPersonName"
+                        value={newComm.contactPersonName}
+                        onChange={(e) =>
+                          setNewComm((prev) => ({ ...prev, contactPersonName: e.target.value }))
+                        }
+                        placeholder="Enter name"
+                      />
+                    </div>
+                  )}
+                </div>
+
                 {(newComm.type === "EMAIL" || newComm.type === "MEETING") && (
                   <div>
                     <Label htmlFor="subject">Subject</Label>
@@ -423,10 +531,47 @@ export function LeadCommunications({ leadId }: LeadCommunicationsProps) {
                   />
                 </div>
 
+                <div>
+                  <Label>Voice Note (optional)</Label>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="audio/*"
+                    onChange={handleVoiceNoteSelect}
+                    className="hidden"
+                  />
+                  {voiceNoteFile ? (
+                    <div className="flex items-center gap-2 mt-1.5 p-2.5 bg-muted/50 rounded-lg border">
+                      <Mic className="h-4 w-4 text-blue-500 shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{voiceNoteFile.name}</p>
+                        <p className="text-xs text-muted-foreground">{(voiceNoteFile.size / 1024).toFixed(0)} KB</p>
+                      </div>
+                      {voiceNotePreview && (
+                        <audio controls src={voiceNotePreview} className="h-8 w-full max-w-[180px]" />
+                      )}
+                      <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={clearVoiceNote}>
+                        <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-full mt-1.5"
+                      onClick={() => fileInputRef.current?.click()}
+                    >
+                      <Mic className="h-4 w-4 mr-2" />
+                      Attach Voice Note
+                    </Button>
+                  )}
+                </div>
+
                 <div className="flex gap-2">
                   <Button
                     onClick={handleCreateCommunication}
                     className="flex-1"
+                    disabled={!newComm.content.trim()}
                   >
                     <Send className="h-4 w-4 mr-2" />
                     Create
@@ -444,7 +589,7 @@ export function LeadCommunications({ leadId }: LeadCommunicationsProps) {
         </CardHeader>
         <CardContent>
           <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="grid w-full grid-cols-6">
+            <TabsList className="grid w-full grid-cols-3 sm:grid-cols-6">
               <TabsTrigger value="all">All</TabsTrigger>
               <TabsTrigger value="email">Email</TabsTrigger>
               <TabsTrigger value="sms">SMS</TabsTrigger>
@@ -513,11 +658,33 @@ export function LeadCommunications({ leadId }: LeadCommunicationsProps) {
                         <p className="text-sm">{comm.content}</p>
                       </div>
 
-                      <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                      {comm.attachments?.voiceNote && (
+                        <div className="flex items-center gap-2 p-2 bg-muted/30 rounded-md">
+                          <Mic className="h-4 w-4 text-blue-500 shrink-0" />
+                          <span className="text-xs text-muted-foreground shrink-0">{comm.attachments.voiceNote.name}</span>
+                          <audio
+                            controls
+                            src={`data:${comm.attachments.voiceNote.mimeType};base64,${comm.attachments.voiceNote.data}`}
+                            className="h-8 flex-1"
+                          />
+                        </div>
+                      )}
+
+                      <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap">
                         <div className="flex items-center gap-1">
                           <User className="h-3 w-3" />
                           <span>By {comm.createdBy}</span>
                         </div>
+                        {comm.metadata?.contactPerson && (
+                          <div className="flex items-center gap-1">
+                            <Users className="h-3 w-3" />
+                            <Badge variant="outline" className="text-[10px] h-5 px-1.5">
+                              {comm.metadata.contactPerson === "OTHER"
+                                ? comm.metadata.contactPersonName || "Other"
+                                : CONTACT_PERSON_OPTIONS.find((o) => o.value === comm.metadata?.contactPerson)?.label || comm.metadata.contactPerson}
+                            </Badge>
+                          </div>
+                        )}
                         {comm.toEmail && (
                           <div className="flex items-center gap-1">
                             <Mail className="h-3 w-3" />
@@ -541,4 +708,16 @@ export function LeadCommunications({ leadId }: LeadCommunicationsProps) {
       </Card>
     </div>
   );
+}
+
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      resolve(result.split(",")[1]);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
 }

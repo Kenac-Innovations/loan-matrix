@@ -132,21 +132,18 @@ export function useNotifications(options: UseNotificationsOptions = {}) {
       eventSource.onerror = () => {
         if (!isMountedRef.current) return;
         
-        console.error("SSE connection error, will reconnect...");
+        console.warn("SSE notification stream disconnected, will reconnect...");
         setIsConnected(false);
         
-        // Close the current connection
         eventSource.close();
         eventSourceRef.current = null;
 
-        // Attempt to reconnect after 5 seconds
         if (reconnectTimeoutRef.current) {
           clearTimeout(reconnectTimeoutRef.current);
         }
         
         reconnectTimeoutRef.current = setTimeout(() => {
           if (isMountedRef.current && enabled) {
-            console.log("Attempting to reconnect SSE...");
             connectSSE();
           }
         }, 5000);
