@@ -66,7 +66,10 @@ export async function GET(
           `/datatables/${encodeURIComponent("Proposed Security")}/${lead.fineractClientId}?genericResultSet=true`,
           { cache: "no-store" }
         )
-          .then((data) => { appraisalRows = data?.data || []; appraisalHeaders = data?.columnHeaders || []; })
+          .then((data) => {
+            appraisalHeaders = data?.columnHeaders || [];
+            appraisalRows = (data?.data || []).map((r: any) => r.row || r);
+          })
           .catch(() => {})
       );
 
