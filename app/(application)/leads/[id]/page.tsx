@@ -600,26 +600,24 @@ export default async function LeadDetailPage({
                   currentUserId={currentUserId}
                   isUserInStageTeam={isUserInStageTeam}
                 />
+                <LeadActions
+                  leadId={id}
+                  loanStatus={fineractLoanStatus}
+                  loanId={fineractLoanId}
+                  loanPrincipal={fineractLoanPrincipal}
+                  loanAccountNo={fineractLoanAccountNo}
+                  clientName={clientName}
+                  currency={fineractLoanCurrency}
+                  assignedToUserId={lead.assignedToUserId}
+                  fineractClientId={lead.fineractClientId}
+                />
                 {!isReadOnly && (
-                  <>
-                    <LeadActions
-                      leadId={id}
-                      loanStatus={fineractLoanStatus}
-                      loanId={fineractLoanId}
-                      loanPrincipal={fineractLoanPrincipal}
-                      loanAccountNo={fineractLoanAccountNo}
-                      clientName={clientName}
-                      currency={fineractLoanCurrency}
-                      assignedToUserId={lead.assignedToUserId}
-                      fineractClientId={lead.fineractClientId}
-                    />
-                    <LeadMoreActions
-                      leadId={id}
-                      loanStatus={fineractLoanStatus}
-                      loanId={fineractLoanId}
-                      fineractClientId={lead.fineractClientId}
-                    />
-                  </>
+                  <LeadMoreActions
+                    leadId={id}
+                    loanStatus={fineractLoanStatus}
+                    loanId={fineractLoanId}
+                    fineractClientId={lead.fineractClientId}
+                  />
                 )}
               </div>
             </div>

@@ -685,10 +685,18 @@ export function LeadsStatusTabs() {
               </span>
             </div>
             <div className="flex items-center gap-1 mt-1">
-              <Timer className="h-2.5 w-2.5 shrink-0" style={{ color: "currentColor" }} />
-              <span className={cn("text-[10px] tabular-nums", slaColor)}>
-                {slaLabel}
-              </span>
+              {prog.isFinal ? (
+                <span className="text-[10px] text-muted-foreground">
+                  {prog.stageName}
+                </span>
+              ) : (
+                <>
+                  <Timer className="h-2.5 w-2.5 shrink-0" style={{ color: "currentColor" }} />
+                  <span className={cn("text-[10px] tabular-nums", slaColor)}>
+                    {slaLabel}
+                  </span>
+                </>
+              )}
               {prog.assignedTo && (
                 <span className="text-[10px] text-muted-foreground truncate ml-auto">
                   {prog.assignedTo}
