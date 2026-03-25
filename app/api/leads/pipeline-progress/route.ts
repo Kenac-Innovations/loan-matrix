@@ -30,8 +30,10 @@ export async function GET(request: NextRequest) {
       orderBy: { order: "asc" },
     });
 
-    const totalStages = stages.filter((s) => !s.isFinalState).length;
+    const nonFinalStages = stages.filter((s) => !s.isFinalState);
+    const totalStages = nonFinalStages.length;
     const stageMap = new Map(stages.map((s) => [s.id, s]));
+    const stagePositionMap = new Map(nonFinalStages.map((s, i) => [s.id, i]));
 
     const leads = await prisma.lead.findMany({
       where: { id: { in: ids } },
@@ -65,10 +67,10 @@ export async function GET(request: NextRequest) {
         ? stageMap.get(lead.currentStageId)
         : null;
 
-      const stageOrder = stage?.order ?? 0;
+      const stagePosition = stage ? (stagePositionMap.get(stage.id) ?? 0) : 0;
       const pct =
         totalStages > 0
-          ? Math.round((stageOrder / totalStages) * 100)
+          ? Math.round((stagePosition / totalStages) * 100)
           : 0;
 
       const leadTransitions = transitionsByLead.get(lead.id) || [];
