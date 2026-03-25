@@ -16,11 +16,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { PipelineConfig } from "./components/piplene-config";
 import { TeamConfig } from "./components/team-config";
 import { SLAConfig } from "./components/sla-config";
-import { FieldConfig } from "./components/field-config";
 import { ValidationConfig } from "./components/validation-config";
-import { AffordabilityConfig } from "./components/affordability-config";
-import { NotificationConfig } from "./components/notification-config";
-import { CreditScoringConfig } from "./components/credit-scoring-config";
 import { MetricsConfig } from "./components/metrics-config";
 import { TenantLogoUpload } from "./components/tenant-logo-upload";
 import { RequiredDocumentsConfig } from "./components/required-documents-config";
@@ -80,7 +76,7 @@ export default function ConfigPage() {
       )}
 
       <Tabs defaultValue="pipeline" className="w-full">
-        <TabsList className="grid grid-cols-10 w-full max-w-6xl">
+        <TabsList className="grid grid-cols-7 w-full max-w-4xl">
           <TabsTrigger
             value="pipeline"
             className="data-[state=active]:bg-blue-500"
@@ -103,34 +99,10 @@ export default function ConfigPage() {
             Metrics
           </TabsTrigger>
           <TabsTrigger
-            value="fields"
-            className="data-[state=active]:bg-blue-500"
-          >
-            Fields
-          </TabsTrigger>
-          <TabsTrigger
             value="validations"
             className="data-[state=active]:bg-blue-500"
           >
             Validations
-          </TabsTrigger>
-          <TabsTrigger
-            value="affordability"
-            className="data-[state=active]:bg-blue-500"
-          >
-            Affordability
-          </TabsTrigger>
-          <TabsTrigger
-            value="notifications"
-            className="data-[state=active]:bg-blue-500"
-          >
-            Notifications
-          </TabsTrigger>
-          <TabsTrigger
-            value="credit-scoring"
-            className="data-[state=active]:bg-blue-500"
-          >
-            Credit Scoring
           </TabsTrigger>
           <TabsTrigger
             value="documents"
@@ -198,19 +170,6 @@ export default function ConfigPage() {
             </CardContent>
           </Card>
         </TabsContent>
-        <TabsContent value="fields">
-          <Card>
-            <CardHeader>
-              <CardTitle>Custom Fields</CardTitle>
-              <CardDescription>
-                Configure custom fields for your lead management process
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <FieldConfig />
-            </CardContent>
-          </Card>
-        </TabsContent>
         <TabsContent value="validations">
           <Card>
             <CardHeader>
@@ -221,45 +180,6 @@ export default function ConfigPage() {
             </CardHeader>
             <CardContent>
               <ValidationConfig />
-            </CardContent>
-          </Card>
-        </TabsContent>
-        <TabsContent value="affordability">
-          <Card>
-            <CardHeader>
-              <CardTitle>Affordability Models</CardTitle>
-              <CardDescription>
-                Configure affordability models for loan evaluation
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <AffordabilityConfig />
-            </CardContent>
-          </Card>
-        </TabsContent>
-        <TabsContent value="notifications">
-          <Card>
-            <CardHeader>
-              <CardTitle>Notification Settings</CardTitle>
-              <CardDescription>
-                Configure notifications for your lead management process
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <NotificationConfig />
-            </CardContent>
-          </Card>
-        </TabsContent>
-        <TabsContent value="credit-scoring">
-          <Card>
-            <CardHeader>
-              <CardTitle>Credit Scoring Configuration</CardTitle>
-              <CardDescription>
-                Configure scoring factors and weights for credit assessment
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <CreditScoringConfig />
             </CardContent>
           </Card>
         </TabsContent>
