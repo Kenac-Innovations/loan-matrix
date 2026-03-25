@@ -46,6 +46,79 @@ function formatRepaymentStrategyName(name: string): string {
     .replace(/Penalty/gi, "Interest on Unpaid Balance");
 }
 
+type ChargeCalcTypeRef = { id?: number; code?: string; value?: string };
+
+function getChargeCalculationHighlight(calc?: ChargeCalcTypeRef) {
+  const code = (calc?.code || "").toLowerCase();
+  const value = (calc?.value || "").trim();
+  const isFlat =
+    code === "chargecalculationtype.flat" ||
+    code.endsWith(".flat") ||
+    /\bflat\b/i.test(value);
+  if (isFlat) {
+    return {
+      label: value || "Flat fee",
+      kind: "flat" as const,
+      badgeClassName:
+        "border-blue-300 bg-blue-50 text-blue-900 dark:border-blue-700 dark:bg-blue-950/60 dark:text-blue-100",
+      amountRingClassName:
+        "border-blue-200 bg-blue-50/40 dark:border-blue-800 dark:bg-blue-950/30",
+    };
+  }
+  const isPercent =
+    code.includes("percent") ||
+    /%/.test(value) ||
+    /\bpercent/i.test(value);
+  if (isPercent) {
+    return {
+      label: value || "Percentage based",
+      kind: "percent" as const,
+      badgeClassName:
+        "border-violet-300 bg-violet-50 text-violet-900 dark:border-violet-700 dark:bg-violet-950/60 dark:text-violet-100",
+      amountRingClassName:
+        "border-violet-200 bg-violet-50/40 dark:border-violet-800 dark:bg-violet-950/30",
+    };
+  }
+  return {
+    label: value || "Charge",
+    kind: "other" as const,
+    badgeClassName:
+      "border-muted-foreground/30 bg-muted/60 text-muted-foreground",
+    amountRingClassName: "border-muted bg-muted/20",
+  };
+}
+
+type PeriodTypeOption = { id: number; code: string; value: string };
+
+/**
+ * Fineract returns separate dropdown option lists for term period vs repayment period.
+ * IDs are not always the same row in each list, but `code` (and usually `value`) align.
+ * Returns the repayment-frequency option id string to keep Repaid Every in sync with Term Options.
+ */
+function repaymentFrequencyIdForTermFrequencySelection(
+  termFrequencyIdStr: string,
+  termOptions: PeriodTypeOption[] | undefined,
+  repaymentOptions: PeriodTypeOption[] | undefined
+): string | undefined {
+  if (!termOptions?.length || !repaymentOptions?.length) return undefined;
+  const selected = termOptions.find((o) => o.id.toString() === termFrequencyIdStr);
+  if (!selected) return undefined;
+
+  if (selected.code) {
+    const byCode = repaymentOptions.find((o) => o.code === selected.code);
+    if (byCode) return byCode.id.toString();
+  }
+  const byValue = repaymentOptions.find(
+    (o) => o.value?.toLowerCase() === selected.value?.toLowerCase()
+  );
+  if (byValue) return byValue.id.toString();
+
+  const bySameId = repaymentOptions.find((o) => o.id === selected.id);
+  if (bySameId) return bySameId.id.toString();
+
+  return undefined;
+}
+
 // Form validation schema for loan terms
 const loanTermsSchema = z.object({
   // Principal
@@ -233,6 +306,8 @@ interface LoanTemplate {
     name: string;
     active: boolean;
     penalty: boolean;
+    chargeCalculationType?: ChargeCalcTypeRef;
+    chargeTimeType?: { id: number; code: string; value: string };
   }>;
   canUseForTopup?: boolean;
   clientActiveLoanOptions?: Array<{
@@ -269,7 +344,8 @@ export function LoanTermsForm({
   onFirstRepaymentDateChange,
 }: LoanTermsFormProps) {
   const { tenantSlug } = useFeatureFlags();
-  const isChargesReadOnly = tenantSlug === "goodfellow";
+  /** Goodfellow: only charge amounts are editable; add/remove/due dates stay fixed. */
+  const isChargesStructureReadOnly = tenantSlug === "goodfellow";
 
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1704,14 +1780,30 @@ export function LoanTermsForm({
                   <Select
                     onValueChange={(val) => {
                       field.onChange(val);
-                      updateFrequencyValues({ termFrequency: val });
+                      const repaymentId = repaymentFrequencyIdForTermFrequencySelection(
+                        val,
+                        loanTemplate.termFrequencyTypeOptions,
+                        loanTemplate.repaymentFrequencyTypeOptions
+                      );
+                      if (repaymentId) {
+                        form.setValue("repaymentFrequency", repaymentId, {
+                          shouldDirty: true,
+                          shouldValidate: true,
+                        });
+                        updateFrequencyValues({
+                          termFrequency: val,
+                          repaymentFrequency: repaymentId,
+                        });
+                      } else {
+                        updateFrequencyValues({ termFrequency: val });
+                      }
                     }}
                     value={
+                      field.value ||
+                      frequencyState.termFrequency ||
                       templateDerivedValues.termFrequency ||
-                      frequencyValuesRef.current.termFrequency ||
-                      frequencyState.termFrequency
+                      ""
                     }
-                    disabled
                   >
                     <SelectTrigger className="h-10 w-full">
                       <SelectValue placeholder="Select frequency" />
@@ -1756,7 +1848,6 @@ export function LoanTermsForm({
                 id="numberOfRepayments"
                 type="number"
                 className="h-10"
-                disabled
                 {...form.register("numberOfRepayments", {
                   valueAsNumber: true,
                 })}
@@ -1776,23 +1867,38 @@ export function LoanTermsForm({
                 control={form.control}
                 name="firstRepaymentOn"
                 render={({ field }) => (
+                  <Popover>
+                    <PopoverTrigger asChild>
                       <Button
                         variant="outline"
-                    disabled
                         className={cn(
-                      "h-10 w-full justify-start text-left font-normal cursor-not-allowed opacity-70",
+                          "h-10 w-full justify-start text-left font-normal",
                           !field.value && "text-muted-foreground"
                         )}
                       >
                         <CalendarIcon className="mr-2 h-4 w-4" />
                         {field.value
                           ? format(field.value, "PPP")
-                      : "Set on Loan tab"}
+                          : "Pick a date"}
                       </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0">
+                      <Calendar
+                        mode="single"
+                        selected={field.value}
+                        onSelect={(date) => {
+                          field.onChange(date);
+                          if (date) onFirstRepaymentDateChange?.(date);
+                        }}
+                        disabled={(date) => date < new Date("1900-01-01")}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
                 )}
               />
               <p className="text-xs text-muted-foreground">
-                Set on the Loan tab - syncs automatically
+                Also stays in sync when set on the Loan tab
               </p>
             </div>
 
@@ -1811,7 +1917,6 @@ export function LoanTermsForm({
                     <PopoverTrigger asChild>
                       <Button
                         variant="outline"
-                        disabled
                         className={cn(
                           "h-10 w-full justify-start text-left font-normal",
                           !field.value && "text-muted-foreground"
@@ -1854,7 +1959,6 @@ export function LoanTermsForm({
                 id="repaymentEvery"
                 type="number"
                 className="h-10"
-                disabled
                 {...form.register("repaymentEvery", { valueAsNumber: true })}
               />
               {form.formState.errors.repaymentEvery && (
@@ -1881,13 +1985,14 @@ export function LoanTermsForm({
                       updateFrequencyValues({ repaymentFrequency: val });
                     }}
                     value={
+                      field.value ||
+                      frequencyState.repaymentFrequency ||
                       templateDerivedValues.repaymentFrequency ||
-                      frequencyValuesRef.current.repaymentFrequency ||
-                      frequencyState.repaymentFrequency
+                      ""
                     }
                     disabled
                   >
-                    <SelectTrigger className="h-10 w-full">
+                    <SelectTrigger className="h-10 w-full cursor-not-allowed opacity-70">
                       <SelectValue placeholder="Select frequency" />
                     </SelectTrigger>
                     <SelectContent>
@@ -1925,8 +2030,7 @@ export function LoanTermsForm({
                 render={({ field }) => (
                   <Select
                     onValueChange={field.onChange}
-                    value={field.value}
-                    disabled
+                    value={field.value || ""}
                   >
                     <SelectTrigger className="h-10 w-full">
                       <SelectValue placeholder="Select On" />
@@ -1961,8 +2065,7 @@ export function LoanTermsForm({
                 render={({ field }) => (
                   <Select
                     onValueChange={field.onChange}
-                    value={field.value}
-                    disabled
+                    value={field.value || ""}
                   >
                     <SelectTrigger className="h-10 w-full">
                       <SelectValue placeholder="Select Day" />
@@ -2036,7 +2139,6 @@ export function LoanTermsForm({
                 type="number"
                 step="0.01"
                 className="h-10"
-                disabled
                 {...form.register("nominalInterestRate", {
                   valueAsNumber: true,
                 })}
@@ -2065,11 +2167,11 @@ export function LoanTermsForm({
                       updateFrequencyValues({ interestRateFrequency: val });
                     }}
                     value={
+                      field.value ||
+                      frequencyState.interestRateFrequency ||
                       templateDerivedValues.interestRateFrequency ||
-                      frequencyValuesRef.current.interestRateFrequency ||
-                      frequencyState.interestRateFrequency
+                      ""
                     }
-                    disabled
                   >
                     <SelectTrigger className="h-10 w-full">
                       <SelectValue placeholder="Select frequency" />
@@ -2110,11 +2212,11 @@ export function LoanTermsForm({
                       updateFrequencyValues({ interestMethod: val });
                     }}
                     value={
+                      field.value ||
+                      frequencyState.interestMethod ||
                       templateDerivedValues.interestMethod ||
-                      frequencyValuesRef.current.interestMethod ||
-                      frequencyState.interestMethod
+                      ""
                     }
-                    disabled
                   >
                     <SelectTrigger className="h-10 w-full">
                       <SelectValue placeholder="Select method" />
@@ -2153,11 +2255,11 @@ export function LoanTermsForm({
                       updateFrequencyValues({ amortization: val });
                     }}
                     value={
+                      field.value ||
+                      frequencyState.amortization ||
                       templateDerivedValues.amortization ||
-                      frequencyValuesRef.current.amortization ||
-                      frequencyState.amortization
+                      ""
                     }
-                    disabled
                   >
                     <SelectTrigger className="h-10 w-full">
                       <SelectValue placeholder="Select amortization" />
@@ -2640,12 +2742,12 @@ export function LoanTermsForm({
                 <div>
                   <CardTitle>Charges</CardTitle>
                   <CardDescription>
-                    {isChargesReadOnly
-                      ? "View loan charges and fees. Charges cannot be modified."
+                    {isChargesStructureReadOnly
+                      ? "Edit charge amounts only. Adding or removing charges and due dates is fixed for this product."
                       : "Manage loan charges and fees. Add, remove, or edit charges and their due dates."}
                   </CardDescription>
                 </div>
-                {loanTemplate?.chargeOptions && !isChargesReadOnly && (
+                {loanTemplate?.chargeOptions && !isChargesStructureReadOnly && (
                   <Button
                     type="button"
                     variant="outline"
@@ -2787,21 +2889,43 @@ export function LoanTermsForm({
                     No charges added. Click "Add Charge" to add one.
                   </p>
                 ) : (
-                  editableCharges.map((charge, index) => (
+                  editableCharges.map((charge, index) => {
+                    const calcHighlight = getChargeCalculationHighlight(
+                      charge.originalCharge?.chargeCalculationType
+                    );
+                    return (
                     <div
                       key={`${charge.chargeId}-${index}`}
                       className="border rounded-lg p-4 space-y-4"
                     >
                       <div className="flex items-center justify-between">
-                        <div className="flex-1">
+                        <div className="flex-1 flex flex-wrap items-center gap-2">
                           <h4 className="font-medium">{charge.name}</h4>
+                          {charge.originalCharge?.chargeCalculationType && (
+                            <Badge
+                              variant="outline"
+                              className={cn(
+                                "text-xs font-medium border",
+                                calcHighlight.badgeClassName
+                              )}
+                              title={
+                                calcHighlight.kind === "flat"
+                                  ? "Flat fee: amount is a fixed currency value"
+                                  : calcHighlight.kind === "percent"
+                                    ? "Percentage: amount is a percent of principal or another base"
+                                    : undefined
+                              }
+                            >
+                              {calcHighlight.label}
+                            </Badge>
+                          )}
                           {charge.originalCharge?.penalty && (
-                            <span className="inline-block mt-1 px-2 py-1 text-xs bg-orange-100 text-orange-800 rounded">
+                            <span className="inline-block px-2 py-1 text-xs bg-orange-100 text-orange-800 rounded dark:bg-orange-950 dark:text-orange-200">
                               Penalty
                             </span>
                           )}
                         </div>
-                        {!isChargesReadOnly && (
+                        {!isChargesStructureReadOnly && (
                         <Button
                           type="button"
                           variant="ghost"
@@ -2813,13 +2937,26 @@ export function LoanTermsForm({
                         )}
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                          <Label>Amount</Label>
+                        <div
+                          className={cn(
+                            "space-y-2 rounded-md border p-3 transition-colors",
+                            calcHighlight.amountRingClassName
+                          )}
+                        >
+                          <Label className="flex items-center gap-2">
+                            Amount
+                            <span className="text-xs font-normal text-muted-foreground">
+                              {calcHighlight.kind === "flat" &&
+                                "(fixed currency amount)"}
+                              {calcHighlight.kind === "percent" &&
+                                "(% of principal or defined base)"}
+                              {calcHighlight.kind === "other" && ""}
+                            </span>
+                          </Label>
                           <Input
                             type="number"
                             step="0.01"
                             value={charge.amount}
-                            disabled={isChargesReadOnly}
                             onChange={(e) =>
                               handleUpdateChargeAmount(
                                 index,
@@ -2838,7 +2975,7 @@ export function LoanTermsForm({
                             <PopoverTrigger asChild>
                               <Button
                                 variant="outline"
-                                disabled={isChargesReadOnly}
+                                disabled={isChargesStructureReadOnly}
                                 className={cn(
                                   "w-full justify-start text-left font-normal",
                                   !charge.dueDate && "text-muted-foreground"
@@ -2865,7 +3002,8 @@ export function LoanTermsForm({
                         )}
                       </div>
                     </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
             </CardContent>

@@ -53,6 +53,12 @@ import {
   List,
 } from "lucide-react";
 import { toast } from "@/components/ui/use-toast";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { ReportsDataTable } from "./components/reports-data-table";
 
 interface FineractReport {
@@ -122,6 +128,12 @@ export default function ReportsPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(10);
+  const [moreReportsModal, setMoreReportsModal] = useState<{
+    open: boolean;
+    category: string;
+    reports: FineractReport[];
+  }>({ open: false, category: "", reports: [] });
+  const [moreReportsModalSearch, setMoreReportsModalSearch] = useState("");
 
   // Load available reports on component mount
   useEffect(() => {
@@ -204,8 +216,8 @@ export default function ReportsPage() {
         });
         setParameters(defaultParams);
 
-        // Load options for select parameters
-        await loadParameterOptions(params);
+        // Load options for select parameters (pass defaultParams for cascading: e.g. loanOfficerIdSelectAll needs R_officeId)
+        await loadParameterOptions(params, defaultParams);
       } else {
         setReportParameters([]);
       }
@@ -221,19 +233,35 @@ export default function ReportsPage() {
     }
   };
 
-  const loadParameterOptions = async (params: ReportParameter[]) => {
+  const loadParameterOptions = async (
+    params: ReportParameter[],
+    currentParamValues: Record<string, string> = {}
+  ) => {
     const options: Record<string, ParameterOption[]> = {};
 
     for (const param of params) {
-      if (
-        param.parameter_displayType === "select" &&
-        (param.selectOne === "Y" || param.selectAll === "Y")
-      ) {
+      // Fetch options for all select parameters (incl. parType etc. where selectOne/selectAll may be null)
+      if (param.parameter_displayType === "select") {
         try {
+          // Build params for dependent selects (e.g. loanOfficerIdSelectAll needs R_officeId)
+          const fetchParams: Record<string, string> = { ...currentParamValues };
+          if (param.parentparametername) {
+            const parentParam = params.find(
+              (p) => p.parameter_name === param.parentparametername
+            );
+            if (parentParam && !fetchParams[parentParam.parameter_variable]) {
+              fetchParams[parentParam.parameter_variable] =
+                parentParam.parameter_variable === "officeId" ? "1" : "";
+            }
+          }
+
+          const searchParams = new URLSearchParams({
+            action: "parameterOptions",
+            parameterName: param.parameter_name,
+            ...fetchParams,
+          });
           const response = await fetch(
-            `/api/fineract/reports?action=parameterOptions&parameterName=${encodeURIComponent(
-              param.parameter_name
-            )}`
+            `/api/fineract/reports?${searchParams.toString()}`
           );
           if (response.ok) {
             const optionData = await response.json();
@@ -338,11 +366,70 @@ export default function ReportsPage() {
     URL.revokeObjectURL(url);
   };
 
-  const handleParameterChange = (paramVariable: string, value: string) => {
-    setParameters((prev) => ({
-      ...prev,
-      [paramVariable]: value,
-    }));
+  const handleParameterChange = async (
+    paramVariable: string,
+    value: string
+  ) => {
+    const newParams = { ...parameters, [paramVariable]: value };
+
+    // Cascading: reload options for params that depend on this one (e.g. Loan Officer depends on Office)
+    const parentParam = reportParameters.find(
+      (p) => p.parameter_variable === paramVariable
+    );
+    const parentName = parentParam?.parameter_name;
+    const toReload = reportParameters.filter(
+      (p) =>
+        p.parameter_displayType === "select" &&
+        (p.selectOne === "Y" || p.selectAll === "Y") &&
+        p.parentparametername === parentName
+    );
+
+    if (toReload.length > 0) {
+      toReload.forEach((p) => {
+        newParams[p.parameter_variable] = "";
+      });
+      const newOptions = { ...parameterOptions };
+      for (const param of toReload) {
+        try {
+          const fetchParams: Record<string, string> = { ...newParams };
+          if (param.parentparametername) {
+            const parent = reportParameters.find(
+              (p) => p.parameter_name === param.parentparametername
+            );
+            if (parent && !fetchParams[parent.parameter_variable]) {
+              fetchParams[parent.parameter_variable] =
+                parent.parameter_variable === "officeId" ? "1" : "";
+            }
+          }
+          const searchParams = new URLSearchParams({
+            action: "parameterOptions",
+            parameterName: param.parameter_name,
+            ...fetchParams,
+          });
+          const response = await fetch(
+            `/api/fineract/reports?${searchParams.toString()}`
+          );
+          if (response.ok) {
+            const optionData = await response.json();
+            newOptions[param.parameter_name] =
+              optionData.data && optionData.data.length > 0
+                ? optionData.data.map((item: any) => ({
+                    id: item.row[0],
+                    tc: item.row[1],
+                  }))
+                : [];
+          }
+        } catch (error) {
+          console.error(
+            `Error reloading options for ${param.parameter_name}:`,
+            error
+          );
+        }
+      }
+      setParameterOptions(newOptions);
+    }
+
+    setParameters(newParams);
   };
 
   const renderParameterInput = (param: ReportParameter) => {
@@ -625,7 +712,16 @@ export default function ReportsPage() {
                                 </div>
                               ))}
                               {reports.length > 3 && (
-                                <p className="text-xs text-muted-foreground text-center">
+                                <p
+                                  className="text-xs text-muted-foreground text-center cursor-pointer hover:text-foreground hover:underline transition-colors"
+                                  onClick={() =>
+                                    setMoreReportsModal({
+                                      open: true,
+                                      category,
+                                      reports: reports.slice(3),
+                                    })
+                                  }
+                                >
                                   +{reports.length - 3} more reports
                                 </p>
                               )}
@@ -650,6 +746,78 @@ export default function ReportsPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* More Reports Modal */}
+      <Dialog
+        open={moreReportsModal.open}
+        onOpenChange={(open) => {
+          setMoreReportsModal((prev) => ({ ...prev, open }));
+          if (!open) setMoreReportsModalSearch("");
+        }}
+      >
+        <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              {moreReportsModal.category} Reports
+            </DialogTitle>
+          </DialogHeader>
+          <div className="relative mt-2">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search reports..."
+              value={moreReportsModalSearch}
+              onChange={(e) => setMoreReportsModalSearch(e.target.value)}
+              className="pl-9"
+            />
+          </div>
+          <div className="space-y-3 mt-4">
+            {(() => {
+              const filteredReports = moreReportsModal.reports.filter(
+                (report) =>
+                  report.reportName
+                    .toLowerCase()
+                    .includes(moreReportsModalSearch.toLowerCase()) ||
+                  report.reportType
+                    .toLowerCase()
+                    .includes(moreReportsModalSearch.toLowerCase())
+              );
+              if (filteredReports.length === 0) {
+                return (
+                  <p className="text-sm text-muted-foreground text-center py-6">
+                    No reports match your search.
+                  </p>
+                );
+              }
+              return filteredReports.map((report) => (
+                <div
+                  key={report.id}
+                  className="flex items-center justify-between rounded-md border p-2 cursor-pointer hover:bg-muted/50 transition-colors"
+                  onClick={() => {
+                    window.location.href = `/reports/${encodeURIComponent(
+                      report.reportName
+                    )}`;
+                  }}
+                >
+                  <div>
+                    <p className="text-sm font-medium">{report.reportName}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {report.reportType}
+                    </p>
+                  </div>
+                  {report.coreReport && (
+                    <Badge
+                      variant="outline"
+                      className="bg-blue-500 text-white border-0 text-xs"
+                    >
+                      Core
+                    </Badge>
+                  )}
+                </div>
+              ));
+            })()}
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

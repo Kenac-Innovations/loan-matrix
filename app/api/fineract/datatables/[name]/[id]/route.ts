@@ -148,3 +148,43 @@ export async function POST(
     );
   }
 }
+
+// DELETE /api/fineract/datatables/[name]/[id]?rowId=123
+// Deletes a specific datatable row for a client
+export async function DELETE(
+  request: Request,
+  { params }: { params: Promise<{ name: string; id: string }> }
+) {
+  try {
+    const { name, id } = await params;
+    const { searchParams } = new URL(request.url);
+    const rowId = searchParams.get("rowId");
+
+    if (!rowId) {
+      return NextResponse.json(
+        { error: "rowId query parameter is required" },
+        { status: 400 }
+      );
+    }
+
+    const endpoint = `/datatables/${encodeURIComponent(
+      name
+    )}/${encodeURIComponent(id)}/${rowId}`;
+
+    const result = await fetchFineractAPI(endpoint, { method: "DELETE" });
+
+    return NextResponse.json(result ?? { success: true });
+  } catch (error: any) {
+    console.error("Error deleting datatable entry:", error);
+    return NextResponse.json(
+      {
+        error:
+          error?.message ||
+          error?.errorData?.defaultUserMessage ||
+          "Failed to delete datatable entry",
+        details: error?.errorData || null,
+      },
+      { status: error?.status || 500 }
+    );
+  }
+}

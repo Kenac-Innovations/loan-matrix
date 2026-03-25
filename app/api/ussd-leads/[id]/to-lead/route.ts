@@ -49,11 +49,16 @@ export async function POST(
     const session = await getSession();
     const currentUserId = session?.user?.id || 'system';
 
-    // Create a new Lead using available USSD fields
+    const initialStage = await prisma.pipelineStage.findFirst({
+      where: { tenantId: app.tenantId, isInitialState: true, isActive: true },
+      select: { id: true },
+    });
+
     const lead = await prisma.lead.create({
       data: {
         tenantId: app.tenantId,
         userId: currentUserId,
+        currentStageId: initialStage?.id ?? null,
         status: 'DRAFT',
         externalId: app.referenceNumber || app.messageId,
         firstname,

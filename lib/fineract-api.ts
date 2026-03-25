@@ -769,10 +769,24 @@ export class FineractAPIService {
   }
 
   // Get parameter options (for select dropdowns)
-  async getParameterOptions(parameterName: string): Promise<any> {
-    const response = await this.client.get(
-      `/runreports/${parameterName}?parameterType=true`
-    );
+  // Pass parent/dependent params (e.g. R_officeId) for cascading selects like loanOfficerIdSelectAll
+  async getParameterOptions(
+    parameterName: string,
+    params: Record<string, any> = {}
+  ): Promise<any> {
+    const searchParams = new URLSearchParams();
+    searchParams.set("parameterType", "true");
+
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== "") {
+        const paramKey = key.startsWith("R_") ? key : `R_${key}`;
+        searchParams.append(paramKey, value.toString());
+      }
+    });
+
+    const queryString = searchParams.toString();
+    const url = `/runreports/${encodeURIComponent(parameterName)}?${queryString}`;
+    const response = await this.client.get(url);
     return response.data;
   }
 
@@ -1384,6 +1398,96 @@ export class FineractAPIService {
       return response.data;
     } catch (error: any) {
       console.error("Error assigning loan officer:", {
+        message: error.message,
+        status: error.response?.status,
+        data: error.response?.data,
+      });
+      throw error;
+    }
+  }
+
+  async approveLoan(loanId: number, approvedOnDate?: string): Promise<any> {
+    const date = approvedOnDate || new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" });
+    try {
+      const response: AxiosResponse<any> = await this.client.post(
+        `/loans/${loanId}?command=approve`,
+        {
+          approvedOnDate: date,
+          dateFormat: "dd MMMM yyyy",
+          locale: "en",
+        }
+      );
+      console.log(`Loan ${loanId} approved successfully`);
+      return response.data;
+    } catch (error: any) {
+      console.error("Error approving loan:", {
+        message: error.message,
+        status: error.response?.status,
+        data: error.response?.data,
+      });
+      throw error;
+    }
+  }
+
+  async rejectLoan(loanId: number, rejectedOnDate?: string, note?: string): Promise<any> {
+    const date = rejectedOnDate || new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" });
+    try {
+      const response: AxiosResponse<any> = await this.client.post(
+        `/loans/${loanId}?command=reject`,
+        {
+          rejectedOnDate: date,
+          dateFormat: "dd MMMM yyyy",
+          locale: "en",
+          note: note || undefined,
+        }
+      );
+      return response.data;
+    } catch (error: any) {
+      console.error("Error rejecting loan:", {
+        message: error.message,
+        status: error.response?.status,
+        data: error.response?.data,
+      });
+      throw error;
+    }
+  }
+
+  async disburseLoan(
+    loanId: number,
+    disbursedOnDate?: string,
+    paymentDetails?: {
+      paymentTypeId?: number;
+      accountNumber?: string;
+      checkNumber?: string;
+      routingCode?: string;
+      receiptNumber?: string;
+      bankNumber?: string;
+      note?: string;
+    }
+  ): Promise<any> {
+    const date = disbursedOnDate || new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" });
+    try {
+      const payload: Record<string, any> = {
+        actualDisbursementDate: date,
+        dateFormat: "dd MMMM yyyy",
+        locale: "en",
+      };
+      if (paymentDetails?.paymentTypeId) payload.paymentTypeId = paymentDetails.paymentTypeId;
+      if (paymentDetails?.accountNumber) payload.accountNumber = paymentDetails.accountNumber;
+      if (paymentDetails?.checkNumber) payload.checkNumber = paymentDetails.checkNumber;
+      if (paymentDetails?.routingCode) payload.routingCode = paymentDetails.routingCode;
+      if (paymentDetails?.receiptNumber) payload.receiptNumber = paymentDetails.receiptNumber;
+      if (paymentDetails?.bankNumber) payload.bankNumber = paymentDetails.bankNumber;
+      if (paymentDetails?.note) payload.note = paymentDetails.note;
+
+      const response: AxiosResponse<any> = await this.client.post(
+        `/loans/${loanId}?command=disburse`,
+        payload
+      );
+      console.log(`Loan ${loanId} disbursed successfully`);
+      return response.data;
+    } catch (error: any) {
+      console.error("Error disbursing loan:", {
         message: error.message,
         status: error.response?.status,
         data: error.response?.data,

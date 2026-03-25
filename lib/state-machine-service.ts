@@ -1,3 +1,9 @@
+/**
+ * @deprecated Use TeamAwareStateMachineService from lib/team-state-machine-service.ts instead.
+ * This XState-based service has unimplemented action handlers (SLA timers, notifications).
+ * The TeamAwareStateMachineService performs the same validation with plain Prisma queries
+ * and adds team-based auto-assignment.
+ */
 import { createMachine, assign, StateMachine } from "xstate";
 import { prisma } from "./prisma";
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchFineractAPI } from "@/lib/api";
+import { getFineractErrorMessage } from "@/lib/fineract-error";
 
 export async function GET(request: NextRequest) {
   try {
@@ -22,12 +23,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(data);
   } catch (error: any) {
     console.error("Error fetching account transfer template:", error);
-    if (error.status && error.errorData) {
-      return NextResponse.json(error.errorData, { status: error.status });
-    }
+    const status = error.status || 500;
     return NextResponse.json(
-      { error: error.message || "Failed to fetch account transfer template" },
-      { status: 500 }
+      { error: getFineractErrorMessage(error) },
+      { status }
     );
   }
 }
