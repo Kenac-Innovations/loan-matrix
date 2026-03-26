@@ -48,12 +48,9 @@ export async function POST(
 
     // Validate transaction type
     const txnType = transactionType || "EXPENSE";
-    if (!["EXPENSE", "DISBURSEMENT", "CREDIT_BALANCE_REFUND"].includes(txnType)) {
+    if (!["EXPENSE", "DISBURSEMENT"].includes(txnType)) {
       return NextResponse.json(
-        {
-          error:
-            "Invalid transaction type. Must be EXPENSE, DISBURSEMENT or CREDIT_BALANCE_REFUND",
-        },
+        { error: "Invalid transaction type. Must be EXPENSE or DISBURSEMENT" },
         { status: 400 }
       );
     }
@@ -375,28 +372,21 @@ export async function POST(
       }
     }
 
-    // Customer-facing cash-outs require an active cashier session.
+    // For disbursements/expenses, require active session
     // For settlements to vault (after close), allow if there's a recent closed session
-    if (
-      !activeSession &&
-      (txnType === "DISBURSEMENT" || txnType === "CREDIT_BALANCE_REFUND")
-    ) {
+    if (!activeSession && txnType === "DISBURSEMENT") {
       return NextResponse.json(
         {
           error: "Session required",
           details:
-            "Cashier must have an active session for customer cash-out transactions. Please start a session first.",
+            "Cashier must have an active session for disbursements. Please start a session first.",
         },
         { status: 400 }
       );
     }
 
     // For non-disbursement settlements (return to vault), check if there's a closed session
-    if (
-      !activeSession &&
-      txnType !== "DISBURSEMENT" &&
-      txnType !== "CREDIT_BALANCE_REFUND"
-    ) {
+    if (!activeSession && txnType !== "DISBURSEMENT") {
       const closedSession = await prisma.cashierSession.findFirst({
         where: {
           tellerId: teller.id,
@@ -533,8 +523,7 @@ export async function POST(
         }
 
         // Determine if return to vault for existing settlement
-        const existingIsReturnToVault = txnType !== "DISBURSEMENT" &&
-          txnType !== "CREDIT_BALANCE_REFUND" &&
+        const existingIsReturnToVault = txnType !== "DISBURSEMENT" && 
           (existingSettlement.notes?.toLowerCase().includes("vault") || 
            existingSettlement.notes?.toLowerCase().includes("safe") || 
            existingSettlement.notes?.toLowerCase().includes("settlement") ||
@@ -550,10 +539,10 @@ export async function POST(
       }
     }
 
-    // Distinguish vault returns from customer-facing cash-outs.
-    const isCustomerCashOut =
-      txnType === "DISBURSEMENT" || txnType === "CREDIT_BALANCE_REFUND";
-    const isReturnToVault = !isCustomerCashOut;
+    // Determine if this is a "return to vault" or external cash out
+    // For non-disbursement transactions, ALWAYS return to vault
+    // This ensures vault balance is updated when cashier settles cash
+    const isReturnToVault = txnType !== "DISBURSEMENT";
     
     console.log(`Settlement type: ${txnType}, isReturnToVault: ${isReturnToVault}, amount: ${amount}`);
     
@@ -563,8 +552,6 @@ export async function POST(
         ? `Loan Disbursement: ${loanPayout?.clientName} - ${
             loanPayout?.loanAccountNo
           }${notes ? ` - ${notes}` : ""}`
-        : txnType === "CREDIT_BALANCE_REFUND"
-        ? notes || "Credit Balance Refund"
         : notes || "Return to Vault";
 
     const settlement = await prisma.cashAllocation.create({

@@ -184,26 +184,6 @@ export default function CashiersPage({
 
   const fetchCashiers = async (id: string) => {
     try {
-      // Fetch currencies first - same logic as transactions page for consistent balance
-      const currencyResponse = await fetch("/api/fineract/currencies");
-      let currencyList: { code?: string }[] = [];
-      if (currencyResponse.ok) {
-        try {
-          const data = await currencyResponse.json();
-          currencyList = Array.isArray(data.selectedCurrencyOptions)
-            ? data.selectedCurrencyOptions
-            : Array.isArray(data)
-            ? data
-            : data.currencies || [];
-        } catch {
-          currencyList = [];
-        }
-      }
-
-      // Use same default currency as transactions page
-      const currencyCode =
-        currencyList.length > 0 ? (currencyList[0].code ?? "ZMW") : "ZMW";
-
       const response = await fetch(`/api/tellers/${id}/cashiers`);
       if (response.ok) {
         const data = await response.json();

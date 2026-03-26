@@ -73,26 +73,12 @@ interface ValidationData {
   };
 }
 
-interface TabCheck {
-  id: string;
-  label: string;
-  passed: boolean;
-  message: string;
-}
-
-interface TabValidation {
-  tab: string;
-  passed: boolean;
-  checks: TabCheck[];
-}
-
 interface LeadValidationsProps {
   leadId: string;
   stage: string;
-  tabValidations?: Record<string, TabValidation>;
 }
 
-export function LeadValidations({ leadId, stage, tabValidations }: LeadValidationsProps) {
+export function LeadValidations({ leadId, stage }: LeadValidationsProps) {
   const [expanded, setExpanded] = useState(true);
   const [validationData, setValidationData] = useState<ValidationData | null>(
     null
@@ -213,90 +199,13 @@ export function LeadValidations({ leadId, stage, tabValidations }: LeadValidatio
     }
   };
 
-  const TAB_LABELS: Record<string, string> = {
-    details: "Details",
-    documents: "Documents",
-    communication: "Communication",
-    appraisal: "Appraisal",
-    validations: "Overall",
-  };
-
-  const tabEntries = tabValidations
-    ? Object.values(tabValidations).filter((tv) => tv.tab !== "validations" && tv.tab !== "notes")
-    : [];
-  const tabAllPassed = tabEntries.length > 0 && tabEntries.every((tv) => tv.passed);
-  const tabTotalChecks = tabEntries.flatMap((tv) => tv.checks);
-  const tabPassedCount = tabTotalChecks.filter((c) => c.passed).length;
-
   return (
-    <div className="space-y-6">
-      {/* Tab Readiness Checks */}
-      {tabEntries.length > 0 && (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2">
-              Readiness Checks
-              {tabAllPassed ? (
-                <CheckCircle className="h-5 w-5 text-green-500" />
-              ) : (
-                <AlertCircle className="h-5 w-5 text-red-500" />
-              )}
-            </CardTitle>
-            <CardDescription>
-              {tabPassedCount}/{tabTotalChecks.length} checks passed across all tabs
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {tabEntries.map((tv) => (
-                <div key={tv.tab} className="border rounded-lg p-3">
-                  <div className="flex items-center gap-2 mb-2">
-                    {tv.passed ? (
-                      <CheckCircle className="h-4 w-4 text-green-500" />
-                    ) : (
-                      <AlertCircle className="h-4 w-4 text-red-500" />
-                    )}
-                    <span className="font-medium text-sm">{TAB_LABELS[tv.tab] || tv.tab}</span>
-                    <Badge
-                      className={`ml-auto text-xs ${
-                        tv.passed
-                          ? "bg-green-500/10 text-green-600 border-green-200"
-                          : "bg-red-500/10 text-red-600 border-red-200"
-                      }`}
-                      variant="outline"
-                    >
-                      {tv.checks.filter((c) => c.passed).length}/{tv.checks.length}
-                    </Badge>
-                  </div>
-                  <div className="space-y-1 ml-6">
-                    {tv.checks.map((check) => (
-                      <div key={check.id} className="flex items-center gap-2 text-xs">
-                        {check.passed ? (
-                          <CheckCircle className="h-3 w-3 text-green-500 shrink-0" />
-                        ) : (
-                          <AlertCircle className="h-3 w-3 text-red-500 shrink-0" />
-                        )}
-                        <span className={check.passed ? "text-muted-foreground" : "text-foreground"}>
-                          {check.message}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Pipeline validations — only show when rules exist */}
-    {totalCount > 0 && (
     <Card>
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
           <div>
             <CardTitle className="flex items-center gap-2">
-              Pipeline Validation Status
+              Validation Status
               {canProceed ? (
                 <CheckCircle className="h-5 w-5 text-green-500" />
               ) : (
@@ -528,18 +437,5 @@ export function LeadValidations({ leadId, stage, tabValidations }: LeadValidatio
         </div>
       </CardContent>
     </Card>
-    )}
-
-    {tabEntries.length === 0 && totalCount === 0 && (
-      <Card>
-        <CardContent className="flex flex-col items-center justify-center h-48 text-center">
-          <CheckCircle className="h-10 w-10 text-muted-foreground mb-3" />
-          <p className="text-sm text-muted-foreground">
-            No validation rules configured yet. Configure them in the admin settings.
-          </p>
-        </CardContent>
-      </Card>
-    )}
-    </div>
   );
 }

@@ -58,18 +58,21 @@ export async function GET(
       return NextResponse.json({ error: "Lead not found" }, { status: 404 });
     }
 
-    // Calculate time metrics (in minutes for precision)
+    // Calculate time metrics
     const now = new Date();
     const createdAt = new Date(lead.createdAt);
-    const totalTimeMins = Math.floor((now.getTime() - createdAt.getTime()) / 60000);
+    const totalTimeMs = now.getTime() - createdAt.getTime();
+    const totalTimeHours = Math.floor(totalTimeMs / (1000 * 60 * 60));
 
     // Calculate time in current stage
     const lastTransition = lead.stateTransitions[0];
     const currentStageStartTime = lastTransition
       ? new Date(lastTransition.triggeredAt)
       : createdAt;
-    const timeInCurrentStageMins = Math.floor(
-      (now.getTime() - currentStageStartTime.getTime()) / 60000
+    const timeInCurrentStageMs =
+      now.getTime() - currentStageStartTime.getTime();
+    const timeInCurrentStageHours = Math.floor(
+      timeInCurrentStageMs / (1000 * 60 * 60)
     );
 
     // Get pipeline stages with SLA configurations
@@ -113,59 +116,51 @@ export async function GET(
       }
     };
 
-    // Calculate stage times and SLA performance (all in minutes)
+    // Calculate stage times and SLA performance
     const stageTimes = [];
     const transitions = [...lead.stateTransitions].reverse(); // Oldest first
 
-    for (const stage of stages) {
-      const slaConfig = stage.slaConfigs[0];
-      const slaMins = getSlaHours(slaConfig) * 60;
-      const isCurrent = stage.id === lead.currentStage?.id;
+    for (let i = 0; i < stages.length; i++) {
+      const stage = stages[i];
+      const slaConfig = stage.slaConfigs[0]; // Get the first (most recent) SLA config
+      const slaHours = getSlaHours(slaConfig);
 
-      // Find when lead entered this stage (transition with toStage = this stage)
-      const enteredTransition = transitions.find(
+      const stageTransition = transitions.find(
         (t) => t.toStage.id === stage.id
       );
-      // Find when lead left this stage (transition with fromStageId = this stage)
-      const exitedTransition = transitions.find(
-        (t) => t.fromStageId === stage.id
-      );
 
-      if (isCurrent) {
-        const enteredAt = enteredTransition
-          ? new Date(enteredTransition.triggeredAt)
-          : createdAt;
-        const timeSpentMins = Math.floor((now.getTime() - enteredAt.getTime()) / 60000);
+      if (stageTransition) {
+        const transitionTime = new Date(stageTransition.triggeredAt);
+        const previousTime =
+          i === 0
+            ? createdAt
+            : new Date(
+                transitions.find((t) => t.toStage.order === stage.order - 1)
+                  ?.triggeredAt || createdAt
+              );
+
+        const timeSpentMs = transitionTime.getTime() - previousTime.getTime();
+        const timeSpentHours = Math.floor(timeSpentMs / (1000 * 60 * 60));
+
         stageTimes.push({
           stageName: stage.name,
-          timeSpent: timeSpentMins,
-          slaMins,
+          timeSpent: timeSpentHours,
+          slaHours,
+          status:
+            stage.id === lead.currentStage?.id ? "in_progress" : "completed",
+        });
+      } else if (stage.id === lead.currentStage?.id) {
+        stageTimes.push({
+          stageName: stage.name,
+          timeSpent: timeInCurrentStageHours,
+          slaHours,
           status: "in_progress",
-        });
-      } else if (enteredTransition && exitedTransition) {
-        const enteredAt = new Date(enteredTransition.triggeredAt);
-        const exitedAt = new Date(exitedTransition.triggeredAt);
-        const timeSpentMins = Math.floor((exitedAt.getTime() - enteredAt.getTime()) / 60000);
-        stageTimes.push({
-          stageName: stage.name,
-          timeSpent: timeSpentMins,
-          slaMins,
-          status: "completed",
-        });
-      } else if (!enteredTransition && exitedTransition) {
-        const exitedAt = new Date(exitedTransition.triggeredAt);
-        const timeSpentMins = Math.floor((exitedAt.getTime() - createdAt.getTime()) / 60000);
-        stageTimes.push({
-          stageName: stage.name,
-          timeSpent: timeSpentMins,
-          slaMins,
-          status: "completed",
         });
       } else {
         stageTimes.push({
           stageName: stage.name,
           timeSpent: 0,
-          slaMins,
+          slaHours,
           status: "pending",
         });
       }
@@ -213,10 +208,9 @@ export async function GET(
 
           teamMembers.push({
             id: member.id,
-            userId: member.userId,
             name: member.name,
             role: member.role,
-            status: "in_progress" as const,
+            status: "in_progress" as const, // You can enhance this based on actual task status
             initials: initials.toUpperCase(),
             color: colors[colorIndex],
           });
@@ -372,39 +366,17 @@ export async function GET(
       }
     }
 
-    // Get current stage SLA from the stages we already fetched (in minutes)
+    // Get current stage SLA from the stages we already fetched
     const currentStageData = stages.find((s) => s.id === lead.currentStage?.id);
-    const currentStageSLAMins = currentStageData
-      ? getSlaHours(currentStageData.slaConfigs[0]) * 60
-      : 72 * 60;
-
-    // Check if the current user is a member of the team owning the current stage
-    const session = await getSession();
-    const currentUserId = session?.user?.id;
-    let isUserInStageTeam = false;
-
-    if (lead.currentStage && currentUserId) {
-      const stageTeams = await prisma.team.findMany({
-        where: {
-          tenantId: tenant.id,
-          pipelineStageIds: { has: lead.currentStage.id },
-        },
-        include: { members: true },
-      });
-
-      isUserInStageTeam = stageTeams.some((team) =>
-        team.members.some((m: { userId: string }) => String(m.userId) === currentUserId)
-      );
-    }
-
-    const isFinalStageCompleted = lead.currentStage?.isFinalState === true;
+    const currentStageSLA = currentStageData
+      ? getSlaHours(currentStageData.slaConfigs[0])
+      : 72; // Default 3 days if no current stage
 
     const sidebarData = {
       currentStage: lead.currentStage?.name || "New Lead",
-      timeInCurrentStage: timeInCurrentStageMins,
-      totalTime: totalTimeMins,
-      currentStageSLA: currentStageSLAMins,
-      isFinalStageCompleted,
+      timeInCurrentStage: timeInCurrentStageHours,
+      totalTime: totalTimeHours,
+      currentStageSLA,
       teamMembers,
       validations,
       stageTimes,
@@ -417,12 +389,6 @@ export async function GET(
       },
       // Loan action info
       loanActionInfo,
-      // Team membership for current user
-      isUserInStageTeam,
-      // Team members eligible for assignment at the current stage
-      stageTeamMembers: teamMembers
-        .filter((m) => m.id !== "no-assignment")
-        .map((m) => ({ id: m.id, name: m.name, role: m.role, userId: m.userId })),
     };
 
     return NextResponse.json(sidebarData);

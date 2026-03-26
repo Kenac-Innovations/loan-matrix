@@ -6,8 +6,6 @@ export interface Stage {
   isInitialState?: boolean;
   isFinalState?: boolean;
   allowedTransitions?: string[];
-  fineractStatus?: string | null;
-  fineractAction?: string | null;
 }
 
 export const defaultStages: Stage[] = [
