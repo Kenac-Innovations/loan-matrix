@@ -62,6 +62,7 @@ export async function GET(request: NextRequest) {
         name: member.name,
         email: member.email,
         role: member.role,
+        approvalLimit: member.approvalLimit ?? null,
       })),
     }));
 
@@ -174,6 +175,7 @@ export async function PUT(request: NextRequest) {
                 name: member.name,
                 email: member.email,
                 role: member.role || "Team Member",
+                approvalLimit: member.approvalLimit ?? null,
               },
             });
           }
@@ -226,6 +228,7 @@ export async function PUT(request: NextRequest) {
                   name: member.name,
                   email: member.email,
                   role: member.role || "Team Member",
+                  approvalLimit: member.approvalLimit ?? null,
                 },
               });
             } else {
@@ -236,6 +239,7 @@ export async function PUT(request: NextRequest) {
                   name: member.name,
                   email: member.email,
                   role: member.role || "Team Member",
+                  approvalLimit: member.approvalLimit ?? null,
                 },
               });
             }

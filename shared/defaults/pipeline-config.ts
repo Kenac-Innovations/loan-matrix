@@ -8,6 +8,9 @@ export interface Stage {
   allowedTransitions?: string[];
   fineractStatus?: string | null;
   fineractAction?: string | null;
+  requiredApprovals?: number;
+  skipBelowAmount?: number | null;
+  order?: number;
 }
 
 export const defaultStages: Stage[] = [

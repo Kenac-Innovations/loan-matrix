@@ -7,7 +7,6 @@ import { LeadMoreActions } from "./components/lead-more-actions";
 import { LeadDetailTabs } from "./components/lead-detail-tabs";
 import {
   ArrowLeft,
-  Users,
   UserCheck,
   UserX,
   CheckCircle2,
@@ -455,143 +454,50 @@ export default async function LeadDetailPage({
           <span className="text-foreground font-medium">Lead #{id}</span>
         </nav>
 
-        {/* Enhanced Header */}
-        <div className="flex items-start gap-3 sm:gap-6">
-          <Link href="/leads" className="shrink-0 mt-1">
-            <Button variant="outline" size="sm" className="shadow-sm">
+        {/* Header */}
+        <div className="flex items-start gap-3">
+          <Link href="/leads" className="shrink-0 mt-0.5">
+            <Button variant="ghost" size="icon" className="h-8 w-8">
               <ArrowLeft className="h-4 w-4" />
             </Button>
           </Link>
           <div className="flex-1 min-w-0">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
-              <div className="flex items-start sm:items-center gap-3 min-w-0">
-                <div className="h-8 w-8 sm:h-10 sm:w-10 rounded-full bg-purple-100 dark:bg-purple-900 flex items-center justify-center shrink-0">
-                  <Users className="h-4 w-4 sm:h-5 sm:w-5 text-purple-600 dark:text-purple-400" />
-                </div>
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <h1 className="text-xl sm:text-3xl font-bold tracking-tight">
-                      Lead Details
-                    </h1>
-                    {fineractLoanStatus && (
-                      <Badge
-                        className={`${getStatusBadgeColor(
-                          fineractLoanStatus
-                        )} text-white border-0 whitespace-normal break-words`}
-                      >
-                        {fineractLoanStatus?.toLowerCase() === "active"
-                          ? "Disbursed"
-                          : fineractLoanStatus}
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0 overflow-hidden">
+                <h1 className="text-lg font-semibold truncate">
+                  {clientName || "Lead Details"}
+                </h1>
+                {fineractLoanStatus && (
+                  <Badge
+                    className={`${getStatusBadgeColor(fineractLoanStatus)} text-white border-0 text-xs shrink-0`}
+                  >
+                    {fineractLoanStatus?.toLowerCase() === "active" ? "Disbursed" : fineractLoanStatus}
+                  </Badge>
+                )}
+                {lead.currentStage && (
+                  lead.currentStage.isFinalState ? (
+                    lead.currentStage.fineractAction === "reject" ? (
+                      <Badge className="bg-red-600 text-white border-0 text-xs gap-1 shrink-0">
+                        <XCircle className="h-3 w-3" />
+                        Rejected
                       </Badge>
-                    )}
-                    {cdeResult && (
-                      <Link href={`/leads/${id}/cde`}>
-                        <Badge
-                          className={`${
-                            cdeResult.decision === "APPROVED"
-                              ? "bg-green-500"
-                              : cdeResult.decision === "MANUAL_REVIEW"
-                              ? "bg-yellow-500"
-                              : "bg-red-500"
-                          } text-white border-0 whitespace-normal break-words cursor-pointer hover:opacity-80 transition-opacity`}
-                        >
-                          CDE: {cdeResult.decision}
-                          {cdeResult.scoringResult?.creditScore && (
-                            <span className="ml-2 opacity-90">
-                              • Score: {cdeResult.scoringResult.creditScore}
-                            </span>
-                          )}
-                          {cdeResult.pricingResult?.calculatedAPR && (
-                            <span className="ml-2 opacity-90">
-                              • APR:{" "}
-                              {cdeResult.pricingResult.calculatedAPR.toFixed(1)}
-                              %
-                            </span>
-                          )}
-                        </Badge>
-                      </Link>
-                    )}
-                    {lead.assignedToUserName ? (
-                      <Badge
-                        variant="outline"
-                        className="bg-green-50 text-green-700 border-green-200 whitespace-nowrap"
-                      >
-                        <UserCheck className="h-3 w-3 mr-1" />
-                        {lead.assignedToUserName}
+                    ) : (
+                      <Badge className="bg-green-600 text-white border-0 text-xs gap-1 shrink-0">
+                        <CheckCircle2 className="h-3 w-3" />
+                        Complete
                       </Badge>
-                    ) : lead.loanSubmittedToFineract ? (
-                      <Badge
-                        variant="outline"
-                        className="border-orange-500 text-orange-500 bg-orange-500/10 whitespace-nowrap"
-                      >
-                        <UserX className="h-3 w-3 mr-1" />
-                        Unassigned
-                      </Badge>
-                    ) : null}
-                  </div>
-                  <div className="flex items-center gap-2 flex-wrap text-muted-foreground text-sm mt-0.5">
-                    {lead.externalId && (
-                      <span>
-                        ID:{" "}
-                        <span className="font-mono font-medium text-foreground">
-                          {lead.externalId}
-                        </span>
-                      </span>
-                    )}
-                    {lead.currentStage && (
-                      lead.currentStage.isFinalState ? (
-                        lead.currentStage.fineractAction === "reject" ? (
-                          <Badge className="bg-red-600 text-white border-0 text-xs gap-1">
-                            <XCircle className="h-3 w-3" />
-                            Rejected
-                          </Badge>
-                        ) : (
-                          <Badge className="bg-green-600 text-white border-0 text-xs gap-1">
-                            <CheckCircle2 className="h-3 w-3" />
-                            Pipeline Complete
-                          </Badge>
-                        )
-                      ) : (
-                        <Badge
-                          className="text-white border-0 text-xs"
-                          style={{ backgroundColor: lead.currentStage.color || "#6b7280" }}
-                        >
-                          {currentStage}
-                        </Badge>
-                      )
-                    )}
-                    {lead.clientTypeName && (
-                      <span>
-                        Type:{" "}
-                        <span className="font-medium text-foreground">
-                          {lead.clientTypeName}
-                        </span>
-                      </span>
-                    )}
-                    {lead.preferredPaymentMethod && (() => {
-                      const method = String(lead.preferredPaymentMethod).toUpperCase().replaceAll(/\s+/g, "_");
-                      const label = method === "CASH" ? "Cash" : method === "MOBILE_MONEY" ? "Mobile Money" : method === "BANK_TRANSFER" ? "Bank Transfer" : lead.preferredPaymentMethod;
-                      const cls = method === "CASH"
-                        ? "bg-amber-100 text-amber-800 border-amber-200"
-                        : method === "MOBILE_MONEY"
-                        ? "bg-blue-100 text-blue-800 border-blue-200"
-                        : method === "BANK_TRANSFER"
-                        ? "bg-purple-100 text-purple-800 border-purple-200"
-                        : "bg-gray-100 text-gray-800 border-gray-200";
-                      return <Badge className={`${cls} text-xs`}>{label}</Badge>;
-                    })()}
-                    {fineractLoanId && (
-                      <span>
-                        Loan:{" "}
-                        <span className="font-mono font-medium text-foreground">
-                          #{fineractLoanId}
-                        </span>
-                      </span>
-                    )}
-                  </div>
-                </div>
+                    )
+                  ) : (
+                    <Badge
+                      className="text-white border-0 text-xs shrink-0"
+                      style={{ backgroundColor: lead.currentStage.color || "#6b7280" }}
+                    >
+                      {currentStage}
+                    </Badge>
+                  )
+                )}
               </div>
-              <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex items-center gap-1.5 shrink-0">
                 <StateTransitionManager
                   leadId={id}
                   currentStage={currentStage}
@@ -620,6 +526,47 @@ export default async function LeadDetailPage({
                   />
                 )}
               </div>
+            </div>
+            <div className="flex items-center gap-x-3 gap-y-1 flex-wrap text-xs text-muted-foreground mt-1">
+              {lead.externalId && (
+                <span>
+                  ID: <span className="font-mono font-medium text-foreground">{lead.externalId}</span>
+                </span>
+              )}
+              {fineractLoanId && (
+                <span>
+                  Loan: <span className="font-mono font-medium text-foreground">#{fineractLoanId}</span>
+                </span>
+              )}
+              {lead.clientTypeName && (
+                <span>{lead.clientTypeName}</span>
+              )}
+              {lead.preferredPaymentMethod && (() => {
+                const method = String(lead.preferredPaymentMethod).toUpperCase().replaceAll(/\s+/g, "_");
+                const label = method === "CASH" ? "Cash" : method === "MOBILE_MONEY" ? "Mobile Money" : method === "BANK_TRANSFER" ? "Bank Transfer" : lead.preferredPaymentMethod;
+                return <span>{label}</span>;
+              })()}
+              {lead.assignedToUserName ? (
+                <span className="inline-flex items-center gap-1 text-green-700 dark:text-green-400">
+                  <UserCheck className="h-3 w-3" />
+                  {lead.assignedToUserName}
+                </span>
+              ) : lead.loanSubmittedToFineract ? (
+                <span className="inline-flex items-center gap-1 text-orange-500">
+                  <UserX className="h-3 w-3" />
+                  Unassigned
+                </span>
+              ) : null}
+              {cdeResult && (
+                <Link href={`/leads/${id}/cde`} className="hover:underline">
+                  <span className={`inline-flex items-center gap-1 ${
+                    cdeResult.decision === "APPROVED" ? "text-green-600" : cdeResult.decision === "MANUAL_REVIEW" ? "text-yellow-600" : "text-red-600"
+                  }`}>
+                    CDE: {cdeResult.decision}
+                    {cdeResult.scoringResult?.creditScore && ` • ${cdeResult.scoringResult.creditScore}`}
+                  </span>
+                </Link>
+              )}
             </div>
           </div>
         </div>

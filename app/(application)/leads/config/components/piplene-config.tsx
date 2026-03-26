@@ -79,6 +79,8 @@ export function PipelineConfig() {
               allowedTransitions: s.allowedTransitions || [],
               fineractStatus: s.fineractStatus || null,
               fineractAction: s.fineractAction || null,
+              requiredApprovals: s.requiredApprovals ?? 1,
+              skipBelowAmount: s.skipBelowAmount ?? null,
               order: s.order,
             }))
           );
@@ -150,6 +152,8 @@ export function PipelineConfig() {
       allowedTransitions: [],
       fineractStatus: null,
       fineractAction: null,
+      requiredApprovals: 1,
+      skipBelowAmount: null,
       order: stages.length + 1,
     });
     setIsEditing(false);
@@ -306,6 +310,16 @@ export function PipelineConfig() {
                                   {stage.fineractAction && (
                                     <Badge variant="outline" className="text-xs border-amber-300 text-amber-700 bg-amber-50">
                                       Fineract: {stage.fineractAction}
+                                    </Badge>
+                                  )}
+                                  {(stage.requiredApprovals ?? 1) > 1 && (
+                                    <Badge variant="outline" className="text-xs border-blue-300 text-blue-700 bg-blue-50">
+                                      {stage.requiredApprovals} approvals
+                                    </Badge>
+                                  )}
+                                  {stage.skipBelowAmount && (
+                                    <Badge variant="outline" className="text-xs border-purple-300 text-purple-700 bg-purple-50">
+                                      Skip &lt; K{stage.skipBelowAmount.toLocaleString()}
                                     </Badge>
                                   )}
                                 </div>
@@ -563,6 +577,49 @@ export function PipelineConfig() {
                   </Select>
                   <p className="text-xs text-muted-foreground">
                     The Fineract loan status expected while a lead is in this stage
+                  </p>
+                </div>
+              </div>
+
+              <div className="border-t pt-4 space-y-3">
+                <h4 className="text-sm font-medium text-muted-foreground">
+                  Approval Settings
+                </h4>
+                <div className="space-y-2">
+                  <Label className="text-sm">Required Approvals</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={10}
+                    value={editingStage.requiredApprovals ?? 1}
+                    onChange={(e) =>
+                      setEditingStage({
+                        ...editingStage,
+                        requiredApprovals: Math.max(1, Number.parseInt(e.target.value) || 1),
+                      })
+                    }
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    How many unique team members must approve before a lead can move forward (1 = no multi-approval)
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-sm">Auto-skip Below Amount</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    placeholder="Leave empty to never skip"
+                    value={editingStage.skipBelowAmount ?? ""}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setEditingStage({
+                        ...editingStage,
+                        skipBelowAmount: val === "" ? null : Number.parseFloat(val),
+                      });
+                    }}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    If set, loans with a requested amount below this value will automatically skip this stage
                   </p>
                 </div>
               </div>
