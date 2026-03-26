@@ -201,7 +201,7 @@ export default function TransitionHistory({ leadId }: TransitionHistoryProps) {
                     )}
 
                     {/* Timestamp and user */}
-                    <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap">
+                    <div className="flex items-center gap-4 text-xs text-muted-foreground">
                       <div className="flex items-center gap-1">
                         <Clock className="h-3 w-3" />
                         {format(new Date(item.triggeredAt), "PPp")}

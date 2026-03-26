@@ -8,7 +8,7 @@ import { extractTenantSlugFromRequest } from "@/lib/tenant-service";
  * Fetch loan status reports from Fineract or local DB
  * 
  * Query params:
- * - report: "drafts" | "pending" | "approved" | "rejected" | "disbursed"
+ * - report: "drafts" | "pending" | "approved" | "rejected" | "disbursed" | "payout"
  * - startDate: YYYY-MM-DD
  * - endDate: YYYY-MM-DD
  */
@@ -31,18 +31,22 @@ export async function GET(request: NextRequest) {
       return await getDraftsFromLocalDB(startDate, endDate, request);
     }
 
+    // Payout = disbursed loans that have been paid out (payout status PAID). Fetched via disbursed then filtered.
+    const isPayoutReport = report === "payout";
+
     // Map report type to Fineract report name
     const reportNames: Record<string, string> = {
       pending: "system submitted pending approval",
       approved: "system approved pending disbursement",
       rejected: "system loans rejected",
       disbursed: "system disbursed",
+      payout: "system disbursed", // same source, filter to PAID only below
     };
 
     const reportName = reportNames[report];
     if (!reportName) {
       return NextResponse.json(
-        { error: "Invalid report type. Use: drafts, pending, approved, rejected, or disbursed" },
+        { error: "Invalid report type. Use: drafts, pending, approved, rejected, disbursed, or payout" },
         { status: 400 }
       );
     }
@@ -106,7 +110,7 @@ export async function GET(request: NextRequest) {
             leads.map((lead) => [lead.id, lead])
           );
 
-          // For disbursed report, fetch payout statuses and payment methods
+          // For disbursed or payout report, fetch payout statuses; for payout only, also payment method
           // Use fineractLoanId from matched leads as well (in case Fineract report has no loan_id column)
           const allFineractLoanIds = [
             ...loanIds.map((id: any) => Number(id)),
@@ -116,7 +120,7 @@ export async function GET(request: NextRequest) {
 
           let payoutStatusMap = new Map<number, string>();
           let payoutPaymentMethodMap = new Map<number, string>();
-          if (report === "disbursed" && uniqueFineractLoanIds.length > 0) {
+          if ((report === "disbursed" || report === "payout") && uniqueFineractLoanIds.length > 0) {
             const payouts = await prisma.loanPayout.findMany({
               where: {
                 tenantId: tenant.id,
@@ -155,7 +159,7 @@ export async function GET(request: NextRequest) {
             return u === "CASH" || u === "MOBILE_MONEY" || u === "BANK_TRANSFER" || v === "Mobile" || v === "Cash" || v === "Bank Transfer";
           };
 
-          // Add lead_id, payout_status, payment_type, and fix branch when it shows payment type
+          // Add lead_id, payout_status, payment_type (dedicated column), and fix branch when it shows payment type
           result = result.map((row: any) => {
             const rowLoanId = row.loan_id != null ? Number(row.loan_id) : null;
             const rowExternalId = row.external_id || row.client_external_id || null;
@@ -169,7 +173,7 @@ export async function GET(request: NextRequest) {
             const resolvedLeadId = resolvedLead?.id || null;
             const resolvedFineractLoanId = resolvedLead?.fineractLoanId ?? rowLoanId;
             const fromLead = resolvedLead?.preferredPaymentMethod ?? null;
-            const fromPayout = report === "disbursed" && resolvedFineractLoanId
+            const fromPayout = (report === "disbursed" || report === "payout") && resolvedFineractLoanId
               ? payoutPaymentMethodMap.get(resolvedFineractLoanId) : null;
             const rawPaymentType = fromLead || fromPayout || null;
             const paymentTypeLabel = rawPaymentType
@@ -182,7 +186,7 @@ export async function GET(request: NextRequest) {
               payment_type: paymentTypeLabel,
             };
 
-            if (report === "disbursed") {
+            if (report === "disbursed" || report === "payout") {
               enrichedRow.payout_status = resolvedFineractLoanId
                 ? (payoutStatusMap.get(resolvedFineractLoanId) || "PENDING")
                 : "PENDING";
@@ -197,6 +201,17 @@ export async function GET(request: NextRequest) {
             return enrichedRow;
           });
 
+          // Disbursed report: only rows that are disbursed but NOT yet paid out (payout_status !== "PAID")
+          if (report === "disbursed") {
+            result = result.filter((row: any) => String(row.payout_status || "").toUpperCase() !== "PAID");
+            console.log(`Disbursed report: ${result.length} disbursed-but-not-paid-out loans`);
+          }
+
+          // Payout report: only rows that have been paid out (payout_status === "PAID")
+          if (isPayoutReport) {
+            result = result.filter((row: any) => String(row.payout_status || "").toUpperCase() === "PAID");
+            console.log(`Payout report: ${result.length} paid-out loans`);
+          }
 
           console.log(`Enriched ${leads.length} rows with local lead IDs`);
         } else {

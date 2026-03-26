@@ -622,7 +622,7 @@ export function GenericDataTable<TData>({
       </div>
 
       {/* Table Container - Single scroll container */}
-      <div className="flex-1 min-h-0 rounded-md border overflow-x-auto">
+      <div className="flex-1 min-h-0 rounded-md border overflow-visible">
         <Table className="min-w-full">
           <TableHeader className="sticky top-0 bg-background z-10">
             {table.getHeaderGroups().map((headerGroup) => (

@@ -1,8 +1,7 @@
 "use client";
 
 import { useCurrency } from "@/contexts/currency-context";
-import { fineractFetch } from "@/lib/fineract-fetch";
-import { useCallback, useEffect, useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -14,13 +13,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Calendar,
@@ -57,27 +49,6 @@ interface CreditBalanceRefundModalProps {
   onSuccess: () => void;
 }
 
-interface PaymentType {
-  id: number;
-  name: string;
-  description?: string;
-  isCashPayment?: boolean;
-}
-
-interface Teller {
-  id: string;
-  fineractTellerId?: number;
-  name: string;
-  officeName?: string;
-}
-
-interface Cashier {
-  id: string | number;
-  dbId?: string;
-  staffName: string;
-  sessionStatus?: string;
-}
-
 export function CreditBalanceRefundModal({
   isOpen,
   onClose,
@@ -89,29 +60,31 @@ export function CreditBalanceRefundModal({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
-  const [paymentTypes, setPaymentTypes] = useState<PaymentType[]>([]);
-  const [tellers, setTellers] = useState<Teller[]>([]);
-  const [cashiers, setCashiers] = useState<Cashier[]>([]);
-  const [selectedTeller, setSelectedTeller] = useState("");
-  const [selectedCashier, setSelectedCashier] = useState("");
-  const [loadingTellers, setLoadingTellers] = useState(false);
-  const [loadingCashiers, setLoadingCashiers] = useState(false);
 
   const [formData, setFormData] = useState({
     transactionDate: "",
     transactionAmount: "",
-    paymentTypeId: "",
     note: "",
   });
 
-  const fetchTemplate = useCallback(async () => {
+  useEffect(() => {
+    if (isOpen && loanId) {
+      fetchTemplate();
+    }
+  }, [isOpen, loanId]);
+
+  const fetchTemplate = async () => {
     try {
       setLoading(true);
       setError(null);
 
-      const response = await fineractFetch(
+      const response = await fetch(
         `/api/fineract/loans/${loanId}/transactions/credit-balance-refund-template`
       );
+      if (!response.ok) {
+        throw new Error(`Failed to fetch template: ${response.statusText}`);
+      }
+
       const data: RefundTemplate = await response.json();
       setTemplate(data);
 
@@ -133,81 +106,7 @@ export function CreditBalanceRefundModal({
     } finally {
       setLoading(false);
     }
-  }, [loanId]);
-
-  useEffect(() => {
-    if (isOpen && loanId) {
-      void fetchTemplate();
-      void fetchPaymentTypes();
-      void fetchTellers();
-    }
-  }, [fetchTemplate, isOpen, loanId]);
-
-  useEffect(() => {
-    if (selectedTeller) {
-      void fetchCashiers(selectedTeller);
-    } else {
-      setCashiers([]);
-      setSelectedCashier("");
-    }
-  }, [selectedTeller]);
-
-  const fetchPaymentTypes = async () => {
-    try {
-      const response = await fetch("/api/fineract/paymenttypes");
-      if (!response.ok) {
-        throw new Error("Failed to load payment types");
-      }
-
-      const data = await response.json();
-      const list: PaymentType[] = Array.isArray(data)
-        ? data
-        : Array.isArray(data?.pageItems)
-        ? data.pageItems
-        : [];
-      setPaymentTypes(list);
-    } catch (err) {
-      console.error("Error fetching payment types:", err);
-    }
   };
-
-  const fetchTellers = async () => {
-    setLoadingTellers(true);
-    try {
-      const response = await fetch("/api/tellers");
-      if (response.ok) {
-        const data = await response.json();
-        setTellers(data || []);
-      }
-    } catch (err) {
-      console.error("Error fetching tellers:", err);
-    } finally {
-      setLoadingTellers(false);
-    }
-  };
-
-  const fetchCashiers = async (tellerId: string) => {
-    setLoadingCashiers(true);
-    try {
-      const response = await fetch(`/api/tellers/${tellerId}/cashiers`);
-      if (response.ok) {
-        const data = await response.json();
-        const activeCashiers = (Array.isArray(data) ? data : []).filter(
-          (cashier: Cashier) => cashier.sessionStatus === "ACTIVE"
-        );
-        setCashiers(activeCashiers);
-      }
-    } catch (err) {
-      console.error("Error fetching cashiers:", err);
-    } finally {
-      setLoadingCashiers(false);
-    }
-  };
-
-  const selectedPaymentType = paymentTypes.find(
-    (paymentType) => paymentType.id.toString() === formData.paymentTypeId
-  );
-  const selectedPaymentTypeIsCash = !!selectedPaymentType?.isCashPayment;
 
   const handleSubmit = async () => {
     try {
@@ -219,43 +118,23 @@ export function CreditBalanceRefundModal({
         return;
       }
 
-      if (!formData.paymentTypeId) {
-        setError("Payment type is required for the refund.");
-        return;
-      }
+      const dateObj = new Date(formData.transactionDate);
+      const formattedDate = dateObj.toLocaleDateString("en-GB", {
+        day: "2-digit",
+        month: "long",
+        year: "numeric",
+      });
 
-      if (selectedPaymentTypeIsCash && !selectedTeller) {
-        setError("Please select a teller for cash refunds.");
-        return;
-      }
-
-      if (selectedPaymentTypeIsCash && !selectedCashier) {
-        setError(
-          "Please select a cashier with an active session for cash refunds."
-        );
-        return;
-      }
-
-      const payload: {
-        transactionDate: string;
-        transactionAmount: number;
-        dateFormat: string;
-        locale: string;
-        paymentTypeId: number;
-        note?: string;
-      } = {
-        transactionDate: formData.transactionDate,
+      const payload: any = {
+        transactionDate: formattedDate,
         transactionAmount: parseFloat(formData.transactionAmount),
-        dateFormat: "yyyy-MM-dd",
+        dateFormat: "dd MMMM yyyy",
         locale: "en",
-        paymentTypeId: parseInt(formData.paymentTypeId, 10),
       };
 
-      if (formData.note) {
-        payload.note = formData.note;
-      }
+      if (formData.note) payload.note = formData.note;
 
-      await fineractFetch(
+      const response = await fetch(
         `/api/fineract/loans/${loanId}/transactions/credit-balance-refund`,
         {
           method: "POST",
@@ -264,31 +143,13 @@ export function CreditBalanceRefundModal({
         }
       );
 
-      if (selectedPaymentTypeIsCash && selectedTeller && selectedCashier) {
-        const settleResponse = await fetch(
-          `/api/tellers/${selectedTeller}/cashiers/${selectedCashier}/settle`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              amount: parseFloat(formData.transactionAmount),
-              currency: template?.currency?.code ?? orgCurrency,
-              date: formData.transactionDate,
-              notes: formData.note || "Credit balance refund",
-              transactionType: "CREDIT_BALANCE_REFUND",
-            }),
-          }
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(
+          errorData.defaultUserMessage ||
+            errorData.error ||
+            `Failed to submit credit balance refund: ${response.statusText}`
         );
-
-        if (!settleResponse.ok) {
-          const settleError = await settleResponse.json().catch(() => null);
-          setError(
-            `Refund recorded, but cashier balance was not updated: ${
-              settleError?.error || settleResponse.statusText
-            }`
-          );
-          return;
-        }
       }
 
       setSuccess(true);
@@ -315,11 +176,8 @@ export function CreditBalanceRefundModal({
     setFormData({
       transactionDate: "",
       transactionAmount: "",
-      paymentTypeId: "",
       note: "",
     });
-    setSelectedTeller("");
-    setSelectedCashier("");
     setError(null);
     setSuccess(false);
   };
@@ -331,7 +189,10 @@ export function CreditBalanceRefundModal({
     return code;
   };
 
-  const formatCurrency = (amount: number, currencyCode?: string): string => {
+  const formatCurrency = (
+    amount: number,
+    currencyCode?: string
+  ): string => {
     return new Intl.NumberFormat("en-US", {
       style: "currency",
       currency: normalizeCurrencyCode(currencyCode),
@@ -356,7 +217,7 @@ export function CreditBalanceRefundModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Coins className="h-5 w-5 text-green-600" />
@@ -443,116 +304,6 @@ export function CreditBalanceRefundModal({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="cbr-payment-type">Payment Type *</Label>
-              <Select
-                value={formData.paymentTypeId}
-                onValueChange={(value) => {
-                  setFormData((prev) => ({ ...prev, paymentTypeId: value }));
-                  const option = paymentTypes.find(
-                    (paymentType) => paymentType.id.toString() === value
-                  );
-                  if (!option?.isCashPayment) {
-                    setSelectedTeller("");
-                    setSelectedCashier("");
-                  }
-                }}
-              >
-                <SelectTrigger id="cbr-payment-type">
-                  <SelectValue placeholder="Select payment type" />
-                </SelectTrigger>
-                <SelectContent>
-                  {paymentTypes.length === 0 ? (
-                    <div className="py-4 px-2 text-center text-sm text-muted-foreground">
-                      No payment types available
-                    </div>
-                  ) : (
-                    paymentTypes.map((option) => (
-                      <SelectItem key={option.id} value={option.id.toString()}>
-                        {option.name}
-                        {option.isCashPayment ? " (Cash)" : ""}
-                      </SelectItem>
-                    ))
-                  )}
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">
-                Select a cash payment type when the refund is handed back from a
-                cashier till.
-              </p>
-            </div>
-
-            {selectedPaymentTypeIsCash && (
-              <div className="space-y-4 p-4 border rounded-lg bg-muted/30">
-                <Label className="text-sm font-medium">
-                  Cash till location (required for cashier balance)
-                </Label>
-
-                <div className="space-y-2">
-                  <Label>Teller *</Label>
-                  <Select value={selectedTeller} onValueChange={setSelectedTeller}>
-                    <SelectTrigger>
-                      <SelectValue
-                        placeholder={
-                          loadingTellers ? "Loading tellers..." : "Select a teller"
-                        }
-                      />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {tellers.map((teller) => (
-                        <SelectItem
-                          key={teller.id}
-                          value={teller.fineractTellerId?.toString() || teller.id}
-                        >
-                          {teller.name}
-                          {teller.officeName ? ` - ${teller.officeName}` : ""}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Cashier *</Label>
-                  <Select
-                    value={selectedCashier}
-                    onValueChange={setSelectedCashier}
-                    disabled={!selectedTeller || loadingCashiers}
-                  >
-                    <SelectTrigger>
-                      <SelectValue
-                        placeholder={
-                          !selectedTeller
-                            ? "Select a teller first"
-                            : loadingCashiers
-                            ? "Loading cashiers..."
-                            : cashiers.length === 0
-                            ? "No cashiers with active sessions"
-                            : "Select a cashier"
-                        }
-                      />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {cashiers.map((cashier) => (
-                        <SelectItem
-                          key={cashier.dbId || cashier.id}
-                          value={String(cashier.id)}
-                        >
-                          {cashier.staffName}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {selectedTeller && cashiers.length === 0 && !loadingCashiers && (
-                  <p className="text-sm text-amber-600">
-                    No cashiers have active sessions. Start a session first.
-                  </p>
-                )}
-              </div>
-            )}
-
-            <div className="space-y-2">
               <Label htmlFor="cbr-note">Note</Label>
               <Textarea
                 id="cbr-note"
@@ -576,8 +327,7 @@ export function CreditBalanceRefundModal({
             disabled={
               submitting ||
               !formData.transactionDate ||
-              !formData.transactionAmount ||
-              !formData.paymentTypeId
+              !formData.transactionAmount
             }
             className="bg-green-600 hover:bg-green-700"
           >
