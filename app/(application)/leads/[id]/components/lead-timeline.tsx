@@ -10,6 +10,7 @@ import {
   CreditCard,
   Shield,
   ArrowRight,
+  SkipForward,
   Loader2,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -22,6 +23,11 @@ interface LeadTimelineProps {
 interface StateTransition {
   id: string;
   triggeredAt: string;
+  event?: string;
+  metadata?: {
+    reason?: string;
+    [key: string]: any;
+  };
   fromStage?: {
     name: string;
     description?: string;
@@ -115,20 +121,29 @@ export function LeadTimeline({ leadId }: LeadTimelineProps) {
     const transitions = leadData.stateTransitions
       .slice()
       .reverse() // Show oldest first
-      .map((transition) => ({
-        id: transition.id,
-        type: "stage-change",
-        title: transition.fromStage
-          ? `Moved to ${transition.toStage.name}`
-          : `Initial Stage: ${transition.toStage.name}`,
-        description: transition.fromStage
-          ? `Transitioned from ${transition.fromStage.name} to ${transition.toStage.name}`
-          : `Lead assigned to ${transition.toStage.name} stage`,
-        timestamp: new Date(transition.triggeredAt).toLocaleString(),
-        user: "System",
-        icon: <ArrowRight className="h-4 w-4 text-white" />,
-        iconBg: "bg-green-500",
-      }));
+      .map((transition) => {
+        const isSkipped = transition.event === "AUTO_SKIPPED";
+        return {
+          id: transition.id,
+          type: isSkipped ? "skipped" : "stage-change",
+          title: isSkipped
+            ? `Skipped ${transition.toStage.name}`
+            : transition.fromStage
+            ? `Moved to ${transition.toStage.name}`
+            : `Initial Stage: ${transition.toStage.name}`,
+          description: isSkipped
+            ? transition.metadata?.reason || `Stage "${transition.toStage.name}" was auto-skipped (loan amount below threshold)`
+            : transition.fromStage
+            ? `Transitioned from ${transition.fromStage.name} to ${transition.toStage.name}`
+            : `Lead assigned to ${transition.toStage.name} stage`,
+          timestamp: new Date(transition.triggeredAt).toLocaleString(),
+          user: "System",
+          icon: isSkipped
+            ? <SkipForward className="h-4 w-4 text-white" />
+            : <ArrowRight className="h-4 w-4 text-white" />,
+          iconBg: isSkipped ? "bg-purple-500" : "bg-green-500",
+        };
+      });
 
     timelineEvents.push(...transitions);
   }
@@ -176,6 +191,11 @@ export function LeadTimeline({ leadId }: LeadTimelineProps) {
                   {event.type === "stage-change" && (
                     <Badge className="bg-green-500 hover:bg-green-600 text-white border-0 text-xs shadow-sm">
                       Stage Change
+                    </Badge>
+                  )}
+                  {event.type === "skipped" && (
+                    <Badge className="bg-purple-500 hover:bg-purple-600 text-white border-0 text-xs shadow-sm">
+                      Auto-Skipped
                     </Badge>
                   )}
                   {event.type === "alert" && (

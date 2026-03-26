@@ -94,6 +94,7 @@ function TeamFormFields({
 }) {
   const [selectedUserId, setSelectedUserId] = useState("");
   const [memberRole, setMemberRole] = useState("Team Member");
+  const [memberApprovalLimit, setMemberApprovalLimit] = useState<string>("");
 
   const members = team.members || [];
   const stages = team.pipelineStages || [];
@@ -114,10 +115,12 @@ function TeamFormFields({
       name: user.displayName,
       email: user.email || user.username,
       role: memberRole || "Team Member",
+      approvalLimit: memberApprovalLimit ? Number.parseFloat(memberApprovalLimit) : null,
     });
 
     setSelectedUserId("");
     setMemberRole("Team Member");
+    setMemberApprovalLimit("");
   };
 
   return (
@@ -229,6 +232,9 @@ function TeamFormFields({
                   <div className="font-medium text-sm">{member.name}</div>
                   <div className="text-xs text-muted-foreground">
                     {member.email} &middot; {member.role}
+                    {member.approvalLimit != null && (
+                      <> &middot; Limit: K{member.approvalLimit.toLocaleString()}</>
+                    )}
                   </div>
                 </div>
               </div>
@@ -247,7 +253,7 @@ function TeamFormFields({
           )}
         </div>
 
-        <div className="grid gap-3 md:grid-cols-2">
+        <div className="grid gap-3 md:grid-cols-3">
           <div>
             <Label className="text-xs">Select User</Label>
             <Select value={selectedUserId} onValueChange={setSelectedUserId}>
@@ -277,6 +283,16 @@ function TeamFormFields({
                 ))}
               </SelectContent>
             </Select>
+          </div>
+          <div>
+            <Label className="text-xs">Approval Limit</Label>
+            <Input
+              type="number"
+              min={0}
+              placeholder="Unlimited"
+              value={memberApprovalLimit}
+              onChange={(e) => setMemberApprovalLimit(e.target.value)}
+            />
           </div>
         </div>
         <Button
@@ -551,6 +567,9 @@ export function TeamConfig() {
                           </div>
                           <div className="text-xs text-muted-foreground">
                             {member.role}
+                            {member.approvalLimit != null && (
+                              <> &middot; Limit: K{member.approvalLimit.toLocaleString()}</>
+                            )}
                           </div>
                         </div>
                       </div>
