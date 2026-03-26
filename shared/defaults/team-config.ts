@@ -5,6 +5,7 @@ export interface TeamMember {
   email: string;
   role: string;
   avatar?: string;
+  approvalLimit?: number | null;
 }
 
 export type AssignmentStrategy = "round_robin" | "least_loaded" | "manual" | "specific_member";

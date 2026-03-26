@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -54,6 +54,13 @@ interface AvailableTransition {
   fineractAction: string | null;
   isBackward?: boolean;
   undoAction?: string | null;
+  willSkip?: boolean;
+  skipToStageId?: string | null;
+  skipToStageName?: string | null;
+  skipToStageColor?: string | null;
+  skipToFineractAction?: string | null;
+  skippedActions?: { stageName: string; action: string }[];
+  skipToFineractAction?: string | null;
   receivingTeam: {
     id: string;
     name: string;
@@ -118,8 +125,88 @@ export default function StateTransitionManager({
   const [overrideValidations, setOverrideValidations] = useState(false);
   const [overrideReason, setOverrideReason] = useState("");
 
+  // Multi-approval state
+  const [approvalStatus, setApprovalStatus] = useState<{
+    requiredApprovals: number;
+    approvals: { id: string; userId: string; userName: string; note?: string; approvedAt: string }[];
+    isFullyApproved: boolean;
+    userCanApprove: boolean;
+    userHasApproved: boolean;
+    userApprovalLimit: number | null;
+    amountExceedsLimit: boolean;
+    requestedAmount: number | null;
+  } | null>(null);
+  const [submittingApproval, setSubmittingApproval] = useState(false);
+  const [approvalNote, setApprovalNote] = useState("");
+
   const { toast } = useToast();
   const router = useRouter();
+
+  // Derived: when a stage will be skipped, the effective Fineract action is from the destination stage
+  const effectiveAction = useMemo(() => {
+    if (selectedTransition?.willSkip && selectedTransition.skipToFineractAction) {
+      return selectedTransition.skipToFineractAction;
+    }
+    return selectedTransition?.fineractAction || null;
+  }, [selectedTransition]);
+
+  const fetchApprovalStatus = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/leads/${leadId}/approve`);
+      if (res.ok) {
+        const data = await res.json();
+        setApprovalStatus(data);
+      }
+    } catch {
+      setApprovalStatus(null);
+    }
+  }, [leadId]);
+
+  const handleApprove = async () => {
+    setSubmittingApproval(true);
+    try {
+      const res = await fetch(`/api/leads/${leadId}/approve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ note: approvalNote || undefined }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        toast({
+          title: "Approval Recorded",
+          description: `${data.currentCount} of ${data.requiredCount} approvals collected.`,
+        });
+        setApprovalNote("");
+        fetchApprovalStatus();
+      } else {
+        toast({
+          title: "Approval Failed",
+          description: data.error || "Could not record approval",
+          variant: "destructive",
+        });
+      }
+    } catch {
+      toast({
+        title: "Error",
+        description: "Failed to submit approval",
+        variant: "destructive",
+      });
+    } finally {
+      setSubmittingApproval(false);
+    }
+  };
+
+  const handleWithdrawApproval = async () => {
+    try {
+      const res = await fetch(`/api/leads/${leadId}/approve`, { method: "DELETE" });
+      if (res.ok) {
+        toast({ title: "Approval Withdrawn" });
+        fetchApprovalStatus();
+      }
+    } catch {
+      toast({ title: "Error", description: "Failed to withdraw approval", variant: "destructive" });
+    }
+  };
 
   const fetchAvailableTransitions = useCallback(async () => {
     setFetchingTransitions(true);
@@ -164,9 +251,14 @@ export default function StateTransitionManager({
   }, [leadId]);
 
   useEffect(() => {
+    fetchApprovalStatus();
+  }, [fetchApprovalStatus]);
+
+  useEffect(() => {
     if (open) {
       fetchAvailableTransitions();
       checkValidations();
+      fetchApprovalStatus();
       setSelectedTransition(null);
       setReason("");
       setFineractDate(new Date().toISOString().split("T")[0]);
@@ -189,7 +281,7 @@ export default function StateTransitionManager({
   }, [open, fetchAvailableTransitions, checkValidations]);
 
   useEffect(() => {
-    if (selectedTransition?.fineractAction === "disburse" && paymentTypes.length === 0) {
+    if (effectiveAction === "disburse" && paymentTypes.length === 0) {
       fetch("/api/fineract/paymenttypes")
         .then((res) => res.ok ? res.json() : [])
         .then((data) => {
@@ -201,11 +293,11 @@ export default function StateTransitionManager({
         })
         .catch(() => {});
     }
-  }, [selectedTransition, paymentTypes.length]);
+  }, [effectiveAction, paymentTypes.length]);
 
   // Fetch tellers when payout transition is selected
   useEffect(() => {
-    if (selectedTransition?.fineractAction === "payout" && tellers.length === 0) {
+    if (effectiveAction === "payout" && tellers.length === 0) {
       setLoadingTellers(true);
       fetch("/api/tellers")
         .then((res) => res.ok ? res.json() : [])
@@ -213,11 +305,11 @@ export default function StateTransitionManager({
         .catch(() => {})
         .finally(() => setLoadingTellers(false));
     }
-  }, [selectedTransition, tellers.length]);
+  }, [effectiveAction, tellers.length]);
 
   // Fetch cashiers when teller changes (payout flow)
   useEffect(() => {
-    if (selectedTeller && selectedTransition?.fineractAction === "payout") {
+    if (selectedTeller && effectiveAction === "payout") {
       setLoadingCashiers(true);
       setSelectedCashier("");
       fetch(`/api/tellers/${selectedTeller}/cashiers`)
@@ -249,12 +341,12 @@ export default function StateTransitionManager({
     setLoading(true);
     try {
       let fineractOverrides: Record<string, any> | undefined;
-      if (selectedTransition.fineractAction === "approve") {
+      if (effectiveAction === "approve") {
         fineractOverrides = {
           approvalDate: fineractDate,
           note: reason || undefined,
         };
-      } else if (selectedTransition.fineractAction === "disburse") {
+      } else if (effectiveAction === "disburse") {
         fineractOverrides = {
           disbursementDate: fineractDate,
           note: reason || undefined,
@@ -265,12 +357,12 @@ export default function StateTransitionManager({
           receiptNumber: receiptNumber || undefined,
           bankNumber: bankNumber || undefined,
         };
-      } else if (selectedTransition.fineractAction === "reject") {
+      } else if (effectiveAction === "reject") {
         fineractOverrides = {
           rejectionDate: fineractDate,
           note: reason || undefined,
         };
-      } else if (selectedTransition.fineractAction === "payout") {
+      } else if (effectiveAction === "payout") {
         fineractOverrides = {
           payoutMethod: payoutMethod || undefined,
           tellerId: selectedTeller || undefined,
@@ -329,21 +421,144 @@ export default function StateTransitionManager({
     return null;
   }
 
+  const needsMultiApproval =
+    approvalStatus && approvalStatus.requiredApprovals > 1;
+  const approvalBlocked =
+    needsMultiApproval && !approvalStatus.isFullyApproved;
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button variant="outline" size="sm">
           <ArrowRightLeft className="h-4 w-4 mr-2" />
           Move Stage
+          {approvalBlocked && (
+            <Badge variant="secondary" className="ml-1.5 text-xs">
+              {approvalStatus.approvals.length}/{approvalStatus.requiredApprovals}
+            </Badge>
+          )}
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[540px]">
+      <DialogContent className="sm:max-w-[640px] max-h-[90vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>Move Lead to Next Stage</DialogTitle>
           <DialogDescription>
             Select a stage to move this lead to. The lead will be automatically assigned to the receiving team.
           </DialogDescription>
         </DialogHeader>
+
+        <div className="flex-1 overflow-y-auto -mx-6 px-6 space-y-4">
+
+        {/* Multi-approval panel — inside dialog */}
+        {needsMultiApproval && (
+          <div className="rounded-lg border border-blue-200 bg-blue-50/50 dark:border-blue-800 dark:bg-blue-950/30 p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Users className="h-4 w-4 text-blue-600" />
+                <span className="text-sm font-medium text-blue-800 dark:text-blue-300">
+                  Stage Approvals
+                </span>
+              </div>
+              <Badge
+                variant="outline"
+                className={
+                  approvalStatus.isFullyApproved
+                    ? "border-green-300 text-green-700 bg-green-50"
+                    : "border-blue-300 text-blue-700 bg-blue-50"
+                }
+              >
+                {approvalStatus.approvals.length} / {approvalStatus.requiredApprovals}
+              </Badge>
+            </div>
+
+            <div className="w-full bg-blue-100 dark:bg-blue-900/40 rounded-full h-2">
+              <div
+                className={`h-2 rounded-full transition-all ${
+                  approvalStatus.isFullyApproved ? "bg-green-500" : "bg-blue-500"
+                }`}
+                style={{
+                  width: `${Math.min(
+                    100,
+                    (approvalStatus.approvals.length / approvalStatus.requiredApprovals) * 100
+                  )}%`,
+                }}
+              />
+            </div>
+
+            {approvalStatus.approvals.length > 0 && (
+              <div className="space-y-1.5">
+                {approvalStatus.approvals.map((a) => (
+                  <div
+                    key={a.id}
+                    className="flex items-center justify-between text-xs bg-white dark:bg-background/50 rounded p-2"
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <CheckCircle className="h-3.5 w-3.5 text-green-500" />
+                      <span className="font-medium">{a.userName}</span>
+                    </div>
+                    <span className="text-muted-foreground">
+                      {new Date(a.approvedAt).toLocaleDateString(undefined, {
+                        month: "short",
+                        day: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {approvalStatus.userCanApprove && !approvalStatus.userHasApproved && (
+              <div className="space-y-2 border-t border-blue-200 dark:border-blue-800 pt-3">
+                <Input
+                  placeholder="Approval note (optional)"
+                  value={approvalNote}
+                  onChange={(e) => setApprovalNote(e.target.value)}
+                  className="text-sm"
+                />
+                <Button
+                  onClick={handleApprove}
+                  disabled={submittingApproval || approvalStatus.amountExceedsLimit}
+                  size="sm"
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+                >
+                  {submittingApproval ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Approving...
+                    </>
+                  ) : approvalStatus.amountExceedsLimit ? (
+                    `Amount exceeds your limit (K${approvalStatus.userApprovalLimit?.toLocaleString()})`
+                  ) : (
+                    <>
+                      <CheckCircle className="h-4 w-4 mr-2" />
+                      Approve
+                    </>
+                  )}
+                </Button>
+              </div>
+            )}
+
+            {approvalStatus.userHasApproved && !approvalStatus.isFullyApproved && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleWithdrawApproval}
+                className="text-xs text-muted-foreground"
+              >
+                Withdraw my approval
+              </Button>
+            )}
+
+            {approvalStatus.isFullyApproved && (
+              <p className="text-xs text-green-700 dark:text-green-400 font-medium flex items-center gap-1">
+                <CheckCircle className="h-3.5 w-3.5" />
+                All approvals collected — ready to move
+              </p>
+            )}
+          </div>
+        )}
 
         <div className="space-y-4 py-4">
           {/* Current Stage */}
@@ -437,11 +652,51 @@ export default function StateTransitionManager({
                                 Undo {t.undoAction === "approve" ? "Approval" : t.undoAction === "disburse" ? "Disbursement" : t.undoAction === "payout" ? "Payout" : t.undoAction}
                               </Badge>
                             )}
+                            {t.willSkip && (
+                              <Badge variant="outline" className="text-xs border-purple-300 text-purple-700 bg-purple-50">
+                                <ArrowRight className="h-3 w-3 mr-1" />
+                                Auto-skip
+                              </Badge>
+                            )}
                           </div>
-                          {t.stageDescription && (
+                          {t.stageDescription && !t.willSkip && (
                             <p className="text-xs text-muted-foreground mt-1 ml-5">
                               {t.stageDescription}
                             </p>
+                          )}
+                          {t.willSkip && t.skipToStageName && (
+                            <div className="mt-1 ml-5 space-y-1">
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-xs text-muted-foreground line-through">{t.stageName}</span>
+                                <ArrowRight className="h-3 w-3 text-purple-500" />
+                                <div className="flex items-center gap-1">
+                                  <div
+                                    className="w-2 h-2 rounded-full"
+                                    style={{ backgroundColor: t.skipToStageColor || undefined }}
+                                  />
+                                  <span className="text-xs font-medium text-purple-700 dark:text-purple-400">
+                                    {t.skipToStageName}
+                                  </span>
+                                </div>
+                                <span className="text-xs text-muted-foreground">(amount below threshold)</span>
+                              </div>
+                              {t.skippedActions && t.skippedActions.length > 0 && (
+                                <div className="flex items-center gap-1 flex-wrap">
+                                  <span className="text-xs text-amber-600 dark:text-amber-400">Auto-actions:</span>
+                                  {t.skippedActions.map((sa, i) => (
+                                    <Badge
+                                      key={i}
+                                      variant="outline"
+                                      className="text-xs border-amber-300 text-amber-700 bg-amber-50"
+                                    >
+                                      {sa.action === "approve" && <ShieldCheck className="h-3 w-3 mr-1" />}
+                                      {sa.action === "disburse" && <Banknote className="h-3 w-3 mr-1" />}
+                                      {sa.action}
+                                    </Badge>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
                           )}
                         </div>
 
@@ -476,18 +731,43 @@ export default function StateTransitionManager({
 
           {/* Transition Preview */}
           {selectedTransition && (
-            <div className="flex items-center gap-2 justify-center py-2 bg-muted/30 rounded-lg">
+            <div className="flex items-center gap-2 justify-center py-2 bg-muted/30 rounded-lg flex-wrap">
               <Badge variant="outline">{currentStage}</Badge>
               <ArrowRight className="h-4 w-4 text-muted-foreground" />
-              <Badge
-                variant="outline"
-                style={{
-                  borderColor: selectedTransition.stageColor,
-                  color: selectedTransition.stageColor,
-                }}
-              >
-                {selectedTransition.stageName}
-              </Badge>
+              {selectedTransition.willSkip && selectedTransition.skipToStageName ? (
+                <>
+                  <Badge
+                    variant="outline"
+                    className="line-through opacity-50"
+                    style={{
+                      borderColor: selectedTransition.stageColor,
+                      color: selectedTransition.stageColor,
+                    }}
+                  >
+                    {selectedTransition.stageName}
+                  </Badge>
+                  <ArrowRight className="h-3 w-3 text-purple-500" />
+                  <Badge
+                    variant="outline"
+                    style={{
+                      borderColor: selectedTransition.skipToStageColor || undefined,
+                      color: selectedTransition.skipToStageColor || undefined,
+                    }}
+                  >
+                    {selectedTransition.skipToStageName}
+                  </Badge>
+                </>
+              ) : (
+                <Badge
+                  variant="outline"
+                  style={{
+                    borderColor: selectedTransition.stageColor,
+                    color: selectedTransition.stageColor,
+                  }}
+                >
+                  {selectedTransition.stageName}
+                </Badge>
+              )}
               {selectedTransition.receivingTeam && (
                 <>
                   <ArrowRight className="h-3 w-3 text-muted-foreground/50" />
@@ -524,37 +804,41 @@ export default function StateTransitionManager({
           )}
 
           {/* Fineract Action Fields — approve / disburse / reject */}
-          {selectedTransition?.fineractAction && selectedTransition.fineractAction !== "payout" && !selectedTransition.isBackward && (
+          {effectiveAction && effectiveAction !== "payout" && !selectedTransition?.isBackward && (
             <div className={`rounded-lg border p-4 space-y-3 ${
-              selectedTransition.fineractAction === "reject"
+              effectiveAction === "reject"
                 ? "border-red-200 bg-red-50/50 dark:border-red-800 dark:bg-red-950/30"
                 : "border-amber-200 bg-amber-50/50 dark:border-amber-800 dark:bg-amber-950/30"
             }`}>
               <div className="flex items-center gap-2">
-                {selectedTransition.fineractAction === "approve" ? (
+                {effectiveAction === "approve" ? (
                   <ShieldCheck className="h-4 w-4 text-amber-600" />
-                ) : selectedTransition.fineractAction === "reject" ? (
+                ) : effectiveAction === "reject" ? (
                   <AlertCircle className="h-4 w-4 text-red-600" />
                 ) : (
                   <Banknote className="h-4 w-4 text-amber-600" />
                 )}
                 <span className={`text-sm font-medium ${
-                  selectedTransition.fineractAction === "reject"
+                  effectiveAction === "reject"
                     ? "text-red-800 dark:text-red-300"
                     : "text-amber-800 dark:text-amber-300"
                 }`}>
-                  {selectedTransition.fineractAction === "approve"
-                    ? "This stage will approve the loan in Fineract"
-                    : selectedTransition.fineractAction === "reject"
+                  {effectiveAction === "approve"
+                    ? selectedTransition?.willSkip
+                      ? "This will auto-approve the loan in Fineract (stage skipped)"
+                      : "This stage will approve the loan in Fineract"
+                    : effectiveAction === "reject"
                     ? "This will reject the loan in Fineract"
+                    : selectedTransition?.willSkip
+                    ? "This will auto-disburse the loan in Fineract (stage skipped)"
                     : "This stage will disburse the loan in Fineract"}
                 </span>
               </div>
 
-              {selectedTransition.fineractAction !== "reject" && (
+              {effectiveAction !== "reject" && (
               <div className="space-y-2">
                 <Label htmlFor="fineract-date" className="text-sm">
-                  {selectedTransition.fineractAction === "approve"
+                  {effectiveAction === "approve"
                     ? "Approval Date"
                     : "Disbursement Date"}
                 </Label>
@@ -567,7 +851,7 @@ export default function StateTransitionManager({
               </div>
               )}
 
-              {selectedTransition.fineractAction === "disburse" && (
+              {effectiveAction === "disburse" && (
                 <>
                   <div className="space-y-2">
                     <Label className="text-sm">Payment Type</Label>
@@ -626,7 +910,7 @@ export default function StateTransitionManager({
           )}
 
           {/* Payout Action Fields */}
-          {selectedTransition?.fineractAction === "payout" && !selectedTransition.isBackward && (
+          {effectiveAction === "payout" && !selectedTransition?.isBackward && (
             <div className="rounded-lg border border-green-200 bg-green-50/50 dark:border-green-800 dark:bg-green-950/30 p-4 space-y-3">
               <div className="flex items-center gap-2">
                 <Banknote className="h-4 w-4 text-green-600" />
@@ -761,22 +1045,22 @@ export default function StateTransitionManager({
           )}
 
           {/* Reason — hidden for payout since it has its own notes field */}
-          {selectedTransition?.fineractAction !== "payout" && (
+          {effectiveAction !== "payout" && (
             <div className="space-y-2">
               <Label htmlFor="transition-reason">
-                {selectedTransition?.fineractAction === "reject"
+                {effectiveAction === "reject"
                   ? <>Rejection Reason <span className="text-red-500">*</span></>
                   : <>Note <span className="text-muted-foreground text-xs">(optional)</span></>}
               </Label>
               <Textarea
                 id="transition-reason"
-                placeholder={selectedTransition?.fineractAction === "reject"
+                placeholder={effectiveAction === "reject"
                   ? "Provide a reason for rejecting this loan..."
                   : "Add a note about this transition..."}
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
-                rows={selectedTransition?.fineractAction === "reject" ? 3 : 2}
-                className={selectedTransition?.fineractAction === "reject" ? "border-red-200 focus:ring-red-500" : undefined}
+                rows={effectiveAction === "reject" ? 3 : 2}
+                className={effectiveAction === "reject" ? "border-red-200 focus:ring-red-500" : undefined}
               />
             </div>
           )}
@@ -856,8 +1140,9 @@ export default function StateTransitionManager({
             </div>
           )}
         </div>
+        </div>
 
-        <DialogFooter>
+        <DialogFooter className="shrink-0">
           <Button variant="outline" onClick={() => setOpen(false)}>
             Cancel
           </Button>
@@ -866,18 +1151,19 @@ export default function StateTransitionManager({
             disabled={
               loading ||
               !selectedTransition ||
+              (!!approvalBlocked && !selectedTransition?.isBackward) ||
               (hasBlockingValidations && !selectedTransition?.isBackward && !overrideValidations) ||
               (hasBlockingValidations && !selectedTransition?.isBackward && overrideValidations && !overrideReason?.trim()) ||
-              (!selectedTransition?.isBackward && selectedTransition?.fineractAction === "payout" && !payoutMethod) ||
-              (!selectedTransition?.isBackward && selectedTransition?.fineractAction === "payout" && payoutMethod === "CASH" && (!selectedTeller || !selectedCashier)) ||
-              (!selectedTransition?.isBackward && selectedTransition?.fineractAction === "reject" && !reason?.trim())
+              (!selectedTransition?.isBackward && effectiveAction === "payout" && !payoutMethod) ||
+              (!selectedTransition?.isBackward && effectiveAction === "payout" && payoutMethod === "CASH" && (!selectedTeller || !selectedCashier)) ||
+              (!selectedTransition?.isBackward && effectiveAction === "reject" && !reason?.trim())
             }
             className={
               selectedTransition?.isBackward
                 ? "bg-orange-600 hover:bg-orange-700"
-                : selectedTransition?.fineractAction === "reject"
+                : effectiveAction === "reject"
                 ? "bg-red-600 hover:bg-red-700"
-                : selectedTransition?.fineractAction === "payout"
+                : effectiveAction === "payout"
                 ? "bg-green-600 hover:bg-green-700"
                 : undefined
             }
@@ -889,13 +1175,13 @@ export default function StateTransitionManager({
                   ? selectedTransition.undoAction
                     ? "Undoing & Moving Back..."
                     : "Moving Back..."
-                  : selectedTransition?.fineractAction === "approve"
+                  : effectiveAction === "approve"
                   ? "Approving..."
-                  : selectedTransition?.fineractAction === "disburse"
+                  : effectiveAction === "disburse"
                   ? "Disbursing..."
-                  : selectedTransition?.fineractAction === "payout"
+                  : effectiveAction === "payout"
                   ? "Processing Payout..."
-                  : selectedTransition?.fineractAction === "reject"
+                  : effectiveAction === "reject"
                   ? "Rejecting..."
                   : "Moving..."}
               </>
@@ -903,13 +1189,13 @@ export default function StateTransitionManager({
               <>
                 {selectedTransition?.isBackward ? (
                   <Undo2 className="mr-2 h-4 w-4" />
-                ) : selectedTransition?.fineractAction === "approve" ? (
+                ) : effectiveAction === "approve" ? (
                   <ShieldCheck className="mr-2 h-4 w-4" />
-                ) : selectedTransition?.fineractAction === "disburse" ? (
+                ) : effectiveAction === "disburse" ? (
                   <Banknote className="mr-2 h-4 w-4" />
-                ) : selectedTransition?.fineractAction === "payout" ? (
+                ) : effectiveAction === "payout" ? (
                   <Banknote className="mr-2 h-4 w-4" />
-                ) : selectedTransition?.fineractAction === "reject" ? (
+                ) : effectiveAction === "reject" ? (
                   <AlertCircle className="mr-2 h-4 w-4" />
                 ) : (
                   <CheckCircle className="mr-2 h-4 w-4" />
@@ -918,13 +1204,13 @@ export default function StateTransitionManager({
                   ? selectedTransition.undoAction
                     ? `Undo ${selectedTransition.undoAction === "approve" ? "Approval" : selectedTransition.undoAction === "disburse" ? "Disbursement" : selectedTransition.undoAction === "payout" ? "Payout" : selectedTransition.undoAction} & Move Back`
                     : "Move Back"
-                  : selectedTransition?.fineractAction === "approve"
+                  : effectiveAction === "approve"
                   ? "Approve & Move"
-                  : selectedTransition?.fineractAction === "disburse"
+                  : effectiveAction === "disburse"
                   ? "Disburse & Move"
-                  : selectedTransition?.fineractAction === "payout"
+                  : effectiveAction === "payout"
                   ? "Process Payout & Move"
-                  : selectedTransition?.fineractAction === "reject"
+                  : effectiveAction === "reject"
                   ? "Reject Loan"
                   : "Confirm"}
               </>

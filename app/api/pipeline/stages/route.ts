@@ -111,6 +111,11 @@ export async function PUT(request: NextRequest) {
           where: { pipelineStageId: { in: stagesToDelete } },
         });
 
+        // Delete stage approvals for deleted stages
+        await tx.stageApproval.deleteMany({
+          where: { stageId: { in: stagesToDelete } },
+        });
+
         // Delete state transitions referencing deleted stages
         await tx.stateTransition.deleteMany({
           where: {
@@ -146,6 +151,8 @@ export async function PUT(request: NextRequest) {
               allowedTransitions: stage.allowedTransitions || [],
               fineractStatus: stage.fineractStatus || null,
               fineractAction: stage.fineractAction || null,
+              requiredApprovals: stage.requiredApprovals ?? 1,
+              skipBelowAmount: stage.skipBelowAmount ?? null,
             },
           });
         } else {
@@ -161,6 +168,8 @@ export async function PUT(request: NextRequest) {
               allowedTransitions: stage.allowedTransitions || [],
               fineractStatus: stage.fineractStatus || null,
               fineractAction: stage.fineractAction || null,
+              requiredApprovals: stage.requiredApprovals ?? 1,
+              skipBelowAmount: stage.skipBelowAmount ?? null,
             },
           });
         }

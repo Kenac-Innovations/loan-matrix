@@ -66,6 +66,7 @@ export default function TransitionHistory({ leadId }: TransitionHistoryProps) {
 
   const getEventBadgeColor = (event: string) => {
     if (!event) return "bg-gray-500";
+    if (event === "AUTO_SKIPPED") return "bg-purple-500";
     if (event.includes("AUTO")) return "bg-blue-500";
     if (event.includes("MANUAL")) return "bg-purple-500";
     if (event.includes("CDE")) return "bg-green-500";
@@ -74,6 +75,7 @@ export default function TransitionHistory({ leadId }: TransitionHistoryProps) {
 
   const getEventLabel = (event: string) => {
     if (!event) return "Unknown";
+    if (event === "AUTO_SKIPPED") return "Auto-Skipped";
     if (event.includes("CDE_AUTO_TRANSITION_APPROVED")) return "Auto-Approved";
     if (event.includes("CDE_AUTO_TRANSITION_DECLINED")) return "Auto-Rejected";
     if (event.includes("CDE_AUTO_TRANSITION")) return "Auto-Transition";
