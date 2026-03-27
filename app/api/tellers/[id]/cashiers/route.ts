@@ -4,6 +4,37 @@ import { prisma } from "@/lib/prisma";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
 import { getOrgDefaultCurrencyCode, getOrgRawCurrencyCode } from "@/lib/currency-utils";
 
+interface FineractCashierRecord {
+  id: number;
+  staffId?: number;
+  staffName?: string;
+  startDate?: string | number[];
+  endDate?: string | number[] | null;
+  isFullDay?: boolean;
+  startTime?: string | null;
+  endTime?: string | null;
+  status?: string;
+  [key: string]: unknown;
+}
+
+interface FineractValidationError {
+  [key: string]: unknown;
+}
+
+interface FineractErrorData {
+  errors?: FineractValidationError[];
+  [key: string]: unknown;
+}
+
+interface FineractRequestError {
+  message?: string;
+  response?: {
+    status?: number;
+    statusText?: string;
+    data?: FineractErrorData;
+  };
+}
+
 /**
  * GET /api/tellers/[id]/cashiers
  * Get all cashiers for a teller
@@ -14,7 +45,7 @@ export async function GET(
 ) {
   try {
     const params = await context.params;
-    let { id: tellerId } = params;
+    const { id: tellerId } = params;
     const [tenant, orgCurrency, rawCurrencyCode] = await Promise.all([
       getTenantFromHeaders(),
       getOrgDefaultCurrencyCode(),
@@ -153,7 +184,7 @@ export async function GET(
 
     // Merge Fineract data with database IDs, session status, and Fineract balance
     const mergedCashiers = await Promise.all(
-      fineractCashiers.map(async (fc: any) => {
+      fineractCashiers.map(async (fc: FineractCashierRecord) => {
         const dbCashier = dbCashiers.find((dc) => dc.fineractCashierId === fc.id);
         const sessionStatus = dbCashier
           ? sessionStatusMap.get(dbCashier.id)
@@ -175,6 +206,14 @@ export async function GET(
           ...fc,
           // Include database ID if found, otherwise use Fineract ID as fallback
           dbId: dbCashier?.id || null,
+          // Prefer locally managed fields that can diverge from Fineract
+          staffId: dbCashier?.staffId ?? fc.staffId,
+          staffName: dbCashier?.staffName ?? fc.staffName,
+          startDate: dbCashier?.startDate ?? fc.startDate,
+          endDate: dbCashier?.endDate ?? fc.endDate,
+          isFullDay: dbCashier?.isFullDay ?? fc.isFullDay,
+          startTime: dbCashier?.startTime ?? fc.startTime,
+          endTime: dbCashier?.endTime ?? fc.endTime,
           // Include session status from local database
           sessionStatus: sessionStatus || "NOT_STARTED",
           // Include Fineract balance (source of truth)
@@ -210,7 +249,7 @@ export async function POST(
 ) {
   try {
     const params = await context.params;
-    let { id: tellerId } = params;
+    const { id: tellerId } = params;
     const tenant = await getTenantFromHeaders();
 
     if (!tenant) {
@@ -343,7 +382,7 @@ export async function POST(
 
     // Create cashier in Fineract if we have teller ID
     let fineractCashierId: number | undefined;
-    let fineractError: any = null;
+    let fineractError: FineractRequestError | null = null;
 
     if (teller.fineractTellerId) {
       try {
@@ -382,14 +421,15 @@ export async function POST(
           JSON.stringify(result, null, 2)
         );
         fineractCashierId = result.resourceId || result.id;
-      } catch (error: any) {
-        fineractError = error;
+      } catch (error) {
+        const fineractRequestError = error as FineractRequestError;
+        fineractError = fineractRequestError;
         const errorDetails = {
-          message: error.message,
-          status: error.response?.status,
-          statusText: error.response?.statusText,
-          data: error.response?.data,
-          errors: error.response?.data?.errors,
+          message: fineractRequestError.message,
+          status: fineractRequestError.response?.status,
+          statusText: fineractRequestError.response?.statusText,
+          data: fineractRequestError.response?.data,
+          errors: fineractRequestError.response?.data?.errors,
         };
         console.error(
           "Error creating cashier in Fineract:",
@@ -398,16 +438,18 @@ export async function POST(
 
         // Log each validation error individually
         if (
-          error.response?.data?.errors &&
-          Array.isArray(error.response.data.errors)
+          fineractRequestError.response?.data?.errors &&
+          Array.isArray(fineractRequestError.response.data.errors)
         ) {
           console.error("Validation errors:");
-          error.response.data.errors.forEach((err: any, index: number) => {
+          fineractRequestError.response.data.errors.forEach(
+            (err: FineractValidationError, index: number) => {
             console.error(
               `  Error ${index + 1}:`,
               JSON.stringify(err, null, 2)
             );
-          });
+            }
+          );
         }
         // Continue with database creation even if Fineract fails
       }
@@ -499,14 +541,16 @@ export async function POST(
       }
 
       return NextResponse.json(cashier);
-    } catch (dbError: any) {
+    } catch (dbError) {
+      const dbErrorMessage =
+        dbError instanceof Error ? dbError.message : "Unknown error";
       console.error("Error creating cashier in database:", dbError);
       return NextResponse.json(
         {
           error: "Failed to create cashier in database",
           details: "The cashier exists in Fineract but could not be created in the local database.",
           hint: "Please try creating the cashier manually or contact support.",
-          fineractError: dbError.message,
+          fineractError: dbErrorMessage,
         },
         { status: 500 }
       );

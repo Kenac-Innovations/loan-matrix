@@ -1,9 +1,9 @@
 "use client";
 
 import { useCurrency } from "@/contexts/currency-context";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Plus, Users } from "lucide-react";
+import { ArrowLeft, Plus } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -28,13 +28,6 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { SearchableSelect } from "@/components/searchable-select";
 import { AllocateCashModal } from "@/app/(application)/tellers/components/allocate-cash-modal";
 import { SettleCashModal } from "./components/settle-cash-modal";
@@ -87,12 +80,76 @@ interface Cashier {
   currencyCode?: string;
 }
 
+interface CashierSessionData {
+  session: {
+    sessionStatus?: string;
+  } | null;
+  balances: {
+    allocatedBalance?: number;
+    availableBalance?: number;
+    openingFloat?: number;
+    cashIn?: number;
+    cashOut?: number;
+    expectedBalance?: number;
+  };
+}
+
+interface CashierSummaryResponse {
+  netCash?: number;
+  sumCashAllocation?: number;
+}
+
 interface Staff {
   id: number;
   firstname: string;
   lastname: string;
   displayName?: string;
 }
+
+type CashierTableCell = Parameters<
+  NonNullable<DataTableColumn<Cashier>["cell"]>
+>[0];
+
+const formatCashierDateValue = (date?: string | number[]) => {
+  if (!date) return null;
+
+  if (Array.isArray(date)) {
+    return formatDate(date);
+  }
+
+  const dateOnlyMatch = date.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (dateOnlyMatch) {
+    const [, year, month, day] = dateOnlyMatch;
+    const dateOnlyValue = new Date(
+      Number(year),
+      Number(month) - 1,
+      Number(day)
+    );
+
+    return dateOnlyValue.toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    });
+  }
+
+  const parsedDate = new Date(date);
+  if (Number.isNaN(parsedDate.getTime())) {
+    return null;
+  }
+
+  const normalizedDate = new Date(
+    parsedDate.getUTCFullYear(),
+    parsedDate.getUTCMonth(),
+    parsedDate.getUTCDate()
+  );
+
+  return normalizedDate.toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+};
 
 export default function CashiersPage({
   params,
@@ -112,12 +169,15 @@ export default function CashiersPage({
   const [showAllocateModal, setShowAllocateModal] = useState(false);
   const [showSettleModal, setShowSettleModal] = useState(false);
   const [showReconcileModal, setShowReconcileModal] = useState(false);
+  const [showEditCashierModal, setShowEditCashierModal] = useState(false);
   const [showStartSessionModal, setShowStartSessionModal] = useState(false);
   const [showCloseSessionModal, setShowCloseSessionModal] = useState(false);
   const [showCashInModal, setShowCashInModal] = useState(false);
   const [showCashOutModal, setShowCashOutModal] = useState(false);
   const [selectedCashier, setSelectedCashier] = useState<Cashier | null>(null);
-  const [sessionData, setSessionData] = useState<any>(null);
+  const [sessionData, setSessionData] = useState<CashierSessionData | null>(
+    null
+  );
   const [formData, setFormData] = useState({
     staffId: "",
     staffName: "",
@@ -129,18 +189,7 @@ export default function CashiersPage({
     isFullDay: true,
   });
 
-  useEffect(() => {
-    async function loadParams() {
-      const resolvedParams = await params;
-      setTellerId(resolvedParams.id);
-      fetchCashiers(resolvedParams.id);
-      fetchStaff();
-      fetchSystemCurrency();
-    }
-    loadParams();
-  }, [params]);
-
-  const fetchSystemCurrency = async () => {
+  const fetchSystemCurrency = useCallback(async () => {
     try {
       const response = await fetch("/api/fineract/currencies");
       if (response.ok) {
@@ -149,8 +198,8 @@ export default function CashiersPage({
         const currencyList = Array.isArray(data.selectedCurrencyOptions)
           ? data.selectedCurrencyOptions
           : Array.isArray(data)
-          ? data
-          : data.currencies || [];
+            ? data
+            : data.currencies || [];
 
         // Get the first currency (usually the default/system currency)
         if (currencyList.length > 0) {
@@ -163,7 +212,111 @@ export default function CashiersPage({
     } catch (error) {
       console.error("Error fetching system currency:", error);
     }
-  };
+  }, [orgCurrency]);
+
+  const fetchCashiers = useCallback(
+    async (id: string) => {
+      try {
+        const response = await fetch(`/api/tellers/${id}/cashiers`);
+        if (response.ok) {
+          const responseData = (await response.json()) as Cashier[] | null;
+          const fetchedCashiers = responseData || [];
+          setCashiers(fetchedCashiers);
+
+          const balanceCurrency = orgCurrency;
+
+          // Fetch session data and Fineract balance for each cashier in parallel
+          const updatedCashiers = await Promise.all(
+            fetchedCashiers.map(async (cashier) => {
+              const cashierId = cashier.dbId || cashier.id?.toString() || "";
+              try {
+                const [sessionResponse, summaryResponse] = await Promise.all([
+                  fetch(`/api/tellers/${id}/cashiers/${cashierId}/session`),
+                  fetch(
+                    `/api/tellers/${id}/cashiers/${cashierId}/transactions?currencyCode=${balanceCurrency}`
+                  ),
+                ]);
+
+                let fineractBalance = 0;
+                if (summaryResponse.ok) {
+                  const summaryData =
+                    (await summaryResponse.json()) as CashierSummaryResponse;
+                  fineractBalance =
+                    summaryData.netCash ?? summaryData.sumCashAllocation ?? 0;
+                }
+
+                let sessionInfo: CashierSessionData = {
+                  session: null,
+                  balances: {},
+                };
+                if (sessionResponse.ok) {
+                  sessionInfo =
+                    (await sessionResponse.json()) as CashierSessionData;
+                }
+
+                return {
+                  ...cashier,
+                  sessionStatus:
+                    sessionInfo.session?.sessionStatus || "NOT_STARTED",
+                  allocatedBalance: sessionInfo.balances?.allocatedBalance || 0,
+                  availableBalance: sessionInfo.balances?.availableBalance || 0,
+                  openingFloat: sessionInfo.balances?.openingFloat || 0,
+                  cashIn: sessionInfo.balances?.cashIn || 0,
+                  cashOut: sessionInfo.balances?.cashOut || 0,
+                  netCash: fineractBalance,
+                  expectedBalance: sessionInfo.balances?.expectedBalance || 0,
+                  currencyCode: balanceCurrency,
+                };
+              } catch (error) {
+                console.error(
+                  "Error fetching data for cashier:",
+                  cashierId,
+                  error
+                );
+                return {
+                  ...cashier,
+                  netCash: 0,
+                  currencyCode: balanceCurrency,
+                };
+              }
+            })
+          );
+
+          setCashiers(updatedCashiers);
+        }
+      } catch (error) {
+        console.error("Error fetching cashiers:", error);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [orgCurrency]
+  );
+
+  const fetchStaff = useCallback(async () => {
+    try {
+      const response = await fetch("/api/staff");
+      if (response.ok) {
+        const data = await response.json();
+        setStaff(data || []);
+      }
+    } catch (error) {
+      console.error("Error fetching staff:", error);
+    } finally {
+      setLoadingStaff(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    async function loadParams() {
+      const resolvedParams = await params;
+      setTellerId(resolvedParams.id);
+      fetchCashiers(resolvedParams.id);
+      fetchStaff();
+      fetchSystemCurrency();
+    }
+    loadParams();
+  }, [fetchCashiers, fetchStaff, fetchSystemCurrency, params]);
 
   // Auto-refresh balances for active sessions
   useEffect(() => {
@@ -180,82 +333,7 @@ export default function CashiersPage({
     }, 30000); // Refresh every 30 seconds
 
     return () => clearInterval(interval);
-  }, [tellerId, cashiers]);
-
-  const fetchCashiers = async (id: string) => {
-    try {
-      const response = await fetch(`/api/tellers/${id}/cashiers`);
-      if (response.ok) {
-        const data = await response.json();
-        setCashiers(data || []);
-
-        const balanceCurrency = orgCurrency;
-
-        // Fetch session data and Fineract balance for each cashier in parallel
-        const updatedCashiers = await Promise.all(
-          (data || []).map(async (cashier: Cashier) => {
-            const cashierId = cashier.dbId || cashier.id?.toString() || "";
-            try {
-              const [sessionResponse, summaryResponse] = await Promise.all([
-                fetch(`/api/tellers/${id}/cashiers/${cashierId}/session`),
-                fetch(
-                  `/api/tellers/${id}/cashiers/${cashierId}/transactions?currencyCode=${balanceCurrency}`
-                ),
-              ]);
-
-              let fineractBalance = 0;
-              if (summaryResponse.ok) {
-                const summaryData = await summaryResponse.json();
-                fineractBalance = summaryData.netCash ?? summaryData.sumCashAllocation ?? 0;
-              }
-
-              let sessionInfo = { session: null, balances: {} };
-              if (sessionResponse.ok) {
-                sessionInfo = await sessionResponse.json();
-              }
-
-              return {
-                ...cashier,
-                sessionStatus:
-                  sessionInfo.session?.sessionStatus || "NOT_STARTED",
-                allocatedBalance: sessionInfo.balances?.allocatedBalance || 0,
-                availableBalance: sessionInfo.balances?.availableBalance || 0,
-                openingFloat: sessionInfo.balances?.openingFloat || 0,
-                cashIn: sessionInfo.balances?.cashIn || 0,
-                cashOut: sessionInfo.balances?.cashOut || 0,
-                netCash: fineractBalance,
-                expectedBalance: sessionInfo.balances?.expectedBalance || 0,
-                currencyCode: balanceCurrency,
-              };
-            } catch (error) {
-              console.error("Error fetching data for cashier:", cashierId, error);
-              return { ...cashier, netCash: 0, currencyCode: balanceCurrency };
-            }
-          })
-        );
-
-        setCashiers(updatedCashiers);
-      }
-    } catch (error) {
-      console.error("Error fetching cashiers:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchStaff = async () => {
-    try {
-      const response = await fetch("/api/staff");
-      if (response.ok) {
-        const data = await response.json();
-        setStaff(data || []);
-      }
-    } catch (error) {
-      console.error("Error fetching staff:", error);
-    } finally {
-      setLoadingStaff(false);
-    }
-  };
+  }, [cashiers, fetchCashiers, tellerId]);
 
   const handleCreateCashier = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -315,26 +393,12 @@ export default function CashiersPage({
     }
   };
 
-  const getStatusBadge = (status: string) => {
-    const colors: Record<string, string> = {
-      ACTIVE: "bg-green-500",
-      PENDING: "bg-yellow-500",
-      CLOSED: "bg-gray-500",
-    };
-
-    return (
-      <Badge className={colors[status] ? `${colors[status]} text-white` : ""}>
-        {status}
-      </Badge>
-    );
-  };
-
   const columns: DataTableColumn<Cashier>[] = [
     {
       id: "staffName",
       accessorKey: "staffName",
       header: "Cashier Name",
-      cell: ({ getValue }: { getValue: () => any }) => (
+      cell: ({ getValue }: CashierTableCell) => (
         <span className="font-medium">{getValue() as string}</span>
       ),
     },
@@ -342,23 +406,12 @@ export default function CashiersPage({
       id: "startDate",
       accessorKey: "startDate",
       header: "Start Date",
-      cell: ({ getValue, row }: { getValue: () => any; row: any }) => {
-        const date = getValue();
-        if (Array.isArray(date)) {
-          return <span className="text-sm">{formatDate(date)}</span>;
-        } else if (date) {
-          const d = new Date(date as string);
-          if (!isNaN(d.getTime())) {
-            return (
-              <span className="text-sm">
-                {d.toLocaleDateString("en-US", {
-                  year: "numeric",
-                  month: "short",
-                  day: "numeric",
-                })}
-              </span>
-            );
-          }
+      cell: ({ getValue }: CashierTableCell) => {
+        const formattedDate = formatCashierDateValue(
+          getValue() as Cashier["startDate"]
+        );
+        if (formattedDate) {
+          return <span className="text-sm">{formattedDate}</span>;
         }
         return <span className="text-muted-foreground">—</span>;
       },
@@ -367,24 +420,12 @@ export default function CashiersPage({
       id: "endDate",
       accessorKey: "endDate",
       header: "End Date",
-      cell: ({ getValue }: { getValue: () => any }) => {
-        const date = getValue();
-        if (!date) return <span className="text-muted-foreground">—</span>;
-        if (Array.isArray(date)) {
-          return <span className="text-sm">{formatDate(date)}</span>;
-        } else if (date) {
-          const d = new Date(date as string);
-          if (!isNaN(d.getTime())) {
-            return (
-              <span className="text-sm">
-                {d.toLocaleDateString("en-US", {
-                  year: "numeric",
-                  month: "short",
-                  day: "numeric",
-                })}
-              </span>
-            );
-          }
+      cell: ({ getValue }: CashierTableCell) => {
+        const formattedDate = formatCashierDateValue(
+          getValue() as Cashier["endDate"]
+        );
+        if (formattedDate) {
+          return <span className="text-sm">{formattedDate}</span>;
         }
         return <span className="text-muted-foreground">—</span>;
       },
@@ -392,7 +433,7 @@ export default function CashiersPage({
     {
       id: "time",
       header: "Working Hours",
-      cell: ({ row }: { row: any }) => {
+      cell: ({ row }: CashierTableCell) => {
         const cashier = row.original;
         if (cashier.isFullDay) {
           return (
@@ -412,13 +453,13 @@ export default function CashiersPage({
     {
       id: "balance",
       header: "Balance",
-      cell: ({ row }: { row: any }) => {
-        const cashier = row.original as Cashier;
+      cell: ({ row }: CashierTableCell) => {
+        const cashier = row.original;
         const balance = cashier.netCash || 0;
         // Normalize ZMK to ZMW (Fineract uses legacy ZMK code)
         const rawCurrency = cashier.currencyCode || systemCurrency;
         const currency = rawCurrency === "ZMK" ? "ZMW" : rawCurrency;
-        
+
         const formatAmount = (amount: number) => {
           try {
             return new Intl.NumberFormat("en-US", {
@@ -429,7 +470,7 @@ export default function CashiersPage({
             return `${currency} ${amount.toFixed(2)}`;
           }
         };
-        
+
         return (
           <div className="text-right">
             <span
@@ -450,8 +491,8 @@ export default function CashiersPage({
     {
       id: "sessionStatus",
       header: "Session",
-      cell: ({ row }: { row: any }) => {
-        const cashier = row.original as Cashier;
+      cell: ({ row }: CashierTableCell) => {
+        const cashier = row.original;
         const sessionStatus = cashier.sessionStatus || "NOT_STARTED";
         const colors: Record<string, string> = {
           NOT_STARTED: "bg-gray-500",
@@ -475,8 +516,8 @@ export default function CashiersPage({
       id: "actions",
       header: "Actions",
       enableSorting: false,
-      cell: ({ row }: { row: any }) => {
-        const cashier = row.original as Cashier;
+      cell: ({ row }: CashierTableCell) => {
+        const cashier = row.original;
         const isClosed =
           cashier.status === "CLOSED" || cashier.status === "SETTLED";
 
@@ -528,13 +569,23 @@ export default function CashiersPage({
                   onClick={(e) => {
                     e.stopPropagation();
                     setSelectedCashier(cashier);
-                        setShowCloseSessionModal(true);
+                    setShowCloseSessionModal(true);
                   }}
                 >
                   <Square className="h-4 w-4 mr-2" />
                   Close Session
                 </DropdownMenuItem>
               )}
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSelectedCashier(cashier);
+                  setShowEditCashierModal(true);
+                }}
+              >
+                <Edit className="h-4 w-4 mr-2" />
+                Edit Dates
+              </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={(e) => {
                   e.stopPropagation();
@@ -815,6 +866,19 @@ export default function CashiersPage({
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* Edit Cashier Modal */}
+      {selectedCashier && (
+        <EditCashierModal
+          open={showEditCashierModal}
+          onOpenChange={setShowEditCashierModal}
+          tellerId={tellerId}
+          cashier={selectedCashier}
+          onSuccess={() => {
+            fetchCashiers(tellerId);
+          }}
+        />
+      )}
 
       {/* Allocate Cash Modal */}
       {selectedCashier && (
