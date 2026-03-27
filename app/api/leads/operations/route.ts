@@ -111,6 +111,7 @@ const clientFormSchema = z.object({
   registrationNumber: z.string().optional(),
   dateOfIncorporation: z.coerce.date().optional(),
   natureOfBusiness: z.string().optional(),
+  businessAddress: z.string().optional(),
   isStaff: z.boolean().default(false),
   mobileNo: z.string(),
   countryCode: z.string().default("+260"),
@@ -263,6 +264,7 @@ async function handleSaveDraft(data: any, leadId?: string) {
           registrationNumber: validatedData.registrationNumber,
           dateOfIncorporation: validatedData.dateOfIncorporation || undefined,
           natureOfBusiness: validatedData.natureOfBusiness,
+          businessAddress: validatedData.businessAddress,
           isStaff: validatedData.isStaff,
           mobileNo: validatedData.mobileNo,
           countryCode: validatedData.countryCode,
@@ -317,6 +319,7 @@ async function handleSaveDraft(data: any, leadId?: string) {
           registrationNumber: validatedData.registrationNumber,
           dateOfIncorporation: validatedData.dateOfIncorporation || undefined,
           natureOfBusiness: validatedData.natureOfBusiness,
+          businessAddress: validatedData.businessAddress,
           isStaff: validatedData.isStaff,
           mobileNo: validatedData.mobileNo,
           countryCode: validatedData.countryCode,
@@ -564,6 +567,7 @@ async function handleCreateLeadWithClient(data: any) {
                 propertyOwnership: validatedData.propertyOwnership,
                 businessOwnership: validatedData.businessOwnership,
                 businessType: validatedData.businessType,
+                businessAddress: validatedData.businessAddress,
                 fineractClientId: existingClient.id,
                 fineractAccountNo: existingClient.accountNo || null,
                 clientCreatedInFineract: true,
@@ -679,6 +683,7 @@ async function handleCreateLeadWithClient(data: any) {
           registrationNumber: validatedData.registrationNumber,
           dateOfIncorporation: validatedData.dateOfIncorporation || undefined,
           natureOfBusiness: validatedData.natureOfBusiness,
+          businessAddress: validatedData.businessAddress,
           isStaff: validatedData.isStaff,
           mobileNo: validatedData.mobileNo,
           countryCode: validatedData.countryCode,
@@ -1125,6 +1130,7 @@ async function handleUpdateClient(data: any, leadId?: string) {
                 ? new Date(data.dateOfIncorporation)
                 : undefined,
               natureOfBusiness: data.natureOfBusiness,
+              businessAddress: data.businessAddress,
 
               isStaff: data.isStaff || false,
 
@@ -1218,6 +1224,7 @@ async function handleUpdateClient(data: any, leadId?: string) {
                 ? new Date(data.dateOfIncorporation)
                 : undefined,
               natureOfBusiness: data.natureOfBusiness,
+              businessAddress: data.businessAddress,
 
               isStaff: data.isStaff || false,
 

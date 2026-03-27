@@ -41,6 +41,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -137,6 +138,7 @@ const clientFormSchema = z
     registrationNumber: z.string().optional(),
     dateOfIncorporation: z.date().optional(),
     natureOfBusiness: z.string().optional(),
+    businessAddress: z.string().optional(),
 
     isStaff: z.boolean().default(false),
     mobileNo: z
@@ -253,14 +255,6 @@ const clientFormSchema = z
   .refine(
     (data) => {
       const isEntity = data.legalFormId === "2";
-      if (!isEntity && !data.externalId) return false;
-      return true;
-    },
-    { message: "National ID is required", path: ["externalId"] }
-  )
-  .refine(
-    (data) => {
-      const isEntity = data.legalFormId === "2";
       if (isEntity && !data.fullname) return false;
       return true;
     },
@@ -283,7 +277,9 @@ const familyMemberSchema = z.object({
   relationship: z.string().min(1, "Relationship is required"),
   dateOfBirth: z.date().optional(),
   mobileNo: z.string().optional(),
-  emailAddress: z.string().email("Invalid email address").optional(),
+  emailAddress: z
+    .union([z.string().email("Invalid email address"), z.literal("")])
+    .optional(),
   isDependent: z.boolean().default(false),
 });
 
@@ -1295,7 +1291,7 @@ export function ClientRegistrationForm({
 
   const checkContactSection = () => {
     const values = form.getValues();
-    return !!(values.mobileNo && (tenantLocale.emailOptional || values.emailAddress));
+    return !!values.mobileNo;
   };
 
   const checkClassificationSection = () => {
@@ -1866,6 +1862,7 @@ export function ClientRegistrationForm({
       registrationNumber: "",
       dateOfIncorporation: undefined,
       natureOfBusiness: "",
+      businessAddress: "",
       isStaff: false,
       mobileNo: "",
       countryCode: tenantLocale.countryCode,
@@ -2202,6 +2199,7 @@ export function ClientRegistrationForm({
               registrationNumber: lead.registrationNumber || "",
               dateOfIncorporation: lead.dateOfIncorporation || undefined,
               natureOfBusiness: lead.natureOfBusiness || "",
+              businessAddress: lead.businessAddress || "",
               isStaff: lead.isStaff || false,
               mobileNo: lead.mobileNo || "",
               countryCode: lead.countryCode || tenantLocale.countryCode,
@@ -2420,6 +2418,7 @@ export function ClientRegistrationForm({
                       ? new Date(lead.dateOfIncorporation)
                       : undefined,
                     natureOfBusiness: lead.natureOfBusiness || "",
+                    businessAddress: lead.businessAddress || "",
                   };
 
                   // If we have Fineract data, client exists in Fineract
@@ -2535,6 +2534,7 @@ export function ClientRegistrationForm({
       "registrationNumber",
       "dateOfIncorporation",
       "natureOfBusiness",
+      "businessAddress",
     ];
     const contactFields = ["mobileNo", "emailAddress", "countryCode"];
     const classificationFields = ["clientTypeId", "clientClassificationId"];
@@ -3098,6 +3098,7 @@ export function ClientRegistrationForm({
       registrationNumber: "",
       dateOfIncorporation: undefined,
       natureOfBusiness: "",
+      businessAddress: "",
       isStaff: false,
       mobileNo: "",
       countryCode: tenantLocale.countryCode,
@@ -3350,6 +3351,7 @@ export function ClientRegistrationForm({
             ? new Date(localData.dateOfIncorporation)
             : undefined,
           natureOfBusiness: localData?.natureOfBusiness || "",
+          businessAddress: localData?.businessAddress || "",
           dateOfBirth: fineractData?.dateOfBirth
             ? new Date(fineractData.dateOfBirth)
             : localData?.dateOfBirth
@@ -3677,6 +3679,7 @@ export function ClientRegistrationForm({
       registrationNumber: "",
       dateOfIncorporation: undefined,
       natureOfBusiness: "",
+      businessAddress: "",
       isStaff: false,
       mobileNo: "",
       countryCode: tenantLocale.countryCode,
@@ -5478,7 +5481,7 @@ export function ClientRegistrationForm({
                       htmlFor="nationalIdLookup"
                       className={colors.textColor}
                     >
-                      National ID Number <span className="text-red-500">*</span>
+                      National ID Number
                     </Label>
                     <div className="space-y-2">
                       {/* Mobile layout - stacked */}
@@ -5637,7 +5640,7 @@ export function ClientRegistrationForm({
                       <UserCheck className="h-4 w-4 text-green-600 dark:text-green-400" />
                       <AlertDescription className="text-green-800 dark:text-green-200">
                         <strong>Client Found:</strong> The form has been
-                        pre-populated with the existing client's information.
+                        pre-populated with the existing client&apos;s information.
                         You can review and update the details as needed.
                       </AlertDescription>
                     </Alert>
@@ -6385,6 +6388,39 @@ export function ClientRegistrationForm({
                                     </div>
                                   </div>
 
+                                  {/* Business address (optional) */}
+                                  <div className="space-y-3 mt-6">
+                                    <Label htmlFor="businessAddress" className={colors.textColor}>
+                                      Business address
+                                    </Label>
+                                    <div className="relative">
+                                      <Textarea
+                                        id="businessAddress"
+                                        placeholder="Registered business / trading address"
+                                        rows={4}
+                                        className={`min-h-[100px] border-${colors.borderColor} ${colors.inputBg}`}
+                                        {...(externalForm
+                                          ? externalForm.register("businessAddress", {
+                                              onBlur: (e: { target: { value: string } }) =>
+                                                handleFieldBlur("businessAddress", e.target.value),
+                                            })
+                                          : form.register("businessAddress", {
+                                              onBlur: (e: { target: { value: string } }) =>
+                                                handleFieldBlur("businessAddress", e.target.value),
+                                            }))}
+                                        disabled={isFormDisabled}
+                                      />
+                                      {lastSavedField === "businessAddress" && isAutoSaving && (
+                                        <div className="absolute right-3 top-3 flex items-center">
+                                          <div className="w-3 h-3 border border-gray-300 border-t-gray-600 rounded-full animate-spin"></div>
+                                        </div>
+                                      )}
+                                    </div>
+                                    <p className={`text-xs ${colors.textColorMuted}`}>
+                                      Optional — postal or physical address of the business
+                                    </p>
+                                  </div>
+
                                   {/* External ID for Entity */}
                                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-6">
                                     <div className="space-y-3">
@@ -6633,37 +6669,60 @@ export function ClientRegistrationForm({
                                     {/* External ID (National ID) */}
                                     <div className="space-y-3">
                                       <Label htmlFor="externalId" className={colors.textColor}>
-                                        National ID{" "}
-                                        <span className="text-red-500">*</span>
+                                        National ID
                                       </Label>
                                       <div className="relative">
                                         <Input
                                           id="externalId"
-                                          placeholder="Enter national ID (e.g. 48-147220J12)"
+                                          placeholder="Enter national ID"
                                           className={getInputErrorStyling(
-                                            hasFieldError(form, "externalId", externalForm),
+                                            hasFieldError(
+                                              form,
+                                              "externalId",
+                                              externalForm
+                                            ),
                                             `h-10 w-full border-${colors.borderColor} ${colors.inputBg}`
                                           )}
                                           {...(externalForm
-                                            ? externalForm.register("externalId", {
-                                                onBlur: (e: { target: { value: any } }) =>
-                                                  handleFieldBlur("externalId", e.target.value),
-                                                pattern: {
-                                                  value: /^[0-9]{2}-[0-9]{6}[A-Za-z][0-9]{2}$/,
-                                                  message: "National ID must be in format 48-147220J12",
-                                                },
-                                              })
+                                            ? externalForm.register(
+                                                "externalId",
+                                                {
+                                                  onChange: (e: {
+                                                    target: { value: string };
+                                                  }) => {
+                                                    setNationalIdLookup(
+                                                      e.target.value
+                                                    );
+                                                  },
+                                                  onBlur: (e: {
+                                                    target: { value: string };
+                                                  }) =>
+                                                    handleFieldBlur(
+                                                      "externalId",
+                                                      e.target.value
+                                                    ),
+                                                }
+                                              )
                                             : form.register("externalId", {
-                                                onBlur: (e: { target: { value: any } }) =>
-                                                  handleFieldBlur("externalId", e.target.value),
-                                                pattern: {
-                                                  value: /^[0-9]{2}-[0-9]{6}[A-Za-z][0-9]{2}$/,
-                                                  message: "National ID must be in format 48-147220J12",
+                                                onChange: (e: {
+                                                  target: { value: string };
+                                                }) => {
+                                                  setNationalIdLookup(
+                                                    e.target.value
+                                                  );
                                                 },
+                                                onBlur: (e: {
+                                                  target: { value: string };
+                                                }) =>
+                                                  handleFieldBlur(
+                                                    "externalId",
+                                                    e.target.value
+                                                  ),
                                               }))}
-                                          disabled={true}
+                                          disabled={isFormDisabled}
                                         />
-                                        {lastSavedField === "externalId" && isAutoSaving && (
+                                        {lastSavedField === "externalId" &&
+                                          isAutoSaving && (
                                           <div className="absolute right-2 top-1/2 -translate-y-1/2">
                                             <div className="w-3 h-3 border border-gray-300 border-t-gray-600 rounded-full animate-spin"></div>
                                           </div>
@@ -6867,14 +6926,13 @@ export function ClientRegistrationForm({
                                     htmlFor="emailAddress"
                                     className={colors.textColor}
                                   >
-                                    Email Address{" "}
-                                    {!tenantLocale.emailOptional && <span className="text-red-500">*</span>}
+                                    Email Address
                                   </Label>
                                   <div className="relative">
                                     <Input
                                       id="emailAddress"
-                                      type={tenantLocale.emailOptional ? "text" : "email"}
-                                      placeholder={tenantLocale.emailOptional ? "Enter email address (optional)" : "Enter email address"}
+                                      type="email"
+                                      placeholder="Enter email address (optional)"
                                       className={getInputErrorStyling(
                                         hasFieldError(
                                           form,

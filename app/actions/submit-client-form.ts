@@ -29,6 +29,7 @@ export async function submitClientForm(formData: FormData) {
         ? new Date(formData.get("dateOfIncorporation") as string)
         : undefined,
       natureOfBusiness: (formData.get("natureOfBusiness") as string) || undefined,
+      businessAddress: (formData.get("businessAddress") as string) || undefined,
       isStaff: formData.get("isStaff") === "on",
       mobileNo: formData.get("mobileNo") as string,
       countryCode: (formData.get("countryCode") as string) || "+263",
