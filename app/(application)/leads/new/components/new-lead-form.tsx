@@ -84,60 +84,144 @@ type ClientFormData = {
 // Simple fetcher for SWR
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
-// Form validation schema
-const leadFormSchema = z.object({
-  // Client Information
-  officeId: z.string().min(1, { message: "Office is required" }),
-  legalFormId: z.string().min(1, { message: "Legal form is required" }),
-  externalId: z.string().optional(),
-  firstname: z.string().min(2, { message: "First name is required" }),
-  middlename: z.string().optional(),
-  lastname: z.string().min(2, { message: "Last name is required" }),
-  dateOfBirth: z.date().optional(),
-  gender: z.string().optional(),
-  isStaff: z.boolean().default(false),
-  mobileNo: z
-    .string()
-    .min(1, { message: "Mobile number is required" })
-    .refine((val) => {
-      const digitsOnly = val.replace(/\D/g, "");
-      return digitsOnly.length >= 7 && digitsOnly.length <= 12;
-    }, "Please enter a valid phone number"),
-  countryCode: z.string().default("+260"),
-  emailAddress: z.union([z.string().email({ message: "Valid email is required" }), z.literal("")]).default(""),
-  clientTypeId: z.string().optional(),
-  clientClassificationId: z.string().optional(),
-  submittedOnDate: z.date().default(() => new Date()),
-  active: z.boolean().default(true),
-  activationDate: z.date().optional(),
-  openSavingsAccount: z.boolean().default(false),
-  savingsProductId: z.string().optional(),
+// Form validation schema — mirrors client-registration-form clientFormSchema for Person vs Entity
+const leadFormSchema = z
+  .object({
+    officeId: z.string().min(1, { message: "Office is required" }),
+    legalFormId: z.string().min(1, { message: "Legal form is required" }),
+    externalId: z.string().optional(),
 
-  // Financial fields
-  monthlyIncomeRange: z.string().optional(),
-  employmentStatus: z.string().optional(),
-  employerName: z.string().optional(),
-  yearsAtCurrentJob: z.string().optional(),
-  hasExistingLoans: z.boolean().default(false),
-  monthlyDebtPayments: z
-    .union([z.number(), z.string()])
-    .transform((val) => {
-      if (typeof val === "string") {
-        const parsed = parseFloat(val);
-        return isNaN(parsed) ? 0 : parsed;
-      }
-      return val;
-    })
-    .default(0),
-  propertyOwnership: z.string().optional(),
-  businessOwnership: z.boolean().default(false),
-  businessType: z.string().optional(),
+    firstname: z.string().optional(),
+    middlename: z.string().optional(),
+    lastname: z.string().optional(),
+    dateOfBirth: z.date().optional(),
+    genderId: z.string().optional(),
 
-  // Additional Information fields
-  priority: z.string().optional(),
-  assignTo: z.string().optional(),
-  notes: z.string().optional(),
-});
+    fullname: z.string().optional(),
+    tradingName: z.string().optional(),
+    registrationNumber: z.string().optional(),
+    dateOfIncorporation: z.date().optional(),
+    natureOfBusiness: z.string().optional(),
+
+    isStaff: z.boolean().default(false),
+    mobileNo: z
+      .string()
+      .min(1, { message: "Mobile number is required" })
+      .refine((val) => {
+        const digitsOnly = val.replace(/\D/g, "");
+        return digitsOnly.length >= 7 && digitsOnly.length <= 12;
+      }, "Please enter a valid phone number"),
+    countryCode: z.string().default("+260"),
+    emailAddress: z
+      .union([
+        z.string().email({ message: "Valid email is required" }),
+        z.literal(""),
+      ])
+      .default(""),
+    clientTypeId: z.string().optional(),
+    clientClassificationId: z.string().optional(),
+    submittedOnDate: z
+      .date()
+      .default(() => new Date())
+      .refine(
+        (d) => {
+          const today = new Date();
+          today.setHours(23, 59, 59, 999);
+          return d.getTime() <= today.getTime();
+        },
+        { message: "Submitted date cannot be in the future" },
+      ),
+    active: z.boolean().default(true),
+    activationDate: z.date().optional(),
+    openSavingsAccount: z.boolean().default(false),
+    savingsProductId: z.string().optional(),
+
+    monthlyIncomeRange: z.string().optional(),
+    employmentStatus: z.string().optional(),
+    employerName: z.string().optional(),
+    yearsAtCurrentJob: z.string().optional(),
+    hasExistingLoans: z.boolean().default(false),
+    monthlyDebtPayments: z
+      .union([z.number(), z.string()])
+      .transform((val) => {
+        if (typeof val === "string") {
+          const parsed = parseFloat(val);
+          return isNaN(parsed) ? 0 : parsed;
+        }
+        return val;
+      })
+      .default(0),
+    propertyOwnership: z.string().optional(),
+    businessOwnership: z.boolean().default(false),
+    businessType: z.string().optional(),
+
+    priority: z.string().optional(),
+    assignTo: z.string().optional(),
+    notes: z.string().optional(),
+  })
+  .refine(
+    (data) => {
+      if (data.active && !data.activationDate) return false;
+      return true;
+    },
+    {
+      message: "Activation date is required when account is active",
+      path: ["activationDate"],
+    },
+  )
+  .refine(
+    (data) => {
+      if (data.openSavingsAccount && !data.savingsProductId) return false;
+      return true;
+    },
+    {
+      message: "Savings product is required when opening a savings account",
+      path: ["savingsProductId"],
+    },
+  )
+  .refine(
+    (data) => {
+      const isEntity = data.legalFormId === "2";
+      if (!isEntity && !data.firstname) return false;
+      return true;
+    },
+    { message: "First name is required", path: ["firstname"] },
+  )
+  .refine(
+    (data) => {
+      const isEntity = data.legalFormId === "2";
+      if (!isEntity && !data.lastname) return false;
+      return true;
+    },
+    { message: "Last name is required", path: ["lastname"] },
+  )
+  .refine(
+    (data) => {
+      const isEntity = data.legalFormId === "2";
+      if (!isEntity && !data.dateOfBirth) return false;
+      return true;
+    },
+    { message: "Date of birth is required", path: ["dateOfBirth"] },
+  )
+  .refine(
+    (data) => {
+      const isEntity = data.legalFormId === "2";
+      if (isEntity && !data.fullname) return false;
+      return true;
+    },
+    { message: "Business name is required", path: ["fullname"] },
+  )
+  .refine(
+    (data) => {
+      const isEntity = data.legalFormId === "2";
+      if (isEntity && !data.registrationNumber) return false;
+      return true;
+    },
+    {
+      message: "Registration number is required",
+      path: ["registrationNumber"],
+    },
+  );
 
 type LeadFormValues = z.infer<typeof leadFormSchema>;
 
@@ -597,7 +681,12 @@ export function NewLeadForm() {
       middlename: "",
       lastname: "",
       dateOfBirth: undefined,
-      gender: "",
+      genderId: "",
+      fullname: "",
+      tradingName: "",
+      registrationNumber: "",
+      dateOfIncorporation: undefined,
+      natureOfBusiness: "",
       isStaff: false,
       mobileNo: "",
       countryCode: "+263",
@@ -746,7 +835,11 @@ export function NewLeadForm() {
         clientClassificationId: data.clientClassificationId
           ? Number(data.clientClassificationId)
           : undefined,
-        genderId: data.gender ? Number(data.gender) : undefined,
+        genderId: (() => {
+          const raw = data.genderId?.trim();
+          if (raw) return Number(raw);
+          return undefined;
+        })(),
         // Convert data types to match the schema expectations
         dateOfBirth: data.dateOfBirth ? new Date(data.dateOfBirth) : undefined,
         submittedOnDate: data.submittedOnDate
