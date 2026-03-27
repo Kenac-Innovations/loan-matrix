@@ -21,9 +21,11 @@ interface FineractClient {
   id: number;
   accountNo: string;
   externalId?: string;
-  firstname: string;
+  displayName?: string;
+  fullname?: string;
+  firstname?: string;
   middlename?: string;
-  lastname: string;
+  lastname?: string;
   mobileNo?: string;
   emailAddress?: string;
   dateOfBirth?: string | number[];
@@ -59,11 +61,9 @@ interface FineractClient {
     activatedByFirstname?: string;
     activatedByLastname?: string;
   };
-}
-
-interface Office {
-  id: number;
-  name: string;
+  clientNonPersonDetails?: {
+    incorporationDate?: string | number[];
+  };
 }
 
 interface Staff {
@@ -78,7 +78,6 @@ interface ClientEditFormProps {
 export function ClientEditForm({ clientId }: ClientEditFormProps) {
   const router = useRouter();
   const [client, setClient] = useState<FineractClient | null>(null);
-  const [offices, setOffices] = useState<Office[]>([]);
   const [staff, setStaff] = useState<Staff[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -87,10 +86,10 @@ export function ClientEditForm({ clientId }: ClientEditFormProps) {
 
   // Form state
   const [formData, setFormData] = useState({
-    officeId: "",
     legalForm: "1", // Default to Person
     accountNo: "",
     externalId: "",
+    fullname: "",
     firstname: "",
     middlename: "",
     lastname: "",
@@ -139,16 +138,24 @@ export function ClientEditForm({ clientId }: ClientEditFormProps) {
         };
 
         // Set form data from client
+        const isEntityClient = clientData.legalForm?.id === 2;
         setFormData({
-          officeId: clientData.officeId?.toString() || "",
           legalForm: clientData.legalForm?.id?.toString() || "1",
           accountNo: clientData.accountNo || "",
           externalId: clientData.externalId || "",
-          firstname: clientData.firstname || "",
-          middlename: clientData.middlename || "",
-          lastname: clientData.lastname || "",
-          gender: clientData.gender?.id?.toString() || "",
-          dateOfBirth: convertDateArray(clientData.dateOfBirth),
+          fullname: isEntityClient
+            ? (clientData.fullname || clientData.displayName || "").trim()
+            : "",
+          firstname: isEntityClient ? "" : clientData.firstname || "",
+          middlename: isEntityClient ? "" : clientData.middlename || "",
+          lastname: isEntityClient ? "" : clientData.lastname || "",
+          gender: isEntityClient ? "" : clientData.gender?.id?.toString() || "",
+          dateOfBirth: convertDateArray(
+            isEntityClient
+              ? clientData.clientNonPersonDetails?.incorporationDate ??
+                  clientData.dateOfBirth
+              : clientData.dateOfBirth
+          ),
           isStaff: clientData.isStaff || false,
           staffId: clientData.staffId?.toString() || "",
           emailAddress: clientData.emailAddress || "",
@@ -158,19 +165,6 @@ export function ClientEditForm({ clientId }: ClientEditFormProps) {
           activationDate: convertDateArray(clientData.activationDate || clientData.timeline?.activatedOnDate),
           submittedOnDate: convertDateArray(clientData.submittedOnDate || clientData.timeline?.submittedOnDate),
         });
-
-        // Fetch offices
-        const officesResponse = await fetch("/api/offices");
-        if (officesResponse.ok) {
-          const officesData = await officesResponse.json();
-          setOffices(Array.isArray(officesData) ? officesData : []);
-        } else {
-          // Mock data for development
-          setOffices([
-            { id: 1, name: "Head Office" },
-            { id: 2, name: "Branch Office" },
-          ]);
-        }
 
         // Fetch staff
         const staffResponse = await fetch("/api/staff");
@@ -196,6 +190,8 @@ export function ClientEditForm({ clientId }: ClientEditFormProps) {
     fetchData();
   }, [clientId]);
 
+  const isEntity = formData.legalForm === "2";
+
   const handleInputChange = (field: string, value: string | boolean) => {
     setFormData(prev => ({
       ...prev,
@@ -206,10 +202,16 @@ export function ClientEditForm({ clientId }: ClientEditFormProps) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Basic validation
-    if (!formData.firstname.trim() || !formData.lastname.trim()) {
-      setError("First name and last name are required");
-      return;
+    if (isEntity) {
+      if (!formData.fullname.trim()) {
+        setError("Entity name is required");
+        return;
+      }
+    } else {
+      if (!formData.firstname.trim() || !formData.lastname.trim()) {
+        setError("First name and last name are required");
+        return;
+      }
     }
 
     setSaving(true);
@@ -217,24 +219,32 @@ export function ClientEditForm({ clientId }: ClientEditFormProps) {
     setSuccess(null);
 
     try {
-      // Transform form data to match Fineract API format
+      // Transform form data to match Fineract API format.
+      // locale + dateFormat are required so Fineract can parse date fields.
       const updateData = {
-        officeId: parseInt(formData.officeId) || undefined,
+        locale: "en",
+        dateFormat: "yyyy-MM-dd",
         legalFormId: parseInt(formData.legalForm) || undefined,
         externalId: formData.externalId || undefined,
-        firstname: formData.firstname,
-        middlename: formData.middlename || undefined,
-        lastname: formData.lastname,
-        genderId: parseInt(formData.gender) || undefined,
-        dateOfBirth: formData.dateOfBirth ? new Date(formData.dateOfBirth).toISOString().split('T')[0] : undefined,
         isStaff: formData.isStaff,
         staffId: parseInt(formData.staffId) || undefined,
         emailAddress: formData.emailAddress || undefined,
         mobileNo: formData.mobileNo || undefined,
-        clientClassificationId: parseInt(formData.clientClassification) || undefined,
+        // clientClassificationId: parseInt(formData.clientClassification) || undefined,
         clientTypeId: parseInt(formData.clientType) || undefined,
         activationDate: formData.activationDate ? new Date(formData.activationDate).toISOString().split('T')[0] : undefined,
         submittedOnDate: formData.submittedOnDate ? new Date(formData.submittedOnDate).toISOString().split('T')[0] : undefined,
+        ...(isEntity
+          ? { fullname: formData.fullname.trim() }
+          : {
+              firstname: formData.firstname,
+              middlename: formData.middlename || undefined,
+              lastname: formData.lastname,
+              genderId: parseInt(formData.gender) || undefined,
+              dateOfBirth: formData.dateOfBirth
+                ? new Date(formData.dateOfBirth).toISOString().split("T")[0]
+                : undefined,
+            }),
       };
 
       const response = await fetch(`/api/clients/${clientId}`, {
@@ -246,8 +256,15 @@ export function ClientEditForm({ clientId }: ClientEditFormProps) {
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to update client");
+        let message = "Failed to update client";
+        try {
+          const errorData = await response.json();
+          message =
+            (typeof errorData.error === "string" && errorData.error) || message;
+        } catch {
+          message = `Update failed (${response.status})`;
+        }
+        throw new Error(message);
       }
 
       setSuccess("Client updated successfully");
@@ -321,25 +338,19 @@ export function ClientEditForm({ clientId }: ClientEditFormProps) {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {/* Row 1 */}
               <div className="space-y-2">
-                <Label htmlFor="office">Office</Label>
-                <Select value={formData.officeId} onValueChange={(value) => handleInputChange("officeId", value)}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select office" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {offices.map((office) => (
-                      <SelectItem key={office.id} value={office.id.toString()}>
-                        {office.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Label htmlFor="officeName">Office</Label>
+                <Input
+                  id="officeName"
+                  value={client?.officeName ?? ""}
+                  disabled
+                  className="bg-muted/50"
+                />
               </div>
 
               <div className="space-y-2">
                 <Label htmlFor="legalForm">Legal Form</Label>
-                <Select value={formData.legalForm} onValueChange={(value) => handleInputChange("legalForm", value)}>
-                  <SelectTrigger>
+                <Select value={formData.legalForm} disabled>
+                  <SelectTrigger className="w-full">
                     <SelectValue placeholder="Select legal form" />
                   </SelectTrigger>
                   <SelectContent>
@@ -355,8 +366,8 @@ export function ClientEditForm({ clientId }: ClientEditFormProps) {
                 <Input
                   id="accountNo"
                   value={formData.accountNo}
-                  onChange={(e) => handleInputChange("accountNo", e.target.value)}
-                  readOnly
+                  disabled
+                  className="bg-muted/50"
                 />
               </div>
 
@@ -369,58 +380,76 @@ export function ClientEditForm({ clientId }: ClientEditFormProps) {
                 />
               </div>
 
-              {/* Row 3 */}
-              <div className="space-y-2">
-                <Label htmlFor="firstname">First Name *</Label>
-                <Input
-                  id="firstname"
-                  value={formData.firstname}
-                  onChange={(e) => handleInputChange("firstname", e.target.value)}
-                  required
-                />
-              </div>
+              {/* Name: person vs entity */}
+              {isEntity ? (
+                <div className="space-y-2 lg:col-span-2">
+                  <Label htmlFor="fullname">Entity name *</Label>
+                  <Input
+                    id="fullname"
+                    value={formData.fullname}
+                    onChange={(e) => handleInputChange("fullname", e.target.value)}
+                    required
+                    autoComplete="organization"
+                  />
+                </div>
+              ) : (
+                <>
+                  <div className="space-y-2">
+                    <Label htmlFor="firstname">First Name *</Label>
+                    <Input
+                      id="firstname"
+                      value={formData.firstname}
+                      onChange={(e) => handleInputChange("firstname", e.target.value)}
+                      required
+                    />
+                  </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="middlename">Middle Name</Label>
-                <Input
-                  id="middlename"
-                  value={formData.middlename}
-                  onChange={(e) => handleInputChange("middlename", e.target.value)}
-                />
-              </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="middlename">Middle Name</Label>
+                    <Input
+                      id="middlename"
+                      value={formData.middlename}
+                      onChange={(e) => handleInputChange("middlename", e.target.value)}
+                    />
+                  </div>
 
-              {/* Row 4 */}
-              <div className="space-y-2">
-                <Label htmlFor="lastname">Last Name *</Label>
-                <Input
-                  id="lastname"
-                  value={formData.lastname}
-                  onChange={(e) => handleInputChange("lastname", e.target.value)}
-                  required
-                />
-              </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="lastname">Last Name *</Label>
+                    <Input
+                      id="lastname"
+                      value={formData.lastname}
+                      onChange={(e) => handleInputChange("lastname", e.target.value)}
+                      required
+                    />
+                  </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="gender">Gender</Label>
-                <Select value={formData.gender} onValueChange={(value) => handleInputChange("gender", value)}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select gender" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="1">Male</SelectItem>
-                    <SelectItem value="2">Female</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="gender">Gender</Label>
+                    <Select value={formData.gender} onValueChange={(value) => handleInputChange("gender", value)}>
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Select gender" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="1">Male</SelectItem>
+                        <SelectItem value="2">Female</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </>
+              )}
 
               {/* Row 5 */}
               <div className="space-y-2">
-                <Label htmlFor="dateOfBirth">Date of Birth</Label>
+                <Label htmlFor="dateOfBirth">
+                  {isEntity ? "Date of incorporation" : "Date of Birth"}
+                </Label>
                 <Input
                   id="dateOfBirth"
                   type="date"
                   value={formData.dateOfBirth}
                   onChange={(e) => handleInputChange("dateOfBirth", e.target.value)}
+                  readOnly={isEntity}
+                  className={isEntity ? "bg-muted/50" : undefined}
                 />
               </div>
 
@@ -439,7 +468,7 @@ export function ClientEditForm({ clientId }: ClientEditFormProps) {
               <div className="space-y-2">
                 <Label htmlFor="staffId">Staff</Label>
                 <Select value={formData.staffId} onValueChange={(value) => handleInputChange("staffId", value)}>
-                  <SelectTrigger>
+                  <SelectTrigger className="w-full">
                     <SelectValue placeholder="Select staff" />
                   </SelectTrigger>
                   <SelectContent>
@@ -475,7 +504,7 @@ export function ClientEditForm({ clientId }: ClientEditFormProps) {
               <div className="space-y-2">
                 <Label htmlFor="clientClassification">Client Classification</Label>
                 <Select value={formData.clientClassification} onValueChange={(value) => handleInputChange("clientClassification", value)}>
-                  <SelectTrigger>
+                  <SelectTrigger className="w-full">
                     <SelectValue placeholder="Select classification" />
                   </SelectTrigger>
                   <SelectContent>
@@ -490,7 +519,7 @@ export function ClientEditForm({ clientId }: ClientEditFormProps) {
               <div className="space-y-2">
                 <Label htmlFor="clientType">Client Type</Label>
                 <Select value={formData.clientType} onValueChange={(value) => handleInputChange("clientType", value)}>
-                  <SelectTrigger>
+                  <SelectTrigger className="w-full">
                     <SelectValue placeholder="Select client type" />
                   </SelectTrigger>
                   <SelectContent>
