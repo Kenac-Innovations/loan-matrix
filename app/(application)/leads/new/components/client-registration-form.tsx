@@ -41,6 +41,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -137,6 +138,7 @@ const clientFormSchema = z
     registrationNumber: z.string().optional(),
     dateOfIncorporation: z.date().optional(),
     natureOfBusiness: z.string().optional(),
+    businessAddress: z.string().optional(),
 
     isStaff: z.boolean().default(false),
     mobileNo: z
@@ -1860,6 +1862,7 @@ export function ClientRegistrationForm({
       registrationNumber: "",
       dateOfIncorporation: undefined,
       natureOfBusiness: "",
+      businessAddress: "",
       isStaff: false,
       mobileNo: "",
       countryCode: tenantLocale.countryCode,
@@ -2196,6 +2199,7 @@ export function ClientRegistrationForm({
               registrationNumber: lead.registrationNumber || "",
               dateOfIncorporation: lead.dateOfIncorporation || undefined,
               natureOfBusiness: lead.natureOfBusiness || "",
+              businessAddress: lead.businessAddress || "",
               isStaff: lead.isStaff || false,
               mobileNo: lead.mobileNo || "",
               countryCode: lead.countryCode || tenantLocale.countryCode,
@@ -2414,6 +2418,7 @@ export function ClientRegistrationForm({
                       ? new Date(lead.dateOfIncorporation)
                       : undefined,
                     natureOfBusiness: lead.natureOfBusiness || "",
+                    businessAddress: lead.businessAddress || "",
                   };
 
                   // If we have Fineract data, client exists in Fineract
@@ -2529,6 +2534,7 @@ export function ClientRegistrationForm({
       "registrationNumber",
       "dateOfIncorporation",
       "natureOfBusiness",
+      "businessAddress",
     ];
     const contactFields = ["mobileNo", "emailAddress", "countryCode"];
     const classificationFields = ["clientTypeId", "clientClassificationId"];
@@ -3092,6 +3098,7 @@ export function ClientRegistrationForm({
       registrationNumber: "",
       dateOfIncorporation: undefined,
       natureOfBusiness: "",
+      businessAddress: "",
       isStaff: false,
       mobileNo: "",
       countryCode: tenantLocale.countryCode,
@@ -3344,6 +3351,7 @@ export function ClientRegistrationForm({
             ? new Date(localData.dateOfIncorporation)
             : undefined,
           natureOfBusiness: localData?.natureOfBusiness || "",
+          businessAddress: localData?.businessAddress || "",
           dateOfBirth: fineractData?.dateOfBirth
             ? new Date(fineractData.dateOfBirth)
             : localData?.dateOfBirth
@@ -3671,6 +3679,7 @@ export function ClientRegistrationForm({
       registrationNumber: "",
       dateOfIncorporation: undefined,
       natureOfBusiness: "",
+      businessAddress: "",
       isStaff: false,
       mobileNo: "",
       countryCode: tenantLocale.countryCode,
@@ -6377,6 +6386,39 @@ export function ClientRegistrationForm({
                                         Business sector or activity description
                                       </p>
                                     </div>
+                                  </div>
+
+                                  {/* Business address (optional) */}
+                                  <div className="space-y-3 mt-6">
+                                    <Label htmlFor="businessAddress" className={colors.textColor}>
+                                      Business address
+                                    </Label>
+                                    <div className="relative">
+                                      <Textarea
+                                        id="businessAddress"
+                                        placeholder="Registered business / trading address"
+                                        rows={4}
+                                        className={`min-h-[100px] border-${colors.borderColor} ${colors.inputBg}`}
+                                        {...(externalForm
+                                          ? externalForm.register("businessAddress", {
+                                              onBlur: (e: { target: { value: string } }) =>
+                                                handleFieldBlur("businessAddress", e.target.value),
+                                            })
+                                          : form.register("businessAddress", {
+                                              onBlur: (e: { target: { value: string } }) =>
+                                                handleFieldBlur("businessAddress", e.target.value),
+                                            }))}
+                                        disabled={isFormDisabled}
+                                      />
+                                      {lastSavedField === "businessAddress" && isAutoSaving && (
+                                        <div className="absolute right-3 top-3 flex items-center">
+                                          <div className="w-3 h-3 border border-gray-300 border-t-gray-600 rounded-full animate-spin"></div>
+                                        </div>
+                                      )}
+                                    </div>
+                                    <p className={`text-xs ${colors.textColorMuted}`}>
+                                      Optional — postal or physical address of the business
+                                    </p>
                                   </div>
 
                                   {/* External ID for Entity */}

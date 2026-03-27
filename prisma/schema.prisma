@@ -95,6 +95,7 @@ model Lead {
   registrationNumber         String?
   dateOfIncorporation        DateTime?
   natureOfBusiness           String?
+  businessAddress            String?
   externalId                 String?
   firstname                  String?
   middlename                 String?

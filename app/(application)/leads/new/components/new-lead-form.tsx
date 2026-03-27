@@ -102,6 +102,7 @@ const leadFormSchema = z
     registrationNumber: z.string().optional(),
     dateOfIncorporation: z.date().optional(),
     natureOfBusiness: z.string().optional(),
+    businessAddress: z.string().optional(),
 
     isStaff: z.boolean().default(false),
     mobileNo: z
@@ -687,6 +688,7 @@ export function NewLeadForm() {
       registrationNumber: "",
       dateOfIncorporation: undefined,
       natureOfBusiness: "",
+      businessAddress: "",
       isStaff: false,
       mobileNo: "",
       countryCode: "+263",
