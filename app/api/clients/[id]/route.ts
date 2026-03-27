@@ -46,9 +46,20 @@ export async function PUT(
     return NextResponse.json(data);
   } catch (error: any) {
     console.error("Failed to update client:", error);
+    const message =
+      typeof error?.message === "string" && error.message
+        ? error.message
+        : "Failed to update client";
+    const status =
+      typeof error?.status === "number" && error.status >= 400 && error.status < 600
+        ? error.status
+        : 500;
     return NextResponse.json(
-      { error: "Failed to update client" },
-      { status: 500 }
+      {
+        error: message,
+        details: error?.errorData ?? null,
+      },
+      { status }
     );
   }
 }
