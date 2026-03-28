@@ -1108,6 +1108,54 @@ export class FineractAPIService {
     }
   }
 
+  async updateCashier(
+    tellerId: number,
+    cashierId: number,
+    cashierData: {
+      staffId: number;
+      description?: string;
+      startDate: string;
+      endDate?: string;
+      isFullDay: boolean;
+      dateFormat?: string;
+      locale?: string;
+    }
+  ): Promise<any> {
+    try {
+      const payload = {
+        staffId: cashierData.staffId,
+        description: cashierData.description || "",
+        startDate: cashierData.startDate,
+        endDate: cashierData.endDate || "",
+        isFullDay: cashierData.isFullDay,
+        dateFormat: cashierData.dateFormat || "dd MMMM yyyy",
+        locale: cashierData.locale || "en",
+      };
+      console.log(
+        "Updating cashier with data:",
+        JSON.stringify(payload, null, 2)
+      );
+      const response: AxiosResponse<any> = await this.client.put(
+        `/tellers/${tellerId}/cashiers/${cashierId}`,
+        payload
+      );
+      return response.data;
+    } catch (error: any) {
+      const errorDetails = {
+        message: error.message,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data,
+        errors: error.response?.data?.errors,
+      };
+      console.error(
+        "Fineract API Error updating cashier:",
+        JSON.stringify(errorDetails, null, 2)
+      );
+      throw error;
+    }
+  }
+
   async allocateCashToTeller(
     tellerId: number,
     allocationData: {
