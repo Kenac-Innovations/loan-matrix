@@ -5272,210 +5272,6 @@ export function ClientRegistrationForm({
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  {/* Client Search and Listing - Hidden when client is found */}
-                  {clientLookupStatus !== "found" && (
-                    <div className="space-y-3">
-                      <Label className={colors.textColor}>
-                        Select Existing Client
-                      </Label>
-                      {/* Search input */}
-                      <div className="flex gap-2">
-                        <div className="flex-1 relative">
-                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                          <Input
-                            placeholder="Search by name, account no, or ID..."
-                            value={clientPickerSearch}
-                            onChange={(e) =>
-                              setClientPickerSearch(e.target.value)
-                            }
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") {
-                                e.preventDefault();
-                                setClientPickerPage(0);
-                                fetchClientsForPicker(clientPickerSearch, 0);
-                              }
-                            }}
-                            className="pl-9"
-                          />
-                        </div>
-                        <Button
-                          type="button"
-                          onClick={() => {
-                            setClientPickerPage(0);
-                            fetchClientsForPicker(clientPickerSearch, 0);
-                          }}
-                          disabled={isLoadingClients}
-                          size="sm"
-                        >
-                          {isLoadingClients ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            "Search"
-                          )}
-                        </Button>
-                      </div>
-
-                      {/* Client list */}
-                      <div className="border rounded-lg overflow-hidden">
-                        <div className="max-h-80 overflow-y-auto">
-                          {isLoadingClients &&
-                          (!Array.isArray(clientPickerResults) ||
-                            clientPickerResults.length === 0) ? (
-                            <div className="flex items-center justify-center py-8">
-                              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                            </div>
-                          ) : !Array.isArray(clientPickerResults) ||
-                            clientPickerResults.length === 0 ? (
-                            <div className="text-center py-8 text-muted-foreground">
-                              No clients found. Try a different search or
-                              register a new client below.
-                            </div>
-                          ) : (
-                            <table className="w-full">
-                              <thead className="bg-muted/50 sticky top-0">
-                                <tr className="border-b">
-                                  <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground">
-                                    Client
-                                  </th>
-                                  <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground hidden sm:table-cell">
-                                    Account No
-                                  </th>
-                                  <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground hidden md:table-cell">
-                                    External ID
-                                  </th>
-                                  <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground">
-                                    Status
-                                  </th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {clientPickerResults.map((client: any) => {
-                                  const isSelected =
-                                    selectedClientId === client.id;
-                                  return (
-                                    <tr
-                                      key={client.id}
-                                      onClick={() =>
-                                        !selectedClientId &&
-                                        handleSelectClientFromPicker(client)
-                                      }
-                                      onKeyDown={(e) => {
-                                        if (
-                                          (e.key === "Enter" ||
-                                            e.key === " ") &&
-                                          !selectedClientId
-                                        ) {
-                                          e.preventDefault();
-                                          handleSelectClientFromPicker(client);
-                                        }
-                                      }}
-                                      tabIndex={selectedClientId ? -1 : 0}
-                                      role="button"
-                                      className={`border-b transition-colors ${
-                                        isSelected
-                                          ? "bg-primary/10"
-                                          : selectedClientId
-                                          ? "opacity-50 cursor-not-allowed"
-                                          : "hover:bg-muted/50 cursor-pointer"
-                                      }`}
-                                    >
-                                      <td className="py-3 px-3">
-                                        <div className="flex items-center gap-3">
-                                          {isSelected ? (
-                                            <div className="h-8 w-8 rounded-full bg-primary/20 flex items-center justify-center">
-                                              <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                                            </div>
-                                          ) : (
-                                            <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary text-sm font-medium">
-                                              {client.firstname?.[0] || ""}
-                                              {client.lastname?.[0] || ""}
-                                            </div>
-                                          )}
-                                          <span className="font-medium truncate">
-                                            {client.displayName ||
-                                              `${client.firstname} ${client.lastname}`}
-                                            {isSelected && (
-                                              <span className="ml-2 text-sm text-muted-foreground">
-                                                Loading...
-                                              </span>
-                                            )}
-                                          </span>
-                                        </div>
-                                      </td>
-                                      <td className="py-3 px-3 text-sm text-muted-foreground hidden sm:table-cell">
-                                        {client.accountNo}
-                                      </td>
-                                      <td className="py-3 px-3 text-sm text-muted-foreground hidden md:table-cell">
-                                        {client.externalId || "-"}
-                                      </td>
-                                      <td className="py-3 px-3">
-                                        <Badge
-                                          variant="outline"
-                                          className={
-                                            client.active
-                                              ? "bg-green-500 text-white border-0"
-                                              : "bg-gray-500 text-white border-0"
-                                          }
-                                        >
-                                          {client.active
-                                            ? "Active"
-                                            : "Inactive"}
-                                        </Badge>
-                                      </td>
-                                    </tr>
-                                  );
-                                })}
-                              </tbody>
-                            </table>
-                          )}
-                        </div>
-                        {hasMoreClients &&
-                          Array.isArray(clientPickerResults) &&
-                          clientPickerResults.length > 0 && (
-                            <div className="border-t p-2 bg-muted/30">
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                className="w-full"
-                                onClick={() => {
-                                  const nextPage = clientPickerPage + 1;
-                                  setClientPickerPage(nextPage);
-                                  fetchClientsForPicker(
-                                    clientPickerSearch,
-                                    nextPage,
-                                    true
-                                  );
-                                }}
-                                disabled={isLoadingClients}
-                                size="sm"
-                              >
-                                {isLoadingClients ? (
-                                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                                ) : null}
-                                Load More Clients
-                              </Button>
-                            </div>
-                          )}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Divider - Hidden when client is found */}
-                  {clientLookupStatus !== "found" && (
-                    <div className="relative py-2">
-                      <div className="absolute inset-0 flex items-center">
-                        <span className="w-full border-t" />
-                      </div>
-                      <div className="relative flex justify-center text-xs uppercase">
-                        <span
-                          className={`px-2 ${colors.cardBg} text-muted-foreground`}
-                        >
-                          Or register new client
-                        </span>
-                      </div>
-                    </div>
-                  )}
-
                   <div className="space-y-2">
                     <Label
                       htmlFor="nationalIdLookup"
@@ -5665,6 +5461,210 @@ export function ClientRegistrationForm({
                         try again or proceed with manual entry.
                       </AlertDescription>
                     </Alert>
+                  )}
+
+                  {/* Divider - Hidden when client is found */}
+                  {clientLookupStatus !== "found" && (
+                    <div className="relative py-2">
+                      <div className="absolute inset-0 flex items-center">
+                        <span className="w-full border-t" />
+                      </div>
+                      <div className="relative flex justify-center text-xs uppercase">
+                        <span
+                          className={`px-2 ${colors.cardBg} text-muted-foreground`}
+                        >
+                          Or select existing client
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Client Search and Listing - Hidden when client is found */}
+                  {clientLookupStatus !== "found" && (
+                    <div className="space-y-3">
+                      <Label className={colors.textColor}>
+                        Select Existing Client
+                      </Label>
+                      {/* Search input */}
+                      <div className="flex gap-2">
+                        <div className="flex-1 relative">
+                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                          <Input
+                            placeholder="Search by name, account no, or ID..."
+                            value={clientPickerSearch}
+                            onChange={(e) =>
+                              setClientPickerSearch(e.target.value)
+                            }
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.preventDefault();
+                                setClientPickerPage(0);
+                                fetchClientsForPicker(clientPickerSearch, 0);
+                              }
+                            }}
+                            className="pl-9"
+                          />
+                        </div>
+                        <Button
+                          type="button"
+                          onClick={() => {
+                            setClientPickerPage(0);
+                            fetchClientsForPicker(clientPickerSearch, 0);
+                          }}
+                          disabled={isLoadingClients}
+                          size="sm"
+                        >
+                          {isLoadingClients ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            "Search"
+                          )}
+                        </Button>
+                      </div>
+
+                      {/* Client list */}
+                      <div className="border rounded-lg overflow-hidden">
+                        <div className="max-h-80 overflow-y-auto">
+                          {isLoadingClients &&
+                          (!Array.isArray(clientPickerResults) ||
+                            clientPickerResults.length === 0) ? (
+                            <div className="flex items-center justify-center py-8">
+                              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                            </div>
+                          ) : !Array.isArray(clientPickerResults) ||
+                            clientPickerResults.length === 0 ? (
+                            <div className="text-center py-8 text-muted-foreground">
+                              No clients found. Try a different search or
+                              register a new client above.
+                            </div>
+                          ) : (
+                            <table className="w-full">
+                              <thead className="bg-muted/50 sticky top-0">
+                                <tr className="border-b">
+                                  <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground">
+                                    Client
+                                  </th>
+                                  <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground hidden sm:table-cell">
+                                    Account No
+                                  </th>
+                                  <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground hidden md:table-cell">
+                                    External ID
+                                  </th>
+                                  <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground">
+                                    Status
+                                  </th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {clientPickerResults.map((client: any) => {
+                                  const isSelected =
+                                    selectedClientId === client.id;
+                                  return (
+                                    <tr
+                                      key={client.id}
+                                      onClick={() =>
+                                        !selectedClientId &&
+                                        handleSelectClientFromPicker(client)
+                                      }
+                                      onKeyDown={(e) => {
+                                        if (
+                                          (e.key === "Enter" ||
+                                            e.key === " ") &&
+                                          !selectedClientId
+                                        ) {
+                                          e.preventDefault();
+                                          handleSelectClientFromPicker(client);
+                                        }
+                                      }}
+                                      tabIndex={selectedClientId ? -1 : 0}
+                                      role="button"
+                                      className={`border-b transition-colors ${
+                                        isSelected
+                                          ? "bg-primary/10"
+                                          : selectedClientId
+                                          ? "opacity-50 cursor-not-allowed"
+                                          : "hover:bg-muted/50 cursor-pointer"
+                                      }`}
+                                    >
+                                      <td className="py-3 px-3">
+                                        <div className="flex items-center gap-3">
+                                          {isSelected ? (
+                                            <div className="h-8 w-8 rounded-full bg-primary/20 flex items-center justify-center">
+                                              <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                                            </div>
+                                          ) : (
+                                            <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary text-sm font-medium">
+                                              {client.firstname?.[0] || ""}
+                                              {client.lastname?.[0] || ""}
+                                            </div>
+                                          )}
+                                          <span className="font-medium truncate">
+                                            {client.displayName ||
+                                              `${client.firstname} ${client.lastname}`}
+                                            {isSelected && (
+                                              <span className="ml-2 text-sm text-muted-foreground">
+                                                Loading...
+                                              </span>
+                                            )}
+                                          </span>
+                                        </div>
+                                      </td>
+                                      <td className="py-3 px-3 text-sm text-muted-foreground hidden sm:table-cell">
+                                        {client.accountNo}
+                                      </td>
+                                      <td className="py-3 px-3 text-sm text-muted-foreground hidden md:table-cell">
+                                        {client.externalId || "-"}
+                                      </td>
+                                      <td className="py-3 px-3">
+                                        <Badge
+                                          variant="outline"
+                                          className={
+                                            client.active
+                                              ? "bg-green-500 text-white border-0"
+                                              : "bg-gray-500 text-white border-0"
+                                          }
+                                        >
+                                          {client.active
+                                            ? "Active"
+                                            : "Inactive"}
+                                        </Badge>
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          )}
+                        </div>
+                        {hasMoreClients &&
+                          Array.isArray(clientPickerResults) &&
+                          clientPickerResults.length > 0 && (
+                            <div className="border-t p-2 bg-muted/30">
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                className="w-full"
+                                onClick={() => {
+                                  const nextPage = clientPickerPage + 1;
+                                  setClientPickerPage(nextPage);
+                                  fetchClientsForPicker(
+                                    clientPickerSearch,
+                                    nextPage,
+                                    true
+                                  );
+                                }}
+                                disabled={isLoadingClients}
+                                size="sm"
+                              >
+                                {isLoadingClients ? (
+                                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                                ) : null}
+                                Load More Clients
+                              </Button>
+                            </div>
+                          )}
+                      </div>
+                    </div>
                   )}
                 </div>
               </CardContent>
