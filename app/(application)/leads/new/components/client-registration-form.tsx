@@ -1306,7 +1306,8 @@ export function ClientRegistrationForm({
   };
 
   const checkSelfieSection = () => {
-    return !!(existingClientImage || selfieImage);
+    // Selfie capture is optional, so it should never block KYC completion.
+    return true;
   };
 
   const checkIdentityDocumentsSection = () => {
@@ -1467,7 +1468,7 @@ export function ClientRegistrationForm({
   };
 
   const checkKYCTabCompletion = () => {
-    return sectionCompletion.selfie && sectionCompletion.identityDocuments && sectionCompletion.otherDocuments;
+    return sectionCompletion.identityDocuments && sectionCompletion.otherDocuments;
   };
 
   const checkAdditionalDetailsTabCompletion = () => {
@@ -3937,7 +3938,7 @@ export function ClientRegistrationForm({
           newCompletion.additional;
 
         const kycComplete =
-          newCompletion.selfie && newCompletion.identityDocuments;
+          newCompletion.identityDocuments && newCompletion.otherDocuments;
 
         const additionalComplete = clientCreatedInFineract
           ? newCompletion.datatables
@@ -5757,15 +5758,14 @@ export function ClientRegistrationForm({
                               }
                             } else if (activeClientTab === "account") {
                               // Validate KYC sections
-                              const selfieComplete = checkSelfieSection();
                               const identityComplete =
                                 checkIdentityDocumentsSection();
 
-                              if (!selfieComplete || !identityComplete) {
+                              if (!identityComplete) {
                                 error({
                                   title: "Incomplete KYC",
                                   description:
-                                    "Please complete the selfie and identity documents sections before proceeding.",
+                                    "Please complete the identity documents section before proceeding.",
                                 });
                                 return;
                               }
@@ -7898,8 +7898,7 @@ export function ClientRegistrationForm({
                                       <UserCheck className="h-5 w-5 text-red-500" />
                                     )}
                                     <Label className={colors.textColor}>
-                                      Client Selfie{" "}
-                                      <span className="text-red-500">*</span>
+                                      Client Selfie
                                     </Label>
                                     {getSectionStatus("selfie") === "saved" && (
                                       <Badge className="ml-2 bg-green-500 text-white">
@@ -9702,16 +9701,15 @@ export function ClientRegistrationForm({
                                 type="button"
                                 className="bg-blue-500 hover:bg-blue-600"
                                 onClick={async () => {
-                                  const selfieComplete = checkSelfieSection();
                                   const identityComplete =
                                     checkIdentityDocumentsSection();
                                   const docsComplete = checkOtherDocumentsSection();
 
-                                  if (!selfieComplete || !identityComplete) {
+                                  if (!identityComplete) {
                                     error({
                                       title: "Incomplete KYC",
                                       description:
-                                        "Please complete the selfie and identity documents sections before proceeding.",
+                                        "Please complete the identity documents section before proceeding.",
                                     });
                                     return;
                                   }
