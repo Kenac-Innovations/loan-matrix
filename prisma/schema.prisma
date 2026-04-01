@@ -890,10 +890,12 @@ model BulkRepaymentItem {
   bankNumber      String?
   note            String?
   transactionDate DateTime?
-  status          String              @default("STAGED") // STAGED, QUEUED, PROCESSING, SUCCESS, FAILED
+  status          String              @default("STAGED") // STAGED, QUEUED, PROCESSING, SUCCESS, FAILED, REVERSED
   errorMessage    String?
   fineractTxnId   String?
   processedAt     DateTime?
+  reversedAt      DateTime?
+  reversedBy      String?
   createdAt       DateTime            @default(now())
   updatedAt       DateTime            @updatedAt
 
