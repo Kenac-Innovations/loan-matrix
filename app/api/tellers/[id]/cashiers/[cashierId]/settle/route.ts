@@ -29,8 +29,15 @@ export async function POST(
     }
 
     const body = await request.json();
-    const { amount, currency, notes, date, transactionType, loanPayoutId } =
-      body;
+    const {
+      amount,
+      currency,
+      notes,
+      date,
+      transactionType,
+      loanPayoutId,
+      fineractLoanId,
+    } = body;
 
     if (!amount || amount <= 0) {
       return NextResponse.json(
@@ -48,9 +55,12 @@ export async function POST(
 
     // Validate transaction type
     const txnType = transactionType || "EXPENSE";
-    if (!["EXPENSE", "DISBURSEMENT"].includes(txnType)) {
+    if (!["EXPENSE", "DISBURSEMENT", "CREDIT_BALANCE_REFUND"].includes(txnType)) {
       return NextResponse.json(
-        { error: "Invalid transaction type. Must be EXPENSE or DISBURSEMENT" },
+        {
+          error:
+            "Invalid transaction type. Must be EXPENSE, DISBURSEMENT, or CREDIT_BALANCE_REFUND",
+        },
         { status: 400 }
       );
     }
@@ -372,21 +382,27 @@ export async function POST(
       }
     }
 
-    // For disbursements/expenses, require active session
-    // For settlements to vault (after close), allow if there's a recent closed session
-    if (!activeSession && txnType === "DISBURSEMENT") {
+    // Cash paid to customer from till (disbursement, credit balance refund): active session required
+    if (
+      !activeSession &&
+      (txnType === "DISBURSEMENT" || txnType === "CREDIT_BALANCE_REFUND")
+    ) {
       return NextResponse.json(
         {
           error: "Session required",
           details:
-            "Cashier must have an active session for disbursements. Please start a session first.",
+            "Cashier must have an active session for this transaction. Please start a session first.",
         },
         { status: 400 }
       );
     }
 
-    // For non-disbursement settlements (return to vault), check if there's a closed session
-    if (!activeSession && txnType !== "DISBURSEMENT") {
+    // For return-to-vault style settlements, check if there's a closed session
+    if (
+      !activeSession &&
+      txnType !== "DISBURSEMENT" &&
+      txnType !== "CREDIT_BALANCE_REFUND"
+    ) {
       const closedSession = await prisma.cashierSession.findFirst({
         where: {
           tellerId: teller.id,
@@ -539,20 +555,29 @@ export async function POST(
       }
     }
 
-    // Determine if this is a "return to vault" or external cash out
-    // For non-disbursement transactions, ALWAYS return to vault
-    // This ensures vault balance is updated when cashier settles cash
-    const isReturnToVault = txnType !== "DISBURSEMENT";
+    // Return to vault only for generic EXPENSE flows — not customer cash out (disbursement / credit refund)
+    const isReturnToVault =
+      txnType !== "DISBURSEMENT" && txnType !== "CREDIT_BALANCE_REFUND";
     
     console.log(`Settlement type: ${txnType}, isReturnToVault: ${isReturnToVault}, amount: ${amount}`);
     
     // Create a negative allocation record (cash out from cashier)
-    const settlementNotes =
-      txnType === "DISBURSEMENT"
-        ? `Loan Disbursement: ${loanPayout?.clientName} - ${
-            loanPayout?.loanAccountNo
-          }${notes ? ` - ${notes}` : ""}`
-        : notes || "Return to Vault";
+    const loanIdForNote =
+      fineractLoanId != null && !Number.isNaN(Number(fineractLoanId))
+        ? Number(fineractLoanId)
+        : null;
+    let settlementNotes: string;
+    if (txnType === "DISBURSEMENT") {
+      const extra = notes ? ` - ${notes}` : "";
+      settlementNotes = `Loan Disbursement: ${loanPayout?.clientName} - ${loanPayout?.loanAccountNo}${extra}`;
+    } else if (txnType === "CREDIT_BALANCE_REFUND") {
+      const loanPart =
+        loanIdForNote != null ? ` - Loan #${loanIdForNote}` : "";
+      const extra = notes ? ` - ${notes}` : "";
+      settlementNotes = `Credit balance refund${loanPart}${extra}`;
+    } else {
+      settlementNotes = notes || "Return to Vault";
+    }
 
     const settlement = await prisma.cashAllocation.create({
       data: {
