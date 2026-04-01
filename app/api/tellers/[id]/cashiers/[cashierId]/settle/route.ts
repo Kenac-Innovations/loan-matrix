@@ -456,6 +456,29 @@ export async function POST(
       ? formatDateForFineract(date)
       : formatDateForFineract(new Date());
 
+    // Fineract m_cashier_transactions.txn_note is varchar(200)
+    let fineractTxnNote: string;
+    if (txnType === "CREDIT_BALANCE_REFUND") {
+      const loanIdNum =
+        fineractLoanId != null && !Number.isNaN(Number(fineractLoanId))
+          ? Number(fineractLoanId)
+          : null;
+      const base =
+        loanIdNum != null
+          ? `Credit balance refund - Loan #${loanIdNum}`
+          : "Credit balance refund";
+      const trimmed = typeof notes === "string" ? notes.trim() : "";
+      fineractTxnNote = trimmed ? `${base} - ${trimmed}` : base;
+      if (fineractTxnNote.length > 200) {
+        fineractTxnNote = `${fineractTxnNote.slice(0, 197)}...`;
+      }
+    } else {
+      fineractTxnNote = (typeof notes === "string" && notes.trim()) || "Cash Out";
+      if (fineractTxnNote.length > 200) {
+        fineractTxnNote = `${fineractTxnNote.slice(0, 197)}...`;
+      }
+    }
+
     // Settle cash in Fineract (cash out transaction)
     let fineractSettlementId: number | null = null;
     try {
@@ -466,6 +489,7 @@ export async function POST(
         txnDate,
         currencyCode: currency,
         txnAmount: amount.toString(),
+        txnNote: fineractTxnNote,
       });
       const result = await fineractService.settleCashForCashier(
         teller.fineractTellerId,
@@ -474,7 +498,7 @@ export async function POST(
           txnDate,
           currencyCode: currency,
           txnAmount: amount.toString(),
-          txnNote: notes || "Cash Out",
+          txnNote: fineractTxnNote,
           dateFormat: "dd MMMM yyyy",
           locale: "en",
         }
