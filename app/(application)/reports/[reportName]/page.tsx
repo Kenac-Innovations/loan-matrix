@@ -89,6 +89,31 @@ export default function ReportDetailPage() {
   const [loadingParameters, setLoadingParameters] = useState(true);
   const [parameters, setParameters] = useState<Record<string, string>>({});
 
+  const normalizeParameterValues = (
+    paramValues: Record<string, string>
+  ): Record<string, string> =>
+    Object.fromEntries(
+      Object.entries(paramValues).filter(
+        ([, value]) =>
+          value !== undefined &&
+          value !== null &&
+          value !== ""
+      )
+    );
+
+  const withSelectAllOption = (
+    param: ReportParameter,
+    options: ParameterOption[]
+  ): ParameterOption[] => {
+    if (param.selectAll !== "Y") return options;
+    const hasAllOption = options.some(
+      (option) =>
+        option.id?.toString() === "-1" ||
+        option.tc?.trim().toLowerCase() === "all"
+    );
+    return hasAllOption ? options : [...options, { id: -1, tc: "All" }];
+  };
+
   useEffect(() => {
     if (reportName) {
       fetchReportParameters(reportName);
@@ -162,7 +187,9 @@ export default function ReportDetailPage() {
       if (param.parameter_displayType === "select") {
         try {
           // Build params for dependent selects (e.g. loanOfficerIdSelectAll needs R_officeId)
-          const fetchParams: Record<string, string> = { ...currentParamValues };
+          const fetchParams: Record<string, string> = normalizeParameterValues(
+            currentParamValues
+          );
           if (param.parentparametername) {
             const parentParam = params.find(
               (p) => p.parameter_name === param.parentparametername
@@ -184,14 +211,17 @@ export default function ReportDetailPage() {
           );
           if (response.ok) {
             const optionData = await response.json();
-            if (optionData.data && optionData.data.length > 0) {
-              options[param.parameter_name] = optionData.data.map(
-                (item: any) => ({
-                  id: item.row[0],
-                  tc: item.row[1],
-                })
-              );
-            }
+            const fetchedOptions =
+              optionData.data && optionData.data.length > 0
+                ? optionData.data.map((item: any) => ({
+                    id: item.row[0],
+                    tc: item.row[1],
+                  }))
+                : [];
+            options[param.parameter_name] = withSelectAllOption(
+              param,
+              fetchedOptions
+            );
           }
         } catch (error) {
           console.error(
@@ -208,9 +238,10 @@ export default function ReportDetailPage() {
   const runReport = async () => {
     setLoading(true);
     try {
+      const paramsForReport = normalizeParameterValues(parameters);
       const params = new URLSearchParams({
         reportName: reportName,
-        ...parameters,
+        ...paramsForReport,
       });
 
       const response = await fetch(`/api/fineract/reports?${params}`);
@@ -302,7 +333,9 @@ export default function ReportDetailPage() {
       const newOptions = { ...parameterOptions };
       for (const param of toReload) {
         try {
-          const fetchParams: Record<string, string> = { ...newParams };
+          const fetchParams: Record<string, string> = normalizeParameterValues(
+            newParams
+          );
           if (param.parentparametername) {
             const parent = reportParameters.find(
               (p) => p.parameter_name === param.parentparametername
@@ -322,13 +355,17 @@ export default function ReportDetailPage() {
           );
           if (response.ok) {
             const optionData = await response.json();
-            newOptions[param.parameter_name] =
+            const fetchedOptions =
               optionData.data && optionData.data.length > 0
                 ? optionData.data.map((item: any) => ({
                     id: item.row[0],
                     tc: item.row[1],
                   }))
                 : [];
+            newOptions[param.parameter_name] = withSelectAllOption(
+              param,
+              fetchedOptions
+            );
           }
         } catch (error) {
           console.error(
