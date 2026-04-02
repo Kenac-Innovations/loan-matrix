@@ -138,28 +138,13 @@ function emptyBank(sort: number): BankRow {
   };
 }
 
-function getDirectorFormError(
-  draft: StakeholderRow,
-  pendingProofFile: File | null,
-  fineractClientId: number | null | undefined
-): string | null {
+function getDirectorFormError(draft: StakeholderRow): string | null {
   if (!draft.fullName.trim()) return "Full name is required.";
   if (!draft.nationalIdOrPassport.trim()) {
     return "National ID or passport is required.";
   }
   if (!draft.residentialAddress.trim()) {
     return "Residential address is required.";
-  }
-  const hasStoredProof = Boolean(draft.fineractDocumentId?.trim());
-  const hasPendingProof = Boolean(pendingProofFile);
-  if (!hasStoredProof && !hasPendingProof) {
-    return "Proof of residence is required.";
-  }
-  if (hasPendingProof && !fineractClientId) {
-    return "A Fineract client ID is required to upload proof of residence.";
-  }
-  if (!draft.pepStatusCodeValueId?.trim()) {
-    return "PEP status is required.";
   }
   return null;
 }
@@ -341,7 +326,7 @@ export function EntityStructureEditor({
       }
 
       let fineractDocumentId = row.fineractDocumentId?.trim() || null;
-      if (pendingProofFile) {
+      if (pendingProofFile && fineractClientId) {
         fineractDocumentId = await uploadProofToFineract(row, pendingProofFile);
       }
 
@@ -579,9 +564,6 @@ export function EntityStructureEditor({
                 <div className="space-y-2 w-full">
                   <Label>
                     Proof of residence
-                    {stakeholderModal.kind === "dir" && (
-                      <span className="text-destructive"> *</span>
-                    )}
                   </Label>
                   <Input
                     type="file"
@@ -620,29 +602,16 @@ export function EntityStructureEditor({
                       Existing Fineract document ID: {stakeholderModal.draft.fineractDocumentId}
                     </div>
                   )}
-                  {!fineractClientId && stakeholderModal.pendingProofFile && (
-                    <div className="text-xs text-destructive">
-                      This lead is not linked to a Fineract client yet, so document upload will fail.
-                    </div>
-                  )}
                 </div>
                 <div className="space-y-1 w-full">
-                  <Label>
-                    PEP status
-                    {stakeholderModal.kind === "dir" && (
-                      <span className="text-destructive"> *</span>
-                    )}
-                  </Label>
+                  <Label>PEP status</Label>
                   <Select
                     value={
                       stakeholderModal.draft.pepStatusCodeValueId
                         ? stakeholderModal.draft.pepStatusCodeValueId
-                        : stakeholderModal.kind === "dir"
-                          ? "__pick_pep__"
-                          : "__none__"
+                        : "__none__"
                     }
                     onValueChange={(v) => {
-                      if (v === "__pick_pep__") return;
                       const id = v === "__none__" ? "" : v;
                       const label =
                         pepOptions.find((o) => String(o.id) === id)?.name || "";
@@ -657,14 +626,7 @@ export function EntityStructureEditor({
                       <SelectValue placeholder="Select PEP status" />
                     </SelectTrigger>
                     <SelectContent>
-                      {stakeholderModal.kind === "dir" && (
-                        <SelectItem value="__pick_pep__" disabled>
-                          Select PEP status
-                        </SelectItem>
-                      )}
-                      {stakeholderModal.kind === "sh" && (
-                        <SelectItem value="__none__">None</SelectItem>
-                      )}
+                      <SelectItem value="__none__">None</SelectItem>
                       {pepOptions.map((o) => (
                         <SelectItem key={o.id} value={String(o.id)}>
                           {o.name}
@@ -744,11 +706,7 @@ export function EntityStructureEditor({
                     const m = stakeholderModal;
                     if (!m) return;
                     if (m.kind === "dir") {
-                      const err = getDirectorFormError(
-                        m.draft,
-                        m.pendingProofFile,
-                        fineractClientId
-                      );
+                      const err = getDirectorFormError(m.draft);
                       if (err) {
                         toast({
                           variant: "destructive",
