@@ -45,7 +45,10 @@ export function SuccessfulTab({ selectedUploadId, onCountChange }: SuccessfulTab
   const [undoItem, setUndoItem] = useState<SuccessItem | null>(null);
   const [batchOpen, setBatchOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [feedback, setFeedback] = useState<{ type: "ok" | "err"; text: string } | null>(null);
+  const [feedback, setFeedback] = useState<{
+    type: "ok" | "err" | "warn";
+    text: string;
+  } | null>(null);
 
   const onCountChangeRef = useRef(onCountChange);
   onCountChangeRef.current = onCountChange;
@@ -121,18 +124,31 @@ export function SuccessfulTab({ selectedUploadId, onCountChange }: SuccessfulTab
         return;
       }
       const n = data.reversedCount ?? data.reversed?.length ?? 0;
-      if (data.failed) {
+      const failures: { itemId: string; loanId?: number; error: string }[] =
+        Array.isArray(data.failed) ? data.failed : [];
+      const fCount = data.failedCount ?? failures.length;
+
+      if (n === 0 && fCount === 0) {
+        setFeedback({
+          type: "ok",
+          text: "No eligible rows to undo.",
+        });
+      } else if (fCount > 0 && n === 0) {
+        const sample = failures[0];
         setFeedback({
           type: "err",
-          text: `Undid ${n} item(s), then stopped: ${data.failed.error} (row id ${data.failed.itemId})`,
+          text: `Could not undo any rows (${fCount} failed). Example: loan ${sample?.loanId ?? "?"} — ${sample?.error ?? "Unknown error"}`,
+        });
+      } else if (fCount > 0) {
+        const sample = failures[0];
+        setFeedback({
+          type: "warn",
+          text: `Undid ${n} repayment(s). ${fCount} could not be undone (e.g. loan ${sample?.loanId ?? "?"}: ${sample?.error ?? "error"}).`,
         });
       } else {
         setFeedback({
           type: "ok",
-          text:
-            n === 0
-              ? "No eligible rows to undo."
-              : `Undid ${n} repayment(s) in Fineract (newest processed first).`,
+          text: `Undid ${n} repayment(s) in Fineract (newest processed first).`,
         });
       }
       setBatchOpen(false);
@@ -276,7 +292,9 @@ export function SuccessfulTab({ selectedUploadId, onCountChange }: SuccessfulTab
           className={`rounded-md border px-3 py-2 text-sm ${
             feedback.type === "ok"
               ? "border-green-200 bg-green-50 text-green-900"
-              : "border-red-200 bg-red-50 text-red-900"
+              : feedback.type === "warn"
+                ? "border-amber-200 bg-amber-50 text-amber-950"
+                : "border-red-200 bg-red-50 text-red-900"
           }`}
         >
           {feedback.text}
@@ -348,9 +366,9 @@ export function SuccessfulTab({ selectedUploadId, onCountChange }: SuccessfulTab
                 activity exists on the same loan.
               </p>
               <p>
-                If Fineract refuses an undo (e.g. not the loan&apos;s latest transaction), the run
-                stops and earlier rows stay posted; you can fix the loan in Fineract and retry, or
-                use row-level undo.
+                If Fineract refuses an undo on a row (e.g. not the loan&apos;s latest transaction),
+                that row is skipped and the rest of the batch still runs. Review any failures and
+                fix or retry those loans individually.
               </p>
               <p className="font-medium text-foreground">
                 Rows to process: {items.filter((i) => i.fineractTxnId?.trim()).length}

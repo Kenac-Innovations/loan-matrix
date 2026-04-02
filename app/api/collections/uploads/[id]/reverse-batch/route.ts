@@ -10,6 +10,8 @@ import { undoLoanRepaymentTransaction } from "@/lib/bulk-repayment-reverse";
  * so reversing newest-first minimizes "not the last transaction" failures.
  *
  * Body: { itemIds?: string[] } — if omitted, all SUCCESS items for the upload are reversed (LIFO).
+ *
+ * Each row is attempted independently: a Fineract failure on one item does not skip the rest.
  */
 export async function POST(
   request: NextRequest,
@@ -61,7 +63,7 @@ export async function POST(
     }
 
     const reversed: string[] = [];
-    let failed: { itemId: string; error: string } | null = null;
+    const failed: { itemId: string; loanId: number; error: string }[] = [];
 
     for (const item of items) {
       const tid = item.fineractTxnId?.trim();
@@ -92,9 +94,8 @@ export async function POST(
           err?.errorData?.errors?.[0]?.defaultUserMessage ||
           err?.message ||
           "Fineract undo failed";
-        console.error(`[BulkRepayment] Batch reverse stopped at item ${item.id}:`, err);
-        failed = { itemId: item.id, error: msg };
-        break;
+        console.error(`[BulkRepayment] Batch reverse item ${item.id} failed (continuing):`, err);
+        failed.push({ itemId: item.id, loanId: item.loanId, error: msg });
       }
     }
 
@@ -103,6 +104,7 @@ export async function POST(
       failed,
       totalRequested: items.length,
       reversedCount: reversed.length,
+      failedCount: failed.length,
     });
   } catch (error) {
     console.error("Reverse batch error:", error);
