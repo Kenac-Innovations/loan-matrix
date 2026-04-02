@@ -33,9 +33,10 @@ interface Note {
 interface LeadNotesProps {
   leadId: string;
   fineractLoanId?: number | null;
+  readOnly?: boolean;
 }
 
-export function LeadNotes({ leadId, fineractLoanId }: LeadNotesProps) {
+export function LeadNotes({ leadId, fineractLoanId, readOnly = false }: LeadNotesProps) {
   const [notes, setNotes] = useState<Note[]>([]);
   const [transitionNotes, setTransitionNotes] = useState<
     { id: string; fromStage: string; toStage: string; reason: string; triggeredBy: string; triggeredAt: string }[]
@@ -191,7 +192,7 @@ export function LeadNotes({ leadId, fineractLoanId }: LeadNotesProps) {
       </CardHeader>
       <CardContent className="space-y-4">
         {/* Add Note */}
-        {fineractLoanId && (
+        {fineractLoanId && !readOnly && (
           <div className="flex gap-2">
             <Textarea
               placeholder="Add a note..."

@@ -1,48 +1,18 @@
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { LeadTimeline } from "./components/lead-timeline";
-import { LeadDetails } from "./components/lead-details";
-import { ComprehensiveLeadDetails } from "./components/comprehensive-lead-details";
-import { LeadDocuments } from "./components/lead-documents";
 import { LeadActions } from "./components/lead-actions";
-import { LeadValidations } from "./components/lead-validations";
-import { LeadCDE } from "./components/lead-cde";
-import { LeadCommunications } from "./components/lead-communications";
 import { LeadSidebar } from "./components/lead-sidebar";
-import { LeadAdditionalInfo } from "./components/lead-additional-info";
 import StateTransitionManager from "./components/state-transition-manager";
 import { LeadMoreActions } from "./components/lead-more-actions";
-import { LeadNotes } from "./components/lead-notes";
+import { LeadDetailTabs } from "./components/lead-detail-tabs";
 import {
   ArrowLeft,
-  FileText,
-  MessageSquare,
-  Activity,
-  ShieldCheck,
-  Calculator,
-  Info,
-  Database,
-  Users,
   UserCheck,
   UserX,
   CheckCircle2,
   XCircle,
-  StickyNote,
 } from "lucide-react";
 import Link from "next/link";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
 import { prisma } from "@/lib/prisma";
 import { headers } from "next/headers";
 import { extractTenantSlug } from "@/lib/tenant-service";
@@ -427,6 +397,11 @@ export default async function LeadDetailPage({
   
   const session = await getSession();
   const currentUserId = session?.user?.id;
+  const isAssignedUser =
+    currentUserId != null &&
+    lead?.assignedToUserId != null &&
+    String(lead.assignedToUserId) === currentUserId;
+  const isReadOnly = !isAssignedUser;
 
   // Check if current user is in the team for the lead's current stage
   let isUserInStageTeam = false;
@@ -461,10 +436,10 @@ export default async function LeadDetailPage({
   const pageHue = getStatusPageHue(fineractLoanStatus);
 
   return (
-    <div className={`-m-6 p-6 min-h-screen ${pageHue}`}>
-      <div className="space-y-4">
+    <div className={`-m-4 p-4 sm:-m-6 sm:p-6 min-h-screen ${pageHue}`}>
+      <div className="space-y-3 sm:space-y-4">
         {/* Breadcrumbs */}
-        <nav className="flex items-center space-x-2 text-sm text-muted-foreground bg-muted/30 px-4 py-3 rounded-lg">
+        <nav className="flex items-center space-x-2 text-xs sm:text-sm text-muted-foreground bg-muted/30 px-3 py-2 sm:px-4 sm:py-3 rounded-lg overflow-x-auto">
           <Link href="/" className="hover:text-foreground transition-colors">
             Home
           </Link>
@@ -479,143 +454,50 @@ export default async function LeadDetailPage({
           <span className="text-foreground font-medium">Lead #{id}</span>
         </nav>
 
-        {/* Enhanced Header */}
-        <div className="flex items-center gap-6">
-          <Link href="/leads">
-            <Button variant="outline" size="sm" className="shadow-sm">
+        {/* Header */}
+        <div className="flex items-start gap-3">
+          <Link href="/leads" className="shrink-0 mt-0.5">
+            <Button variant="ghost" size="icon" className="h-8 w-8">
               <ArrowLeft className="h-4 w-4" />
             </Button>
           </Link>
-          <div className="flex-1">
-            <div className="flex items-center justify-between flex-wrap gap-4">
-              <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-full bg-purple-100 dark:bg-purple-900 flex items-center justify-center">
-                  <Users className="h-5 w-5 text-purple-600 dark:text-purple-400" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <h1 className="text-3xl font-bold tracking-tight">
-                      Lead Details
-                    </h1>
-                    {fineractLoanStatus && (
-                      <Badge
-                        className={`${getStatusBadgeColor(
-                          fineractLoanStatus
-                        )} text-white border-0 whitespace-normal break-words`}
-                      >
-                        {fineractLoanStatus?.toLowerCase() === "active"
-                          ? "Disbursed"
-                          : fineractLoanStatus}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0 overflow-hidden">
+                <h1 className="text-lg font-semibold truncate">
+                  {clientName || "Lead Details"}
+                </h1>
+                {fineractLoanStatus && (
+                  <Badge
+                    className={`${getStatusBadgeColor(fineractLoanStatus)} text-white border-0 text-xs shrink-0`}
+                  >
+                    {fineractLoanStatus?.toLowerCase() === "active" ? "Disbursed" : fineractLoanStatus}
+                  </Badge>
+                )}
+                {lead.currentStage && (
+                  lead.currentStage.isFinalState ? (
+                    lead.currentStage.fineractAction === "reject" ? (
+                      <Badge className="bg-red-600 text-white border-0 text-xs gap-1 shrink-0">
+                        <XCircle className="h-3 w-3" />
+                        Rejected
                       </Badge>
-                    )}
-                    {cdeResult && (
-                      <Link href={`/leads/${id}/cde`}>
-                        <Badge
-                          className={`${
-                            cdeResult.decision === "APPROVED"
-                              ? "bg-green-500"
-                              : cdeResult.decision === "MANUAL_REVIEW"
-                              ? "bg-yellow-500"
-                              : "bg-red-500"
-                          } text-white border-0 whitespace-normal break-words cursor-pointer hover:opacity-80 transition-opacity`}
-                        >
-                          CDE: {cdeResult.decision}
-                          {cdeResult.scoringResult?.creditScore && (
-                            <span className="ml-2 opacity-90">
-                              • Score: {cdeResult.scoringResult.creditScore}
-                            </span>
-                          )}
-                          {cdeResult.pricingResult?.calculatedAPR && (
-                            <span className="ml-2 opacity-90">
-                              • APR:{" "}
-                              {cdeResult.pricingResult.calculatedAPR.toFixed(1)}
-                              %
-                            </span>
-                          )}
-                        </Badge>
-                      </Link>
-                    )}
-                    {lead.assignedToUserName ? (
-                      <Badge
-                        variant="outline"
-                        className="bg-green-50 text-green-700 border-green-200 whitespace-nowrap"
-                      >
-                        <UserCheck className="h-3 w-3 mr-1" />
-                        {lead.assignedToUserName}
+                    ) : (
+                      <Badge className="bg-green-600 text-white border-0 text-xs gap-1 shrink-0">
+                        <CheckCircle2 className="h-3 w-3" />
+                        Complete
                       </Badge>
-                    ) : lead.loanSubmittedToFineract ? (
-                      <Badge
-                        variant="outline"
-                        className="border-orange-500 text-orange-500 bg-orange-500/10 whitespace-nowrap"
-                      >
-                        <UserX className="h-3 w-3 mr-1" />
-                        Unassigned
-                      </Badge>
-                    ) : null}
-                  </div>
-                  <div className="flex items-center gap-2 flex-wrap text-muted-foreground text-sm mt-0.5">
-                    {lead.externalId && (
-                      <span>
-                        ID:{" "}
-                        <span className="font-mono font-medium text-foreground">
-                          {lead.externalId}
-                        </span>
-                      </span>
-                    )}
-                    {lead.currentStage && (
-                      lead.currentStage.isFinalState ? (
-                        lead.currentStage.fineractAction === "reject" ? (
-                          <Badge className="bg-red-600 text-white border-0 text-xs gap-1">
-                            <XCircle className="h-3 w-3" />
-                            Rejected
-                          </Badge>
-                        ) : (
-                          <Badge className="bg-green-600 text-white border-0 text-xs gap-1">
-                            <CheckCircle2 className="h-3 w-3" />
-                            Pipeline Complete
-                          </Badge>
-                        )
-                      ) : (
-                        <Badge
-                          className="text-white border-0 text-xs"
-                          style={{ backgroundColor: lead.currentStage.color || "#6b7280" }}
-                        >
-                          {currentStage}
-                        </Badge>
-                      )
-                    )}
-                    {lead.clientTypeName && (
-                      <span>
-                        Type:{" "}
-                        <span className="font-medium text-foreground">
-                          {lead.clientTypeName}
-                        </span>
-                      </span>
-                    )}
-                    {lead.preferredPaymentMethod && (() => {
-                      const method = String(lead.preferredPaymentMethod).toUpperCase().replaceAll(/\s+/g, "_");
-                      const label = method === "CASH" ? "Cash" : method === "MOBILE_MONEY" ? "Mobile Money" : method === "BANK_TRANSFER" ? "Bank Transfer" : lead.preferredPaymentMethod;
-                      const cls = method === "CASH"
-                        ? "bg-amber-100 text-amber-800 border-amber-200"
-                        : method === "MOBILE_MONEY"
-                        ? "bg-blue-100 text-blue-800 border-blue-200"
-                        : method === "BANK_TRANSFER"
-                        ? "bg-purple-100 text-purple-800 border-purple-200"
-                        : "bg-gray-100 text-gray-800 border-gray-200";
-                      return <Badge className={`${cls} text-xs`}>{label}</Badge>;
-                    })()}
-                    {fineractLoanId && (
-                      <span>
-                        Loan:{" "}
-                        <span className="font-mono font-medium text-foreground">
-                          #{fineractLoanId}
-                        </span>
-                      </span>
-                    )}
-                  </div>
-                </div>
+                    )
+                  ) : (
+                    <Badge
+                      className="text-white border-0 text-xs shrink-0"
+                      style={{ backgroundColor: lead.currentStage.color || "#6b7280" }}
+                    >
+                      {currentStage}
+                    </Badge>
+                  )
+                )}
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 shrink-0">
                 <StateTransitionManager
                   leadId={id}
                   currentStage={currentStage}
@@ -623,7 +505,6 @@ export default async function LeadDetailPage({
                   assignedToUserId={lead.assignedToUserId}
                   currentUserId={currentUserId}
                   isUserInStageTeam={isUserInStageTeam}
-                  fineractClientId={lead.fineractClientId}
                 />
                 <LeadActions
                   leadId={id}
@@ -636,13 +517,56 @@ export default async function LeadDetailPage({
                   assignedToUserId={lead.assignedToUserId}
                   fineractClientId={lead.fineractClientId}
                 />
-                <LeadMoreActions
-                  leadId={id}
-                  loanStatus={fineractLoanStatus}
-                  loanId={fineractLoanId}
-                  fineractClientId={lead.fineractClientId}
-                />
+                {!isReadOnly && (
+                  <LeadMoreActions
+                    leadId={id}
+                    loanStatus={fineractLoanStatus}
+                    loanId={fineractLoanId}
+                    fineractClientId={lead.fineractClientId}
+                  />
+                )}
               </div>
+            </div>
+            <div className="flex items-center gap-x-3 gap-y-1 flex-wrap text-xs text-muted-foreground mt-1">
+              {lead.externalId && (
+                <span>
+                  ID: <span className="font-mono font-medium text-foreground">{lead.externalId}</span>
+                </span>
+              )}
+              {fineractLoanId && (
+                <span>
+                  Loan: <span className="font-mono font-medium text-foreground">#{fineractLoanId}</span>
+                </span>
+              )}
+              {lead.clientTypeName && (
+                <span>{lead.clientTypeName}</span>
+              )}
+              {lead.preferredPaymentMethod && (() => {
+                const method = String(lead.preferredPaymentMethod).toUpperCase().replaceAll(/\s+/g, "_");
+                const label = method === "CASH" ? "Cash" : method === "MOBILE_MONEY" ? "Mobile Money" : method === "BANK_TRANSFER" ? "Bank Transfer" : lead.preferredPaymentMethod;
+                return <span>{label}</span>;
+              })()}
+              {lead.assignedToUserName ? (
+                <span className="inline-flex items-center gap-1 text-green-700 dark:text-green-400">
+                  <UserCheck className="h-3 w-3" />
+                  {lead.assignedToUserName}
+                </span>
+              ) : lead.loanSubmittedToFineract ? (
+                <span className="inline-flex items-center gap-1 text-orange-500">
+                  <UserX className="h-3 w-3" />
+                  Unassigned
+                </span>
+              ) : null}
+              {cdeResult && (
+                <Link href={`/leads/${id}/cde`} className="hover:underline">
+                  <span className={`inline-flex items-center gap-1 ${
+                    cdeResult.decision === "APPROVED" ? "text-green-600" : cdeResult.decision === "MANUAL_REVIEW" ? "text-yellow-600" : "text-red-600"
+                  }`}>
+                    CDE: {cdeResult.decision}
+                    {cdeResult.scoringResult?.creditScore && ` • ${cdeResult.scoringResult.creditScore}`}
+                  </span>
+                </Link>
+              )}
             </div>
           </div>
         </div>
@@ -650,8 +574,8 @@ export default async function LeadDetailPage({
 
       {/* Pipeline Stage Progress */}
       {stages.length > 0 && (
-        <div className="mt-4 px-2">
-          <div className="flex items-center w-full">
+        <div className="mt-3 sm:mt-4 px-1 sm:px-2 overflow-x-auto scrollbar-thin">
+          <div className="flex items-center w-full min-w-[400px]">
             {(() => {
               const isRejected = lead.currentStage?.fineractAction === "reject";
               const normalStages = stages.filter((s) => s.fineractAction !== "reject");
@@ -732,92 +656,23 @@ export default async function LeadDetailPage({
         </div>
       )}
 
-      <div className="mt-6 grid gap-6 grid-cols-1 lg:grid-cols-3">
-        <div className="lg:col-span-2">
-          <Tabs defaultValue="details">
-            <TabsList className="w-full sm:w-auto overflow-x-auto">
-              <TabsTrigger value="details">
-                <FileText className="mr-2 h-4 w-4" />
-                <span className="whitespace-nowrap">Details</span>
-              </TabsTrigger>
-              <TabsTrigger value="additional-info">
-                <Database className="mr-2 h-4 w-4" />
-                <span className="whitespace-nowrap">Additional Info</span>
-              </TabsTrigger>
-              <TabsTrigger value="timeline">
-                <Activity className="mr-2 h-4 w-4" />
-                <span className="whitespace-nowrap">Timeline</span>
-              </TabsTrigger>
-              <TabsTrigger value="documents">
-                <FileText className="mr-2 h-4 w-4" />
-                <span className="whitespace-nowrap">Documents</span>
-              </TabsTrigger>
-              <TabsTrigger value="validations">
-                <ShieldCheck className="mr-2 h-4 w-4" />
-                <span className="whitespace-nowrap">Validations</span>
-              </TabsTrigger>
-              <TabsTrigger value="communication">
-                <MessageSquare className="mr-2 h-4 w-4" />
-                <span className="whitespace-nowrap">Communication</span>
-              </TabsTrigger>
-              <TabsTrigger value="affordability">
-                <Calculator className="mr-2 h-4 w-4" />
-                <span className="whitespace-nowrap">CDE</span>
-              </TabsTrigger>
-              <TabsTrigger value="notes">
-                <StickyNote className="mr-2 h-4 w-4" />
-                <span className="whitespace-nowrap">Notes</span>
-              </TabsTrigger>
-            </TabsList>
-            <TabsContent value="details" className="mt-4">
-              <ComprehensiveLeadDetails leadId={id} />
-            </TabsContent>
-            <TabsContent value="additional-info" className="mt-4">
-              <LeadAdditionalInfo
-                leadId={id}
-                clientId={lead.fineractClientId || null}
-                datatables={clientDatatables}
-                datatableData={datatableData}
-                clientType={lead.clientTypeName || undefined}
-              />
-            </TabsContent>
-            <TabsContent value="timeline" className="mt-4">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Lead Timeline</CardTitle>
-                  <CardDescription>
-                    Track the progress of this lead through the pipeline
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <LeadTimeline leadId={id} />
-                </CardContent>
-              </Card>
-            </TabsContent>
-            <TabsContent value="documents" className="mt-4">
-              <LeadDocuments
-                leadId={id}
-                fineractClientId={lead.fineractClientId || null}
-                fineractLoanId={fineractLoanId || null}
-                initialClientDocuments={clientDocuments}
-                initialLoanDocuments={loanDocuments}
-              />
-            </TabsContent>
-            <TabsContent value="validations" className="mt-4">
-              <LeadValidations leadId={id} stage={currentStage} />
-            </TabsContent>
-            <TabsContent value="communication" className="mt-4">
-              <LeadCommunications leadId={id} />
-            </TabsContent>
-            <TabsContent value="affordability" className="mt-4">
-              <LeadCDE leadId={id} />
-            </TabsContent>
-            <TabsContent value="notes" className="mt-4">
-              <LeadNotes leadId={id} fineractLoanId={fineractLoanId || null} />
-            </TabsContent>
-          </Tabs>
+      <div className="mt-4 sm:mt-6 grid gap-4 sm:gap-6 grid-cols-1 lg:grid-cols-3">
+        <div className="lg:col-span-2 min-w-0">
+          <LeadDetailTabs
+            leadId={id}
+            fineractClientId={lead.fineractClientId || null}
+            fineractLoanId={fineractLoanId || null}
+            requestedAmount={lead.requestedAmount || fineractLoanPrincipal || null}
+            currentStage={currentStage}
+            clientTypeName={lead.clientTypeName || undefined}
+            clientDatatables={clientDatatables}
+            datatableData={datatableData}
+            clientDocuments={clientDocuments}
+            loanDocuments={loanDocuments}
+            readOnly={isReadOnly}
+          />
         </div>
-        <div className="mt-10">
+        <div className="mt-0 lg:mt-10">
           <LeadSidebar leadId={id} />
         </div>
       </div>

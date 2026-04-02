@@ -80,7 +80,7 @@ const TABS: TabConfig[] = [
   },
   {
     id: "pending",
-    label: "Appraisal",
+    label: "Pending Approval",
     report: "pending",
     bgColor: "bg-yellow-500 dark:bg-yellow-600",
     activeBg: "data-[state=active]:bg-yellow-500 dark:data-[state=active]:bg-yellow-600",
@@ -89,7 +89,7 @@ const TABS: TabConfig[] = [
   },
   {
     id: "approved",
-    label: "Disbursement",
+    label: "Approved",
     report: "approved",
     bgColor: "bg-blue-500 dark:bg-blue-600",
     activeBg: "data-[state=active]:bg-blue-500 dark:data-[state=active]:bg-blue-600",
@@ -685,10 +685,18 @@ export function LeadsStatusTabs() {
               </span>
             </div>
             <div className="flex items-center gap-1 mt-1">
-              <Timer className="h-2.5 w-2.5 shrink-0" style={{ color: "currentColor" }} />
-              <span className={cn("text-[10px] tabular-nums", slaColor)}>
-                {slaLabel}
-              </span>
+              {prog.isFinal ? (
+                <span className="text-[10px] text-muted-foreground">
+                  {prog.stageName}
+                </span>
+              ) : (
+                <>
+                  <Timer className="h-2.5 w-2.5 shrink-0" style={{ color: "currentColor" }} />
+                  <span className={cn("text-[10px] tabular-nums", slaColor)}>
+                    {slaLabel}
+                  </span>
+                </>
+              )}
               {prog.assignedTo && (
                 <span className="text-[10px] text-muted-foreground truncate ml-auto">
                   {prog.assignedTo}
@@ -1070,7 +1078,7 @@ export function LeadsStatusTabs() {
               {pipelineStats.slaStatus}
             </div>
             <p className="text-[10px] sm:text-xs text-muted-foreground mt-1">
-              {pipelineStats.pending} in appraisal
+              {pipelineStats.pending} pending approval
             </p>
           </CardContent>
         </Card>
@@ -1085,7 +1093,7 @@ export function LeadsStatusTabs() {
                 View loan applications by stage for the selected period
               </CardDescription>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <Popover>
                 <PopoverTrigger asChild>
                   <Button

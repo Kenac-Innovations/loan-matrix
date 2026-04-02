@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -69,6 +70,7 @@ export function LeadAssignment({
   isUserInStageTeam = false,
   stageTeamMembers = [],
 }: LeadAssignmentProps) {
+  const router = useRouter();
   const [selectedUserId, setSelectedUserId] = useState<string>("");
   const [isLoading, setIsLoading] = useState(false);
   const [isAssigned, setIsAssigned] = useState(!!currentAssignment?.userId);
@@ -131,6 +133,7 @@ export function LeadAssignment({
           })
         );
         onAssignmentChange?.();
+        router.refresh();
       } else {
         const error = await response.json();
         toast.error(error.error || "Failed to assign lead");
@@ -179,13 +182,13 @@ export function LeadAssignment({
           assignedAt: data.lead.assignedAt,
         });
         toast.success("Lead assigned to you");
-        // Dispatch event to notify all components to refresh
         window.dispatchEvent(
           new CustomEvent("assignment-change", {
             detail: { leadId, userId: data.lead.assignedToUserId },
           })
         );
         onAssignmentChange?.();
+        router.refresh();
       } else {
         const error = await response.json();
         toast.error(error.error || "Failed to assign lead");
@@ -211,13 +214,13 @@ export function LeadAssignment({
         setAssignedUser(null);
         setSelectedUserId("");
         toast.success("Lead unassigned");
-        // Dispatch event to notify all components to refresh
         window.dispatchEvent(
           new CustomEvent("assignment-change", {
             detail: { leadId, userId: null },
           })
         );
         onAssignmentChange?.();
+        router.refresh();
       } else {
         const error = await response.json();
         toast.error(error.error || "Failed to unassign lead");

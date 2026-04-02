@@ -65,11 +65,14 @@ model PipelineStage {
   allowedTransitions String[]
   fineractStatus     String?           // Maps to Fineract loan lifecycle: submitted_pending_approval | approved | disbursed
   fineractAction     String?           // Action to trigger on Fineract when a lead ENTERS this stage: approve | disburse
+  requiredApprovals  Int               @default(1)  // Number of unique team-member approvals needed before transition
+  skipBelowAmount    Float?            // Auto-skip this stage when requestedAmount is below this value
   createdAt          DateTime          @default(now())
   updatedAt          DateTime          @updatedAt
   leadsInThisStage   Lead[]            @relation("LeadCurrentStage")
   tenant             Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   slaConfigs         SLAConfig[]
+  stageApprovals     StageApproval[]
   transitionsFrom    StateTransition[] @relation("TransitionFromStage")
   transitionsTo      StateTransition[] @relation("TransitionToStage")
   validationRules    ValidationRule[]
@@ -192,6 +195,7 @@ model Lead {
   tenant                     Tenant              @relation(fields: [tenantId], references: [id])
   communications             LeadCommunication[]
   documents                  LeadDocument[]
+  stageApprovals             StageApproval[]
   stateTransitions           StateTransition[]
 
   @@index([tenantId, userId])
@@ -221,6 +225,22 @@ model StateTransition {
   @@index([tenantId, event])
 }
 
+model StageApproval {
+  id         String        @id @default(cuid())
+  leadId     String
+  stageId    String
+  tenantId   String
+  userId     String
+  userName   String
+  note       String?
+  approvedAt DateTime      @default(now())
+  lead       Lead          @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  stage      PipelineStage @relation(fields: [stageId], references: [id], onDelete: Cascade)
+
+  @@unique([leadId, stageId, userId])
+  @@index([leadId, stageId])
+}
+
 model ValidationRule {
   id              String         @id @default(cuid())
   tenantId        String
@@ -232,6 +252,7 @@ model ValidationRule {
   severity        String         @default("warning")
   enabled         Boolean        @default(true)
   order           Int            @default(0)
+  tab             String?        // Which tab this validation appears on: details, documents, communication, appraisal, notes
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
   pipelineStage   PipelineStage? @relation(fields: [pipelineStageId], references: [id], onDelete: Cascade)
@@ -239,6 +260,7 @@ model ValidationRule {
 
   @@index([tenantId, enabled])
   @@index([tenantId, pipelineStageId])
+  @@index([tenantId, tab])
 }
 
 model SLAConfig {
@@ -285,9 +307,10 @@ model TeamMember {
   userId      String
   name        String
   email       String
-  role        String
-  permissions Json?
-  isActive    Boolean  @default(true)
+  role          String
+  permissions   Json?
+  approvalLimit Float?           // Max loan amount this member can approve; null = unlimited
+  isActive      Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   team        Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)

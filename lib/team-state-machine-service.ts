@@ -83,6 +83,133 @@ export class TeamAwareStateMachineService {
         return { success: false, message: validation.message };
       }
 
+      // 1b. Approval gate: if the CURRENT stage requires multiple approvals,
+      //     verify enough unique approvals have been collected before allowing transition.
+      const currentRequiredApprovals = lead.currentStage?.requiredApprovals ?? 1;
+      if (currentRequiredApprovals > 1 && lead.currentStageId) {
+        const approvalCount = await prisma.stageApproval.count({
+          where: { leadId: request.leadId, stageId: lead.currentStageId },
+        });
+        if (approvalCount < currentRequiredApprovals) {
+          return {
+            success: false,
+            message: `${approvalCount} of ${currentRequiredApprovals} approvals collected. ${currentRequiredApprovals - approvalCount} more needed before this lead can move forward.`,
+          };
+        }
+      }
+
+      // 1c. Skip check: if TARGET stage has skipBelowAmount and the loan qualifies,
+      //     find the next eligible stage in the pipeline.
+      let resolvedTargetStageId = request.targetStageId;
+      const skippedStages: string[] = [];
+
+      const candidateStage = await prisma.pipelineStage.findUnique({
+        where: { id: resolvedTargetStageId },
+      });
+
+      // Resolve loan amount: use local requestedAmount, fall back to Fineract principal
+      let loanAmount = lead.requestedAmount;
+      if (loanAmount == null && candidateStage?.skipBelowAmount && lead.fineractLoanId) {
+        try {
+          const fineract = await getFineractServiceWithSession();
+          const loanDetails = await fineract.getLoan(lead.fineractLoanId);
+          loanAmount =
+            loanDetails?.approvedPrincipal ||
+            loanDetails?.principal ||
+            loanDetails?.proposedPrincipal ||
+            null;
+          console.log(`[StateTransition] Resolved loan amount from Fineract: ${loanAmount}`);
+        } catch {
+          console.warn("[StateTransition] Could not fetch Fineract loan for skip check");
+        }
+      }
+
+      if (
+        candidateStage?.skipBelowAmount &&
+        loanAmount !== null &&
+        loanAmount !== undefined &&
+        loanAmount < candidateStage.skipBelowAmount
+      ) {
+        const allStages = await prisma.pipelineStage.findMany({
+          where: { tenantId: lead.tenantId, isActive: true },
+          orderBy: { order: "asc" },
+        });
+
+        let currentOrder = candidateStage.order;
+        let nextStage = candidateStage;
+        while (
+          nextStage?.skipBelowAmount &&
+          loanAmount < nextStage.skipBelowAmount
+        ) {
+          skippedStages.push(nextStage.id);
+          const following = allStages.find((s) => s.order > currentOrder);
+          if (!following) break;
+          nextStage = following;
+          currentOrder = following.order;
+        }
+
+        if (skippedStages.length > 0 && nextStage.id !== candidateStage.id) {
+          console.log(
+            `[StateTransition] Auto-skipping ${skippedStages.length} stage(s) for amount ${loanAmount} < thresholds`
+          );
+          resolvedTargetStageId = nextStage.id;
+        }
+      }
+
+      // Update request to use the resolved target
+      request.targetStageId = resolvedTargetStageId;
+
+      // 1d. Execute Fineract actions from skipped stages in pipeline order
+      const skippedActionResults: string[] = [];
+      if (skippedStages.length > 0 && lead.fineractLoanId) {
+        const skippedStageRecords = await prisma.pipelineStage.findMany({
+          where: { id: { in: skippedStages } },
+          orderBy: { order: "asc" },
+        });
+
+        for (const skipped of skippedStageRecords) {
+          if (skipped.fineractAction && skipped.fineractAction !== "payout") {
+            console.log(
+              `[StateTransition] Executing skipped stage action: ${skipped.fineractAction} from "${skipped.name}"`
+            );
+            try {
+              // Use today's date as default; Fineract fallback dates will also be used
+              const autoOverrides = {
+                approvalDate: new Date().toISOString().split("T")[0],
+                disbursementDate: new Date().toISOString().split("T")[0],
+                rejectionDate: new Date().toISOString().split("T")[0],
+                note: `Auto-executed: ${skipped.fineractAction} (stage "${skipped.name}" skipped — loan amount below threshold)`,
+              };
+              const result = await this.triggerFineractAction(
+                skipped.fineractAction,
+                lead.fineractLoanId,
+                autoOverrides,
+                lead,
+                request.triggeredBy
+              );
+              skippedActionResults.push(
+                `${skipped.name}: ${skipped.fineractAction} succeeded`
+              );
+              console.log(
+                `[StateTransition] Skipped stage action succeeded: ${result}`
+              );
+            } catch (err: any) {
+              const errorDetail =
+                err?.response?.data?.errors?.[0]?.defaultUserMessage ||
+                err?.response?.data?.defaultUserMessage ||
+                (err instanceof Error ? err.message : "Unknown error");
+              console.error(
+                `[StateTransition] Skipped stage action failed: ${errorDetail}`
+              );
+              return {
+                success: false,
+                message: `Auto-skip failed at "${skipped.name}" (${skipped.fineractAction}): ${errorDetail}`,
+              };
+            }
+          }
+        }
+      }
+
       // 2. Determine assignment for the target stage
       const assignment = await this.resolveAssignment(
         request.leadId,
@@ -90,17 +217,49 @@ export class TeamAwareStateMachineService {
         lead.tenantId
       );
 
-      // 3. If the target stage requires a Fineract action, execute it FIRST
-      //    so the transition is blocked if Fineract rejects the operation.
-      //    Payout is an internal action and is handled AFTER the DB transition.
+      // 3. Determine if moving backward from a stage that had a Fineract action.
+      //    If the CURRENT stage executed an action (approve/disburse/payout),
+      //    undo it before proceeding.
       const targetStage = await prisma.pipelineStage.findUnique({
         where: { id: request.targetStageId },
       });
 
       let fineractResult: string | null = null;
+      const currentFineractAction = lead.currentStage?.fineractAction;
+      const isBackward = targetStage && lead.currentStage
+        && (targetStage.order ?? 999) < (lead.currentStage.order ?? 0);
+
+      if (isBackward && currentFineractAction && lead.fineractLoanId) {
+        console.log(`[StateTransition] Backward move detected: undoing ${currentFineractAction} for loan ${lead.fineractLoanId}`);
+        try {
+          const undoResult = await this.undoFineractAction(
+            currentFineractAction,
+            lead.fineractLoanId,
+            lead,
+            request.reason
+          );
+          console.log(`[StateTransition] Undo succeeded: ${undoResult}`);
+          fineractResult = undoResult;
+        } catch (undoError: any) {
+          const errorDetail =
+            undoError?.response?.data?.errors?.[0]?.defaultUserMessage
+            || undoError?.response?.data?.defaultUserMessage
+            || (undoError instanceof Error ? undoError.message : "Unknown error");
+          console.error("[StateTransition] Undo Fineract action failed — blocking transition:", errorDetail);
+          return {
+            success: false,
+            message: `Cannot move back: undo ${currentFineractAction} failed — ${errorDetail}`,
+          };
+        }
+      }
+
+      // 3a. If the TARGET stage requires a Fineract action, execute it FIRST
+      //     so the transition is blocked if Fineract rejects the operation.
+      //     Payout is an internal action and is handled separately.
       const isFineractAction = targetStage?.fineractAction
         && targetStage.fineractAction !== "payout"
-        && lead.fineractLoanId;
+        && lead.fineractLoanId
+        && !isBackward;
 
       if (isFineractAction) {
         console.log(`[StateTransition] Triggering Fineract action: ${targetStage.fineractAction} for loan ${lead.fineractLoanId}`, request.fineractOverrides);
@@ -127,7 +286,7 @@ export class TeamAwareStateMachineService {
       }
 
       // 3b. Internal payout — process BEFORE the DB transition so we can block on failure
-      if (targetStage?.fineractAction === "payout" && lead.fineractLoanId) {
+      if (targetStage?.fineractAction === "payout" && lead.fineractLoanId && !isBackward) {
         console.log(`[StateTransition] Processing internal payout for loan ${lead.fineractLoanId}`);
         try {
           fineractResult = await this.processInternalPayout(
@@ -192,9 +351,60 @@ export class TeamAwareStateMachineService {
         }),
       ]);
 
+      // 5. Cleanup approvals after successful transition
+      if (lead.currentStageId) {
+        if (isBackward) {
+          // Moving backward: clear approvals for all stages at or above the target order
+          const stagesToClear = await prisma.pipelineStage.findMany({
+            where: {
+              tenantId: lead.tenantId,
+              isActive: true,
+              order: { gte: targetStage?.order ?? 0 },
+            },
+            select: { id: true },
+          });
+          if (stagesToClear.length > 0) {
+            await prisma.stageApproval.deleteMany({
+              where: {
+                leadId: request.leadId,
+                stageId: { in: stagesToClear.map((s) => s.id) },
+              },
+            });
+          }
+        } else {
+          // Moving forward: clear approvals for the old stage (consumed)
+          await prisma.stageApproval.deleteMany({
+            where: { leadId: request.leadId, stageId: lead.currentStageId },
+          });
+        }
+      }
+
+      // Record AUTO_SKIPPED transitions for any bypassed stages
+      if (skippedStages.length > 0) {
+        await prisma.stateTransition.createMany({
+          data: skippedStages.map((skippedId) => ({
+            leadId: request.leadId,
+            tenantId: lead.tenantId,
+            fromStageId: lead.currentStageId,
+            toStageId: skippedId,
+            event: "AUTO_SKIPPED",
+            triggeredBy: request.triggeredBy,
+            metadata: {
+              reason: `Auto-skipped: loan amount ${loanAmount} below stage threshold`,
+              timestamp: new Date().toISOString(),
+            },
+          })),
+        });
+      }
+
+      const skipNote = skippedActionResults.length > 0
+        ? ` (auto-skipped: ${skippedActionResults.join(", ")})`
+        : skippedStages.length > 0
+        ? ` (${skippedStages.length} stage(s) auto-skipped)`
+        : "";
       const baseMsg = fineractResult
-        ? `Lead moved to ${targetStage?.name}. ${fineractResult}`
-        : `Lead moved to ${targetStage?.name} — awaiting assignment`;
+        ? `Lead moved to ${targetStage?.name}. ${fineractResult}${skipNote}`
+        : `Lead moved to ${targetStage?.name} — awaiting assignment${skipNote}`;
 
       // Post transition note to Fineract loan if available
       if (lead.fineractLoanId && request.reason) {
@@ -580,6 +790,81 @@ export class TeamAwareStateMachineService {
   }
 
   // ---------------------------------------------------------------------------
+  // Fineract undo actions (backward transitions)
+  // ---------------------------------------------------------------------------
+
+  private static async undoFineractAction(
+    action: string,
+    fineractLoanId: number,
+    lead: any,
+    reason?: string
+  ): Promise<string> {
+    const { fetchFineractAPI } = await import("@/lib/api");
+
+    switch (action) {
+      case "approve": {
+        await fetchFineractAPI(`/loans/${fineractLoanId}?command=undoapproval`, {
+          method: "POST",
+          body: JSON.stringify({ note: reason || "Approval undone — lead moved back" }),
+        });
+        return `Fineract loan #${fineractLoanId} approval undone`;
+      }
+      case "disburse": {
+        await fetchFineractAPI(`/loans/${fineractLoanId}?command=undodisbursal`, {
+          method: "POST",
+          body: JSON.stringify({ note: reason || "Disbursement undone — lead moved back" }),
+        });
+        return `Fineract loan #${fineractLoanId} disbursement undone`;
+      }
+      case "payout": {
+        // Reverse the payout: find the payout record, reverse the cashier transaction, and mark as reversed
+        const payout = await prisma.loanPayout.findUnique({
+          where: {
+            tenantId_fineractLoanId: { tenantId: lead.tenantId, fineractLoanId },
+          },
+        });
+
+        if (payout && payout.status === "PAID") {
+          // If it was a cash payout with a cashier transaction, reverse the journal entry
+          if (payout.fineractTransactionId) {
+            try {
+              await fetchFineractAPI(
+                `/journalentries/${payout.fineractTransactionId}?command=reverse`,
+                {
+                  method: "POST",
+                  body: JSON.stringify({
+                    comments: reason || "Payout reversed — lead moved back",
+                  }),
+                }
+              );
+            } catch (err) {
+              console.warn(`[Undo Payout] Could not reverse journal entry ${payout.fineractTransactionId}:`, err);
+            }
+          }
+
+          // Mark payout as reversed
+          await prisma.loanPayout.update({
+            where: { id: payout.id },
+            data: {
+              status: "REVERSED",
+              notes: `${payout.notes || ""}\n[REVERSED] ${reason || "Lead moved back"}`.trim(),
+            },
+          });
+        }
+
+        return `Payout reversed for loan #${fineractLoanId}`;
+      }
+      case "reject": {
+        console.warn("[Undo] Cannot undo rejection in Fineract — skipping");
+        return `Rejection cannot be undone in Fineract for loan #${fineractLoanId}`;
+      }
+      default:
+        console.warn(`[Undo] Unknown fineractAction to undo: ${action}`);
+        return `No undo needed for action: ${action}`;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
   // In-app notifications
   // ---------------------------------------------------------------------------
 
@@ -875,6 +1160,31 @@ export class TeamAwareStateMachineService {
 
       if (!lead || !lead.currentStage) return [];
 
+      const currentOrder = lead.currentStage.order ?? 0;
+      const currentFineractAction = lead.currentStage.fineractAction || null;
+
+      // Resolve loan amount for skip detection
+      let loanAmount = lead.requestedAmount;
+      if (loanAmount == null && lead.fineractLoanId) {
+        try {
+          const fineract = await getFineractServiceWithSession();
+          const loanDetails = await fineract.getLoan(lead.fineractLoanId);
+          loanAmount =
+            loanDetails?.approvedPrincipal ||
+            loanDetails?.principal ||
+            loanDetails?.proposedPrincipal ||
+            null;
+        } catch {
+          // Non-blocking
+        }
+      }
+
+      // Pre-fetch all stages for skip resolution
+      const allStages = await prisma.pipelineStage.findMany({
+        where: { tenantId: lead.tenantId, isActive: true },
+        orderBy: { order: "asc" },
+      });
+
       const results = [];
 
       for (const targetStageId of lead.currentStage.allowedTransitions) {
@@ -884,7 +1194,53 @@ export class TeamAwareStateMachineService {
 
         if (!targetStage || !targetStage.isActive) continue;
 
-        const teams = await this.getTeamsForStage(targetStageId, lead.tenantId);
+        const isBackward = (targetStage.order ?? 999) < currentOrder;
+
+        // Determine if this stage would be skipped
+        let willSkip = false;
+        let skipToStageId: string | null = null;
+        let skipToStageName: string | null = null;
+        let skipToStageColor: string | null = null;
+        let skipToFineractAction: string | null = null;
+
+        const skippedActions: { stageName: string; action: string }[] = [];
+
+        if (
+          !isBackward &&
+          targetStage.skipBelowAmount &&
+          loanAmount !== null &&
+          loanAmount !== undefined &&
+          loanAmount < targetStage.skipBelowAmount
+        ) {
+          willSkip = true;
+          let nextStage = targetStage;
+          let nextOrder = targetStage.order;
+          while (
+            nextStage.skipBelowAmount &&
+            loanAmount < nextStage.skipBelowAmount
+          ) {
+            if (nextStage.fineractAction) {
+              skippedActions.push({
+                stageName: nextStage.name,
+                action: nextStage.fineractAction,
+              });
+            }
+            const following = allStages.find((s) => s.order > nextOrder);
+            if (!following) break;
+            nextStage = following;
+            nextOrder = following.order;
+          }
+          if (nextStage.id !== targetStage.id) {
+            skipToStageId = nextStage.id;
+            skipToStageName = nextStage.name;
+            skipToStageColor = nextStage.color;
+            skipToFineractAction = nextStage.fineractAction || null;
+          }
+        }
+
+        // Resolve the effective destination for team info
+        const effectiveTargetId = skipToStageId || targetStageId;
+        const teams = await this.getTeamsForStage(effectiveTargetId, lead.tenantId);
         const receivingTeam = teams[0] ?? null;
 
         results.push({
@@ -894,6 +1250,14 @@ export class TeamAwareStateMachineService {
           stageDescription: targetStage.description,
           isFinalState: targetStage.isFinalState,
           fineractAction: targetStage.fineractAction || null,
+          isBackward,
+          undoAction: isBackward && currentFineractAction ? currentFineractAction : null,
+          willSkip,
+          skipToStageId,
+          skipToStageName,
+          skipToStageColor,
+          skipToFineractAction,
+          skippedActions,
           receivingTeam: receivingTeam
             ? {
                 id: receivingTeam.id,
