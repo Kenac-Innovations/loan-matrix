@@ -3,6 +3,7 @@ import { CreditCard, Receipt, FileSpreadsheet, Database } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getSession } from "@/lib/auth";
 import { getFineractTenantId } from "@/lib/fineract-tenant-service";
+import { prisma } from "@/lib/prisma";
 import { ClientDetails } from "./components/client-details";
 import { ClientLoans } from "./components/client-loans";
 import { ClientTransactions } from "./components/client-transactions";
@@ -258,6 +259,21 @@ export default async function ClientDetailPage({ params }: PageProps) {
   // Fetch datatable data after we have the datatables list
   const datatableData = await getDatatableData(clientId, datatables || []);
 
+  const entityLead =
+    client?.legalForm?.id === 2
+      ? await prisma.lead.findFirst({
+          where: { fineractClientId: clientId, legalFormId: 2 },
+          orderBy: { updatedAt: "desc" },
+          include: {
+            entityStakeholders: {
+              orderBy: [{ role: "asc" }, { sortOrder: "asc" }],
+              include: { proofOfResidenceDocument: true },
+            },
+            entityBankAccounts: { orderBy: { sortOrder: "asc" } },
+          },
+        })
+      : null;
+
   return (
     <div className="space-y-6">
       {/* Enhanced Header with Breadcrumbs */}
@@ -272,6 +288,8 @@ export default async function ClientDetailPage({ params }: PageProps) {
         clientId={clientId}
         client={client}
         clientImage={clientImage}
+        entityStakeholders={entityLead?.entityStakeholders ?? []}
+        entityBankAccounts={entityLead?.entityBankAccounts ?? []}
       />
 
       {/* Detailed Information Tabs */}

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { EntityStakeholderRole } from "@/app/generated/prisma";
 import { z } from "zod";
 import { getFineractServiceWithSession } from "@/lib/fineract-api";
 import { getSession } from "@/lib/auth";
@@ -143,6 +144,74 @@ const clientFormSchema = z.object({
 // without changing every handler's signature.
 let _currentRequest: Request | undefined;
 
+const ENTITY_LEGAL_FORM_ID = 2;
+
+async function resolveLeadIdForEntityOps(
+  leadId: string | undefined,
+  data: any,
+  req?: Request
+): Promise<string> {
+  if (leadId) return leadId;
+  const fromBody = data?.leadId as string | undefined;
+  if (fromBody) return fromBody;
+  const fineractClientId = data?.fineractClientId;
+  if (fineractClientId == null) {
+    throw new Error("leadId or fineractClientId is required");
+  }
+  const tenant = await resolveCurrentTenant(undefined, req);
+  const lead = await prisma.lead.findFirst({
+    where: {
+      fineractClientId: Number(fineractClientId),
+      tenantId: tenant.id,
+    },
+    select: { id: true },
+  });
+  if (!lead) {
+    throw new Error("No lead found for this Fineract client in your tenant");
+  }
+  return lead.id;
+}
+
+async function assertLeadIsEntity(leadId: string) {
+  const lead = await prisma.lead.findUnique({
+    where: { id: leadId },
+    select: { legalFormId: true },
+  });
+  if (!lead) throw new Error("Lead not found");
+  if (lead.legalFormId !== ENTITY_LEGAL_FORM_ID) {
+    throw new Error(
+      "Directors, shareholders, and entity banking apply only to Entity legal form"
+    );
+  }
+}
+
+async function validateProofDocument(
+  leadId: string,
+  docId: string | null | undefined
+) {
+  if (!docId) return;
+  const doc = await prisma.leadDocument.findFirst({
+    where: { id: docId, leadId },
+  });
+  if (!doc) {
+    throw new Error("Proof of residence document not found for this lead");
+  }
+}
+
+async function validateShareholderTotals(leadId: string) {
+  const rows = await prisma.entityStakeholder.findMany({
+    where: { leadId, role: EntityStakeholderRole.SHAREHOLDER },
+    select: { shareholdingPercentage: true },
+  });
+  const total = rows.reduce(
+    (s, r) => s + Number(r.shareholdingPercentage ?? 0),
+    0
+  );
+  if (total > 100.001) {
+    throw new Error("Total shareholding percentage cannot exceed 100%");
+  }
+}
+
 /**
  * POST /api/leads/operations
  * Handles lead operations like save draft, submit, etc.
@@ -175,6 +244,26 @@ export async function POST(request: Request) {
         return await handleAddFamilyMember(leadId, data);
       case "removeFamilyMember":
         return await handleRemoveFamilyMember(data.id);
+      case "upsertEntityStakeholder":
+        return await handleUpsertEntityStakeholder(
+          await resolveLeadIdForEntityOps(leadId, data, _currentRequest),
+          data
+        );
+      case "removeEntityStakeholder":
+        return await handleRemoveEntityStakeholder(
+          await resolveLeadIdForEntityOps(leadId, data, _currentRequest),
+          data.id
+        );
+      case "reorderEntityStakeholders":
+        return await handleReorderEntityStakeholders(
+          await resolveLeadIdForEntityOps(leadId, data, _currentRequest),
+          data
+        );
+      case "replaceEntityBankAccounts":
+        return await handleReplaceEntityBankAccounts(
+          await resolveLeadIdForEntityOps(leadId, data, _currentRequest),
+          data
+        );
       default:
         return NextResponse.json(
           { error: `Unknown operation: ${operation}` },
@@ -438,6 +527,240 @@ async function handleRemoveFamilyMember(id: string) {
     console.error("Error removing family member:", error);
     return NextResponse.json(
       { error: error.message || "Failed to remove family member" },
+      { status: 500 }
+    );
+  }
+}
+
+async function handleUpsertEntityStakeholder(leadId: string, data: any) {
+  try {
+    await assertLeadIsEntity(leadId);
+
+    const role = data.role as EntityStakeholderRole;
+    if (
+      role !== EntityStakeholderRole.DIRECTOR &&
+      role !== EntityStakeholderRole.SHAREHOLDER
+    ) {
+      return NextResponse.json({ error: "Invalid stakeholder role" }, { status: 400 });
+    }
+
+    await validateProofDocument(leadId, data.proofOfResidenceLeadDocumentId);
+
+    const isDirector = role === EntityStakeholderRole.DIRECTOR;
+    const sharePct =
+      isDirector || data.shareholdingPercentage == null || data.shareholdingPercentage === ""
+        ? null
+        : Number(data.shareholdingPercentage);
+
+    if (!isDirector && sharePct != null && (sharePct < 0 || sharePct > 100)) {
+      return NextResponse.json(
+        { error: "Shareholding must be between 0 and 100" },
+        { status: 400 }
+      );
+    }
+
+    const payload = {
+      fullName: String(data.fullName ?? "").trim(),
+      nationalIdOrPassport: String(data.nationalIdOrPassport ?? "").trim(),
+      residentialAddress: String(data.residentialAddress ?? "").trim(),
+      proofOfResidenceLeadDocumentId:
+        data.proofOfResidenceLeadDocumentId || null,
+      fineractDocumentId:
+        data.fineractDocumentId != null && String(data.fineractDocumentId).trim() !== ""
+          ? String(data.fineractDocumentId).trim()
+          : null,
+      pepStatusCodeValueId:
+        data.pepStatusCodeValueId != null
+          ? Number(data.pepStatusCodeValueId)
+          : null,
+      pepStatusLabel: data.pepStatusLabel
+        ? String(data.pepStatusLabel)
+        : null,
+      shareholdingPercentage: isDirector ? null : sharePct,
+      isUltimateBeneficialOwner: isDirector
+        ? false
+        : Boolean(data.isUltimateBeneficialOwner),
+      controlStructureCodeValueId:
+        isDirector || !data.isUltimateBeneficialOwner
+          ? null
+          : data.controlStructureCodeValueId != null
+            ? Number(data.controlStructureCodeValueId)
+            : null,
+      controlStructureLabel:
+        isDirector || !data.isUltimateBeneficialOwner
+          ? null
+          : data.controlStructureLabel
+            ? String(data.controlStructureLabel)
+            : null,
+      sortOrder:
+        data.sortOrder != null ? Number(data.sortOrder) : 0,
+    };
+
+    if (
+      !payload.fullName ||
+      !payload.nationalIdOrPassport ||
+      !payload.residentialAddress
+    ) {
+      return NextResponse.json(
+        { error: "fullName, nationalIdOrPassport, and residentialAddress are required" },
+        { status: 400 }
+      );
+    }
+
+    const id = data.id as string | undefined;
+
+    if (id) {
+      const existing = await prisma.entityStakeholder.findFirst({
+        where: { id, leadId },
+      });
+      if (!existing) {
+        return NextResponse.json({ error: "Stakeholder not found" }, { status: 404 });
+      }
+    }
+
+    if (!isDirector && payload.isUltimateBeneficialOwner) {
+      await prisma.entityStakeholder.updateMany({
+        where: { leadId, role: EntityStakeholderRole.SHAREHOLDER },
+        data: { isUltimateBeneficialOwner: false },
+      });
+    }
+
+    let stakeholder;
+    if (id) {
+      stakeholder = await prisma.entityStakeholder.update({
+        where: { id },
+        data: {
+          role,
+          ...payload,
+        },
+        include: { proofOfResidenceDocument: true },
+      });
+    } else {
+      stakeholder = await prisma.entityStakeholder.create({
+        data: {
+          leadId,
+          role,
+          ...payload,
+        },
+        include: { proofOfResidenceDocument: true },
+      });
+    }
+
+    await validateShareholderTotals(leadId);
+
+    return NextResponse.json({ success: true, stakeholder });
+  } catch (error: any) {
+    console.error("Error upserting entity stakeholder:", error);
+    return NextResponse.json(
+      { error: error.message || "Failed to save stakeholder" },
+      { status: 500 }
+    );
+  }
+}
+
+async function handleRemoveEntityStakeholder(leadId: string, id: string) {
+  try {
+    await assertLeadIsEntity(leadId);
+    const row = await prisma.entityStakeholder.findFirst({
+      where: { id, leadId },
+    });
+    if (!row) {
+      return NextResponse.json({ error: "Stakeholder not found" }, { status: 404 });
+    }
+    await prisma.entityStakeholder.delete({ where: { id } });
+    return NextResponse.json({ success: true });
+  } catch (error: any) {
+    console.error("Error removing entity stakeholder:", error);
+    return NextResponse.json(
+      { error: error.message || "Failed to remove stakeholder" },
+      { status: 500 }
+    );
+  }
+}
+
+async function handleReorderEntityStakeholders(leadId: string, data: any) {
+  try {
+    await assertLeadIsEntity(leadId);
+    const items = data.items as { id: string; sortOrder: number }[];
+    if (!Array.isArray(items) || items.length === 0) {
+      return NextResponse.json({ success: true });
+    }
+    const ids = items.map((i) => i.id);
+    const count = await prisma.entityStakeholder.count({
+      where: { leadId, id: { in: ids } },
+    });
+    if (count !== ids.length) {
+      return NextResponse.json(
+        { error: "One or more stakeholder ids are invalid" },
+        { status: 400 }
+      );
+    }
+    await prisma.$transaction(
+      items.map((item) =>
+        prisma.entityStakeholder.update({
+          where: { id: item.id },
+          data: { sortOrder: Number(item.sortOrder) },
+        })
+      )
+    );
+    return NextResponse.json({ success: true });
+  } catch (error: any) {
+    console.error("Error reordering stakeholders:", error);
+    return NextResponse.json(
+      { error: error.message || "Failed to reorder" },
+      { status: 500 }
+    );
+  }
+}
+
+async function handleReplaceEntityBankAccounts(leadId: string, data: any) {
+  try {
+    await assertLeadIsEntity(leadId);
+    const accounts = data.accounts as Array<{
+      bankName: string;
+      accountNumber: string;
+      accountSignatories: string;
+      sortOrder?: number;
+    }>;
+    if (!Array.isArray(accounts)) {
+      return NextResponse.json(
+        { error: "accounts array is required" },
+        { status: 400 }
+      );
+    }
+    for (const a of accounts) {
+      if (
+        !String(a.bankName ?? "").trim() ||
+        !String(a.accountNumber ?? "").trim()
+      ) {
+        return NextResponse.json(
+          { error: "Each account needs bankName and accountNumber" },
+          { status: 400 }
+        );
+      }
+    }
+    await prisma.$transaction(async (tx) => {
+      await tx.entityBankAccount.deleteMany({ where: { leadId } });
+      if (accounts.length === 0) return;
+      await tx.entityBankAccount.createMany({
+        data: accounts.map((a, idx) => ({
+          leadId,
+          bankName: String(a.bankName).trim(),
+          accountNumber: String(a.accountNumber).trim(),
+          accountSignatories: String(a.accountSignatories ?? "").trim(),
+          sortOrder: a.sortOrder ?? idx,
+        })),
+      });
+    });
+    const updated = await prisma.entityBankAccount.findMany({
+      where: { leadId },
+      orderBy: { sortOrder: "asc" },
+    });
+    return NextResponse.json({ success: true, entityBankAccounts: updated });
+  } catch (error: any) {
+    console.error("Error replacing entity bank accounts:", error);
+    return NextResponse.json(
+      { error: error.message || "Failed to save bank accounts" },
       { status: 500 }
     );
   }

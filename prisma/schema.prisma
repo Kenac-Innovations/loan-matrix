@@ -189,6 +189,8 @@ model Lead {
   assignedAt                 DateTime?           // When the lead was assigned
   assignedByUserId           String?             // App user who made the assignment
   familyMembers              FamilyMember[]
+  entityStakeholders         EntityStakeholder[]
+  entityBankAccounts         EntityBankAccount[]
   currentStage               PipelineStage?      @relation("LeadCurrentStage", fields: [currentStageId], references: [id])
   tenant                     Tenant              @relation(fields: [tenantId], references: [id])
   communications             LeadCommunication[]
@@ -355,11 +357,56 @@ model LeadDocument {
   updatedAt    DateTime  @updatedAt
   lead         Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
   tenant       Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  stakeholderProofs EntityStakeholder[] @relation("StakeholderProofOfResidence")
 
   @@index([leadId])
   @@index([tenantId])
   @@index([category])
   @@index([status])
+}
+
+enum EntityStakeholderRole {
+  DIRECTOR
+  SHAREHOLDER
+}
+
+model EntityStakeholder {
+  id                               String                 @id @default(cuid())
+  leadId                           String
+  role                             EntityStakeholderRole
+  fullName                         String
+  nationalIdOrPassport             String
+  residentialAddress               String                 @db.Text
+  proofOfResidenceLeadDocumentId   String?
+  fineractDocumentId               String?
+  pepStatusCodeValueId             Int?
+  pepStatusLabel                   String?
+  shareholdingPercentage           Decimal?               @db.Decimal(5, 2)
+  isUltimateBeneficialOwner        Boolean                @default(false)
+  controlStructureCodeValueId      Int?
+  controlStructureLabel            String?
+  sortOrder                        Int                    @default(0)
+  createdAt                        DateTime               @default(now())
+  updatedAt                        DateTime               @updatedAt
+  lead                             Lead                   @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  proofOfResidenceDocument         LeadDocument?          @relation("StakeholderProofOfResidence", fields: [proofOfResidenceLeadDocumentId], references: [id], onDelete: SetNull)
+
+  @@index([leadId])
+  @@index([leadId, role])
+}
+
+model EntityBankAccount {
+  id                  String   @id @default(cuid())
+  leadId              String
+  bankName            String
+  accountNumber       String
+  accountSignatories  String   @db.Text
+  sortOrder           Int      @default(0)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  lead                Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([leadId])
 }
 
 model RequiredDocument {

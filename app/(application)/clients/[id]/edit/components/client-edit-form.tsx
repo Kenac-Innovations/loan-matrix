@@ -16,6 +16,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { AlertCircle, Loader2 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { useToast } from "@/hooks/use-toast";
+import { EntityStructureEditor } from "@/components/entity-structure/entity-structure-editor";
 
 interface FineractClient {
   id: number;
@@ -77,12 +79,15 @@ interface ClientEditFormProps {
 
 export function ClientEditForm({ clientId }: ClientEditFormProps) {
   const router = useRouter();
+  const { success: showSuccessToast } = useToast();
   const [client, setClient] = useState<FineractClient | null>(null);
   const [staff, setStaff] = useState<Staff[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
+  const [entityLeadId, setEntityLeadId] = useState<string | null>(null);
+  const [entityStakeholders, setEntityStakeholders] = useState<any[]>([]);
+  const [entityBankAccounts, setEntityBankAccounts] = useState<any[]>([]);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -166,6 +171,45 @@ export function ClientEditForm({ clientId }: ClientEditFormProps) {
           submittedOnDate: convertDateArray(clientData.submittedOnDate || clientData.timeline?.submittedOnDate),
         });
 
+        if (isEntityClient) {
+          try {
+            const entRes = await fetch(
+              `/api/clients/${clientId}/entity-structure`
+            );
+            if (entRes.ok) {
+              const ent = await entRes.json();
+              setEntityLeadId(ent.leadId ?? null);
+              setEntityStakeholders(ent.entityStakeholders || []);
+              setEntityBankAccounts(ent.entityBankAccounts || []);
+            } else {
+              setEntityLeadId(null);
+              setEntityStakeholders([]);
+              setEntityBankAccounts([]);
+            }
+          } catch {
+            setEntityLeadId(null);
+            setEntityStakeholders([]);
+            setEntityBankAccounts([]);
+          }
+        } else {
+          setEntityLeadId(null);
+          setEntityStakeholders([]);
+          setEntityBankAccounts([]);
+        }
+
+        // Fetch offices
+        const officesResponse = await fetch("/api/offices");
+        if (officesResponse.ok) {
+          const officesData = await officesResponse.json();
+          setOffices(Array.isArray(officesData) ? officesData : []);
+        } else {
+          // Mock data for development
+          setOffices([
+            { id: 1, name: "Head Office" },
+            { id: 2, name: "Branch Office" },
+          ]);
+        }
+
         // Fetch staff
         const staffResponse = await fetch("/api/staff");
         if (staffResponse.ok) {
@@ -192,6 +236,21 @@ export function ClientEditForm({ clientId }: ClientEditFormProps) {
 
   const isEntity = formData.legalForm === "2";
 
+  const refreshEntityStructure = async () => {
+    if (!isEntity) return;
+    try {
+      const entRes = await fetch(`/api/clients/${clientId}/entity-structure`);
+      if (entRes.ok) {
+        const ent = await entRes.json();
+        setEntityLeadId(ent.leadId ?? null);
+        setEntityStakeholders(ent.entityStakeholders || []);
+        setEntityBankAccounts(ent.entityBankAccounts || []);
+      }
+    } catch {
+      /* ignore */
+    }
+  };
+
   const handleInputChange = (field: string, value: string | boolean) => {
     setFormData(prev => ({
       ...prev,
@@ -216,7 +275,6 @@ export function ClientEditForm({ clientId }: ClientEditFormProps) {
 
     setSaving(true);
     setError(null);
-    setSuccess(null);
 
     try {
       // Transform form data to match Fineract API format.
@@ -267,10 +325,15 @@ export function ClientEditForm({ clientId }: ClientEditFormProps) {
         throw new Error(message);
       }
 
-      setSuccess("Client updated successfully");
+      showSuccessToast({
+        title: "Success",
+        description: `Client updated successfully! Account: ${
+          formData.accountNo || "N/A"
+        }`,
+      });
       setTimeout(() => {
         router.push(`/clients/${clientId}`);
-      }, 1500);
+      }, 1000);
     } catch (err) {
       console.error("Error updating client:", err);
       setError(err instanceof Error ? err.message : "Failed to update client");
@@ -317,12 +380,6 @@ export function ClientEditForm({ clientId }: ClientEditFormProps) {
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
           <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
-
-      {success && (
-        <Alert>
-          <AlertDescription>{success}</AlertDescription>
         </Alert>
       )}
 
@@ -552,6 +609,27 @@ export function ClientEditForm({ clientId }: ClientEditFormProps) {
                 />
               </div>
             </div>
+
+            {isEntity && (
+              <Card className="mt-8 border-muted">
+                <CardHeader>
+                  <CardTitle>Directors, shareholders &amp; entity banking</CardTitle>
+                  <CardDescription>
+                    Data is stored in Loan Matrix (not Fineract). PEP and control
+                    structure options come from Fineract codes.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <EntityStructureEditor
+                    leadId={entityLeadId}
+                    fineractClientId={clientId}
+                    initialStakeholders={entityStakeholders}
+                    initialBankAccounts={entityBankAccounts}
+                    onRefresh={refreshEntityStructure}
+                  />
+                </CardContent>
+              </Card>
+            )}
 
             {/* Action Buttons */}
             <div className="flex justify-center gap-4 pt-6">
