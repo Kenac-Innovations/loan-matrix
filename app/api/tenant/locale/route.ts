@@ -9,6 +9,10 @@ const DEFAULT_LOCALE = {
   phoneDigits: 9,
   phoneFormat: "XX XXX XXXX",
   phonePlaceholder: "977123456",
+  skipAffordabilityForCompanies: false,
+  clientSelfieOptionalForCompanies: false,
+  createLeadSignaturesOnContractOptional: false,
+  documentsOptional: false,
 };
 
 /**
@@ -36,9 +40,30 @@ export async function GET(request: NextRequest) {
     }
 
     const settings = tenant.settings as any;
+    const skipAffordabilityForCompanies =
+      settings?.features?.skipAffordabilityForCompanies ??
+      settings?.skipAffordabilityForCompanies ??
+      false;
+    const clientSelfieOptionalForCompanies =
+      settings?.features?.clientSelfieOptionalForCompanies ??
+      settings?.clientSelfieOptionalForCompanies ??
+      false;
+    const createLeadSignaturesOnContractOptional =
+      settings?.features?.createLeadSignaturesOnContractOptional ??
+      settings?.createLeadSignaturesOnContractOptional ??
+      false;
+    const documentsOptional =
+      settings?.features?.documentsOptional ??
+      settings?.documentsOptional ??
+      false;
     const locale = {
       ...DEFAULT_LOCALE,
       ...settings?.locale,
+      skipAffordabilityForCompanies: !!skipAffordabilityForCompanies,
+      clientSelfieOptionalForCompanies: !!clientSelfieOptionalForCompanies,
+      createLeadSignaturesOnContractOptional:
+        !!createLeadSignaturesOnContractOptional,
+      documentsOptional: !!documentsOptional,
     };
 
     return NextResponse.json({

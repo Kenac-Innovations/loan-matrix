@@ -31,6 +31,11 @@ export async function GET(
       include: {
         currentStage: true,
         familyMembers: true,
+        entityStakeholders: {
+          orderBy: [{ role: "asc" }, { sortOrder: "asc" }],
+          include: { proofOfResidenceDocument: true },
+        },
+        entityBankAccounts: { orderBy: { sortOrder: "asc" } },
         stateTransitions: {
           include: {
             fromStage: true,

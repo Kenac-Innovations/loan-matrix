@@ -343,9 +343,10 @@ export function LoanTermsForm({
   sharedFirstRepaymentOn,
   onFirstRepaymentDateChange,
 }: LoanTermsFormProps) {
-  const { tenantSlug } = useFeatureFlags();
+  const { tenantSlug, features } = useFeatureFlags();
   /** Goodfellow: only charge amounts are editable; add/remove/due dates stay fixed. */
   const isChargesStructureReadOnly = tenantSlug === "goodfellow";
+  const canEditLoan = !!features.canEditLoan;
 
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1758,8 +1759,8 @@ export function LoanTermsForm({
               <Input
                 id="loanTerm"
                 type="number"
-                className="h-10 cursor-not-allowed"
-                disabled
+                className={cn("h-10", !canEditLoan && "cursor-not-allowed")}
+                disabled={!canEditLoan}
                 {...form.register("loanTerm", { valueAsNumber: true })}
               />
               {form.formState.errors.loanTerm && (
@@ -1804,8 +1805,14 @@ export function LoanTermsForm({
                       templateDerivedValues.termFrequency ||
                       ""
                     }
+                    disabled={!canEditLoan}
                   >
-                    <SelectTrigger className="h-10 w-full">
+                    <SelectTrigger
+                      className={cn(
+                        "h-10 w-full",
+                        !canEditLoan && "cursor-not-allowed opacity-70"
+                      )}
+                    >
                       <SelectValue placeholder="Select frequency" />
                     </SelectTrigger>
                     <SelectContent>
@@ -1848,6 +1855,7 @@ export function LoanTermsForm({
                 id="numberOfRepayments"
                 type="number"
                 className="h-10"
+                disabled={!canEditLoan}
                 {...form.register("numberOfRepayments", {
                   valueAsNumber: true,
                 })}
@@ -1871,8 +1879,10 @@ export function LoanTermsForm({
                     <PopoverTrigger asChild>
                       <Button
                         variant="outline"
+                        disabled={!canEditLoan}
                         className={cn(
                           "h-10 w-full justify-start text-left font-normal",
+                          !canEditLoan && "cursor-not-allowed opacity-70",
                           !field.value && "text-muted-foreground"
                         )}
                       >
@@ -1917,8 +1927,10 @@ export function LoanTermsForm({
                     <PopoverTrigger asChild>
                       <Button
                         variant="outline"
+                        disabled={!canEditLoan}
                         className={cn(
                           "h-10 w-full justify-start text-left font-normal",
+                          !canEditLoan && "cursor-not-allowed opacity-70",
                           !field.value && "text-muted-foreground"
                         )}
                       >
@@ -1959,6 +1971,7 @@ export function LoanTermsForm({
                 id="repaymentEvery"
                 type="number"
                 className="h-10"
+                disabled={!canEditLoan}
                 {...form.register("repaymentEvery", { valueAsNumber: true })}
               />
               {form.formState.errors.repaymentEvery && (
@@ -1990,9 +2003,14 @@ export function LoanTermsForm({
                       templateDerivedValues.repaymentFrequency ||
                       ""
                     }
-                    disabled
+                    disabled={!canEditLoan}
                   >
-                    <SelectTrigger className="h-10 w-full cursor-not-allowed opacity-70">
+                    <SelectTrigger
+                      className={cn(
+                        "h-10 w-full",
+                        !canEditLoan && "cursor-not-allowed opacity-70"
+                      )}
+                    >
                       <SelectValue placeholder="Select frequency" />
                     </SelectTrigger>
                     <SelectContent>
@@ -2031,8 +2049,14 @@ export function LoanTermsForm({
                   <Select
                     onValueChange={field.onChange}
                     value={field.value || ""}
+                    disabled={!canEditLoan}
                   >
-                    <SelectTrigger className="h-10 w-full">
+                    <SelectTrigger
+                      className={cn(
+                        "h-10 w-full",
+                        !canEditLoan && "cursor-not-allowed opacity-70"
+                      )}
+                    >
                       <SelectValue placeholder="Select On" />
                     </SelectTrigger>
                     <SelectContent>
@@ -2066,8 +2090,14 @@ export function LoanTermsForm({
                   <Select
                     onValueChange={field.onChange}
                     value={field.value || ""}
+                    disabled={!canEditLoan}
                   >
-                    <SelectTrigger className="h-10 w-full">
+                    <SelectTrigger
+                      className={cn(
+                        "h-10 w-full",
+                        !canEditLoan && "cursor-not-allowed opacity-70"
+                      )}
+                    >
                       <SelectValue placeholder="Select Day" />
                     </SelectTrigger>
                     <SelectContent>
@@ -2139,6 +2169,7 @@ export function LoanTermsForm({
                 type="number"
                 step="0.01"
                 className="h-10"
+                disabled={!canEditLoan}
                 {...form.register("nominalInterestRate", {
                   valueAsNumber: true,
                 })}
@@ -2172,8 +2203,14 @@ export function LoanTermsForm({
                       templateDerivedValues.interestRateFrequency ||
                       ""
                     }
+                    disabled={!canEditLoan}
                   >
-                    <SelectTrigger className="h-10 w-full">
+                    <SelectTrigger
+                      className={cn(
+                        "h-10 w-full",
+                        !canEditLoan && "cursor-not-allowed opacity-70"
+                      )}
+                    >
                       <SelectValue placeholder="Select frequency" />
                     </SelectTrigger>
                     <SelectContent>
@@ -2217,8 +2254,14 @@ export function LoanTermsForm({
                       templateDerivedValues.interestMethod ||
                       ""
                     }
+                    disabled={!canEditLoan}
                   >
-                    <SelectTrigger className="h-10 w-full">
+                    <SelectTrigger
+                      className={cn(
+                        "h-10 w-full",
+                        !canEditLoan && "cursor-not-allowed opacity-70"
+                      )}
+                    >
                       <SelectValue placeholder="Select method" />
                     </SelectTrigger>
                     <SelectContent>
@@ -2260,8 +2303,14 @@ export function LoanTermsForm({
                       templateDerivedValues.amortization ||
                       ""
                     }
+                    disabled={!canEditLoan}
                   >
-                    <SelectTrigger className="h-10 w-full">
+                    <SelectTrigger
+                      className={cn(
+                        "h-10 w-full",
+                        !canEditLoan && "cursor-not-allowed opacity-70"
+                      )}
+                    >
                       <SelectValue placeholder="Select amortization" />
                     </SelectTrigger>
                     <SelectContent>
@@ -2289,7 +2338,7 @@ export function LoanTermsForm({
                 <Checkbox
                   id="isEqualAmortization"
                   checked={form.watch("isEqualAmortization")}
-                  disabled
+                  disabled={!canEditLoan}
                   onCheckedChange={(checked) =>
                     form.setValue("isEqualAmortization", checked as boolean)
                   }
@@ -2324,7 +2373,7 @@ export function LoanTermsForm({
                   loanTemplate.loanScheduleTypeOptions?.[0]?.value ||
                   "Cumulative"
                 }
-                disabled
+                disabled={!canEditLoan}
                 className="h-10 bg-muted"
               />
             </div>
@@ -2350,9 +2399,14 @@ export function LoanTermsForm({
                       frequencyValuesRef.current.repaymentStrategy ||
                       frequencyState.repaymentStrategy
                     }
-                    disabled
+                    disabled={!canEditLoan}
                   >
-                    <SelectTrigger className="h-10 w-full">
+                    <SelectTrigger
+                      className={cn(
+                        "h-10 w-full",
+                        !canEditLoan && "cursor-not-allowed opacity-70"
+                      )}
+                    >
                       <SelectValue placeholder="Select strategy" />
                     </SelectTrigger>
                     <SelectContent>
@@ -2390,7 +2444,7 @@ export function LoanTermsForm({
                     type="number"
                     step="0.01"
                     className="h-10"
-                    disabled
+                    disabled={!canEditLoan}
                     value={field.value ?? 0}
                     onChange={(e) => {
                       const value = e.target.value;
@@ -2444,9 +2498,14 @@ export function LoanTermsForm({
                       frequencyValuesRef.current.interestCalculationPeriod ||
                       frequencyState.interestCalculationPeriod
                     }
-                    disabled
+                    disabled={!canEditLoan}
                   >
-                    <SelectTrigger className="h-10 w-full">
+                    <SelectTrigger
+                      className={cn(
+                        "h-10 w-full",
+                        !canEditLoan && "cursor-not-allowed opacity-70"
+                      )}
+                    >
                       <SelectValue placeholder="Select period" />
                     </SelectTrigger>
                     <SelectContent>
@@ -2476,7 +2535,7 @@ export function LoanTermsForm({
                 <Checkbox
                   id="calculateInterestForExactDays"
                   checked={form.watch("calculateInterestForExactDays")}
-                  disabled
+                  disabled={!canEditLoan}
                   onCheckedChange={(checked) =>
                     form.setValue(
                       "calculateInterestForExactDays",
@@ -2506,7 +2565,7 @@ export function LoanTermsForm({
                     type="number"
                     step="0.01"
                     className="h-10"
-                    disabled
+                    disabled={!canEditLoan}
                     value={field.value ?? 0}
                     onChange={(e) => {
                       const value = e.target.value;
@@ -2542,7 +2601,7 @@ export function LoanTermsForm({
                     id="interestFreePeriod"
                     type="number"
                     className="h-10"
-                    disabled
+                    disabled={!canEditLoan}
                     value={field.value ?? 0}
                     onChange={(e) => {
                       const value = e.target.value;
@@ -2589,7 +2648,7 @@ export function LoanTermsForm({
                     id="graceOnPrincipalPayment"
                     type="number"
                     className="h-10"
-                    disabled
+                    disabled={!canEditLoan}
                     value={field.value ?? 0}
                     onChange={(e) => {
                       const value = e.target.value;
@@ -2625,7 +2684,7 @@ export function LoanTermsForm({
                     id="graceOnInterestPayment"
                     type="number"
                     className="h-10"
-                    disabled
+                    disabled={!canEditLoan}
                     value={field.value ?? 0}
                     onChange={(e) => {
                       const value = e.target.value;
@@ -2658,7 +2717,7 @@ export function LoanTermsForm({
                     id="onArrearsAgeing"
                     type="number"
                     className="h-10"
-                    disabled
+                    disabled={!canEditLoan}
                     value={field.value ?? 0}
                     onChange={(e) => {
                       const value = e.target.value;
@@ -2698,7 +2757,7 @@ export function LoanTermsForm({
               <Input
                 id="recalculateInterest"
                 value="No"
-                disabled
+                disabled={!canEditLoan}
                 className="h-10 bg-muted"
               />
             </div>
@@ -2747,7 +2806,9 @@ export function LoanTermsForm({
                       : "Manage loan charges and fees. Add, remove, or edit charges and their due dates."}
                   </CardDescription>
                 </div>
-                {loanTemplate?.chargeOptions && !isChargesStructureReadOnly && (
+                {loanTemplate?.chargeOptions &&
+                  canEditLoan &&
+                  !isChargesStructureReadOnly && (
                   <Button
                     type="button"
                     variant="outline"
@@ -2762,7 +2823,7 @@ export function LoanTermsForm({
             </CardHeader>
             <CardContent className="space-y-4">
               {/* Add Charge Form */}
-              {showAddCharge && loanTemplate?.chargeOptions && (
+              {showAddCharge && canEditLoan && loanTemplate?.chargeOptions && (
                 <div className="border rounded-lg p-4 bg-muted space-y-4">
                   <div className="flex items-center justify-between">
                     <h4 className="font-medium">Add New Charge</h4>
@@ -2786,6 +2847,7 @@ export function LoanTermsForm({
                       <Select
                         value={selectedChargeOption}
                         onValueChange={setSelectedChargeOption}
+                        disabled={!canEditLoan}
                       >
                         <SelectTrigger>
                           <SelectValue placeholder="Select charge" />
@@ -2817,6 +2879,7 @@ export function LoanTermsForm({
                         placeholder="0.00"
                         value={newChargeAmount}
                         onChange={(e) => setNewChargeAmount(e.target.value)}
+                        disabled={!canEditLoan}
                       />
                     </div>
                     {/* Only show Due Date for charges with "Specified Due Date" time type */}
@@ -2836,8 +2899,10 @@ export function LoanTermsForm({
                         <PopoverTrigger asChild>
                           <Button
                             variant="outline"
+                            disabled={!canEditLoan}
                             className={cn(
                               "w-full justify-start text-left font-normal",
+                              !canEditLoan && "cursor-not-allowed opacity-70",
                               !newChargeDueDate && "text-muted-foreground"
                             )}
                           >
@@ -2872,7 +2937,8 @@ export function LoanTermsForm({
                         selectedCharge?.chargeTimeType?.value === "Specified Due Date" ||
                         selectedCharge?.chargeTimeType?.id === 2;
                       
-                      return !selectedChargeOption ||
+                      return !canEditLoan ||
+                      !selectedChargeOption ||
                       !newChargeAmount ||
                         (requiresDueDate && !newChargeDueDate);
                     })()}
@@ -2925,7 +2991,7 @@ export function LoanTermsForm({
                             </span>
                           )}
                         </div>
-                        {!isChargesStructureReadOnly && (
+                        {canEditLoan && !isChargesStructureReadOnly && (
                         <Button
                           type="button"
                           variant="ghost"
@@ -2957,6 +3023,7 @@ export function LoanTermsForm({
                             type="number"
                             step="0.01"
                             value={charge.amount}
+                            disabled={!canEditLoan}
                             onChange={(e) =>
                               handleUpdateChargeAmount(
                                 index,
@@ -2975,9 +3042,11 @@ export function LoanTermsForm({
                             <PopoverTrigger asChild>
                               <Button
                                 variant="outline"
-                                disabled={isChargesStructureReadOnly}
+                                disabled={!canEditLoan || isChargesStructureReadOnly}
                                 className={cn(
                                   "w-full justify-start text-left font-normal",
+                                  (!canEditLoan || isChargesStructureReadOnly) &&
+                                    "cursor-not-allowed opacity-70",
                                   !charge.dueDate && "text-muted-foreground"
                                 )}
                               >
@@ -3024,7 +3093,7 @@ export function LoanTermsForm({
                 type="button"
                 variant="outline"
                 size="sm"
-                disabled
+                disabled={!canEditLoan}
                 onClick={addCollateral}
                 className="flex items-center gap-2"
               >
@@ -3058,7 +3127,7 @@ export function LoanTermsForm({
                               <Select
                                 onValueChange={field.onChange}
                                 value={field.value}
-                                disabled
+                                disabled={!canEditLoan}
                               >
                                 <SelectTrigger className="h-7 w-full">
                                   <SelectValue placeholder="Select collateral" />
@@ -3083,7 +3152,7 @@ export function LoanTermsForm({
                           <Input
                             type="number"
                             className="h-7 w-full"
-                            disabled
+                            disabled={!canEditLoan}
                             {...form.register(`collaterals.${index}.quantity`, {
                               valueAsNumber: true,
                             })}
@@ -3094,7 +3163,7 @@ export function LoanTermsForm({
                             type="number"
                             step="0.01"
                             className="h-7 w-full"
-                            disabled
+                            disabled={!canEditLoan}
                             {...form.register(
                               `collaterals.${index}.totalValue`,
                               {
@@ -3113,7 +3182,7 @@ export function LoanTermsForm({
                             type="button"
                             variant="outline"
                             size="sm"
-                            disabled
+                            disabled={!canEditLoan}
                             onClick={() => removeCollateral(index)}
                             className="h-7 px-2 text-red-600 hover:text-red-700 w-full sm:w-auto text-xs"
                           >
