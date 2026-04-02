@@ -64,7 +64,9 @@ export function LoanContracts({
   onComplete,
   onBack,
 }: LoanContractsProps) {
-  const { currencyCode: orgCurrency } = useCurrency();
+  const { currencyCode: orgCurrency, locale: tenantLocale } = useCurrency();
+  const signaturesOptional =
+    !!tenantLocale.createLeadSignaturesOnContractOptional;
   const [contractData, setContractData] = useState<ContractData | null>(
     initialContractData || null,
   );
@@ -1865,7 +1867,7 @@ export function LoanContracts({
   };
 
   const handleComplete = async () => {
-    if (!borrowerSignature) {
+    if (!signaturesOptional && !borrowerSignature) {
       toast({
         title: "Signature required",
         description: "Please upload the borrower's signature before completing",
@@ -1874,7 +1876,7 @@ export function LoanContracts({
       return;
     }
 
-    if (!loanOfficerSignature) {
+    if (!signaturesOptional && !loanOfficerSignature) {
       toast({
         title: "Signature required",
         description:
@@ -2224,10 +2226,12 @@ export function LoanContracts({
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {/* Borrower Signature */}
-            <div className="space-y-2">
-              <Label htmlFor="borrower-signature">Borrower Signature *</Label>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {/* Borrower Signature */}
+              <div className="space-y-2">
+                <Label htmlFor="borrower-signature">
+                  Borrower Signature{!signaturesOptional ? " *" : ""}
+                </Label>
               {availableSignatures.length > 0 && !borrowerSignature && (
                 <Select
                   onValueChange={(value) => {
@@ -2361,11 +2365,11 @@ export function LoanContracts({
               </div>
             </div>
 
-            {/* Loan Officer Signature */}
-            <div className="space-y-2">
-              <Label htmlFor="officer-signature">
-                Loan Officer Signature *
-              </Label>
+              {/* Loan Officer Signature */}
+              <div className="space-y-2">
+                <Label htmlFor="officer-signature">
+                  Loan Officer Signature{!signaturesOptional ? " *" : ""}
+                </Label>
               {availableSignatures.length > 0 && !loanOfficerSignature && (
                 <Select
                   onValueChange={(value) => {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, ChangeEvent } from "react";
+import { useState, useEffect, useRef, useCallback, ChangeEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm, Controller } from "react-hook-form";
@@ -71,6 +71,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { EntityStructureEditor } from "@/components/entity-structure/entity-structure-editor";
 import {
   saveDraft,
   getLead,
@@ -466,6 +467,9 @@ export function ClientRegistrationForm({
   const searchParams = useSearchParams();
   const colors = useThemeColors();
   const { locale: tenantLocale } = useCurrency();
+  const clientSelfieOptionalForCompanies =
+    !!tenantLocale.clientSelfieOptionalForCompanies;
+  const documentsOptional = !!tenantLocale.documentsOptional;
 
   // State for multi-step form
   const [currentStep, setCurrentStep] = useState(1);
@@ -474,6 +478,8 @@ export function ClientRegistrationForm({
   const [closeReason, setCloseReason] = useState("");
   const [showCloseDialog, setShowCloseDialog] = useState(false);
   const [familyMembers, setFamilyMembers] = useState<any[]>([]);
+  const [entityStakeholders, setEntityStakeholders] = useState<any[]>([]);
+  const [entityBankAccounts, setEntityBankAccounts] = useState<any[]>([]);
   const [editingFamilyMemberIndex, setEditingFamilyMemberIndex] = useState<
     number | null
   >(null);
@@ -1306,11 +1312,22 @@ export function ClientRegistrationForm({
   };
 
   const checkSelfieSection = () => {
-    // Selfie capture is optional, so it should never block KYC completion.
-    return true;
+    const values = form.getValues();
+    const isEntityLead = values.legalFormId === "2";
+    const isSelfieOptional =
+      clientSelfieOptionalForCompanies && isEntityLead;
+
+    if (isSelfieOptional) {
+      return true;
+    }
+
+    return !!(existingClientImage || selfieImage);
   };
 
   const checkIdentityDocumentsSection = () => {
+    if (documentsOptional) {
+      return true;
+    }
     return existingIdentifiers.length > 0;
   };
 
@@ -1468,7 +1485,11 @@ export function ClientRegistrationForm({
   };
 
   const checkKYCTabCompletion = () => {
-    return sectionCompletion.identityDocuments && sectionCompletion.otherDocuments;
+    return (
+      sectionCompletion.selfie &&
+      sectionCompletion.identityDocuments &&
+      sectionCompletion.otherDocuments
+    );
   };
 
   const checkAdditionalDetailsTabCompletion = () => {
@@ -1848,6 +1869,16 @@ export function ClientRegistrationForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leadId, currentLeadId]);
 
+  const refreshEntityStructure = useCallback(async () => {
+    const lid = currentLeadId || leadId;
+    if (!lid) return;
+    const lead = await getLead(lid);
+    if (lead) {
+      setEntityStakeholders((lead as any).entityStakeholders || []);
+      setEntityBankAccounts((lead as any).entityBankAccounts || []);
+    }
+  }, [currentLeadId, leadId]);
+
   // Initialize internal form - always call useForm to comply with React hooks rules
   const internalForm = useForm<ClientFormValues>({
     resolver: zodResolver(clientFormSchema) as any,
@@ -2181,9 +2212,11 @@ export function ClientRegistrationForm({
 
         setIsLoadingOptions(false);
 
+        // Prefer synced state; fall back to prop so first effect run after ?id= still loads
+        const effectiveLeadId = currentLeadId ?? leadId;
         // If leadId is provided, load the lead data
-        if (currentLeadId) {
-          const lead = await getLead(currentLeadId);
+        if (effectiveLeadId) {
+          const lead = await getLead(effectiveLeadId);
           if (lead) {
             // Set form values from saved lead data
             form.reset({
@@ -2218,6 +2251,8 @@ export function ClientRegistrationForm({
 
             // Set family members
             setFamilyMembers(lead.familyMembers || []);
+            setEntityStakeholders((lead as any).entityStakeholders || []);
+            setEntityBankAccounts((lead as any).entityBankAccounts || []);
 
             // Mark sections as saved if they are complete (data is coming from server)
             // Wait a bit for form state to update, then check completion
@@ -2500,14 +2535,15 @@ export function ClientRegistrationForm({
     };
 
     loadData();
-  }, [currentLeadId, form, searchParams]);
+  }, [currentLeadId, leadId, form, searchParams]);
 
   // Load stage history when leadId changes
   useEffect(() => {
     const loadStageHistory = async () => {
-      if (currentLeadId) {
+      const lid = currentLeadId ?? leadId;
+      if (lid) {
         try {
-          const history = await getLeadStageHistory(currentLeadId);
+          const history = await getLeadStageHistory(lid);
           setStageHistory(history);
         } catch (error) {
           console.error("Error loading stage history:", error);
@@ -2516,7 +2552,7 @@ export function ClientRegistrationForm({
     };
 
     loadStageHistory();
-  }, [currentLeadId]);
+  }, [currentLeadId, leadId]);
 
   // Handle field blur for auto-save
   // Helper function to determine which section a field belongs to
@@ -3860,6 +3896,8 @@ export function ClientRegistrationForm({
         const lead = await getLead(effectiveLeadId!);
         if (lead) {
           setFamilyMembers(lead.familyMembers || []);
+          setEntityStakeholders((lead as any).entityStakeholders || []);
+          setEntityBankAccounts((lead as any).entityBankAccounts || []);
         }
       } else {
         error({
@@ -3938,7 +3976,9 @@ export function ClientRegistrationForm({
           newCompletion.additional;
 
         const kycComplete =
-          newCompletion.identityDocuments && newCompletion.otherDocuments;
+          newCompletion.selfie &&
+          newCompletion.identityDocuments &&
+          newCompletion.otherDocuments;
 
         const additionalComplete = clientCreatedInFineract
           ? newCompletion.datatables
@@ -3973,6 +4013,8 @@ export function ClientRegistrationForm({
     clientCreatedInFineract,
     dataTables,
     clientAddress,
+    clientSelfieOptionalForCompanies,
+    documentsOptional,
   ]);
 
   const handleSelfieFileSelect = (e: ChangeEvent<HTMLInputElement>) => {
@@ -4602,10 +4644,13 @@ export function ClientRegistrationForm({
         });
 
         // Refresh family members
-        if (leadId) {
-          const lead = await getLead(leadId);
+        const lid = currentLeadId || leadId;
+        if (lid) {
+          const lead = await getLead(lid);
           if (lead) {
             setFamilyMembers(lead.familyMembers || []);
+            setEntityStakeholders((lead as any).entityStakeholders || []);
+            setEntityBankAccounts((lead as any).entityBankAccounts || []);
           }
         }
       } else {
@@ -5758,8 +5803,18 @@ export function ClientRegistrationForm({
                               }
                             } else if (activeClientTab === "account") {
                               // Validate KYC sections
+                              const selfieComplete = checkSelfieSection();
                               const identityComplete =
                                 checkIdentityDocumentsSection();
+
+                              if (!selfieComplete) {
+                                error({
+                                  title: "Incomplete KYC",
+                                  description:
+                                    "Client selfie is required before proceeding.",
+                                });
+                                return;
+                              }
 
                               if (!identityComplete) {
                                 error({
@@ -6448,6 +6503,30 @@ export function ClientRegistrationForm({
                                         Optional external reference identifier
                                       </p>
                                     </div>
+                                  </div>
+
+                                  <div className="my-8 border-t border-gray-300 dark:border-gray-700" />
+                                  <div className="space-y-3">
+                                    <h4
+                                      className={`text-md font-medium ${colors.textColor}`}
+                                    >
+                                      Directors, shareholders &amp; entity banking
+                                    </h4>
+                                    <p
+                                      className={`text-sm ${colors.textColorMuted}`}
+                                    >
+                                      Directors and shareholders (UBO, PEP status, control
+                                      structure) and entity bank accounts are stored in Loan
+                                      Matrix. Link proof-of-residence from Lead Documents when
+                                      uploaded there.
+                                    </p>
+                                    <EntityStructureEditor
+                                      leadId={currentLeadId ?? null}
+                                      fineractClientId={fineractClientId}
+                                      initialStakeholders={entityStakeholders}
+                                      initialBankAccounts={entityBankAccounts}
+                                      onRefresh={refreshEntityStructure}
+                                    />
                                   </div>
                                 </>
                               ) : (
@@ -8004,252 +8083,337 @@ export function ClientRegistrationForm({
                                       </div>
                                     )}
 
-                                    {/* Show upload options if no existing image and no new image */}
-                                    {!existingClientImage && !selfieImage && (
-                                      <div className="flex gap-4">
-                                        <Button
-                                          type="button"
-                                          variant="outline"
-                                          onClick={handleStartCamera}
-                                          disabled={!fineractClientId}
-                                          className="flex items-center gap-2"
-                                        >
-                                          <UserCheck className="h-4 w-4" />
-                                          Capture from Camera
-                                        </Button>
-                                        <label>
-                                          <Button
-                                            type="button"
-                                            variant="outline"
-                                            asChild
-                                            disabled={!fineractClientId}
-                                            className="flex items-center gap-2 cursor-pointer"
-                                          >
-                                            <span>
-                                              <UserPlus className="h-4 w-4" />
-                                              Upload from File
-                                            </span>
-                                          </Button>
-                                          <input
-                                            type="file"
-                                            accept="image/*"
-                                            onChange={handleSelfieFileSelect}
-                                            className="hidden"
-                                          />
-                                        </label>
-                                      </div>
-                                    )}
+                                        {/* Show upload options if no existing image and no new image */}
+                                        {!existingClientImage &&
+                                          !selfieImage && (
+                                            <div className="flex gap-4">
+                                              <Button
+                                                type="button"
+                                                variant="outline"
+                                                onClick={handleStartCamera}
+                                                disabled={!fineractClientId}
+                                                className="flex items-center gap-2"
+                                              >
+                                                <UserCheck className="h-4 w-4" />
+                                                Capture from Camera
+                                              </Button>
+                                              <label>
+                                                <Button
+                                                  type="button"
+                                                  variant="outline"
+                                                  asChild
+                                                  disabled={!fineractClientId}
+                                                  className="flex items-center gap-2 cursor-pointer"
+                                                >
+                                                  <span>
+                                                    <UserPlus className="h-4 w-4" />
+                                                    Upload from File
+                                                  </span>
+                                                </Button>
+                                                <input
+                                                  type="file"
+                                                  accept="image/*"
+                                                  onChange={
+                                                    handleSelfieFileSelect
+                                                  }
+                                                  className="hidden"
+                                                />
+                                              </label>
+                                            </div>
+                                          )}
 
-                                    {selfieImage && (
-                                      <div className="space-y-4">
-                                        <div className="relative w-full max-w-md">
-                                          <img
-                                            src={selfieImage}
-                                            alt="Selfie preview"
-                                            className="w-full rounded-lg border"
-                                          />
-                                          <Button
-                                            type="button"
-                                            variant="ghost"
-                                            size="sm"
-                                            onClick={() => setSelfieImage(null)}
-                                            className="absolute top-2 right-2"
-                                          >
-                                            <X className="h-4 w-4" />
-                                          </Button>
-                                        </div>
-                                        <div className="flex gap-4">
-                                          <Button
-                                            type="button"
-                                            onClick={handleUploadSelfie}
-                                            disabled={
-                                              uploadingSelfie ||
-                                              !fineractClientId
-                                            }
-                                            className="bg-blue-500 hover:bg-blue-600"
-                                          >
-                                            {uploadingSelfie ? (
-                                              <>
-                                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                                Uploading...
-                                              </>
-                                            ) : (
-                                              <>
-                                                <Save className="h-4 w-4 mr-2" />
-                                                Upload Selfie
-                                              </>
-                                            )}
-                                          </Button>
-                                          <Button
-                                            type="button"
-                                            variant="outline"
-                                            onClick={() => setSelfieImage(null)}
-                                          >
-                                            Remove
-                                          </Button>
-                                        </div>
-                                      </div>
-                                    )}
-
-                                    <canvas
-                                      ref={canvasRef}
-                                      className="hidden"
-                                    />
-                                  </div>
-                                </div>
-
-                                {/* Camera Modal */}
-                                <Dialog
-                                  open={showCameraModal}
-                                  onOpenChange={(open) => {
-                                    setShowCameraModal(open);
-                                    if (!open) {
-                                      if (videoRef.current) {
-                                        const stream = videoRef.current
-                                          .srcObject as MediaStream;
-                                        stream
-                                          ?.getTracks()
-                                          .forEach((track) => track.stop());
-                                      }
-                                      setCapturedImage(null);
-                                      setCameraPermissionDenied(false);
-                                    }
-                                  }}
-                                >
-                                  <DialogContent className="max-w-2xl">
-                                    <DialogHeader>
-                                      <DialogTitle className={colors.textColor}>
-                                        {cameraPermissionDenied ? "Camera Permission Required" : "Capture Selfie"}
-                                      </DialogTitle>
-                                      <DialogDescription
-                                        className={colors.textColorMuted}
-                                      >
-                                        {cameraPermissionDenied
-                                          ? "Camera access was blocked. Please follow the steps below to enable it."
-                                          : capturedImage
-                                            ? "Review your photo. You can retake or confirm."
-                                            : "Position your face in the frame and click capture."}
-                                      </DialogDescription>
-                                    </DialogHeader>
-                                    <div className="space-y-4">
-                                      {cameraPermissionDenied ? (
-                                        <div className="space-y-4">
-                                          <div className="flex items-center gap-3 p-4 rounded-lg bg-amber-50 border border-amber-200 dark:bg-amber-950/30 dark:border-amber-800">
-                                            <Camera className="h-6 w-6 text-amber-600 flex-shrink-0" />
-                                            <p className="text-sm text-amber-800 dark:text-amber-200">
-                                              Your browser has blocked camera access for this site. You need to manually allow it in your browser settings.
-                                            </p>
-                                          </div>
-                                          <div className="space-y-3 p-4 rounded-lg bg-muted/50">
-                                            <h4 className="font-medium text-sm flex items-center gap-2">
-                                              <Settings className="h-4 w-4" />
-                                              How to enable camera access:
-                                            </h4>
-                                            <div className="space-y-4 text-sm text-muted-foreground">
-                                              <div>
-                                                <p className="font-medium text-foreground mb-1">Chrome / Edge:</p>
-                                                <ol className="list-decimal list-inside space-y-1 ml-2">
-                                                  <li>Click the <strong>lock icon</strong> (or tune icon) in the address bar</li>
-                                                  <li>Find <strong>Camera</strong> and set it to <strong>Allow</strong></li>
-                                                  <li>Click the <strong>Try Again</strong> button below</li>
-                                                </ol>
-                                              </div>
-                                              <div>
-                                                <p className="font-medium text-foreground mb-1">Safari:</p>
-                                                <ol className="list-decimal list-inside space-y-1 ml-2">
-                                                  <li>Go to <strong>Safari &gt; Settings &gt; Websites &gt; Camera</strong></li>
-                                                  <li>Find this site and set it to <strong>Allow</strong></li>
-                                                  <li>Click the <strong>Try Again</strong> button below</li>
-                                                </ol>
-                                              </div>
-                                              <div>
-                                                <p className="font-medium text-foreground mb-1">Firefox:</p>
-                                                <ol className="list-decimal list-inside space-y-1 ml-2">
-                                                  <li>Click the <strong>lock icon</strong> in the address bar</li>
-                                                  <li>Click <strong>Clear permissions</strong> or find Camera and set to <strong>Allow</strong></li>
-                                                  <li>Click the <strong>Try Again</strong> button below</li>
-                                                </ol>
-                                              </div>
+                                        {selfieImage && (
+                                          <div className="space-y-4">
+                                            <div className="relative w-full max-w-md">
+                                              <img
+                                                src={selfieImage}
+                                                alt="Selfie preview"
+                                                className="w-full rounded-lg border"
+                                              />
+                                              <Button
+                                                type="button"
+                                                variant="ghost"
+                                                size="sm"
+                                                onClick={() =>
+                                                  setSelfieImage(null)
+                                                }
+                                                className="absolute top-2 right-2"
+                                              >
+                                                <X className="h-4 w-4" />
+                                              </Button>
+                                            </div>
+                                            <div className="flex gap-4">
+                                              <Button
+                                                type="button"
+                                                onClick={handleUploadSelfie}
+                                                disabled={
+                                                  uploadingSelfie ||
+                                                  !fineractClientId
+                                                }
+                                                className="bg-blue-500 hover:bg-blue-600"
+                                              >
+                                                {uploadingSelfie ? (
+                                                  <>
+                                                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                                    Uploading...
+                                                  </>
+                                                ) : (
+                                                  <>
+                                                    <Save className="h-4 w-4 mr-2" />
+                                                    Upload Selfie
+                                                  </>
+                                                )}
+                                              </Button>
+                                              <Button
+                                                type="button"
+                                                variant="outline"
+                                                onClick={() =>
+                                                  setSelfieImage(null)
+                                                }
+                                              >
+                                                Remove
+                                              </Button>
                                             </div>
                                           </div>
-                                        </div>
-                                      ) : !capturedImage ? (
-                                        <div className="relative w-full aspect-video bg-black rounded-lg overflow-hidden">
-                                          <video
-                                            ref={videoRef}
-                                            autoPlay
-                                            playsInline
-                                            muted
-                                            className="w-full h-full object-cover"
-                                          />
-                                        </div>
-                                      ) : (
-                                        <div className="relative w-full aspect-video bg-black rounded-lg overflow-hidden">
-                                          <img
-                                            src={capturedImage}
-                                            alt="Captured selfie"
-                                            className="w-full h-full object-cover"
-                                          />
-                                        </div>
-                                      )}
+                                        )}
+
+                                        <canvas
+                                          ref={canvasRef}
+                                          className="hidden"
+                                        />
+                                      </div>
                                     </div>
-                                    <DialogFooter>
-                                      {cameraPermissionDenied ? (
-                                        <>
-                                          <Button
-                                            type="button"
-                                            variant="outline"
-                                            onClick={handleStopCamera}
+
+                                    {/* Camera Modal */}
+                                    <Dialog
+                                      open={showCameraModal}
+                                      onOpenChange={(open) => {
+                                        setShowCameraModal(open);
+                                        if (!open) {
+                                          if (videoRef.current) {
+                                            const stream = videoRef.current
+                                              .srcObject as MediaStream;
+                                            stream
+                                              ?.getTracks()
+                                              .forEach((track) =>
+                                                track.stop()
+                                              );
+                                          }
+                                          setCapturedImage(null);
+                                          setCameraPermissionDenied(false);
+                                        }
+                                      }}
+                                    >
+                                      <DialogContent className="max-w-2xl">
+                                        <DialogHeader>
+                                          <DialogTitle
+                                            className={colors.textColor}
                                           >
-                                            Cancel
-                                          </Button>
-                                          <Button
-                                            type="button"
-                                            onClick={() => attemptCameraAccess()}
-                                            className="bg-blue-500 hover:bg-blue-600 flex items-center gap-2"
+                                            {cameraPermissionDenied
+                                              ? "Camera Permission Required"
+                                              : "Capture Selfie"}
+                                          </DialogTitle>
+                                          <DialogDescription
+                                            className={colors.textColorMuted}
                                           >
-                                            <RefreshCw className="h-4 w-4" />
-                                            Try Again
-                                          </Button>
-                                        </>
-                                      ) : !capturedImage ? (
-                                        <>
-                                          <Button
-                                            type="button"
-                                            variant="outline"
-                                            onClick={handleStopCamera}
-                                          >
-                                            Cancel
-                                          </Button>
-                                          <Button
-                                            type="button"
-                                            onClick={handleCaptureSelfie}
-                                            className="bg-blue-500 hover:bg-blue-600"
-                                          >
-                                            Capture Photo
-                                          </Button>
-                                        </>
-                                      ) : (
-                                        <>
-                                          <Button
-                                            type="button"
-                                            variant="outline"
-                                            onClick={handleRetakePhoto}
-                                          >
-                                            Retake
-                                          </Button>
-                                          <Button
-                                            type="button"
-                                            onClick={handleConfirmCapture}
-                                            className="bg-blue-500 hover:bg-blue-600"
-                                          >
-                                            Use This Photo
-                                          </Button>
-                                        </>
-                                      )}
-                                    </DialogFooter>
-                                  </DialogContent>
-                                </Dialog>
+                                            {cameraPermissionDenied
+                                              ? "Camera access was blocked. Please follow the steps below to enable it."
+                                              : capturedImage
+                                                ? "Review your photo. You can retake or confirm."
+                                                : "Position your face in the frame and click capture."}
+                                          </DialogDescription>
+                                        </DialogHeader>
+                                        <div className="space-y-4">
+                                          {cameraPermissionDenied ? (
+                                            <div className="space-y-4">
+                                              <div className="flex items-center gap-3 p-4 rounded-lg bg-amber-50 border border-amber-200 dark:bg-amber-950/30 dark:border-amber-800">
+                                                <Camera className="h-6 w-6 text-amber-600 flex-shrink-0" />
+                                                <p className="text-sm text-amber-800 dark:text-amber-200">
+                                                  Your browser has blocked camera
+                                                  access for this site. You need
+                                                  to manually allow it in your
+                                                  browser settings.
+                                                </p>
+                                              </div>
+                                              <div className="space-y-3 p-4 rounded-lg bg-muted/50">
+                                                <h4 className="font-medium text-sm flex items-center gap-2">
+                                                  <Settings className="h-4 w-4" />
+                                                  How to enable camera access:
+                                                </h4>
+                                                <div className="space-y-4 text-sm text-muted-foreground">
+                                                  <div>
+                                                    <p className="font-medium text-foreground mb-1">
+                                                      Chrome / Edge:
+                                                    </p>
+                                                    <ol className="list-decimal list-inside space-y-1 ml-2">
+                                                      <li>
+                                                        Click the{" "}
+                                                        <strong>
+                                                          lock icon
+                                                        </strong>{" "}
+                                                        (or tune icon) in the
+                                                        address bar
+                                                      </li>
+                                                      <li>
+                                                        Find{" "}
+                                                        <strong>Camera</strong>{" "}
+                                                        and set it to{" "}
+                                                        <strong>
+                                                          Allow
+                                                        </strong>
+                                                      </li>
+                                                      <li>
+                                                        Click the{" "}
+                                                        <strong>
+                                                          Try Again
+                                                        </strong>{" "}
+                                                        button below
+                                                      </li>
+                                                    </ol>
+                                                  </div>
+                                                  <div>
+                                                    <p className="font-medium text-foreground mb-1">
+                                                      Safari:
+                                                    </p>
+                                                    <ol className="list-decimal list-inside space-y-1 ml-2">
+                                                      <li>
+                                                        Go to{" "}
+                                                        <strong>
+                                                          Safari &gt; Settings
+                                                          &gt; Websites &gt;
+                                                          Camera
+                                                        </strong>
+                                                      </li>
+                                                      <li>
+                                                        Find this site and set
+                                                        it to{" "}
+                                                        <strong>
+                                                          Allow
+                                                        </strong>
+                                                      </li>
+                                                      <li>
+                                                        Click the{" "}
+                                                        <strong>
+                                                          Try Again
+                                                        </strong>{" "}
+                                                        button below
+                                                      </li>
+                                                    </ol>
+                                                  </div>
+                                                  <div>
+                                                    <p className="font-medium text-foreground mb-1">
+                                                      Firefox:
+                                                    </p>
+                                                    <ol className="list-decimal list-inside space-y-1 ml-2">
+                                                      <li>
+                                                        Click the{" "}
+                                                        <strong>
+                                                          lock icon
+                                                        </strong>{" "}
+                                                        in the address bar
+                                                      </li>
+                                                      <li>
+                                                        Click{" "}
+                                                        <strong>
+                                                          Clear permissions
+                                                        </strong>{" "}
+                                                        or find Camera and set
+                                                        to{" "}
+                                                        <strong>
+                                                          Allow
+                                                        </strong>
+                                                      </li>
+                                                      <li>
+                                                        Click the{" "}
+                                                        <strong>
+                                                          Try Again
+                                                        </strong>{" "}
+                                                        button below
+                                                      </li>
+                                                    </ol>
+                                                  </div>
+                                                </div>
+                                              </div>
+                                            </div>
+                                          ) : !capturedImage ? (
+                                            <div className="relative w-full aspect-video bg-black rounded-lg overflow-hidden">
+                                              <video
+                                                ref={videoRef}
+                                                autoPlay
+                                                playsInline
+                                                muted
+                                                className="w-full h-full object-cover"
+                                              />
+                                            </div>
+                                          ) : (
+                                            <div className="relative w-full aspect-video bg-black rounded-lg overflow-hidden">
+                                              <img
+                                                src={capturedImage}
+                                                alt="Captured selfie"
+                                                className="w-full h-full object-cover"
+                                              />
+                                            </div>
+                                          )}
+                                        </div>
+                                        <DialogFooter>
+                                          {cameraPermissionDenied ? (
+                                            <>
+                                              <Button
+                                                type="button"
+                                                variant="outline"
+                                                onClick={handleStopCamera}
+                                              >
+                                                Cancel
+                                              </Button>
+                                              <Button
+                                                type="button"
+                                                onClick={() =>
+                                                  attemptCameraAccess()
+                                                }
+                                                className="bg-blue-500 hover:bg-blue-600 flex items-center gap-2"
+                                              >
+                                                <RefreshCw className="h-4 w-4" />
+                                                Try Again
+                                              </Button>
+                                            </>
+                                          ) : !capturedImage ? (
+                                            <>
+                                              <Button
+                                                type="button"
+                                                variant="outline"
+                                                onClick={handleStopCamera}
+                                              >
+                                                Cancel
+                                              </Button>
+                                              <Button
+                                                type="button"
+                                                onClick={handleCaptureSelfie}
+                                                className="bg-blue-500 hover:bg-blue-600"
+                                              >
+                                                Capture Photo
+                                              </Button>
+                                            </>
+                                          ) : (
+                                            <>
+                                              <Button
+                                                type="button"
+                                                variant="outline"
+                                                onClick={handleRetakePhoto}
+                                              >
+                                                Retake
+                                              </Button>
+                                              <Button
+                                                type="button"
+                                                onClick={handleConfirmCapture}
+                                                className="bg-blue-500 hover:bg-blue-600"
+                                              >
+                                                Use This Photo
+                                              </Button>
+                                            </>
+                                          )}
+                                        </DialogFooter>
+                                      </DialogContent>
+                                    </Dialog>
 
                                 {/* Document Type Selection Dialog */}
                                 <Dialog
@@ -8651,6 +8815,7 @@ export function ClientRegistrationForm({
                                         <div className="flex items-center gap-2">
                                           <Label className={colors.textColor}>
                                             Identity Documents
+                                            {documentsOptional ? " (Optional)" : ""}
                                           </Label>
                                           {getSectionStatus(
                                             "identityDocuments"
@@ -9701,9 +9866,19 @@ export function ClientRegistrationForm({
                                 type="button"
                                 className="bg-blue-500 hover:bg-blue-600"
                                 onClick={async () => {
+                                  const selfieComplete = checkSelfieSection();
                                   const identityComplete =
                                     checkIdentityDocumentsSection();
                                   const docsComplete = checkOtherDocumentsSection();
+
+                                  if (!selfieComplete) {
+                                    error({
+                                      title: "Incomplete KYC",
+                                      description:
+                                        "Client selfie is required before proceeding.",
+                                    });
+                                    return;
+                                  }
 
                                   if (!identityComplete) {
                                     error({

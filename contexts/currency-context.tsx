@@ -28,6 +28,10 @@ export interface TenantLocale {
   phonePlaceholder: string;
   emailOptional?: boolean;
   mandatoryDatatables?: string[];
+  skipAffordabilityForCompanies?: boolean;
+  clientSelfieOptionalForCompanies?: boolean;
+  createLeadSignaturesOnContractOptional?: boolean;
+  documentsOptional?: boolean;
 }
 
 const DEFAULT_LOCALE: TenantLocale = {
@@ -163,6 +167,11 @@ export function CurrencyProvider({ children }: { children: ReactNode }) {
             phonePlaceholder: localeData.phonePlaceholder || DEFAULT_LOCALE.phonePlaceholder,
             emailOptional: !!localeData.emailOptional,
             mandatoryDatatables: Array.isArray(localeData.mandatoryDatatables) ? localeData.mandatoryDatatables : undefined,
+            skipAffordabilityForCompanies: !!localeData.skipAffordabilityForCompanies,
+            clientSelfieOptionalForCompanies: !!localeData.clientSelfieOptionalForCompanies,
+            createLeadSignaturesOnContractOptional:
+              !!localeData.createLeadSignaturesOnContractOptional,
+            documentsOptional: !!localeData.documentsOptional,
           });
         } catch {
           console.error("Error parsing tenant locale");
