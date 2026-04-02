@@ -414,6 +414,11 @@ export async function getLeadById(leadId: string) {
       where: { id: leadId },
       include: {
         familyMembers: true,
+        entityStakeholders: {
+          orderBy: [{ role: "asc" }, { sortOrder: "asc" }],
+          include: { proofOfResidenceDocument: true },
+        },
+        entityBankAccounts: { orderBy: { sortOrder: "asc" } },
       },
     });
 

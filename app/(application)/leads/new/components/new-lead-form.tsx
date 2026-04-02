@@ -230,7 +230,10 @@ export function NewLeadForm() {
   // ALL HOOKS MUST BE CALLED FIRST, BEFORE ANY CONDITIONAL RETURNS
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { currencyCode, currencySymbol } = useCurrency();
+  const { currencyCode, currencySymbol, locale: tenantLocale } = useCurrency();
+  const skipAffordabilityForCompanies =
+    !!tenantLocale.skipAffordabilityForCompanies;
+  const [hideAffordability, setHideAffordability] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [affordabilityResult, setAffordabilityResult] =
     useState<AffordabilityResult | null>(null);
@@ -245,7 +248,13 @@ export function NewLeadForm() {
     schedule: false,
     contracts: false,
   });
-  const [currentLeadId, setCurrentLeadId] = useState<string | null>(null);
+  const [affordabilityAutoSkipped, setAffordabilityAutoSkipped] =
+    useState(false);
+  const [currentLeadId, setCurrentLeadId] = useState<string | null>(() => {
+    const fromUrl =
+      searchParams?.get("id") || searchParams?.get("leadId");
+    return fromUrl || null;
+  });
   const [clientCreatedInFineract, setClientCreatedInFineract] = useState(false);
   const [fineractClientId, setFineractClientId] = useState<number | null>(null);
   const [loanProductId, setLoanProductId] = useState<number | null>(null);
@@ -280,6 +289,7 @@ export function NewLeadForm() {
       schedule: false,
       contracts: false,
     });
+    setAffordabilityAutoSkipped(false);
     setActiveTab("client");
 
     form.reset();
@@ -337,28 +347,30 @@ export function NewLeadForm() {
           console.error("Error loading lead data:", error);
         }
 
-        // Check if affordability data exists for this lead
-        try {
-          const response = await fetch(`/api/leads/${leadId}/affordability`);
-          if (response.ok) {
-            const result = await response.json();
-            if (result.success && result.data) {
-              // Check if affordability data has been filled
-              const hasAffordabilityData =
-                result.data.netMonthlyIncome > 0 ||
-                result.data.grossMonthlyIncome > 0;
+        if (!hideAffordability) {
+          // Check if affordability data exists for this lead
+          try {
+            const response = await fetch(`/api/leads/${leadId}/affordability`);
+            if (response.ok) {
+              const result = await response.json();
+              if (result.success && result.data) {
+                // Check if affordability data has been filled
+                const hasAffordabilityData =
+                  result.data.netMonthlyIncome > 0 ||
+                  result.data.grossMonthlyIncome > 0;
 
-              if (hasAffordabilityData) {
-                console.log("Affordability data found, marking as complete");
-                setFormCompletionStatus((prev) => ({
-                  ...prev,
-                  affordability: true,
-                }));
+                if (hasAffordabilityData) {
+                  console.log("Affordability data found, marking as complete");
+                  setFormCompletionStatus((prev) => ({
+                    ...prev,
+                    affordability: true,
+                  }));
+                }
               }
             }
+          } catch (error) {
+            console.error("Error checking affordability data:", error);
           }
-        } catch (error) {
-          console.error("Error checking affordability data:", error);
         }
 
         // Check if loan details exist for this lead
@@ -596,7 +608,23 @@ export function NewLeadForm() {
     };
 
     loadLeadData();
-  }, [searchParams]);
+  }, [searchParams, hideAffordability]);
+
+  useEffect(() => {
+    if (hideAffordability) {
+      setFormCompletionStatus((prev) => ({ ...prev, affordability: true }));
+      setAffordabilityAutoSkipped(true);
+      if (activeTab === "affordability") {
+        setActiveTab("loan");
+      }
+      return;
+    }
+
+    if (affordabilityAutoSkipped) {
+      setFormCompletionStatus((prev) => ({ ...prev, affordability: false }));
+      setAffordabilityAutoSkipped(false);
+    }
+  }, [hideAffordability, activeTab, affordabilityAutoSkipped]);
 
   // Debug state changes
   useEffect(() => {
@@ -716,6 +744,25 @@ export function NewLeadForm() {
       notes: "",
     },
   });
+
+  useEffect(() => {
+    const updateAffordabilityVisibility = (legalFormId: unknown) => {
+      const isEntityLead = String(legalFormId || "") === "2";
+      setHideAffordability(skipAffordabilityForCompanies && isEntityLead);
+    };
+
+    // Initialize from current form state
+    updateAffordabilityVisibility(form.getValues("legalFormId"));
+
+    // Keep in sync as legal form changes
+    const subscription = form.watch((values, { name }) => {
+      if (!name || name === "legalFormId") {
+        updateAffordabilityVisibility(values.legalFormId);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, [form, skipAffordabilityForCompanies]);
 
   // Handle template loading error
   if (templateError) {
@@ -970,10 +1017,10 @@ export function NewLeadForm() {
         title: "Success",
         description:
           operation === "updateClient"
-            ? `Client updated successfully! Fineract Account: ${
+            ? `Client updated successfully! Account: ${
                 result.fineractAccountNo || "N/A"
               }`
-            : `Lead and client created successfully! Fineract Account: ${
+            : `Lead and client created successfully! Account: ${
                 result.fineractAccountNo || "N/A"
               }`,
       });
@@ -1059,14 +1106,9 @@ export function NewLeadForm() {
 
   // Check if next button should be disabled
   const isNextButtonDisabled = (currentTab: string) => {
-    const tabOrder = [
-      "client",
-      "affordability",
-      "loan",
-      "terms",
-      "schedule",
-      "contracts",
-    ];
+    const tabOrder = hideAffordability
+      ? ["client", "loan", "terms", "schedule", "contracts"]
+      : ["client", "affordability", "loan", "terms", "schedule", "contracts"];
     const currentIndex = tabOrder.indexOf(currentTab);
 
     // Disable if any previous tab is not completed
@@ -1157,7 +1199,13 @@ export function NewLeadForm() {
             onValueChange={setActiveTab}
             className="space-y-4"
           >
-            <TabsList className="w-full grid grid-cols-7 gap-0 lg:grid lg:grid-cols-7 lg:gap-0">
+            <TabsList
+              className={`w-full grid gap-0 lg:grid lg:gap-0 ${
+                hideAffordability
+                  ? "grid-cols-5 lg:grid-cols-5"
+                  : "grid-cols-6 lg:grid-cols-6"
+              }`}
+            >
               <TabsTrigger
                 value="client"
                 className={`data-[state=active]:bg-blue-500 flex-1 justify-center ${
@@ -1175,25 +1223,27 @@ export function NewLeadForm() {
                   </Badge>
                 )}
               </TabsTrigger>
-              <TabsTrigger
-                value="affordability"
-                className={`data-[state=active]:bg-blue-500 flex-1 justify-center ${
-                  formCompletionStatus.affordability
-                    ? "bg-green-100 text-green-700"
-                    : ""
-                }`}
-                title="Affordability"
-              >
-                <Calculator className="h-4 w-4" />
-                <span className="hidden sm:inline ml-1 lg:ml-2">
-                  Affordability
-                </span>
-                {formCompletionStatus.affordability && (
-                  <Badge className="ml-1 bg-green-500 text-white text-xs">
-                    ✓
-                  </Badge>
-                )}
-              </TabsTrigger>
+              {!hideAffordability && (
+                <TabsTrigger
+                  value="affordability"
+                  className={`data-[state=active]:bg-blue-500 flex-1 justify-center ${
+                    formCompletionStatus.affordability
+                      ? "bg-green-100 text-green-700"
+                      : ""
+                  }`}
+                  title="Affordability"
+                >
+                  <Calculator className="h-4 w-4" />
+                  <span className="hidden sm:inline ml-1 lg:ml-2">
+                    Affordability
+                  </span>
+                  {formCompletionStatus.affordability && (
+                    <Badge className="ml-1 bg-green-500 text-white text-xs">
+                      ✓
+                    </Badge>
+                  )}
+                </TabsTrigger>
+              )}
               <TabsTrigger
                 value="loan"
                 className={`data-[state=active]:bg-blue-500 flex-1 justify-center ${
@@ -1316,14 +1366,19 @@ export function NewLeadForm() {
                       disabled={
                         !clientCreatedInFineract || !allClientSectionsComplete
                       }
-                      onClick={() => setActiveTab("affordability")}
+                      onClick={() =>
+                        setActiveTab(hideAffordability ? "loan" : "affordability")
+                      }
                     >
                       {!clientCreatedInFineract ? (
                         "Complete Client Registration First"
                       ) : !allClientSectionsComplete ? (
                         "Complete All Client Tabs"
                       ) : (
-                        <>✓ All Tabs Complete - Next: Affordability</>
+                        <>
+                          ✓ All Tabs Complete - Next:{" "}
+                          {hideAffordability ? "Loan Details" : "Affordability"}
+                        </>
                       )}
                     </Button>
                   </div>
@@ -1332,35 +1387,37 @@ export function NewLeadForm() {
             </TabsContent>
 
             {/* Affordability Tab */}
-            <TabsContent value="affordability" className="mt-0">
-              <Card className="px-2 py-2 lg:px-6 lg:py-6">
-                <CardHeader className="px-2 lg:px-6">
-                  <CardTitle>Affordability Assessment</CardTitle>
-                  <CardDescription>
-                    Capture loan request and affordability details for the
-                    client
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="px-2 lg:px-6">
-                  <SimplifiedAffordabilityForm
-                    leadId={currentLeadId || undefined}
-                    onComplete={() => {
-                      setFormCompletionStatus((prev) => ({
-                        ...prev,
-                        affordability: true,
-                      }));
-                      toast({
-                        title: "Success",
-                        description:
-                          "Affordability assessment completed. You can now proceed to loan details.",
-                      });
-                      setActiveTab("loan");
-                    }}
-                    onBack={() => setActiveTab("client")}
-                  />
-                </CardContent>
-              </Card>
-            </TabsContent>
+            {!hideAffordability && (
+              <TabsContent value="affordability" className="mt-0">
+                <Card className="px-2 py-2 lg:px-6 lg:py-6">
+                  <CardHeader className="px-2 lg:px-6">
+                    <CardTitle>Affordability Assessment</CardTitle>
+                    <CardDescription>
+                      Capture loan request and affordability details for the
+                      client
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="px-2 lg:px-6">
+                    <SimplifiedAffordabilityForm
+                      leadId={currentLeadId || undefined}
+                      onComplete={() => {
+                        setFormCompletionStatus((prev) => ({
+                          ...prev,
+                          affordability: true,
+                        }));
+                        toast({
+                          title: "Success",
+                          description:
+                            "Affordability assessment completed. You can now proceed to loan details.",
+                        });
+                        setActiveTab("loan");
+                      }}
+                      onBack={() => setActiveTab("client")}
+                    />
+                  </CardContent>
+                </Card>
+              </TabsContent>
+            )}
 
             {/* Loan Details Tab */}
             <TabsContent value="loan" className="mt-0">
@@ -1374,7 +1431,9 @@ export function NewLeadForm() {
                         console.log("Loan details submitted:", data);
                         // Handle loan details submission
                       }}
-                      onBack={() => setActiveTab("affordability")}
+                      onBack={() =>
+                        setActiveTab(hideAffordability ? "client" : "affordability")
+                      }
                       onNext={(templateData) => {
                         console.log(
                           "Received template data in main form:",
