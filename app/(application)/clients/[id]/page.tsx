@@ -1,5 +1,11 @@
 import { notFound } from "next/navigation";
-import { CreditCard, Receipt, FileSpreadsheet, Database } from "lucide-react";
+import {
+  Building2,
+  CreditCard,
+  Database,
+  FileSpreadsheet,
+  Receipt,
+} from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getSession } from "@/lib/auth";
 import { getFineractTenantId } from "@/lib/fineract-tenant-service";
@@ -10,6 +16,7 @@ import { ClientTransactions } from "./components/client-transactions";
 import { ClientDocuments } from "./components/client-documents";
 import { ClientAdditionalInfo } from "./components/client-additional-info";
 import { ClientHeader } from "./components/client-header";
+import { ClientEntityKyc } from "./components/client-entity-kyc";
 
 const FINERACT_BASE_URL =
   process.env.FINERACT_BASE_URL || "http://10.10.0.143:8443";
@@ -19,6 +26,33 @@ interface PageProps {
     id: string;
   }>;
 }
+
+type ImagePayload = {
+  imageData?: string;
+  base64EncodedImage?: string;
+};
+
+type DatatableDescriptor = {
+  registeredTableName: string;
+};
+
+type ClientDatatableData = Record<string, unknown>;
+
+type ClientDocumentSummary = {
+  id: number | string;
+  parentEntityType?: string;
+  parentEntityId?: number | string;
+  name?: string;
+  fileName?: string;
+  createdDate?: string;
+  type?: string;
+};
+
+type PagedResponse<T> = {
+  pageItems?: T[];
+  content?: T[];
+  documents?: T[];
+};
 
 /**
  * Fetch client data from Fineract
@@ -94,7 +128,7 @@ async function getClientImage(clientId: number): Promise<string | null> {
     }
 
     const contentType = response.headers.get("content-type");
-    let imageData: any;
+    let imageData: string | ImagePayload;
 
     if (contentType?.includes("application/json")) {
       imageData = await response.json();
@@ -184,9 +218,9 @@ async function getDatatables() {
  */
 async function getDatatableData(
   clientId: number,
-  datatables: any[]
-): Promise<Record<string, any>> {
-  const datatableData: Record<string, any> = {};
+  datatables: DatatableDescriptor[]
+): Promise<ClientDatatableData> {
+  const datatableData: ClientDatatableData = {};
 
   if (!datatables || datatables.length === 0) {
     return datatableData;
@@ -205,7 +239,7 @@ async function getDatatableData(
 
     // Fetch data for each datatable
     await Promise.all(
-      datatables.map(async (dt: any) => {
+      datatables.map(async (dt) => {
         try {
           const response = await fetch(
             `${FINERACT_BASE_URL}/fineract-provider/api/v1/datatables/${encodeURIComponent(
@@ -241,6 +275,87 @@ async function getDatatableData(
   return datatableData;
 }
 
+/**
+ * Fetch client documents from Fineract for file-name lookups in Entity KYC.
+ */
+async function getClientDocuments(
+  clientId: number
+): Promise<ClientDocumentSummary[]> {
+  try {
+    const session = await getSession();
+    const accessToken =
+      session?.base64EncodedAuthenticationKey || session?.accessToken;
+
+    if (!accessToken) {
+      return [];
+    }
+
+    const fineractTenantId = await getFineractTenantId();
+
+    const headers = {
+      Authorization: `Basic ${accessToken}`,
+      "Fineract-Platform-TenantId": fineractTenantId,
+      Accept: "application/json",
+    };
+
+    const tryFetch = async (
+      url: string
+    ): Promise<ClientDocumentSummary[] | PagedResponse<ClientDocumentSummary> | null> => {
+      const response = await fetch(url, {
+        method: "GET",
+        headers,
+        cache: "no-store",
+      });
+      if (!response.ok) return null;
+      return response.json();
+    };
+
+    const first = await tryFetch(
+      `${FINERACT_BASE_URL}/fineract-provider/api/v1/documents?entityType=clients&entityId=${clientId}&offset=0&limit=200`
+    );
+    if (first) {
+      if (Array.isArray(first)) return first;
+      if (Array.isArray(first.pageItems)) return first.pageItems;
+      if (Array.isArray(first.content)) return first.content;
+      if (Array.isArray(first.documents)) return first.documents;
+    }
+
+    const second = await tryFetch(
+      `${FINERACT_BASE_URL}/fineract-provider/api/v1/clients/${clientId}/documents?offset=0&limit=200`
+    );
+    if (second) {
+      if (Array.isArray(second)) return second;
+      if (Array.isArray(second.pageItems)) return second.pageItems;
+      if (Array.isArray(second.content)) return second.content;
+      if (Array.isArray(second.documents)) return second.documents;
+    }
+
+    const fallback = await tryFetch(
+      `${FINERACT_BASE_URL}/fineract-provider/api/v1/documents?offset=0&limit=500`
+    );
+    if (!fallback) return [];
+
+    const docs = Array.isArray(fallback)
+      ? fallback
+      : Array.isArray(fallback.pageItems)
+      ? fallback.pageItems
+      : Array.isArray(fallback.content)
+      ? fallback.content
+      : Array.isArray(fallback.documents)
+      ? fallback.documents
+      : [];
+
+    return docs.filter(
+      (doc) =>
+        String(doc.parentEntityType || "").toLowerCase() === "clients" &&
+        Number(doc.parentEntityId) === clientId
+    );
+  } catch (error) {
+    console.error("Error fetching client documents for entity KYC:", error);
+    return [];
+  }
+}
+
 export default async function ClientDetailPage({ params }: PageProps) {
   const { id } = await params;
   const clientId = Number.parseInt(id);
@@ -259,20 +374,29 @@ export default async function ClientDetailPage({ params }: PageProps) {
   // Fetch datatable data after we have the datatables list
   const datatableData = await getDatatableData(clientId, datatables || []);
 
-  const entityLead =
-    client?.legalForm?.id === 2
-      ? await prisma.lead.findFirst({
-          where: { fineractClientId: clientId, legalFormId: 2 },
-          orderBy: { updatedAt: "desc" },
-          include: {
-            entityStakeholders: {
-              orderBy: [{ role: "asc" }, { sortOrder: "asc" }],
-              include: { proofOfResidenceDocument: true },
-            },
-            entityBankAccounts: { orderBy: { sortOrder: "asc" } },
+  const isEntityClient =
+    client?.legalForm?.id === 2 ||
+    client?.legalForm?.value?.trim().toLowerCase() === "entity";
+
+  let entityLead = null;
+  let clientDocuments: ClientDocumentSummary[] = [];
+
+  if (isEntityClient) {
+    [entityLead, clientDocuments] = await Promise.all([
+      prisma.lead.findFirst({
+        where: { fineractClientId: clientId, legalFormId: 2 },
+        orderBy: { updatedAt: "desc" },
+        include: {
+          entityStakeholders: {
+            orderBy: [{ role: "asc" }, { sortOrder: "asc" }],
+            include: { proofOfResidenceDocument: true },
           },
-        })
-      : null;
+          entityBankAccounts: { orderBy: { sortOrder: "asc" } },
+        },
+      }),
+      getClientDocuments(clientId),
+    ]);
+  }
 
   return (
     <div className="space-y-6">
@@ -285,11 +409,8 @@ export default async function ClientDetailPage({ params }: PageProps) {
 
       {/* Client Overview Cards */}
       <ClientDetails
-        clientId={clientId}
         client={client}
         clientImage={clientImage}
-        entityStakeholders={entityLead?.entityStakeholders ?? []}
-        entityBankAccounts={entityLead?.entityBankAccounts ?? []}
       />
 
       {/* Detailed Information Tabs */}
@@ -323,6 +444,15 @@ export default async function ClientDetailPage({ params }: PageProps) {
             <Database className="h-4 w-4" />
             <span className="hidden sm:inline">Additional Info</span>
           </TabsTrigger>
+          {isEntityClient && (
+            <TabsTrigger
+              value="entity-kyc"
+              className="flex items-center gap-2 px-2 md:px-3"
+            >
+              <Building2 className="h-4 w-4" />
+              <span className="hidden sm:inline">Entity KYC</span>
+            </TabsTrigger>
+          )}
         </TabsList>
 
         <TabsContent value="loans" className="space-y-4">
@@ -345,6 +475,17 @@ export default async function ClientDetailPage({ params }: PageProps) {
             datatableData={datatableData}
           />
         </TabsContent>
+
+        {isEntityClient && (
+          <TabsContent value="entity-kyc" className="space-y-4">
+            <ClientEntityKyc
+              clientId={clientId}
+              stakeholders={entityLead?.entityStakeholders ?? []}
+              bankAccounts={entityLead?.entityBankAccounts ?? []}
+              clientDocuments={clientDocuments ?? []}
+            />
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   );
