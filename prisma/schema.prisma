@@ -353,6 +353,7 @@ model EntityStakeholder {
   role                             EntityStakeholderRole
   fullName                         String
   nationalIdOrPassport             String
+  nationalIdFineractDocumentId     String?
   residentialAddress               String                 @db.Text
   proofOfResidenceLeadDocumentId   String?
   fineractDocumentId               String?

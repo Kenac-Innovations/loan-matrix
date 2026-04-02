@@ -835,7 +835,13 @@ export function NewLeadForm() {
   }
 
   // Handle form submission
-  const onSubmit = async (data: LeadFormValues) => {
+  const onSubmit = async (
+    data: LeadFormValues,
+    entityData?: {
+      entityStakeholders: any[];
+      entityBankAccounts: any[];
+    },
+  ) => {
     setIsSubmitting(true);
 
     try {
@@ -906,6 +912,8 @@ export function NewLeadForm() {
         // Add affordability data
         affordabilityResult,
         selectedOffer,
+        entityStakeholdersDraft: entityData?.entityStakeholders || [],
+        entityBankAccountsDraft: entityData?.entityBankAccounts || [],
       };
 
       // If updating client, add the Fineract client ID and existing lead ID

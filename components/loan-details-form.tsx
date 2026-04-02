@@ -1237,9 +1237,9 @@ export function LoanDetailsForm({
               Enter the loan application details and requirements
             </CardDescription>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="w-full">
             {/* Left Column */}
-            <div className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Product Name */}
               <div className="space-y-2">
                 <Label htmlFor="productName" className="text-sm font-medium">

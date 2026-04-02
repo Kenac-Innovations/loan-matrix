@@ -119,6 +119,13 @@ function repaymentFrequencyIdForTermFrequencySelection(
   return undefined;
 }
 
+function isMonthlyPeriodOption(option?: PeriodTypeOption): boolean {
+  if (!option) return false;
+  const code = (option.code || "").toLowerCase();
+  const value = (option.value || "").toLowerCase();
+  return code.includes("month") || value.includes("month");
+}
+
 // Form validation schema for loan terms
 const loanTermsSchema = z.object({
   // Principal
@@ -1380,6 +1387,62 @@ export function LoanTermsForm({
     }
   };
 
+  const watchedTermFrequency = form.watch("termFrequency");
+  const watchedRepaymentFrequency = form.watch("repaymentFrequency");
+
+  const isMonthlyRepaymentFrequency = useMemo(() => {
+    const selectedRepaymentOption =
+      loanTemplate?.repaymentFrequencyTypeOptions?.find(
+        (option) => option.id.toString() === watchedRepaymentFrequency
+      );
+    return isMonthlyPeriodOption(selectedRepaymentOption);
+  }, [loanTemplate, watchedRepaymentFrequency]);
+
+  // Keep Repaid Every frequency synchronized with Term Options frequency.
+  useEffect(() => {
+    if (!watchedTermFrequency || !loanTemplate) return;
+
+    const syncedRepaymentFrequencyId =
+      repaymentFrequencyIdForTermFrequencySelection(
+        watchedTermFrequency,
+        loanTemplate.termFrequencyTypeOptions,
+        loanTemplate.repaymentFrequencyTypeOptions
+      );
+
+    if (!syncedRepaymentFrequencyId) return;
+    if (watchedRepaymentFrequency === syncedRepaymentFrequencyId) return;
+
+    form.setValue("repaymentFrequency", syncedRepaymentFrequencyId, {
+      shouldValidate: true,
+      shouldDirty: true,
+    });
+    updateFrequencyValues({ repaymentFrequency: syncedRepaymentFrequencyId });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [watchedTermFrequency, watchedRepaymentFrequency, loanTemplate]);
+
+  // Nth day / day of week options apply only to monthly repayment frequencies.
+  useEffect(() => {
+    if (isMonthlyRepaymentFrequency) return;
+
+    const currentNthDay = form.getValues("repaymentFrequencyNthDay");
+    const currentDayOfWeek = form.getValues("repaymentFrequencyDayOfWeek");
+
+    if (currentNthDay) {
+      form.setValue("repaymentFrequencyNthDay", "", {
+        shouldValidate: false,
+        shouldDirty: true,
+      });
+    }
+
+    if (currentDayOfWeek) {
+      form.setValue("repaymentFrequencyDayOfWeek", "", {
+        shouldValidate: false,
+        shouldDirty: true,
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isMonthlyRepaymentFrequency]);
+
   // Check section completion
   const watchedValues = form.watch();
   useEffect(() => {
@@ -1479,15 +1542,25 @@ export function LoanTermsForm({
         frequencyState.amortization ||
         data.amortization,
       repaymentStrategy:
-        templateDerivedValues.repaymentStrategy ||
-        refValues.repaymentStrategy ||
-        frequencyState.repaymentStrategy ||
-        data.repaymentStrategy,
+        canEditLoan
+          ? data.repaymentStrategy ||
+            refValues.repaymentStrategy ||
+            frequencyState.repaymentStrategy ||
+            templateDerivedValues.repaymentStrategy
+          : templateDerivedValues.repaymentStrategy ||
+            refValues.repaymentStrategy ||
+            frequencyState.repaymentStrategy ||
+            data.repaymentStrategy,
       interestCalculationPeriod:
-        templateDerivedValues.interestCalculationPeriod ||
-        refValues.interestCalculationPeriod ||
-        frequencyState.interestCalculationPeriod ||
-        data.interestCalculationPeriod,
+        canEditLoan
+          ? data.interestCalculationPeriod ||
+            refValues.interestCalculationPeriod ||
+            frequencyState.interestCalculationPeriod ||
+            templateDerivedValues.interestCalculationPeriod
+          : templateDerivedValues.interestCalculationPeriod ||
+            refValues.interestCalculationPeriod ||
+            frequencyState.interestCalculationPeriod ||
+            data.interestCalculationPeriod,
     };
     console.log("LoanTermsForm submitting:", submissionData);
     console.log("Template derived values used:", templateDerivedValues);
@@ -1645,10 +1718,12 @@ export function LoanTermsForm({
           <CardDescription>
             Principal, term options, repayments, and repayment frequency
           </CardDescription>
-          <p className="text-xs text-amber-600 dark:text-amber-400 mt-2 italic">
-            Note: Only Principal Amount and Charges can be edited. Other fields
-            are pre-configured from the loan product.
-          </p>
+          {!canEditLoan && (
+            <p className="text-xs text-amber-600 dark:text-amber-400 mt-2 italic">
+              Note: Only Principal Amount and Charges can be edited. Other
+              fields are pre-configured from the loan product.
+            </p>
+          )}
         </div>
 
         {/* Principal */}
@@ -2003,7 +2078,7 @@ export function LoanTermsForm({
                       templateDerivedValues.repaymentFrequency ||
                       ""
                     }
-                    disabled={!canEditLoan}
+                    disabled
                   >
                     <SelectTrigger
                       className={cn(
@@ -2035,87 +2110,91 @@ export function LoanTermsForm({
               )}
             </div>
 
-            <div className="space-y-2">
-              <Label
-                htmlFor="repaymentFrequencyNthDay"
-                className="text-sm font-medium"
-              >
-                Select On
-              </Label>
-              <Controller
-                control={form.control}
-                name="repaymentFrequencyNthDay"
-                render={({ field }) => (
-                  <Select
-                    onValueChange={field.onChange}
-                    value={field.value || ""}
-                    disabled={!canEditLoan}
-                  >
-                    <SelectTrigger
-                      className={cn(
-                        "h-10 w-full",
-                        !canEditLoan && "cursor-not-allowed opacity-70"
-                      )}
+            {isMonthlyRepaymentFrequency && (
+              <div className="space-y-2">
+                <Label
+                  htmlFor="repaymentFrequencyNthDay"
+                  className="text-sm font-medium"
+                >
+                  Select On
+                </Label>
+                <Controller
+                  control={form.control}
+                  name="repaymentFrequencyNthDay"
+                  render={({ field }) => (
+                    <Select
+                      onValueChange={field.onChange}
+                      value={field.value || ""}
+                      disabled={!canEditLoan}
                     >
-                      <SelectValue placeholder="Select On" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {loanTemplate.repaymentFrequencyNthDayTypeOptions?.map(
-                        (option) => (
-                          <SelectItem
-                            key={option.id}
-                            value={option.id.toString()}
-                          >
-                            {option.value}
-                          </SelectItem>
-                        )
-                      )}
-                    </SelectContent>
-                  </Select>
-                )}
-              />
-            </div>
+                      <SelectTrigger
+                        className={cn(
+                          "h-10 w-full",
+                          !canEditLoan && "cursor-not-allowed opacity-70"
+                        )}
+                      >
+                        <SelectValue placeholder="Select On" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {loanTemplate.repaymentFrequencyNthDayTypeOptions?.map(
+                          (option) => (
+                            <SelectItem
+                              key={option.id}
+                              value={option.id.toString()}
+                            >
+                              {option.value}
+                            </SelectItem>
+                          )
+                        )}
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+              </div>
+            )}
 
-            <div className="space-y-2">
-              <Label
-                htmlFor="repaymentFrequencyDayOfWeek"
-                className="text-sm font-medium"
-              >
-                Select Day
-              </Label>
-              <Controller
-                control={form.control}
-                name="repaymentFrequencyDayOfWeek"
-                render={({ field }) => (
-                  <Select
-                    onValueChange={field.onChange}
-                    value={field.value || ""}
-                    disabled={!canEditLoan}
-                  >
-                    <SelectTrigger
-                      className={cn(
-                        "h-10 w-full",
-                        !canEditLoan && "cursor-not-allowed opacity-70"
-                      )}
+            {isMonthlyRepaymentFrequency && (
+              <div className="space-y-2">
+                <Label
+                  htmlFor="repaymentFrequencyDayOfWeek"
+                  className="text-sm font-medium"
+                >
+                  Select Day
+                </Label>
+                <Controller
+                  control={form.control}
+                  name="repaymentFrequencyDayOfWeek"
+                  render={({ field }) => (
+                    <Select
+                      onValueChange={field.onChange}
+                      value={field.value || ""}
+                      disabled={!canEditLoan}
                     >
-                      <SelectValue placeholder="Select Day" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {loanTemplate.repaymentFrequencyDaysOfWeekTypeOptions?.map(
-                        (option) => (
-                          <SelectItem
-                            key={option.id}
-                            value={option.id.toString()}
-                          >
-                            {option.value}
-                          </SelectItem>
-                        )
-                      )}
-                    </SelectContent>
-                  </Select>
-                )}
-              />
-            </div>
+                      <SelectTrigger
+                        className={cn(
+                          "h-10 w-full",
+                          !canEditLoan && "cursor-not-allowed opacity-70"
+                        )}
+                      >
+                        <SelectValue placeholder="Select Day" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {loanTemplate.repaymentFrequencyDaysOfWeekTypeOptions?.map(
+                          (option) => (
+                            <SelectItem
+                              key={option.id}
+                              value={option.id.toString()}
+                            >
+                              {option.value}
+                            </SelectItem>
+                          )
+                        )}
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -2373,7 +2452,7 @@ export function LoanTermsForm({
                   loanTemplate.loanScheduleTypeOptions?.[0]?.value ||
                   "Cumulative"
                 }
-                disabled={!canEditLoan}
+                disabled
                 className="h-10 bg-muted"
               />
             </div>
@@ -2395,9 +2474,14 @@ export function LoanTermsForm({
                       updateFrequencyValues({ repaymentStrategy: val });
                     }}
                     value={
-                      templateDerivedValues.repaymentStrategy ||
-                      frequencyValuesRef.current.repaymentStrategy ||
-                      frequencyState.repaymentStrategy
+                      field.value ||
+                      (canEditLoan
+                        ? frequencyValuesRef.current.repaymentStrategy ||
+                          frequencyState.repaymentStrategy ||
+                          templateDerivedValues.repaymentStrategy
+                        : templateDerivedValues.repaymentStrategy ||
+                          frequencyValuesRef.current.repaymentStrategy ||
+                          frequencyState.repaymentStrategy)
                     }
                     disabled={!canEditLoan}
                   >
@@ -2494,9 +2578,14 @@ export function LoanTermsForm({
                       updateFrequencyValues({ interestCalculationPeriod: val });
                     }}
                     value={
-                      templateDerivedValues.interestCalculationPeriod ||
-                      frequencyValuesRef.current.interestCalculationPeriod ||
-                      frequencyState.interestCalculationPeriod
+                      field.value ||
+                      (canEditLoan
+                        ? frequencyValuesRef.current.interestCalculationPeriod ||
+                          frequencyState.interestCalculationPeriod ||
+                          templateDerivedValues.interestCalculationPeriod
+                        : templateDerivedValues.interestCalculationPeriod ||
+                          frequencyValuesRef.current.interestCalculationPeriod ||
+                          frequencyState.interestCalculationPeriod)
                     }
                     disabled={!canEditLoan}
                   >
@@ -2757,7 +2846,7 @@ export function LoanTermsForm({
               <Input
                 id="recalculateInterest"
                 value="No"
-                disabled={!canEditLoan}
+                disabled
                 className="h-10 bg-muted"
               />
             </div>
