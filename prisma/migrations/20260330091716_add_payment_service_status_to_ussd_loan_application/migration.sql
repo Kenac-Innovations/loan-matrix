@@ -1,0 +1,1 @@
+-- Migration intentionally empty. Columns were applied directly to the database before this migration was tracked.
