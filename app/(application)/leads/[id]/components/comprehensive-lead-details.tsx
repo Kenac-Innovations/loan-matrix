@@ -54,6 +54,7 @@ import { format } from "date-fns";
 import { useCurrency } from "@/contexts/currency-context";
 import { CreditBalanceRefundModal } from "./credit-balance-refund-modal";
 import { TransferFundsModal } from "./transfer-funds-modal";
+import { useFeatureFlags } from "@/hooks/use-feature-flags";
 
 interface ComprehensiveLeadDetailsProps {
   leadId: string;
@@ -63,6 +64,7 @@ export function ComprehensiveLeadDetails({
   leadId,
 }: ComprehensiveLeadDetailsProps) {
   const { currencyCode, currencySymbol } = useCurrency();
+  const { isEnabled } = useFeatureFlags();
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -440,7 +442,11 @@ export function ComprehensiveLeadDetails({
     );
   }
 
-  const { lead, loanInfo, fineractClient, fineractLoan, cdeResult } = data;
+  const { lead, loanInfo, fineractClient, fineractLoan, cdeResult, invoiceDiscounting } = data;
+  const invoiceDiscountingEnabled = isEnabled("hasInvoiceDiscounting");
+  const isInvoiceDiscountingLead = lead?.facilityType === "INVOICE_DISCOUNTING";
+  const showInvoiceDiscountingDetails =
+    invoiceDiscountingEnabled && isInvoiceDiscountingLead;
 
   // Get loan ID from multiple sources
   const loanId = lead?.fineractLoanId || fineractLoan?.id;
@@ -715,6 +721,163 @@ export function ComprehensiveLeadDetails({
         </TabsContent>
 
         <TabsContent value="loan" className="mt-4">
+          {showInvoiceDiscountingDetails && (
+            <Card className="mb-6">
+              <CardHeader>
+                <CardTitle>Invoice Discounting Details</CardTitle>
+                <CardDescription>
+                  Facility setup and debtor invoice summary captured during lead creation.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                  <div>
+                    <p className="text-sm text-muted-foreground">Facility Type</p>
+                    <p className="font-semibold">Invoice Discounting</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Debtor</p>
+                    <p className="font-semibold">{invoiceDiscounting?.debtorName || "N/A"}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Recourse</p>
+                    <p className="font-semibold">
+                      {invoiceDiscounting?.recourseType === "WITHOUT_RECOURSE"
+                        ? "Without Recourse"
+                        : "With Recourse"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Advance Rate</p>
+                    <p className="font-semibold">
+                      {invoiceDiscounting?.advanceRate != null
+                        ? `${invoiceDiscounting.advanceRate}%`
+                        : "N/A"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Concentration Limit</p>
+                    <p className="font-semibold">
+                      {invoiceDiscounting?.concentrationLimit != null
+                        ? `${invoiceDiscounting.concentrationLimit}%`
+                        : "N/A"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Debtor Terms</p>
+                    <p className="font-semibold">
+                      {invoiceDiscounting?.debtorTermsDays != null
+                        ? `${invoiceDiscounting.debtorTermsDays} days`
+                        : "N/A"}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-4 rounded-md border bg-muted/30 p-4 md:grid-cols-4">
+                  <div>
+                    <p className="text-xs text-muted-foreground">Presented</p>
+                    <p className="text-base font-semibold">
+                      {currencyCode}{" "}
+                      {(invoiceDiscounting?.totalPresentedAmount || 0).toLocaleString()}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Eligible</p>
+                    <p className="text-base font-semibold">
+                      {currencyCode}{" "}
+                      {(invoiceDiscounting?.totalEligibleAmount || 0).toLocaleString()}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Financed</p>
+                    <p className="text-base font-semibold">
+                      {currencyCode}{" "}
+                      {(invoiceDiscounting?.totalFinancedAmount || 0).toLocaleString()}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Reserve</p>
+                    <p className="text-base font-semibold">
+                      {currencyCode}{" "}
+                      {(invoiceDiscounting?.totalReserveAmount || 0).toLocaleString()}
+                    </p>
+                  </div>
+                </div>
+
+                {Array.isArray(invoiceDiscounting?.invoices) &&
+                invoiceDiscounting.invoices.length > 0 ? (
+                  <div className="space-y-3">
+                    <p className="text-sm font-medium">Invoices</p>
+                    <div className="overflow-x-auto rounded-md border">
+                      <table className="w-full text-sm">
+                        <thead className="bg-muted/50">
+                          <tr>
+                            <th className="px-3 py-2 text-left font-medium">Invoice #</th>
+                            <th className="px-3 py-2 text-left font-medium">Invoice Date</th>
+                            <th className="px-3 py-2 text-left font-medium">Due Date</th>
+                            <th className="px-3 py-2 text-left font-medium">File</th>
+                            <th className="px-3 py-2 text-left font-medium">Gross</th>
+                            <th className="px-3 py-2 text-left font-medium">Eligible</th>
+                            <th className="px-3 py-2 text-left font-medium">Financed</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {invoiceDiscounting.invoices.map((invoice: any) => (
+                            <tr key={invoice.id} className="border-t">
+                              <td className="px-3 py-2">{invoice.invoiceNumber}</td>
+                              <td className="px-3 py-2">
+                                {invoice.invoiceDate
+                                  ? format(new Date(invoice.invoiceDate), "PP")
+                                  : "N/A"}
+                              </td>
+                              <td className="px-3 py-2">
+                                {invoice.dueDate
+                                  ? format(new Date(invoice.dueDate), "PP")
+                                  : "N/A"}
+                              </td>
+                              <td className="px-3 py-2">
+                                {invoice.fineractDocumentId && lead?.fineractClientId ? (
+                                  <a
+                                    href={`/api/fineract/clients/${lead.fineractClientId}/documents/${invoice.fineractDocumentId}/attachment`}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="text-blue-600 hover:underline"
+                                  >
+                                    View file
+                                  </a>
+                                ) : (
+                                  "N/A"
+                                )}
+                              </td>
+                              <td className="px-3 py-2">
+                                {invoice.currencyCode || currencyCode}{" "}
+                                {(invoice.grossAmount || 0).toLocaleString()}
+                              </td>
+                              <td className="px-3 py-2">
+                                {invoice.currencyCode || currencyCode}{" "}
+                                {(invoice.eligibleAmount || 0).toLocaleString()}
+                              </td>
+                              <td className="px-3 py-2">
+                                {invoice.currencyCode || currencyCode}{" "}
+                                {(invoice.financedAmount || 0).toLocaleString()}
+                              </td>
+                              {/* Invoice status is intentionally hidden in UI for now.
+                                  Backend defaults invoice rows to APPROVED. */}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    No invoice rows were captured yet.
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
           {lead.fineractLoanId && !fineractLoan ? (
             <Card>
               <CardContent className="py-12">

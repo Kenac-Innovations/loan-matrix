@@ -11,7 +11,6 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { EntityStructureReadonly } from "@/components/entity-structure/entity-structure-readonly";
 
 interface FineractClient {
   id: number;
@@ -60,19 +59,13 @@ interface FineractClient {
 }
 
 interface ClientDetailsProps {
-  clientId: number;
   client: FineractClient | null;
   clientImage: string | null;
-  entityStakeholders?: any[];
-  entityBankAccounts?: any[];
 }
 
 export function ClientDetails({
-  clientId,
   client,
   clientImage,
-  entityStakeholders = [],
-  entityBankAccounts = [],
 }: ClientDetailsProps) {
   const getStatusBadge = (
     status: FineractClient["status"],
@@ -307,23 +300,6 @@ export function ClientDetails({
         </CardContent>
       </Card>
 
-      {client.legalForm?.id === 2 && (
-          <EntityStructureReadonly
-            stakeholders={entityStakeholders.map((s) => ({
-              ...s,
-              proofOfResidenceDocument: s.proofOfResidenceDocument
-                ? {
-                    id: s.proofOfResidenceDocument.id,
-                    name:
-                      s.proofOfResidenceDocument.name ||
-                      s.proofOfResidenceDocument.originalName ||
-                      "Document",
-                  }
-                : null,
-            }))}
-            bankAccounts={entityBankAccounts}
-          />
-        )}
     </div>
   );
 }

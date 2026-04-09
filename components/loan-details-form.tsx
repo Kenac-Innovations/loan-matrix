@@ -92,9 +92,12 @@ const calculateFirstRepaymentDate = (
   return targetDate;
 };
 
+type FacilityType = "TERM_LOAN" | "INVOICE_DISCOUNTING";
+
 // Form validation schema
 const loanDetailsSchema = z
   .object({
+    facilityType: z.enum(["TERM_LOAN", "INVOICE_DISCOUNTING"]),
     productName: z.string().min(1, "Product name is required"),
     externalId: z.string().optional(),
     loanPurpose: z.string().optional(),
@@ -264,7 +267,7 @@ interface LoanDetailsFormProps {
   leadId?: string;
   onSubmit: (data: LoanDetailsFormData) => void;
   onBack: () => void;
-  onNext: (templateData?: LoanTemplate) => void;
+  onNext: (templateData?: LoanTemplate, facilityType?: FacilityType) => void;
   onComplete?: () => void;
   sharedFirstRepaymentOn?: Date;
   onFirstRepaymentDateChange?: (date: Date) => void;
@@ -303,6 +306,7 @@ export function LoanDetailsForm({
     loanInfo: false,
     savingsLinkage: false,
   });
+  const [hasInvoiceDiscounting, setHasInvoiceDiscounting] = useState(false);
   const [firstRepaymentConfig, setFirstRepaymentConfig] =
     useState<FirstRepaymentDateConfig | null>(null);
   const [tenantConfigLoaded, setTenantConfigLoaded] = useState(false);
@@ -310,6 +314,7 @@ export function LoanDetailsForm({
   const form = useForm<LoanDetailsFormData>({
     resolver: zodResolver(loanDetailsSchema),
     defaultValues: {
+      facilityType: "TERM_LOAN",
       productName: "",
       externalId: "",
       submittedOn: new Date(),
@@ -328,6 +333,9 @@ export function LoanDetailsForm({
           const data = await res.json();
           const config = data.settings?.firstRepaymentDate ?? null;
           setFirstRepaymentConfig(config);
+          setHasInvoiceDiscounting(
+            data.settings?.features?.hasInvoiceDiscounting === true,
+          );
         }
       } catch (err) {
         console.error("Failed to fetch tenant settings:", err);
@@ -337,6 +345,12 @@ export function LoanDetailsForm({
     }
     fetchTenantSettings();
   }, []);
+
+  useEffect(() => {
+    if (!hasInvoiceDiscounting) {
+      form.setValue("facilityType", "TERM_LOAN");
+    }
+  }, [form, hasInvoiceDiscounting]);
 
   // Calculate and set the default firstRepaymentOn once tenant config is loaded
   useEffect(() => {
@@ -693,6 +707,14 @@ export function LoanDetailsForm({
             if (result.data.loanPurpose) {
               form.setValue("loanPurpose", result.data.loanPurpose);
             }
+            if (result.data.facilityType) {
+              form.setValue(
+                "facilityType",
+                result.data.facilityType === "INVOICE_DISCOUNTING"
+                  ? "INVOICE_DISCOUNTING"
+                  : "TERM_LOAN",
+              );
+            }
             if (result.data.loanOfficer) {
               form.setValue("loanOfficer", result.data.loanOfficer);
             }
@@ -1027,6 +1049,7 @@ export function LoanDetailsForm({
           "";
 
         const loanDetailsData = {
+          facilityType: data.facilityType,
           productName: data.productName,
           productId: productId,
           loanPurpose: data.loanPurpose || "",
@@ -1094,7 +1117,7 @@ export function LoanDetailsForm({
       productId: selectedProduct?.id,
     } as LoanTemplate;
 
-    onNext(templateWithProductId);
+    onNext(templateWithProductId, data.facilityType);
   };
 
   // Handle adding new loan purpose
@@ -1135,11 +1158,14 @@ export function LoanDetailsForm({
           loanPurposeOptions: [
             ...(prev.loanPurposeOptions || []),
             {
-              id: newPurpose.resourceId || newPurpose.id,
+              id: Number(newPurpose.resourceId || newPurpose.id),
               name: loanPurposeName,
-              position: newPurpose.position,
+              position:
+                Number(newPurpose.position) ||
+                (prev.loanPurposeOptions?.length || 0) + 1,
               description: loanPurposeDescription,
               active: true,
+              mandatory: false,
             },
           ],
         };
@@ -1237,9 +1263,39 @@ export function LoanDetailsForm({
               Enter the loan application details and requirements
             </CardDescription>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="w-full">
             {/* Left Column */}
-            <div className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {hasInvoiceDiscounting && (
+                <div className="space-y-2">
+                  <Label htmlFor="facilityType" className="text-sm font-medium">
+                    Facility Type <span className="text-red-500">*</span>
+                  </Label>
+                  <Controller
+                    control={form.control}
+                    name="facilityType"
+                    render={({ field }) => (
+                      <Select
+                        value={field.value}
+                        onValueChange={(value) =>
+                          field.onChange(value as FacilityType)
+                        }
+                      >
+                        <SelectTrigger id="facilityType" className="h-10">
+                          <SelectValue placeholder="Select facility type" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="TERM_LOAN">Term Loan</SelectItem>
+                          <SelectItem value="INVOICE_DISCOUNTING">
+                            Invoice Discounting
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    )}
+                  />
+                </div>
+              )}
+
               {/* Product Name */}
               <div className="space-y-2">
                 <Label htmlFor="productName" className="text-sm font-medium">
