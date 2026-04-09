@@ -34,9 +34,81 @@ model Tenant {
   requiredDocuments      RequiredDocument[]
   invoiceDiscountingCases InvoiceDiscountingCase[]
   invoiceDiscountingInvoices InvoiceDiscountingInvoice[]
+  chargeProducts         ChargeProduct[]
 
   @@index([slug])
   @@index([isActive])
+}
+
+enum ChargeProductType {
+  LOAN
+  SAVINGS
+  CLIENT
+  SHARES
+}
+
+enum ChargeProductTimeType {
+  DISBURSEMENT
+  SPECIFIED_DUE_DATE
+  SAVINGS_ACTIVATION
+  SAVINGS_CLOSURE
+  WITHDRAWAL_FEE
+  ANNUAL_FEE
+  MONTHLY_FEE
+  INSTALMENT_FEE
+  OVERDUE_INSTALLMENT
+  OVERDRAFT_FEE
+  WEEKLY_FEE
+  TRANCHE_DISBURSEMENT
+  SHAREACCOUNT_ACTIVATION
+  SHARE_PURCHASE
+  SHARE_REDEEM
+  SAVINGS_NOACTIVITY_FEE
+}
+
+enum ChargeProductCalculationType {
+  FLAT
+  PERCENT_OF_AMOUNT
+  PERCENT_OF_AMOUNT_AND_INTEREST
+  PERCENT_OF_INTEREST
+  PERCENT_OF_DISBURSEMENT_AMOUNT
+}
+
+enum ChargeProductPaymentMode {
+  REGULAR
+  ACCOUNT_TRANSFER
+}
+
+enum ChargeProductSyncStatus {
+  PENDING
+  SYNCED
+  FAILED
+}
+
+model ChargeProduct {
+  id                            String                       @id @default(cuid())
+  tenantId                      String
+  name                          String
+  amount                        Decimal                      @db.Decimal(18, 6)
+  currencyCode                  String
+  type                          ChargeProductType
+  chargeTimeType                ChargeProductTimeType
+  chargeCalculationType         ChargeProductCalculationType @default(FLAT)
+  chargePaymentMode             ChargeProductPaymentMode     @default(REGULAR)
+  active                        Boolean                      @default(true)
+  fineractChargeId              Int?
+  fineractChargeTimeType        ChargeProductTimeType?
+  fineractChargeCalculationType ChargeProductCalculationType?
+  fineractAmount                Decimal?                     @db.Decimal(18, 6)
+  syncStatus                    ChargeProductSyncStatus      @default(PENDING)
+  syncError                     String?
+  createdAt                     DateTime                     @default(now())
+  updatedAt                     DateTime                     @updatedAt
+  tenant                        Tenant                       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, syncStatus])
+  @@unique([tenantId, fineractChargeId])
 }
 
 model LoanContractTemplate {
@@ -1089,6 +1161,18 @@ model ReceiptRange {
   updatedAt  DateTime @updatedAt
 
   @@index([tenantId, isActive])
+}
+
+// Marks a Fineract loan product as an invoice discounting product.
+// Enforces 0% interest guardrails in the product creation UI.
+model InvoiceDiscountingProduct {
+  id                String   @id @default(cuid())
+  fineractProductId Int      @unique
+  productName       String
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([fineractProductId])
 }
 
 model UsedReceipt {
