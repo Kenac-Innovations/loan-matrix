@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -38,6 +38,7 @@ type StakeholderRow = {
   role: "DIRECTOR" | "SHAREHOLDER";
   fullName: string;
   nationalIdOrPassport: string;
+  nationalIdFineractDocumentId: string;
   residentialAddress: string;
   proofOfResidenceLeadDocumentId: string;
   fineractDocumentId: string;
@@ -64,6 +65,7 @@ function mapStakeholderToRow(s: any): StakeholderRow {
     role: s.role,
     fullName: s.fullName ?? "",
     nationalIdOrPassport: s.nationalIdOrPassport ?? "",
+    nationalIdFineractDocumentId: s.nationalIdFineractDocumentId ?? "",
     residentialAddress: s.residentialAddress ?? "",
     proofOfResidenceLeadDocumentId: s.proofOfResidenceLeadDocumentId ?? "",
     fineractDocumentId:
@@ -98,6 +100,7 @@ function emptyDirector(sort: number): StakeholderRow {
     role: "DIRECTOR",
     fullName: "",
     nationalIdOrPassport: "",
+    nationalIdFineractDocumentId: "",
     residentialAddress: "",
     proofOfResidenceLeadDocumentId: "",
     fineractDocumentId: "",
@@ -116,6 +119,7 @@ function emptyShareholder(sort: number): StakeholderRow {
     role: "SHAREHOLDER",
     fullName: "",
     nationalIdOrPassport: "",
+    nationalIdFineractDocumentId: "",
     residentialAddress: "",
     proofOfResidenceLeadDocumentId: "",
     fineractDocumentId: "",
@@ -157,8 +161,50 @@ function sanitizeDocNamePart(value: string): string {
   return cleaned || "STAKEHOLDER";
 }
 
-function buildProofOfResidenceDocumentName(fullName: string): string {
-  return `${sanitizeDocNamePart(fullName)}_PROOF_OF_RESIDENCE`;
+type StakeholderDocumentType = "NATIONAL_ID" | "PROOF_OF_RESIDENCE";
+
+function buildStakeholderDocumentName(
+  row: StakeholderRow,
+  documentType: StakeholderDocumentType
+): string {
+  const rolePrefix = row.role === "DIRECTOR" ? "DIRECTOR" : "SHAREHOLDER";
+  const subject = sanitizeDocNamePart(
+    row.fullName || row.nationalIdOrPassport || "STAKEHOLDER"
+  );
+  return `${rolePrefix}_${documentType}_${subject}`;
+}
+
+function buildStakeholderDocumentDescription(
+  row: StakeholderRow,
+  documentType: StakeholderDocumentType
+): string {
+  const roleLabel = row.role === "DIRECTOR" ? "Director" : "Shareholder";
+  const documentLabel =
+    documentType === "NATIONAL_ID"
+      ? "national ID/passport document"
+      : "proof of residence document";
+  const person = row.fullName?.trim();
+  const identity = row.nationalIdOrPassport?.trim();
+
+  return [
+    `${roleLabel} ${documentLabel} uploaded from entity KYC`,
+    person ? `Name: ${person}` : null,
+    identity ? `ID: ${identity}` : null,
+  ]
+    .filter(Boolean)
+    .join(" | ");
+}
+
+function stakeholderDraftKey(row: Pick<
+  StakeholderRow,
+  "role" | "sortOrder" | "fullName" | "nationalIdOrPassport"
+>): string {
+  return [
+    row.role,
+    String(row.sortOrder ?? 0),
+    row.fullName?.trim().toUpperCase() || "",
+    row.nationalIdOrPassport?.trim().toUpperCase() || "",
+  ].join("|");
 }
 
 function extractFineractDocumentId(payload: any): string | null {
@@ -190,14 +236,22 @@ export function EntityStructureEditor({
   initialStakeholders,
   initialBankAccounts,
   onRefresh,
+  persistMode = "immediate",
+  onDraftChange,
 }: {
   leadId: string | null;
   fineractClientId?: number | null;
   initialStakeholders: any[];
   initialBankAccounts: any[];
   onRefresh: () => Promise<void>;
+  persistMode?: "immediate" | "deferred";
+  onDraftChange?: (payload: {
+    stakeholders: any[];
+    bankAccounts: any[];
+  }) => void;
 }) {
   const { toast } = useToast();
+  const isDeferredMode = persistMode === "deferred";
   const [pepOptions, setPepOptions] = useState<CodeOpt[]>([]);
   const [controlOptions, setControlOptions] = useState<CodeOpt[]>([]);
   const [savingId, setSavingId] = useState<string | null>(null);
@@ -206,6 +260,7 @@ export function EntityStructureEditor({
     kind: "dir" | "sh";
     draft: StakeholderRow;
     pendingProofFile: File | null;
+    pendingNationalIdFile: File | null;
   }>(null);
   const [bankModal, setBankModal] = useState<null | {
     draft: BankRow;
@@ -215,6 +270,11 @@ export function EntityStructureEditor({
   const [directors, setDirectors] = useState<StakeholderRow[]>([]);
   const [shareholders, setShareholders] = useState<StakeholderRow[]>([]);
   const [banks, setBanks] = useState<BankRow[]>([]);
+  const [pendingNationalIdFilesByKey, setPendingNationalIdFilesByKey] =
+    useState<Record<string, File>>({});
+  const [isSyncingDeferredNationalIds, setIsSyncingDeferredNationalIds] =
+    useState(false);
+  const isSyncingDeferredNationalIdsRef = useRef(false);
 
   const loadCodes = useCallback(async () => {
     try {
@@ -261,6 +321,21 @@ export function EntityStructureEditor({
     );
   }, [initialStakeholders, initialBankAccounts]);
 
+  const emitDraftChange = useCallback(
+    (
+      nextDirectors: StakeholderRow[],
+      nextShareholders: StakeholderRow[],
+      nextBanks: BankRow[]
+    ) => {
+      if (!onDraftChange) return;
+      onDraftChange({
+        stakeholders: [...nextDirectors, ...nextShareholders],
+        bankAccounts: nextBanks,
+      });
+    },
+    [onDraftChange]
+  );
+
   const uploadProofToFineract = useCallback(
     async (row: StakeholderRow, file: File): Promise<string> => {
       if (!fineractClientId) {
@@ -268,8 +343,11 @@ export function EntityStructureEditor({
       }
 
       const formData = new FormData();
-      formData.append("name", buildProofOfResidenceDocumentName(row.fullName));
-      formData.append("description", "Proof of residence");
+      formData.append("name", buildStakeholderDocumentName(row, "PROOF_OF_RESIDENCE"));
+      formData.append(
+        "description",
+        buildStakeholderDocumentDescription(row, "PROOF_OF_RESIDENCE")
+      );
       formData.append("file", file);
 
       const res = await fetch(`/api/fineract/clients/${fineractClientId}/documents`, {
@@ -291,11 +369,95 @@ export function EntityStructureEditor({
     [fineractClientId]
   );
 
+  const uploadNationalIdToFineract = useCallback(
+    async (row: StakeholderRow, file: File): Promise<string> => {
+      if (!fineractClientId) {
+        throw new Error("Fineract client ID is required to upload national ID.");
+      }
+
+      const formData = new FormData();
+      formData.append("name", buildStakeholderDocumentName(row, "NATIONAL_ID"));
+      formData.append(
+        "description",
+        buildStakeholderDocumentDescription(row, "NATIONAL_ID")
+      );
+      formData.append("file", file);
+
+      const res = await fetch(`/api/fineract/clients/${fineractClientId}/documents`, {
+        method: "POST",
+        body: formData,
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(
+          typeof json?.error === "string"
+            ? json.error
+            : "Failed to upload national ID to Fineract"
+        );
+      }
+      const documentId = extractFineractDocumentId(json);
+      if (!documentId) {
+        throw new Error(
+          "National ID upload succeeded but no document ID was returned."
+        );
+      }
+      return documentId;
+    },
+    [fineractClientId]
+  );
+
   const saveStakeholder = async (
     row: StakeholderRow,
     list: "dir" | "sh",
-    pendingProofFile: File | null
+    pendingProofFile: File | null,
+    pendingNationalIdFile: File | null
   ): Promise<boolean> => {
+    if (isDeferredMode) {
+      const key = stakeholderDraftKey(row);
+      const hasQueuedNationalId = Boolean(pendingNationalIdFilesByKey[key]);
+      if (
+        !pendingNationalIdFile &&
+        !row.nationalIdFineractDocumentId?.trim() &&
+        !hasQueuedNationalId
+      ) {
+        toast({
+          variant: "destructive",
+          title: "National ID required",
+          description:
+            "Select a national ID file before saving this stakeholder.",
+        });
+        return false;
+      }
+
+      const draftId = row.id || `draft-${Math.random().toString(36).slice(2, 11)}`;
+      const normalizedRow = { ...row, id: draftId };
+      if (pendingNationalIdFile) {
+        const normalizedKey = stakeholderDraftKey(normalizedRow);
+        setPendingNationalIdFilesByKey((prev) => ({
+          ...prev,
+          [normalizedKey]: pendingNationalIdFile,
+        }));
+      }
+      if (list === "dir") {
+        const existingIdx = directors.findIndex((x) => x.id === normalizedRow.id);
+        const nextDirectors =
+          existingIdx >= 0
+            ? directors.map((x, idx) => (idx === existingIdx ? normalizedRow : x))
+            : [...directors, normalizedRow];
+        setDirectors(nextDirectors);
+        emitDraftChange(nextDirectors, shareholders, banks);
+      } else {
+        const existingIdx = shareholders.findIndex((x) => x.id === normalizedRow.id);
+        const nextShareholders =
+          existingIdx >= 0
+            ? shareholders.map((x, idx) => (idx === existingIdx ? normalizedRow : x))
+            : [...shareholders, normalizedRow];
+        setShareholders(nextShareholders);
+        emitDraftChange(directors, nextShareholders, banks);
+      }
+      return true;
+    }
+
     if (!leadId && !fineractClientId) {
       toast({
         variant: "destructive",
@@ -330,6 +492,24 @@ export function EntityStructureEditor({
         fineractDocumentId = await uploadProofToFineract(row, pendingProofFile);
       }
 
+      let nationalIdFineractDocumentId =
+        row.nationalIdFineractDocumentId?.trim() || null;
+      if (pendingNationalIdFile && fineractClientId) {
+        nationalIdFineractDocumentId = await uploadNationalIdToFineract(
+          row,
+          pendingNationalIdFile
+        );
+      }
+      if (!nationalIdFineractDocumentId) {
+        toast({
+          variant: "destructive",
+          title: "National ID required",
+          description:
+            "Select a national ID file before saving this stakeholder.",
+        });
+        return false;
+      }
+
       await postOperation({
         operation: "upsertEntityStakeholder",
         ...(leadId ? { leadId } : {}),
@@ -340,6 +520,7 @@ export function EntityStructureEditor({
           fullName: row.fullName,
           nationalIdOrPassport: row.nationalIdOrPassport,
           residentialAddress: row.residentialAddress,
+          nationalIdFineractDocumentId,
           fineractDocumentId,
           proofOfResidenceLeadDocumentId:
             row.proofOfResidenceLeadDocumentId || null,
@@ -372,6 +553,25 @@ export function EntityStructureEditor({
   };
 
   const removeStakeholder = async (row: StakeholderRow) => {
+    if (isDeferredMode) {
+      const key = stakeholderDraftKey(row);
+      setPendingNationalIdFilesByKey((prev) => {
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
+      if (row.role === "DIRECTOR") {
+        const nextDirectors = directors.filter((x) => x.id !== row.id);
+        setDirectors(nextDirectors);
+        emitDraftChange(nextDirectors, shareholders, banks);
+      } else {
+        const nextShareholders = shareholders.filter((x) => x.id !== row.id);
+        setShareholders(nextShareholders);
+        emitDraftChange(directors, nextShareholders, banks);
+      }
+      return;
+    }
+
     if (!row.id) {
       if (row.role === "DIRECTOR") {
         setDirectors((d) => d.filter((x) => x !== row));
@@ -398,6 +598,12 @@ export function EntityStructureEditor({
   };
 
   const persistBankAccounts = async (next: BankRow[]): Promise<boolean> => {
+    if (isDeferredMode) {
+      setBanks(next);
+      emitDraftChange(directors, shareholders, next);
+      return true;
+    }
+
     if (!leadId && !fineractClientId) return false;
     setSavingBanks(true);
     try {
@@ -442,7 +648,119 @@ export function EntityStructureEditor({
     setStakeholderModal((m) => (m ? { ...m, draft: updater(m.draft) } : m));
   };
 
-  if (!leadId && !fineractClientId) {
+  useEffect(() => {
+    if (isDeferredMode || !leadId || !fineractClientId) return;
+    const pendingKeys = Object.keys(pendingNationalIdFilesByKey);
+    if (pendingKeys.length === 0) return;
+    if (isSyncingDeferredNationalIdsRef.current) return;
+
+    let cancelled = false;
+    const syncDeferredNationalIds = async () => {
+      isSyncingDeferredNationalIdsRef.current = true;
+      setIsSyncingDeferredNationalIds(true);
+      try {
+        const leadRes = await fetch(`/api/leads/${leadId}`);
+        if (!leadRes.ok) {
+          throw new Error("Failed to load lead for national ID sync.");
+        }
+        const lead = await leadRes.json();
+        const persistedStakeholders = Array.isArray(lead?.entityStakeholders)
+          ? lead.entityStakeholders
+          : [];
+
+        const syncedKeys: string[] = [];
+        for (const rawRow of persistedStakeholders) {
+          const row = mapStakeholderToRow(rawRow);
+          const key = stakeholderDraftKey(row);
+          const file = pendingNationalIdFilesByKey[key];
+          if (!file) continue;
+
+          const nationalIdDocId = await uploadNationalIdToFineract(row, file);
+          await postOperation({
+            operation: "upsertEntityStakeholder",
+            ...(leadId ? { leadId } : {}),
+            data: {
+              ...(fineractClientId ? { fineractClientId } : {}),
+              ...(row.id ? { id: row.id } : {}),
+              role: row.role,
+              fullName: row.fullName,
+              nationalIdOrPassport: row.nationalIdOrPassport,
+              residentialAddress: row.residentialAddress,
+              nationalIdFineractDocumentId: nationalIdDocId,
+              fineractDocumentId: row.fineractDocumentId || null,
+              proofOfResidenceLeadDocumentId:
+                row.proofOfResidenceLeadDocumentId || null,
+              pepStatusCodeValueId: row.pepStatusCodeValueId
+                ? Number(row.pepStatusCodeValueId)
+                : null,
+              pepStatusLabel: row.pepStatusLabel || null,
+              shareholdingPercentage:
+                row.role === "SHAREHOLDER" && row.shareholdingPercentage !== ""
+                  ? Number(row.shareholdingPercentage)
+                  : null,
+              isUltimateBeneficialOwner:
+                row.role === "SHAREHOLDER"
+                  ? row.isUltimateBeneficialOwner
+                  : false,
+              controlStructureCodeValueId:
+                row.role === "SHAREHOLDER" && row.isUltimateBeneficialOwner
+                  ? row.controlStructureCodeValueId
+                    ? Number(row.controlStructureCodeValueId)
+                    : null
+                  : null,
+              controlStructureLabel:
+                row.role === "SHAREHOLDER" && row.isUltimateBeneficialOwner
+                  ? row.controlStructureLabel || null
+                  : null,
+              sortOrder: row.sortOrder,
+            },
+          });
+          syncedKeys.push(key);
+        }
+
+        if (syncedKeys.length > 0) {
+          setPendingNationalIdFilesByKey((prev) => {
+            const next = { ...prev };
+            for (const key of syncedKeys) {
+              delete next[key];
+            }
+            return next;
+          });
+          await onRefresh();
+        }
+      } catch (e: any) {
+        if (!cancelled) {
+          toast({
+            variant: "destructive",
+            title: "National ID sync failed",
+            description:
+              e?.message || "Failed to upload deferred national ID files.",
+          });
+        }
+      } finally {
+        if (!cancelled) {
+          setIsSyncingDeferredNationalIds(false);
+        }
+        isSyncingDeferredNationalIdsRef.current = false;
+      }
+    };
+
+    syncDeferredNationalIds();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    fineractClientId,
+    isDeferredMode,
+    leadId,
+    onRefresh,
+    pendingNationalIdFilesByKey,
+    toast,
+    uploadNationalIdToFineract,
+  ]);
+
+  if (!isDeferredMode && !leadId && !fineractClientId) {
     return (
       <p className="text-sm text-muted-foreground">
         Save the lead to manage directors, shareholders, and entity banking.
@@ -561,6 +879,50 @@ export function EntityStructureEditor({
                     />
                   </div>
                 )}
+                <div className="space-y-2 w-full">
+                  <Label>
+                    National ID file<span className="text-destructive"> *</span>
+                  </Label>
+                  <Input
+                    type="file"
+                    accept=".pdf,image/jpeg,image/png,image/webp"
+                    className="cursor-pointer"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0] || null;
+                      e.target.value = "";
+                      setStakeholderModal((m) =>
+                        m ? { ...m, pendingNationalIdFile: f } : m
+                      );
+                    }}
+                    required
+                  />
+                  {stakeholderModal.pendingNationalIdFile && (
+                    <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                      <span className="truncate">
+                        Selected file: {stakeholderModal.pendingNationalIdFile.name}
+                      </span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 px-2"
+                        onClick={() =>
+                          setStakeholderModal((m) =>
+                            m ? { ...m, pendingNationalIdFile: null } : m
+                          )
+                        }
+                      >
+                        Clear
+                      </Button>
+                    </div>
+                  )}
+                  {stakeholderModal.draft.nationalIdFineractDocumentId && (
+                    <div className="text-xs text-muted-foreground">
+                      Existing National ID document ID:{" "}
+                      {stakeholderModal.draft.nationalIdFineractDocumentId}
+                    </div>
+                  )}
+                </div>
                 <div className="space-y-2 w-full">
                   <Label>
                     Proof of residence
@@ -700,7 +1062,7 @@ export function EntityStructureEditor({
                   type="button"
                   disabled={
                     (!!stakeholderSaveKey && savingId === stakeholderSaveKey) ||
-                    (!leadId && !fineractClientId)
+                    (!isDeferredMode && !leadId && !fineractClientId)
                   }
                   onClick={async () => {
                     const m = stakeholderModal;
@@ -719,7 +1081,8 @@ export function EntityStructureEditor({
                     const ok = await saveStakeholder(
                       m.draft,
                       m.kind === "dir" ? "dir" : "sh",
-                      m.pendingProofFile
+                      m.pendingProofFile,
+                      m.pendingNationalIdFile
                     );
                     if (ok) setStakeholderModal(null);
                   }}
@@ -810,7 +1173,9 @@ export function EntityStructureEditor({
                 </Button>
                 <Button
                   type="button"
-                  disabled={savingBanks || (!leadId && !fineractClientId)}
+                  disabled={
+                    savingBanks || (!isDeferredMode && !leadId && !fineractClientId)
+                  }
                   onClick={async () => {
                     const bm = bankModal;
                     if (!bm) return;
@@ -843,6 +1208,11 @@ export function EntityStructureEditor({
       </Dialog>
 
       <div>
+        {isSyncingDeferredNationalIds && (
+          <p className="text-sm text-muted-foreground mb-3">
+            Syncing pending national ID files...
+          </p>
+        )}
         <div className="space-y-3 mb-3">
           <h3 className="text-lg font-semibold flex items-center gap-2">
             <UserCircle className="h-5 w-5" />
@@ -862,6 +1232,7 @@ export function EntityStructureEditor({
                     : 0
                 ),
                 pendingProofFile: null,
+                pendingNationalIdFile: null,
               })
             }
           >
@@ -897,6 +1268,7 @@ export function EntityStructureEditor({
                         kind: "dir",
                         draft: { ...r },
                         pendingProofFile: null,
+                        pendingNationalIdFile: null,
                       })
                     }
                   >
@@ -939,6 +1311,7 @@ export function EntityStructureEditor({
                     : 0
                 ),
                 pendingProofFile: null,
+                pendingNationalIdFile: null,
               })
             }
           >
@@ -977,6 +1350,7 @@ export function EntityStructureEditor({
                         kind: "sh",
                         draft: { ...r },
                         pendingProofFile: null,
+                        pendingNationalIdFile: null,
                       })
                     }
                   >

@@ -45,6 +45,13 @@ export async function GET(
             triggeredAt: "desc",
           },
         },
+        invoiceDiscountingCase: {
+          include: {
+            invoices: {
+              orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+            },
+          },
+        },
       },
     });
 
@@ -113,6 +120,7 @@ export async function GET(
         businessOwnership: lead.businessOwnership,
         businessType: lead.businessType,
         requestedAmount: lead.requestedAmount,
+        facilityType: lead.facilityType,
         // Affordability fields
         nationality: lead.nationality,
         mobileInOwnName: lead.mobileInOwnName,
@@ -150,6 +158,7 @@ export async function GET(
       cdeResult,
       fineractClient: null,
       fineractLoan: null,
+      invoiceDiscounting: lead.invoiceDiscountingCase || null,
     };
 
     // Get the mapped Fineract tenant ID early (e.g., "goodfellow" -> "goodfellow-training")

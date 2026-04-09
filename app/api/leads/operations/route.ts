@@ -212,6 +212,150 @@ async function validateShareholderTotals(leadId: string) {
   }
 }
 
+function toNullableTrimmedString(value: any): string | null {
+  if (value == null) return null;
+  const trimmed = String(value).trim();
+  return trimmed ? trimmed : null;
+}
+
+function toNullableNumber(value: any): number | null {
+  if (value == null || value === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+async function persistEntityStructureDraftForLead(
+  tx: any,
+  leadId: string,
+  legalFormId: number,
+  payload: any
+) {
+  if (legalFormId !== ENTITY_LEGAL_FORM_ID) return;
+
+  const rawStakeholders = Array.isArray(payload?.entityStakeholdersDraft)
+    ? payload.entityStakeholdersDraft
+    : [];
+  const rawBankAccounts = Array.isArray(payload?.entityBankAccountsDraft)
+    ? payload.entityBankAccountsDraft
+    : [];
+
+  const stakeholdersToCreate: any[] = [];
+  let totalShareholding = 0;
+  for (let i = 0; i < rawStakeholders.length; i++) {
+    const raw = rawStakeholders[i] || {};
+    const roleRaw = String(raw.role || "").toUpperCase();
+    if (
+      roleRaw !== EntityStakeholderRole.DIRECTOR &&
+      roleRaw !== EntityStakeholderRole.SHAREHOLDER
+    ) {
+      continue;
+    }
+
+    const fullName = toNullableTrimmedString(raw.fullName);
+    const nationalIdOrPassport = toNullableTrimmedString(raw.nationalIdOrPassport);
+    const residentialAddress = toNullableTrimmedString(raw.residentialAddress);
+    const allEmpty = !fullName && !nationalIdOrPassport && !residentialAddress;
+    if (allEmpty) continue;
+    if (!fullName || !nationalIdOrPassport || !residentialAddress) {
+      throw new Error(
+        `Incomplete stakeholder details at row ${i + 1}. Full name, national ID/passport, and residential address are required.`
+      );
+    }
+
+    const sortOrderCandidate = Number(raw.sortOrder);
+    const sortOrder = Number.isFinite(sortOrderCandidate)
+      ? sortOrderCandidate
+      : stakeholdersToCreate.length;
+
+    let shareholdingPercentage: number | null = null;
+    if (roleRaw === EntityStakeholderRole.SHAREHOLDER) {
+      const shareCandidate = toNullableNumber(raw.shareholdingPercentage);
+      if (shareCandidate != null) {
+        if (shareCandidate < 0 || shareCandidate > 100) {
+          throw new Error(
+            `Invalid shareholding percentage at row ${i + 1}. Value must be between 0 and 100.`
+          );
+        }
+        shareholdingPercentage = shareCandidate;
+        totalShareholding += shareCandidate;
+      }
+    }
+
+    const isUltimateBeneficialOwner =
+      roleRaw === EntityStakeholderRole.SHAREHOLDER
+        ? Boolean(raw.isUltimateBeneficialOwner)
+        : false;
+
+    const controlStructureCodeValueId = isUltimateBeneficialOwner
+      ? toNullableNumber(raw.controlStructureCodeValueId)
+      : null;
+
+    stakeholdersToCreate.push({
+      leadId,
+      role: roleRaw,
+      fullName,
+      nationalIdOrPassport,
+      residentialAddress,
+      nationalIdFineractDocumentId: toNullableTrimmedString(
+        raw.nationalIdFineractDocumentId
+      ),
+      proofOfResidenceLeadDocumentId: toNullableTrimmedString(
+        raw.proofOfResidenceLeadDocumentId
+      ),
+      fineractDocumentId: toNullableTrimmedString(raw.fineractDocumentId),
+      pepStatusCodeValueId: toNullableNumber(raw.pepStatusCodeValueId),
+      pepStatusLabel: toNullableTrimmedString(raw.pepStatusLabel),
+      shareholdingPercentage,
+      isUltimateBeneficialOwner,
+      controlStructureCodeValueId,
+      controlStructureLabel: isUltimateBeneficialOwner
+        ? toNullableTrimmedString(raw.controlStructureLabel)
+        : null,
+      sortOrder,
+    });
+  }
+
+  if (totalShareholding > 100.001) {
+    throw new Error("Total shareholding percentage cannot exceed 100%");
+  }
+
+  if (stakeholdersToCreate.length > 0) {
+    await tx.entityStakeholder.createMany({ data: stakeholdersToCreate });
+  }
+
+  const bankAccountsToCreate: any[] = [];
+  for (let i = 0; i < rawBankAccounts.length; i++) {
+    const raw = rawBankAccounts[i] || {};
+    const bankName = toNullableTrimmedString(raw.bankName);
+    const accountNumber = toNullableTrimmedString(raw.accountNumber);
+    const accountSignatories = toNullableTrimmedString(raw.accountSignatories) || "";
+    const allEmpty = !bankName && !accountNumber && !accountSignatories;
+    if (allEmpty) continue;
+    if (!bankName || !accountNumber) {
+      throw new Error(
+        `Incomplete bank account details at row ${i + 1}. Bank name and account number are required.`
+      );
+    }
+
+    const sortOrderCandidate = Number(raw.sortOrder);
+    const sortOrder = Number.isFinite(sortOrderCandidate)
+      ? sortOrderCandidate
+      : bankAccountsToCreate.length;
+
+    bankAccountsToCreate.push({
+      leadId,
+      bankName,
+      accountNumber,
+      accountSignatories,
+      sortOrder,
+    });
+  }
+
+  if (bankAccountsToCreate.length > 0) {
+    await tx.entityBankAccount.createMany({ data: bankAccountsToCreate });
+  }
+}
+
 /**
  * POST /api/leads/operations
  * Handles lead operations like save draft, submit, etc.
@@ -563,6 +707,11 @@ async function handleUpsertEntityStakeholder(leadId: string, data: any) {
       fullName: String(data.fullName ?? "").trim(),
       nationalIdOrPassport: String(data.nationalIdOrPassport ?? "").trim(),
       residentialAddress: String(data.residentialAddress ?? "").trim(),
+      nationalIdFineractDocumentId:
+        data.nationalIdFineractDocumentId != null &&
+        String(data.nationalIdFineractDocumentId).trim() !== ""
+          ? String(data.nationalIdFineractDocumentId).trim()
+          : null,
       proofOfResidenceLeadDocumentId:
         data.proofOfResidenceLeadDocumentId || null,
       fineractDocumentId:
@@ -599,10 +748,14 @@ async function handleUpsertEntityStakeholder(leadId: string, data: any) {
     if (
       !payload.fullName ||
       !payload.nationalIdOrPassport ||
-      !payload.residentialAddress
+      !payload.residentialAddress ||
+      !payload.nationalIdFineractDocumentId
     ) {
       return NextResponse.json(
-        { error: "fullName, nationalIdOrPassport, and residentialAddress are required" },
+        {
+          error:
+            "fullName, nationalIdOrPassport, residentialAddress, and nationalIdFineractDocumentId are required",
+        },
         { status: 400 }
       );
     }
@@ -900,6 +1053,13 @@ async function handleCreateLeadWithClient(data: any) {
               },
             });
 
+            await persistEntityStructureDraftForLead(
+              tx,
+              newLead.id,
+              validatedData.legalFormId,
+              data
+            );
+
             return {
               lead: newLead,
               fineractClient: existingClient,
@@ -1042,6 +1202,13 @@ async function handleCreateLeadWithClient(data: any) {
           currentStep: 2,
         },
       });
+
+      await persistEntityStructureDraftForLead(
+        tx,
+        newLead.id,
+        validatedData.legalFormId,
+        data
+      );
 
       leadId = newLead.id;
 
@@ -1582,6 +1749,13 @@ async function handleUpdateClient(data: any, leadId?: string) {
               updatedAt: new Date(),
             },
           });
+
+          await persistEntityStructureDraftForLead(
+            tx,
+            newLead.id,
+            Number(data.legalFormId),
+            data
+          );
 
           console.log("==========> New lead created successfully:", newLead.id);
           return newLead;

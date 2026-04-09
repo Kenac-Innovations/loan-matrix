@@ -434,7 +434,13 @@ interface ClientRegistrationFormProps {
   externalForm?: any;
   clientCreatedInFineract?: boolean;
   onClientCreated?: () => void;
-  onFormSubmit?: (data: any) => void;
+  onFormSubmit?: (
+    data: any,
+    entityData?: {
+      entityStakeholders: any[];
+      entityBankAccounts: any[];
+    }
+  ) => void | Promise<void>;
   setFormCompletionStatus?: (updater: (prev: any) => any) => void;
   setClientCreatedInFineract?: (value: boolean) => void;
   isSubmitting?: boolean;
@@ -1878,6 +1884,14 @@ export function ClientRegistrationForm({
       setEntityBankAccounts((lead as any).entityBankAccounts || []);
     }
   }, [currentLeadId, leadId]);
+
+  const handleEntityDraftChange = useCallback(
+    (payload: { stakeholders: any[]; bankAccounts: any[] }) => {
+      setEntityStakeholders(payload.stakeholders || []);
+      setEntityBankAccounts(payload.bankAccounts || []);
+    },
+    []
+  );
 
   // Initialize internal form - always call useForm to comply with React hooks rules
   const internalForm = useForm<ClientFormValues>({
@@ -6505,29 +6519,6 @@ export function ClientRegistrationForm({
                                     </div>
                                   </div>
 
-                                  <div className="my-8 border-t border-gray-300 dark:border-gray-700" />
-                                  <div className="space-y-3">
-                                    <h4
-                                      className={`text-md font-medium ${colors.textColor}`}
-                                    >
-                                      Directors, shareholders &amp; entity banking
-                                    </h4>
-                                    <p
-                                      className={`text-sm ${colors.textColorMuted}`}
-                                    >
-                                      Directors and shareholders (UBO, PEP status, control
-                                      structure) and entity bank accounts are stored in Loan
-                                      Matrix. Link proof-of-residence from Lead Documents when
-                                      uploaded there.
-                                    </p>
-                                    <EntityStructureEditor
-                                      leadId={currentLeadId ?? null}
-                                      fineractClientId={fineractClientId}
-                                      initialStakeholders={entityStakeholders}
-                                      initialBankAccounts={entityBankAccounts}
-                                      onRefresh={refreshEntityStructure}
-                                    />
-                                  </div>
                                 </>
                               ) : (
                                 <>
@@ -7185,8 +7176,7 @@ export function ClientRegistrationForm({
                                     htmlFor="clientClassificationId"
                                     className={colors.textColor}
                                   >
-                                    Client Classification{" "}
-                                    <span className="text-red-500">*</span>
+                                    Client Classification
                                   </Label>
 
                                   <Controller
@@ -7532,7 +7522,10 @@ export function ClientRegistrationForm({
                                   } else if (externalForm && onFormSubmit) {
                                     // Client doesn't exist yet, submit the form to create it
                                     try {
-                                      await onFormSubmit(formValues);
+                                      await onFormSubmit(formValues, {
+                                        entityStakeholders,
+                                        entityBankAccounts,
+                                      });
                                       // Mark all completed sections as saved after successful submission
                                       setSectionCompletion((prevCompletion) => {
                                         setSectionSaved({
@@ -7623,6 +7616,10 @@ export function ClientRegistrationForm({
                                                 formValues.savingsProductId
                                               )
                                             : undefined,
+                                        entityStakeholdersDraft:
+                                          entityStakeholders,
+                                        entityBankAccountsDraft:
+                                          entityBankAccounts,
                                       };
 
                                       // Call API to create lead with client in Fineract
@@ -9479,6 +9476,36 @@ export function ClientRegistrationForm({
                                     </div>
                                   </CardContent>
                                 </Card>
+
+                                {isEntity && (
+                                  <>
+                                    <div className="my-8 border-t border-gray-300 dark:border-gray-700"></div>
+                                    <div className="space-y-3">
+                                      <h4
+                                        className={`text-md font-medium ${colors.textColor}`}
+                                      >
+                                        Directors, shareholders &amp; entity banking
+                                      </h4>
+                                      <p
+                                        className={`text-sm ${colors.textColorMuted}`}
+                                      >
+                                        Manage directors and shareholders (including UBO, PEP status,
+                                        and control structure), plus entity bank accounts.
+                                      </p>
+                                      <EntityStructureEditor
+                                        leadId={currentLeadId ?? null}
+                                        fineractClientId={fineractClientId}
+                                        initialStakeholders={entityStakeholders}
+                                        initialBankAccounts={entityBankAccounts}
+                                        onRefresh={refreshEntityStructure}
+                                        persistMode={
+                                          currentLeadId ? "immediate" : "deferred"
+                                        }
+                                        onDraftChange={handleEntityDraftChange}
+                                      />
+                                    </div>
+                                  </>
+                                )}
 
                                 {/* Divider */}
                                 <div className="my-8 border-t border-gray-300 dark:border-gray-700"></div>
