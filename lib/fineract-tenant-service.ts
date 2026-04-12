@@ -1,15 +1,10 @@
-import { headers } from "next/headers";
 import { getTenantFromHeaders } from "./tenant-service";
 
 /**
  * Mapping from application tenant slugs to Fineract tenant IDs
- * Add entries here when the Fineract tenant ID differs from the app tenant slug
+ * Add entries here when the Fineract tenant ID differs from the app tenant slug.
  */
-const TENANT_TO_FINERACT_MAPPING: Record<string, string> = {
-  // goodfellow maps directly (no transformation needed)
-  // Add more mappings as needed, e.g.:
-  // "another-tenant": "another-fineract-id",
-};
+const TENANT_TO_FINERACT_MAPPING: Record<string, string> = {};
 
 /**
  * Get the Fineract tenant ID for the current request

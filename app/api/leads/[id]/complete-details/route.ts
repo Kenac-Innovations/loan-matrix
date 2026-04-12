@@ -161,7 +161,7 @@ export async function GET(
       invoiceDiscounting: lead.invoiceDiscountingCase || null,
     };
 
-    // Get the mapped Fineract tenant ID early (e.g., "goodfellow" -> "goodfellow-training")
+    // Get the Fineract tenant ID early (defaults to the tenant slug unless explicitly mapped)
     const fineractTenantId = await getFineractTenantId();
 
     // Use service-level credentials (same as page.tsx) for reliable Fineract access
