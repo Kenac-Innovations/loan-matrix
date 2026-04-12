@@ -91,6 +91,7 @@ model ChargeProduct {
   name                          String
   amount                        Decimal                      @db.Decimal(18, 6)
   currencyCode                  String
+  isInvoiceDiscountIncome       Boolean                      @default(false)
   type                          ChargeProductType
   chargeTimeType                ChargeProductTimeType
   chargeCalculationType         ChargeProductCalculationType @default(FLAT)
@@ -107,6 +108,7 @@ model ChargeProduct {
   tenant                        Tenant                       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, createdAt])
+  @@index([tenantId, isInvoiceDiscountIncome])
   @@index([tenantId, syncStatus])
   @@unique([tenantId, fineractChargeId])
 }

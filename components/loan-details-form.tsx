@@ -1361,7 +1361,7 @@ export function LoanDetailsForm({
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <Label htmlFor="loanPurpose" className="text-sm font-medium">
-                    Loan Purpose
+                    Purpose
                   </Label>
                   <Button
                     type="button"
