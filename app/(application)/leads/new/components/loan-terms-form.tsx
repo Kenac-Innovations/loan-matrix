@@ -100,24 +100,18 @@ function isSpecifiedDueDateCharge(timeType?: ChargeTimeTypeRef) {
   );
 }
 
-function isFlatCharge(calc?: ChargeCalcTypeRef) {
-  const code = (calc?.code || "").toLowerCase();
-  const value = (calc?.value || "").trim();
-  return (
-    code === "chargecalculationtype.flat" ||
-    code.endsWith(".flat") ||
-    /\bflat\b/i.test(value)
-  );
-}
+const INVOICE_INCOME_CHARGE_NAME = "INVOICE_INCOME";
+const INVOICE_INCOME_CHARGE_DISPLAY_NAME = "Invoice Income";
 
-function isInvoiceIncomeCharge(charge?: {
-  chargeTimeType?: ChargeTimeTypeRef;
-  chargeCalculationType?: ChargeCalcTypeRef;
-}) {
-  return (
-    isSpecifiedDueDateCharge(charge?.chargeTimeType) &&
-    isFlatCharge(charge?.chargeCalculationType)
-  );
+function getChargeDisplayName(name?: string | null, fallback = "Unknown Charge") {
+  const normalizedName = name?.trim();
+  if (!normalizedName) {
+    return fallback;
+  }
+
+  return normalizedName === INVOICE_INCOME_CHARGE_NAME
+    ? INVOICE_INCOME_CHARGE_DISPLAY_NAME
+    : normalizedName;
 }
 
 type PeriodTypeOption = { id: number; code: string; value: string };
@@ -357,6 +351,136 @@ interface LoanTemplate {
   }>;
 }
 
+interface InvoiceDiscountIncomeChargeRecord {
+  id: string;
+  name: string;
+  currencyCode: string;
+  fineractChargeId: number | null;
+  isInvoiceDiscountIncome: boolean;
+}
+
+function buildInvoiceIncomeTemplateCharge(
+  charge: InvoiceDiscountIncomeChargeRecord
+) {
+  const fineractChargeId = Number(charge.fineractChargeId);
+  if (!Number.isFinite(fineractChargeId)) {
+    return null;
+  }
+
+  return {
+    option: {
+      id: fineractChargeId,
+      name: getChargeDisplayName(
+        charge.name,
+        INVOICE_INCOME_CHARGE_DISPLAY_NAME
+      ),
+      active: true,
+      penalty: false,
+      chargeCalculationType: {
+        id: 1,
+        code: "chargeCalculationType.flat",
+        value: "Flat",
+      },
+      chargeTimeType: {
+        id: 2,
+        code: "chargeTimeType.specifiedDueDate",
+        value: "Specified Due Date",
+      },
+    },
+    charge: {
+      id: fineractChargeId,
+      chargeId: fineractChargeId,
+      name: getChargeDisplayName(
+        charge.name,
+        INVOICE_INCOME_CHARGE_DISPLAY_NAME
+      ),
+      chargeTimeType: {
+        id: 2,
+        code: "chargeTimeType.specifiedDueDate",
+        value: "Specified Due Date",
+      },
+      chargeCalculationType: {
+        id: 1,
+        code: "chargeCalculationType.flat",
+        value: "Flat",
+      },
+      amount: 1,
+      currency: {
+        code: charge.currencyCode,
+        name: charge.currencyCode,
+      },
+      percentage: 0,
+      active: true,
+      penalty: false,
+    },
+  };
+}
+
+function mergeInvoiceIncomeChargeIntoTemplate(
+  template: LoanTemplate,
+  charge: InvoiceDiscountIncomeChargeRecord
+) {
+  const synthetic = buildInvoiceIncomeTemplateCharge(charge);
+  if (!synthetic) {
+    return template;
+  }
+
+  const hasChargeOption = (template.chargeOptions || []).some(
+    (option) => option.id === synthetic.option.id
+  );
+  const hasCharge = (template.charges || []).some(
+    (entry) =>
+      entry.chargeId === synthetic.charge.chargeId ||
+      entry.id === synthetic.charge.id
+  );
+
+  if (hasChargeOption && hasCharge) {
+    return template;
+  }
+
+  return {
+    ...template,
+    chargeOptions: hasChargeOption
+      ? template.chargeOptions
+      : [...(template.chargeOptions || []), synthetic.option],
+    charges: hasCharge
+      ? template.charges
+      : [...(template.charges || []), synthetic.charge],
+  };
+}
+
+function getInvoiceIncomeCurrencyCode(
+  template: LoanTemplate | null | undefined,
+  fallbackTemplate?: LoanTemplate | null
+) {
+  return (
+    (template as any)?.currency?.code ||
+    (fallbackTemplate as any)?.currency?.code ||
+    template?.charges?.find((charge) => charge.currency?.code)?.currency?.code ||
+    fallbackTemplate?.charges?.find((charge) => charge.currency?.code)?.currency?.code ||
+    null
+  );
+}
+
+function buildEditableCharge(
+  charge: any,
+  dueDate: Date
+): {
+  chargeId: number;
+  name: string;
+  amount: number;
+  dueDate: Date;
+  originalCharge: any;
+} {
+  return {
+    chargeId: charge.chargeId || charge.id,
+    name: getChargeDisplayName(charge.name),
+    amount: charge.amount || 0,
+    dueDate,
+    originalCharge: charge,
+  };
+}
+
 interface LoanTermsFormProps {
   loanTemplate: LoanTemplate | null;
   clientId?: number;
@@ -395,6 +519,8 @@ export function LoanTermsForm({
   );
   const [isInvoiceDiscountingLead, setIsInvoiceDiscountingLead] =
     useState(false);
+  const [invoiceIncomeChargeProduct, setInvoiceIncomeChargeProduct] =
+    useState<InvoiceDiscountIncomeChargeRecord | null>(null);
   const [invoiceDiscountingReserveAmount, setInvoiceDiscountingReserveAmount] =
     useState<number | null>(null);
   const [editableCharges, setEditableCharges] = useState<
@@ -430,12 +556,20 @@ export function LoanTermsForm({
   const templateValuesSet = useRef(false);
   const detailedTemplateFetched = useRef(false);
   const appliedInvoiceReserveSignature = useRef<string | null>(null);
+  const invoiceIncomeChargeFineractId = Number(
+    invoiceIncomeChargeProduct?.fineractChargeId
+  );
   const invoiceIncomeChargeIndex = useMemo(
     () =>
-      editableCharges.findIndex((charge) =>
-        isInvoiceIncomeCharge(charge.originalCharge)
-      ),
-    [editableCharges]
+      Number.isFinite(invoiceIncomeChargeFineractId)
+        ? editableCharges.findIndex(
+            (charge) =>
+              Number(charge.chargeId) === invoiceIncomeChargeFineractId ||
+              Number(charge.originalCharge?.chargeId ?? charge.originalCharge?.id) ===
+                invoiceIncomeChargeFineractId
+          )
+        : -1,
+    [editableCharges, invoiceIncomeChargeFineractId]
   );
   const selectedChargeToAdd = useMemo(
     () =>
@@ -445,7 +579,9 @@ export function LoanTermsForm({
     [loanTemplate, selectedChargeOption]
   );
   const isSelectedChargeInvoiceIncome =
-    isInvoiceDiscountingLead && isInvoiceIncomeCharge(selectedChargeToAdd || undefined);
+    isInvoiceDiscountingLead &&
+    Number.isFinite(invoiceIncomeChargeFineractId) &&
+    Number(selectedChargeToAdd?.id) === invoiceIncomeChargeFineractId;
 
   // Compute display values directly from template - this survives remounts!
   const templateDerivedValues = useMemo(() => {
@@ -585,8 +721,14 @@ export function LoanTermsForm({
   }, [clientId, productId]);
 
   useEffect(() => {
+    let cancelled = false;
+
     const fetchDetailedTemplate = async () => {
-      if (!clientId || !productId) return;
+      if (!clientId || !productId) {
+        setIsInvoiceDiscountingLead(false);
+        setInvoiceIncomeChargeProduct(null);
+        return;
+      }
       if (detailedTemplateFetched.current) return;
 
       frequencyValuesSet.current = false;
@@ -595,20 +737,28 @@ export function LoanTermsForm({
         setIsLoading(true);
         setError(null);
 
-        // Fetch loan template and product details in parallel
-        const [templateRes, productRes] = await Promise.all([
+        // Fetch the template, product metadata, and invoice-discounting flag together
+        const [templateRes, productRes, invoiceDiscountingRes] = await Promise.all([
           fetch(
             `/api/fineract/loans/template?clientId=${clientId}&productId=${productId}&activeOnly=true&staffInSelectedOfficeOnly=true&templateType=individual`
           ),
           fetch(`/api/fineract/loans/product/${productId}`),
+          fetch(`/api/invoice-discounting-products?fineractProductId=${productId}`),
         ]);
 
         if (!templateRes.ok) {
           throw new Error("Failed to fetch detailed loan template");
         }
 
-        const detailedTemplate = await templateRes.json();
+        const [detailedTemplate, invoiceDiscountingResult] = await Promise.all([
+          templateRes.json(),
+          invoiceDiscountingRes.ok
+            ? invoiceDiscountingRes.json()
+            : Promise.resolve({ isInvoiceDiscounting: false }),
+        ]);
         console.log("Detailed loan template:", detailedTemplate);
+        const invoiceDiscountingEnabled =
+          invoiceDiscountingResult?.isInvoiceDiscounting === true;
 
         // Merge product-level topup config into the template
         if (productRes.ok) {
@@ -639,72 +789,92 @@ export function LoanTermsForm({
           }
         }
 
-        detailedTemplateFetched.current = true;
-        setLoanTemplate(detailedTemplate);
+        let nextTemplate = detailedTemplate;
+        let ensuredInvoiceIncomeCharge: InvoiceDiscountIncomeChargeRecord | null = null;
 
-        // Initialize editable charges from template
-        if (detailedTemplate.charges && detailedTemplate.charges.length > 0) {
-          const initialCharges = detailedTemplate.charges.map(
-            (charge: any) => ({
-              chargeId: charge.chargeId || charge.id,
-              name: charge.name || "Unknown Charge",
-              amount: charge.amount || 0,
-              dueDate: new Date(),
-              originalCharge: charge,
-            })
+        if (invoiceDiscountingEnabled) {
+          try {
+            const invoiceIncomeCurrencyCode = getInvoiceIncomeCurrencyCode(
+              detailedTemplate,
+              initialLoanTemplate
+            );
+            const response = await fetch(
+              "/api/charge-products/invoice-discount-income",
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(
+                  invoiceIncomeCurrencyCode
+                    ? { currencyCode: invoiceIncomeCurrencyCode }
+                    : {}
+                ),
+              }
+            );
+
+            if (!response.ok) {
+              const body = await response.json().catch(() => ({}));
+              throw new Error(
+                body.error || "Failed to ensure the INVOICE_INCOME charge"
+              );
+            }
+
+            const result = await response.json();
+            ensuredInvoiceIncomeCharge =
+              (result?.data || null) as InvoiceDiscountIncomeChargeRecord | null;
+
+            if (ensuredInvoiceIncomeCharge?.fineractChargeId) {
+              nextTemplate = mergeInvoiceIncomeChargeIntoTemplate(
+                detailedTemplate,
+                ensuredInvoiceIncomeCharge
+              );
+            }
+          } catch (invoiceChargeError) {
+            console.error(
+              "Error ensuring invoice income charge during template load:",
+              invoiceChargeError
+            );
+          }
+        }
+
+        if (cancelled) {
+          return;
+        }
+
+        detailedTemplateFetched.current = true;
+        setIsInvoiceDiscountingLead(invoiceDiscountingEnabled);
+        setInvoiceIncomeChargeProduct(ensuredInvoiceIncomeCharge);
+        setLoanTemplate(nextTemplate);
+
+        // Initialize editable charges from template, including invoice income when applicable
+        if (nextTemplate.charges && nextTemplate.charges.length > 0) {
+          const initialCharges = nextTemplate.charges.map((charge: any) =>
+            buildEditableCharge(charge, new Date())
           );
           setEditableCharges(initialCharges);
+        } else {
+          setEditableCharges([]);
         }
       } catch (err) {
+        if (cancelled) {
+          return;
+        }
         setError(
           err instanceof Error
             ? err.message
             : "Failed to fetch detailed loan template"
         );
       } finally {
-        setIsLoading(false);
+        if (!cancelled) {
+          setIsLoading(false);
+        }
       }
     };
 
     fetchDetailedTemplate();
-  }, [clientId, productId]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const checkInvoiceDiscountingProduct = async () => {
-      if (!productId) {
-        setIsInvoiceDiscountingLead(false);
-        return;
-      }
-
-      try {
-        const response = await fetch(
-          `/api/invoice-discounting-products?fineractProductId=${productId}`
-        );
-
-        if (!response.ok) {
-          throw new Error("Failed to check invoice discounting product");
-        }
-
-        const result = await response.json();
-        if (!cancelled) {
-          setIsInvoiceDiscountingLead(result.isInvoiceDiscounting === true);
-        }
-      } catch (err) {
-        console.error("Error checking invoice discounting product:", err);
-        if (!cancelled) {
-          setIsInvoiceDiscountingLead(false);
-        }
-      }
-    };
-
-    checkInvoiceDiscountingProduct();
-
     return () => {
       cancelled = true;
     };
-  }, [productId]);
+  }, [clientId, initialLoanTemplate, productId]);
 
   // Populate form with template data when it changes
   useEffect(() => {
@@ -1345,7 +1515,7 @@ export function LoanTermsForm({
 
                 return {
                   chargeId: charge.chargeId,
-                  name: charge.name || "Unknown Charge",
+                  name: getChargeDisplayName(charge.name),
                   amount: charge.amount || 0,
                   dueDate: dueDate,
                   originalCharge: charge.originalCharge || charge,
@@ -1369,7 +1539,7 @@ export function LoanTermsForm({
               const initialCharges = loanTemplate.charges.map(
                 (charge: any) => ({
                   chargeId: charge.chargeId || charge.id,
-                  name: charge.name || "Unknown Charge",
+                  name: getChargeDisplayName(charge.name),
                   amount: charge.amount || 0,
                   dueDate: disbursementDate,
                   originalCharge: charge,
@@ -1510,19 +1680,23 @@ export function LoanTermsForm({
           )
         : new Date();
 
-      const initialCharges = loanTemplate.charges.map((charge: any) => ({
-        chargeId: charge.chargeId || charge.id,
-        name: charge.name || "Unknown Charge",
-        amount: charge.amount || 0,
-        dueDate: disbursementDate,
-        originalCharge: charge,
-      }));
+      const initialCharges = loanTemplate.charges.map((charge: any) =>
+        buildEditableCharge(charge, disbursementDate)
+      );
       setEditableCharges(initialCharges);
       console.log("Default charges initialized:", initialCharges);
     }
   }, [loanTemplate, editableCharges.length]);
 
   const handleRemoveCharge = (index: number) => {
+    if (
+      isInvoiceDiscountingLead &&
+      index === invoiceIncomeChargeIndex &&
+      Number.isFinite(invoiceIncomeChargeFineractId)
+    ) {
+      return;
+    }
+
     setEditableCharges((prev) => prev.filter((_, i) => i !== index));
   };
 
@@ -1560,7 +1734,8 @@ export function LoanTermsForm({
       );
       const resolvedAmount =
         isInvoiceDiscountingLead &&
-        isInvoiceIncomeCharge(selectedCharge) &&
+        Number.isFinite(invoiceIncomeChargeFineractId) &&
+        Number(selectedCharge.id) === invoiceIncomeChargeFineractId &&
         invoiceDiscountingReserveAmount != null
           ? invoiceDiscountingReserveAmount
           : parseFloat(newChargeAmount);
@@ -1574,7 +1749,7 @@ export function LoanTermsForm({
         ...prev,
         {
           chargeId: selectedCharge.id,
-          name: selectedCharge.name,
+          name: getChargeDisplayName(selectedCharge.name),
           amount: resolvedAmount,
           dueDate: newChargeDueDate || new Date(), // Use current date as fallback if not required
           originalCharge: selectedCharge,
@@ -3181,7 +3356,7 @@ export function LoanTermsForm({
                                 key={option.id}
                                 value={option.id.toString()}
                               >
-                                {option.name}
+                                {getChargeDisplayName(option.name)}
                               </SelectItem>
                             ))}
                         </SelectContent>
@@ -3313,7 +3488,9 @@ export function LoanTermsForm({
                             </span>
                           )}
                         </div>
-                        {canEditLoan && !isChargesStructureReadOnly && (
+                        {canEditLoan &&
+                          !isChargesStructureReadOnly &&
+                          !isLockedInvoiceIncomeCharge && (
                         <Button
                           type="button"
                           variant="ghost"

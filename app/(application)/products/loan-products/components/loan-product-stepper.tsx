@@ -258,7 +258,40 @@ export function LoanProductStepper({
 
     try {
       console.log("[LoanProductStepper] Submitting — isInvoiceDiscounting:", form.isInvoiceDiscounting, "| productId:", productId);
-      const payload = buildFineractPayload(form);
+      let payload = buildFineractPayload(form);
+
+      if (form.isInvoiceDiscounting) {
+        const chargeRes = await fetch("/api/charge-products/invoice-discount-income", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ currencyCode: form.currencyCode }),
+        });
+        const chargeBody = await chargeRes.json().catch(() => ({}));
+
+        if (!chargeRes.ok) {
+          throw new Error(
+            chargeBody?.error ||
+              "Failed to ensure the INVOICE_INCOME charge before saving the product"
+          );
+        }
+
+        const invoiceIncomeChargeId = Number(chargeBody?.data?.fineractChargeId);
+        if (!Number.isFinite(invoiceIncomeChargeId)) {
+          throw new Error("INVOICE_INCOME charge is missing a valid Fineract charge ID");
+        }
+
+        const existingCharges = Array.isArray(payload.charges)
+          ? (payload.charges as Array<{ id: number }>)
+          : [];
+
+        if (!existingCharges.some((charge) => Number(charge.id) === invoiceIncomeChargeId)) {
+          payload = {
+            ...payload,
+            charges: [...existingCharges, { id: invoiceIncomeChargeId }],
+          };
+        }
+      }
+
       const isEdit  = Boolean(productId);
       const url     = isEdit
         ? `/api/fineract/loanproducts/${productId}`

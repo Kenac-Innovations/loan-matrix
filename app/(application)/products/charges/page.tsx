@@ -90,6 +90,9 @@ interface ChargeProductRecord {
   createdAt: string;
 }
 
+const INVOICE_INCOME_CHARGE_NAME = "INVOICE_INCOME";
+const INVOICE_INCOME_CHARGE_DISPLAY_NAME = "Invoice Income";
+
 const emptyForm = {
   name: "",
   amount: "",
@@ -126,6 +129,12 @@ function formatDateTime(value: string) {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+function formatChargeDisplayName(name: string) {
+  return name === INVOICE_INCOME_CHARGE_NAME
+    ? INVOICE_INCOME_CHARGE_DISPLAY_NAME
+    : name;
 }
 
 export default function ChargeProductsPage() {
@@ -436,7 +445,9 @@ export default function ChargeProductsPage() {
               <TableBody>
                 {records.map((record) => (
                   <TableRow key={record.id}>
-                    <TableCell className="font-medium">{record.name}</TableCell>
+                    <TableCell className="font-medium">
+                      {formatChargeDisplayName(record.name)}
+                    </TableCell>
                     <TableCell>
                       {record.currencyCode} {record.amount}
                     </TableCell>

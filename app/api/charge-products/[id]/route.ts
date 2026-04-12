@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { fetchFineractAPI } from "@/lib/api";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
+import type { ChargeProduct } from "@/app/generated/prisma";
 import {
   CHARGE_PRODUCT_CALC_TO_FINERACT_CODE,
   CHARGE_PRODUCT_CALCULATION_TYPES,
@@ -26,6 +27,7 @@ const updateChargeProductSchema = z.object({
   name: z.string().min(1, "Charge name is required"),
   amount: z.coerce.number().positive("Amount must be greater than zero"),
   currencyCode: z.string().min(1, "Currency is required"),
+  isInvoiceDiscountIncome: z.boolean().optional(),
   type: z.enum(CHARGE_PRODUCT_TYPES),
   chargeTimeType: z.enum(CHARGE_PRODUCT_TIME_TYPES),
   chargeCalculationType: z.enum(CHARGE_PRODUCT_CALCULATION_TYPES),
@@ -131,6 +133,7 @@ export async function PUT(
         name: payload.name.trim(),
         amount: payload.amount,
         currencyCode: payload.currencyCode.trim().toUpperCase(),
+        isInvoiceDiscountIncome: payload.isInvoiceDiscountIncome ?? false,
         type: payload.type,
         chargeTimeType: payload.chargeTimeType,
         chargeCalculationType: payload.chargeCalculationType,
