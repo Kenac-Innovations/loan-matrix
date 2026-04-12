@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -47,6 +47,7 @@ function formatRepaymentStrategyName(name: string): string {
 }
 
 type ChargeCalcTypeRef = { id?: number; code?: string; value?: string };
+type ChargeTimeTypeRef = { id?: number; code?: string; value?: string };
 
 function getChargeCalculationHighlight(calc?: ChargeCalcTypeRef) {
   const code = (calc?.code || "").toLowerCase();
@@ -86,6 +87,37 @@ function getChargeCalculationHighlight(calc?: ChargeCalcTypeRef) {
       "border-muted-foreground/30 bg-muted/60 text-muted-foreground",
     amountRingClassName: "border-muted bg-muted/20",
   };
+}
+
+function isSpecifiedDueDateCharge(timeType?: ChargeTimeTypeRef) {
+  const code = (timeType?.code || "").toLowerCase();
+  const value = (timeType?.value || "").trim();
+  return (
+    code === "specifiedduedate" ||
+    code.endsWith(".specifiedduedate") ||
+    /specified due date/i.test(value) ||
+    timeType?.id === 2
+  );
+}
+
+function isFlatCharge(calc?: ChargeCalcTypeRef) {
+  const code = (calc?.code || "").toLowerCase();
+  const value = (calc?.value || "").trim();
+  return (
+    code === "chargecalculationtype.flat" ||
+    code.endsWith(".flat") ||
+    /\bflat\b/i.test(value)
+  );
+}
+
+function isInvoiceIncomeCharge(charge?: {
+  chargeTimeType?: ChargeTimeTypeRef;
+  chargeCalculationType?: ChargeCalcTypeRef;
+}) {
+  return (
+    isSpecifiedDueDateCharge(charge?.chargeTimeType) &&
+    isFlatCharge(charge?.chargeCalculationType)
+  );
 }
 
 type PeriodTypeOption = { id: number; code: string; value: string };
@@ -361,6 +393,10 @@ export function LoanTermsForm({
   const [loanTemplate, setLoanTemplate] = useState<LoanTemplate | null>(
     initialLoanTemplate
   );
+  const [isInvoiceDiscountingLead, setIsInvoiceDiscountingLead] =
+    useState(false);
+  const [invoiceDiscountingReserveAmount, setInvoiceDiscountingReserveAmount] =
+    useState<number | null>(null);
   const [editableCharges, setEditableCharges] = useState<
     Array<{
       chargeId: number;
@@ -393,6 +429,23 @@ export function LoanTermsForm({
   const frequencyValuesSet = useRef(false);
   const templateValuesSet = useRef(false);
   const detailedTemplateFetched = useRef(false);
+  const appliedInvoiceReserveSignature = useRef<string | null>(null);
+  const invoiceIncomeChargeIndex = useMemo(
+    () =>
+      editableCharges.findIndex((charge) =>
+        isInvoiceIncomeCharge(charge.originalCharge)
+      ),
+    [editableCharges]
+  );
+  const selectedChargeToAdd = useMemo(
+    () =>
+      loanTemplate?.chargeOptions?.find(
+        (opt: any) => opt.id.toString() === selectedChargeOption
+      ) || null,
+    [loanTemplate, selectedChargeOption]
+  );
+  const isSelectedChargeInvoiceIncome =
+    isInvoiceDiscountingLead && isInvoiceIncomeCharge(selectedChargeToAdd || undefined);
 
   // Compute display values directly from template - this survives remounts!
   const templateDerivedValues = useMemo(() => {
@@ -616,6 +669,43 @@ export function LoanTermsForm({
     fetchDetailedTemplate();
   }, [clientId, productId]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    const checkInvoiceDiscountingProduct = async () => {
+      if (!productId) {
+        setIsInvoiceDiscountingLead(false);
+        return;
+      }
+
+      try {
+        const response = await fetch(
+          `/api/invoice-discounting-products?fineractProductId=${productId}`
+        );
+
+        if (!response.ok) {
+          throw new Error("Failed to check invoice discounting product");
+        }
+
+        const result = await response.json();
+        if (!cancelled) {
+          setIsInvoiceDiscountingLead(result.isInvoiceDiscounting === true);
+        }
+      } catch (err) {
+        console.error("Error checking invoice discounting product:", err);
+        if (!cancelled) {
+          setIsInvoiceDiscountingLead(false);
+        }
+      }
+    };
+
+    checkInvoiceDiscountingProduct();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [productId]);
+
   // Populate form with template data when it changes
   useEffect(() => {
     if (loanTemplate) {
@@ -644,7 +734,10 @@ export function LoanTermsForm({
         );
 
         // Principal
-        if (loanTemplate.principal !== undefined) {
+        if (
+          loanTemplate.principal !== undefined &&
+          !isInvoiceDiscountingLead
+        ) {
           form.setValue("principal", loanTemplate.principal);
           console.log("Set principal:", loanTemplate.principal);
         }
@@ -967,7 +1060,7 @@ export function LoanTermsForm({
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loanTemplate]); // form is stable from useForm, no need in deps
+  }, [isInvoiceDiscountingLead, loanTemplate]); // form is stable from useForm, no need in deps
 
   // Sync firstRepaymentOn from the Loans tab whenever it changes
   useEffect(() => {
@@ -1021,6 +1114,9 @@ export function LoanTermsForm({
           const detailsResult = await loanDetailsResponse.json();
           if (detailsResult.success && detailsResult.data) {
             loanDetailsData = detailsResult.data;
+            setIsInvoiceDiscountingLead(
+              detailsResult.data.facilityType === "INVOICE_DISCOUNTING"
+            );
           }
         }
 
@@ -1031,9 +1127,13 @@ export function LoanTermsForm({
             console.log("Loaded loan terms data:", loanTermsData);
 
             // Populate form fields - only if template values weren't already set
-            if (loanTermsData.principal && !templateValuesSet.current) {
+            if (
+              loanTermsData.principal !== undefined &&
+              (loanDetailsData?.facilityType === "INVOICE_DISCOUNTING" ||
+                !templateValuesSet.current)
+            ) {
               form.setValue("principal", loanTermsData.principal);
-            } else if (loanTermsData.principal) {
+            } else if (loanTermsData.principal !== undefined) {
               console.log(
                 "Skipping principal from saved data - already set from template"
               );
@@ -1302,6 +1402,97 @@ export function LoanTermsForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leadId]); // Only run when leadId changes, not on every template update
 
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadInvoiceDiscountingReserve = async () => {
+      if (!leadId || !isInvoiceDiscountingLead) {
+        setInvoiceDiscountingReserveAmount(null);
+        return;
+      }
+
+      try {
+        const response = await fetch(`/api/leads/${leadId}/invoice-discounting`);
+        if (!response.ok) {
+          throw new Error("Failed to load invoice discounting summary");
+        }
+
+        const result = await response.json();
+        const reserveAmount = result?.data?.totalReserveAmount;
+        if (!cancelled) {
+          setInvoiceDiscountingReserveAmount(
+            reserveAmount != null ? Number(reserveAmount) : null
+          );
+        }
+      } catch (error) {
+        console.error("Error loading invoice discounting reserve amount:", error);
+        if (!cancelled) {
+          setInvoiceDiscountingReserveAmount(null);
+        }
+      }
+    };
+
+    loadInvoiceDiscountingReserve();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [leadId, isInvoiceDiscountingLead]);
+
+  useEffect(() => {
+    if (
+      !isInvoiceDiscountingLead ||
+      invoiceDiscountingReserveAmount == null ||
+      invoiceIncomeChargeIndex === -1
+    ) {
+      return;
+    }
+
+    const targetCharge = editableCharges[invoiceIncomeChargeIndex];
+    if (!targetCharge) {
+      return;
+    }
+
+    const signature = `${targetCharge.chargeId}:${invoiceDiscountingReserveAmount}`;
+    if (appliedInvoiceReserveSignature.current === signature) {
+      return;
+    }
+
+    setEditableCharges((prev) => {
+      if (invoiceIncomeChargeIndex < 0 || invoiceIncomeChargeIndex >= prev.length) {
+        return prev;
+      }
+
+      const currentCharge = prev[invoiceIncomeChargeIndex];
+      if (currentCharge.amount === invoiceDiscountingReserveAmount) {
+        return prev;
+      }
+
+      return prev.map((charge, index) =>
+        index === invoiceIncomeChargeIndex
+          ? { ...charge, amount: invoiceDiscountingReserveAmount }
+          : charge
+      );
+    });
+    appliedInvoiceReserveSignature.current = signature;
+  }, [
+    editableCharges,
+    invoiceDiscountingReserveAmount,
+    invoiceIncomeChargeIndex,
+    isInvoiceDiscountingLead,
+  ]);
+
+  useEffect(() => {
+    if (!isSelectedChargeInvoiceIncome || invoiceDiscountingReserveAmount == null) {
+      return;
+    }
+
+    setNewChargeAmount((current) => {
+      const nextValue = `${invoiceDiscountingReserveAmount}`;
+      return current === nextValue ? current : nextValue;
+    });
+  }, [invoiceDiscountingReserveAmount, isSelectedChargeInvoiceIncome]);
+
   // Initialize default charges from template when no charges exist yet
   useEffect(() => {
     // Only initialize if we have template charges but no editable charges
@@ -1336,6 +1527,14 @@ export function LoanTermsForm({
   };
 
   const handleUpdateChargeAmount = (index: number, amount: number) => {
+    if (
+      isInvoiceDiscountingLead &&
+      index === invoiceIncomeChargeIndex &&
+      invoiceDiscountingReserveAmount != null
+    ) {
+      return;
+    }
+
     setEditableCharges((prev) =>
       prev.map((charge, i) => (i === index ? { ...charge, amount } : charge))
     );
@@ -1352,16 +1551,19 @@ export function LoanTermsForm({
       return;
     }
 
-    const selectedCharge = loanTemplate?.chargeOptions?.find(
-      (opt: any) => opt.id.toString() === selectedChargeOption
-    );
+    const selectedCharge = selectedChargeToAdd;
 
     if (selectedCharge) {
       // Check if this charge requires a due date (Specified Due Date time type)
-      const requiresDueDate =
-        selectedCharge.chargeTimeType?.code === "specifiedDueDate" ||
-        selectedCharge.chargeTimeType?.value === "Specified Due Date" ||
-        selectedCharge.chargeTimeType?.id === 2;
+      const requiresDueDate = isSpecifiedDueDateCharge(
+        selectedCharge.chargeTimeType
+      );
+      const resolvedAmount =
+        isInvoiceDiscountingLead &&
+        isInvoiceIncomeCharge(selectedCharge) &&
+        invoiceDiscountingReserveAmount != null
+          ? invoiceDiscountingReserveAmount
+          : parseFloat(newChargeAmount);
 
       // If due date is required but not provided, don't proceed
       if (requiresDueDate && !newChargeDueDate) {
@@ -1373,7 +1575,7 @@ export function LoanTermsForm({
         {
           chargeId: selectedCharge.id,
           name: selectedCharge.name,
-          amount: parseFloat(newChargeAmount),
+          amount: resolvedAmount,
           dueDate: newChargeDueDate || new Date(), // Use current date as fallback if not required
           originalCharge: selectedCharge,
         },
@@ -1389,6 +1591,7 @@ export function LoanTermsForm({
 
   const watchedTermFrequency = form.watch("termFrequency");
   const watchedRepaymentFrequency = form.watch("repaymentFrequency");
+  const isNominalInterestRateLocked = !canEditLoan || isInvoiceDiscountingLead;
 
   const isMonthlyRepaymentFrequency = useMemo(() => {
     const selectedRepaymentOption =
@@ -1730,7 +1933,11 @@ export function LoanTermsForm({
         <Card>
           <CardHeader>
             <CardTitle>Principal</CardTitle>
-            <CardDescription>Enter the principal loan amount</CardDescription>
+            <CardDescription>
+              {isInvoiceDiscountingLead
+                ? "Principal is locked to the financed amount from invoice details."
+                : "Enter the principal loan amount"}
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -1743,10 +1950,21 @@ export function LoanTermsForm({
                     id="principal"
                     type="number"
                     step="0.01"
-                    className="h-10 pr-16"
+                    readOnly={isInvoiceDiscountingLead}
+                    aria-disabled={isInvoiceDiscountingLead}
+                    className={cn(
+                      "h-10 pr-16",
+                      isInvoiceDiscountingLead &&
+                        "cursor-not-allowed bg-muted text-muted-foreground"
+                    )}
                     {...form.register("principal", { valueAsNumber: true })}
                   />
                 </div>
+                {isInvoiceDiscountingLead && (
+                  <p className="text-xs text-muted-foreground">
+                    Save invoice details to refresh this amount from the total financed value.
+                  </p>
+                )}
                 {form.formState.errors.principal && (
                   <p className="text-sm text-red-500">
                     {form.formState.errors.principal.message}
@@ -2232,7 +2450,9 @@ export function LoanTermsForm({
           <CardHeader>
             <CardTitle>Nominal Interest Rate</CardTitle>
             <CardDescription>
-              Configure interest rate and calculation method
+              {isInvoiceDiscountingLead
+                ? "Interest settings are locked for invoice discounting products."
+                : "Configure interest rate and calculation method"}
             </CardDescription>
           </CardHeader>
           <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -2248,7 +2468,7 @@ export function LoanTermsForm({
                 type="number"
                 step="0.01"
                 className="h-10"
-                disabled={!canEditLoan}
+                disabled={isNominalInterestRateLocked}
                 {...form.register("nominalInterestRate", {
                   valueAsNumber: true,
                 })}
@@ -2282,12 +2502,13 @@ export function LoanTermsForm({
                       templateDerivedValues.interestRateFrequency ||
                       ""
                     }
-                    disabled={!canEditLoan}
+                    disabled={isNominalInterestRateLocked}
                   >
                     <SelectTrigger
                       className={cn(
                         "h-10 w-full",
-                        !canEditLoan && "cursor-not-allowed opacity-70"
+                        isNominalInterestRateLocked &&
+                          "cursor-not-allowed opacity-70"
                       )}
                     >
                       <SelectValue placeholder="Select frequency" />
@@ -2333,12 +2554,13 @@ export function LoanTermsForm({
                       templateDerivedValues.interestMethod ||
                       ""
                     }
-                    disabled={!canEditLoan}
+                    disabled={isNominalInterestRateLocked}
                   >
                     <SelectTrigger
                       className={cn(
                         "h-10 w-full",
-                        !canEditLoan && "cursor-not-allowed opacity-70"
+                        isNominalInterestRateLocked &&
+                          "cursor-not-allowed opacity-70"
                       )}
                     >
                       <SelectValue placeholder="Select method" />
@@ -2382,12 +2604,13 @@ export function LoanTermsForm({
                       templateDerivedValues.amortization ||
                       ""
                     }
-                    disabled={!canEditLoan}
+                    disabled={isNominalInterestRateLocked}
                   >
                     <SelectTrigger
                       className={cn(
                         "h-10 w-full",
-                        !canEditLoan && "cursor-not-allowed opacity-70"
+                        isNominalInterestRateLocked &&
+                          "cursor-not-allowed opacity-70"
                       )}
                     >
                       <SelectValue placeholder="Select amortization" />
@@ -2417,7 +2640,7 @@ export function LoanTermsForm({
                 <Checkbox
                   id="isEqualAmortization"
                   checked={form.watch("isEqualAmortization")}
-                  disabled={!canEditLoan}
+                  disabled={isNominalInterestRateLocked}
                   onCheckedChange={(checked) =>
                     form.setValue("isEqualAmortization", checked as boolean)
                   }
@@ -2866,7 +3089,9 @@ export function LoanTermsForm({
               <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
             )}
             <CardTitle className="text-lg font-medium">
-              Charges & Collateral
+              {isInvoiceDiscountingLead
+                ? "Income, Charges and Collateral"
+                : "Charges & Collateral"}
             </CardTitle>
             {getSectionStatus("chargesCollateral") === "saved" && (
               <Badge className="ml-2 bg-green-500 text-white">Complete</Badge>
@@ -2878,7 +3103,9 @@ export function LoanTermsForm({
             )}
           </div>
           <CardDescription>
-            Manage loan charges and collateral information
+            {isInvoiceDiscountingLead
+              ? "Manage income, charges and collateral information"
+              : "Manage loan charges and collateral information"}
           </CardDescription>
         </div>
 
@@ -2968,18 +3195,24 @@ export function LoanTermsForm({
                         placeholder="0.00"
                         value={newChargeAmount}
                         onChange={(e) => setNewChargeAmount(e.target.value)}
-                        disabled={!canEditLoan}
+                        disabled={
+                          !canEditLoan ||
+                          (isSelectedChargeInvoiceIncome &&
+                            invoiceDiscountingReserveAmount != null)
+                        }
                       />
+                      {isSelectedChargeInvoiceIncome &&
+                        invoiceDiscountingReserveAmount != null && (
+                          <p className="text-xs text-muted-foreground">
+                            Auto-filled from invoice income and locked.
+                          </p>
+                        )}
                     </div>
                     {/* Only show Due Date for charges with "Specified Due Date" time type */}
                     {(() => {
-                      const selectedCharge = loanTemplate.chargeOptions?.find(
-                        (opt: any) => opt.id.toString() === selectedChargeOption
+                      const requiresDueDate = isSpecifiedDueDateCharge(
+                        selectedChargeToAdd?.chargeTimeType
                       );
-                      const requiresDueDate =
-                        selectedCharge?.chargeTimeType?.code === "specifiedDueDate" ||
-                        selectedCharge?.chargeTimeType?.value === "Specified Due Date" ||
-                        selectedCharge?.chargeTimeType?.id === 2;
                       
                       return requiresDueDate ? (
                     <div className="space-y-2">
@@ -3018,13 +3251,9 @@ export function LoanTermsForm({
                     type="button"
                     onClick={handleAddCharge}
                     disabled={(() => {
-                      const selectedCharge = loanTemplate.chargeOptions?.find(
-                        (opt: any) => opt.id.toString() === selectedChargeOption
+                      const requiresDueDate = isSpecifiedDueDateCharge(
+                        selectedChargeToAdd?.chargeTimeType
                       );
-                      const requiresDueDate =
-                        selectedCharge?.chargeTimeType?.code === "specifiedDueDate" ||
-                        selectedCharge?.chargeTimeType?.value === "Specified Due Date" ||
-                        selectedCharge?.chargeTimeType?.id === 2;
                       
                       return !canEditLoan ||
                       !selectedChargeOption ||
@@ -3048,6 +3277,10 @@ export function LoanTermsForm({
                     const calcHighlight = getChargeCalculationHighlight(
                       charge.originalCharge?.chargeCalculationType
                     );
+                    const isLockedInvoiceIncomeCharge =
+                      isInvoiceDiscountingLead &&
+                      index === invoiceIncomeChargeIndex &&
+                      invoiceDiscountingReserveAmount != null;
                     return (
                     <div
                       key={`${charge.chargeId}-${index}`}
@@ -3112,7 +3345,7 @@ export function LoanTermsForm({
                             type="number"
                             step="0.01"
                             value={charge.amount}
-                            disabled={!canEditLoan}
+                            disabled={!canEditLoan || isLockedInvoiceIncomeCharge}
                             onChange={(e) =>
                               handleUpdateChargeAmount(
                                 index,
@@ -3120,6 +3353,11 @@ export function LoanTermsForm({
                               )
                             }
                           />
+                          {isLockedInvoiceIncomeCharge && (
+                            <p className="text-xs text-muted-foreground">
+                              Auto-filled from invoice income and locked.
+                            </p>
+                          )}
                         </div>
                         {/* Only show Due Date for charges with "Specified Due Date" time type */}
                         {(charge.originalCharge?.chargeTimeType?.code === "specifiedDueDate" ||

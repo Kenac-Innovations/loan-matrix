@@ -250,8 +250,8 @@ model Lead {
   incomeVerified             Boolean?            @default(false)
   /** Preferred payment method for payout (same options as payout modal): CASH, MOBILE_MONEY, BANK_TRANSFER */
   preferredPaymentMethod     String?
-  /** Facility mode for this lead: regular term loan or invoice discounting */
-  facilityType               FacilityType        @default(TERM_LOAN)
+  /** Facility mode for this lead — auto-detected from the chosen loan product via InvoiceDiscountingProduct table */
+  facilityType               FacilityType?       @default(TERM_LOAN)
   clientCreatedInFineract    Boolean             @default(false)
   clientCreationDate         DateTime?
   fineractAccountNo          String?
@@ -311,14 +311,14 @@ model InvoiceDiscountingCase {
   debtorContactName         String?
   debtorContactPhone        String?
   debtorContactEmail        String?
-  recourseType              InvoiceRecourseType             @default(WITH_RECOURSE)
+  recourseType              InvoiceRecourseType?
   advanceRate               Float                           @default(0)
   concentrationLimit        Float?
   debtorTermsDays           Int?
-  reservePercent            Float?                          @default(0)
+  reservePercent            Float?
   notes                     String?
   totalPresentedAmount      Float                           @default(0)
-  totalEligibleAmount       Float                           @default(0)
+  totalEligibleAmount       Float?
   totalFinancedAmount       Float                           @default(0)
   totalReserveAmount        Float                           @default(0)
   createdAt                 DateTime                        @default(now())
@@ -339,7 +339,7 @@ model InvoiceDiscountingInvoice {
   invoiceDate               DateTime
   dueDate                   DateTime
   grossAmount               Float
-  eligibleAmount            Float
+  eligibleAmount            Float?
   financedAmount            Float
   reserveAmount             Float
   currencyCode              String?
