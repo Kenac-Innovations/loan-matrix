@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
+import { Prisma } from "@/app/generated/prisma";
 
 export async function GET(
   request: NextRequest,
@@ -10,7 +11,7 @@ export async function GET(
     const { searchParams } = new URL(request.url);
     const statusFilter = searchParams.get("status");
 
-    const where: any = { uploadId: id };
+    const where: Prisma.BulkRepaymentItemWhereInput = { uploadId: id };
     if (statusFilter) {
       const statuses = statusFilter.split(",").map((s) => s.trim());
       where.status = { in: statuses };

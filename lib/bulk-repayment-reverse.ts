@@ -1,4 +1,8 @@
-import { fetchFineractAPI } from "@/lib/api";
+type FineractApiError = {
+  errors?: Array<{ defaultUserMessage?: string; developerMessage?: string }>;
+  defaultUserMessage?: string;
+  developerMessage?: string;
+};
 
 /** Fineract loan transaction undo expects "dd MMMM yyyy" (matches client loan transaction UI). */
 export function formatDateForFineractUndo(d: Date): string {
@@ -46,11 +50,100 @@ function normalizeTxnDate(value: string | [number, number, number] | null | unde
   return date.toISOString().slice(0, 10);
 }
 
-async function getLoanTransactionsForUndo(loanId: number): Promise<FineractLoanTransaction[]> {
-  const loan = (await fetchFineractAPI(
-    `/loans/${loanId}?associations=transactions`
+async function getLoanTransactionsForUndo(
+  loanId: number,
+  tenantSlug?: string
+): Promise<FineractLoanTransaction[]> {
+  const loan = (await fetchFineractAPIForTenant(
+    `/loans/${loanId}?associations=transactions`,
+    { method: "GET" },
+    tenantSlug
   )) as LoanWithTransactionsResponse;
   return Array.isArray(loan.transactions) ? loan.transactions : [];
+}
+
+async function fetchFineractAPIForTenant(
+  endpoint: string,
+  options: RequestInit,
+  tenantSlug?: string
+): Promise<unknown> {
+  const baseUrl = process.env.FINERACT_BASE_URL || "http://10.10.0.143:8443";
+  const serviceToken = process.env.FINERACT_SERVICE_TOKEN || "bWlmb3M6cGFzc3dvcmQ=";
+  const fineractTenantId = tenantSlug || process.env.FINERACT_TENANT_ID || "goodfellow";
+  const url = `${baseUrl}/fineract-provider/api/v1${endpoint.startsWith("/") ? endpoint : `/${endpoint}`}`;
+
+  const headers: Record<string, string> = {
+    Authorization: `Basic ${serviceToken}`,
+    "Fineract-Platform-TenantId": fineractTenantId,
+    Accept: "application/json",
+  };
+
+  if (!(options.body instanceof FormData)) {
+    headers["Content-Type"] = "application/json";
+  }
+
+  let response: Response;
+  if (url.startsWith("http://")) {
+    response = await fetch(url, {
+      ...options,
+      headers: {
+        ...headers,
+        ...(options.headers as Record<string, string> | undefined),
+      },
+    });
+  } else {
+    const agent = new https.Agent({ rejectUnauthorized: false });
+    response = await fetch(url, {
+      ...options,
+      headers: {
+        ...headers,
+        ...(options.headers as Record<string, string> | undefined),
+      },
+      ...({ agent } as { agent: unknown }),
+    });
+  }
+
+  if (!response.ok) {
+    let errorData: FineractApiError = {};
+    try {
+      errorData = (await response.json()) as FineractApiError;
+    } catch {
+      errorData = {};
+    }
+
+    const specificErrorMessage =
+      errorData.errors?.[0]?.defaultUserMessage ||
+      errorData.errors?.[0]?.developerMessage ||
+      errorData.defaultUserMessage ||
+      errorData.developerMessage ||
+      `HTTP ${response.status}: ${response.statusText}`;
+
+    const error = new Error(`API error: ${response.status} ${response.statusText}`);
+    (
+      error as Error & {
+        status: number;
+        errorData: FineractApiError;
+      }
+    ).status = response.status;
+    (
+      error as Error & {
+        status: number;
+        errorData: FineractApiError;
+      }
+    ).errorData = {
+      ...errorData,
+      defaultUserMessage: specificErrorMessage,
+      developerMessage: specificErrorMessage,
+    };
+    throw error;
+  }
+
+  const text = await response.text();
+  if (!text.trim()) {
+    return {};
+  }
+
+  return JSON.parse(text) as unknown;
 }
 
 function pickUndoableRepaymentTransaction(params: {
@@ -109,6 +202,7 @@ function pickUndoableRepaymentTransaction(params: {
 }
 
 export async function resolveUndoableRepaymentTransactionId(params: {
+  tenantSlug?: string;
   loanId: number;
   fineractTransactionId: string;
   transactionDate?: Date;
@@ -119,7 +213,10 @@ export async function resolveUndoableRepaymentTransactionId(params: {
     throw new Error("Missing Fineract transaction id");
   }
 
-  const transactions = await getLoanTransactionsForUndo(params.loanId);
+  const transactions = await getLoanTransactionsForUndo(
+    params.loanId,
+    params.tenantSlug
+  );
   return pickUndoableRepaymentTransaction({
     transactions,
     storedTransactionId,
@@ -133,6 +230,7 @@ export async function resolveUndoableRepaymentTransactionId(params: {
  * Fineract may reject if the txn is not the latest on the loan or business rules block undo.
  */
 export async function undoLoanRepaymentTransaction(params: {
+  tenantSlug?: string;
   loanId: number;
   fineractTransactionId: string;
   /** Date Fineract associates with the undo (use original repayment business date when possible). */
@@ -141,6 +239,7 @@ export async function undoLoanRepaymentTransaction(params: {
   amount?: number;
 }): Promise<unknown> {
   const undoTransactionId = await resolveUndoableRepaymentTransactionId({
+    tenantSlug: params.tenantSlug,
     loanId: params.loanId,
     fineractTransactionId: params.fineractTransactionId,
     transactionDate: params.transactionDate,
@@ -153,11 +252,13 @@ export async function undoLoanRepaymentTransaction(params: {
     transactionAmount: 0,
     transactionDate: formatDateForFineractUndo(params.transactionDate),
   };
-  return fetchFineractAPI(
+  return fetchFineractAPIForTenant(
     `/loans/${params.loanId}/transactions/${undoTransactionId}?command=undo`,
     {
       method: "POST",
       body: JSON.stringify(body),
-    }
+    },
+    params.tenantSlug
   );
 }
+import https from "https";

@@ -1,0 +1,4 @@
+-- AlterTable
+ALTER TABLE "Tenant"
+ADD COLUMN IF NOT EXISTS "logoLinkId" TEXT,
+ADD COLUMN IF NOT EXISTS "logoFileUrl" TEXT;

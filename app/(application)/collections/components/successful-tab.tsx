@@ -29,6 +29,9 @@ interface SuccessItem {
   fineractTxnId: string | null;
   processedAt: string | null;
   status: string;
+  reversalStatus: string | null;
+  reversalErrorMessage: string | null;
+  reversedAt: string | null;
 }
 
 interface SuccessfulTabProps {
@@ -37,6 +40,61 @@ interface SuccessfulTabProps {
 }
 
 const POLL_INTERVAL = 5000;
+
+async function readErrorResponse(response: Response): Promise<string> {
+  const text = await response.text();
+  if (!text.trim()) {
+    return response.statusText || "Request failed";
+  }
+
+  try {
+    const data = JSON.parse(text) as { error?: string };
+    return data.error || response.statusText || "Request failed";
+  } catch {
+    return text;
+  }
+}
+
+function getUndoState(item: SuccessItem): {
+  tone: "default" | "secondary" | "outline";
+  className: string;
+  label: string;
+  title?: string;
+} {
+  switch (item.reversalStatus) {
+    case "QUEUED":
+      return {
+        tone: "secondary",
+        className: "bg-amber-100 text-amber-900 border-amber-200",
+        label: "Undo queued",
+      };
+    case "PROCESSING":
+      return {
+        tone: "secondary",
+        className: "bg-blue-100 text-blue-900 border-blue-200",
+        label: "Undoing",
+      };
+    case "REVERSED":
+      return {
+        tone: "secondary",
+        className: "bg-slate-100 text-slate-900 border-slate-200",
+        label: "Undone",
+      };
+    case "FAILED":
+      return {
+        tone: "secondary",
+        className: "bg-red-100 text-red-900 border-red-200",
+        label: "Undo failed",
+        title: item.reversalErrorMessage || undefined,
+      };
+    default:
+      return {
+        tone: "outline",
+        className: "text-green-800 border-green-200",
+        label: "Posted",
+      };
+  }
+}
 
 export function SuccessfulTab({ selectedUploadId, onCountChange }: SuccessfulTabProps) {
   const { currencyCode } = useCurrency();
@@ -87,12 +145,11 @@ export function SuccessfulTab({ selectedUploadId, onCountChange }: SuccessfulTab
         `/api/collections/uploads/${selectedUploadId}/items/${undoItem.id}/reverse`,
         { method: "POST" }
       );
-      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setFeedback({ type: "err", text: data.error || res.statusText });
+        setFeedback({ type: "err", text: await readErrorResponse(res) });
         return;
       }
-      setFeedback({ type: "ok", text: "Repayment undone in Fineract." });
+      setFeedback({ type: "ok", text: "Undo queued. This row will update when the background worker finishes." });
       setUndoItem(null);
       await fetchItems(false);
     } catch (e) {
@@ -118,12 +175,17 @@ export function SuccessfulTab({ selectedUploadId, onCountChange }: SuccessfulTab
           body: JSON.stringify({}),
         }
       );
-      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setFeedback({ type: "err", text: data.error || res.statusText });
+        setFeedback({ type: "err", text: await readErrorResponse(res) });
         return;
       }
-      const n = data.reversedCount ?? data.reversed?.length ?? 0;
+      const data = (await res.json()) as {
+        queuedCount?: number;
+        queued?: string[];
+        failed?: Array<{ itemId: string; loanId?: number; error: string }>;
+        failedCount?: number;
+      };
+      const n = data.queuedCount ?? data.queued?.length ?? 0;
       const failures: { itemId: string; loanId?: number; error: string }[] =
         Array.isArray(data.failed) ? data.failed : [];
       const fCount = data.failedCount ?? failures.length;
@@ -131,24 +193,24 @@ export function SuccessfulTab({ selectedUploadId, onCountChange }: SuccessfulTab
       if (n === 0 && fCount === 0) {
         setFeedback({
           type: "ok",
-          text: "No eligible rows to undo.",
+          text: "No eligible rows to queue for undo.",
         });
       } else if (fCount > 0 && n === 0) {
         const sample = failures[0];
         setFeedback({
           type: "err",
-          text: `Could not undo any rows (${fCount} failed). Example: loan ${sample?.loanId ?? "?"} — ${sample?.error ?? "Unknown error"}`,
+          text: `Could not queue any rows for undo (${fCount} failed). Example: loan ${sample?.loanId ?? "?"} — ${sample?.error ?? "Unknown error"}`,
         });
       } else if (fCount > 0) {
         const sample = failures[0];
         setFeedback({
           type: "warn",
-          text: `Undid ${n} repayment(s). ${fCount} could not be undone (e.g. loan ${sample?.loanId ?? "?"}: ${sample?.error ?? "error"}).`,
+          text: `Queued ${n} undo(s). ${fCount} row(s) could not be queued (e.g. loan ${sample?.loanId ?? "?"}: ${sample?.error ?? "error"}).`,
         });
       } else {
         setFeedback({
           type: "ok",
-          text: `Undid ${n} repayment(s) in Fineract (newest processed first).`,
+          text: `Queued ${n} undo(s). This page will update as reversals complete.`,
         });
       }
       setBatchOpen(false);
@@ -251,11 +313,28 @@ export function SuccessfulTab({ selectedUploadId, onCountChange }: SuccessfulTab
         ),
       },
       {
+        id: "undoStatus",
+        header: "Undo Status",
+        enableSorting: false,
+        cell: ({ row }) => {
+          const state = getUndoState(row.original);
+          return (
+            <Badge variant={state.tone} className={`text-xs ${state.className}`} title={state.title}>
+              {state.label}
+            </Badge>
+          );
+        },
+      },
+      {
         id: "actions",
         header: "",
         enableSorting: false,
         cell: ({ row }) => {
-          const canUndo = !!row.original.fineractTxnId?.trim();
+          const canUndo =
+            !!row.original.fineractTxnId?.trim() &&
+            row.original.reversalStatus !== "QUEUED" &&
+            row.original.reversalStatus !== "PROCESSING" &&
+            row.original.reversalStatus !== "REVERSED";
           return (
             <Button
               type="button"
@@ -266,7 +345,7 @@ export function SuccessfulTab({ selectedUploadId, onCountChange }: SuccessfulTab
               onClick={() => setUndoItem(row.original)}
             >
               <Undo2 className="h-3 w-3 mr-1" />
-              Undo
+              {row.original.reversalStatus === "FAILED" ? "Retry undo" : "Undo"}
             </Button>
           );
         },
@@ -310,7 +389,7 @@ export function SuccessfulTab({ selectedUploadId, onCountChange }: SuccessfulTab
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm text-muted-foreground">
-          {items.length} repayments successfully processed
+          {items.length} repayments currently posted in Fineract
         </p>
         <div className="flex items-center gap-2">
           <Button
@@ -360,18 +439,23 @@ export function SuccessfulTab({ selectedUploadId, onCountChange }: SuccessfulTab
             <DialogTitle>Undo entire batch?</DialogTitle>
             <DialogDescription className="space-y-2 text-left">
               <p>
-                All successful rows in this upload with a Fineract transaction id will be undone{" "}
-                <strong>one at a time, newest processed first</strong> (last posted in the batch
+                All eligible rows in this upload with a Fineract transaction id will be queued for
+                undo <strong>one at a time, newest processed first</strong> (last posted in the batch
                 first). That order matches how Fineract usually requires reversals when other
                 activity exists on the same loan.
               </p>
               <p>
-                If Fineract refuses an undo on a row (e.g. not the loan&apos;s latest transaction),
-                that row is skipped and the rest of the batch still runs. Review any failures and
-                fix or retry those loans individually.
+                The browser request returns quickly, then the background worker keeps processing.
+                If Fineract refuses an undo on a row, that row is marked failed and you can retry it
+                later.
               </p>
               <p className="font-medium text-foreground">
-                Rows to process: {items.filter((i) => i.fineractTxnId?.trim()).length}
+                Rows to process: {items.filter((i) =>
+                  i.fineractTxnId?.trim() &&
+                  i.reversalStatus !== "QUEUED" &&
+                  i.reversalStatus !== "PROCESSING" &&
+                  i.reversalStatus !== "REVERSED"
+                ).length}
               </p>
             </DialogDescription>
           </DialogHeader>

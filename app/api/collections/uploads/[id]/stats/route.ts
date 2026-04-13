@@ -18,6 +18,7 @@ export async function GET(
         queuedCount: true,
         successCount: true,
         failedCount: true,
+        reversedCount: true,
         totalAmount: true,
       },
     });
@@ -45,6 +46,7 @@ export async function GET(
       processingCount: countMap["PROCESSING"] || 0,
       successCount: countMap["SUCCESS"] || 0,
       failedCount: countMap["FAILED"] || 0,
+      reversedCount: upload.reversedCount,
     });
   } catch (error) {
     console.error("Error fetching upload stats:", error);
