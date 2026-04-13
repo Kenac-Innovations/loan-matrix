@@ -4,6 +4,27 @@ import { getTenantFromHeaders } from "@/lib/tenant-service";
 import { getSession } from "@/lib/auth";
 import { undoLoanRepaymentTransaction } from "@/lib/bulk-repayment-reverse";
 
+function getUndoErrorMessage(error: unknown): string {
+  if (error && typeof error === "object") {
+    const apiError = error as {
+      message?: string;
+      errorData?: {
+        defaultUserMessage?: string;
+        errors?: Array<{ defaultUserMessage?: string }>;
+      };
+    };
+
+    return (
+      apiError.errorData?.defaultUserMessage ||
+      apiError.errorData?.errors?.[0]?.defaultUserMessage ||
+      apiError.message ||
+      "Fineract undo failed"
+    );
+  }
+
+  return "Fineract undo failed";
+}
+
 /**
  * POST — Reverse many bulk repayments in LIFO order (last posted in Fineract terms: highest processedAt first).
  * Fineract usually requires undoing the loan’s latest transaction first; processing order ≈ queue order,
@@ -77,6 +98,7 @@ export async function POST(
           loanId: item.loanId,
           fineractTransactionId: tid,
           transactionDate: txnDate,
+          amount: Number(item.amount),
         });
 
         await prisma.bulkRepaymentItem.update({
@@ -88,13 +110,12 @@ export async function POST(
           },
         });
         reversed.push(item.id);
-      } catch (err: any) {
-        const msg =
-          err?.errorData?.defaultUserMessage ||
-          err?.errorData?.errors?.[0]?.defaultUserMessage ||
-          err?.message ||
-          "Fineract undo failed";
-        console.error(`[BulkRepayment] Batch reverse item ${item.id} failed (continuing):`, err);
+      } catch (err: unknown) {
+        const msg = getUndoErrorMessage(err);
+        console.error(
+          `[BulkRepayment] Batch reverse item ${item.id} failed (continuing):`,
+          err
+        );
         failed.push({ itemId: item.id, loanId: item.loanId, error: msg });
       }
     }

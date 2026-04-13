@@ -4,6 +4,27 @@ import { getTenantFromHeaders } from "@/lib/tenant-service";
 import { getSession } from "@/lib/auth";
 import { undoLoanRepaymentTransaction } from "@/lib/bulk-repayment-reverse";
 
+function getUndoErrorMessage(error: unknown): string {
+  if (error && typeof error === "object") {
+    const apiError = error as {
+      message?: string;
+      errorData?: {
+        defaultUserMessage?: string;
+        errors?: Array<{ defaultUserMessage?: string }>;
+      };
+    };
+
+    return (
+      apiError.errorData?.defaultUserMessage ||
+      apiError.errorData?.errors?.[0]?.defaultUserMessage ||
+      apiError.message ||
+      "Fineract undo failed"
+    );
+  }
+
+  return "Fineract undo failed";
+}
+
 /**
  * POST — Undo the Fineract repayment for one bulk item (must be SUCCESS with fineractTxnId).
  */
@@ -61,13 +82,10 @@ export async function POST(
         loanId: item.loanId,
         fineractTransactionId: item.fineractTxnId.trim(),
         transactionDate: txnDate,
+        amount: Number(item.amount),
       });
-    } catch (err: any) {
-      const msg =
-        err?.errorData?.defaultUserMessage ||
-        err?.errorData?.errors?.[0]?.defaultUserMessage ||
-        err?.message ||
-        "Fineract undo failed";
+    } catch (err: unknown) {
+      const msg = getUndoErrorMessage(err);
       console.error("[BulkRepayment] Reverse item failed:", err);
       return NextResponse.json({ error: msg }, { status: 502 });
     }
