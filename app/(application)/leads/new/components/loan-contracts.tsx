@@ -1,7 +1,6 @@
 "use client";
 
 import { useCurrency } from "@/contexts/currency-context";
-import { fineractFetch } from "@/lib/fineract-fetch";
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -2081,13 +2080,18 @@ export function LoanContracts({
       console.log("Loan charges being sent:", loanPayload.charges);
       console.log("Raw loanTerms.charges:", loanTerms.charges);
 
-      const loanResponse = await fineractFetch("/api/fineract/loans", {
+      const loanResponse = await fetch("/api/fineract/loans", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify(loanPayload),
       });
+
+      if (!loanResponse.ok) {
+        const errorData = await loanResponse.json();
+        throw new Error(errorData.error || "Failed to create loan");
+      }
 
       const loanResult = await loanResponse.json();
       const createdLoanId =
@@ -2128,13 +2132,17 @@ export function LoanContracts({
         formData.append("name", documentName);
         formData.append("description", `Loan contract: ${documentName}`);
 
-        const uploadResponse = await fineractFetch(
+        const uploadResponse = await fetch(
           `/api/fineract/loans/${createdLoanId}/documents`,
           {
             method: "POST",
             body: formData,
           },
         );
+
+        if (!uploadResponse.ok) {
+          throw new Error(`Failed to upload ${documentName}`);
+        }
 
         return uploadResponse.json();
       };

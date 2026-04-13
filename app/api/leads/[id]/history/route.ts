@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { leadStateManager } from "@/lib/lead-state-manager";
 import { getSession as getCustomSession } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
 
 /**
  * GET /api/leads/[id]/history
@@ -19,21 +19,7 @@ export async function GET(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const transitions = await prisma.stateTransition.findMany({
-      where: { leadId },
-      include: { fromStage: true, toStage: true },
-      orderBy: { triggeredAt: "desc" },
-    });
-
-    const history = transitions.map((t) => ({
-      id: t.id,
-      fromStage: t.fromStage?.name || null,
-      toStage: t.toStage.name,
-      event: t.event,
-      triggeredBy: t.triggeredBy,
-      triggeredAt: t.triggeredAt,
-      metadata: t.metadata,
-    }));
+    const history = await leadStateManager.getTransitionHistory(leadId);
 
     return NextResponse.json({ history });
   } catch (error) {
