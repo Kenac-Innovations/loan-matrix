@@ -16,6 +16,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { ThemeAwareLogo } from "@/components/ui/theme-aware-logo";
+import { Suspense } from "react";
 
 function sanitizeCallbackUrl(value: string | null): string {
   if (!value) {
@@ -40,7 +41,7 @@ function sanitizeCallbackUrl(value: string | null): string {
   return "/leads";
 }
 
-export default function LoginPage() {
+function LoginPageContent() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -357,5 +358,13 @@ export default function LoginPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-background" />}>
+      <LoginPageContent />
+    </Suspense>
   );
 }
