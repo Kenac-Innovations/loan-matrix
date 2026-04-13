@@ -4,8 +4,19 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useCurrency } from "@/contexts/currency-context";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Loader2, CheckCircle2, RefreshCw } from "lucide-react";
-import { GenericDataTable, DataTableColumn } from "@/components/tables/generic-data-table";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Loader2, CheckCircle2, RefreshCw, Undo2 } from "lucide-react";
+import {
+  GenericDataTable,
+  DataTableColumn,
+} from "@/components/tables/generic-data-table";
 import { formatCurrency } from "@/lib/format-currency";
 import { UploadDashboard } from "./upload-dashboard";
 import { format } from "date-fns";
@@ -21,6 +32,8 @@ interface SuccessItem {
   fineractTxnId: string | null;
   processedAt: string | null;
   status: string;
+  reversalStatus: string | null;
+  reversalErrorMessage: string | null;
 }
 
 interface SuccessfulTabProps {
@@ -30,32 +43,55 @@ interface SuccessfulTabProps {
 
 const POLL_INTERVAL = 5000;
 
-export function SuccessfulTab({ selectedUploadId, onCountChange }: SuccessfulTabProps) {
+function canQueueUndo(item: SuccessItem) {
+  return (
+    item.status === "SUCCESS" &&
+    !!item.fineractTxnId?.trim() &&
+    item.reversalStatus !== "QUEUED" &&
+    item.reversalStatus !== "PROCESSING"
+  );
+}
+
+export function SuccessfulTab({
+  selectedUploadId,
+  onCountChange,
+}: SuccessfulTabProps) {
   const { currencyCode } = useCurrency();
   const [items, setItems] = useState<SuccessItem[]>([]);
   const [loading, setLoading] = useState(false);
+  const [undoItem, setUndoItem] = useState<SuccessItem | null>(null);
+  const [batchOpen, setBatchOpen] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [feedback, setFeedback] = useState<{
+    type: "ok" | "err";
+    text: string;
+  } | null>(null);
 
   const onCountChangeRef = useRef(onCountChange);
   onCountChangeRef.current = onCountChange;
 
-  const fetchItems = useCallback(async (showLoader = true) => {
-    if (!selectedUploadId) return;
-    if (showLoader) setLoading(true);
-    try {
-      const res = await fetch(
-        `/api/collections/uploads/${selectedUploadId}/items?status=SUCCESS`
-      );
-      if (res.ok) {
-        const data = await res.json();
-        setItems(data.items || []);
-        onCountChangeRef.current(data.items?.length || 0);
+  const fetchItems = useCallback(
+    async (showLoader = true) => {
+      if (!selectedUploadId) return;
+      if (showLoader) setLoading(true);
+
+      try {
+        const res = await fetch(
+          `/api/collections/uploads/${selectedUploadId}/items?status=SUCCESS`
+        );
+        if (res.ok) {
+          const data = await res.json();
+          setItems(data.items || []);
+          onCountChangeRef.current(data.items?.length || 0);
+        }
+      } catch {
+        // Silent poll failure
+      } finally {
+        setLoading(false);
       }
-    } catch {
-      // Silent
-    } finally {
-      setLoading(false);
-    }
-  }, [selectedUploadId]);
+    },
+    [selectedUploadId]
+  );
 
   useEffect(() => {
     fetchItems();
@@ -63,91 +99,251 @@ export function SuccessfulTab({ selectedUploadId, onCountChange }: SuccessfulTab
     return () => clearInterval(interval);
   }, [fetchItems]);
 
-  const columns = useMemo((): DataTableColumn<SuccessItem>[] => [
-    {
-      id: "rowNumber",
-      header: "#",
-      enableSorting: false,
-      cell: ({ row }) => (
-        <span className="text-muted-foreground font-mono text-xs">{row.original.rowNumber}</span>
-      ),
-    },
-    {
-      id: "loanId",
-      header: "Loan ID",
-      accessorKey: "loanId",
-      cell: ({ getValue }) => <span className="font-mono text-xs">{String(getValue())}</span>,
-    },
-    {
-      id: "loanAccountNo",
-      header: "Account No",
-      accessorKey: "loanAccountNo",
-      cell: ({ getValue }) => <span className="text-xs">{String(getValue() || "-")}</span>,
-    },
-    {
-      id: "clientName",
-      header: "Client",
-      accessorKey: "clientName",
-      cell: ({ getValue }) => <span className="text-xs font-medium">{String(getValue() || "-")}</span>,
-    },
-    {
-      id: "amount",
-      header: "Amount",
-      accessorKey: "amount",
-      cell: ({ getValue }) => (
-        <span className="text-xs font-medium tabular-nums">
-          {formatCurrency(parseFloat(String(getValue())) || 0, currencyCode)}
-        </span>
-      ),
-    },
-    {
-      id: "paymentTypeName",
-      header: "Payment Type",
-      accessorKey: "paymentTypeName",
-      cell: ({ getValue }) => <span className="text-xs">{String(getValue() || "Default")}</span>,
-    },
-    {
-      id: "fineractTxnId",
-      header: "Txn ID",
-      accessorKey: "fineractTxnId",
-      cell: ({ getValue }) => {
-        const txnId = getValue();
-        return txnId ? (
-          <Badge variant="outline" className="text-xs font-mono">
-            {String(txnId)}
-          </Badge>
-        ) : (
-          <span className="text-xs text-muted-foreground">-</span>
-        );
-      },
-    },
-    {
-      id: "processedAt",
-      header: "Processed",
-      accessorKey: "processedAt",
-      cell: ({ getValue }) => {
-        const val = getValue();
-        return val ? (
-          <span className="text-xs text-muted-foreground">
-            {format(new Date(String(val)), "MMM d, HH:mm:ss")}
+  const runSingleUndo = async () => {
+    if (!undoItem || !selectedUploadId) return;
+
+    setSubmitting(true);
+    setFeedback(null);
+
+    try {
+      const res = await fetch(
+        `/api/collections/uploads/${selectedUploadId}/items/${undoItem.id}/reverse`,
+        { method: "POST" }
+      );
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        setFeedback({
+          type: "err",
+          text: data.error || "Failed to queue undo",
+        });
+        return;
+      }
+
+      setFeedback({
+        type: "ok",
+        text: "Undo queued. The row will update automatically as the background worker processes it.",
+      });
+      setUndoItem(null);
+      await fetchItems(false);
+    } catch (error) {
+      setFeedback({
+        type: "err",
+        text: error instanceof Error ? error.message : "Request failed",
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const runBatchUndo = async () => {
+    if (!selectedUploadId) return;
+
+    setSubmitting(true);
+    setFeedback(null);
+
+    try {
+      const res = await fetch(
+        `/api/collections/uploads/${selectedUploadId}/reverse-batch`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({}),
+        }
+      );
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        setFeedback({
+          type: "err",
+          text: data.error || "Failed to queue batch undo",
+        });
+        return;
+      }
+
+      const queuedCount = data.queuedCount ?? data.queued?.length ?? 0;
+      const failedCount = data.failed?.length ?? 0;
+
+      setFeedback({
+        type: failedCount > 0 ? "err" : "ok",
+        text:
+          failedCount > 0
+            ? `Queued ${queuedCount} row(s) for undo. ${failedCount} row(s) could not be queued.`
+            : queuedCount === 0
+              ? "No eligible rows were available to queue for undo."
+              : `Queued ${queuedCount} row(s) for background undo, newest processed first.`,
+      });
+
+      setBatchOpen(false);
+      await fetchItems(false);
+    } catch (error) {
+      setFeedback({
+        type: "err",
+        text: error instanceof Error ? error.message : "Request failed",
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const columns = useMemo((): DataTableColumn<SuccessItem>[] => {
+    return [
+      {
+        id: "rowNumber",
+        header: "#",
+        enableSorting: false,
+        cell: ({ row }) => (
+          <span className="text-muted-foreground font-mono text-xs">
+            {row.original.rowNumber}
           </span>
-        ) : (
-          <span className="text-xs text-muted-foreground">-</span>
-        );
+        ),
       },
-    },
-    {
-      id: "status",
-      header: "Status",
-      accessorKey: "status",
-      cell: () => (
-        <Badge className="text-xs bg-green-100 text-green-800 border-green-200">
-          <CheckCircle2 className="h-3 w-3 mr-1" />
-          Success
-        </Badge>
-      ),
-    },
-  ], [currencyCode]);
+      {
+        id: "loanId",
+        header: "Loan ID",
+        accessorKey: "loanId",
+        cell: ({ getValue }) => (
+          <span className="font-mono text-xs">{String(getValue())}</span>
+        ),
+      },
+      {
+        id: "loanAccountNo",
+        header: "Account No",
+        accessorKey: "loanAccountNo",
+        cell: ({ getValue }) => (
+          <span className="text-xs">{String(getValue() || "-")}</span>
+        ),
+      },
+      {
+        id: "clientName",
+        header: "Client",
+        accessorKey: "clientName",
+        cell: ({ getValue }) => (
+          <span className="text-xs font-medium">{String(getValue() || "-")}</span>
+        ),
+      },
+      {
+        id: "amount",
+        header: "Amount",
+        accessorKey: "amount",
+        cell: ({ getValue }) => (
+          <span className="text-xs font-medium tabular-nums">
+            {formatCurrency(parseFloat(String(getValue())) || 0, currencyCode)}
+          </span>
+        ),
+      },
+      {
+        id: "paymentTypeName",
+        header: "Payment Type",
+        accessorKey: "paymentTypeName",
+        cell: ({ getValue }) => (
+          <span className="text-xs">{String(getValue() || "Default")}</span>
+        ),
+      },
+      {
+        id: "fineractTxnId",
+        header: "Txn ID",
+        accessorKey: "fineractTxnId",
+        cell: ({ getValue }) => {
+          const txnId = getValue();
+          return txnId ? (
+            <Badge variant="outline" className="text-xs font-mono">
+              {String(txnId)}
+            </Badge>
+          ) : (
+            <span className="text-xs text-muted-foreground">-</span>
+          );
+        },
+      },
+      {
+        id: "processedAt",
+        header: "Processed",
+        accessorKey: "processedAt",
+        cell: ({ getValue }) => {
+          const value = getValue();
+          return value ? (
+            <span className="text-xs text-muted-foreground">
+              {format(new Date(String(value)), "MMM d, HH:mm:ss")}
+            </span>
+          ) : (
+            <span className="text-xs text-muted-foreground">-</span>
+          );
+        },
+      },
+      {
+        id: "undoState",
+        header: "Undo State",
+        enableSorting: false,
+        cell: ({ row }) => {
+          const item = row.original;
+
+          if (item.reversalStatus === "QUEUED") {
+            return (
+              <Badge className="text-xs bg-purple-100 text-purple-800 border-purple-200">
+                <Undo2 className="h-3 w-3 mr-1" />
+                Undo queued
+              </Badge>
+            );
+          }
+
+          if (item.reversalStatus === "PROCESSING") {
+            return (
+              <Badge className="text-xs bg-blue-100 text-blue-800 border-blue-200">
+                <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                Undoing
+              </Badge>
+            );
+          }
+
+          if (item.reversalStatus === "FAILED") {
+            return (
+              <Badge
+                className="text-xs bg-red-100 text-red-800 border-red-200"
+                title={item.reversalErrorMessage || "Undo failed"}
+              >
+                <Undo2 className="h-3 w-3 mr-1" />
+                Undo failed
+              </Badge>
+            );
+          }
+
+          return (
+            <Badge className="text-xs bg-green-100 text-green-800 border-green-200">
+              <CheckCircle2 className="h-3 w-3 mr-1" />
+              Posted
+            </Badge>
+          );
+        },
+      },
+      {
+        id: "actions",
+        header: "",
+        enableSorting: false,
+        cell: ({ row }) => {
+          const item = row.original;
+          const enabled = canQueueUndo(item);
+          const buttonLabel =
+            item.reversalStatus === "FAILED" ? "Retry undo" : "Undo";
+
+          return (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-7 text-xs"
+              disabled={!enabled}
+              onClick={() => setUndoItem(item)}
+            >
+              <Undo2 className="h-3 w-3 mr-1" />
+              {buttonLabel}
+            </Button>
+          );
+        },
+      },
+    ];
+  }, [currencyCode]);
+
+  const eligibleBatchCount = items.filter(canQueueUndo).length;
 
   if (!selectedUploadId) {
     return (
@@ -162,15 +358,136 @@ export function SuccessfulTab({ selectedUploadId, onCountChange }: SuccessfulTab
     <div className="space-y-4">
       <UploadDashboard uploadId={selectedUploadId} />
 
-      <div className="flex items-center justify-between">
+      {feedback && (
+        <div
+          className={`rounded-md border px-3 py-2 text-sm ${
+            feedback.type === "ok"
+              ? "border-green-200 bg-green-50 text-green-900"
+              : "border-red-200 bg-red-50 text-red-900"
+          }`}
+        >
+          {feedback.text}
+          <button
+            type="button"
+            className="ml-2 underline text-xs"
+            onClick={() => setFeedback(null)}
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm text-muted-foreground">
-          {items.length} repayments successfully processed
+          {items.length} repayments currently posted in Fineract
         </p>
-        <Button variant="outline" size="sm" onClick={() => fetchItems()} disabled={loading}>
-          <RefreshCw className={`h-4 w-4 mr-1 ${loading ? "animate-spin" : ""}`} />
-          Refresh
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="destructive"
+            size="sm"
+            disabled={loading || eligibleBatchCount === 0}
+            onClick={() => setBatchOpen(true)}
+          >
+            <Undo2 className="h-4 w-4 mr-1" />
+            Undo entire batch
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => fetchItems()}
+            disabled={loading}
+          >
+            <RefreshCw
+              className={`h-4 w-4 mr-1 ${loading ? "animate-spin" : ""}`}
+            />
+            Refresh
+          </Button>
+        </div>
       </div>
+
+      <Dialog open={!!undoItem} onOpenChange={(open) => !open && setUndoItem(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Undo this repayment?</DialogTitle>
+            <DialogDescription>
+              This will queue a background undo in Fineract for loan{" "}
+              <span className="font-mono">{undoItem?.loanId}</span>
+              {undoItem?.loanAccountNo ? ` (${undoItem.loanAccountNo})` : ""}.
+              {undoItem
+                ? ` Amount: ${formatCurrency(
+                    parseFloat(undoItem.amount) || 0,
+                    currencyCode
+                  )}.`
+                : ""}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              onClick={() => setUndoItem(null)}
+              disabled={submitting}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={runSingleUndo}
+              disabled={submitting}
+            >
+              {submitting ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                "Queue undo"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={batchOpen} onOpenChange={setBatchOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Undo entire batch?</DialogTitle>
+            <DialogDescription className="space-y-2 text-left">
+              <p>
+                All successful rows in this upload with a Fineract transaction
+                id will be queued for undo <strong>one at a time, newest processed first</strong>.
+                That keeps the Fineract reversal order aligned with how the rows
+                were originally posted.
+              </p>
+              <p>
+                The request returns immediately and the background worker will
+                continue processing. If Fineract rejects a row, that row is
+                marked as an undo failure while the rest of the batch keeps
+                running.
+              </p>
+              <p className="font-medium text-foreground">
+                Rows to process: {eligibleBatchCount}
+              </p>
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              onClick={() => setBatchOpen(false)}
+              disabled={submitting}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={runBatchUndo}
+              disabled={submitting}
+            >
+              {submitting ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                "Queue batch undo"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {loading && items.length === 0 ? (
         <div className="flex items-center justify-center py-16">

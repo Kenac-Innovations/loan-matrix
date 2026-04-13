@@ -24,6 +24,39 @@ const NO_CACHE_HEADERS = {
   "Expires": "0",
 } as const;
 
+function getRequestOrigin(request: NextRequest): string {
+  const forwardedProto = request.headers.get("x-forwarded-proto");
+  const forwardedHost = request.headers.get("x-forwarded-host");
+  const host = forwardedHost || request.headers.get("host") || request.nextUrl.host;
+  const proto =
+    forwardedProto ||
+    request.nextUrl.protocol.replace(":", "") ||
+    (host?.includes("localhost") || host?.startsWith("127.") || host?.startsWith("0.0.0.0")
+      ? "http"
+      : "https");
+
+  return `${proto}://${host}`;
+}
+
+function buildAppUrl(request: NextRequest, pathname: string): URL {
+  return new URL(pathname, getRequestOrigin(request));
+}
+
+function getSafeCallbackPath(request: NextRequest): string {
+  const callbackPath = `${request.nextUrl.pathname}${request.nextUrl.search}`;
+
+  if (
+    !callbackPath ||
+    callbackPath === "/" ||
+    callbackPath.startsWith("/auth") ||
+    callbackPath.startsWith("/api/auth")
+  ) {
+    return "/leads";
+  }
+
+  return callbackPath;
+}
+
 function isPublicPage(pathname: string): boolean {
   if (PUBLIC_PREFIXES.some((prefix) => pathname.startsWith(prefix))) {
     return true;
@@ -89,7 +122,7 @@ export async function middleware(request: NextRequest) {
     if (pathname === "/auth/login") {
       const token = await getSessionToken(request);
       if (token) {
-        return NextResponse.redirect(new URL("/leads", request.url));
+        return NextResponse.redirect(buildAppUrl(request, "/leads"));
       }
     }
     return next();
@@ -100,13 +133,13 @@ export async function middleware(request: NextRequest) {
   const token = await getSessionToken(request);
 
   if (!token) {
-    const loginUrl = new URL("/auth/login", request.url);
-    loginUrl.searchParams.set("callbackUrl", encodeURI(request.url));
+    const loginUrl = buildAppUrl(request, "/auth/login");
+    loginUrl.searchParams.set("callbackUrl", getSafeCallbackPath(request));
     return NextResponse.redirect(loginUrl);
   }
 
   if (pathname === "/") {
-    return NextResponse.redirect(new URL("/leads", request.url));
+    return NextResponse.redirect(buildAppUrl(request, "/leads"));
   }
 
   return setNoCacheHeaders(next());

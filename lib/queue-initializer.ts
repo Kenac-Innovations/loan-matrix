@@ -3,6 +3,7 @@
 
 import { getUssdQueueConsumer } from './ussd-queue-consumer';
 import { getBulkRepaymentQueueService } from './bulk-repayment-queue-service';
+import { getBulkRepaymentReversalQueueService } from './bulk-repayment-reversal-queue-service';
 
 // Prevent multiple initializations using global variable
 declare global {
@@ -33,5 +34,15 @@ if (process.env.NODE_ENV !== 'test' && !global.__queueConsumerInitialized) {
     });
   } catch (error) {
     console.error('Failed to initialize bulk repayment consumer:', error);
+  }
+
+  try {
+    const reversalService = getBulkRepaymentReversalQueueService();
+    console.log('Bulk repayment reversal queue consumer initialized');
+    reversalService.startConsuming().catch((error) => {
+      console.error('Failed to start bulk repayment reversal consumer:', error);
+    });
+  } catch (error) {
+    console.error('Failed to initialize bulk repayment reversal consumer:', error);
   }
 }

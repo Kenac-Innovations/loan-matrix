@@ -1038,6 +1038,7 @@ model BulkRepaymentUpload {
   queuedCount   Int                  @default(0)
   successCount  Int                  @default(0)
   failedCount   Int                  @default(0)
+  reversedCount Int                  @default(0)
   totalAmount   Decimal              @default(0) @db.Decimal(19, 4)
   columnMapping Json?
   createdAt     DateTime             @default(now())
@@ -1066,14 +1067,19 @@ model BulkRepaymentItem {
   bankNumber      String?
   note            String?
   transactionDate DateTime?
-  status          String              @default("STAGED") // STAGED, QUEUED, PROCESSING, SUCCESS, FAILED
+  status          String              @default("STAGED") // STAGED, QUEUED, PROCESSING, SUCCESS, FAILED, REVERSED
   errorMessage    String?
   fineractTxnId   String?
   processedAt     DateTime?
+  reversalStatus  String?             // QUEUED, PROCESSING, FAILED, REVERSED
+  reversalErrorMessage String?
+  reversedAt      DateTime?
+  reversedBy      String?
   createdAt       DateTime            @default(now())
   updatedAt       DateTime            @updatedAt
 
   @@index([uploadId, status])
+  @@index([uploadId, reversalStatus])
   @@index([loanId])
 }
 
