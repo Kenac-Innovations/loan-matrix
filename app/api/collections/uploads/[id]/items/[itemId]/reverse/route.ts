@@ -2,10 +2,30 @@ import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
 import { getSession } from "@/lib/auth";
-import { undoLoanRepaymentTransaction } from "@/lib/bulk-repayment-reverse";
+import { refreshBulkRepaymentUploadStats } from "@/lib/bulk-repayment-upload-stats";
+import { getBulkRepaymentReversalQueueService } from "@/lib/bulk-repayment-reversal-queue-service";
+
+function getQueueErrorMessage(error: unknown): string {
+  if (error && typeof error === "object") {
+    const apiError = error as {
+      message?: string;
+      errorData?: {
+        defaultUserMessage?: string;
+        errors?: Array<{ defaultUserMessage?: string }>;
+      };
+    };
+
+    return (
+      apiError.message ||
+      "Failed to queue undo"
+    );
+  }
+
+  return "Failed to queue undo";
+}
 
 /**
- * POST — Undo the Fineract repayment for one bulk item (must be SUCCESS with fineractTxnId).
+ * POST — Queue a Fineract repayment undo for one bulk item.
  */
 export async function POST(
   _request: NextRequest,
@@ -53,43 +73,59 @@ export async function POST(
       );
     }
 
-    const txnDate =
-      item.transactionDate ?? item.processedAt ?? new Date();
-
-    try {
-      await undoLoanRepaymentTransaction({
-        loanId: item.loanId,
-        fineractTransactionId: item.fineractTxnId.trim(),
-        transactionDate: txnDate,
-      });
-    } catch (err: any) {
-      const msg =
-        err?.errorData?.defaultUserMessage ||
-        err?.errorData?.errors?.[0]?.defaultUserMessage ||
-        err?.message ||
-        "Fineract undo failed";
-      console.error("[BulkRepayment] Reverse item failed:", err);
-      return NextResponse.json({ error: msg }, { status: 502 });
+    if (item.reversalStatus === "QUEUED" || item.reversalStatus === "PROCESSING") {
+      return NextResponse.json(
+        { error: "Undo is already queued for this row" },
+        { status: 409 }
+      );
     }
 
-    await prisma.bulkRepaymentItem.update({
-      where: { id: itemId },
-      data: {
-        status: "REVERSED",
-        reversedAt: new Date(),
+    try {
+      await prisma.bulkRepaymentItem.update({
+        where: { id: itemId },
+        data: {
+          reversalStatus: "QUEUED",
+          reversalErrorMessage: null,
+        },
+      });
+
+      const queueService = getBulkRepaymentReversalQueueService();
+      const txnDate = item.transactionDate ?? item.processedAt ?? new Date();
+
+      await queueService.publishReversal({
+        itemId,
+        uploadId,
+        tenantSlug: tenant.slug,
+        loanId: item.loanId,
+        fineractTransactionId: item.fineractTxnId.trim(),
+        transactionDate: txnDate.toISOString(),
+        amount: Number(item.amount),
         reversedBy: session.user.id,
-      },
-    });
+      });
+
+      await refreshBulkRepaymentUploadStats(uploadId);
+    } catch (err: unknown) {
+      const msg = getQueueErrorMessage(err);
+      await prisma.bulkRepaymentItem.update({
+        where: { id: itemId },
+        data: {
+          reversalStatus: "FAILED",
+          reversalErrorMessage: msg,
+        },
+      });
+      console.error("[BulkRepayment] Reverse item failed to queue:", err);
+      return NextResponse.json({ error: msg }, { status: 502 });
+    }
 
     return NextResponse.json({
       success: true,
       itemId,
-      status: "REVERSED",
+      status: "QUEUED",
     });
   } catch (error) {
     console.error("Reverse bulk item error:", error);
     return NextResponse.json(
-      { error: "Failed to reverse item" },
+      { error: "Failed to queue undo" },
       { status: 500 }
     );
   }

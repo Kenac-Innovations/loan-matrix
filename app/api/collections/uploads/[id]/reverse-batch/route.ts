@@ -2,16 +2,32 @@ import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
 import { getSession } from "@/lib/auth";
-import { undoLoanRepaymentTransaction } from "@/lib/bulk-repayment-reverse";
+import { refreshBulkRepaymentUploadStats } from "@/lib/bulk-repayment-upload-stats";
+import { getBulkRepaymentReversalQueueService } from "@/lib/bulk-repayment-reversal-queue-service";
+
+function getQueueErrorMessage(error: unknown): string {
+  if (error && typeof error === "object") {
+    const apiError = error as {
+      message?: string;
+      errorData?: {
+        defaultUserMessage?: string;
+        errors?: Array<{ defaultUserMessage?: string }>;
+      };
+    };
+
+    return (
+      apiError.message ||
+      "Failed to queue batch undo"
+    );
+  }
+
+  return "Failed to queue batch undo";
+}
 
 /**
- * POST — Reverse many bulk repayments in LIFO order (last posted in Fineract terms: highest processedAt first).
- * Fineract usually requires undoing the loan’s latest transaction first; processing order ≈ queue order,
- * so reversing newest-first minimizes "not the last transaction" failures.
+ * POST — Queue many bulk repayments for reversal in LIFO order.
  *
- * Body: { itemIds?: string[] } — if omitted, all SUCCESS items for the upload are reversed (LIFO).
- *
- * Each row is attempted independently: a Fineract failure on one item does not skip the rest.
+ * Body: { itemIds?: string[] } — if omitted, all eligible SUCCESS items are queued (LIFO).
  */
 export async function POST(
   request: NextRequest,
@@ -49,6 +65,12 @@ export async function POST(
         AND: [
           { fineractTxnId: { not: null } },
           { NOT: { fineractTxnId: "" } },
+          {
+            OR: [
+              { reversalStatus: null },
+              { reversalStatus: "FAILED" },
+            ],
+          },
           ...(itemIds?.length ? [{ id: { in: itemIds } }] : []),
         ],
       },
@@ -57,12 +79,13 @@ export async function POST(
 
     if (items.length === 0) {
       return NextResponse.json({
-        reversed: [],
-        message: "No eligible SUCCESS items with Fineract transaction ids",
+        queued: [],
+        message: "No eligible SUCCESS items available for undo",
       });
     }
 
-    const reversed: string[] = [];
+    const queueService = getBulkRepaymentReversalQueueService();
+    const queued: string[] = [];
     const failed: { itemId: string; loanId: number; error: string }[] = [];
 
     for (const item of items) {
@@ -73,43 +96,57 @@ export async function POST(
         item.transactionDate ?? item.processedAt ?? new Date();
 
       try {
-        await undoLoanRepaymentTransaction({
-          loanId: item.loanId,
-          fineractTransactionId: tid,
-          transactionDate: txnDate,
-        });
-
         await prisma.bulkRepaymentItem.update({
           where: { id: item.id },
           data: {
-            status: "REVERSED",
-            reversedAt: new Date(),
-            reversedBy: session.user.id,
+            reversalStatus: "QUEUED",
+            reversalErrorMessage: null,
           },
         });
-        reversed.push(item.id);
-      } catch (err: any) {
-        const msg =
-          err?.errorData?.defaultUserMessage ||
-          err?.errorData?.errors?.[0]?.defaultUserMessage ||
-          err?.message ||
-          "Fineract undo failed";
-        console.error(`[BulkRepayment] Batch reverse item ${item.id} failed (continuing):`, err);
+
+        await queueService.publishReversal({
+          itemId: item.id,
+          uploadId,
+          tenantSlug: tenant.slug,
+          loanId: item.loanId,
+          fineractTransactionId: tid,
+          transactionDate: txnDate.toISOString(),
+          amount: Number(item.amount),
+          reversedBy: session.user.id,
+        });
+
+        queued.push(item.id);
+      } catch (err: unknown) {
+        const msg = getQueueErrorMessage(err);
+        await prisma.bulkRepaymentItem.update({
+          where: { id: item.id },
+          data: {
+            reversalStatus: "FAILED",
+            reversalErrorMessage: msg,
+          },
+        });
+        console.error(
+          `[BulkRepayment] Batch reverse item ${item.id} failed to queue:`,
+          err
+        );
         failed.push({ itemId: item.id, loanId: item.loanId, error: msg });
       }
     }
 
+    await refreshBulkRepaymentUploadStats(uploadId);
+
     return NextResponse.json({
-      reversed,
+      success: true,
+      queued,
       failed,
       totalRequested: items.length,
-      reversedCount: reversed.length,
+      queuedCount: queued.length,
       failedCount: failed.length,
     });
   } catch (error) {
     console.error("Reverse batch error:", error);
     return NextResponse.json(
-      { error: "Failed to reverse batch" },
+      { error: "Failed to queue batch undo" },
       { status: 500 }
     );
   }
