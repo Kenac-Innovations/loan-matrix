@@ -160,6 +160,32 @@ export default function ReportsPage() {
     return hasAllOption ? options : [...options, { id: -1, tc: "All" }];
   };
 
+  const getInitialParameterValue = (param: ReportParameter): string => {
+    if (param.selectAll === "Y") return "-1";
+    if (param.parameter_default && param.parameter_default !== "0") {
+      return param.parameter_default;
+    }
+    return "";
+  };
+
+  const applyParentParameterFallback = (
+    fetchParams: Record<string, string>,
+    params: ReportParameter[],
+    parentParameterName?: string
+  ) => {
+    if (!parentParameterName) return;
+
+    const parentParam = params.find(
+      (candidate) => candidate.parameter_name === parentParameterName
+    );
+    if (!parentParam || fetchParams[parentParam.parameter_variable]) return;
+
+    const fallbackValue = getInitialParameterValue(parentParam);
+    if (fallbackValue) {
+      fetchParams[parentParam.parameter_variable] = fallbackValue;
+    }
+  };
+
   // Load available reports on component mount
   useEffect(() => {
     fetchAvailableReports();
@@ -235,8 +261,9 @@ export default function ReportsPage() {
         // Initialize parameters with default values
         const defaultParams: Record<string, string> = {};
         params.forEach((param) => {
-          if (param.parameter_default && param.parameter_default !== "0") {
-            defaultParams[param.parameter_variable] = param.parameter_default;
+          const initialValue = getInitialParameterValue(param);
+          if (initialValue) {
+            defaultParams[param.parameter_variable] = initialValue;
           }
         });
         setParameters(defaultParams);
@@ -272,15 +299,11 @@ export default function ReportsPage() {
           const fetchParams: Record<string, string> = normalizeParameterValues(
             currentParamValues
           );
-          if (param.parentparametername) {
-            const parentParam = params.find(
-              (p) => p.parameter_name === param.parentparametername
-            );
-            if (parentParam && !fetchParams[parentParam.parameter_variable]) {
-              fetchParams[parentParam.parameter_variable] =
-                parentParam.parameter_variable === "officeId" ? "1" : "";
-            }
-          }
+          applyParentParameterFallback(
+            fetchParams,
+            params,
+            param.parentparametername
+          );
 
           const searchParams = new URLSearchParams({
             action: "parameterOptions",
@@ -425,15 +448,11 @@ export default function ReportsPage() {
           const fetchParams: Record<string, string> = normalizeParameterValues(
             newParams
           );
-          if (param.parentparametername) {
-            const parent = reportParameters.find(
-              (p) => p.parameter_name === param.parentparametername
-            );
-            if (parent && !fetchParams[parent.parameter_variable]) {
-              fetchParams[parent.parameter_variable] =
-                parent.parameter_variable === "officeId" ? "1" : "";
-            }
-          }
+          applyParentParameterFallback(
+            fetchParams,
+            reportParameters,
+            param.parentparametername
+          );
           const searchParams = new URLSearchParams({
             action: "parameterOptions",
             parameterName: param.parameter_name,

@@ -92,6 +92,11 @@ export function LoanContracts({
   const [showKeyFacts, setShowKeyFacts] = useState(false);
   const [tenantContractHtml, setTenantContractHtml] = useState<string | null>(null);
   const [tenantLogoUrl, setTenantLogoUrl] = useState<string | null>(null);
+  const [printPermissions, setPrintPermissions] = useState({
+    canPrintContracts: false,
+    approvalStatus: null as string | null,
+    printBlockReason: "Printing is available after Final Approval.",
+  });
   const { toast } = useToast();
   const router = useRouter();
 
@@ -140,6 +145,35 @@ export function LoanContracts({
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!leadId) {
+      return;
+    }
+
+    fetch(`/api/leads/${leadId}/contract-data`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((result) => {
+        if (cancelled || !result?.permissions) {
+          return;
+        }
+
+        setPrintPermissions({
+          canPrintContracts: !!result.permissions.canPrintContracts,
+          approvalStatus: result.permissions.approvalStatus || null,
+          printBlockReason:
+            result.permissions.printBlockReason ||
+            "Printing is available after Final Approval.",
+        });
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [leadId]);
 
   // Transform contract data to Key Facts Statement format
   const getKeyFactsData = (): KeyFactsData | null => {
@@ -1047,6 +1081,15 @@ export function LoanContracts({
 
       if (result.success && result.data) {
         setContractData(result.data);
+        if (result.permissions) {
+          setPrintPermissions({
+            canPrintContracts: !!result.permissions.canPrintContracts,
+            approvalStatus: result.permissions.approvalStatus || null,
+            printBlockReason:
+              result.permissions.printBlockReason ||
+              "Printing is available after Final Approval.",
+          });
+        }
         console.log("Contract data loaded successfully");
       } else {
         throw new Error(result.error || "No contract data available");
@@ -1078,6 +1121,15 @@ export function LoanContracts({
           const result = await dataRes.json();
           if (result.success && result.data) {
             setContractData(result.data);
+            if (result.permissions) {
+              setPrintPermissions({
+                canPrintContracts: !!result.permissions.canPrintContracts,
+                approvalStatus: result.permissions.approvalStatus || null,
+                printBlockReason:
+                  result.permissions.printBlockReason ||
+                  "Printing is available after Final Approval.",
+              });
+            }
             dataRefreshed = true;
           }
         }
@@ -1224,6 +1276,17 @@ export function LoanContracts({
   };
 
   const handlePrint = (printType: "kfs" | "contract" | "both" = "both") => {
+    if (!printPermissions.canPrintContracts) {
+      toast({
+        title: "Printing locked",
+        description:
+          printPermissions.printBlockReason ||
+          "Printing is available after Final Approval.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     const printWindow = window.open("", "_blank");
     if (!printWindow) return;
 
@@ -3173,18 +3236,41 @@ export function LoanContracts({
               </Button>
             )}
             <div className="flex gap-4 ml-auto">
+              {!printPermissions.canPrintContracts && (
+                <div className="max-w-xs self-center text-right text-xs text-amber-600 dark:text-amber-400">
+                  {printPermissions.printBlockReason}
+                  {printPermissions.approvalStatus
+                    ? ` Current status: ${printPermissions.approvalStatus}.`
+                    : ""}
+                </div>
+              )}
               {!tenantContractHtml && (
-                <Button onClick={handlePrintKeyFacts} variant="outline" size="sm">
+                <Button
+                  onClick={handlePrintKeyFacts}
+                  variant="outline"
+                  size="sm"
+                  disabled={!printPermissions.canPrintContracts}
+                >
                   <FileText className="mr-2 h-4 w-4" />
                   Print Key Facts
                 </Button>
               )}
-              <Button onClick={handlePrintContract} variant="outline" size="sm">
+              <Button
+                onClick={handlePrintContract}
+                variant="outline"
+                size="sm"
+                disabled={!printPermissions.canPrintContracts}
+              >
                 <FileText className="mr-2 h-4 w-4" />
                 Print Contract
               </Button>
               {!tenantContractHtml && (
-                <Button onClick={handlePrintBoth} variant="outline" size="sm">
+                <Button
+                  onClick={handlePrintBoth}
+                  variant="outline"
+                  size="sm"
+                  disabled={!printPermissions.canPrintContracts}
+                >
                   <FileText className="mr-2 h-4 w-4" />
                   Print All
                 </Button>

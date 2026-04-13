@@ -35,6 +35,7 @@ interface LeadMoreActionsProps {
   loanStatus?: string | null;
   loanId?: number | null;
   fineractClientId?: number | null;
+  canModifyPendingApproval?: boolean;
 }
 
 export function LeadMoreActions({
@@ -42,6 +43,7 @@ export function LeadMoreActions({
   loanStatus,
   loanId,
   fineractClientId,
+  canModifyPendingApproval = false,
 }: LeadMoreActionsProps) {
   const statusLower = (loanStatus || "").toLowerCase();
   const isPending =
@@ -109,10 +111,24 @@ export function LeadMoreActions({
                   Add Loan Charge
                 </DropdownMenuItem>
                 <DropdownMenuItem
-                  onClick={() => handleComingSoon("Modify Application")}
+                  asChild={canModifyPendingApproval}
+                  onClick={
+                    canModifyPendingApproval
+                      ? undefined
+                      : () => handleComingSoon("Modify Application")
+                  }
                 >
-                  <Edit className="mr-2 h-4 w-4" />
-                  Modify Application
+                  {canModifyPendingApproval ? (
+                    <Link href={`/leads/new?id=${leadId}&tab=terms`}>
+                      <Edit className="mr-2 h-4 w-4" />
+                      Modify Application
+                    </Link>
+                  ) : (
+                    <>
+                      <Edit className="mr-2 h-4 w-4" />
+                      Modify Application
+                    </>
+                  )}
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   onClick={() => handleComingSoon("Add Collateral")}
