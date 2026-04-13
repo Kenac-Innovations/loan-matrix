@@ -21,6 +21,12 @@ export async function POST(
     }
 
     const { id: uploadId } = await params;
+    console.log("[BulkRepaymentReverseBatch] Request received", {
+      uploadId,
+      tenantId: tenant.id,
+      userId: session.user.id,
+    });
+
     const body = await request.json().catch(() => ({}));
     const itemIds: string[] | undefined = Array.isArray(body.itemIds)
       ? body.itemIds.filter((value: unknown) => typeof value === "string")
@@ -28,18 +34,16 @@ export async function POST(
 
     const upload = await prisma.bulkRepaymentUpload.findFirst({
       where: { id: uploadId, tenantId: tenant.id },
-      include: {
-        tenant: {
-          select: {
-            slug: true,
-          },
-        },
-      },
     });
 
     if (!upload) {
       return NextResponse.json({ error: "Upload not found" }, { status: 404 });
     }
+
+    console.log("[BulkRepaymentReverseBatch] Upload found", {
+      uploadId,
+      tenantSlug: tenant.slug,
+    });
 
     const items = await prisma.bulkRepaymentItem.findMany({
       where: {
@@ -68,6 +72,7 @@ export async function POST(
     });
 
     if (items.length === 0) {
+      console.log("[BulkRepaymentReverseBatch] No eligible items", { uploadId });
       return NextResponse.json({
         queued: [],
         queuedCount: 0,
@@ -107,7 +112,7 @@ export async function POST(
         await queueService.publishReversal({
           itemId: item.id,
           uploadId,
-          tenantSlug: upload.tenant.slug,
+          tenantSlug: tenant.slug,
           loanId: item.loanId,
           fineractTxnId: item.fineractTxnId!.trim(),
           transactionDate: (item.transactionDate ?? item.processedAt ?? new Date()).toISOString(),
@@ -131,6 +136,13 @@ export async function POST(
 
     await updateBulkRepaymentUploadCounters(uploadId);
 
+    console.log("[BulkRepaymentReverseBatch] Queueing complete", {
+      uploadId,
+      requested: items.length,
+      queued: queued.length,
+      failed: failed.length,
+    });
+
     return NextResponse.json({
       queued,
       failed,
@@ -140,7 +152,12 @@ export async function POST(
   } catch (error) {
     console.error("Reverse batch error:", error);
     return NextResponse.json(
-      { error: "Failed to queue batch undo" },
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to queue batch undo",
+      },
       { status: 500 }
     );
   }

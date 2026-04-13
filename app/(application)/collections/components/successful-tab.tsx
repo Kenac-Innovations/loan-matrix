@@ -99,6 +99,20 @@ export function SuccessfulTab({
     return () => clearInterval(interval);
   }, [fetchItems]);
 
+  const readErrorResponse = useCallback(async (res: Response) => {
+    const text = await res.text();
+    if (!text.trim()) {
+      return res.statusText || "Request failed";
+    }
+
+    try {
+      const data = JSON.parse(text) as { error?: string; message?: string };
+      return data.error || data.message || text;
+    } catch {
+      return text;
+    }
+  }, []);
+
   const runSingleUndo = async () => {
     if (!undoItem || !selectedUploadId) return;
 
@@ -110,15 +124,16 @@ export function SuccessfulTab({
         `/api/collections/uploads/${selectedUploadId}/items/${undoItem.id}/reverse`,
         { method: "POST" }
       );
-      const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
         setFeedback({
           type: "err",
-          text: data.error || "Failed to queue undo",
+          text: await readErrorResponse(res),
         });
         return;
       }
+
+      await res.json().catch(() => ({}));
 
       setFeedback({
         type: "ok",
@@ -151,15 +166,16 @@ export function SuccessfulTab({
           body: JSON.stringify({}),
         }
       );
-      const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
         setFeedback({
           type: "err",
-          text: data.error || "Failed to queue batch undo",
+          text: await readErrorResponse(res),
         });
         return;
       }
+
+      const data = await res.json().catch(() => ({}));
 
       const queuedCount = data.queuedCount ?? data.queued?.length ?? 0;
       const failedCount = data.failed?.length ?? 0;

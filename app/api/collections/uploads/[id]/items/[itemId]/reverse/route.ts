@@ -21,6 +21,12 @@ export async function POST(
     }
 
     const { id: uploadId, itemId } = await params;
+    console.log("[BulkRepaymentReverseItem] Request received", {
+      uploadId,
+      itemId,
+      tenantId: tenant.id,
+      userId: session.user.id,
+    });
 
     const item = await prisma.bulkRepaymentItem.findFirst({
       where: { id: itemId, uploadId },
@@ -28,11 +34,6 @@ export async function POST(
         upload: {
           select: {
             tenantId: true,
-            tenant: {
-              select: {
-                slug: true,
-              },
-            },
           },
         },
       },
@@ -96,7 +97,7 @@ export async function POST(
       await queueService.publishReversal({
         itemId: item.id,
         uploadId,
-        tenantSlug: item.upload.tenant.slug,
+        tenantSlug: tenant.slug,
         loanId: item.loanId,
         fineractTxnId: item.fineractTxnId.trim(),
         transactionDate: transactionDate.toISOString(),
@@ -123,7 +124,12 @@ export async function POST(
   } catch (error) {
     console.error("Reverse bulk item error:", error);
     return NextResponse.json(
-      { error: "Failed to queue item undo" },
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to queue item undo",
+      },
       { status: 500 }
     );
   }
