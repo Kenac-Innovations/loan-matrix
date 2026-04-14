@@ -482,7 +482,8 @@ export function ComprehensiveLeadDetails({
   const requestedAmount =
     lead.requestedAmount && lead.requestedAmount > 0
       ? lead.requestedAmount
-      : fineractLoan?.approvedPrincipal
+      : fineractLoan?.proposedPrincipal
+        || fineractLoan?.approvedPrincipal
         || fineractLoan?.principal
         || loanInfo?.loanTerms?.principal
         || 0;
@@ -490,6 +491,24 @@ export function ComprehensiveLeadDetails({
   // Get Fineract loan status
   const fineractLoanStatus = fineractLoan?.status?.value || null;
   const fineractLoanId = fineractLoan?.id || lead?.fineractLoanId || null;
+  const isLoanApprovedOrBeyond = Boolean(
+    fineractLoan?.status?.approved ||
+      fineractLoan?.status?.active ||
+      fineractLoan?.status?.closed
+  );
+  const approvalAmountLabel = isLoanApprovedOrBeyond
+    ? "Approved Amount"
+    : "Amount To Be Approved";
+  const approvalAmount =
+    isLoanApprovedOrBeyond
+      ? fineractLoan?.approvedPrincipal
+        || fineractLoan?.principal
+        || requestedAmount
+      : fineractLoan?.principal
+        || fineractLoan?.proposedPrincipal
+        || fineractLoan?.approvedPrincipal
+        || loanInfo?.loanTerms?.principal
+        || requestedAmount;
 
   // Get status badge color
   const getStatusBadgeColor = (status: string | null) => {
@@ -623,6 +642,12 @@ export function ComprehensiveLeadDetails({
               <p className="text-xs text-muted-foreground">Requested Amount</p>
               <p className="text-2xl font-bold">
                 {currencyCode} {requestedAmount.toLocaleString()}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">{approvalAmountLabel}</p>
+              <p className="text-2xl font-bold">
+                {currencyCode} {approvalAmount.toLocaleString()}
               </p>
             </div>
             <div>
