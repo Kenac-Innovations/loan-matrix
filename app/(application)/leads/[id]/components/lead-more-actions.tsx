@@ -66,7 +66,7 @@ export function LeadMoreActions({
   const handleModifyApplication = () => {
     if (!canModifyPendingApplication) {
       toast.error(
-        "This action is only available on Omama for loans that are still pending approval and users with loan update access."
+        "This action is only available on Omama while the loan is still pending approval."
       );
       return;
     }

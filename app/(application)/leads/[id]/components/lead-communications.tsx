@@ -113,7 +113,7 @@ interface ContactDirectoryEntry {
   email?: string | null;
   address?: string | null;
   notes?: string | null;
-  source: "lead" | "family-member" | "state" | "fineract-guarantor";
+  source: "lead" | "family-member" | "state" | "fineract-guarantor" | "datatable";
 }
 
 interface LeadCommunicationsProps {
@@ -271,6 +271,8 @@ export function LeadCommunications({ leadId, readOnly = false }: LeadCommunicati
         return "Application";
       case "state":
         return "Captured details";
+      case "datatable":
+        return "Additional info";
       default:
         return "Lead";
     }

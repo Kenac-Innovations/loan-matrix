@@ -7,7 +7,6 @@ import { getFineractTenantId } from "@/lib/fineract-tenant-service";
 import { extractTenantSlugFromRequest } from "@/lib/tenant-service";
 import type { FineractLoan } from "@/lib/fineract-api";
 import {
-  canUserEditPendingLoanApplication,
   isPendingLoanApplicationEditTenant,
   isPendingApprovalLoanStatus,
 } from "@/lib/pending-loan-application-edit";
@@ -184,13 +183,6 @@ export async function PUT(
     if (!isPendingLoanApplicationEditTenant(tenantSlug)) {
       return NextResponse.json(
         { error: "Pending loan application editing is only enabled for Omama." },
-        { status: 403 }
-      );
-    }
-
-    if (!canUserEditPendingLoanApplication(session)) {
-      return NextResponse.json(
-        { error: "You do not have permission to edit pending loan applications." },
         { status: 403 }
       );
     }
