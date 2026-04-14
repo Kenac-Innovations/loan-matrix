@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import Link from "next/link";
 import { GenericDataTable } from "@/components/tables/generic-data-table";
 import { DataTableColumn } from "@/shared/types/data-table";
@@ -163,6 +164,7 @@ export default function CashiersPage({
   const [cashiers, setCashiers] = useState<Cashier[]>([]);
   const [staff, setStaff] = useState<Staff[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingBalances, setLoadingBalances] = useState(true);
   const [loadingStaff, setLoadingStaff] = useState(true);
   const [systemCurrency, setSystemCurrency] = useState<string>("");
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -207,84 +209,30 @@ export default function CashiersPage({
           const defaultCurrency = currencyList[0];
           const code = defaultCurrency.code || orgCurrency;
           setSystemCurrency(code);
+          return code;
         }
       }
     } catch (error) {
       console.error("Error fetching system currency:", error);
     }
+    return "";
   }, [orgCurrency]);
 
   const fetchCashiers = useCallback(
     async (id: string) => {
+      setLoadingBalances(true);
+
       try {
         const response = await fetch(`/api/tellers/${id}/cashiers`);
         if (response.ok) {
           const responseData = (await response.json()) as Cashier[] | null;
-          const fetchedCashiers = responseData || [];
+          const fetchedCashiers = (responseData || []).map((cashier) => ({
+            ...cashier,
+            sessionStatus: undefined,
+            netCash: undefined,
+            currencyCode: undefined,
+          }));
           setCashiers(fetchedCashiers);
-
-          // Use the raw Fineract currency code from /api/fineract/currencies
-          // so this page matches the cashier transactions page exactly.
-          const balanceCurrency = systemCurrency || orgCurrency;
-
-          // Fetch session data and Fineract balance for each cashier in parallel
-          const updatedCashiers = await Promise.all(
-            fetchedCashiers.map(async (cashier) => {
-              const cashierId = cashier.dbId || cashier.id?.toString() || "";
-              try {
-                const [sessionResponse, summaryResponse] = await Promise.all([
-                  fetch(`/api/tellers/${id}/cashiers/${cashierId}/session`),
-                  fetch(
-                    `/api/tellers/${id}/cashiers/${cashierId}/transactions?currencyCode=${balanceCurrency}`
-                  ),
-                ]);
-
-                let fineractBalance = 0;
-                if (summaryResponse.ok) {
-                  const summaryData =
-                    (await summaryResponse.json()) as CashierSummaryResponse;
-                  fineractBalance =
-                    summaryData.netCash ?? summaryData.sumCashAllocation ?? 0;
-                }
-
-                let sessionInfo: CashierSessionData = {
-                  session: null,
-                  balances: {},
-                };
-                if (sessionResponse.ok) {
-                  sessionInfo =
-                    (await sessionResponse.json()) as CashierSessionData;
-                }
-
-                return {
-                  ...cashier,
-                  sessionStatus:
-                    sessionInfo.session?.sessionStatus || "NOT_STARTED",
-                  allocatedBalance: sessionInfo.balances?.allocatedBalance || 0,
-                  availableBalance: sessionInfo.balances?.availableBalance || 0,
-                  openingFloat: sessionInfo.balances?.openingFloat || 0,
-                  cashIn: sessionInfo.balances?.cashIn || 0,
-                  cashOut: sessionInfo.balances?.cashOut || 0,
-                  netCash: fineractBalance,
-                  expectedBalance: sessionInfo.balances?.expectedBalance || 0,
-                  currencyCode: balanceCurrency,
-                };
-              } catch (error) {
-                console.error(
-                  "Error fetching data for cashier:",
-                  cashierId,
-                  error
-                );
-                return {
-                  ...cashier,
-                  netCash: 0,
-                  currencyCode: balanceCurrency,
-                };
-              }
-            })
-          );
-
-          setCashiers(updatedCashiers);
         }
       } catch (error) {
         console.error("Error fetching cashiers:", error);
@@ -292,7 +240,83 @@ export default function CashiersPage({
         setLoading(false);
       }
     },
-    [orgCurrency, systemCurrency]
+    []
+  );
+
+  const fetchCashierBalances = useCallback(
+    async (id: string, balanceCurrency: string) => {
+      if (!balanceCurrency) return;
+
+      setLoadingBalances(true);
+
+      try {
+        const response = await fetch(`/api/tellers/${id}/cashiers`);
+        if (!response.ok) return;
+
+        const responseData = (await response.json()) as Cashier[] | null;
+        const fetchedCashiers = responseData || [];
+
+        const updatedCashiers = await Promise.all(
+          fetchedCashiers.map(async (cashier) => {
+            const cashierId = cashier.dbId || cashier.id?.toString() || "";
+            try {
+              const [sessionResponse, summaryResponse] = await Promise.all([
+                fetch(`/api/tellers/${id}/cashiers/${cashierId}/session`),
+                fetch(
+                  `/api/tellers/${id}/cashiers/${cashierId}/transactions?currencyCode=${balanceCurrency}`
+                ),
+              ]);
+
+              let fineractBalance = 0;
+              if (summaryResponse.ok) {
+                const summaryData =
+                  (await summaryResponse.json()) as CashierSummaryResponse;
+                fineractBalance =
+                  summaryData.netCash ?? summaryData.sumCashAllocation ?? 0;
+              }
+
+              let sessionInfo: CashierSessionData = {
+                session: null,
+                balances: {},
+              };
+              if (sessionResponse.ok) {
+                sessionInfo =
+                  (await sessionResponse.json()) as CashierSessionData;
+              }
+
+              return {
+                ...cashier,
+                sessionStatus:
+                  sessionInfo.session?.sessionStatus || "NOT_STARTED",
+                allocatedBalance: sessionInfo.balances?.allocatedBalance || 0,
+                availableBalance: sessionInfo.balances?.availableBalance || 0,
+                openingFloat: sessionInfo.balances?.openingFloat || 0,
+                cashIn: sessionInfo.balances?.cashIn || 0,
+                cashOut: sessionInfo.balances?.cashOut || 0,
+                netCash: fineractBalance,
+                expectedBalance: sessionInfo.balances?.expectedBalance || 0,
+                currencyCode: balanceCurrency,
+              };
+            } catch (error) {
+              console.error("Error fetching data for cashier:", cashierId, error);
+              return {
+                ...cashier,
+                sessionStatus: "NOT_STARTED",
+                netCash: 0,
+                currencyCode: balanceCurrency,
+              };
+            }
+          })
+        );
+
+        setCashiers(updatedCashiers);
+      } catch (error) {
+        console.error("Error fetching cashier balances:", error);
+      } finally {
+        setLoadingBalances(false);
+      }
+    },
+    []
   );
 
   const fetchStaff = useCallback(async () => {
@@ -309,16 +333,31 @@ export default function CashiersPage({
     }
   }, []);
 
+  const refreshCashiers = useCallback(
+    async (id: string, balanceCurrency?: string) => {
+      await fetchCashiers(id);
+      if (balanceCurrency) {
+        await fetchCashierBalances(id, balanceCurrency);
+      }
+    },
+    [fetchCashierBalances, fetchCashiers]
+  );
+
   useEffect(() => {
     async function loadParams() {
       const resolvedParams = await params;
       setTellerId(resolvedParams.id);
-      fetchCashiers(resolvedParams.id);
       fetchStaff();
-      fetchSystemCurrency();
+      const currency = await fetchSystemCurrency();
+      if (currency) {
+        await refreshCashiers(resolvedParams.id, currency);
+      } else {
+        setLoading(false);
+        setLoadingBalances(false);
+      }
     }
     loadParams();
-  }, [fetchCashiers, fetchStaff, fetchSystemCurrency, params]);
+  }, [fetchStaff, fetchSystemCurrency, params, refreshCashiers]);
 
   // Auto-refresh balances for active sessions
   useEffect(() => {
@@ -329,13 +368,13 @@ export default function CashiersPage({
       const hasActiveSession = cashiers.some(
         (c) => c.sessionStatus === "ACTIVE"
       );
-      if (hasActiveSession) {
-        fetchCashiers(tellerId);
+      if (hasActiveSession && systemCurrency) {
+        fetchCashierBalances(tellerId, systemCurrency);
       }
     }, 30000); // Refresh every 30 seconds
 
     return () => clearInterval(interval);
-  }, [cashiers, fetchCashiers, tellerId]);
+  }, [cashiers, fetchCashierBalances, systemCurrency, tellerId]);
 
   const handleCreateCashier = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -373,7 +412,7 @@ export default function CashiersPage({
           endTime: "",
           isFullDay: true,
         });
-        fetchCashiers(tellerId);
+        refreshCashiers(tellerId, systemCurrency);
 
         if (result.warning) {
           alert(`Cashier created but with warning: ${result.warning}`);
@@ -456,6 +495,14 @@ export default function CashiersPage({
       id: "balance",
       header: "Balance",
       cell: ({ row }: CashierTableCell) => {
+        if (loadingBalances) {
+          return (
+            <div className="flex justify-end">
+              <Skeleton className="h-5 w-24" />
+            </div>
+          );
+        }
+
         const cashier = row.original;
         const balance = cashier.netCash || 0;
         // Normalize ZMK to ZMW (Fineract uses legacy ZMK code)
@@ -494,6 +541,10 @@ export default function CashiersPage({
       id: "sessionStatus",
       header: "Session",
       cell: ({ row }: CashierTableCell) => {
+        if (loadingBalances) {
+          return <Skeleton className="h-6 w-24" />;
+        }
+
         const cashier = row.original;
         const sessionStatus = cashier.sessionStatus || "NOT_STARTED";
         const colors: Record<string, string> = {
@@ -877,7 +928,7 @@ export default function CashiersPage({
           tellerId={tellerId}
           cashier={selectedCashier}
           onSuccess={() => {
-            fetchCashiers(tellerId);
+            refreshCashiers(tellerId, systemCurrency);
           }}
         />
       )}
@@ -951,7 +1002,7 @@ export default function CashiersPage({
           cashierId={selectedCashier.dbId || selectedCashier.id.toString()}
           cashierName={selectedCashier.staffName}
           onSuccess={() => {
-            fetchCashiers(tellerId);
+            refreshCashiers(tellerId, systemCurrency);
           }}
         />
       )}
@@ -965,7 +1016,7 @@ export default function CashiersPage({
           cashierId={selectedCashier.dbId || selectedCashier.id.toString()}
           cashierName={selectedCashier.staffName}
           onSuccess={() => {
-            fetchCashiers(tellerId);
+            refreshCashiers(tellerId, systemCurrency);
           }}
         />
       )}
