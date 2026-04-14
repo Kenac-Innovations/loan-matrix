@@ -35,6 +35,7 @@ import {
   ChevronLast,
   ChevronLeft,
   ChevronRight,
+  Download,
   RefreshCw,
   Wallet,
   AlertCircle,
@@ -85,6 +86,7 @@ export default function TellerTransactionsPage({
   const [error, setError] = useState<string | null>(null);
   const [pageIndex, setPageIndex] = useState(0);
   const [pageSize, setPageSize] = useState(10);
+  const [exporting, setExporting] = useState(false);
 
   const fetchTransactions = async () => {
     setLoading(true);
@@ -168,6 +170,38 @@ export default function TellerTransactionsPage({
     });
   };
 
+  const exportToExcel = async () => {
+    try {
+      setExporting(true);
+      const XLSX = await import("xlsx");
+
+      const exportRows = transactions.map((tx) => ({
+        Date: formatDate(tx.date),
+        Type: getTransactionTypeInfo(tx.type).label,
+        Notes: tx.notes || "",
+        By: tx.allocatedByName || "",
+        Amount: tx.amount,
+        Currency: tx.currency,
+        Balance: tx.runningBalance,
+        Status: tx.status,
+      }));
+
+      const worksheet = XLSX.utils.json_to_sheet(exportRows);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Transactions");
+
+      const fileDate = new Date().toISOString().split("T")[0];
+      XLSX.writeFile(
+        workbook,
+        `teller-${tellerId}-transactions-${fileDate}.xlsx`
+      );
+    } catch (exportError) {
+      console.error("Error exporting teller transactions:", exportError);
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const currency = transactions[0]?.currency || orgCurrency;
   const pageCount = Math.max(1, Math.ceil(transactions.length / pageSize));
   const safePageIndex = Math.min(pageIndex, pageCount - 1);
@@ -246,10 +280,20 @@ export default function TellerTransactionsPage({
             </p>
           </div>
         </div>
-        <Button variant="outline" onClick={fetchTransactions}>
-          <RefreshCw className="h-4 w-4 mr-2" />
-          Refresh
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={exportToExcel}
+            disabled={transactions.length === 0 || exporting}
+          >
+            <Download className="h-4 w-4 mr-2" />
+            {exporting ? "Exporting..." : "Export Excel"}
+          </Button>
+          <Button variant="outline" onClick={fetchTransactions}>
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Refresh
+          </Button>
+        </div>
       </div>
 
       {/* Summary Cards */}
