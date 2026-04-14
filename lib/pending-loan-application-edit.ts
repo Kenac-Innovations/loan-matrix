@@ -1,5 +1,4 @@
 import type { Session } from "next-auth";
-import { SpecificPermission } from "@/shared/types/auth";
 
 export function isPendingLoanApplicationEditTenant(
   tenantSlug?: string | null
@@ -14,15 +13,7 @@ export function isPendingApprovalLoanStatus(status?: string | null): boolean {
 export function canUserEditPendingLoanApplication(
   session: Session | null | undefined
 ): boolean {
-  if (!session?.user) {
-    return false;
-  }
-
-  const permissions = session.user.permissions || [];
-  const hasUpdatePermission =
-    permissions.includes(SpecificPermission.UPDATE_LOAN) ||
-    permissions.includes(SpecificPermission.ALL_FUNCTIONS);
-  return hasUpdatePermission;
+  return !!session?.user;
 }
 
 export function canEditPendingLoanApplication(

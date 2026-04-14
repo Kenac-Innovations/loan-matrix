@@ -12,7 +12,7 @@ type ContactDirectoryEntry = {
   email?: string | null;
   address?: string | null;
   notes?: string | null;
-  source: "lead" | "family-member" | "state" | "fineract-guarantor";
+  source: "lead" | "family-member" | "state" | "fineract-guarantor" | "datatable";
 };
 
 type JsonMap = Record<string, unknown>;
@@ -87,6 +87,147 @@ function getArrayValue(
   }
 
   return [];
+}
+
+function normalizeColumnName(name: string): string {
+  return name.toLowerCase().replace(/\s+/g, "_");
+}
+
+function formatDatatableRole(tableName: string): string {
+  const normalized = tableName
+    .replace(/^m_|^dt_|^cd_/i, "")
+    .replace(/_/g, " ")
+    .trim();
+
+  if (!normalized) {
+    return "Additional Contact";
+  }
+
+  return normalized
+    .split(" ")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(" ");
+}
+
+function extractDatatableHeaders(payload: Record<string, unknown>): Array<Record<string, unknown>> {
+  const headers = payload.columnHeaders;
+  return Array.isArray(headers) ? (headers as Array<Record<string, unknown>>) : [];
+}
+
+function extractDatatableRows(payload: Record<string, unknown>): Array<Record<string, unknown>> {
+  const rows = payload.data;
+  return Array.isArray(rows) ? (rows as Array<Record<string, unknown>>) : [];
+}
+
+function resolveDatatableValue(
+  header: Record<string, unknown> | undefined,
+  rawValue: unknown
+): string {
+  if (rawValue == null) {
+    return "";
+  }
+
+  if (
+    header?.columnDisplayType === "CODELOOKUP" &&
+    Array.isArray(header.columnValues)
+  ) {
+    const match = (header.columnValues as Array<Record<string, unknown>>).find(
+      (option) => option.id === rawValue || option.id === Number(rawValue)
+    );
+    if (match) {
+      const resolved =
+        (typeof match.value === "string" && match.value.trim()) ||
+        (typeof match.name === "string" && match.name.trim()) ||
+        null;
+      if (resolved) {
+        return resolved;
+      }
+    }
+  }
+
+  return String(rawValue).trim();
+}
+
+function pickDatatableValue(
+  headers: Array<Record<string, unknown>>,
+  row: unknown[],
+  predicate: (name: string) => boolean
+): string {
+  const index = headers.findIndex((header) =>
+    predicate(normalizeColumnName(String(header.columnName || "")))
+  );
+
+  if (index < 0) {
+    return "";
+  }
+
+  return resolveDatatableValue(headers[index], row[index]);
+}
+
+function buildDatatableRowContact(
+  tableName: string,
+  headers: Array<Record<string, unknown>>,
+  row: unknown[],
+  rowIndex: number,
+  countryCode?: string | null
+): ContactDirectoryEntry | null {
+  const firstName = pickDatatableValue(headers, row, (name) =>
+    name === "firstname" || name === "first_name"
+  );
+  const middleName = pickDatatableValue(headers, row, (name) =>
+    name === "middlename" || name === "middle_name"
+  );
+  const lastName = pickDatatableValue(headers, row, (name) =>
+    name === "lastname" || name === "last_name" || name === "surname"
+  );
+  const explicitName = pickDatatableValue(headers, row, (name) =>
+    name === "name" ||
+    name.includes("full_name") ||
+    name.includes("contact_name") ||
+    name.includes("spouse_name") ||
+    name.includes("guarantor_name") ||
+    name.includes("closest_relative_name") ||
+    name.includes("next_of_kin_name") ||
+    name.includes("employer")
+  );
+  const phone = pickDatatableValue(headers, row, (name) =>
+    name.includes("phone") ||
+    name.includes("telephone") ||
+    name.includes("mobile") ||
+    name.includes("cell")
+  );
+  const email = pickDatatableValue(headers, row, (name) => name.includes("email"));
+  const address = pickDatatableValue(headers, row, (name) =>
+    name.includes("address") || name.includes("location")
+  );
+  const relationship = pickDatatableValue(headers, row, (name) =>
+    name.includes("relation") || name.includes("relationship") || name.includes("role")
+  );
+  const occupation = pickDatatableValue(headers, row, (name) =>
+    name.includes("occupation") || name.includes("job_title") || name.includes("position")
+  );
+
+  const name =
+    buildName([firstName, middleName, lastName]) ||
+    explicitName ||
+    "";
+  const role = relationship || formatDatatableRole(tableName);
+
+  if (!name && !phone && !email && !address && !occupation) {
+    return null;
+  }
+
+  return {
+    id: `datatable-${tableName}-${rowIndex}`,
+    name: name || role,
+    role,
+    category: inferCategory(`${tableName} ${relationship}`),
+    phone: formatPhone(phone, countryCode),
+    email: email || null,
+    address: address || null,
+    notes: occupation || null,
+    source: "datatable",
+  };
 }
 
 function inferCategory(role: string): ContactDirectoryEntry["category"] {
@@ -198,6 +339,75 @@ async function getFineractGuarantors(
   }
 }
 
+async function getDatatableContacts(
+  fineractClientId?: number | null,
+  countryCode?: string | null
+): Promise<ContactDirectoryEntry[]> {
+  if (!fineractClientId) {
+    return [];
+  }
+
+  try {
+    const datatables = await fetchFineractAPI("/datatables?apptable=m_client");
+    const tableList = Array.isArray(datatables)
+      ? (datatables as Array<Record<string, unknown>>)
+      : [];
+
+    const allContacts: ContactDirectoryEntry[] = [];
+
+    for (const table of tableList) {
+      const tableName =
+        typeof table.registeredTableName === "string"
+          ? table.registeredTableName
+          : "";
+
+      if (!tableName) {
+        continue;
+      }
+
+      try {
+        const payload = await fetchFineractAPI(
+          `/datatables/${encodeURIComponent(tableName)}/${fineractClientId}?genericResultSet=true`
+        );
+
+        const headers = extractDatatableHeaders(payload as Record<string, unknown>);
+        const rows = extractDatatableRows(payload as Record<string, unknown>);
+
+        rows.forEach((rowWrapper, rowIndex) => {
+          const row = Array.isArray(rowWrapper.row)
+            ? (rowWrapper.row as unknown[])
+            : Array.isArray(rowWrapper)
+              ? (rowWrapper as unknown[])
+              : [];
+
+          if (row.length === 0) {
+            return;
+          }
+
+          const contact = buildDatatableRowContact(
+            tableName,
+            headers,
+            row,
+            rowIndex,
+            countryCode
+          );
+
+          if (contact) {
+            allContacts.push(contact);
+          }
+        });
+      } catch (error) {
+        console.warn(`Failed to fetch communications datatable "${tableName}":`, error);
+      }
+    }
+
+    return allContacts;
+  } catch (error) {
+    console.warn("Failed to fetch client datatables for communications tab:", error);
+    return [];
+  }
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -228,6 +438,7 @@ export async function GET(
         countryCode: true,
         businessAddress: true,
         employerName: true,
+        fineractClientId: true,
         fineractLoanId: true,
         stateContext: true,
         stateMetadata: true,
@@ -483,10 +694,15 @@ export async function GET(
     ).filter((entry): entry is ContactDirectoryEntry => entry !== null);
 
     const fineractGuarantors = await getFineractGuarantors(lead.fineractLoanId);
+    const datatableContacts = await getDatatableContacts(
+      lead.fineractClientId,
+      lead.countryCode
+    );
 
     const contactDirectory = dedupeContactDirectory([
       ...leadContacts,
       ...fineractGuarantors,
+      ...datatableContacts,
       ...familyContacts,
       ...stateContacts,
       ...refereeEntries,
