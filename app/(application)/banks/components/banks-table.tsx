@@ -16,6 +16,7 @@ import {
 import { MoreHorizontal, DollarSign, Building2, Users } from "lucide-react";
 import { formatCurrency } from "@/lib/format-currency";
 import { AllocateFundsModal } from "./allocate-funds-modal";
+import { BanksPageSkeleton } from "@/components/skeletons/banks-skeleton";
 
 interface Bank {
   id: string;
@@ -212,7 +213,7 @@ export function BanksTable() {
   ];
 
   if (loading) {
-    return <div>Loading banks...</div>;
+    return <BanksPageSkeleton />;
   }
 
   return (
@@ -243,4 +244,3 @@ export function BanksTable() {
     </>
   );
 }
-

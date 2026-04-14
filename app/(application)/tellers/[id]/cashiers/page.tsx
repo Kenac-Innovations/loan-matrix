@@ -30,6 +30,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { SearchableSelect } from "@/components/searchable-select";
 import { AllocateCashModal } from "@/app/(application)/tellers/components/allocate-cash-modal";
+import { TellerCashiersSkeleton } from "@/components/skeletons/tellers-skeleton";
 import { SettleCashModal } from "./components/settle-cash-modal";
 import { ReconcileCashModal } from "./components/reconcile-cash-modal";
 // TransactionsModal replaced with dedicated page at /tellers/[id]/cashiers/[cashierId]/transactions
@@ -204,9 +205,8 @@ export default function CashiersPage({
         // Get the first currency (usually the default/system currency)
         if (currencyList.length > 0) {
           const defaultCurrency = currencyList[0];
-          // Normalize ZMK to ZMW (Fineract uses legacy ZMK code)
           const code = defaultCurrency.code || orgCurrency;
-          setSystemCurrency(code === "ZMK" ? "ZMW" : code);
+          setSystemCurrency(code);
         }
       }
     } catch (error) {
@@ -223,7 +223,9 @@ export default function CashiersPage({
           const fetchedCashiers = responseData || [];
           setCashiers(fetchedCashiers);
 
-          const balanceCurrency = orgCurrency;
+          // Use the raw Fineract currency code from /api/fineract/currencies
+          // so this page matches the cashier transactions page exactly.
+          const balanceCurrency = systemCurrency || orgCurrency;
 
           // Fetch session data and Fineract balance for each cashier in parallel
           const updatedCashiers = await Promise.all(
@@ -290,7 +292,7 @@ export default function CashiersPage({
         setLoading(false);
       }
     },
-    [orgCurrency]
+    [orgCurrency, systemCurrency]
   );
 
   const fetchStaff = useCallback(async () => {
@@ -666,7 +668,7 @@ export default function CashiersPage({
   ];
 
   if (loading) {
-    return <div>Loading cashiers...</div>;
+    return <TellerCashiersSkeleton />;
   }
 
   return (
