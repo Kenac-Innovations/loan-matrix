@@ -22,6 +22,7 @@ import {
   canEditPendingLoanApplication,
   isPendingLoanApplicationEditTenant,
 } from "@/lib/pending-loan-application-edit";
+import { canPrintLoanContract } from "@/lib/loan-contract-print";
 
 const FINERACT_BASE_URL = process.env.FINERACT_BASE_URL || "http://10.10.0.143";
 
@@ -412,6 +413,10 @@ export default async function LeadDetailPage({
   const canEditPendingLoanTerms =
     isPendingLoanApplicationEditTenant(tenantSlug) &&
     canEditPendingLoanApplication(session, fineractLoanStatus);
+  const canPrintContract = canPrintLoanContract(
+    tenantSlug,
+    fineractLoanStatus
+  );
 
   // Check if current user is in the team for the lead's current stage
   let isUserInStageTeam = false;
@@ -534,6 +539,7 @@ export default async function LeadDetailPage({
                     loanId={fineractLoanId}
                     fineractClientId={lead.fineractClientId}
                     canModifyPendingApplication={canEditPendingLoanTerms}
+                    canPrintContract={canPrintContract}
                   />
                 )}
               </div>

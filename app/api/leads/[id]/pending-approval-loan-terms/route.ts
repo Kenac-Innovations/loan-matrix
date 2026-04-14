@@ -327,6 +327,9 @@ export async function PUT(
         lastModified: new Date(),
         stateMetadata: {
           ...currentMetadata,
+          signatures: null,
+          contractsSigned: false,
+          contractsSignedAt: null,
           loanTerms: updatedLoanTerms,
         },
       },
