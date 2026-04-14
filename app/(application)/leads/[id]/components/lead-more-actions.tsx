@@ -1,6 +1,4 @@
 "use client";
-
-import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -35,6 +33,7 @@ interface LeadMoreActionsProps {
   loanStatus?: string | null;
   loanId?: number | null;
   fineractClientId?: number | null;
+  canModifyPendingApplication?: boolean;
 }
 
 export function LeadMoreActions({
@@ -42,6 +41,7 @@ export function LeadMoreActions({
   loanStatus,
   loanId,
   fineractClientId,
+  canModifyPendingApplication = false,
 }: LeadMoreActionsProps) {
   const statusLower = (loanStatus || "").toLowerCase();
   const isPending =
@@ -59,6 +59,17 @@ export function LeadMoreActions({
 
   const handleComingSoon = (label: string) => {
     toast.info(`${label} — coming soon`);
+  };
+
+  const handleModifyApplication = () => {
+    if (!canModifyPendingApplication) {
+      toast.error(
+        "Only Credit Analysts with loan update access can modify applications that are still pending approval."
+      );
+      return;
+    }
+
+    window.dispatchEvent(new Event("open-pending-loan-terms-editor"));
   };
 
   return (
@@ -109,7 +120,7 @@ export function LeadMoreActions({
                   Add Loan Charge
                 </DropdownMenuItem>
                 <DropdownMenuItem
-                  onClick={() => handleComingSoon("Modify Application")}
+                  onClick={handleModifyApplication}
                 >
                   <Edit className="mr-2 h-4 w-4" />
                   Modify Application

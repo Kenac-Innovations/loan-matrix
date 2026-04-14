@@ -55,13 +55,16 @@ import { useCurrency } from "@/contexts/currency-context";
 import { CreditBalanceRefundModal } from "./credit-balance-refund-modal";
 import { TransferFundsModal } from "./transfer-funds-modal";
 import { useFeatureFlags } from "@/hooks/use-feature-flags";
+import { PendingApprovalLoanTermsEditor } from "./pending-approval-loan-terms-editor";
 
 interface ComprehensiveLeadDetailsProps {
   leadId: string;
+  canEditPendingLoanApplication?: boolean;
 }
 
 export function ComprehensiveLeadDetails({
   leadId,
+  canEditPendingLoanApplication = false,
 }: ComprehensiveLeadDetailsProps) {
   const { currencyCode, currencySymbol } = useCurrency();
   const { isEnabled } = useFeatureFlags();
@@ -1005,7 +1008,30 @@ export function ComprehensiveLeadDetails({
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <Card>
                   <CardHeader>
-                    <CardTitle>Loan Terms</CardTitle>
+                    <div className="flex items-start justify-between gap-3">
+                      <CardTitle>Loan Terms</CardTitle>
+                      {fineractLoan?.id ? (
+                        <PendingApprovalLoanTermsEditor
+                          leadId={leadId}
+                          canEdit={canEditPendingLoanApplication}
+                          loan={{
+                            id: fineractLoan.id,
+                            principal: fineractLoan.principal,
+                            termFrequency: fineractLoan.termFrequency,
+                            termPeriodLabel:
+                              fineractLoan.termPeriodFrequencyType?.value || null,
+                            numberOfRepayments: fineractLoan.numberOfRepayments,
+                            interestRatePerPeriod:
+                              fineractLoan.interestRatePerPeriod,
+                            interestRateFrequencyLabel:
+                              fineractLoan.interestRateFrequencyType?.value || null,
+                          }}
+                          onSaved={() => {
+                            fetchData(false);
+                          }}
+                        />
+                      ) : null}
+                    </div>
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div>

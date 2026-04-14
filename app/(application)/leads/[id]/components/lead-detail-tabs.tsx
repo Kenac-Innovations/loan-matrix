@@ -62,6 +62,7 @@ interface LeadDetailTabsProps {
   clientDocuments: any[];
   loanDocuments: any[];
   readOnly: boolean;
+  canEditPendingLoanApplication: boolean;
 }
 
 const TAB_ICON_MAP: Record<string, typeof FileText> = {
@@ -133,6 +134,7 @@ export function LeadDetailTabs({
   clientDocuments,
   loanDocuments,
   readOnly,
+  canEditPendingLoanApplication,
 }: LeadDetailTabsProps) {
   const [tabValidations, setTabValidations] = useState<
     Record<string, TabValidation>
@@ -245,7 +247,10 @@ export function LeadDetailTabs({
 
       <TabsContent value="details" className="mt-4">
         <ValidationBanner validation={tabValidations["details"]} />
-        <ComprehensiveLeadDetails leadId={leadId} />
+        <ComprehensiveLeadDetails
+          leadId={leadId}
+          canEditPendingLoanApplication={canEditPendingLoanApplication}
+        />
       </TabsContent>
       <TabsContent value="additional-info" className="mt-4">
         <LeadAdditionalInfo
