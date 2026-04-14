@@ -10,6 +10,7 @@ import {
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { TellersTable } from "./components/tellers-table";
+import { TellersPageSkeleton } from "@/components/skeletons/tellers-list-skeleton";
 
 export default function TellersPage() {
   return (
@@ -48,7 +49,7 @@ export default function TellersPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <Suspense fallback={<div>Loading tellers...</div>}>
+          <Suspense fallback={<TellersPageSkeleton />}>
             <TellersTable />
           </Suspense>
         </CardContent>
@@ -56,5 +57,4 @@ export default function TellersPage() {
     </div>
   );
 }
-
 

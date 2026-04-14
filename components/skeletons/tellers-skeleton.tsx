@@ -127,3 +127,42 @@ export function TellerVaultTransactionsSkeleton() {
     </div>
   );
 }
+
+export function TellerCashiersSkeleton() {
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <Skeleton className="h-8 w-8" />
+          <div className="space-y-2">
+            <Skeleton className="h-8 w-44" />
+            <Skeleton className="h-4 w-64" />
+          </div>
+        </div>
+        <Skeleton className="h-9 w-32" />
+      </div>
+
+      <div className="rounded-lg border p-4">
+        <Skeleton className="h-6 w-24" />
+        <Skeleton className="mt-2 h-4 w-72" />
+        <div className="mt-4 space-y-3">
+          {Array.from({ length: 6 }).map((_, index) => (
+            <div
+              key={`cashier-row-${index}`}
+              className="grid grid-cols-8 gap-4"
+            >
+              <Skeleton className="h-4 w-28" />
+              <Skeleton className="h-4 w-24" />
+              <Skeleton className="h-4 w-20" />
+              <Skeleton className="h-4 w-24" />
+              <Skeleton className="h-4 w-24" />
+              <Skeleton className="h-4 w-20" />
+              <Skeleton className="h-4 w-20" />
+              <Skeleton className="h-4 w-8 justify-self-end" />
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}

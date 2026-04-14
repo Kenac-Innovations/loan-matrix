@@ -10,6 +10,7 @@ import {
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { BanksTable } from "./components/banks-table";
+import { BanksPageSkeleton } from "@/components/skeletons/banks-skeleton";
 
 export default function BanksPage() {
   return (
@@ -48,7 +49,7 @@ export default function BanksPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <Suspense fallback={<div>Loading banks...</div>}>
+          <Suspense fallback={<BanksPageSkeleton />}>
             <BanksTable />
           </Suspense>
         </CardContent>
@@ -56,4 +57,3 @@ export default function BanksPage() {
     </div>
   );
 }
-
