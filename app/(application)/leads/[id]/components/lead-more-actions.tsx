@@ -64,7 +64,7 @@ export function LeadMoreActions({
   const handleModifyApplication = () => {
     if (!canModifyPendingApplication) {
       toast.error(
-        "Only Credit Analysts with loan update access can modify applications that are still pending approval."
+        "This action is only available on Omama for loans that are still pending approval and users with loan update access."
       );
       return;
     }

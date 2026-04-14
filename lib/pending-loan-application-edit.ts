@@ -1,13 +1,6 @@
 import type { Session } from "next-auth";
 import { SpecificPermission } from "@/shared/types/auth";
 
-const CREDIT_ANALYST_ROLE_NAMES = new Set([
-  "credit analyst",
-  "credit_analyst",
-  "credit officer",
-  "credit_officer",
-]);
-
 export function isPendingLoanApplicationEditTenant(
   tenantSlug?: string | null
 ): boolean {
@@ -29,28 +22,7 @@ export function canUserEditPendingLoanApplication(
   const hasUpdatePermission =
     permissions.includes(SpecificPermission.UPDATE_LOAN) ||
     permissions.includes(SpecificPermission.ALL_FUNCTIONS);
-
-  if (!hasUpdatePermission) {
-    return false;
-  }
-
-  const roleNames = (session.user.roles || [])
-    .map((role) => role.name?.trim().toLowerCase())
-    .filter(Boolean) as string[];
-
-  const isCreditAnalyst = roleNames.some((roleName) => {
-    if (CREDIT_ANALYST_ROLE_NAMES.has(roleName)) {
-      return true;
-    }
-
-    return roleName.includes("credit") && (
-      roleName.includes("analyst") || roleName.includes("officer")
-    );
-  });
-
-  const isAdminOverride = permissions.includes(SpecificPermission.ALL_FUNCTIONS);
-
-  return isCreditAnalyst || isAdminOverride;
+  return hasUpdatePermission;
 }
 
 export function canEditPendingLoanApplication(
