@@ -43,6 +43,7 @@ import {
   TrendingUp,
 } from "lucide-react";
 import { formatCurrency } from "@/lib/format-currency";
+import { TellerVaultTransactionsSkeleton } from "@/components/skeletons/tellers-skeleton";
 
 interface Transaction {
   id: string;
@@ -213,25 +214,7 @@ export default function TellerTransactionsPage({
   const paginationEnd = Math.min((safePageIndex + 1) * pageSize, transactions.length);
 
   if (loading) {
-    return (
-      <div className="space-y-6">
-        <div className="flex items-center gap-4">
-          <Link href={`/tellers/${tellerId}`}>
-            <Button variant="ghost" size="sm">
-              <ArrowLeft className="h-4 w-4 mr-2" />
-            </Button>
-          </Link>
-          <div>
-            <h1 className="text-3xl font-bold">Vault Transactions</h1>
-            <p className="text-muted-foreground mt-1">Loading...</p>
-          </div>
-        </div>
-        <div className="flex items-center justify-center py-16 text-muted-foreground">
-          <RefreshCw className="h-6 w-6 animate-spin mr-2" />
-          Loading transactions...
-        </div>
-      </div>
-    );
+    return <TellerVaultTransactionsSkeleton />;
   }
 
   if (error) {
