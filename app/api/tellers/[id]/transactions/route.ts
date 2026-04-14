@@ -2,103 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
 import { getFineractServiceWithSession } from "@/lib/fineract-api";
-
-function getVaultTransactionType(notes: string | null | undefined) {
-  const narration = (notes ?? "").toLowerCase();
-
-  if (narration.includes("variance")) {
-    return "VARIANCE_ADJUSTMENT";
-  }
-
-  if (
-    narration.includes("settlement") ||
-    narration.includes("returned") ||
-    narration.includes("return from") ||
-    narration.includes("returned to vault") ||
-    narration.includes("session close") ||
-    narration.includes("session closed")
-  ) {
-    return "SETTLEMENT_RETURN";
-  }
-
-  if (narration.includes("opening balance")) {
-    return "OPENING_BALANCE";
-  }
-
-  return "ALLOCATION";
-}
-
-function isCashierReturnToVault(notes: string | null | undefined) {
-  const narration = (notes ?? "").toLowerCase();
-  return (
-    narration.includes("return to vault") ||
-    narration.includes("returned to vault") ||
-    narration.includes("return to safe") ||
-    narration.includes("returned to safe") ||
-    narration.includes("return from") ||
-    narration.includes("settlement")
-  );
-}
-
-function isTellerToCashierAllocation(allocation: {
-  notes: string | null;
-  cashierId: string | null;
-  amount: number;
-  fineractAllocationId: number | null;
-}) {
-  if (!allocation.cashierId || allocation.amount <= 0) {
-    return false;
-  }
-
-  const narration = (allocation.notes ?? "").trim().toLowerCase();
-
-  if (narration.length > 0) {
-    return narration.includes("float");
-  }
-
-  return allocation.fineractAllocationId != null;
-}
-
-function shouldIncludeInVaultHistory(allocation: {
-  notes: string | null;
-  cashierId: string | null;
-  amount: number;
-  fineractAllocationId: number | null;
-}) {
-  const narration = (allocation.notes ?? "").toLowerCase();
-
-  if (
-    narration.includes("loan disbursement") ||
-    narration.includes("disbursement (cash out)")
-  ) {
-    return false;
-  }
-
-  if (!allocation.cashierId) {
-    return true;
-  }
-
-  if (narration.includes("loan repayment")) {
-    return false;
-  }
-
-  if (
-    narration.includes("loan disbursement") ||
-    narration.includes("credit balance refund")
-  ) {
-    return false;
-  }
-
-  if (isTellerToCashierAllocation(allocation)) {
-    return true;
-  }
-
-  if (narration.includes("session close settlement")) {
-    return false;
-  }
-
-  return isCashierReturnToVault(allocation.notes);
-}
+import {
+  buildTellerVaultTransactions,
+  summarizeTellerVaultTransactions,
+} from "@/lib/teller-vault-transactions";
 
 /**
  * GET /api/tellers/[id]/transactions
@@ -158,64 +65,23 @@ export async function GET(
       orderBy: { allocatedDate: "asc" }, // Chronological order
     });
 
-    const allocations = allTellerAllocations.filter(shouldIncludeInVaultHistory);
-
-    // Calculate running balance
-    let runningBalance = 0;
-    const transactionsWithBalance = allocations.map((alloc) => {
-      let amount = alloc.amount;
-      let transactionType = getVaultTransactionType(alloc.notes);
-
-      if (alloc.cashierId) {
-        if (isTellerToCashierAllocation(alloc)) {
-          amount = -Math.abs(alloc.amount);
-          transactionType = "CASHIER_ALLOCATION";
-        } else if (isCashierReturnToVault(alloc.notes)) {
-          amount = Math.abs(alloc.amount);
-          transactionType = "SETTLEMENT_RETURN";
+    const transactionsWithBalance = buildTellerVaultTransactions(allTellerAllocations).map(
+      (tx) => {
+        // Get user name from map, or use special labels for system entries
+        let allocatedByName = tx.allocatedBy;
+        if (tx.allocatedBy === "SYSTEM-IMPORT") {
+          allocatedByName = "System Import";
+        } else if (userMap[tx.allocatedBy]) {
+          allocatedByName = userMap[tx.allocatedBy];
         }
+
+        return {
+          ...tx,
+          allocatedByName,
+        };
       }
-
-      runningBalance += amount;
-
-      // Get user name from map, or use special labels for system entries
-      let allocatedByName = alloc.allocatedBy;
-      if (alloc.allocatedBy === "SYSTEM-IMPORT") {
-        allocatedByName = "System Import";
-      } else if (userMap[alloc.allocatedBy]) {
-        allocatedByName = userMap[alloc.allocatedBy];
-      }
-
-      return {
-        id: alloc.id,
-        date: alloc.allocatedDate,
-        amount,
-        currency: alloc.currency,
-        type: transactionType,
-        notes: alloc.notes,
-        allocatedBy: alloc.allocatedBy,
-        allocatedByName,
-        status: alloc.status,
-        runningBalance,
-      };
-    });
-
-    // Summary
-    const openingBalance = transactionsWithBalance
-      .filter((t) => t.type === "OPENING_BALANCE")
-      .reduce((sum, t) => sum + t.amount, 0);
-
-    const allocationsFromBank = transactionsWithBalance
-      .filter((t) => t.type === "ALLOCATION")
-      .reduce((sum, t) => sum + t.amount, 0);
-
-    const settlementReturns = transactionsWithBalance
-      .filter((t) => t.type === "SETTLEMENT_RETURN")
-      .reduce((sum, t) => sum + t.amount, 0);
-
-    const tellerToCashierAllocations = transactionsWithBalance
-      .filter((t) => t.type === "CASHIER_ALLOCATION")
-      .reduce((sum, t) => sum + Math.abs(t.amount), 0);
+    );
+    const summary = summarizeTellerVaultTransactions(transactionsWithBalance);
 
     return NextResponse.json({
       teller: {
@@ -223,14 +89,7 @@ export async function GET(
         name: teller.name,
         fineractTellerId: teller.fineractTellerId,
       },
-      summary: {
-        openingBalance,
-        allocationsFromBank,
-        settlementReturns,
-        tellerToCashierAllocations,
-        currentBalance: runningBalance,
-        transactionCount: transactionsWithBalance.length,
-      },
+      summary,
       transactions: transactionsWithBalance,
     });
   } catch (error) {
