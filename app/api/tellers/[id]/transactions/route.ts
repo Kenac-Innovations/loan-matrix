@@ -3,6 +3,103 @@ import { prisma } from "@/lib/prisma";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
 import { getFineractServiceWithSession } from "@/lib/fineract-api";
 
+function getVaultTransactionType(notes: string | null | undefined) {
+  const narration = (notes ?? "").toLowerCase();
+
+  if (narration.includes("variance")) {
+    return "VARIANCE_ADJUSTMENT";
+  }
+
+  if (
+    narration.includes("settlement") ||
+    narration.includes("returned") ||
+    narration.includes("return from") ||
+    narration.includes("returned to vault") ||
+    narration.includes("session close") ||
+    narration.includes("session closed")
+  ) {
+    return "SETTLEMENT_RETURN";
+  }
+
+  if (narration.includes("opening balance")) {
+    return "OPENING_BALANCE";
+  }
+
+  return "ALLOCATION";
+}
+
+function isCashierReturnToVault(notes: string | null | undefined) {
+  const narration = (notes ?? "").toLowerCase();
+  return (
+    narration.includes("return to vault") ||
+    narration.includes("returned to vault") ||
+    narration.includes("return to safe") ||
+    narration.includes("returned to safe") ||
+    narration.includes("return from") ||
+    narration.includes("settlement")
+  );
+}
+
+function isTellerToCashierAllocation(allocation: {
+  notes: string | null;
+  cashierId: string | null;
+  amount: number;
+  fineractAllocationId: number | null;
+}) {
+  if (!allocation.cashierId || allocation.amount <= 0) {
+    return false;
+  }
+
+  const narration = (allocation.notes ?? "").trim().toLowerCase();
+
+  if (narration.length > 0) {
+    return narration.includes("float");
+  }
+
+  return allocation.fineractAllocationId != null;
+}
+
+function shouldIncludeInVaultHistory(allocation: {
+  notes: string | null;
+  cashierId: string | null;
+  amount: number;
+  fineractAllocationId: number | null;
+}) {
+  const narration = (allocation.notes ?? "").toLowerCase();
+
+  if (
+    narration.includes("loan disbursement") ||
+    narration.includes("disbursement (cash out)")
+  ) {
+    return false;
+  }
+
+  if (!allocation.cashierId) {
+    return true;
+  }
+
+  if (narration.includes("loan repayment")) {
+    return false;
+  }
+
+  if (
+    narration.includes("loan disbursement") ||
+    narration.includes("credit balance refund")
+  ) {
+    return false;
+  }
+
+  if (isTellerToCashierAllocation(allocation)) {
+    return true;
+  }
+
+  if (narration.includes("session close settlement")) {
+    return false;
+  }
+
+  return isCashierReturnToVault(allocation.notes);
+}
+
 /**
  * GET /api/tellers/[id]/transactions
  * Get all cash allocations (transactions) for a teller vault
@@ -50,38 +147,36 @@ export async function GET(
       // Continue without user names - will fall back to IDs
     }
 
-    // Get all cash allocations for this teller's vault (cashierId = null)
-    const allVaultAllocations = await prisma.cashAllocation.findMany({
+    // Get all teller-linked allocations so the vault history can include:
+    // - direct vault movements (cashierId = null)
+    // - cash allocated from the vault to cashier drawers (cashierId != null, shown as outflows)
+    const allTellerAllocations = await prisma.cashAllocation.findMany({
       where: {
         tellerId: teller.id,
         tenantId: tenant.id,
-        cashierId: null, // Only vault allocations
       },
       orderBy: { allocatedDate: "asc" }, // Chronological order
     });
 
-    // Exclude loan disbursements: money for disbursements leaves the cashier till, not the vault.
-    // Any vault allocation with "loan disbursement" is incorrect and should not appear in vault history.
-    const allocations = allVaultAllocations.filter(
-      (a) =>
-        !a.notes?.toLowerCase().includes("loan disbursement") &&
-        !a.notes?.toLowerCase().includes("disbursement (cash out)")
-    );
+    const allocations = allTellerAllocations.filter(shouldIncludeInVaultHistory);
 
     // Calculate running balance
     let runningBalance = 0;
     const transactionsWithBalance = allocations.map((alloc) => {
-      runningBalance += alloc.amount;
-      
-      // Determine transaction type based on notes and allocatedBy
-      let transactionType = "ALLOCATION";
-      if (alloc.notes?.toLowerCase().includes("opening balance") || alloc.allocatedBy === "SYSTEM-IMPORT") {
-        transactionType = "OPENING_BALANCE";
-      } else if (alloc.notes?.toLowerCase().includes("settlement") || alloc.notes?.toLowerCase().includes("returned")) {
-        transactionType = "SETTLEMENT_RETURN";
-      } else if (alloc.notes?.toLowerCase().includes("variance")) {
-        transactionType = "VARIANCE_ADJUSTMENT";
+      let amount = alloc.amount;
+      let transactionType = getVaultTransactionType(alloc.notes);
+
+      if (alloc.cashierId) {
+        if (isTellerToCashierAllocation(alloc)) {
+          amount = -Math.abs(alloc.amount);
+          transactionType = "CASHIER_ALLOCATION";
+        } else if (isCashierReturnToVault(alloc.notes)) {
+          amount = Math.abs(alloc.amount);
+          transactionType = "SETTLEMENT_RETURN";
+        }
       }
+
+      runningBalance += amount;
 
       // Get user name from map, or use special labels for system entries
       let allocatedByName = alloc.allocatedBy;
@@ -94,7 +189,7 @@ export async function GET(
       return {
         id: alloc.id,
         date: alloc.allocatedDate,
-        amount: alloc.amount,
+        amount,
         currency: alloc.currency,
         type: transactionType,
         notes: alloc.notes,
@@ -118,9 +213,9 @@ export async function GET(
       .filter((t) => t.type === "SETTLEMENT_RETURN")
       .reduce((sum, t) => sum + t.amount, 0);
 
-    const varianceAdjustments = transactionsWithBalance
-      .filter((t) => t.type === "VARIANCE_ADJUSTMENT")
-      .reduce((sum, t) => sum + t.amount, 0);
+    const tellerToCashierAllocations = transactionsWithBalance
+      .filter((t) => t.type === "CASHIER_ALLOCATION")
+      .reduce((sum, t) => sum + Math.abs(t.amount), 0);
 
     return NextResponse.json({
       teller: {
@@ -132,7 +227,7 @@ export async function GET(
         openingBalance,
         allocationsFromBank,
         settlementReturns,
-        varianceAdjustments,
+        tellerToCashierAllocations,
         currentBalance: runningBalance,
         transactionCount: transactionsWithBalance.length,
       },
