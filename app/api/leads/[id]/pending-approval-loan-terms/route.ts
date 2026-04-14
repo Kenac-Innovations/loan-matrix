@@ -16,13 +16,19 @@ const FINERACT_BASE_URL =
 
 type LoanTermsMetadata = Record<string, unknown> & {
   repaymentStrategy?: string;
+  loanTerm?: number;
   termFrequency?: number;
   repaymentEvery?: number;
   repaymentFrequency?: number;
+  repaymentFrequencyNthDay?: string | number;
+  repaymentFrequencyDayOfWeek?: string | number;
   interestRateFrequency?: number;
   amortization?: number;
   interestMethod?: number;
   interestCalculationPeriod?: number;
+  isEqualAmortization?: boolean;
+  firstRepaymentOn?: string;
+  interestChargedFrom?: string;
 };
 
 type LeadStateMetadata = Record<string, unknown> & {
@@ -32,7 +38,11 @@ type LeadStateMetadata = Record<string, unknown> & {
 type FineractErrorBody = {
   defaultUserMessage?: string;
   developerMessage?: string;
-  errors?: Array<{ defaultUserMessage?: string }>;
+  errors?: Array<{
+    defaultUserMessage?: string;
+    developerMessage?: string;
+    parameterName?: string;
+  }>;
 };
 
 const pendingLoanTermsSchema = z.object({
@@ -74,6 +84,13 @@ function formatFineractDate(
   return `${date.getDate()} ${months[date.getMonth()]} ${date.getFullYear()}`;
 }
 
+function formatOptionalFineractDate(
+  value: string | number[] | Date | null | undefined
+): string | undefined {
+  const date = toDate(value);
+  return date ? formatFineractDate(date) : undefined;
+}
+
 function toDate(value: string | number[] | Date | null | undefined): Date | null {
   if (!value) {
     return null;
@@ -101,6 +118,46 @@ function resolveTransactionProcessingStrategyCode(
     loan.transactionProcessingStrategyCode ||
     stateMetadata?.loanTerms?.repaymentStrategy ||
     "creocore-strategy"
+  );
+}
+
+function buildFineractErrorMessage(
+  details: FineractErrorBody | null,
+  fallback: string
+): string {
+  if (!details) {
+    return fallback;
+  }
+
+  const validationMessages = Array.from(
+    new Set(
+      (details.errors || [])
+        .map((error) =>
+          error.parameterName && error.defaultUserMessage
+            ? `${error.parameterName}: ${error.defaultUserMessage}`
+            : error.defaultUserMessage || error.developerMessage || null
+        )
+        .filter((message): message is string => Boolean(message?.trim()))
+    )
+  );
+
+  if (validationMessages.length > 0) {
+    const topLevelMessage = details.defaultUserMessage?.trim();
+    if (
+      topLevelMessage &&
+      topLevelMessage !== "Validation errors exist." &&
+      !validationMessages.includes(topLevelMessage)
+    ) {
+      return `${topLevelMessage} ${validationMessages.join(" ")}`.trim();
+    }
+
+    return validationMessages.join(" ");
+  }
+
+  return (
+    details.developerMessage ||
+    details.defaultUserMessage ||
+    fallback
   );
 }
 
@@ -143,11 +200,7 @@ async function fineractRequest<T>(
 
     try {
       errorDetails = await response.json();
-      errorMessage =
-        errorDetails?.defaultUserMessage ||
-        errorDetails?.errors?.[0]?.defaultUserMessage ||
-        errorDetails?.developerMessage ||
-        errorMessage;
+      errorMessage = buildFineractErrorMessage(errorDetails, errorMessage);
     } catch {
       const text = await response.text().catch(() => "");
       if (text) {
@@ -205,7 +258,15 @@ export async function PUT(
       select: {
         id: true,
         fineractLoanId: true,
+        fineractClientId: true,
+        loanProductId: true,
+        loanPurposeId: true,
+        loanOfficerId: true,
+        fundId: true,
+        submittedOnDate: true,
         expectedDisbursementDate: true,
+        linkSavingsAccount: true,
+        createStandingInstructions: true,
         requestedAmount: true,
         loanTerm: true,
         lastModified: true,
@@ -240,12 +301,27 @@ export async function PUT(
 
     const currentMetadata = (lead.stateMetadata as LeadStateMetadata | null) || {};
     const currentLoanTerms = currentMetadata.loanTerms || {};
+    const submittedOnDate = formatOptionalFineractDate(
+      fineractLoan.timeline?.submittedOnDate || lead.submittedOnDate
+    );
+    const expectedDisbursementDate = formatFineractDate(
+      fineractLoan.timeline?.expectedDisbursementDate ||
+        lead.expectedDisbursementDate
+    );
+    const repaymentsStartingFromDate = formatOptionalFineractDate(
+      currentLoanTerms.firstRepaymentOn
+    );
+    const interestChargedFromDate = formatOptionalFineractDate(
+      currentLoanTerms.interestChargedFrom
+    );
 
     const payload = {
       locale: "en",
       dateFormat: "dd MMMM yyyy",
+      clientId: fineractLoan.clientId || lead.fineractClientId,
       productId: fineractLoan.loanProductId,
       principal: parsedBody.principal,
+      externalId: fineractLoan.externalId,
       loanTermFrequency: parsedBody.loanTermFrequency,
       loanTermFrequencyType:
         fineractLoan.termPeriodFrequencyType?.id ||
@@ -257,23 +333,61 @@ export async function PUT(
         fineractLoan.repaymentFrequencyType?.id ||
         currentLoanTerms.repaymentFrequency ||
         2,
+      ...(currentLoanTerms.repaymentFrequencyNthDay
+        ? {
+            repaymentFrequencyNthDayType: Number(
+              currentLoanTerms.repaymentFrequencyNthDay
+            ),
+          }
+        : {}),
+      ...(currentLoanTerms.repaymentFrequencyDayOfWeek
+        ? {
+            repaymentFrequencyDayOfWeekType: Number(
+              currentLoanTerms.repaymentFrequencyDayOfWeek
+            ),
+          }
+        : {}),
       interestRatePerPeriod: parsedBody.interestRatePerPeriod,
+      interestRateFrequencyType:
+        fineractLoan.interestRateFrequencyType?.id ||
+        currentLoanTerms.interestRateFrequency ||
+        2,
       amortizationType:
         fineractLoan.amortizationType?.id || currentLoanTerms.amortization || 1,
+      isEqualAmortization: currentLoanTerms.isEqualAmortization || false,
       interestType:
         fineractLoan.interestType?.id || currentLoanTerms.interestMethod || 0,
       interestCalculationPeriodType:
         fineractLoan.interestCalculationPeriodType?.id ||
         currentLoanTerms.interestCalculationPeriod ||
         1,
-      expectedDisbursementDate: formatFineractDate(
-        fineractLoan.timeline?.expectedDisbursementDate ||
-          lead.expectedDisbursementDate
-      ),
+      ...(submittedOnDate ? { submittedOnDate } : {}),
+      expectedDisbursementDate,
+      ...(repaymentsStartingFromDate ? { repaymentsStartingFromDate } : {}),
+      ...(interestChargedFromDate ? { interestChargedFromDate } : {}),
       transactionProcessingStrategyCode: resolveTransactionProcessingStrategyCode(
         fineractLoan,
         currentMetadata
       ),
+      loanType:
+        fineractLoan.loanType?.value?.toLowerCase() === "individual"
+          ? "individual"
+          : "individual",
+      allowPartialPeriodInterestCalcualtion:
+        fineractLoan.allowPartialPeriodInterestCalcualtion || false,
+      ...(fineractLoan.loanOfficerId || lead.loanOfficerId
+        ? { loanOfficerId: fineractLoan.loanOfficerId || lead.loanOfficerId }
+        : {}),
+      ...(lead.loanPurposeId ? { loanPurposeId: lead.loanPurposeId } : {}),
+      ...(fineractLoan.fundId || lead.fundId
+        ? { fundId: fineractLoan.fundId || lead.fundId }
+        : {}),
+      ...(lead.linkSavingsAccount
+        ? { linkAccountId: lead.linkSavingsAccount }
+        : {}),
+      ...(lead.createStandingInstructions
+        ? { createStandingInstructionAtDisbursement: "true" }
+        : {}),
     };
 
     const fineractResult = await fineractRequest(`/loans/${lead.fineractLoanId}`, authToken, {
