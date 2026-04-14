@@ -34,6 +34,7 @@ interface LeadMoreActionsProps {
   loanId?: number | null;
   fineractClientId?: number | null;
   canModifyPendingApplication?: boolean;
+  canPrintContract?: boolean;
 }
 
 export function LeadMoreActions({
@@ -42,6 +43,7 @@ export function LeadMoreActions({
   loanId,
   fineractClientId,
   canModifyPendingApplication = false,
+  canPrintContract = false,
 }: LeadMoreActionsProps) {
   const statusLower = (loanStatus || "").toLowerCase();
   const isPending =
@@ -72,6 +74,65 @@ export function LeadMoreActions({
     window.dispatchEvent(new Event("open-pending-loan-terms-editor"));
   };
 
+  const handlePrintContract = async () => {
+    if (!canPrintContract) {
+      toast.error(
+        "Loan contracts can only be printed after the application has reached final approval."
+      );
+      return;
+    }
+
+    const printWindow = window.open("", "_blank");
+
+    if (!printWindow) {
+      toast.error("Please allow pop-ups to print the contract.");
+      return;
+    }
+
+    printWindow.document.write(
+      "<html><body style='font-family:sans-serif;padding:24px'>Preparing contract for printing...</body></html>"
+    );
+    printWindow.document.close();
+
+    try {
+      const response = await fetch(`/api/leads/${leadId}/print-contract`, {
+        cache: "no-store",
+      });
+
+      if (!response.ok) {
+        let message = "Failed to prepare the loan contract for printing.";
+
+        try {
+          const data = await response.json();
+          if (typeof data?.error === "string" && data.error.trim()) {
+            message = data.error;
+          }
+        } catch {
+          const text = await response.text().catch(() => "");
+          if (text.trim()) {
+            message = text;
+          }
+        }
+
+        printWindow.close();
+        toast.error(message);
+        return;
+      }
+
+      const html = await response.text();
+      printWindow.document.open();
+      printWindow.document.write(html);
+      printWindow.document.close();
+    } catch (error) {
+      printWindow.close();
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Failed to prepare the loan contract for printing."
+      );
+    }
+  };
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -86,7 +147,7 @@ export function LeadMoreActions({
           <Copy className="mr-2 h-4 w-4" />
           Copy Lead ID
         </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => handleComingSoon("Print Contract")}>
+        <DropdownMenuItem onClick={handlePrintContract}>
           <Printer className="mr-2 h-4 w-4" />
           Print Contract
         </DropdownMenuItem>
