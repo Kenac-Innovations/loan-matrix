@@ -64,49 +64,53 @@ export async function POST(
     if (teller.bankId && !skipBankCheck) {
       const bank = teller.bank!;
 
-      // Get total already allocated to tellers from this bank
-      const tellerAllocations = await prisma.cashAllocation.findMany({
+      const bankWithBalances = await prisma.bank.findFirst({
         where: {
+          id: teller.bankId,
           tenantId: tenant.id,
-          teller: { bankId: teller.bankId },
-          cashierId: null,
-          status: "ACTIVE",
+        },
+        include: {
+          allocations: {
+            where: { status: "ACTIVE" },
+          },
+          tellers: {
+            where: { isActive: true },
+            include: {
+              cashAllocations: {
+                where: { status: "ACTIVE", cashierId: null },
+              },
+            },
+          },
         },
       });
 
-      // Only count allocations that actually drew from the bank. Exclude:
-      // - Opening balances / SYSTEM-IMPORT (existing cash at teller, not from bank)
-      // - Returns from cashiers (session close, reversals) – cash returning to vault, not from bank
+      if (!bankWithBalances) {
+        return NextResponse.json({ error: "Bank not found" }, { status: 404 });
+      }
+
+      // Match the bank details page logic exactly so allocation validation
+      // uses the same available balance the user sees on the bank screen.
       const isFromBank = (alloc: {
         notes?: string | null;
         allocatedBy?: string | null;
       }) => {
         const n = (alloc.notes ?? "").toLowerCase();
-        if (
-          n.includes("opening balance") ||
-          alloc.allocatedBy === "SYSTEM-IMPORT"
-        )
-          return false;
+        if (n.includes("opening balance") || alloc.allocatedBy === "SYSTEM-IMPORT") return false;
         if (alloc.allocatedBy === "SYSTEM-REVERSAL") return false;
-        if (
-          n.includes("return from") ||
-          n.includes("session close") ||
-          n.includes("returned to vault")
-        )
-          return false;
+        if (n.includes("return from") || n.includes("session close") || n.includes("returned to vault")) return false;
         return true;
       };
-      const allocatedToTellers = tellerAllocations
-        .filter(
-          (alloc) =>
-            !alloc.notes?.toLowerCase().includes("opening balance") &&
-            alloc.allocatedBy !== "SYSTEM-IMPORT",
-        )
-        .reduce((sum, alloc) => sum + alloc.amount, 0);
+
+      const allocatedToTellers = bankWithBalances.tellers.reduce((sum, bankTeller) => {
+        const bankAllocationsOnly = bankTeller.cashAllocations
+          .filter(isFromBank)
+          .reduce((allocSum, alloc) => allocSum + alloc.amount, 0);
+        return sum + bankAllocationsOnly;
+      }, 0);
 
       // Use Fineract GL balance when available (consistent with UI display),
       // fall back to local BankAllocation records otherwise.
-      let totalBankFunds = 0;
+      let totalAllocated = 0;
       let balanceSource = "local";
 
       if (bank.glAccountId) {
@@ -118,9 +122,9 @@ export async function POST(
           if (journalData?.pageItems && journalData.pageItems.length > 0) {
             for (const entry of journalData.pageItems) {
               if (entry.entryType?.value === "DEBIT") {
-                totalBankFunds += entry.amount || 0;
+                totalAllocated += entry.amount || 0;
               } else if (entry.entryType?.value === "CREDIT") {
-                totalBankFunds -= entry.amount || 0;
+                totalAllocated -= entry.amount || 0;
               }
             }
             balanceSource = "fineract_gl";
@@ -134,20 +138,10 @@ export async function POST(
       }
 
       if (balanceSource === "local") {
-        const bankAllocations = await prisma.bankAllocation.findMany({
-          where: {
-            bankId: teller.bankId,
-            tenantId: tenant.id,
-            status: "ACTIVE",
-          },
-        });
-        totalBankFunds = bankAllocations.reduce(
-          (sum, alloc) => sum + alloc.amount,
-          0,
-        );
+        totalAllocated = bankWithBalances.allocations.reduce((sum, alloc) => sum + alloc.amount, 0);
       }
 
-      const bankAvailableBalance = totalBankFunds - allocatedToTellers;
+      const bankAvailableBalance = totalAllocated - allocatedToTellers;
 
       if (requestedAmount > bankAvailableBalance) {
         return NextResponse.json(
@@ -159,7 +153,7 @@ export async function POST(
               2,
             )} ${allocationCurrency}. Please allocate more funds to the bank first.`,
             bankBalance: {
-              totalFunds: totalBankFunds,
+              totalFunds: totalAllocated,
               allocatedToTellers,
               availableBalance: bankAvailableBalance,
               source: balanceSource,
