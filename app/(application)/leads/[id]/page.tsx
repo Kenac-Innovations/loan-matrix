@@ -18,6 +18,10 @@ import { headers } from "next/headers";
 import { extractTenantSlug } from "@/lib/tenant-service";
 import { getSession } from "@/lib/auth";
 import { getFineractServiceWithSession } from "@/lib/fineract-api";
+import {
+  canEditPendingLoanApplication,
+  isPendingLoanApplicationEditTenant,
+} from "@/lib/pending-loan-application-edit";
 
 const FINERACT_BASE_URL = process.env.FINERACT_BASE_URL || "http://10.10.0.143";
 
@@ -354,6 +358,7 @@ async function getLeadData(leadId: string) {
       clientDocuments: fineractDocs.clientDocuments,
       loanDocuments: fineractDocs.loanDocuments,
       datatableData,
+      tenantSlug,
     };
   } catch (error) {
     console.error("Error fetching lead data:", error);
@@ -370,6 +375,7 @@ async function getLeadData(leadId: string) {
       datatableData: {},
       clientDocuments: [],
       loanDocuments: [],
+      tenantSlug: null,
     };
   }
 }
@@ -393,6 +399,7 @@ export default async function LeadDetailPage({
     datatableData,
     clientDocuments,
     loanDocuments,
+    tenantSlug,
   } = await getLeadData(id);
   
   const session = await getSession();
@@ -402,6 +409,9 @@ export default async function LeadDetailPage({
     lead?.assignedToUserId != null &&
     String(lead.assignedToUserId) === currentUserId;
   const isReadOnly = !isAssignedUser;
+  const canEditPendingLoanTerms =
+    isPendingLoanApplicationEditTenant(tenantSlug) &&
+    canEditPendingLoanApplication(session, fineractLoanStatus);
 
   // Check if current user is in the team for the lead's current stage
   let isUserInStageTeam = false;
@@ -523,6 +533,7 @@ export default async function LeadDetailPage({
                     loanStatus={fineractLoanStatus}
                     loanId={fineractLoanId}
                     fineractClientId={lead.fineractClientId}
+                    canModifyPendingApplication={canEditPendingLoanTerms}
                   />
                 )}
               </div>
@@ -670,6 +681,7 @@ export default async function LeadDetailPage({
             clientDocuments={clientDocuments}
             loanDocuments={loanDocuments}
             readOnly={isReadOnly}
+            canEditPendingLoanApplication={canEditPendingLoanTerms}
           />
         </div>
         <div className="mt-0 lg:mt-10">
