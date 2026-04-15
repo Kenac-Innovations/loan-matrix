@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useCallback, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import useSWR from "swr";
 import {
   Phone,
@@ -77,6 +77,7 @@ const officesFetcher = (url: string) => fetch(url).then((res) => res.json());
 
 export function ClientsTable() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [offset, setOffset] = useState(0);
   const [limit, setLimit] = useState(20);
   const [searchInput, setSearchInput] = useState("");
@@ -97,6 +98,32 @@ export function ClientsTable() {
 
   // Fetch offices for filter dropdown
   const { data: officesData } = useSWR("/api/fineract/offices", officesFetcher);
+
+  useEffect(() => {
+    const officeIdFromUrl = searchParams.get("officeId") || "";
+    setOfficeId((current) => (current === officeIdFromUrl ? current : officeIdFromUrl));
+  }, [searchParams]);
+
+  const updateOfficeFilter = useCallback(
+    (value: string) => {
+      const normalizedValue = value === "all" ? "" : value;
+      setOfficeId(normalizedValue);
+      setOffset(0);
+
+      const params = new URLSearchParams(searchParams.toString());
+      if (normalizedValue) {
+        params.set("officeId", normalizedValue);
+      } else {
+        params.delete("officeId");
+      }
+
+      const queryString = params.toString();
+      router.replace(queryString ? `/clients?${queryString}` : "/clients", {
+        scroll: false,
+      });
+    },
+    [router, searchParams]
+  );
 
   // Debounced search handler - requires minimum 2 characters
   const handleSearchChange = useCallback(
@@ -306,7 +333,7 @@ export function ClientsTable() {
 
   // Clear all filters
   const handleClearFilters = () => {
-    setOfficeId("");
+    updateOfficeFilter("");
     setStatus("");
     setOrderBy("id");
     setSortOrder("DESC");
@@ -428,17 +455,14 @@ export function ClientsTable() {
           {/* Office Filter */}
           <Select
             value={officeId}
-            onValueChange={(value) => {
-              setOfficeId(value === "all" ? "" : value);
-              setOffset(0);
-            }}
+            onValueChange={updateOfficeFilter}
           >
             <SelectTrigger className="w-[160px] h-9">
               <MapPin className="h-3.5 w-3.5 mr-2 text-muted-foreground" />
-              <SelectValue placeholder="All Offices" />
+              <SelectValue placeholder="All Branches" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Offices</SelectItem>
+              <SelectItem value="all">All Branches</SelectItem>
               {offices.map((office: any) => (
                 <SelectItem key={office.id} value={office.id.toString()}>
                   {office.name}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -37,6 +37,10 @@ import {
   CheckCircle,
   XCircle,
   AlertCircle,
+  Mic,
+  Trash2,
+  Users,
+  MapPin,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 
@@ -85,6 +89,18 @@ interface LeadInfo {
   phone?: string;
 }
 
+interface ContactDirectoryEntry {
+  id: string;
+  name: string;
+  role: string;
+  category: "BORROWER" | "GUARANTOR" | "REFERENCE" | "EMPLOYER" | "OTHER";
+  phone?: string | null;
+  email?: string | null;
+  address?: string | null;
+  notes?: string | null;
+  source: "lead" | "family-member" | "state" | "fineract-guarantor" | "datatable";
+}
+
 interface LeadCommunicationsProps {
   leadId: string;
 }
@@ -93,6 +109,7 @@ export function LeadCommunications({ leadId }: LeadCommunicationsProps) {
   const [communications, setCommunications] = useState<Communication[]>([]);
   const [summary, setSummary] = useState<CommunicationSummary | null>(null);
   const [leadInfo, setLeadInfo] = useState<LeadInfo | null>(null);
+  const [contactDirectory, setContactDirectory] = useState<ContactDirectoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -106,13 +123,18 @@ export function LeadCommunications({ leadId }: LeadCommunicationsProps) {
     content: "",
     toEmail: "",
     toPhone: "",
+    contactPerson: "BORROWER",
+    contactPersonName: "",
   });
+  const [voiceNoteFile, setVoiceNoteFile] = useState<File | null>(null);
+  const [voiceNotePreview, setVoiceNotePreview] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     fetchCommunications();
   }, [leadId]);
 
-  const fetchCommunications = async () => {
+  const fetchCommunications = useCallback(async () => {
     try {
       setLoading(true);
       const response = await fetch(`/api/leads/${leadId}/communications`, {
@@ -129,6 +151,7 @@ export function LeadCommunications({ leadId }: LeadCommunicationsProps) {
       setCommunications(data.communications || []);
       setSummary(data.summary);
       setLeadInfo(data.leadInfo);
+      setContactDirectory(data.contactDirectory || []);
 
       // Set default email/phone from lead info
       if (data.leadInfo) {
@@ -143,7 +166,11 @@ export function LeadCommunications({ leadId }: LeadCommunicationsProps) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [leadId]);
+
+  useEffect(() => {
+    fetchCommunications();
+  }, [fetchCommunications]);
 
   const handleCreateCommunication = async () => {
     try {
@@ -179,6 +206,54 @@ export function LeadCommunications({ leadId }: LeadCommunicationsProps) {
         err instanceof Error ? err.message : "Failed to create communication"
       );
     }
+  };
+
+  const handleQuickLogCommunication = (contact: ContactDirectoryEntry) => {
+    setNewComm((prev) => ({
+      ...prev,
+      type: contact.email ? "EMAIL" : contact.phone ? "CALL" : prev.type,
+      direction: "OUTBOUND",
+      subject: "",
+      content: "",
+      toEmail: contact.email || "",
+      toPhone: contact.phone || "",
+      contactPerson: contact.category,
+      contactPersonName: contact.category === "OTHER" ? contact.name : "",
+    }));
+    setIsDialogOpen(true);
+  };
+
+  const getSourceLabel = (source: ContactDirectoryEntry["source"]) => {
+    switch (source) {
+      case "fineract-guarantor":
+        return "Loan record";
+      case "family-member":
+        return "Application";
+      case "state":
+        return "Captured details";
+      case "datatable":
+        return "Additional info";
+      default:
+        return "Lead";
+    }
+  };
+
+  const handleVoiceNoteSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) {
+      setError("Voice note must be under 10MB");
+      return;
+    }
+    setVoiceNoteFile(file);
+    setVoiceNotePreview(URL.createObjectURL(file));
+  };
+
+  const clearVoiceNote = () => {
+    setVoiceNoteFile(null);
+    if (voiceNotePreview) URL.revokeObjectURL(voiceNotePreview);
+    setVoiceNotePreview(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   const getTypeIcon = (type: string) => {
@@ -333,6 +408,93 @@ export function LeadCommunications({ leadId }: LeadCommunicationsProps) {
           </Card>
         </div>
       )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Contact Details</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {contactDirectory.length === 0 ? (
+            <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+              No related contact details are available for this loan yet.
+            </div>
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {contactDirectory.map((contact) => (
+                <div
+                  key={contact.id}
+                  className="rounded-lg border bg-card/50 p-4 space-y-3"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-medium truncate">{contact.name}</p>
+                      <p className="text-sm text-muted-foreground">{contact.role}</p>
+                    </div>
+                    <Badge variant="outline" className="shrink-0">
+                      {getSourceLabel(contact.source)}
+                    </Badge>
+                  </div>
+
+                  <div className="space-y-2 text-sm">
+                    {contact.phone && (
+                      <div className="flex items-center gap-2">
+                        <Phone className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                        <span className="truncate">{contact.phone}</span>
+                      </div>
+                    )}
+                    {contact.email && (
+                      <div className="flex items-center gap-2">
+                        <Mail className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                        <span className="truncate">{contact.email}</span>
+                      </div>
+                    )}
+                    {contact.address && (
+                      <div className="flex items-start gap-2">
+                        <MapPin className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" />
+                        <span className="text-muted-foreground">{contact.address}</span>
+                      </div>
+                    )}
+                    {contact.notes && (
+                      <div className="text-xs text-muted-foreground">
+                        {contact.notes}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    {contact.phone && (
+                      <Button asChild size="sm" variant="outline">
+                        <a href={`tel:${contact.phone}`}>
+                          <Phone className="h-3.5 w-3.5 mr-1.5" />
+                          Call
+                        </a>
+                      </Button>
+                    )}
+                    {contact.email && (
+                      <Button asChild size="sm" variant="outline">
+                        <a href={`mailto:${contact.email}`}>
+                          <Mail className="h-3.5 w-3.5 mr-1.5" />
+                          Email
+                        </a>
+                      </Button>
+                    )}
+                    {!readOnly && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => handleQuickLogCommunication(contact)}
+                      >
+                        <MessageSquare className="h-3.5 w-3.5 mr-1.5" />
+                        Log
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Communications List */}
       <Card>

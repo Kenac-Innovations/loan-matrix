@@ -55,13 +55,16 @@ import { useCurrency } from "@/contexts/currency-context";
 import { CreditBalanceRefundModal } from "./credit-balance-refund-modal";
 import { TransferFundsModal } from "./transfer-funds-modal";
 import { useFeatureFlags } from "@/hooks/use-feature-flags";
+import { PendingApprovalLoanTermsEditor } from "./pending-approval-loan-terms-editor";
 
 interface ComprehensiveLeadDetailsProps {
   leadId: string;
+  canEditPendingLoanApplication?: boolean;
 }
 
 export function ComprehensiveLeadDetails({
   leadId,
+  canEditPendingLoanApplication = false,
 }: ComprehensiveLeadDetailsProps) {
   const { currencyCode, currencySymbol } = useCurrency();
   const { isEnabled } = useFeatureFlags();
@@ -476,15 +479,44 @@ export function ComprehensiveLeadDetails({
     ? `${lead.countryCode} ${lead.mobileNo}`
     : "Not provided";
 
-  // Get requested amount from loanTerms.principal if requestedAmount is 0 or missing
+  const originalRequestedAmount =
+    typeof lead.stateMetadata?.originalRequestedAmount === "number" &&
+    lead.stateMetadata.originalRequestedAmount > 0
+      ? lead.stateMetadata.originalRequestedAmount
+      : null;
+
   const requestedAmount =
-    lead.requestedAmount && lead.requestedAmount > 0
+    originalRequestedAmount
+      ? originalRequestedAmount
+      : lead.requestedAmount && lead.requestedAmount > 0
       ? lead.requestedAmount
-      : loanInfo?.loanTerms?.principal || 0;
+      : fineractLoan?.proposedPrincipal
+        || fineractLoan?.approvedPrincipal
+        || fineractLoan?.principal
+        || loanInfo?.loanTerms?.principal
+        || 0;
 
   // Get Fineract loan status
   const fineractLoanStatus = fineractLoan?.status?.value || null;
   const fineractLoanId = fineractLoan?.id || lead?.fineractLoanId || null;
+  const isLoanApprovedOrBeyond = Boolean(
+    fineractLoan?.status?.approved ||
+      fineractLoan?.status?.active ||
+      fineractLoan?.status?.closed
+  );
+  const approvalAmountLabel = isLoanApprovedOrBeyond
+    ? "Approved Amount"
+    : "Amount To Be Approved";
+  const approvalAmount =
+    isLoanApprovedOrBeyond
+      ? fineractLoan?.approvedPrincipal
+        || fineractLoan?.principal
+        || requestedAmount
+      : fineractLoan?.principal
+        || fineractLoan?.proposedPrincipal
+        || fineractLoan?.approvedPrincipal
+        || loanInfo?.loanTerms?.principal
+        || requestedAmount;
 
   // Get status badge color
   const getStatusBadgeColor = (status: string | null) => {
@@ -618,6 +650,12 @@ export function ComprehensiveLeadDetails({
               <p className="text-xs text-muted-foreground">Requested Amount</p>
               <p className="text-2xl font-bold">
                 {currencyCode} {requestedAmount.toLocaleString()}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">{approvalAmountLabel}</p>
+              <p className="text-2xl font-bold">
+                {currencyCode} {approvalAmount.toLocaleString()}
               </p>
             </div>
             <div>
@@ -975,7 +1013,30 @@ export function ComprehensiveLeadDetails({
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <Card>
                   <CardHeader>
-                    <CardTitle>Loan Terms</CardTitle>
+                    <div className="flex items-start justify-between gap-3">
+                      <CardTitle>Loan Terms</CardTitle>
+                      {fineractLoan?.id ? (
+                        <PendingApprovalLoanTermsEditor
+                          leadId={leadId}
+                          canEdit={canEditPendingLoanApplication}
+                          loan={{
+                            id: fineractLoan.id,
+                            principal: fineractLoan.principal,
+                            termFrequency: fineractLoan.termFrequency,
+                            termPeriodLabel:
+                              fineractLoan.termPeriodFrequencyType?.value || null,
+                            numberOfRepayments: fineractLoan.numberOfRepayments,
+                            interestRatePerPeriod:
+                              fineractLoan.interestRatePerPeriod,
+                            interestRateFrequencyLabel:
+                              fineractLoan.interestRateFrequencyType?.value || null,
+                          }}
+                          onSaved={() => {
+                            fetchData(false);
+                          }}
+                        />
+                      ) : null}
+                    </div>
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div>

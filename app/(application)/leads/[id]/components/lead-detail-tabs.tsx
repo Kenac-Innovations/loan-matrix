@@ -14,6 +14,7 @@ type LeadDetailTabsProps = {
   clientDocuments?: unknown[];
   loanDocuments?: unknown[];
   readOnly?: boolean;
+  canEditPendingLoanApplication: boolean;
 };
 
 export function LeadDetailTabs({ leadId }: LeadDetailTabsProps) {

@@ -131,6 +131,7 @@ export async function GET(
         incomeVerified: lead.incomeVerified,
         loanPurpose: lead.loanPurpose,
         loanTerm: lead.loanTerm,
+        stateMetadata: lead.stateMetadata,
         collateralType: lead.collateralType,
         collateralValue: lead.collateralValue,
         riskScore: lead.riskScore,
