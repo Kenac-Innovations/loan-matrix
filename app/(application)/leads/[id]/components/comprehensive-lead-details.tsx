@@ -487,22 +487,33 @@ export function ComprehensiveLeadDetails({
 
   const requestedAmount =
     originalRequestedAmount
-      ? originalRequestedAmount
-      : lead.requestedAmount && lead.requestedAmount > 0
-      ? lead.requestedAmount
-      : fineractLoan?.proposedPrincipal
-        || fineractLoan?.approvedPrincipal
-        || fineractLoan?.principal
-        || loanInfo?.loanTerms?.principal
-        || 0;
+      ?? (typeof lead.requestedAmount === "number" && lead.requestedAmount > 0
+        ? lead.requestedAmount
+        : 0);
 
   // Get Fineract loan status
-  const fineractLoanStatus = fineractLoan?.status?.value || null;
-  const fineractLoanId = fineractLoan?.id || lead?.fineractLoanId || null;
+  const currentStageName = typeof lead.currentStage?.name === "string"
+    ? lead.currentStage.name.toLowerCase()
+    : "";
+  const leadStatus = typeof lead.status === "string"
+    ? lead.status.toLowerCase()
+    : "";
   const isLoanApprovedOrBeyond = Boolean(
     fineractLoan?.status?.approved ||
       fineractLoan?.status?.active ||
-      fineractLoan?.status?.closed
+      fineractLoan?.status?.closed ||
+      [
+        "approved",
+        "awaiting disbursement",
+        "awaiting payout",
+        "disbursed",
+        "active",
+        "completed",
+        "closed",
+      ].some(
+        (keyword) =>
+          currentStageName.includes(keyword) || leadStatus.includes(keyword)
+      )
   );
   const approvalAmountLabel = isLoanApprovedOrBeyond
     ? "Approved Amount"
@@ -511,6 +522,7 @@ export function ComprehensiveLeadDetails({
     isLoanApprovedOrBeyond
       ? fineractLoan?.approvedPrincipal
         || fineractLoan?.principal
+        || loanInfo?.loanTerms?.principal
         || requestedAmount
       : fineractLoan?.principal
         || fineractLoan?.proposedPrincipal
