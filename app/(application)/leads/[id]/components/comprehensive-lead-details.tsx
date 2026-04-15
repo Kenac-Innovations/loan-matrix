@@ -1062,12 +1062,12 @@ export function ComprehensiveLeadDetails({
                   <CardHeader>
                     <div className="flex items-start justify-between gap-3">
                       <CardTitle>Loan Terms</CardTitle>
-                      {fineractLoan?.id ? (
+                      {loanId ? (
                         <PendingApprovalLoanTermsEditor
                           leadId={leadId}
                           canEdit={canEditPendingLoanApplication}
                           loan={{
-                            id: fineractLoan.id,
+                            id: Number(loanId),
                             principal: fineractLoan.principal,
                             termFrequency: fineractLoan.termFrequency,
                             termPeriodLabel:

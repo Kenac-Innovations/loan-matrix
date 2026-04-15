@@ -6,6 +6,57 @@ import { fetchFineractAPI } from "@/lib/api";
 import { getOrgDefaultCurrencyCode } from "@/lib/currency-utils";
 import { getSession } from "@/lib/auth";
 
+function getRequestOrigin(request: NextRequest): string {
+  const forwardedProto = request.headers.get("x-forwarded-proto");
+  const forwardedHost = request.headers.get("x-forwarded-host");
+  const host = forwardedHost || request.headers.get("host");
+
+  if (host) {
+    return `${forwardedProto || "https"}://${host}`;
+  }
+
+  return request.nextUrl.origin;
+}
+
+function getForwardedHeaders(request: NextRequest): HeadersInit {
+  const forwardedHeaders: HeadersInit = {};
+
+  for (const headerName of [
+    "cookie",
+    "origin",
+    "referer",
+    "x-forwarded-host",
+    "x-forwarded-proto",
+    "host",
+  ]) {
+    const value = request.headers.get(headerName);
+    if (value) {
+      forwardedHeaders[headerName] = value;
+    }
+  }
+
+  return forwardedHeaders;
+}
+
+async function readJsonResponse<T>(response: Response): Promise<T> {
+  const rawBody = await response.text();
+
+  if (!rawBody) {
+    return {} as T;
+  }
+
+  try {
+    return JSON.parse(rawBody) as T;
+  } catch {
+    return {
+      error:
+        rawBody.length > 500
+          ? `${rawBody.slice(0, 500)}…`
+          : rawBody,
+    } as T;
+  }
+}
+
 export async function GET(
   request: NextRequest,
   context: { params: Promise<{ id: string }> },
@@ -16,6 +67,8 @@ export async function GET(
     console.log("Fetching contract data for leadId:", leadId);
 
     const tenantSlug = extractTenantSlugFromRequest(request);
+    const requestOrigin = getRequestOrigin(request);
+    const forwardedHeaders = getForwardedHeaders(request);
     console.log("Tenant slug:", tenantSlug);
     const tenant = await getTenantBySlug(tenantSlug);
 
@@ -106,15 +159,17 @@ export async function GET(
     // Fetch loan details
     console.log("Fetching loan details...");
     const loanDetailsResponse = await fetch(
-      `${request.nextUrl.origin}/api/leads/${leadId}/loan-details`,
+      `${requestOrigin}/api/leads/${leadId}/loan-details`,
       {
-        headers: {
-          origin: request.headers.get("origin") || "",
-          referer: request.headers.get("referer") || "",
-        },
+        headers: forwardedHeaders,
+        cache: "no-store",
       },
     );
-    const loanDetailsResult = await loanDetailsResponse.json();
+    const loanDetailsResult = await readJsonResponse<{
+      success?: boolean;
+      data?: any;
+      error?: string;
+    }>(loanDetailsResponse);
     const loanDetails = loanDetailsResult.success
       ? loanDetailsResult.data
       : null;
@@ -123,15 +178,17 @@ export async function GET(
     // Fetch loan terms
     console.log("Fetching loan terms...");
     const loanTermsResponse = await fetch(
-      `${request.nextUrl.origin}/api/leads/${leadId}/loan-terms`,
+      `${requestOrigin}/api/leads/${leadId}/loan-terms`,
       {
-        headers: {
-          origin: request.headers.get("origin") || "",
-          referer: request.headers.get("referer") || "",
-        },
+        headers: forwardedHeaders,
+        cache: "no-store",
       },
     );
-    const loanTermsResult = await loanTermsResponse.json();
+    const loanTermsResult = await readJsonResponse<{
+      success?: boolean;
+      data?: any;
+      error?: string;
+    }>(loanTermsResponse);
     const loanTerms = loanTermsResult.success ? loanTermsResult.data : null;
     console.log("Loan terms fetched:", loanTerms ? "Found" : "Not found");
 
@@ -278,16 +335,14 @@ export async function GET(
     let clientTemplate: any = null;
     try {
       const clientTemplateResponse = await fetch(
-        `${request.nextUrl.origin}/api/fineract/clients/template`,
+        `${requestOrigin}/api/fineract/clients/template`,
         {
-          headers: {
-            origin: request.headers.get("origin") || "",
-          referer: request.headers.get("referer") || "",
-          },
+          headers: forwardedHeaders,
+          cache: "no-store",
         },
       );
       if (clientTemplateResponse.ok) {
-        clientTemplate = await clientTemplateResponse.json();
+        clientTemplate = await readJsonResponse<any>(clientTemplateResponse);
       }
     } catch (err) {
       console.error("Error fetching client template:", err);
@@ -298,16 +353,14 @@ export async function GET(
     if (lead.fineractClientId && loanDetails?.productId) {
       try {
         const templateResponse = await fetch(
-          `${request.nextUrl.origin}/api/fineract/loans/template?clientId=${lead.fineractClientId}&productId=${loanDetails.productId}&activeOnly=true&staffInSelectedOfficeOnly=true&templateType=individual`,
+          `${requestOrigin}/api/fineract/loans/template?clientId=${lead.fineractClientId}&productId=${loanDetails.productId}&activeOnly=true&staffInSelectedOfficeOnly=true&templateType=individual`,
           {
-            headers: {
-              origin: request.headers.get("origin") || "",
-          referer: request.headers.get("referer") || "",
-            },
+            headers: forwardedHeaders,
+            cache: "no-store",
           },
         );
         if (templateResponse.ok) {
-          loanTemplate = await templateResponse.json();
+          loanTemplate = await readJsonResponse<any>(templateResponse);
         }
       } catch (err) {
         console.error("Error fetching loan template:", err);
@@ -393,20 +446,19 @@ export async function GET(
         };
 
         const scheduleResponse = await fetch(
-          `${request.nextUrl.origin}/api/fineract/loans/calculate-schedule`,
+          `${requestOrigin}/api/fineract/loans/calculate-schedule`,
           {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              origin: request.headers.get("origin") || "",
-          referer: request.headers.get("referer") || "",
+              ...forwardedHeaders,
             },
             body: JSON.stringify(payload),
           },
         );
 
         if (scheduleResponse.ok) {
-          repaymentSchedule = await scheduleResponse.json();
+          repaymentSchedule = await readJsonResponse<any>(scheduleResponse);
         }
       } catch (err) {
         console.error("Error calculating repayment schedule:", err);
