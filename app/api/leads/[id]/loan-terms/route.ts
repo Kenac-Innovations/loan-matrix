@@ -6,9 +6,11 @@ import {
   getLeadAccessProfile,
   PENDING_APPROVAL_EDITABLE_LOAN_TERM_FIELDS,
 } from "@/lib/lead-permissions";
+import { isPendingLoanApplicationEditTenant } from "@/lib/pending-loan-application-edit";
 import { SpecificPermission } from "@/shared/types/auth";
 
 type LeadStateMetadata = {
+  originalRequestedAmount?: number;
   loanTerms?: Record<string, unknown>;
   [key: string]: unknown;
 };
@@ -33,29 +35,22 @@ export async function POST(
       return NextResponse.json({ error: "Tenant not found" }, { status: 404 });
     }
 
-    const lead = await prisma.lead.findUnique({
-  where: {
-    id: leadId,
-  },
-  select: {
-    id: true,
-    facilityType: true,
-    requestedAmount: true,
-    loanTerm: true,
-    stateMetadata: true,
-    invoiceDiscountingCase: {
-      select: {
-        totalFinancedAmount: true,
+    const lead = (await prisma.lead.findUnique({
+      where: {
+        id: leadId,
       },
-    },
-    currentStage: {
       select: {
-        name: true,
-        fineractStatus: true,
+        id: true,
+        requestedAmount: true,
+        loanTerm: true,
+        stateMetadata: true,
+        currentStage: {
+          select: {
+            name: true,
+          },
+        },
       },
-    },
-  },
-});
+    })) as any;
 
     if (!lead) {
       console.error("Lead not found:", leadId);
@@ -65,10 +60,7 @@ export async function POST(
       );
     }
 
-    const invoiceDiscountingPrincipal =
-      lead.facilityType === "INVOICE_DISCOUNTING"
-        ? lead.invoiceDiscountingCase?.totalFinancedAmount ?? null
-        : null;
+    const invoiceDiscountingPrincipal = null;
     const resolvedPrincipal = invoiceDiscountingPrincipal ?? data.principal;
 
     // Store loan terms in stateMetadata
@@ -153,6 +145,15 @@ export async function POST(
     const updatedMetadata = {
       ...currentMetadata,
       loanTerms,
+      ...(isPendingLoanApplicationEditTenant(tenantSlug, tenant.settings)
+        ? {
+            originalRequestedAmount:
+              currentMetadata.originalRequestedAmount ??
+              (lead.requestedAmount != null
+                ? Number(lead.requestedAmount)
+                : undefined),
+          }
+        : {}),
     };
 
     if (isRestrictedPendingApprovalEdit) {
@@ -194,7 +195,9 @@ export async function POST(
       data: {
         stateMetadata: updatedMetadata,
         requestedAmount:
-          typeof loanTerms.principal === "number"
+          isPendingLoanApplicationEditTenant(tenantSlug, tenant.settings)
+            ? lead.requestedAmount
+            : typeof loanTerms.principal === "number"
             ? loanTerms.principal
             : lead.requestedAmount,
         loanTerm:
@@ -243,26 +246,19 @@ export async function GET(
       return NextResponse.json({ error: "Tenant not found" }, { status: 404 });
     }
 
-    const lead = await prisma.lead.findUnique({
+    const lead = (await prisma.lead.findUnique({
       where: {
         id: leadId,
       },
       select: {
-        facilityType: true,
         stateMetadata: true,
         currentStage: {
           select: {
             name: true,
-            fineractStatus: true,
-          },
-        },
-        invoiceDiscountingCase: {
-          select: {
-            totalFinancedAmount: true,
           },
         },
       },
-    });
+    })) as any;
 
     if (!lead) {
       console.error("Lead not found:", leadId);
@@ -274,10 +270,7 @@ export async function GET(
 
     const metadata = (lead.stateMetadata as LeadStateMetadata | null) || {};
     const storedLoanTerms = metadata.loanTerms || null;
-    const invoiceDiscountingPrincipal =
-      lead.facilityType === "INVOICE_DISCOUNTING"
-        ? lead.invoiceDiscountingCase?.totalFinancedAmount ?? null
-        : null;
+    const invoiceDiscountingPrincipal = null;
     const loanTerms = storedLoanTerms
       ? {
           ...storedLoanTerms,

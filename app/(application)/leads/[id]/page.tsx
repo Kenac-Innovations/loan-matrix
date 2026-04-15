@@ -15,7 +15,7 @@ import {
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { headers } from "next/headers";
-import { extractTenantSlug } from "@/lib/tenant-service";
+import { extractTenantSlug, getTenantBySlug } from "@/lib/tenant-service";
 import { getSession } from "@/lib/auth";
 import { getFineractServiceWithSession } from "@/lib/fineract-api";
 import { getLeadAccessProfile } from "@/lib/lead-permissions";
@@ -24,6 +24,7 @@ import {
   isPendingLoanApplicationEditTenant,
 } from "@/lib/pending-loan-application-edit";
 import { canPrintLoanContract } from "@/lib/loan-contract-print";
+import { getTenantFeatures } from "@/lib/tenant-features";
 
 const FINERACT_BASE_URL = process.env.FINERACT_BASE_URL || "http://10.10.0.143";
 
@@ -306,6 +307,7 @@ async function getLeadData(leadId: string) {
 
     // Extract tenant slug from host for Fineract API calls
     const tenantSlug = extractTenantSlug(host);
+    const tenant = await getTenantBySlug(tenantSlug);
 
     // Fetch lead data
     const lead = await prisma.lead.findUnique({
@@ -362,6 +364,7 @@ async function getLeadData(leadId: string) {
       clientDocuments: fineractDocs.clientDocuments,
       loanDocuments: fineractDocs.loanDocuments,
       datatableData,
+      tenantSettings: tenant?.settings ?? null,
       tenantSlug,
     };
   } catch (error) {
@@ -379,6 +382,7 @@ async function getLeadData(leadId: string) {
       datatableData: {},
       clientDocuments: [],
       loanDocuments: [],
+      tenantSettings: null,
       tenantSlug: null,
     };
   }
@@ -403,6 +407,7 @@ export default async function LeadDetailPage({
     datatableData,
     clientDocuments,
     loanDocuments,
+    tenantSettings,
     tenantSlug,
   } = await getLeadData(id);
   
@@ -413,10 +418,20 @@ export default async function LeadDetailPage({
     lead?.assignedToUserId != null &&
     String(lead.assignedToUserId) === currentUserId;
   const isReadOnly = !isAssignedUser;
-  const showOmamaLeadTabs = isOmamaTenant(tenantSlug);
+  const tenantFeatures = getTenantFeatures(tenantSettings);
+  const showOmamaLeadTabs =
+    tenantFeatures.canEditLoan || isOmamaTenant(tenantSlug);
   const canEditPendingLoanTerms =
-    isPendingLoanApplicationEditTenant(tenantSlug) &&
+    isPendingLoanApplicationEditTenant(tenantSlug, tenantSettings) &&
     Boolean(lead?.fineractLoanId || fineractLoanId);
+  const originalRequestedAmount =
+    typeof (lead?.stateMetadata as any)?.originalRequestedAmount === "number" &&
+    (lead?.stateMetadata as any).originalRequestedAmount > 0
+      ? (lead?.stateMetadata as any).originalRequestedAmount
+      : typeof (lead?.stateMetadata as any)?.originalPendingApprovalLoanTerms?.principal === "number" &&
+          (lead?.stateMetadata as any).originalPendingApprovalLoanTerms.principal > 0
+        ? (lead?.stateMetadata as any).originalPendingApprovalLoanTerms.principal
+        : null;
   const canPrintContract = canPrintLoanContract(
     tenantSlug,
     fineractLoanStatus
@@ -699,7 +714,12 @@ export default async function LeadDetailPage({
             leadId={id}
             fineractClientId={lead.fineractClientId || null}
             fineractLoanId={fineractLoanId || null}
-            requestedAmount={lead.requestedAmount || fineractLoanPrincipal || null}
+            requestedAmount={
+              originalRequestedAmount ||
+              lead.requestedAmount ||
+              fineractLoanPrincipal ||
+              null
+            }
             currentStage={currentStage}
             clientTypeName={lead.clientTypeName || undefined}
             clientDatatables={clientDatatables}
