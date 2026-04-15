@@ -33,6 +33,12 @@ type LoanTermsMetadata = Record<string, unknown> & {
 
 type LeadStateMetadata = Record<string, unknown> & {
   originalRequestedAmount?: number;
+  originalPendingApprovalLoanTerms?: {
+    principal?: number;
+    loanTermFrequency?: number;
+    numberOfRepayments?: number;
+    interestRatePerPeriod?: number;
+  };
   loanTerms?: LoanTermsMetadata;
 };
 
@@ -425,6 +431,36 @@ export async function PUT(
         currentMetadata
       ),
     };
+    const originalPendingApprovalLoanTerms =
+      currentMetadata.originalPendingApprovalLoanTerms || {
+        principal:
+          currentMetadata.originalRequestedAmount ??
+          (lead.requestedAmount != null
+            ? Number(lead.requestedAmount)
+            : Number(
+                currentLoanTerms.principal ??
+                  fineractLoan.proposedPrincipal ??
+                  fineractLoan.approvedPrincipal ??
+                  fineractLoan.principal ??
+                  parsedBody.principal
+              )),
+        loanTermFrequency: Number(
+          lead.loanTerm ??
+            currentLoanTerms.loanTerm ??
+            fineractLoan.termFrequency ??
+            parsedBody.loanTermFrequency
+        ),
+        numberOfRepayments: Number(
+          currentLoanTerms.numberOfRepayments ??
+            fineractLoan.numberOfRepayments ??
+            parsedBody.numberOfRepayments
+        ),
+        interestRatePerPeriod: Number(
+          currentLoanTerms.nominalInterestRate ??
+            fineractLoan.interestRatePerPeriod ??
+            parsedBody.interestRatePerPeriod
+        ),
+      };
 
     await prisma.lead.update({
       where: { id: leadId },
@@ -436,6 +472,7 @@ export async function PUT(
           originalRequestedAmount:
             currentMetadata.originalRequestedAmount ??
             (lead.requestedAmount != null ? Number(lead.requestedAmount) : undefined),
+          originalPendingApprovalLoanTerms,
           signatures: null,
           contractsSigned: false,
           contractsSignedAt: null,
