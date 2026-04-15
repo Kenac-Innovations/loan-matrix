@@ -17,4 +17,12 @@ export interface Transaction {
     penaltyChargesPortion: number;
     outstandingLoanBalance: number;
     transactionId?: string;
+    loanChargePaidByList?: Array<{
+      chargeName?: string;
+      name?: string;
+      loanChargeName?: string;
+      charge?: {
+        name?: string;
+      };
+    }>;
   }
