@@ -10,6 +10,7 @@ import {
   TrendingUp,
   Users,
   Landmark,
+  Package,
 } from "lucide-react";
 import MenuItemWithSubmenu from "@/components/menu-with-sub";
 import { useUserRoles } from "@/components/role-guard";
@@ -66,6 +67,16 @@ export function SidebarNav() {
         <CreditCard className="h-4 w-4" />
         Loans
       </Link>
+
+      <MenuItemWithSubmenu
+        icon={<Package />}
+        label="Products"
+        href="/products/loan-products"
+        subMenuItems={[
+          { label: "Loan Products", href: "/products/loan-products" },
+          { label: "Charges", href: "/products/charges" },
+        ]}
+      />
 
       <MenuItemWithSubmenu
         icon={<Receipt />}

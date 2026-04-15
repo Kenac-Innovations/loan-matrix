@@ -10369,42 +10369,7 @@ export function ClientRegistrationForm({
                                                     if (
                                                       fieldName === "isActive"
                                                     ) {
-                                                      // Boolean field
-                                                      return (
-                                                        <div
-                                                          key={fieldName}
-                                                          className="space-y-2"
-                                                        >
-                                                          <div className="flex items-center space-x-2">
-                                                            <Checkbox
-                                                              checked={Boolean(
-                                                                fieldValue
-                                                              )}
-                                                              onCheckedChange={(
-                                                                checked
-                                                              ) =>
-                                                                setEditedAddress(
-                                                                  {
-                                                                    ...editedAddress,
-                                                                    [fieldName]:
-                                                                      checked,
-                                                                  }
-                                                                )
-                                                              }
-                                                            />
-                                                            <Label
-                                                              className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
-                                                            >
-                                                              {label}
-                                                              {isRequired && (
-                                                                <span className="text-red-500 ml-1">
-                                                                  *
-                                                                </span>
-                                                              )}
-                                                            </Label>
-                                                          </div>
-                                                        </div>
-                                                      );
+                                                      return null;
                                                     }
 
                                                     // Default: text input
@@ -10711,26 +10676,6 @@ export function ClientRegistrationForm({
                                                       emptyMessage="No countries available"
                                                     />
                                                   </div>
-                                                  <div className="flex items-center space-x-2">
-                                                    <Checkbox
-                                                      checked={Boolean(
-                                                        editedAddress.isActive
-                                                      )}
-                                                      onCheckedChange={(
-                                                        checked
-                                                      ) =>
-                                                        setEditedAddress({
-                                                          ...editedAddress,
-                                                          isActive: checked,
-                                                        })
-                                                      }
-                                                    />
-                                                    <Label
-                                                      className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
-                                                    >
-                                                      Is Active
-                                                    </Label>
-                                                  </div>
                                                 </>
                                               )}
                                             </div>
@@ -10849,6 +10794,7 @@ export function ClientRegistrationForm({
                                                     const addressPayload = {
                                                       ...editedAddress,
                                                       addressType: addressType, // Ensure we use the validated addressType
+                                                      isActive: true,
                                                       dateFormat: "yyyy-MM-dd",
                                                       locale: "en",
                                                     };

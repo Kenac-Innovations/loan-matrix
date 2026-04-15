@@ -67,9 +67,7 @@ import { LoanDetailsForm } from "@/components/loan-details-form";
 import { LoanTermsForm } from "@/app/(application)/leads/new/components/loan-terms-form";
 import { RepaymentScheduleForm } from "@/app/(application)/leads/new/components/repayment-schedule-form";
 import { LoanContracts } from "@/app/(application)/leads/new/components/loan-contracts";
-import { InvoiceDiscountingForm } from "@/app/(application)/leads/new/components/invoice-discounting-form";
 import { toast } from "@/components/ui/use-toast";
-import { useFeatureFlags } from "@/hooks/use-feature-flags";
 
 
 // Define the type for the client form data
@@ -227,28 +225,38 @@ const leadFormSchema = z
   );
 
 type LeadFormValues = z.infer<typeof leadFormSchema>;
-type FacilityType = "TERM_LOAN" | "INVOICE_DISCOUNTING";
+
+const VALID_TABS = new Set([
+  "client",
+  "affordability",
+  "loan",
+  "invoice",
+  "terms",
+  "schedule",
+  "contracts",
+]);
 
 export function NewLeadForm() {
   // ALL HOOKS MUST BE CALLED FIRST, BEFORE ANY CONDITIONAL RETURNS
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { isEnabled } = useFeatureFlags();
   const { currencyCode, currencySymbol, locale: tenantLocale } = useCurrency();
   const skipAffordabilityForCompanies =
     !!tenantLocale.skipAffordabilityForCompanies;
+  const requestedTab = searchParams?.get("tab");
+  const initialTab =
+    requestedTab && VALID_TABS.has(requestedTab) ? requestedTab : "client";
   const [hideAffordability, setHideAffordability] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [affordabilityResult, setAffordabilityResult] =
     useState<AffordabilityResult | null>(null);
   const [selectedOffer, setSelectedOffer] = useState<LoanOffer | null>(null);
-  const [activeTab, setActiveTab] = useState("client");
+  const [activeTab, setActiveTab] = useState(initialTab);
   const [loanTemplateData, setLoanTemplateData] = useState<any>(null);
   const [formCompletionStatus, setFormCompletionStatus] = useState({
     client: false,
     affordability: false,
     loan: false,
-    invoice: false,
     terms: false,
     schedule: false,
     contracts: false,
@@ -268,28 +276,15 @@ export function NewLeadForm() {
   const [repaymentSchedule, setRepaymentSchedule] = useState<any>(null);
   const [loanDetails, setLoanDetails] = useState<any>(null);
   const [loanTerms, setLoanTerms] = useState<any>(null);
-  const [facilityType, setFacilityType] = useState<FacilityType>("TERM_LOAN");
   const [sharedFirstRepaymentOn, setSharedFirstRepaymentOn] = useState<
     Date | undefined
   >(undefined);
   const [showWipeConfirm, setShowWipeConfirm] = useState(false);
-  const invoiceDiscountingEnabled = isEnabled("hasInvoiceDiscounting");
-  const showInvoiceDiscountingTab =
-    invoiceDiscountingEnabled && facilityType === "INVOICE_DISCOUNTING";
 
-  const tabsCount = hideAffordability
-    ? showInvoiceDiscountingTab
-      ? 6
-      : 5
-    : showInvoiceDiscountingTab
-      ? 7
-      : 6;
-  const tabsGridClass =
-    tabsCount === 5
-      ? "grid-cols-5 lg:grid-cols-5"
-      : tabsCount === 6
-        ? "grid-cols-6 lg:grid-cols-6"
-        : "grid-cols-7 lg:grid-cols-7";
+  const tabsCount = hideAffordability ? 5 : 6;
+  const tabsGridClass = hideAffordability
+    ? "grid-cols-5 lg:grid-cols-5"
+    : "grid-cols-6 lg:grid-cols-6";
 
   const handleWipeLead = () => {
     setCurrentLeadId(null);
@@ -300,7 +295,6 @@ export function NewLeadForm() {
     setRepaymentSchedule(null);
     setLoanDetails(null);
     setLoanTerms(null);
-    setFacilityType("TERM_LOAN");
     setAffordabilityResult(null);
     setSelectedOffer(null);
     setAllClientSectionsComplete(false);
@@ -309,7 +303,6 @@ export function NewLeadForm() {
       client: false,
       affordability: false,
       loan: false,
-      invoice: false,
       terms: false,
       schedule: false,
       contracts: false,
@@ -401,20 +394,12 @@ export function NewLeadForm() {
         // Check if loan details exist for this lead
         let loadedLoanDetails: any = null;
         let loadedProductId: number | null = null;
-        let loadedFacilityType: FacilityType = "TERM_LOAN";
 
         try {
           const loanResponse = await fetch(`/api/leads/${leadId}/loan-details`);
           if (loanResponse.ok) {
             const loanResult = await loanResponse.json();
             if (loanResult.success && loanResult.data) {
-              const resolvedFacilityType =
-                loanResult.data.facilityType === "INVOICE_DISCOUNTING"
-                  ? "INVOICE_DISCOUNTING"
-                  : "TERM_LOAN";
-              loadedFacilityType = resolvedFacilityType;
-              setFacilityType(resolvedFacilityType);
-
               // Check if loan details have been filled
               const hasLoanDetails =
                 loanResult.data.productName ||
@@ -426,7 +411,7 @@ export function NewLeadForm() {
                   "Loan details found, marking as complete and setting state",
                 );
                 loadedLoanDetails = loanResult.data;
-                setLoanDetails(loanResult.data); // Actually set the state!
+                setLoanDetails(loanResult.data);
                 setFormCompletionStatus((prev) => ({
                   ...prev,
                   loan: true,
@@ -441,29 +426,6 @@ export function NewLeadForm() {
           }
         } catch (error) {
           console.error("Error checking loan details:", error);
-        }
-
-        if (
-          leadId &&
-          invoiceDiscountingEnabled &&
-          loadedFacilityType === "INVOICE_DISCOUNTING"
-        ) {
-          try {
-            const response = await fetch(`/api/leads/${leadId}/invoice-discounting`);
-            if (response.ok) {
-              const result = await response.json();
-              const hasInvoiceData =
-                !!result?.data?.debtorName && Array.isArray(result?.data?.invoices) && result.data.invoices.length > 0;
-              if (hasInvoiceData) {
-                setFormCompletionStatus((prev) => ({
-                  ...prev,
-                  invoice: true,
-                }));
-              }
-            }
-          } catch (error) {
-            console.error("Error checking invoice discounting data:", error);
-          }
         }
 
         // Check if loan terms exist for this lead
@@ -664,7 +626,14 @@ export function NewLeadForm() {
     };
 
     loadLeadData();
-  }, [searchParams, hideAffordability, invoiceDiscountingEnabled]);
+  }, [searchParams, hideAffordability]);
+
+  useEffect(() => {
+    const nextTab = searchParams?.get("tab");
+    if (nextTab && VALID_TABS.has(nextTab)) {
+      setActiveTab(nextTab);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     if (hideAffordability) {
@@ -1171,20 +1140,8 @@ export function NewLeadForm() {
   // Check if next button should be disabled
   const isNextButtonDisabled = (currentTab: string) => {
     const tabOrder = hideAffordability
-      ? showInvoiceDiscountingTab
-        ? ["client", "loan", "invoice", "terms", "schedule", "contracts"]
-        : ["client", "loan", "terms", "schedule", "contracts"]
-      : showInvoiceDiscountingTab
-        ? [
-            "client",
-            "affordability",
-            "loan",
-            "invoice",
-            "terms",
-            "schedule",
-            "contracts",
-          ]
-        : ["client", "affordability", "loan", "terms", "schedule", "contracts"];
+      ? ["client", "loan", "terms", "schedule", "contracts"]
+      : ["client", "affordability", "loan", "terms", "schedule", "contracts"];
     const currentIndex = tabOrder.indexOf(currentTab);
 
     // Disable if any previous tab is not completed
@@ -1331,25 +1288,6 @@ export function NewLeadForm() {
                   </Badge>
                 )}
               </TabsTrigger>
-              {showInvoiceDiscountingTab && (
-                <TabsTrigger
-                  value="invoice"
-                  className={`data-[state=active]:bg-blue-500 flex-1 justify-center ${
-                    formCompletionStatus.invoice
-                      ? "bg-green-100 text-green-700"
-                      : ""
-                  }`}
-                  title="Invoice Discounting"
-                >
-                  <FileText className="h-4 w-4" />
-                  <span className="hidden sm:inline ml-1 lg:ml-2">Invoice</span>
-                  {formCompletionStatus.invoice && (
-                    <Badge className="ml-1 bg-green-500 text-white text-xs">
-                      ✓
-                    </Badge>
-                  )}
-                </TabsTrigger>
-              )}
               <TabsTrigger
                 value="terms"
                 className={`data-[state=active]:bg-blue-500 flex-1 justify-center ${
@@ -1525,17 +1463,12 @@ export function NewLeadForm() {
                       onBack={() =>
                         setActiveTab(hideAffordability ? "client" : "affordability")
                       }
-                      onNext={(templateData, selectedFacilityType) => {
+                      onNext={(templateData) => {
                         console.log(
                           "Received template data in main form:",
                           templateData,
                         );
                         setLoanTemplateData(templateData);
-                        const resolvedFacilityType: FacilityType =
-                          selectedFacilityType === "INVOICE_DISCOUNTING"
-                            ? "INVOICE_DISCOUNTING"
-                            : "TERM_LOAN";
-                        setFacilityType(resolvedFacilityType);
                         // Extract productId from templateData if available
                         if (templateData?.productId) {
                           setLoanProductId(templateData.productId);
@@ -1544,10 +1477,7 @@ export function NewLeadForm() {
                           ...prev,
                           loan: true,
                         }));
-                        const shouldShowInvoice =
-                          invoiceDiscountingEnabled &&
-                          resolvedFacilityType === "INVOICE_DISCOUNTING";
-                        setActiveTab(shouldShowInvoice ? "invoice" : "terms");
+                        setActiveTab("terms");
                       }}
                       onComplete={() => {
                         setFormCompletionStatus((prev) => ({
@@ -1579,30 +1509,6 @@ export function NewLeadForm() {
               </Card>
             </TabsContent>
 
-            {showInvoiceDiscountingTab && (
-              <TabsContent value="invoice" className="mt-0">
-                <Card className="px-2 py-2 lg:px-6 lg:py-6">
-                  <CardContent className="p-2 lg:p-6">
-                    <InvoiceDiscountingForm
-                      leadId={currentLeadId || undefined}
-                      onBack={() => setActiveTab("loan")}
-                      onNext={() => setActiveTab("terms")}
-                      onComplete={() => {
-                        setFormCompletionStatus((prev) => ({
-                          ...prev,
-                          invoice: true,
-                        }));
-                        toast({
-                          title: "Success",
-                          description:
-                            "Invoice discounting details saved successfully. You can now proceed to terms.",
-                        });
-                      }}
-                    />
-                  </CardContent>
-                </Card>
-              </TabsContent>
-            )}
 
             {/* Loan Terms Tab */}
             <TabsContent value="terms" className="mt-0">
@@ -1622,9 +1528,7 @@ export function NewLeadForm() {
                         // Handle loan terms submission
                         form.handleSubmit((formValues) => onSubmit(formValues))();
                       }}
-                      onBack={() =>
-                        setActiveTab(showInvoiceDiscountingTab ? "invoice" : "loan")
-                      }
+                      onBack={() => setActiveTab("loan")}
                       onNext={() => setActiveTab("schedule")}
                       onComplete={() => {
                         setFormCompletionStatus((prev) => ({

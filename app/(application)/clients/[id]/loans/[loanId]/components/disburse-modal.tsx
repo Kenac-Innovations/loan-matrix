@@ -1,6 +1,5 @@
 "use client";
 
-import { fineractFetch } from "@/lib/fineract-fetch";
 import { useEffect, useState } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -51,7 +50,8 @@ export function DisburseModal({ isOpen, onClose, loanId, onSuccess }: DisburseMo
     const fetchTemplate = async () => {
       setLoading(true);
       try {
-        const res = await fineractFetch(`/api/fineract/loans/${loanId}/transactions/template?command=disburse`);
+        const res = await fetch(`/api/fineract/loans/${loanId}/transactions/template?command=disburse`);
+        if (!res.ok) throw new Error("Failed to load disbursement template");
         const data = await res.json();
 
         // Date
@@ -111,7 +111,7 @@ export function DisburseModal({ isOpen, onClose, loanId, onSuccess }: DisburseMo
         if (selectedPaymentId) setPaymentTypeId(selectedPaymentId);
       } catch (e) {
         console.error(e);
-        toast({ title: "Error", description: e instanceof Error ? e.message : "Failed to load disbursement data.", variant: "destructive" });
+        toast({ title: "Error", description: "Failed to load disbursement data.", variant: "destructive" });
       } finally {
         setLoading(false);
       }
@@ -162,11 +162,20 @@ export function DisburseModal({ isOpen, onClose, loanId, onSuccess }: DisburseMo
       if (receiptNumber) payload.receiptNumber = receiptNumber;
       if (bankNumber) payload.bankNumber = bankNumber;
 
-      await fineractFetch(`/api/fineract/loans/${loanId}/disburse`, {
+      const res = await fetch(`/api/fineract/loans/${loanId}/disburse`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        let msg = 'Failed to disburse loan';
+        if (err?.errorData?.defaultUserMessage) msg = err.errorData.defaultUserMessage;
+        else if (err?.errorData?.developerMessage) msg = err.errorData.developerMessage;
+        else if (err?.error) msg = err.error;
+        throw new Error(msg);
+      }
 
       // Mark receipt number as used
       if (receiptRangesEnabled && receiptNumber.trim() && selectedPt?.isCashPayment) {

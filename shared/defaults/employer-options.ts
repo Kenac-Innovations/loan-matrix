@@ -46,6 +46,8 @@ export const PDA_EMPLOYERS = [
   "ZESCO",
   "ZISC LIFE",
   "ZSIC GENERAL",
+  "KAFUE GORGE TRAINING",
+  "KAFUE GORGE LOWER",
 ];
 
 // GRZ (Government Republic of Zambia) - Government Ministries & Departments
@@ -87,7 +89,9 @@ export const GRZ_EMPLOYERS = [
   "Immigration Department",
   "Anti-Corruption Commission",
   "Zambia Revenue Authority",
+  "Provincial Administration",
   "Public Service Management Division",
+  "Tazama",
   "Teaching Service Commission",
   "Electoral Commission of Zambia",
   "Human Rights Commission",
