@@ -143,7 +143,6 @@ export async function POST(
       }
     }
 
-<<<<<<< HEAD
     if (action === "disburse") {
       // Non-blocking: manual disbursement remains successful even if charge add fails.
       try {
