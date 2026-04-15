@@ -29,6 +29,15 @@ export interface CreateLoanChargeResult {
   loanChargeId: number;
 }
 
+export interface CreateAndAdjustLoanChargeOptions {
+  adjustmentNote?: string;
+}
+
+export interface CreateAndAdjustLoanChargeResult
+  extends CreateLoanChargeResult {
+  adjustmentResponse?: unknown;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
@@ -76,5 +85,18 @@ export async function createLoanCharge(
   return {
     createResponse,
     loanChargeId,
+  };
+}
+
+export async function createAndAdjustLoanCharge(
+  loanId: number,
+  payload: FineractLoanChargeRequest,
+  _options?: CreateAndAdjustLoanChargeOptions
+): Promise<CreateAndAdjustLoanChargeResult> {
+  const result = await createLoanCharge(loanId, payload);
+
+  return {
+    ...result,
+    adjustmentResponse: null,
   };
 }
