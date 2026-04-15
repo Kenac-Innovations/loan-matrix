@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchFineractAPI } from "@/lib/api";
+import { createAndAdjustLoanCharge } from "@/lib/fineract-loan-charge";
 
 export async function GET(
   request: NextRequest,
@@ -33,12 +34,18 @@ export async function POST(
     const { id: loanId } = await params;
     const body = await request.json();
 
-    const data = await fetchFineractAPI(`/loans/${loanId}/charges`, {
-      method: "POST",
-      body: JSON.stringify(body),
+    const result = await createAndAdjustLoanCharge(Number(loanId), body, {
+      adjustmentNote: "Loan charge adjustment applied immediately after charge creation",
     });
 
-    return NextResponse.json(data);
+    if (typeof result.createResponse === "object" && result.createResponse !== null) {
+      return NextResponse.json({
+        ...result.createResponse,
+        adjustmentResult: result.adjustmentResponse,
+      });
+    }
+
+    return NextResponse.json(result.createResponse);
   } catch (error: any) {
     console.error("Error creating loan charge:", error);
     if (error.status && error.errorData) {
