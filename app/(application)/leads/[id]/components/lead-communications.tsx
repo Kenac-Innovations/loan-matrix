@@ -103,9 +103,13 @@ interface ContactDirectoryEntry {
 
 interface LeadCommunicationsProps {
   leadId: string;
+  readOnly?: boolean;
 }
 
-export function LeadCommunications({ leadId }: LeadCommunicationsProps) {
+export function LeadCommunications({
+  leadId,
+  readOnly = false,
+}: LeadCommunicationsProps) {
   const [communications, setCommunications] = useState<Communication[]>([]);
   const [summary, setSummary] = useState<CommunicationSummary | null>(null);
   const [leadInfo, setLeadInfo] = useState<LeadInfo | null>(null);
@@ -137,11 +141,7 @@ export function LeadCommunications({ leadId }: LeadCommunicationsProps) {
   const fetchCommunications = useCallback(async () => {
     try {
       setLoading(true);
-      const response = await fetch(`/api/leads/${leadId}/communications`, {
-        headers: {
-          "x-tenant-slug": "default",
-        },
-      });
+      const response = await fetch(`/api/leads/${leadId}/communications`);
 
       if (!response.ok) {
         throw new Error("Failed to fetch communications");
@@ -178,7 +178,6 @@ export function LeadCommunications({ leadId }: LeadCommunicationsProps) {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-tenant-slug": "default",
         },
         body: JSON.stringify({
           ...newComm,
@@ -198,6 +197,8 @@ export function LeadCommunications({ leadId }: LeadCommunicationsProps) {
         content: "",
         toEmail: leadInfo?.email || "",
         toPhone: leadInfo?.phone || "",
+        contactPerson: "BORROWER",
+        contactPersonName: "",
       });
       setIsDialogOpen(false);
       fetchCommunications();
@@ -502,7 +503,7 @@ export function LeadCommunications({ leadId }: LeadCommunicationsProps) {
           <CardTitle>Communication History</CardTitle>
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogTrigger asChild>
-              <Button>
+              <Button disabled={readOnly}>
                 <Plus className="h-4 w-4 mr-2" />
                 New Communication
               </Button>

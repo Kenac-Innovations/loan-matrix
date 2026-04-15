@@ -4,7 +4,10 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { getFineractTenantId } from "@/lib/fineract-tenant-service";
-import { extractTenantSlugFromRequest } from "@/lib/tenant-service";
+import {
+  extractTenantSlugFromRequest,
+  getTenantBySlug,
+} from "@/lib/tenant-service";
 import type { FineractLoan } from "@/lib/fineract-api";
 import {
   isPendingLoanApplicationEditTenant,
@@ -235,12 +238,13 @@ export async function PUT(
   try {
     const session = await getSession();
     const tenantSlug = extractTenantSlugFromRequest(request);
+    const tenant = await getTenantBySlug(tenantSlug);
 
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    if (!isPendingLoanApplicationEditTenant(tenantSlug)) {
+    if (!isPendingLoanApplicationEditTenant(tenantSlug, tenant?.settings)) {
       return NextResponse.json(
         { error: "Pending loan application editing is only enabled for Omama." },
         { status: 403 }

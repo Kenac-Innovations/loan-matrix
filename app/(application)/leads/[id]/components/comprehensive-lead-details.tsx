@@ -485,6 +485,9 @@ export function ComprehensiveLeadDetails({
     typeof lead.stateMetadata?.originalRequestedAmount === "number" &&
     lead.stateMetadata.originalRequestedAmount > 0
       ? lead.stateMetadata.originalRequestedAmount
+      : typeof lead.stateMetadata?.originalPendingApprovalLoanTerms?.principal === "number" &&
+          lead.stateMetadata.originalPendingApprovalLoanTerms.principal > 0
+        ? lead.stateMetadata.originalPendingApprovalLoanTerms.principal
       : null;
 
   const principalAmountFallback =

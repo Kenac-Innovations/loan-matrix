@@ -1,13 +1,18 @@
 import type { Session } from "next-auth";
+import { getTenantFeatures } from "@/lib/tenant-features";
 
 export function isOmamaTenant(tenantSlug?: string | null): boolean {
   return (tenantSlug || "").trim().toLowerCase() === "omama";
 }
 
 export function isPendingLoanApplicationEditTenant(
-  tenantSlug?: string | null
+  tenantSlug?: string | null,
+  tenantSettings?: unknown
 ): boolean {
-  return isOmamaTenant(tenantSlug);
+  return (
+    getTenantFeatures(tenantSettings).canEditLoan === true ||
+    isOmamaTenant(tenantSlug)
+  );
 }
 
 export function isPendingApprovalLoanStatus(status?: string | null): boolean {
