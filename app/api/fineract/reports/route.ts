@@ -66,14 +66,27 @@ export async function GET(request: NextRequest) {
           { status: 400 }
         );
       }
+      const optionParams: Record<string, string> = {};
+      searchParams.forEach((value, key) => {
+        if (
+          key !== "action" &&
+          key !== "parameterName" &&
+          key !== "reportName" &&
+          value
+        ) {
+          optionParams[key] = value;
+        }
+      });
       try {
         const options = await fineractService.getParameterOptions(
-          parameterName
+          parameterName,
+          optionParams
         );
         return NextResponse.json(options);
       } catch (error: any) {
         console.error("Error fetching parameter options:", {
           parameterName,
+          parameters: optionParams,
           message: error.message,
           response: error.response?.data,
           status: error.response?.status,
