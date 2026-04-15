@@ -8,6 +8,11 @@ import {
 } from "@/lib/lead-permissions";
 import { SpecificPermission } from "@/shared/types/auth";
 
+type LeadStateMetadata = {
+  loanTerms?: Record<string, unknown>;
+  [key: string]: unknown;
+};
+
 export async function POST(
   request: NextRequest,
   context: { params: Promise<{ id: string }> }
@@ -29,18 +34,26 @@ export async function POST(
     }
 
     const lead = await prisma.lead.findUnique({
-      where: {
-        id: leadId,
+  where: {
+    id: leadId,
+  },
+  select: {
+    id: true,
+    facilityType: true,
+    stateMetadata: true,
+    invoiceDiscountingCase: {
+      select: {
+        totalFinancedAmount: true,
       },
-      include: {
-        currentStage: {
-          select: {
-            name: true,
-            fineractStatus: true,
-          },
-        },
+    },
+    currentStage: {
+      select: {
+        name: true,
+        fineractStatus: true,
       },
-    });
+    },
+  },
+});
 
     if (!lead) {
       console.error("Lead not found:", leadId);
@@ -50,44 +63,52 @@ export async function POST(
       );
     }
 
+    const invoiceDiscountingPrincipal =
+      lead.facilityType === "INVOICE_DISCOUNTING"
+        ? lead.invoiceDiscountingCase?.totalFinancedAmount ?? null
+        : null;
+    const resolvedPrincipal = invoiceDiscountingPrincipal ?? data.principal;
+
+    // Store loan terms in stateMetadata
     const currentMetadata = (lead.stateMetadata as any) || {};
     const existingLoanTerms = (currentMetadata.loanTerms as any) || {};
-
     const accessProfile = await getLeadAccessProfile({
       tenantId: tenant.id,
       lead,
       session,
     });
-
-    const requestedLoanTerms = {
-      principal: data.principal,
-      loanTerm: data.loanTerm,
-      termFrequency: data.termFrequency,
-      numberOfRepayments: data.numberOfRepayments,
-      repaymentEvery: data.repaymentEvery,
-      repaymentFrequency: data.repaymentFrequency,
-      repaymentFrequencyNthDay: data.repaymentFrequencyNthDay,
-      repaymentFrequencyDayOfWeek: data.repaymentFrequencyDayOfWeek,
-      nominalInterestRate: data.nominalInterestRate,
-      interestRateFrequency: data.interestRateFrequency,
-      interestMethod: data.interestMethod,
-      amortization: data.amortization,
-      isEqualAmortization: data.isEqualAmortization,
-      repaymentStrategy: data.repaymentStrategy,
-      interestCalculationPeriod: data.interestCalculationPeriod,
-      calculateInterestForExactDays: data.calculateInterestForExactDays,
-      arrearsTolerance: data.arrearsTolerance,
-      interestFreePeriod: data.interestFreePeriod,
-      graceOnPrincipalPayment: data.graceOnPrincipalPayment,
-      graceOnInterestPayment: data.graceOnInterestPayment,
-      onArrearsAgeing: data.onArrearsAgeing,
-      firstRepaymentOn: data.firstRepaymentOn,
-      interestChargedFrom: data.interestChargedFrom,
-      balloonRepaymentAmount: data.balloonRepaymentAmount,
-      collaterals: data.collaterals,
-      charges: data.charges || [],
-      isTopup: data.isTopup || false,
-      loanIdToClose: data.loanIdToClose || "",
+    const updatedMetadata = {
+      ...currentMetadata,
+      loanTerms: {
+        principal: data.principal,
+        loanTerm: data.loanTerm,
+        termFrequency: data.termFrequency,
+        numberOfRepayments: data.numberOfRepayments,
+        repaymentEvery: data.repaymentEvery,
+        repaymentFrequency: data.repaymentFrequency,
+        repaymentFrequencyNthDay: data.repaymentFrequencyNthDay,
+        repaymentFrequencyDayOfWeek: data.repaymentFrequencyDayOfWeek,
+        nominalInterestRate: data.nominalInterestRate,
+        interestRateFrequency: data.interestRateFrequency,
+        interestMethod: data.interestMethod,
+        amortization: data.amortization,
+        isEqualAmortization: data.isEqualAmortization,
+        repaymentStrategy: data.repaymentStrategy,
+        interestCalculationPeriod: data.interestCalculationPeriod,
+        calculateInterestForExactDays: data.calculateInterestForExactDays,
+        arrearsTolerance: data.arrearsTolerance,
+        interestFreePeriod: data.interestFreePeriod,
+        graceOnPrincipalPayment: data.graceOnPrincipalPayment,
+        graceOnInterestPayment: data.graceOnInterestPayment,
+        onArrearsAgeing: data.onArrearsAgeing,
+        firstRepaymentOn: data.firstRepaymentOn,
+        interestChargedFrom: data.interestChargedFrom,
+        balloonRepaymentAmount: data.balloonRepaymentAmount,
+        collaterals: data.collaterals,
+        charges: data.charges || [],
+        isTopup: data.isTopup || false,
+        loanIdToClose: data.loanIdToClose || "",
+      },
     };
 
     const isRestrictedPendingApprovalEdit =
@@ -228,11 +249,17 @@ export async function GET(
         id: leadId,
       },
       select: {
+        facilityType: true,
         stateMetadata: true,
         currentStage: {
           select: {
             name: true,
             fineractStatus: true,
+          },
+        },
+        invoiceDiscountingCase: {
+          select: {
+            totalFinancedAmount: true,
           },
         },
       },
@@ -246,13 +273,26 @@ export async function GET(
       );
     }
 
-    const metadata = (lead.stateMetadata as any) || {};
-    const loanTerms = metadata.loanTerms || null;
-    const accessProfile = await getLeadAccessProfile({
+    const metadata = (lead.stateMetadata as LeadStateMetadata | null) || {};
+    const storedLoanTerms = metadata.loanTerms || null;
+    const invoiceDiscountingPrincipal =
+      lead.facilityType === "INVOICE_DISCOUNTING"
+        ? lead.invoiceDiscountingCase?.totalFinancedAmount ?? null
+        : null;
+    const loanTerms = storedLoanTerms
+      ? {
+          ...storedLoanTerms,
+          principal: invoiceDiscountingPrincipal ?? storedLoanTerms.principal,
+        }
+      : invoiceDiscountingPrincipal != null
+        ? { principal: invoiceDiscountingPrincipal }
+        : null;
+        const accessProfile = await getLeadAccessProfile({
       tenantId: tenant.id,
       lead,
       session,
     });
+
 
     console.log("Found loan terms data:", loanTerms);
 

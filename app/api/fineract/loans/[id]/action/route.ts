@@ -3,6 +3,7 @@ import { fetchFineractAPI } from "@/lib/api";
 import { prisma } from "@/lib/prisma";
 import { getTenantBySlug, extractTenantSlugFromRequest } from "@/lib/tenant-service";
 import { sendLoanStatusSms } from "@/lib/notification-service";
+import { applyTopupDisbursementCharges } from "@/lib/topup-disbursement-charge-service";
 
 // POST /api/fineract/loans/[id]/action - Perform an action on a loan
 export async function POST(
@@ -121,6 +122,53 @@ export async function POST(
     }
     console.log("Loan action result:", result);
 
+    if (action === "disburse") {
+      // Non-blocking: manual disbursement remains successful even if charge add fails.
+      try {
+        const tenant = await getTenantBySlug(tenantSlug);
+        if (tenant) {
+          await applyTopupDisbursementCharges({
+            loanId: Number(loanId),
+            tenantId: tenant.id,
+            source: "loan-action-route",
+          });
+        } else {
+          console.warn("[TopupDisbursementCharges] Tenant not found in loan action route", {
+            loanId,
+            tenantSlug,
+          });
+        }
+      } catch (chargeError) {
+        console.error("[TopupDisbursementCharges] Failed in loan action route:", chargeError);
+      }
+    }
+
+<<<<<<< HEAD
+    if (action === "disburse") {
+      // Non-blocking: manual disbursement remains successful even if charge add fails.
+      try {
+        const tenant = await getTenantBySlug(tenantSlug);
+        if (tenant) {
+          await applyTopupDisbursementCharges({
+            loanId: Number(loanId),
+            tenantId: tenant.id,
+            source: "loan-action-route",
+          });
+        } else {
+          console.warn("[TopupDisbursementCharges] Tenant not found in loan action route", {
+            loanId,
+            tenantSlug,
+          });
+        }
+      } catch (chargeError) {
+        console.error("[TopupDisbursementCharges] Failed in loan action route:", chargeError);
+      }
+    }
+
+    // NOTE: Stage transitions are handled by TeamAwareStateMachineService.executeTransition()
+    // which fires Fineract actions as part of the transition. The legacy transitionLeadStage
+    // was removed because it bypassed validation and could move leads backwards.
+
     // Transition lead stage based on action
     try {
       await transitionLeadStage(loanId, action, tenantSlug);
@@ -206,7 +254,6 @@ function formatDate(date: Date | string): string {
   ];
   return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
 }
-
 /**
  * Transition lead pipeline stage based on loan action
  */
