@@ -321,10 +321,12 @@ async function getLeadData(leadId: string) {
       orderBy: { order: "asc" },
     });
 
-    // Fetch Fineract loan info directly from Fineract API
-    // No need for internal HTTP calls - we call Fineract directly from this Server Component
-    // Note: fineractLoanId doesn't exist in schema, so we always fetch by external ID (leadId)
-    const fineractLoanInfo = await getFineractLoanInfo(null, leadId);
+    // Fetch Fineract loan info directly from Fineract API.
+    // Prefer the stored Fineract loan id when we have it, then fall back to the lead external id.
+    const fineractLoanInfo = await getFineractLoanInfo(
+      lead?.fineractLoanId ?? null,
+      leadId
+    );
 
     // Extract CDE result from stateMetadata
     const stateMetadata = (lead as any)?.stateMetadata as any;
