@@ -52,16 +52,17 @@ interface TabValidation {
 
 interface LeadDetailTabsProps {
   leadId: string;
-  fineractClientId: number | null;
-  fineractLoanId: number | null;
-  requestedAmount: number | null;
-  currentStage: string;
+  fineractClientId?: number | null;
+  fineractLoanId?: number | null;
+  requestedAmount?: number | null;
+  currentStage?: string | null;
   clientTypeName?: string;
-  clientDatatables: any[];
-  datatableData: Record<string, any>;
-  clientDocuments: any[];
-  loanDocuments: any[];
-  readOnly: boolean;
+  clientDatatables?: any[];
+  datatableData?: Record<string, any> | null;
+  clientDocuments?: any[];
+  loanDocuments?: any[];
+  readOnly?: boolean;
+  canEditPendingLoanApplication?: boolean;
 }
 
 const TAB_ICON_MAP: Record<string, typeof FileText> = {
@@ -128,12 +129,17 @@ export function LeadDetailTabs({
   requestedAmount,
   currentStage,
   clientTypeName,
-  clientDatatables,
-  datatableData,
-  clientDocuments,
-  loanDocuments,
-  readOnly,
+  clientDatatables = [],
+  datatableData = {},
+  clientDocuments = [],
+  loanDocuments = [],
+  readOnly = false,
 }: LeadDetailTabsProps) {
+  const resolvedFineractClientId = fineractClientId ?? null;
+  const resolvedFineractLoanId = fineractLoanId ?? null;
+  const resolvedRequestedAmount = requestedAmount ?? null;
+  const resolvedDatatableData = datatableData ?? {};
+
   const [tabValidations, setTabValidations] = useState<
     Record<string, TabValidation>
   >({});
@@ -250,9 +256,9 @@ export function LeadDetailTabs({
       <TabsContent value="additional-info" className="mt-4">
         <LeadAdditionalInfo
           leadId={leadId}
-          clientId={fineractClientId}
+          clientId={resolvedFineractClientId}
           datatables={clientDatatables}
-          datatableData={datatableData}
+          datatableData={resolvedDatatableData}
           clientType={clientTypeName}
         />
       </TabsContent>
@@ -273,8 +279,8 @@ export function LeadDetailTabs({
         <ValidationBanner validation={tabValidations["documents"]} />
         <LeadDocuments
           leadId={leadId}
-          fineractClientId={fineractClientId}
-          fineractLoanId={fineractLoanId}
+          fineractClientId={resolvedFineractClientId}
+          fineractLoanId={resolvedFineractLoanId}
           initialClientDocuments={clientDocuments}
           initialLoanDocuments={loanDocuments}
           readOnly={readOnly}
@@ -288,14 +294,18 @@ export function LeadDetailTabs({
         <LeadCDE leadId={leadId} />
       </TabsContent>
       <TabsContent value="notes" className="mt-4">
-        <LeadNotes leadId={leadId} fineractLoanId={fineractLoanId} readOnly={readOnly} />
+        <LeadNotes
+          leadId={leadId}
+          fineractLoanId={resolvedFineractLoanId}
+          readOnly={readOnly}
+        />
       </TabsContent>
       <TabsContent value="appraisal" className="mt-4">
         <ValidationBanner validation={tabValidations["appraisal"]} />
         <LeadAppraisals
           leadId={leadId}
-          fineractClientId={fineractClientId}
-          requestedAmount={requestedAmount}
+          fineractClientId={resolvedFineractClientId}
+          requestedAmount={resolvedRequestedAmount}
           readOnly={readOnly}
         />
       </TabsContent>
