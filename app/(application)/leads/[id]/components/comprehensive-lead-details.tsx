@@ -485,11 +485,18 @@ export function ComprehensiveLeadDetails({
       ? lead.stateMetadata.originalRequestedAmount
       : null;
 
+  const principalAmountFallback =
+    fineractLoan?.principal
+      || fineractLoan?.approvedPrincipal
+      || fineractLoan?.proposedPrincipal
+      || loanInfo?.loanTerms?.principal
+      || 0;
+
   const requestedAmount =
     originalRequestedAmount
       ?? (typeof lead.requestedAmount === "number" && lead.requestedAmount > 0
         ? lead.requestedAmount
-        : 0);
+        : principalAmountFallback);
 
   // Get Fineract loan status
   const currentStageName = typeof lead.currentStage?.name === "string"

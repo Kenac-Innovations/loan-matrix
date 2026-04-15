@@ -38,10 +38,13 @@ function injectContractChrome(
   options: {
     action: "print" | "pdf";
     fileName: string;
+    embedded?: boolean;
   }
 ): string {
   const baseTag = `<base href="${origin}/">`;
-  const toolbar = `
+  const toolbar = options.embedded
+    ? ""
+    : `
     <div style="position:sticky;top:0;z-index:9999;display:flex;gap:12px;align-items:center;padding:12px 16px;border-bottom:1px solid #e5e7eb;background:#ffffff;">
       <button type="button" onclick="window.print()" style="border:1px solid #cbd5e1;border-radius:8px;background:#ffffff;padding:10px 14px;font:600 14px sans-serif;cursor:pointer;">
         Print
@@ -58,24 +61,28 @@ function injectContractChrome(
     <script>
       window.addEventListener("load", function () {
         var action = ${JSON.stringify(options.action)};
+        var embedded = ${JSON.stringify(Boolean(options.embedded))};
         if (action === "print") {
-          window.print();
           return;
         }
 
         var btn = document.getElementById("download-pdf-btn");
-        if (!btn || typeof window.html2pdf !== "function") {
+        if (typeof window.html2pdf !== "function") {
           return;
         }
 
-        var filename = btn.getAttribute("data-filename") || "loan-contract.pdf";
+        var filename = (btn && btn.getAttribute("data-filename")) || ${JSON.stringify(
+          options.fileName
+        )} || "loan-contract.pdf";
         var target = document.querySelector("[data-contract-content]");
         if (!target) {
           return;
         }
 
-        btn.disabled = true;
-        btn.textContent = "Generating PDF...";
+        if (btn) {
+          btn.disabled = true;
+          btn.textContent = "Generating PDF...";
+        }
 
         window.html2pdf()
           .set({
@@ -89,15 +96,21 @@ function injectContractChrome(
           .from(target)
           .save()
           .then(function () {
-            btn.disabled = false;
-            btn.textContent = "Download PDF";
-            setTimeout(function () {
-              window.close();
-            }, 400);
+            if (btn) {
+              btn.disabled = false;
+              btn.textContent = "Download PDF";
+            }
+            if (!embedded) {
+              setTimeout(function () {
+                window.close();
+              }, 400);
+            }
           })
           .catch(function () {
-            btn.disabled = false;
-            btn.textContent = "Download PDF";
+            if (btn) {
+              btn.disabled = false;
+              btn.textContent = "Download PDF";
+            }
           });
       });
     </script>
@@ -153,6 +166,7 @@ export async function GET(
     const forwardedHeaders = getForwardedHeaders(request);
     const action =
       request.nextUrl.searchParams.get("action") === "pdf" ? "pdf" : "print";
+    const embedded = request.nextUrl.searchParams.get("embedded") === "1";
 
     const lead = await prisma.lead.findUnique({
       where: { id: leadId },
@@ -226,6 +240,7 @@ export async function GET(
     const printableHtml = injectContractChrome(contractHtml, request.nextUrl.origin, {
       action,
       fileName: contractFileName,
+      embedded,
     });
 
     return new NextResponse(printableHtml, {
