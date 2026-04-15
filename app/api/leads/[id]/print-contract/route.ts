@@ -19,10 +19,29 @@ type ContractDataResponse = {
   error?: string;
 };
 
+function getRequestOrigin(request: NextRequest): string {
+  const forwardedProto = request.headers.get("x-forwarded-proto");
+  const forwardedHost = request.headers.get("x-forwarded-host");
+  const host = forwardedHost || request.headers.get("host");
+
+  if (host) {
+    return `${forwardedProto || "https"}://${host}`;
+  }
+
+  return request.nextUrl.origin;
+}
+
 function getForwardedHeaders(request: NextRequest): HeadersInit {
   const forwardedHeaders: HeadersInit = {};
 
-  for (const headerName of ["cookie", "origin", "referer"]) {
+  for (const headerName of [
+    "cookie",
+    "origin",
+    "referer",
+    "x-forwarded-host",
+    "x-forwarded-proto",
+    "host",
+  ]) {
     const value = request.headers.get(headerName);
     if (value) {
       forwardedHeaders[headerName] = value;
@@ -30,6 +49,25 @@ function getForwardedHeaders(request: NextRequest): HeadersInit {
   }
 
   return forwardedHeaders;
+}
+
+async function readJsonResponse<T>(response: Response): Promise<T> {
+  const rawBody = await response.text();
+
+  if (!rawBody) {
+    return {} as T;
+  }
+
+  try {
+    return JSON.parse(rawBody) as T;
+  } catch {
+    return {
+      error:
+        rawBody.length > 500
+          ? `${rawBody.slice(0, 500)}…`
+          : rawBody,
+    } as T;
+  }
 }
 
 function injectContractChrome(
@@ -164,6 +202,7 @@ export async function GET(
     const { id: leadId } = await context.params;
     const tenantSlug = extractTenantSlugFromRequest(request);
     const forwardedHeaders = getForwardedHeaders(request);
+    const requestOrigin = getRequestOrigin(request);
     const action =
       request.nextUrl.searchParams.get("action") === "pdf" ? "pdf" : "print";
     const embedded = request.nextUrl.searchParams.get("embedded") === "1";
@@ -201,17 +240,19 @@ export async function GET(
     }
 
     const [contractDataResponse, templateResponse] = await Promise.all([
-      fetch(`${request.nextUrl.origin}/api/leads/${leadId}/contract-data`, {
+      fetch(`${requestOrigin}/api/leads/${leadId}/contract-data`, {
         headers: forwardedHeaders,
         cache: "no-store",
       }),
-      fetch(`${request.nextUrl.origin}/api/tenant/contract-template?slug=full-loan`, {
+      fetch(`${requestOrigin}/api/tenant/contract-template?slug=full-loan`, {
         headers: forwardedHeaders,
         cache: "no-store",
       }),
     ]);
 
-    const contractPayload = (await contractDataResponse.json()) as ContractDataResponse;
+    const contractPayload = await readJsonResponse<ContractDataResponse>(
+      contractDataResponse
+    );
 
     if (!contractDataResponse.ok || !contractPayload.success || !contractPayload.data) {
       return NextResponse.json(
@@ -225,7 +266,7 @@ export async function GET(
     }
 
     const templatePayload = templateResponse.ok
-      ? ((await templateResponse.json()) as TemplateResponse)
+      ? await readJsonResponse<TemplateResponse>(templateResponse)
       : null;
 
     const contractHtml = templatePayload?.html
@@ -237,7 +278,7 @@ export async function GET(
       : generateContractHTML(contractPayload.data);
 
     const contractFileName = `loan-contract-${leadId}.pdf`;
-    const printableHtml = injectContractChrome(contractHtml, request.nextUrl.origin, {
+    const printableHtml = injectContractChrome(contractHtml, requestOrigin, {
       action,
       fileName: contractFileName,
       embedded,

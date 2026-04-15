@@ -1,7 +1,17 @@
 "use client";
 
 import { useEffect, useState, useRef, useCallback } from "react";
-import { Loader2, AlertCircle, Edit2, Save, X, Plus } from "lucide-react";
+import {
+  Loader2,
+  AlertCircle,
+  Edit2,
+  Save,
+  X,
+  Plus,
+  Eye,
+  Download,
+  FileText,
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -174,6 +184,10 @@ export function DynamicDatatableContent({
   const [addingCodeValue, setAddingCodeValue] = useState(false);
   const [pendingSupportingDocument, setPendingSupportingDocument] =
     useState<File | null>(null);
+  const [showSupportingDocumentPreview, setShowSupportingDocumentPreview] =
+    useState(false);
+  const [supportingDocumentPreviewUrl, setSupportingDocumentPreviewUrl] =
+    useState<string | null>(null);
   const { toast } = useToast();
   const isProposedSecurityTable =
     isProposedSecurityDatatable(datatableName);
@@ -213,6 +227,21 @@ export function DynamicDatatableContent({
       onEditingChangeRef.current(editingRowIndex !== null);
     }
   }, [editingRowIndex]);
+
+  useEffect(() => {
+    if (!pendingSupportingDocument) {
+      setSupportingDocumentPreviewUrl(null);
+      setShowSupportingDocumentPreview(false);
+      return;
+    }
+
+    const previewUrl = URL.createObjectURL(pendingSupportingDocument);
+    setSupportingDocumentPreviewUrl(previewUrl);
+
+    return () => {
+      URL.revokeObjectURL(previewUrl);
+    };
+  }, [pendingSupportingDocument]);
 
   const buildProposedSecurityDocumentName = useCallback(
     (values: Record<string, any>, file: File): string => {
@@ -594,10 +623,36 @@ export function DynamicDatatableContent({
     }));
   }, []);
 
+  const handleDownloadPendingSupportingDocument = useCallback(() => {
+    if (!pendingSupportingDocument) {
+      return;
+    }
+
+    const downloadUrl = URL.createObjectURL(pendingSupportingDocument);
+    const anchor = document.createElement("a");
+    anchor.href = downloadUrl;
+    anchor.download = pendingSupportingDocument.name || "supporting-document";
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    URL.revokeObjectURL(downloadUrl);
+  }, [pendingSupportingDocument]);
+
   const renderSupportingDocumentUpload = () => {
     if (!isProposedSecurityTable) {
       return null;
     }
+
+    const isImageDocument = pendingSupportingDocument
+      ? pendingSupportingDocument.type.startsWith("image/") ||
+        pendingSupportingDocument.name.match(
+          /\.(jpg|jpeg|png|gif|webp|bmp)$/i
+        )
+      : false;
+    const isPdfDocument = pendingSupportingDocument
+      ? pendingSupportingDocument.type.includes("pdf") ||
+        pendingSupportingDocument.name.match(/\.pdf$/i)
+      : false;
 
     return (
       <div className="col-span-1 md:col-span-2 lg:col-span-3 space-y-2 rounded-lg border border-dashed p-4">
@@ -612,6 +667,7 @@ export function DynamicDatatableContent({
             const file = e.target.files?.[0] || null;
             e.target.value = "";
             setPendingSupportingDocument(file);
+            setShowSupportingDocumentPreview(false);
           }}
           disabled={saving}
         />
@@ -620,20 +676,104 @@ export function DynamicDatatableContent({
           Proposed Security entry is saved.
         </p>
         {pendingSupportingDocument && (
-          <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
-            <span className="truncate">
-              Selected file: {pendingSupportingDocument.name}
-            </span>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-6 px-2"
-              onClick={() => setPendingSupportingDocument(null)}
-              disabled={saving}
-            >
-              Clear
-            </Button>
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 rounded bg-muted/40 p-2 text-xs">
+              <FileText className="h-3 w-3 text-blue-500 flex-shrink-0" />
+              <span
+                className="flex-1 truncate cursor-pointer text-foreground"
+                onClick={() =>
+                  setShowSupportingDocumentPreview((current) => !current)
+                }
+                title={pendingSupportingDocument.name}
+              >
+                {pendingSupportingDocument.name}
+              </span>
+              <span className="flex-shrink-0 text-muted-foreground">
+                {(pendingSupportingDocument.size / 1024).toFixed(1)} KB
+              </span>
+              <div className="flex items-center gap-1 flex-shrink-0">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className={`h-6 w-6 p-0 ${
+                    showSupportingDocumentPreview
+                      ? "bg-blue-100 dark:bg-blue-900"
+                      : ""
+                  }`}
+                  onClick={() =>
+                    setShowSupportingDocumentPreview((current) => !current)
+                  }
+                  title={
+                    showSupportingDocumentPreview
+                      ? "Hide preview"
+                      : "View document"
+                  }
+                  disabled={saving}
+                >
+                  <Eye className="h-3 w-3" />
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 w-6 p-0"
+                  onClick={handleDownloadPendingSupportingDocument}
+                  title="Download document"
+                  disabled={saving}
+                >
+                  <Download className="h-3 w-3" />
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 px-2"
+                  onClick={() => setPendingSupportingDocument(null)}
+                  disabled={saving}
+                >
+                  Clear
+                </Button>
+              </div>
+            </div>
+
+            {showSupportingDocumentPreview && supportingDocumentPreviewUrl && (
+              <div className="rounded-lg border bg-background p-3">
+                {isImageDocument ? (
+                  <div className="flex items-center justify-center">
+                    <img
+                      src={supportingDocumentPreviewUrl}
+                      alt={pendingSupportingDocument.name || "Document preview"}
+                      className="max-w-full max-h-96 object-contain rounded-lg shadow-sm"
+                    />
+                  </div>
+                ) : isPdfDocument ? (
+                  <div className="h-96 w-full">
+                    <iframe
+                      src={supportingDocumentPreviewUrl}
+                      className="h-full w-full rounded-lg border-0"
+                      title={pendingSupportingDocument.name || "Document preview"}
+                    />
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center h-32 space-y-2">
+                    <FileText className="h-8 w-8 text-muted-foreground" />
+                    <p className="text-sm text-muted-foreground text-center">
+                      Preview not available for this file type.
+                    </p>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={handleDownloadPendingSupportingDocument}
+                    >
+                      <Download className="h-3 w-3 mr-2" />
+                      Download to View
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>
