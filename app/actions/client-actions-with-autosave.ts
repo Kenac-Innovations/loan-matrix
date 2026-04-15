@@ -224,18 +224,14 @@ export async function autoSaveField(
       console.log("Lead updated successfully:", updatedLead.id);
       return { success: true, leadId };
     } else {
-      console.log("Creating new lead with initial stage");
-      const initialStage = await prisma.pipelineStage.findFirst({
-        where: { tenantId, isInitialState: true, isActive: true },
-        select: { id: true },
-      });
+      console.log("Creating new lead with PROSPECT stage");
 
       try {
+        // Create new lead with prospect stage
         const lead = await prisma.lead.create({
           data: {
             userId,
             tenantId,
-            currentStageId: initialStage?.id ?? null,
             officeId: validatedData.officeId || null,
             officeName: validatedData.officeName || null,
             legalFormId: validatedData.legalFormId || null,
@@ -290,7 +286,6 @@ export async function autoSaveField(
           const leadData = {
             userId,
             tenantId,
-            currentStageId: initialStage?.id ?? null,
             officeId: validatedData.officeId || null,
             officeName: validatedData.officeName || null,
             legalFormId: validatedData.legalFormId || null,

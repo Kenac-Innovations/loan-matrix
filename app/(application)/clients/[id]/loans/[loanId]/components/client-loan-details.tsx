@@ -40,7 +40,6 @@ import RecoverFromGuarantorModal from "@/components/RecoverFromGuarantorModal";
 import SellLoanModal from "@/components/SellLoanModal";
 import { TransactionsDataTable } from "./transactions-data-table";
 import { FineractClient, FineractLoan } from "@/shared/types";
-import { getTransactionTypeDisplayLabel } from "@/lib/format-transaction";
 
 interface ClientLoanDetailsProps {
   clientId: number;
@@ -78,8 +77,6 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
     description: "",
     file: null as File | null,
   });
-  const [requiredDocs, setRequiredDocs] = useState<{ id: string; name: string; isRequired: boolean; isActive: boolean }[]>([]);
-  const [selectedDocType, setSelectedDocType] = useState<string>("");
   const [notes, setNotes] = useState<any[]>([]);
   const [loadingNotes, setLoadingNotes] = useState(false);
   const [submittingNote, setSubmittingNote] = useState(false);
@@ -302,13 +299,6 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
     }
   }, [activeTab, loan]);
 
-  useEffect(() => {
-    fetch("/api/pipeline/required-documents")
-      .then((r) => (r.ok ? r.json() : []))
-      .then((data) => setRequiredDocs(data.filter((d: any) => d.isActive)))
-      .catch(() => {});
-  }, []);
-
   // Fetch notes data when notes tab is active
   useEffect(() => {
     if (activeTab === "notes" && loan) {
@@ -320,41 +310,6 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
   useEffect(() => {
     const container = document.getElementById('loan-actions-container');
     if (container && loan) {
-      const isClosed = loan?.status?.closed === true;
-
-      // When loan is closed, only show: Goodwill credit, Interest payment waiver, Payout refund, Merchant issued refund
-      const closedActionsOnly = `
-        <div class="py-2">
-          <button class="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 text-sm" data-action="goodwill-credit">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M12 2v20m9-2-3-3m-6 3-3-3"/>
-            </svg>
-            Goodwill Credit
-          </button>
-          <button class="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 text-sm" data-action="interest-payment-waiver">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M18 6L6 18M6 6l12 12"/>
-            </svg>
-            Interest Payment Waiver
-          </button>
-          <button class="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 text-sm" data-action="payout-refund">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M3 7v6h6"/>
-              <path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/>
-            </svg>
-            Payout Refund
-          </button>
-          <button class="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 text-sm" data-action="merchant-issued-refund">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
-              <line x1="8" y1="21" x2="16" y2="21"/>
-              <line x1="12" y1="17" x2="12" y2="21"/>
-            </svg>
-            Merchant Issued Refund
-          </button>
-        </div>
-      `;
-
       // Create the loan actions element with dropdown
       const actionsDiv = document.createElement('div');
       actionsDiv.className = 'relative';
@@ -367,7 +322,6 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
           <span>Loan Actions</span>
         </button>
         <div class="absolute top-full right-0 mt-2 w-56 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 hidden" id="loan-actions-dropdown">
-          ${isClosed ? closedActionsOnly : `
           <div class="py-2">
             <button class="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed" data-action="approve-loan" id="approve-loan-btn">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -616,7 +570,6 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
               </div>
             </div>
           </div>
-          `}
         </div>
       `;
       
@@ -1580,11 +1533,8 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
 
     setSubmittingDocument(true);
     try {
-      const docName = selectedDocType && selectedDocType !== "__other__"
-        ? `${selectedDocType} - ${documentForm.fileName}`
-        : documentForm.fileName;
       const formData = new FormData();
-      formData.append('name', docName);
+      formData.append('name', documentForm.fileName);
       formData.append('file', documentForm.file);
       if (documentForm.description) {
         formData.append('description', documentForm.description);
@@ -1602,7 +1552,7 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
           description: "", 
           file: null 
         });
-        setSelectedDocType("");
+        // Refresh documents list
         fetchDocuments();
         // Show success notification
         toast({
@@ -2009,7 +1959,7 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
           transaction.officeName || '',
           transaction.externalId || '',
           transaction.date ? formatDate(transaction.date) : '',
-          getTransactionTypeDisplayLabel(transaction.type) || '',
+          transaction.type?.value || '',
           formatCurrency(transaction.amount, currencyCode),
           formatCurrency(transaction.principalPortion, currencyCode),
           formatCurrency(transaction.interestPortion, currencyCode),
@@ -4505,77 +4455,43 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
             </div>
 
             <div className="space-y-4">
-              {/* Document Type Selector */}
-              {requiredDocs.length > 0 && (
-                <div>
-                  <Label className="text-sm font-medium">
-                    Document Type <span className="text-red-500">*</span>
-                  </Label>
-                  <Select
-                    value={selectedDocType}
-                    onValueChange={(value) => {
-                      setSelectedDocType(value);
-                      if (value && value !== "__other__" && !documentForm.fileName) {
-                        setDocumentForm({ ...documentForm, fileName: value });
-                      }
-                    }}
-                  >
-                    <SelectTrigger className="w-full mt-1">
-                      <SelectValue placeholder="Select document type..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {requiredDocs.map((doc) => {
-                        const uploaded = documents.some((d: any) =>
-                          (d.name || d.fileName || "").toLowerCase().includes(doc.name.toLowerCase())
-                        );
-                        return (
-                          <SelectItem key={doc.id} value={doc.name} disabled={uploaded}>
-                            {doc.name}
-                            {doc.isRequired && !uploaded ? " (Required)" : ""}
-                            {uploaded ? " ✓" : ""}
-                          </SelectItem>
-                        );
-                      })}
-                      <SelectItem value="__other__">Other Document</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-
               {/* File Name */}
               <div>
-                <Label htmlFor="document-file-name" className="text-sm font-medium">
-                  File Name <span className="text-red-500">*</span>
-                </Label>
-                <Input
+                <label htmlFor="document-file-name" className="block text-sm font-medium text-foreground mb-1">
+                  File Name *
+                </label>
+                <input
+                  type="text"
                   id="document-file-name"
                   value={documentForm.fileName}
                   onChange={(e) => setDocumentForm({...documentForm, fileName: e.target.value})}
+                  className="w-full px-3 py-2 border border-input bg-background rounded-md focus:outline-none focus:ring-2 focus:ring-ring focus:border-ring"
                   placeholder="Enter file name"
-                  className="mt-1"
+                  required
                 />
               </div>
 
               {/* Description */}
               <div>
-                <Label htmlFor="document-description" className="text-sm font-medium">
+                <label htmlFor="document-description" className="block text-sm font-medium text-foreground mb-1">
                   Description
-                </Label>
-                <Input
+                </label>
+                <input
+                  type="text"
                   id="document-description"
                   value={documentForm.description}
                   onChange={(e) => setDocumentForm({...documentForm, description: e.target.value})}
-                  placeholder="Optional description"
-                  className="mt-1"
+                  className="w-full px-3 py-2 border border-input bg-background rounded-md focus:outline-none focus:ring-2 focus:ring-ring focus:border-ring"
+                  placeholder="Enter description"
                 />
               </div>
 
               {/* File Selection */}
               <div>
-                <Label className="text-sm font-medium">
-                  File <span className="text-red-500">*</span>
-                </Label>
-                <div className="flex items-center justify-between p-3 mt-1 border border-input bg-background rounded-md">
+                <label className="block text-sm font-medium text-foreground mb-1">
+                  File
+                </label>
+                <div className="flex items-center justify-between p-3 border border-input bg-background rounded-md">
                   <span className="text-sm text-muted-foreground">
                     {documentForm.file ? documentForm.file.name : "No file selected"}
                   </span>
@@ -4611,20 +4527,14 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                     description: "", 
                     file: null 
                   });
-                  setSelectedDocType("");
                 }}
               >
                 Cancel
               </Button>
               <Button
                 onClick={handleSubmitDocument}
-                disabled={
-                  !documentForm.fileName ||
-                  !documentForm.file ||
-                  submittingDocument ||
-                  (requiredDocs.length > 0 && !selectedDocType)
-                }
-                className="bg-blue-500 text-white hover:bg-blue-600"
+                disabled={!documentForm.fileName || !documentForm.file || submittingDocument}
+                className="bg-gray-400 text-white hover:bg-gray-500"
               >
                 {submittingDocument ? "Uploading..." : "Upload"}
               </Button>

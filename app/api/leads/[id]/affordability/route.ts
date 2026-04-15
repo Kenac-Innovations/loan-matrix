@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getTenantBySlug, extractTenantSlugFromRequest } from "@/lib/tenant-service";
 import { buildCDEPayload, fetchFineractLoanForLead } from "@/lib/cde-utils";
+import { getSession } from "@/lib/auth";
+import { getLeadAccessProfile } from "@/lib/lead-permissions";
 
 export async function POST(
   request: NextRequest,
@@ -20,6 +22,7 @@ export async function POST(
 
     const tenant = await getTenantBySlug(tenantSlug);
     console.log("Found tenant:", tenant?.id, tenant?.slug);
+    const session = await getSession();
 
     if (!tenant) {
       console.error("Tenant not found for slug:", tenantSlug);
@@ -42,7 +45,14 @@ export async function POST(
       where: {
         id: leadId,
       },
-      include: { currentStage: true },
+      include: {
+        currentStage: {
+          select: {
+            name: true,
+            fineractStatus: true,
+          },
+        },
+      },
     });
 
     console.log("Found lead:", lead?.id);
@@ -59,6 +69,26 @@ export async function POST(
     if (lead.tenantId !== tenant.id) {
       console.warn(
         `Tenant mismatch: Lead tenant=${lead.tenantId}, Request tenant=${tenant.id}`
+      );
+    }
+
+    const accessProfile = await getLeadAccessProfile({
+      tenantId: tenant.id,
+      lead,
+      session,
+    });
+
+    if (
+      accessProfile.isPendingApproval &&
+      !accessProfile.canFullyEditPendingApprovalLoanTerms
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Pending Approval edits are limited to loan amount, tenure, repayments, and interest rate on the Loan Terms tab.",
+        },
+        { status: 403 }
       );
     }
 

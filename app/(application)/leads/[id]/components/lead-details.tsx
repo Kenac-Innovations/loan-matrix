@@ -568,8 +568,7 @@ export function LeadDetails({ leadId }: LeadDetailsProps) {
                           <h4 className="text-sm font-medium mb-3">
                             Loan Charges
                           </h4>
-                          <div className="border rounded-lg overflow-x-auto">
-                            <div className="min-w-[320px]">
+                          <div className="border rounded-lg overflow-hidden">
                             <div className="bg-muted/50 px-4 py-2 grid grid-cols-3 gap-4 text-xs font-medium">
                               <div>Charge Name</div>
                               <div>Amount</div>
@@ -591,7 +590,6 @@ export function LeadDetails({ leadId }: LeadDetailsProps) {
                                 </div>
                               )
                             )}
-                            </div>
                           </div>
                         </div>
                       )}
@@ -614,7 +612,7 @@ export function LeadDetails({ leadId }: LeadDetailsProps) {
                   loanInfo.repaymentSchedule.periods.length > 0 ? (
                     <div className="space-y-4">
                       {/* Summary */}
-                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-muted/50 rounded-lg">
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-muted/50 rounded-lg">
                         <div className="text-center">
                           <p className="text-lg font-bold">
                             {currencyCode}{" "}
@@ -1005,7 +1003,7 @@ export function LeadDetails({ leadId }: LeadDetailsProps) {
                 <CardDescription>Key financial metrics</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <div className="text-center p-4 bg-muted/50 rounded-lg">
                     <p className="text-2xl font-bold text-green-600">
                       {financialData.annualIncome}
@@ -1407,7 +1405,7 @@ export function LeadDetails({ leadId }: LeadDetailsProps) {
                   <h4 className="text-sm font-medium mb-3">
                     Loan Request Details
                   </h4>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <div className="text-center p-3 bg-muted/50 rounded-lg">
                       <p className="text-lg font-bold text-blue-600">
                         {loanData.requestedAmount}

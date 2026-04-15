@@ -510,6 +510,23 @@ export function LoanTermsForm({
   /** Goodfellow: only charge amounts are editable; add/remove/due dates stay fixed. */
   const isChargesStructureReadOnly = tenantSlug === "goodfellow";
   const canEditLoan = !!features.canEditLoan;
+  const [loanTermsPermissions, setLoanTermsPermissions] = useState({
+    canEditAllLoanTerms: false,
+    canEditPendingApprovalRestrictedTerms: false,
+    editableFields: [] as string[],
+    isPendingApproval: false,
+  });
+  const canEditAllLoanFields =
+    canEditLoan || loanTermsPermissions.canEditAllLoanTerms;
+  const isPendingApprovalRestrictedMode =
+    loanTermsPermissions.canEditPendingApprovalRestrictedTerms &&
+    !canEditAllLoanFields;
+  const canEditLoanTermField =
+    canEditAllLoanFields || isPendingApprovalRestrictedMode;
+  const canEditRepaymentCountField =
+    canEditAllLoanFields || isPendingApprovalRestrictedMode;
+  const canEditNominalInterestRateField =
+    canEditAllLoanFields || isPendingApprovalRestrictedMode;
 
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1292,6 +1309,17 @@ export function LoanTermsForm({
 
         if (loanTermsResponse.ok) {
           const result = await loanTermsResponse.json();
+          if (result.permissions) {
+            setLoanTermsPermissions({
+              canEditAllLoanTerms: !!result.permissions.canEditAllLoanTerms,
+              canEditPendingApprovalRestrictedTerms:
+                !!result.permissions.canEditPendingApprovalRestrictedTerms,
+              editableFields: Array.isArray(result.permissions.editableFields)
+                ? result.permissions.editableFields
+                : [],
+              isPendingApproval: !!result.permissions.isPendingApproval,
+            });
+          }
           if (result.success && result.data) {
             const loanTermsData = result.data;
             console.log("Loaded loan terms data:", loanTermsData);
@@ -2096,12 +2124,18 @@ export function LoanTermsForm({
           <CardDescription>
             Principal, term options, repayments, and repayment frequency
           </CardDescription>
-          {!canEditLoan && (
+          {isPendingApprovalRestrictedMode ? (
+            <p className="text-xs text-amber-600 dark:text-amber-400 mt-2 italic">
+              Pending Approval edit mode: only Principal Amount, Loan Term,
+              Number of Repayments, and Nominal Interest Rate can be changed.
+              All updates are recorded in the audit trail.
+            </p>
+          ) : !canEditAllLoanFields ? (
             <p className="text-xs text-amber-600 dark:text-amber-400 mt-2 italic">
               Note: Only Principal Amount and Charges can be edited. Other
               fields are pre-configured from the loan product.
             </p>
-          )}
+          ) : null}
         </div>
 
         {/* Principal */}
@@ -2227,8 +2261,11 @@ export function LoanTermsForm({
               <Input
                 id="loanTerm"
                 type="number"
-                className={cn("h-10", !canEditLoan && "cursor-not-allowed")}
-                disabled={!canEditLoan}
+                className={cn(
+                  "h-10",
+                  !canEditLoanTermField && "cursor-not-allowed"
+                )}
+                disabled={!canEditLoanTermField}
                 {...form.register("loanTerm", { valueAsNumber: true })}
               />
               {form.formState.errors.loanTerm && (
@@ -2323,7 +2360,7 @@ export function LoanTermsForm({
                 id="numberOfRepayments"
                 type="number"
                 className="h-10"
-                disabled={!canEditLoan}
+                disabled={!canEditRepaymentCountField}
                 {...form.register("numberOfRepayments", {
                   valueAsNumber: true,
                 })}
@@ -2643,7 +2680,7 @@ export function LoanTermsForm({
                 type="number"
                 step="0.01"
                 className="h-10"
-                disabled={isNominalInterestRateLocked}
+                disabled={!canEditNominalInterestRateField}
                 {...form.register("nominalInterestRate", {
                   valueAsNumber: true,
                 })}

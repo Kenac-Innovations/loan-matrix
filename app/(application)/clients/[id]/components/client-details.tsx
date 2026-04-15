@@ -48,14 +48,6 @@ interface FineractClient {
     id: number;
     name: string;
   };
-  legalForm?: {
-    id: number;
-    code: string;
-    value: string;
-  };
-  clientNonPersonDetails?: {
-    incorporationDate?: string | number[];
-  };
 }
 
 interface ClientDetailsProps {
@@ -194,21 +186,12 @@ export function ClientDetails({
                 </span>
               </div>
             )}
-            {(client.dateOfBirth || client.clientNonPersonDetails?.incorporationDate) && (
+            {client.dateOfBirth && (
               <div className="flex items-center gap-2">
                 <Calendar className="h-4 w-4 text-muted-foreground" />
                 <span className="text-sm">
-                  <span className="font-medium">
-                    {client.legalForm?.value?.toLowerCase() === "entity"
-                      ? "Date of Incorporation:"
-                      : "Date of Birth:"}
-                  </span>{" "}
-                  {formatDate(
-                    client.legalForm?.value?.toLowerCase() === "entity"
-                      ? client.clientNonPersonDetails?.incorporationDate ??
-                          client.dateOfBirth
-                      : client.dateOfBirth
-                  )}
+                  <span className="font-medium">Date of Birth:</span>{" "}
+                  {formatDate(client.dateOfBirth)}
                 </span>
               </div>
             )}

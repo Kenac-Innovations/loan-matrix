@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { isInvoiceDiscountingEnabled } from "@/lib/tenant-features";
+import { getSession } from "@/lib/auth";
+import { getLeadAccessProfile } from "@/lib/lead-permissions";
 
 type LeadStateMetadata = {
   loanTerms?: Record<string, unknown>;
@@ -64,6 +66,12 @@ async function getLeadWithTenant(leadId: string) {
       id: true,
       tenantId: true,
       stateMetadata: true,
+      currentStage: {
+        select: {
+          name: true,
+          fineractStatus: true,
+        },
+      },
       tenant: {
         select: {
           settings: true,
@@ -120,6 +128,7 @@ export async function POST(
   try {
     const params = await context.params;
     const leadId = params.id;
+    const session = await getSession();
 
     const lead = await getLeadWithTenant(leadId);
     if (!lead) {
@@ -129,6 +138,26 @@ export async function POST(
     if (!isInvoiceDiscountingEnabled(lead.tenant?.settings)) {
       return NextResponse.json(
         { error: "Invoice discounting is disabled for this tenant" },
+        { status: 403 }
+      );
+    }
+
+    const accessProfile = await getLeadAccessProfile({
+      tenantId: lead.tenantId,
+      lead,
+      session,
+    });
+
+    if (
+      accessProfile.isPendingApproval &&
+      !accessProfile.canFullyEditPendingApprovalLoanTerms
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Pending Approval edits are limited to loan amount, tenure, repayments, and interest rate on the Loan Terms tab.",
+        },
         { status: 403 }
       );
     }

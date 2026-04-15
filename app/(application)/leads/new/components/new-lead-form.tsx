@@ -226,6 +226,16 @@ const leadFormSchema = z
 
 type LeadFormValues = z.infer<typeof leadFormSchema>;
 
+const VALID_TABS = new Set([
+  "client",
+  "affordability",
+  "loan",
+  "invoice",
+  "terms",
+  "schedule",
+  "contracts",
+]);
+
 export function NewLeadForm() {
   // ALL HOOKS MUST BE CALLED FIRST, BEFORE ANY CONDITIONAL RETURNS
   const router = useRouter();
@@ -233,12 +243,15 @@ export function NewLeadForm() {
   const { currencyCode, currencySymbol, locale: tenantLocale } = useCurrency();
   const skipAffordabilityForCompanies =
     !!tenantLocale.skipAffordabilityForCompanies;
+  const requestedTab = searchParams?.get("tab");
+  const initialTab =
+    requestedTab && VALID_TABS.has(requestedTab) ? requestedTab : "client";
   const [hideAffordability, setHideAffordability] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [affordabilityResult, setAffordabilityResult] =
     useState<AffordabilityResult | null>(null);
   const [selectedOffer, setSelectedOffer] = useState<LoanOffer | null>(null);
-  const [activeTab, setActiveTab] = useState("client");
+  const [activeTab, setActiveTab] = useState(initialTab);
   const [loanTemplateData, setLoanTemplateData] = useState<any>(null);
   const [formCompletionStatus, setFormCompletionStatus] = useState({
     client: false,
@@ -614,6 +627,13 @@ export function NewLeadForm() {
 
     loadLeadData();
   }, [searchParams, hideAffordability]);
+
+  useEffect(() => {
+    const nextTab = searchParams?.get("tab");
+    if (nextTab && VALID_TABS.has(nextTab)) {
+      setActiveTab(nextTab);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     if (hideAffordability) {

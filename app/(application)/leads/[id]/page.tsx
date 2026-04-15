@@ -18,6 +18,7 @@ import { headers } from "next/headers";
 import { extractTenantSlug } from "@/lib/tenant-service";
 import { getSession } from "@/lib/auth";
 import { getFineractServiceWithSession } from "@/lib/fineract-api";
+import { getLeadAccessProfile } from "@/lib/lead-permissions";
 
 const FINERACT_BASE_URL = process.env.FINERACT_BASE_URL || "http://10.10.0.143";
 
@@ -432,6 +433,15 @@ export default async function LeadDetailPage({
     );
   }
 
+  const accessProfile = await getLeadAccessProfile({
+    tenantId: lead.tenantId,
+    lead,
+    loanStatus: fineractLoanStatus,
+    session,
+  });
+  const canOpenPendingApprovalEditor =
+    accessProfile.canRestrictedEditPendingApprovalLoanTerms;
+
   const currentStage = lead.currentStage?.name || "New Lead";
   const pageHue = getStatusPageHue(fineractLoanStatus);
 
@@ -517,12 +527,13 @@ export default async function LeadDetailPage({
                   assignedToUserId={lead.assignedToUserId}
                   fineractClientId={lead.fineractClientId}
                 />
-                {!isReadOnly && (
+                {(!isReadOnly || canOpenPendingApprovalEditor) && (
                   <LeadMoreActions
                     leadId={id}
                     loanStatus={fineractLoanStatus}
                     loanId={fineractLoanId}
                     fineractClientId={lead.fineractClientId}
+                    canModifyPendingApproval={canOpenPendingApprovalEditor}
                   />
                 )}
               </div>
