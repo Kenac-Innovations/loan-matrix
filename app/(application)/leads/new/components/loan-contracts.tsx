@@ -40,6 +40,41 @@ import {
   KeyFactsData,
 } from "./key-facts-statement-template";
 
+function parseFineractErrorResponse(responseText: string): string {
+  try {
+    const parsed = JSON.parse(responseText);
+    const errors = Array.isArray(parsed?.errors) ? parsed.errors : [];
+    const message =
+      errors.find((error: any) => typeof error?.defaultUserMessage === "string")
+        ?.defaultUserMessage ||
+      parsed?.defaultUserMessage ||
+      parsed?.message ||
+      parsed?.error;
+
+    if (typeof message === "string" && message.trim()) {
+      return message;
+    }
+  } catch {
+    // Fall through to the raw response text.
+  }
+
+  return responseText || "Fineract request failed";
+}
+
+async function fineractFetch(
+  url: string,
+  options?: RequestInit,
+): Promise<Response> {
+  const response = await fetch(url, options);
+
+  if (!response.ok) {
+    const responseText = await response.text();
+    throw new Error(parseFineractErrorResponse(responseText));
+  }
+
+  return response;
+}
+
 interface LoanContractsProps {
   leadId?: string;
   clientId?: number;

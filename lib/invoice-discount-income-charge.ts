@@ -23,6 +23,17 @@ type EnsureInvoiceDiscountIncomeChargeParams = {
   currencyCode?: string | null;
 };
 
+type FineractChargeSummary = {
+  id: number;
+  name?: string;
+  currency?: {
+    code?: string;
+  };
+  chargeAppliesTo?: {
+    code?: string;
+  };
+};
+
 function normalizeCurrencyCode(currencyCode?: string | null) {
   const normalized = currencyCode?.trim().toUpperCase();
   return normalized || null;
@@ -40,6 +51,45 @@ function buildDesiredChargeValues(currencyCode: string) {
     chargePaymentMode: "REGULAR" as const,
     active: true,
   };
+}
+
+function getErrorMessage(error: unknown) {
+  const candidate = error as {
+    errorData?: {
+      errors?: Array<{ defaultUserMessage?: string }>;
+      defaultUserMessage?: string;
+    };
+    message?: string;
+  };
+
+  return (
+    candidate?.errorData?.errors?.[0]?.defaultUserMessage ||
+    candidate?.errorData?.defaultUserMessage ||
+    candidate?.message ||
+    "Unknown error"
+  );
+}
+
+function isDuplicateInvoiceIncomeChargeError(error: unknown) {
+  const message = getErrorMessage(error);
+  return (
+    message.includes("Charge with name") &&
+    message.includes(INVOICE_DISCOUNT_INCOME_CHARGE_NAME) &&
+    message.includes("already exists")
+  );
+}
+
+async function findExistingFineractInvoiceIncomeCharge(currencyCode: string) {
+  const charges = (await fetchFineractAPI("/charges", {
+    method: "GET",
+  })) as FineractChargeSummary[];
+
+  return charges.find((charge) => {
+    const appliesToLoan = charge.chargeAppliesTo?.code === "chargeAppliesTo.loan";
+    const sameName = charge.name === INVOICE_DISCOUNT_INCOME_CHARGE_NAME;
+    const sameCurrency = charge.currency?.code === currencyCode;
+    return sameName && appliesToLoan && sameCurrency;
+  });
 }
 
 function needsInvoiceDiscountIncomeNormalization(
@@ -160,6 +210,22 @@ async function syncChargeProductToFineract(charge: ChargeProduct) {
   const fineractResult = await fetchFineractAPI("/charges", {
     method: "POST",
     body: JSON.stringify(fineractPayload),
+  }).catch(async (error) => {
+    if (!isDuplicateInvoiceIncomeChargeError(error)) {
+      throw error;
+    }
+
+    const existingFineractCharge =
+      await findExistingFineractInvoiceIncomeCharge(charge.currencyCode);
+    const fineractChargeId = Number(existingFineractCharge?.id);
+
+    if (!Number.isFinite(fineractChargeId)) {
+      throw new Error(
+        "INVOICE_INCOME already exists in Fineract but its charge ID could not be resolved"
+      );
+    }
+
+    return { resourceId: fineractChargeId };
   });
 
   const fineractChargeId = Number(
@@ -245,8 +311,7 @@ export async function ensureInvoiceDiscountIncomeCharge({
     try {
       charge = await syncChargeProductToFineract(charge);
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Failed to sync INVOICE_INCOME charge";
+      const message = getErrorMessage(error);
 
       charge = await prisma.chargeProduct.update({
         where: { id: charge.id },
