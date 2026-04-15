@@ -59,12 +59,10 @@ import { PendingApprovalLoanTermsEditor } from "./pending-approval-loan-terms-ed
 
 interface ComprehensiveLeadDetailsProps {
   leadId: string;
-  canEditPendingLoanApplication?: boolean;
 }
 
 export function ComprehensiveLeadDetails({
   leadId,
-  canEditPendingLoanApplication = false,
 }: ComprehensiveLeadDetailsProps) {
   const { currencyCode, currencySymbol } = useCurrency();
   const { isEnabled } = useFeatureFlags();
@@ -451,14 +449,15 @@ export function ComprehensiveLeadDetails({
   const showInvoiceDiscountingDetails =
     invoiceDiscountingEnabled && isInvoiceDiscountingLead;
 
-  // Get loan ID from multiple sources
-  const loanId = lead?.fineractLoanId || fineractLoan?.id;
+  const pendingApprovalStatus = "submitted and pending approval";
+  const canOpenPendingLoanTermsEditor =
+    (fineractLoan?.status?.value || "").trim().toLowerCase() === pendingApprovalStatus;
 
   // Debug logging
   console.log("=== COMPREHENSIVE LEAD DETAILS DEBUG ===");
   console.log("Lead fineractLoanId:", lead?.fineractLoanId);
   console.log("FineractLoan ID:", fineractLoan?.id);
-  console.log("Resolved loanId:", loanId);
+  console.log("Can open pending loan terms editor:", canOpenPendingLoanTermsEditor);
   console.log("Fineract loan data:", fineractLoan ? "Present" : "Missing");
   console.log(
     "Fineract loan keys:",
@@ -1062,12 +1061,11 @@ export function ComprehensiveLeadDetails({
                   <CardHeader>
                     <div className="flex items-start justify-between gap-3">
                       <CardTitle>Loan Terms</CardTitle>
-                      {loanId ? (
+                      {canOpenPendingLoanTermsEditor ? (
                         <PendingApprovalLoanTermsEditor
                           leadId={leadId}
-                          canEdit={canEditPendingLoanApplication}
+                          canEdit={canOpenPendingLoanTermsEditor}
                           loan={{
-                            id: Number(loanId),
                             principal: fineractLoan.principal,
                             termFrequency: fineractLoan.termFrequency,
                             termPeriodLabel:

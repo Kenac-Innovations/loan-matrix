@@ -20,7 +20,6 @@ interface PendingApprovalLoanTermsEditorProps {
   leadId: string;
   canEdit: boolean;
   loan: {
-    id: number;
     principal?: number | null;
     termFrequency?: number | null;
     termPeriodLabel?: string | null;

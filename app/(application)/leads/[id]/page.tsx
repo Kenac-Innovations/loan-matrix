@@ -688,7 +688,6 @@ export default async function LeadDetailPage({
             clientDocuments={clientDocuments}
             loanDocuments={loanDocuments}
             readOnly={isReadOnly}
-            canEditPendingLoanApplication={canEditPendingLoanTerms}
           />
         </div>
         <div className="mt-0 lg:mt-10">
