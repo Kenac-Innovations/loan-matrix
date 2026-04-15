@@ -1,5 +1,6 @@
 import { prisma } from "./prisma";
 import { getFineractServiceWithSession } from "./fineract-api";
+import { applyTopupDisbursementCharges } from "./topup-disbursement-charge-service";
 import type { AssignmentStrategy, AssignmentConfig } from "@/shared/defaults/team-config";
 
 export interface FineractOverrides {
@@ -774,6 +775,20 @@ export class TeamAwareStateMachineService {
           bankNumber: overrides?.bankNumber,
           note: overrides?.note,
         });
+
+        // Non-blocking: disbursement succeeds even when charge application fails.
+        if (lead?.tenantId) {
+          try {
+            await applyTopupDisbursementCharges({
+              loanId: fineractLoanId,
+              tenantId: String(lead.tenantId),
+              source: "state-transition",
+            });
+          } catch (error) {
+            console.error("[StateTransition] Failed to apply topup disbursement charges:", error);
+          }
+        }
+
         return `Fineract loan #${fineractLoanId} disbursed`;
       }
       case "reject": {

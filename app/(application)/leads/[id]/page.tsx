@@ -18,7 +18,9 @@ import { headers } from "next/headers";
 import { extractTenantSlug } from "@/lib/tenant-service";
 import { getSession } from "@/lib/auth";
 import { getFineractServiceWithSession } from "@/lib/fineract-api";
+import { getLeadAccessProfile } from "@/lib/lead-permissions";
 import {
+  isOmamaTenant,
   isPendingLoanApplicationEditTenant,
 } from "@/lib/pending-loan-application-edit";
 import { canPrintLoanContract } from "@/lib/loan-contract-print";
@@ -411,6 +413,7 @@ export default async function LeadDetailPage({
     lead?.assignedToUserId != null &&
     String(lead.assignedToUserId) === currentUserId;
   const isReadOnly = !isAssignedUser;
+  const showOmamaLeadTabs = isOmamaTenant(tenantSlug);
   const canEditPendingLoanTerms =
     isPendingLoanApplicationEditTenant(tenantSlug) &&
     Boolean(lead?.fineractLoanId || fineractLoanId);
@@ -418,6 +421,7 @@ export default async function LeadDetailPage({
     tenantSlug,
     fineractLoanStatus
   );
+  const currentStageFineractAction = (lead?.currentStage as any)?.fineractAction;
 
   // Check if current user is in the team for the lead's current stage
   let isUserInStageTeam = false;
@@ -447,6 +451,15 @@ export default async function LeadDetailPage({
       </div>
     );
   }
+
+  const accessProfile = await getLeadAccessProfile({
+    tenantId: lead.tenantId,
+    lead,
+    loanStatus: fineractLoanStatus,
+    session,
+  });
+  const canOpenPendingApprovalEditor =
+    accessProfile.canRestrictedEditPendingApprovalLoanTerms;
 
   const currentStage = lead.currentStage?.name || "New Lead";
   const pageHue = getStatusPageHue(fineractLoanStatus);
@@ -492,7 +505,7 @@ export default async function LeadDetailPage({
                 )}
                 {lead.currentStage && (
                   lead.currentStage.isFinalState ? (
-                    lead.currentStage.fineractAction === "reject" ? (
+                    currentStageFineractAction === "reject" ? (
                       <Badge className="bg-red-600 text-white border-0 text-xs gap-1 shrink-0">
                         <XCircle className="h-3 w-3" />
                         Rejected
@@ -533,12 +546,13 @@ export default async function LeadDetailPage({
                   assignedToUserId={lead.assignedToUserId}
                   fineractClientId={lead.fineractClientId}
                 />
-                {!isReadOnly && (
+                {(!isReadOnly || canOpenPendingApprovalEditor) && (
                   <LeadMoreActions
                     leadId={id}
                     loanStatus={fineractLoanStatus}
                     loanId={fineractLoanId}
                     fineractClientId={lead.fineractClientId}
+                    canModifyPendingApproval={canOpenPendingApprovalEditor}
                     canModifyPendingApplication={canEditPendingLoanTerms}
                     canPrintContract={canPrintContract}
                   />
@@ -595,16 +609,21 @@ export default async function LeadDetailPage({
         <div className="mt-3 sm:mt-4 px-1 sm:px-2 overflow-x-auto scrollbar-thin">
           <div className="flex items-center w-full min-w-[400px]">
             {(() => {
-              const isRejected = lead.currentStage?.fineractAction === "reject";
-              const normalStages = stages.filter((s) => s.fineractAction !== "reject");
+              const isRejected = currentStageFineractAction === "reject";
+              const normalStages = stages.filter(
+                (s) => (s as any).fineractAction !== "reject"
+              );
               const visibleStages = isRejected
-                ? [...normalStages, ...stages.filter((s) => s.fineractAction === "reject")]
+                ? [
+                    ...normalStages,
+                    ...stages.filter((s) => (s as any).fineractAction === "reject"),
+                  ]
                 : normalStages;
               const currentOrder = lead.currentStage?.order ?? -1;
               const isOnFinalStage = lead.currentStage?.isFinalState === true && !isRejected;
               return visibleStages.map((stage, idx) => {
                 const isCurrent = stage.id === lead.currentStage?.id;
-                const isRejectStage = stage.fineractAction === "reject";
+                const isRejectStage = (stage as any).fineractAction === "reject";
                 const isCompleted = isRejected
                   ? (!isRejectStage && stage.order < currentOrder)
                   : isOnFinalStage
@@ -659,7 +678,7 @@ export default async function LeadDetailPage({
                     {!isLast && (
                       <div className="flex-1 mx-1 h-0.5 rounded-full self-start mt-[10px]"
                         style={{
-                          backgroundColor: isRejected && isCompleted && visibleStages[idx + 1]?.fineractAction === "reject"
+                          backgroundColor: isRejected && isCompleted && (visibleStages[idx + 1] as any)?.fineractAction === "reject"
                             ? "#ef4444"
                             : isCompleted ? (stage.color || "#6b7280") : "hsl(var(--border))",
                           opacity: isCompleted ? 0.5 : 0.3,
@@ -688,6 +707,8 @@ export default async function LeadDetailPage({
             clientDocuments={clientDocuments}
             loanDocuments={loanDocuments}
             readOnly={isReadOnly}
+            showOmamaLeadTabs={showOmamaLeadTabs}
+            canEditPendingLoanApplication={canEditPendingLoanTerms}
           />
         </div>
         <div className="mt-0 lg:mt-10">

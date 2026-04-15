@@ -5,6 +5,7 @@ import { format } from "date-fns";
 import { getSession } from "@/lib/auth";
 import { callCDEAndStore } from "@/lib/cde-utils";
 import { sendLoanStatusSms } from "@/lib/notification-service";
+import { createLoanCharge } from "@/lib/fineract-loan-charge";
 
 /**
  * POST /api/leads/[id]/create-loan
@@ -60,6 +61,12 @@ export async function POST(
     const dateStr = format(submittedDate, "yyyy-MM-dd");
     const disbursementDateStr = format(disbursementDate, "yyyy-MM-dd");
 
+    const isInvoiceDiscountingLead = lead.facilityType === "INVOICE_DISCOUNTING";
+
+    const requestedCharges = Array.isArray(loanData.charges)
+      ? loanData.charges
+      : [];
+
     // Build loan payload
     const payload: any = {
       clientId: loanData.clientId,
@@ -87,10 +94,20 @@ export async function POST(
       externalId: leadId,
       allowPartialPeriodInterestCalcualtion: false,
       isEqualAmortization: false,
-      charges: (loanData.charges || []).map((charge: any) => ({
-        chargeId: charge.chargeId,
-        amount: charge.amount,
-      })),
+      charges: isInvoiceDiscountingLead
+        ? []
+        : requestedCharges.map((charge: any) => {
+            const chargePayload: any = {
+              chargeId: charge.chargeId,
+              amount: charge.amount,
+            };
+
+            if (charge.dueDate) {
+              chargePayload.dueDate = charge.dueDate;
+            }
+
+            return chargePayload;
+          }),
       collateral: [],
       loanType: "individual",
       ...(loanData.isTopup && loanData.loanIdToClose
@@ -121,6 +138,26 @@ export async function POST(
     // Set external ID to loan ID for future reference
     if (result && result.resourceId) {
       const loanId = result.resourceId;
+
+      if (isInvoiceDiscountingLead && requestedCharges.length > 0) {
+        for (const charge of requestedCharges) {
+          const chargePayload: any = {
+            chargeId: charge.chargeId,
+            amount: charge.amount,
+            locale: "en",
+            externalId: "",
+            note: "",
+            paymentTypeId: "",
+          };
+
+          if (charge.dueDate) {
+            chargePayload.dueDate = charge.dueDate;
+            chargePayload.dateFormat = "dd MMMM yyyy";
+          }
+
+          await createLoanCharge(Number(loanId), chargePayload);
+        }
+      }
 
       // Update the loan with the external ID set to the loan ID
       try {

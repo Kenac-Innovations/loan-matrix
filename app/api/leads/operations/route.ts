@@ -52,16 +52,6 @@ async function resolveCurrentTenant(tx?: any, req?: Request) {
   return fallbackTenant;
 }
 
-// Resolve the initial pipeline stage for a tenant (used when creating new leads)
-async function getInitialStageId(tenantId: string, tx?: any): Promise<string | null> {
-  const db = tx || prisma;
-  const stage = await db.pipelineStage.findFirst({
-    where: { tenantId, isInitialState: true, isActive: true },
-    select: { id: true },
-  });
-  return stage?.id ?? null;
-}
-
 // Helper function to format dates for Fineract API
 const formatDateForFineract = (
   date: Date | string | number | null | undefined
@@ -474,7 +464,6 @@ async function handleSaveDraft(data: any, leadId?: string) {
     // Resolve current tenant from subdomain/headers
     const currentTenant = await resolveCurrentTenant(undefined, _currentRequest);
     const tenantId = currentTenant.id;
-    const initialStageId = await getInitialStageId(tenantId);
 
     if (leadId) {
       // Update existing lead
@@ -535,7 +524,6 @@ async function handleSaveDraft(data: any, leadId?: string) {
         data: {
           userId,
           tenantId,
-          currentStageId: initialStageId,
           officeId: validatedData.officeId,
           officeName: validatedData.officeName,
           legalFormId: validatedData.legalFormId,
@@ -1001,14 +989,12 @@ async function handleCreateLeadWithClient(data: any) {
             // Resolve current tenant from subdomain/headers
             const currentTenant = await resolveCurrentTenant(tx, _currentRequest);
             const tenantId = currentTenant.id;
-            const initialStageId = await getInitialStageId(tenantId, tx);
 
             // Create lead in database with existing Fineract client data
             const newLead = await tx.lead.create({
               data: {
                 userId,
                 tenantId,
-                currentStageId: initialStageId,
                 officeId: validatedData.officeId,
                 officeName: validatedData.officeName,
                 legalFormId: validatedData.legalFormId,
@@ -1142,14 +1128,12 @@ async function handleCreateLeadWithClient(data: any) {
       // Resolve current tenant from subdomain/headers
       const currentTenant = await resolveCurrentTenant(tx, _currentRequest);
       const tenantId = currentTenant.id;
-      const initialStageId = await getInitialStageId(tenantId, tx);
 
       // Create lead in database with Fineract data
       const newLead = await tx.lead.create({
         data: {
           userId,
           tenantId,
-          currentStageId: initialStageId,
           officeId: validatedData.officeId,
           officeName: validatedData.officeName,
           legalFormId: validatedData.legalFormId,
@@ -1672,16 +1656,12 @@ async function handleUpdateClient(data: any, leadId?: string) {
           }
           const userId = session.user.id;
 
-          // Resolve initial pipeline stage for this tenant
-          const initialStageId = await getInitialStageId(currentTenant.id, tx);
-
           // Create a new lead record
           const newLead = await tx.lead.create({
             data: {
               // User and tenant identification
               userId: userId,
               tenantId: currentTenant.id,
-              currentStageId: initialStageId,
 
               // Client identification
               externalId: data.externalId,

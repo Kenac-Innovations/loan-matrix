@@ -5,6 +5,7 @@ import { format } from "date-fns";
 import { fetchFineractAPI } from "@/lib/api";
 import { getOrgDefaultCurrencyCode } from "@/lib/currency-utils";
 import { getSession } from "@/lib/auth";
+import { getLeadAccessProfile } from "@/lib/lead-permissions";
 
 function getRequestOrigin(request: NextRequest): string {
   const forwardedProto = request.headers.get("x-forwarded-proto");
@@ -101,6 +102,7 @@ export async function GET(
         accountNumber: true,
         fineractAccountNo: true,
         fineractClientId: true,
+        fineractLoanId: true,
         officeName: true,
 
         // Loan details
@@ -136,6 +138,12 @@ export async function GET(
         stateMetadata: true,
         stateContext: true,
         familyMembers: true,
+        currentStage: {
+          select: {
+            name: true,
+            fineractStatus: true,
+          },
+        },
       },
     });
 
@@ -155,6 +163,24 @@ export async function GET(
         `⚠️ Tenant mismatch for lead ${leadId}: lead.tenantId=${lead.tenantId}, expected=${tenant.id}`,
       );
     }
+
+    const session = await getSession();
+    let fineractLoanStatus: string | null = null;
+    if (lead.fineractLoanId) {
+      try {
+        const fineractLoan = await fetchFineractAPI(`/loans/${lead.fineractLoanId}`);
+        fineractLoanStatus = fineractLoan?.status?.value || null;
+      } catch (err) {
+        console.warn("Could not resolve Fineract loan status for contract printing:", err);
+      }
+    }
+
+    const accessProfile = await getLeadAccessProfile({
+      tenantId: tenant.id,
+      lead,
+      loanStatus: fineractLoanStatus,
+      session,
+    });
 
     // Fetch loan details
     console.log("Fetching loan details...");
@@ -598,11 +624,14 @@ export async function GET(
     // Net disbursed amount (principal - upfront fees)
     const upfrontFees = formattedCharges
       .filter(
-        (c) =>
+        (c: { name: string; amount: number }) =>
           !c.name.toLowerCase().includes("monthly") &&
           !c.name.toLowerCase().includes("recurring"),
       )
-      .reduce((sum, c) => sum + c.amount, 0);
+      .reduce(
+        (sum: number, c: { name: string; amount: number }) => sum + c.amount,
+        0,
+      );
     const disbursedAmount = principal - upfrontFees;
 
     // Get gender name - priority: Fineract client > genderId map > lead.gender > template lookup
@@ -988,6 +1017,17 @@ export async function GET(
     return NextResponse.json({
       success: true,
       data: contractData,
+      permissions: {
+        canPrintContracts: accessProfile.hasFinalApproval,
+        approvalStatus:
+          fineractLoanStatus ||
+          lead.currentStage?.name ||
+          lead.currentStage?.fineractStatus ||
+          null,
+        printBlockReason: accessProfile.hasFinalApproval
+          ? null
+          : "Printing is available after Final Approval.",
+      },
     });
   } catch (error) {
     console.error("Error fetching contract data:", error);

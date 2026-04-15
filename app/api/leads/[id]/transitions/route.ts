@@ -34,7 +34,7 @@ export async function POST(
   try {
     const { id: leadId } = await params;
     const body = await request.json();
-    const { targetStageId, event, context, triggeredBy, reason } = body;
+    const { targetStageId, event, context, triggeredBy } = body;
 
     if (!targetStageId) {
       return NextResponse.json(
@@ -56,7 +56,6 @@ export async function POST(
       event: event || "MANUAL_TRANSITION",
       context,
       triggeredBy,
-      reason,
     });
 
     if (result.success) {
@@ -66,7 +65,6 @@ export async function POST(
         lead: result.lead,
         transition: result.transition,
         assignedTeam: result.assignedTeam,
-        assignedMember: result.assignedMember,
       });
     } else {
       return NextResponse.json(

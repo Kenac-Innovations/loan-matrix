@@ -16,16 +16,6 @@ import {
   DialogFooter,
   DialogDescription,
 } from "@/components/ui/dialog";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { SearchableSelect } from "@/components/searchable-select";
 import { useToast } from "@/hooks/use-toast";
 import { useCurrency } from "@/contexts/currency-context";
@@ -36,7 +26,6 @@ import {
   Loader2,
   ShieldCheck,
   Landmark,
-  BarChart3,
   Percent,
   Edit2,
   Trash2,
@@ -45,7 +34,6 @@ import {
 } from "lucide-react";
 
 const DATATABLE_NAME = "Proposed Security";
-
 const SYSTEM_COLUMNS = new Set(["id", "client_id", "created_at", "updated_at"]);
 
 interface LeadAppraisalsProps {
@@ -81,8 +69,6 @@ export function LeadAppraisals({
   const [formData, setFormData] = useState<Record<string, any>>({});
   const [editingRowId, setEditingRowId] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
-  const [deleteRowId, setDeleteRowId] = useState<number | null>(null);
-  const [deleting, setDeleting] = useState(false);
   const { toast } = useToast();
   const { currencyCode } = useCurrency();
 
@@ -115,8 +101,6 @@ export function LeadAppraisals({
     fetchData();
   }, [fetchData]);
 
-  // --- Helpers ---
-
   function getRowId(rowIndex: number): number | null {
     const row = rowData[rowIndex];
     if (!row) return null;
@@ -137,7 +121,7 @@ export function LeadAppraisals({
   }
 
   function formatHeaderName(name: string) {
-    let formatted = name
+    const formatted = name
       .replace(/([A-Z])/g, " $1")
       .replace(/_/g, " ")
       .replace(/^./, (s) => s.toUpperCase())
@@ -156,31 +140,46 @@ export function LeadAppraisals({
     );
     if (!match) return String(value);
     if (match.name) return match.name;
-    const v = String(match.value);
-    const m = v.match(/^(.+?)\s+cd_[a-z_]+\s+/i);
-    return m?.[1]?.trim() || v;
+    const raw = String(match.value);
+    const labelMatch = raw.match(/^(.+?)\s+cd_[a-z_]+\s+/i);
+    return labelMatch?.[1]?.trim() || raw;
   }
 
   function formatCellValue(value: any, header: ColumnHeader) {
     if (value == null || value === "") return "—";
     if (Array.isArray(value)) {
-      const [y, m, d] = value;
-      if (y && m && d) {
-        return new Date(y, m - 1, d).toLocaleDateString("en-US", {
-          year: "numeric", month: "short", day: "numeric",
+      const [year, month, day] = value;
+      if (year && month && day) {
+        return new Date(year, month - 1, day).toLocaleDateString("en-US", {
+          year: "numeric",
+          month: "short",
+          day: "numeric",
         });
       }
       return "—";
     }
     if (typeof value === "boolean") return value ? "Yes" : "No";
-    if (header.columnDisplayType === "CODELOOKUP") return resolveCodeLabel(header, value);
-    if (header.columnDisplayType === "DECIMAL" || header.columnDisplayType === "NUMERIC") {
-      const n = parseFloat(String(value));
-      return isNaN(n) ? String(value) : n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    if (header.columnDisplayType === "CODELOOKUP") {
+      return resolveCodeLabel(header, value);
     }
-    if (header.columnDisplayType === "INTEGER" || header.columnType === "BIGINT") {
-      const n = parseInt(String(value));
-      return isNaN(n) ? String(value) : n.toLocaleString("en-US");
+    if (
+      header.columnDisplayType === "DECIMAL" ||
+      header.columnDisplayType === "NUMERIC"
+    ) {
+      const parsed = parseFloat(String(value));
+      return Number.isNaN(parsed)
+        ? String(value)
+        : parsed.toLocaleString("en-US", {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          });
+    }
+    if (
+      header.columnDisplayType === "INTEGER" ||
+      header.columnType === "BIGINT"
+    ) {
+      const parsed = parseInt(String(value), 10);
+      return Number.isNaN(parsed) ? String(value) : parsed.toLocaleString("en-US");
     }
     return String(value);
   }
@@ -189,12 +188,16 @@ export function LeadAppraisals({
     const name = header.columnName?.toLowerCase() || "";
     const displayName = formatHeaderName(header.columnName)?.toLowerCase() || "";
     return (
-      name.includes("value") || name.includes("amount") || name.includes("price") || name.includes("worth") ||
-      displayName.includes("value") || displayName.includes("amount") || displayName.includes("price") || displayName.includes("worth")
+      name.includes("value") ||
+      name.includes("amount") ||
+      name.includes("price") ||
+      name.includes("worth") ||
+      displayName.includes("value") ||
+      displayName.includes("amount") ||
+      displayName.includes("price") ||
+      displayName.includes("worth")
     );
   }
-
-  // --- Summary ---
 
   const summary = (() => {
     const count = rows.length;
@@ -203,15 +206,23 @@ export function LeadAppraisals({
       .map((h, i) => (isValueColumn(h) ? i : -1))
       .filter((i) => i >= 0);
 
-    // Fallback: if no value columns detected by name, try all non-system numeric-looking columns
     if (valueIndices.length === 0 && rows.length > 0) {
       valueIndices = headers
         .map((h, i) => {
           if (SYSTEM_COLUMNS.has(h.columnName?.toLowerCase())) return -1;
-          const firstVal = rows[0]?.[i];
-          if (firstVal != null && !isNaN(parseFloat(String(firstVal))) && String(firstVal).trim() !== "") {
+          const firstValue = rows[0]?.[i];
+          if (
+            firstValue != null &&
+            !Number.isNaN(parseFloat(String(firstValue))) &&
+            String(firstValue).trim() !== ""
+          ) {
             const name = h.columnName?.toLowerCase() || "";
-            if (!name.includes("serial") && !name.includes("phone") && !name.includes("id") && !name.includes("number")) {
+            if (
+              !name.includes("serial") &&
+              !name.includes("phone") &&
+              !name.includes("id") &&
+              !name.includes("number")
+            ) {
               return i;
             }
           }
@@ -222,17 +233,17 @@ export function LeadAppraisals({
 
     for (const row of rows) {
       for (const idx of valueIndices) {
-        const v = parseFloat(String(row[idx]));
-        if (!isNaN(v)) totalValue += v;
+        const value = parseFloat(String(row[idx]));
+        if (!Number.isNaN(value)) totalValue += value;
       }
     }
+
     const coverage = requestedAmount && requestedAmount > 0
       ? ((totalValue / requestedAmount) * 100).toFixed(0)
       : null;
+
     return { count, totalValue, coverage };
   })();
-
-  // --- Form ---
 
   function openAddForm() {
     setEditingRowId(null);
@@ -246,16 +257,21 @@ export function LeadAppraisals({
     headers.forEach((header, i) => {
       const col = header.columnName;
       if (!col || SYSTEM_COLUMNS.has(col.toLowerCase())) return;
-      const val = row[i];
-      if (Array.isArray(val) && (header.columnDisplayType === "DATE" || header.columnDisplayType === "DATETIME")) {
-        const [y, m, d] = val;
-        if (y && m && d) data[col] = format(new Date(y, m - 1, d), "yyyy-MM-dd");
+      const value = row[i];
+      if (
+        Array.isArray(value) &&
+        (header.columnDisplayType === "DATE" ||
+          header.columnDisplayType === "DATETIME")
+      ) {
+        const [year, month, day] = value;
+        if (year && month && day) {
+          data[col] = format(new Date(year, month - 1, day), "yyyy-MM-dd");
+        }
       } else {
-        data[col] = val;
+        data[col] = value;
       }
     });
-    const rid = getRowId(rowIndex);
-    setEditingRowId(rid);
+    setEditingRowId(getRowId(rowIndex));
     setFormData(data);
     setFormOpen(true);
   }
@@ -267,20 +283,30 @@ export function LeadAppraisals({
       const payload: Record<string, any> = {};
       for (const header of editableHeaders) {
         const col = header.columnName;
-        const val = formData[col];
-        if (val === undefined) continue;
-        if (header.columnDisplayType === "DATE" && typeof val === "string") {
-          payload[col] = format(new Date(val), "yyyy-MM-dd");
+        const value = formData[col];
+        if (value === undefined) continue;
+        if (header.columnDisplayType === "DATE" && typeof value === "string") {
+          payload[col] = format(new Date(value), "yyyy-MM-dd");
         } else if (header.columnDisplayType === "BOOLEAN") {
-          payload[col] = Boolean(val);
-        } else if (header.columnDisplayType === "DECIMAL" || header.columnDisplayType === "NUMERIC") {
-          payload[col] = parseFloat(String(val)) || 0;
-        } else if (header.columnDisplayType === "INTEGER" || header.columnType === "BIGINT" || header.columnType === "INTEGER") {
-          payload[col] = parseInt(String(val)) || 0;
-        } else if (header.columnDisplayType === "CODELOOKUP" && (header.columnType === "INTEGER" || header.columnType === "BIGINT")) {
-          payload[col] = parseInt(String(val)) || 0;
+          payload[col] = Boolean(value);
+        } else if (
+          header.columnDisplayType === "DECIMAL" ||
+          header.columnDisplayType === "NUMERIC"
+        ) {
+          payload[col] = parseFloat(String(value)) || 0;
+        } else if (
+          header.columnDisplayType === "INTEGER" ||
+          header.columnType === "BIGINT" ||
+          header.columnType === "INTEGER"
+        ) {
+          payload[col] = parseInt(String(value), 10) || 0;
+        } else if (
+          header.columnDisplayType === "CODELOOKUP" &&
+          (header.columnType === "INTEGER" || header.columnType === "BIGINT")
+        ) {
+          payload[col] = parseInt(String(value), 10) || 0;
         } else {
-          payload[col] = val;
+          payload[col] = value;
         }
       }
 
@@ -295,7 +321,10 @@ export function LeadAppraisals({
           const err = await res.json();
           throw new Error(err.error || "Failed to update");
         }
-        toast({ title: "Updated", description: "Collateral item updated successfully" });
+        toast({
+          title: "Updated",
+          description: "Collateral item updated successfully",
+        });
       } else {
         const res = await fetch(url, {
           method: "POST",
@@ -306,7 +335,10 @@ export function LeadAppraisals({
           const err = await res.json();
           throw new Error(err.error || "Failed to create");
         }
-        toast({ title: "Added", description: "Collateral item added successfully" });
+        toast({
+          title: "Added",
+          description: "Collateral item added successfully",
+        });
       }
 
       setFormOpen(false);
@@ -321,12 +353,15 @@ export function LeadAppraisals({
     }
   }
 
-  async function handleDelete() {
-    if (!fineractClientId || deleteRowId == null) return;
-    setDeleting(true);
+  async function handleDelete(rowId: number | null) {
+    if (!fineractClientId || rowId == null) return;
+    if (!window.confirm("Delete this collateral item? This cannot be undone.")) {
+      return;
+    }
+
     try {
       const res = await fetch(
-        `/api/fineract/datatables/${encodeURIComponent(DATATABLE_NAME)}/${fineractClientId}?rowId=${deleteRowId}`,
+        `/api/fineract/datatables/${encodeURIComponent(DATATABLE_NAME)}/${fineractClientId}?rowId=${rowId}`,
         { method: "DELETE" }
       );
       if (!res.ok) {
@@ -334,27 +369,26 @@ export function LeadAppraisals({
         throw new Error(err.error || "Failed to delete");
       }
       toast({ title: "Deleted", description: "Collateral item removed" });
-      setDeleteRowId(null);
       await fetchData();
       window.dispatchEvent(new Event("lead-data-changed"));
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
-    } finally {
-      setDeleting(false);
     }
   }
 
   function renderFormField(header: ColumnHeader) {
     const col = header.columnName;
-    const val = formData[col] ?? "";
+    const value = formData[col] ?? "";
     const label = formatHeaderName(col);
 
     if (header.columnDisplayType === "BOOLEAN") {
       return (
-        <div key={col} className="flex items-center space-x-2 col-span-1">
+        <div key={col} className="col-span-1 flex items-center space-x-2">
           <Checkbox
-            checked={Boolean(val)}
-            onCheckedChange={(checked) => setFormData((p) => ({ ...p, [col]: checked }))}
+            checked={Boolean(value)}
+            onCheckedChange={(checked) =>
+              setFormData((prev) => ({ ...prev, [col]: checked }))
+            }
           />
           <Label className="text-sm">{label}</Label>
         </div>
@@ -364,50 +398,90 @@ export function LeadAppraisals({
     if (header.columnDisplayType === "DATE") {
       return (
         <div key={col} className="space-y-1.5">
-          <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</Label>
-          <Input type="date" value={val} onChange={(e) => setFormData((p) => ({ ...p, [col]: e.target.value }))} />
+          <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            {label}
+          </Label>
+          <Input
+            type="date"
+            value={value}
+            onChange={(e) =>
+              setFormData((prev) => ({ ...prev, [col]: e.target.value }))
+            }
+          />
         </div>
       );
     }
 
-    if (header.columnDisplayType === "DECIMAL" || header.columnDisplayType === "NUMERIC") {
+    if (
+      header.columnDisplayType === "DECIMAL" ||
+      header.columnDisplayType === "NUMERIC"
+    ) {
       return (
         <div key={col} className="space-y-1.5">
-          <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</Label>
-          <Input type="number" step="0.01" value={val} onChange={(e) => setFormData((p) => ({ ...p, [col]: e.target.value }))} />
+          <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            {label}
+          </Label>
+          <Input
+            type="number"
+            step="0.01"
+            value={value}
+            onChange={(e) =>
+              setFormData((prev) => ({ ...prev, [col]: e.target.value }))
+            }
+          />
         </div>
       );
     }
 
-    if (header.columnDisplayType === "INTEGER" || header.columnType === "BIGINT" || header.columnType === "INTEGER") {
+    if (
+      header.columnDisplayType === "INTEGER" ||
+      header.columnType === "BIGINT" ||
+      header.columnType === "INTEGER"
+    ) {
       if (header.columnDisplayType !== "CODELOOKUP") {
         return (
           <div key={col} className="space-y-1.5">
-            <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</Label>
-            <Input type="number" value={val} onChange={(e) => setFormData((p) => ({ ...p, [col]: e.target.value }))} />
+            <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              {label}
+            </Label>
+            <Input
+              type="number"
+              value={value}
+              onChange={(e) =>
+                setFormData((prev) => ({ ...prev, [col]: e.target.value }))
+              }
+            />
           </div>
         );
       }
     }
 
     if (header.columnDisplayType === "CODELOOKUP" && header.columnValues?.length) {
-      const isInt = header.columnType === "INTEGER" || header.columnType === "BIGINT";
-      const opts = header.columnValues.map((o) => {
-        let lbl = o.name || "";
-        if (!lbl && o.value) {
-          const v = String(o.value);
-          const m = v.match(/^(.+?)\s+cd_[a-z_]+\s+/i);
-          lbl = m?.[1]?.trim() || v;
+      const isIntegerType =
+        header.columnType === "INTEGER" || header.columnType === "BIGINT";
+      const options = header.columnValues.map((option) => {
+        let labelValue = option.name || "";
+        if (!labelValue && option.value) {
+          const match = String(option.value).match(/^(.+?)\s+cd_[a-z_]+\s+/i);
+          labelValue = match?.[1]?.trim() || String(option.value);
         }
-        return { value: String(o.id), label: lbl || String(o.id) };
+        return { value: String(option.id), label: labelValue || String(option.id) };
       });
+
       return (
         <div key={col} className="space-y-1.5">
-          <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</Label>
+          <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            {label}
+          </Label>
           <SearchableSelect
-            options={opts}
-            value={String(val ?? "")}
-            onValueChange={(v) => setFormData((p) => ({ ...p, [col]: isInt ? parseInt(v) || 0 : v }))}
+            options={options}
+            value={String(value ?? "")}
+            onValueChange={(nextValue) =>
+              setFormData((prev) => ({
+                ...prev,
+                [col]: isIntegerType ? parseInt(nextValue, 10) || 0 : nextValue,
+              }))
+            }
             placeholder={`Select ${label.toLowerCase()}`}
             emptyMessage="No options"
           />
@@ -415,32 +489,51 @@ export function LeadAppraisals({
       );
     }
 
-    const isLongText = (header.columnLength && header.columnLength > 255) ||
-      col.toLowerCase().includes("note") || col.toLowerCase().includes("description") || col.toLowerCase().includes("remark");
+    const isLongText =
+      (header.columnLength && header.columnLength > 255) ||
+      col.toLowerCase().includes("note") ||
+      col.toLowerCase().includes("description") ||
+      col.toLowerCase().includes("remark");
+
     if (isLongText) {
       return (
-        <div key={col} className="space-y-1.5 col-span-full">
-          <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</Label>
-          <Textarea value={val} onChange={(e) => setFormData((p) => ({ ...p, [col]: e.target.value }))} rows={3} />
+        <div key={col} className="col-span-full space-y-1.5">
+          <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            {label}
+          </Label>
+          <Textarea
+            value={value}
+            onChange={(e) =>
+              setFormData((prev) => ({ ...prev, [col]: e.target.value }))
+            }
+            rows={3}
+          />
         </div>
       );
     }
 
     return (
       <div key={col} className="space-y-1.5">
-        <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</Label>
-        <Input value={val} onChange={(e) => setFormData((p) => ({ ...p, [col]: e.target.value }))} />
+        <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          {label}
+        </Label>
+        <Input
+          value={value}
+          onChange={(e) =>
+            setFormData((prev) => ({ ...prev, [col]: e.target.value }))
+          }
+        />
       </div>
     );
   }
-
-  // --- Render ---
 
   if (!fineractClientId) {
     return (
       <Card>
         <CardContent className="flex items-center justify-center py-16">
-          <p className="text-muted-foreground">No Fineract client linked to this lead. Submit client to Fineract first.</p>
+          <p className="text-muted-foreground">
+            No Fineract client linked to this lead. Submit client to Fineract first.
+          </p>
         </CardContent>
       </Card>
     );
@@ -460,23 +553,25 @@ export function LeadAppraisals({
     return (
       <Card>
         <CardContent className="flex flex-col items-center justify-center py-16">
-          <p className="text-destructive mb-3">{error}</p>
+          <p className="mb-3 text-destructive">{error}</p>
           <Button variant="outline" onClick={fetchData}>
-            <RefreshCw className="h-4 w-4 mr-2" />Retry
+            <RefreshCw className="mr-2 h-4 w-4" />
+            Retry
           </Button>
         </CardContent>
       </Card>
     );
   }
 
-  const visibleHeaders = headers.filter((h) => !SYSTEM_COLUMNS.has(h.columnName?.toLowerCase()));
+  const visibleHeaders = headers.filter(
+    (h) => !SYSTEM_COLUMNS.has(h.columnName?.toLowerCase())
+  );
 
   return (
     <div className="space-y-6">
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <Card>
-          <CardContent className="p-4 flex items-center justify-between">
+          <CardContent className="flex items-center justify-between p-4">
             <div>
               <p className="text-sm font-medium text-muted-foreground">Collateral Items</p>
               <p className="text-2xl font-bold">{summary.count}</p>
@@ -485,16 +580,18 @@ export function LeadAppraisals({
           </CardContent>
         </Card>
         <Card>
-          <CardContent className="p-4 flex items-center justify-between">
+          <CardContent className="flex items-center justify-between p-4">
             <div>
               <p className="text-sm font-medium text-muted-foreground">Total Value</p>
-              <p className="text-2xl font-bold">{formatCurrency(summary.totalValue, currencyCode)}</p>
+              <p className="text-2xl font-bold">
+                {formatCurrency(summary.totalValue, currencyCode)}
+              </p>
             </div>
             <Landmark className="h-8 w-8 text-green-500" />
           </CardContent>
         </Card>
         <Card>
-          <CardContent className="p-4 flex items-center justify-between">
+          <CardContent className="flex items-center justify-between p-4">
             <div>
               <p className="text-sm font-medium text-muted-foreground">Coverage Ratio</p>
               <p className="text-2xl font-bold">
@@ -511,29 +608,31 @@ export function LeadAppraisals({
         </Card>
       </div>
 
-      {/* Table */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="text-base">Proposed Security</CardTitle>
           <div className="flex gap-2">
             <Button variant="outline" size="sm" onClick={fetchData}>
-              <RefreshCw className="h-4 w-4 mr-1" />Refresh
+              <RefreshCw className="mr-1 h-4 w-4" />
+              Refresh
             </Button>
             {!readOnly && (
               <Button size="sm" onClick={openAddForm}>
-                <Plus className="h-4 w-4 mr-1" />Add Collateral
+                <Plus className="mr-1 h-4 w-4" />
+                Add Collateral
               </Button>
             )}
           </div>
         </CardHeader>
         <CardContent>
           {rows.length === 0 ? (
-            <div className="text-center py-12">
-              <PackageSearch className="h-12 w-12 text-muted-foreground mx-auto mb-4 opacity-50" />
+            <div className="py-12 text-center">
+              <PackageSearch className="mx-auto mb-4 h-12 w-12 text-muted-foreground opacity-50" />
               <p className="text-muted-foreground">No collateral items recorded yet.</p>
               {!readOnly && (
                 <Button className="mt-4" size="sm" onClick={openAddForm}>
-                  <Plus className="h-4 w-4 mr-1" />Add First Item
+                  <Plus className="mr-1 h-4 w-4" />
+                  Add First Item
                 </Button>
               )}
             </div>
@@ -542,34 +641,52 @@ export function LeadAppraisals({
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b bg-muted/50">
-                    <th className="px-3 py-2.5 text-left font-semibold text-xs uppercase tracking-wide text-muted-foreground">#</th>
-                    {visibleHeaders.map((h) => (
-                      <th key={h.columnName} className="px-3 py-2.5 text-left font-semibold text-xs uppercase tracking-wide text-muted-foreground whitespace-nowrap">
-                        {formatHeaderName(h.columnName)}
+                    <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      #
+                    </th>
+                    {visibleHeaders.map((header) => (
+                      <th
+                        key={header.columnName}
+                        className="whitespace-nowrap px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+                      >
+                        {formatHeaderName(header.columnName)}
                       </th>
                     ))}
                     {!readOnly && (
-                      <th className="px-3 py-2.5 text-right font-semibold text-xs uppercase tracking-wide text-muted-foreground">Actions</th>
+                      <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        Actions
+                      </th>
                     )}
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((row, ri) => (
-                    <tr key={ri} className="border-b hover:bg-muted/30 transition-colors">
-                      <td className="px-3 py-2.5 text-muted-foreground font-mono text-xs">{ri + 1}</td>
+                  {rows.map((row, rowIndex) => (
+                    <tr
+                      key={rowIndex}
+                      className="border-b transition-colors hover:bg-muted/30"
+                    >
+                      <td className="px-3 py-2.5 font-mono text-xs text-muted-foreground">
+                        {rowIndex + 1}
+                      </td>
                       {visibleHeaders.map((header) => {
-                        const ci = headers.indexOf(header);
-                        const val = row[ci];
-                        const display = formatCellValue(val, header);
+                        const columnIndex = headers.indexOf(header);
+                        const value = row[columnIndex];
+                        const display = formatCellValue(value, header);
                         const isValue = isValueColumn(header);
                         return (
-                          <td key={header.columnName} className={`px-3 py-2.5 ${isValue ? "font-medium tabular-nums" : ""}`}>
-                            {typeof val === "boolean" ? (
-                              <Badge variant={val ? "default" : "outline"} className={val ? "bg-green-500 text-white" : ""}>
-                                {val ? "Yes" : "No"}
+                          <td
+                            key={header.columnName}
+                            className={`px-3 py-2.5 ${isValue ? "font-medium tabular-nums" : ""}`}
+                          >
+                            {typeof value === "boolean" ? (
+                              <Badge
+                                variant={value ? "default" : "outline"}
+                                className={value ? "bg-green-500 text-white" : ""}
+                              >
+                                {value ? "Yes" : "No"}
                               </Badge>
                             ) : display === "—" ? (
-                              <span className="text-muted-foreground italic">—</span>
+                              <span className="italic text-muted-foreground">—</span>
                             ) : (
                               display
                             )}
@@ -579,10 +696,20 @@ export function LeadAppraisals({
                       {!readOnly && (
                         <td className="px-3 py-2.5 text-right">
                           <div className="flex justify-end gap-1">
-                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditForm(ri)}>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7"
+                              onClick={() => openEditForm(rowIndex)}
+                            >
                               <Edit2 className="h-3.5 w-3.5" />
                             </Button>
-                            <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => setDeleteRowId(getRowId(ri))}>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 text-destructive hover:text-destructive"
+                              onClick={() => handleDelete(getRowId(rowIndex))}
+                            >
                               <Trash2 className="h-3.5 w-3.5" />
                             </Button>
                           </div>
@@ -597,44 +724,44 @@ export function LeadAppraisals({
         </CardContent>
       </Card>
 
-      {/* Add / Edit Dialog */}
       <Dialog open={formOpen} onOpenChange={setFormOpen}>
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+        <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{editingRowId != null ? "Edit Collateral" : "Add Collateral"}</DialogTitle>
+            <DialogTitle>
+              {editingRowId != null ? "Edit Collateral" : "Add Collateral"}
+            </DialogTitle>
             <DialogDescription>
-              {editingRowId != null ? "Update the collateral details below." : "Fill in the collateral details to add a new item."}
+              {editingRowId != null
+                ? "Update the collateral details below."
+                : "Fill in the collateral details to add a new item."}
             </DialogDescription>
           </DialogHeader>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-4">
-            {editableHeaders.map((h) => renderFormField(h))}
+          <div className="grid grid-cols-1 gap-4 py-4 md:grid-cols-2">
+            {editableHeaders.map((header) => renderFormField(header))}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setFormOpen(false)} disabled={saving}>Cancel</Button>
+            <Button
+              variant="outline"
+              onClick={() => setFormOpen(false)}
+              disabled={saving}
+            >
+              Cancel
+            </Button>
             <Button onClick={handleSave} disabled={saving}>
-              {saving ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Saving...</> : editingRowId != null ? "Update" : "Add"}
+              {saving ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Saving...
+                </>
+              ) : editingRowId != null ? (
+                "Update"
+              ) : (
+                "Add"
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      {/* Delete Confirmation */}
-      <AlertDialog open={deleteRowId != null} onOpenChange={(open) => { if (!open) setDeleteRowId(null); }}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete Collateral Item</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will permanently remove this collateral item from Fineract. This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} disabled={deleting} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-              {deleting ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Deleting...</> : "Delete"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 }

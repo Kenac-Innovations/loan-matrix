@@ -73,7 +73,7 @@ export function useReceiptValidation() {
   const markUsed = useCallback(
     async (params: {
       receiptNumber: string;
-      transactionType: "REPAYMENT" | "DISBURSEMENT";
+      transactionType: "REPAYMENT" | "DISBURSEMENT" | "CREDIT_BALANCE_REFUND";
       fineractTxnId?: string;
       loanId?: number;
       usedBy?: string;

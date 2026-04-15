@@ -1,9 +1,13 @@
 import type { Session } from "next-auth";
 
+export function isOmamaTenant(tenantSlug?: string | null): boolean {
+  return (tenantSlug || "").trim().toLowerCase() === "omama";
+}
+
 export function isPendingLoanApplicationEditTenant(
   tenantSlug?: string | null
 ): boolean {
-  return (tenantSlug || "").trim().toLowerCase() === "omama";
+  return isOmamaTenant(tenantSlug);
 }
 
 export function isPendingApprovalLoanStatus(status?: string | null): boolean {

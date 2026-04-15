@@ -1,5 +1,7 @@
 import amqp, { Connection, Channel, ConsumeMessage } from "amqplib";
+import { Agent } from "node:https";
 import prisma from "./prisma";
+import { updateBulkRepaymentUploadCounters } from "./bulk-repayment-upload-stats";
 
 export interface BulkRepaymentMessage {
   itemId: string;
@@ -17,6 +19,34 @@ export interface BulkRepaymentMessage {
   note?: string;
   locale: string;
   dateFormat: string;
+}
+
+interface BulkRepaymentRequestBody {
+  dateFormat: string;
+  locale: string;
+  transactionDate: string;
+  transactionAmount: number;
+  note: string;
+  paymentTypeId?: number;
+  accountNumber?: string;
+  chequeNumber?: string;
+  routingCode?: string;
+  receiptNumber?: string;
+  bankNumber?: string;
+}
+
+interface FineractApiPayload {
+  resourceId?: string | number;
+  transactionId?: string | number;
+  defaultUserMessage?: string;
+  errors?: Array<{
+    defaultUserMessage?: string;
+  }>;
+}
+
+interface FineractApiError extends Error {
+  status?: number;
+  errorData?: FineractApiPayload;
 }
 
 declare global {
@@ -210,7 +240,7 @@ export class BulkRepaymentQueueService {
     });
 
     try {
-      const repaymentBody: any = {
+      const repaymentBody: BulkRepaymentRequestBody = {
         dateFormat: message.dateFormat,
         locale: message.locale,
         transactionDate: message.transactionDate,
@@ -250,16 +280,17 @@ export class BulkRepaymentQueueService {
       });
 
       // Update upload counters
-      await this.updateUploadCounters(message.uploadId);
+      await updateBulkRepaymentUploadCounters(message.uploadId);
 
       console.log(
         `[BulkRepayment] Success: item=${message.itemId} txnId=${result.resourceId || result.transactionId}`
       );
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const fineractError = error as FineractApiError;
       const errorMsg =
-        error.errorData?.defaultUserMessage ||
-        error.errorData?.errors?.[0]?.defaultUserMessage ||
-        error.message ||
+        fineractError.errorData?.defaultUserMessage ||
+        fineractError.errorData?.errors?.[0]?.defaultUserMessage ||
+        fineractError.message ||
         "Unknown error";
 
       await prisma.bulkRepaymentItem.update({
@@ -271,7 +302,7 @@ export class BulkRepaymentQueueService {
         },
       });
 
-      await this.updateUploadCounters(message.uploadId);
+      await updateBulkRepaymentUploadCounters(message.uploadId);
 
       console.error(
         `[BulkRepayment] Failed: item=${message.itemId} error=${errorMsg}`
@@ -282,8 +313,8 @@ export class BulkRepaymentQueueService {
   private async callFineractAPI(
     tenantSlug: string,
     endpoint: string,
-    body: any
-  ): Promise<any> {
+    body: BulkRepaymentRequestBody
+  ): Promise<FineractApiPayload> {
     const baseUrl = process.env.FINERACT_BASE_URL || "http://10.10.0.143:8443";
     const serviceToken = process.env.FINERACT_SERVICE_TOKEN || "bWlmb3M6cGFzc3dvcmQ=";
     const fineractTenantId = tenantSlug || process.env.FINERACT_TENANT_ID || "goodfellow";
@@ -296,72 +327,42 @@ export class BulkRepaymentQueueService {
       "Fineract-Platform-TenantId": fineractTenantId,
     };
 
-    const fetchOptions: RequestInit = { method: "POST", headers, body: JSON.stringify(body) };
+    const fetchOptions: RequestInit & { agent?: Agent } = {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+    };
 
-    let response;
+    let response: Response;
     if (url.startsWith("http://")) {
       response = await fetch(url, fetchOptions);
     } else {
-      const https = require("https");
-      const agent = new https.Agent({ rejectUnauthorized: false });
-      response = await fetch(url, { ...fetchOptions, ...(({ agent } as any)) });
+      const agent = new Agent({ rejectUnauthorized: false });
+      response = await fetch(url, { ...fetchOptions, agent });
     }
 
     if (!response.ok) {
-      let errorData;
-      try { errorData = await response.json(); } catch { errorData = {}; }
+      let errorData: FineractApiPayload = {};
+      try {
+        errorData = (await response.json()) as FineractApiPayload;
+      } catch {
+        errorData = {};
+      }
 
       const msg =
         errorData?.errors?.[0]?.defaultUserMessage ||
         errorData?.defaultUserMessage ||
         `HTTP ${response.status}: ${response.statusText}`;
 
-      const error = new Error(`API error: ${response.status} ${response.statusText}`);
-      (error as any).status = response.status;
-      (error as any).errorData = { ...errorData, defaultUserMessage: msg };
+      const error = new Error(
+        `API error: ${response.status} ${response.statusText}`
+      ) as FineractApiError;
+      error.status = response.status;
+      error.errorData = { ...errorData, defaultUserMessage: msg };
       throw error;
     }
 
-    return response.json();
-  }
-
-  private async updateUploadCounters(uploadId: string): Promise<void> {
-    try {
-      const counts = await prisma.bulkRepaymentItem.groupBy({
-        by: ["status"],
-        where: { uploadId },
-        _count: { status: true },
-      });
-
-      const countMap: Record<string, number> = {};
-      counts.forEach((c) => {
-        countMap[c.status] = c._count.status;
-      });
-
-      const successCount = countMap["SUCCESS"] || 0;
-      const failedCount = countMap["FAILED"] || 0;
-      const queuedCount = (countMap["QUEUED"] || 0) + (countMap["PROCESSING"] || 0);
-      const totalProcessed = successCount + failedCount;
-
-      const upload = await prisma.bulkRepaymentUpload.findUnique({
-        where: { id: uploadId },
-        select: { totalRows: true },
-      });
-
-      const isComplete = upload && totalProcessed >= upload.totalRows;
-
-      await prisma.bulkRepaymentUpload.update({
-        where: { id: uploadId },
-        data: {
-          successCount,
-          failedCount,
-          queuedCount,
-          status: isComplete ? "COMPLETED" : "PROCESSING",
-        },
-      });
-    } catch (err) {
-      console.error("[BulkRepayment] Failed to update counters:", err);
-    }
+    return (await response.json()) as FineractApiPayload;
   }
 
   public async close(): Promise<void> {

@@ -1,7 +1,6 @@
 "use client";
 
 import { useCurrency } from "@/contexts/currency-context";
-import { getTransactionTypeDisplayLabel } from "@/lib/format-transaction";
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
@@ -150,7 +149,7 @@ export default function TransactionDetailsPage() {
             </div>
             <div className="space-y-1">
               <div className="text-sm text-muted-foreground">Type</div>
-              <div className="font-medium">{getTransactionTypeDisplayLabel(transaction?.type)}</div>
+              <div className="font-medium">{transaction?.type?.value}</div>
             </div>
             <div className="space-y-1">
               <div className="text-sm text-muted-foreground">Transaction Date</div>

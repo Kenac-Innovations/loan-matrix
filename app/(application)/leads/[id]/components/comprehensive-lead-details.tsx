@@ -59,10 +59,12 @@ import { PendingApprovalLoanTermsEditor } from "./pending-approval-loan-terms-ed
 
 interface ComprehensiveLeadDetailsProps {
   leadId: string;
+  canEditPendingLoanApplication?: boolean;
 }
 
 export function ComprehensiveLeadDetails({
   leadId,
+  canEditPendingLoanApplication = false,
 }: ComprehensiveLeadDetailsProps) {
   const { currencyCode, currencySymbol } = useCurrency();
   const { isEnabled } = useFeatureFlags();
@@ -451,6 +453,7 @@ export function ComprehensiveLeadDetails({
 
   const pendingApprovalStatus = "submitted and pending approval";
   const canOpenPendingLoanTermsEditor =
+    canEditPendingLoanApplication &&
     (fineractLoan?.status?.value || "").trim().toLowerCase() === pendingApprovalStatus;
 
   // Debug logging
@@ -496,6 +499,7 @@ export function ComprehensiveLeadDetails({
       ?? (typeof lead.requestedAmount === "number" && lead.requestedAmount > 0
         ? lead.requestedAmount
         : principalAmountFallback);
+  const loanId = fineractLoan?.id || lead?.fineractLoanId || null;
 
   // Get Fineract loan status
   const currentStageName = typeof lead.currentStage?.name === "string"
@@ -600,7 +604,7 @@ export function ComprehensiveLeadDetails({
             </Dialog>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+            <div className="grid grid-cols-2 gap-4 text-sm">
               <div className="flex items-center gap-2">
                 <Phone className="h-4 w-4 text-muted-foreground" />
                 <span>{phoneNumber}</span>
@@ -794,26 +798,10 @@ export function ComprehensiveLeadDetails({
                     <p className="font-semibold">{invoiceDiscounting?.debtorName || "N/A"}</p>
                   </div>
                   <div>
-                    <p className="text-sm text-muted-foreground">Recourse</p>
-                    <p className="font-semibold">
-                      {invoiceDiscounting?.recourseType === "WITHOUT_RECOURSE"
-                        ? "Without Recourse"
-                        : "With Recourse"}
-                    </p>
-                  </div>
-                  <div>
                     <p className="text-sm text-muted-foreground">Advance Rate</p>
                     <p className="font-semibold">
                       {invoiceDiscounting?.advanceRate != null
                         ? `${invoiceDiscounting.advanceRate}%`
-                        : "N/A"}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Concentration Limit</p>
-                    <p className="font-semibold">
-                      {invoiceDiscounting?.concentrationLimit != null
-                        ? `${invoiceDiscounting.concentrationLimit}%`
                         : "N/A"}
                     </p>
                   </div>
@@ -827,19 +815,12 @@ export function ComprehensiveLeadDetails({
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 gap-4 rounded-md border bg-muted/30 p-4 md:grid-cols-4">
+                <div className="grid grid-cols-1 gap-4 rounded-md border bg-muted/30 p-4 md:grid-cols-3">
                   <div>
                     <p className="text-xs text-muted-foreground">Presented</p>
                     <p className="text-base font-semibold">
                       {currencyCode}{" "}
                       {(invoiceDiscounting?.totalPresentedAmount || 0).toLocaleString()}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Eligible</p>
-                    <p className="text-base font-semibold">
-                      {currencyCode}{" "}
-                      {(invoiceDiscounting?.totalEligibleAmount || 0).toLocaleString()}
                     </p>
                   </div>
                   <div>
@@ -850,7 +831,7 @@ export function ComprehensiveLeadDetails({
                     </p>
                   </div>
                   <div>
-                    <p className="text-xs text-muted-foreground">Reserve</p>
+                    <p className="text-xs text-muted-foreground">Income</p>
                     <p className="text-base font-semibold">
                       {currencyCode}{" "}
                       {(invoiceDiscounting?.totalReserveAmount || 0).toLocaleString()}
@@ -871,7 +852,6 @@ export function ComprehensiveLeadDetails({
                             <th className="px-3 py-2 text-left font-medium">Due Date</th>
                             <th className="px-3 py-2 text-left font-medium">File</th>
                             <th className="px-3 py-2 text-left font-medium">Gross</th>
-                            <th className="px-3 py-2 text-left font-medium">Eligible</th>
                             <th className="px-3 py-2 text-left font-medium">Financed</th>
                           </tr>
                         </thead>
@@ -906,10 +886,6 @@ export function ComprehensiveLeadDetails({
                               <td className="px-3 py-2">
                                 {invoice.currencyCode || currencyCode}{" "}
                                 {(invoice.grossAmount || 0).toLocaleString()}
-                              </td>
-                              <td className="px-3 py-2">
-                                {invoice.currencyCode || currencyCode}{" "}
-                                {(invoice.eligibleAmount || 0).toLocaleString()}
                               </td>
                               <td className="px-3 py-2">
                                 {invoice.currencyCode || currencyCode}{" "}
@@ -1155,7 +1131,7 @@ export function ComprehensiveLeadDetails({
                           <h4 className="text-sm font-semibold text-foreground border-b pb-2">
                             Principal
                           </h4>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <div className="grid grid-cols-2 gap-4">
                             <div>
                               <p className="text-xs text-muted-foreground">
                                 Disbursed
@@ -1210,7 +1186,7 @@ export function ComprehensiveLeadDetails({
                           <h4 className="text-sm font-semibold text-foreground border-b pb-2">
                             Interest
                           </h4>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <div className="grid grid-cols-2 gap-4">
                             <div>
                               <p className="text-xs text-muted-foreground">
                                 Charged
@@ -1270,7 +1246,7 @@ export function ComprehensiveLeadDetails({
                             <h4 className="text-sm font-semibold text-foreground border-b pb-2">
                               Charges
                             </h4>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div className="grid grid-cols-2 gap-4">
                               {fineractLoan.summary.feeChargesCharged > 0 && (
                                 <>
                                   <div>
@@ -1448,7 +1424,7 @@ export function ComprehensiveLeadDetails({
                     <CardTitle>Loan Timeline</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                       {fineractLoan.timeline.submittedOnDate && (
                         <div>
                           <p className="text-sm text-muted-foreground">
@@ -1632,7 +1608,7 @@ export function ComprehensiveLeadDetails({
                     <CardTitle>Credit Scoring</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                       <div>
                         <p className="text-sm text-muted-foreground">
                           Credit Score
@@ -1717,7 +1693,7 @@ export function ComprehensiveLeadDetails({
                     <CardTitle>Affordability Assessment</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                       <div>
                         <p className="text-sm text-muted-foreground">
                           DTI Ratio
@@ -1792,7 +1768,7 @@ export function ComprehensiveLeadDetails({
                     <CardTitle>Pricing & Risk Assessment</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                       <div>
                         <p className="text-sm text-muted-foreground">APR</p>
                         <p className="text-2xl font-bold text-red-600">
@@ -2098,7 +2074,7 @@ export function ComprehensiveLeadDetails({
                 {fineractLoan.repaymentSchedule.periods && (
                   <div className="space-y-4">
                     {/* Summary */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-muted/50 rounded-lg">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-muted/50 rounded-lg">
                       <div>
                         <p className="text-xs text-muted-foreground">
                           Total Principal
