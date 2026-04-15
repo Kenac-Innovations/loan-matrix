@@ -479,8 +479,16 @@ export function ComprehensiveLeadDetails({
     ? `${lead.countryCode} ${lead.mobileNo}`
     : "Not provided";
 
+  const originalRequestedAmount =
+    typeof lead.stateMetadata?.originalRequestedAmount === "number" &&
+    lead.stateMetadata.originalRequestedAmount > 0
+      ? lead.stateMetadata.originalRequestedAmount
+      : null;
+
   const requestedAmount =
-    lead.requestedAmount && lead.requestedAmount > 0
+    originalRequestedAmount
+      ? originalRequestedAmount
+      : lead.requestedAmount && lead.requestedAmount > 0
       ? lead.requestedAmount
       : fineractLoan?.proposedPrincipal
         || fineractLoan?.approvedPrincipal

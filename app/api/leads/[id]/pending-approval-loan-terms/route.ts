@@ -32,6 +32,7 @@ type LoanTermsMetadata = Record<string, unknown> & {
 };
 
 type LeadStateMetadata = Record<string, unknown> & {
+  originalRequestedAmount?: number;
   loanTerms?: LoanTermsMetadata;
 };
 
@@ -428,11 +429,13 @@ export async function PUT(
     await prisma.lead.update({
       where: { id: leadId },
       data: {
-        requestedAmount: parsedBody.principal,
         loanTerm: parsedBody.loanTermFrequency,
         lastModified: new Date(),
         stateMetadata: {
           ...currentMetadata,
+          originalRequestedAmount:
+            currentMetadata.originalRequestedAmount ??
+            (lead.requestedAmount != null ? Number(lead.requestedAmount) : undefined),
           signatures: null,
           contractsSigned: false,
           contractsSignedAt: null,
