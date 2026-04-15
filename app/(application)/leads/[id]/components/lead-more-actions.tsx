@@ -82,54 +82,33 @@ export function LeadMoreActions({
       return;
     }
 
-    const printWindow = window.open("", "_blank");
+    const printWindow = window.open(
+      `/api/leads/${leadId}/print-contract?action=print`,
+      "_blank",
+      "noopener,noreferrer"
+    );
 
     if (!printWindow) {
       toast.error("Please allow pop-ups to print the contract.");
+    }
+  };
+
+  const handleExportPdf = () => {
+    if (!canPrintContract) {
+      toast.error(
+        "Loan contracts can only be exported after the application has reached final approval."
+      );
       return;
     }
 
-    printWindow.document.write(
-      "<html><body style='font-family:sans-serif;padding:24px'>Preparing contract for printing...</body></html>"
+    const exportWindow = window.open(
+      `/api/leads/${leadId}/print-contract?action=pdf`,
+      "_blank",
+      "noopener,noreferrer"
     );
-    printWindow.document.close();
 
-    try {
-      const response = await fetch(`/api/leads/${leadId}/print-contract`, {
-        cache: "no-store",
-      });
-
-      if (!response.ok) {
-        let message = "Failed to prepare the loan contract for printing.";
-
-        try {
-          const data = await response.json();
-          if (typeof data?.error === "string" && data.error.trim()) {
-            message = data.error;
-          }
-        } catch {
-          const text = await response.text().catch(() => "");
-          if (text.trim()) {
-            message = text;
-          }
-        }
-
-        printWindow.close();
-        toast.error(message);
-        return;
-      }
-
-      const html = await response.text();
-      printWindow.document.open();
-      printWindow.document.write(html);
-      printWindow.document.close();
-    } catch (error) {
-      printWindow.close();
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : "Failed to prepare the loan contract for printing."
-      );
+    if (!exportWindow) {
+      toast.error("Please allow pop-ups to export the contract PDF.");
     }
   };
 
@@ -151,7 +130,7 @@ export function LeadMoreActions({
           <Printer className="mr-2 h-4 w-4" />
           Print Contract
         </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => handleComingSoon("Export PDF")}>
+        <DropdownMenuItem onClick={handleExportPdf}>
           <FileText className="mr-2 h-4 w-4" />
           Export PDF
         </DropdownMenuItem>

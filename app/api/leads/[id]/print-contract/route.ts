@@ -32,30 +32,106 @@ function getForwardedHeaders(request: NextRequest): HeadersInit {
   return forwardedHeaders;
 }
 
-function injectPrintChrome(html: string, origin: string): string {
+function injectContractChrome(
+  html: string,
+  origin: string,
+  options: {
+    action: "print" | "pdf";
+    fileName: string;
+  }
+): string {
   const baseTag = `<base href="${origin}/">`;
-  const printScript = `
+  const toolbar = `
+    <div style="position:sticky;top:0;z-index:9999;display:flex;gap:12px;align-items:center;padding:12px 16px;border-bottom:1px solid #e5e7eb;background:#ffffff;">
+      <button type="button" onclick="window.print()" style="border:1px solid #cbd5e1;border-radius:8px;background:#ffffff;padding:10px 14px;font:600 14px sans-serif;cursor:pointer;">
+        Print
+      </button>
+      <button type="button" id="download-pdf-btn" data-filename="${options.fileName}" style="border:1px solid #cbd5e1;border-radius:8px;background:#ffffff;padding:10px 14px;font:600 14px sans-serif;cursor:pointer;">
+        Download PDF
+      </button>
+      <span style="font:400 12px sans-serif;color:#64748b;">
+        If the browser adds headers or footers, turn them off in the print dialog.
+      </span>
+    </div>
+  `;
+  const actionScript = `
     <script>
       window.addEventListener("load", function () {
-        window.print();
+        var action = ${JSON.stringify(options.action)};
+        if (action === "print") {
+          window.print();
+          return;
+        }
+
+        var btn = document.getElementById("download-pdf-btn");
+        if (!btn || typeof window.html2pdf !== "function") {
+          return;
+        }
+
+        var filename = btn.getAttribute("data-filename") || "loan-contract.pdf";
+        var target = document.querySelector("[data-contract-content]");
+        if (!target) {
+          return;
+        }
+
+        btn.disabled = true;
+        btn.textContent = "Generating PDF...";
+
+        window.html2pdf()
+          .set({
+            margin: 10,
+            filename: filename,
+            image: { type: "jpeg", quality: 0.98 },
+            html2canvas: { scale: 2, useCORS: true },
+            jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+            pagebreak: { mode: ["avoid-all", "css", "legacy"] }
+          })
+          .from(target)
+          .save()
+          .then(function () {
+            btn.disabled = false;
+            btn.textContent = "Download PDF";
+            setTimeout(function () {
+              window.close();
+            }, 400);
+          })
+          .catch(function () {
+            btn.disabled = false;
+            btn.textContent = "Download PDF";
+          });
       });
     </script>
   `;
+  const pdfScript =
+    options.action === "pdf"
+      ? `<script src="/html2pdf.bundle.min.js"></script>`
+      : "";
 
   let output = html;
 
   if (output.includes("<head>")) {
-    output = output.replace("<head>", `<head>${baseTag}`);
+    output = output.replace("<head>", `<head>${baseTag}${pdfScript}`);
   } else if (/<head\s[^>]*>/.test(output)) {
-    output = output.replace(/<head\s[^>]*>/, (match) => `${match}${baseTag}`);
+    output = output.replace(
+      /<head\s[^>]*>/,
+      (match) => `${match}${baseTag}${pdfScript}`
+    );
   } else {
-    output = `${baseTag}${output}`;
+    output = `${baseTag}${pdfScript}${output}`;
+  }
+
+  if (output.includes("<body>")) {
+    output = output.replace("<body>", `<body>${toolbar}<div data-contract-content>`);
+  } else if (/<body\s[^>]*>/.test(output)) {
+    output = output.replace(/<body\s[^>]*>/, (match) => `${match}${toolbar}<div data-contract-content>`);
+  } else {
+    output = `${toolbar}<div data-contract-content>${output}`;
   }
 
   if (output.includes("</body>")) {
-    output = output.replace("</body>", `${printScript}</body>`);
+    output = output.replace("</body>", `</div>${actionScript}</body>`);
   } else {
-    output = `${output}${printScript}`;
+    output = `${output}</div>${actionScript}`;
   }
 
   return output;
@@ -75,6 +151,8 @@ export async function GET(
     const { id: leadId } = await context.params;
     const tenantSlug = extractTenantSlugFromRequest(request);
     const forwardedHeaders = getForwardedHeaders(request);
+    const action =
+      request.nextUrl.searchParams.get("action") === "pdf" ? "pdf" : "print";
 
     const lead = await prisma.lead.findUnique({
       where: { id: leadId },
@@ -144,7 +222,11 @@ export async function GET(
         )
       : generateContractHTML(contractPayload.data);
 
-    const printableHtml = injectPrintChrome(contractHtml, request.nextUrl.origin);
+    const contractFileName = `loan-contract-${leadId}.pdf`;
+    const printableHtml = injectContractChrome(contractHtml, request.nextUrl.origin, {
+      action,
+      fileName: contractFileName,
+    });
 
     return new NextResponse(printableHtml, {
       status: 200,
