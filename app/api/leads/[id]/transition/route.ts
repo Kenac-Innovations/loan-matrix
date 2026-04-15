@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { TeamAwareStateMachineService } from "@/lib/team-state-machine-service";
+import { leadStateManager } from "@/lib/lead-state-manager";
 import { getSession as getCustomSession } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
 
 /**
  * POST /api/leads/[id]/transition
- * Transition a lead to a new stage (by stage name for backward compat, or by stageId)
+ * Manually transition a lead to a new stage
  */
 export async function POST(
   request: NextRequest,
@@ -21,169 +20,43 @@ export async function POST(
     }
 
     const body = await request.json();
-    const {
-      targetStageName,
-      targetStageId,
-      reason,
-      metadata,
-      fineractOverrides,
-      overrideValidations,
-      overrideReason,
-    } = body;
+    const { targetStageName, reason, metadata } = body;
 
-    if (!targetStageName && !targetStageId) {
+    if (!targetStageName) {
       return NextResponse.json(
-        { error: "targetStageName or targetStageId is required" },
+        { error: "targetStageName is required" },
         { status: 400 }
       );
     }
 
-    if (overrideValidations && !overrideReason?.trim()) {
-      return NextResponse.json(
-        { error: "Override reason is required when overriding validations" },
-        { status: 400 }
-      );
-    }
+    console.log("=== MANUAL TRANSITION REQUEST ===");
+    console.log("Lead ID:", leadId);
+    console.log("Target Stage:", targetStageName);
+    console.log("User ID:", session.user.id);
+    console.log("Reason:", reason);
 
-    let resolvedStageId = targetStageId;
-
-    if (!resolvedStageId && targetStageName) {
-      const lead = await prisma.lead.findUnique({
-        where: { id: leadId },
-        select: { tenantId: true },
-      });
-
-      if (!lead) {
-        return NextResponse.json({ error: "Lead not found" }, { status: 404 });
-      }
-
-      const stage = await prisma.pipelineStage.findFirst({
-        where: {
-          tenantId: lead.tenantId,
-          name: targetStageName,
-          isActive: true,
-        },
-      });
-
-      if (!stage) {
-        return NextResponse.json(
-          { error: `Stage "${targetStageName}" not found` },
-          { status: 404 }
-        );
-      }
-
-      resolvedStageId = stage.id;
-    }
-
-    // Check required documents before allowing transition
-    let overriddenDocs: string[] = [];
-    const leadForDocs = await prisma.lead.findUnique({
-      where: { id: leadId },
-      select: { tenantId: true, fineractClientId: true },
-    });
-
-    if (leadForDocs) {
-      const requiredDocs = await prisma.requiredDocument.findMany({
-        where: { tenantId: leadForDocs.tenantId, isActive: true, isRequired: true },
-      });
-
-      if (requiredDocs.length > 0) {
-        const localDocs = await prisma.leadDocument.findMany({
-          where: { leadId },
-          select: { name: true, category: true },
-        });
-
-        let fineractDocs: { name: string }[] = [];
-        if (leadForDocs.fineractClientId) {
-          try {
-            const { fetchFineractAPI } = await import("@/lib/api");
-            const clientDocs = await fetchFineractAPI(
-              `/clients/${leadForDocs.fineractClientId}/documents`
-            );
-            const docs = Array.isArray(clientDocs) ? clientDocs : clientDocs?.pageItems || [];
-            fineractDocs = docs.map((d: any) => ({ name: d.name || d.fileName || "" }));
-          } catch {
-            // If Fineract is unreachable, just check local docs
-          }
-        }
-
-        const allDocs = [
-          ...localDocs.map((d) => ({ name: d.name, category: d.category })),
-          ...fineractDocs.map((d) => ({ name: d.name, category: "" })),
-        ];
-
-        const missingDocs = requiredDocs.filter((req) => {
-          const target = req.name.toLowerCase();
-          return !allDocs.some(
-            (d) => d.name.toLowerCase().includes(target)
-          );
-        });
-
-        if (missingDocs.length > 0) {
-          if (!overrideValidations) {
-            return NextResponse.json(
-              {
-                success: false,
-                message: `Missing required documents: ${missingDocs.map((d) => d.name).join(", ")}`,
-                missingDocuments: missingDocs.map((d) => ({
-                  name: d.name,
-                  category: d.category,
-                })),
-              },
-              { status: 400 }
-            );
-          }
-          overriddenDocs = missingDocs.map((d) => d.name);
-        }
-      }
-    }
-
-    // Build the reason with override context
-    const overrideNote = overriddenDocs.length > 0
-      ? `[VALIDATION OVERRIDE] Missing documents: ${overriddenDocs.join(", ")}. Override reason: ${overrideReason}`
-      : null;
-
-    const combinedReason = [reason, overrideNote].filter(Boolean).join("\n\n");
-
-    const result = await TeamAwareStateMachineService.executeTransition({
+    const result = await leadStateManager.manualTransition(
       leadId,
-      targetStageId: resolvedStageId,
-      event: "MANUAL_TRANSITION",
-      triggeredBy: session.user.id,
-      reason: combinedReason || undefined,
-      fineractOverrides,
-    });
-
-    // Post override to Fineract notes if there was an override
-    if (overrideNote && result.success && leadForDocs?.fineractClientId) {
-      try {
-        const lead = await prisma.lead.findUnique({
-          where: { id: leadId },
-          select: { fineractLoanId: true },
-        });
-        if (lead?.fineractLoanId) {
-          const { fetchFineractAPI } = await import("@/lib/api");
-          await fetchFineractAPI(
-            `/loans/${lead.fineractLoanId}/notes`,
-            { method: "POST", body: JSON.stringify({ note: overrideNote }) }
-          );
-        }
-      } catch {
-        // Non-blocking — override still proceeds
-      }
-    }
+      targetStageName,
+      session.user.id,
+      reason,
+      metadata
+    );
 
     if (result.success) {
       return NextResponse.json({
         success: true,
-        newStage: result.lead?.currentStageId,
-        stageName: result.lead?.currentStage?.name,
+        newStage: result.newStage,
+        stageName: result.stageName,
         message: result.message,
-        assignedMember: result.assignedMember,
       });
     } else {
       return NextResponse.json(
-        { success: false, message: result.message },
+        {
+          success: false,
+          message: result.message,
+          errors: result.errors,
+        },
         { status: 400 }
       );
     }
@@ -202,7 +75,7 @@ export async function POST(
 
 /**
  * GET /api/leads/[id]/transition
- * Get available transitions for a lead with team context
+ * Get available transitions for a lead
  */
 export async function GET(
   request: NextRequest,
@@ -217,13 +90,9 @@ export async function GET(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const transitions =
-      await TeamAwareStateMachineService.getAvailableTransitionsWithTeams(
-        leadId,
-        session.user.id
-      );
+    const transitions = await leadStateManager.getAvailableTransitions(leadId);
 
-    return NextResponse.json({ transitions });
+    return NextResponse.json(transitions);
   } catch (error) {
     console.error("Error getting available transitions:", error);
     return NextResponse.json(

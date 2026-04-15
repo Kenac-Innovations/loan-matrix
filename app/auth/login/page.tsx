@@ -13,24 +13,50 @@ import { Particles } from "@/components/magicui/particles";
 import { BorderBeam } from "@/components/magicui/border-beam";
 import { Meteors } from "@/components/magicui/meteors";
 import { useAuth } from "@/contexts/auth-context";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { ThemeAwareLogo } from "@/components/ui/theme-aware-logo";
+import { Suspense } from "react";
 
-export default function LoginPage() {
+function sanitizeCallbackUrl(value: string | null): string {
+  if (!value) {
+    return "/leads";
+  }
+
+  if (value.startsWith("/") && !value.startsWith("//")) {
+    return value;
+  }
+
+  if (typeof window !== "undefined") {
+    try {
+      const parsed = new URL(value, window.location.origin);
+      if (parsed.origin === window.location.origin) {
+        return `${parsed.pathname}${parsed.search}${parsed.hash}` || "/leads";
+      }
+    } catch {
+      return "/leads";
+    }
+  }
+
+  return "/leads";
+}
+
+function LoginPageContent() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const { login, status } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const callbackUrl = sanitizeCallbackUrl(searchParams?.get("callbackUrl") || null);
 
   useEffect(() => {
     // If user is already authenticated, redirect to leads
     if (status === "authenticated") {
-      router.push("/leads");
+      router.push(callbackUrl);
     }
-  }, [status, router]);
+  }, [status, router, callbackUrl]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -44,10 +70,10 @@ export default function LoginPage() {
     setIsLoading(true);
 
     try {
-      const result = await login(username, password);
+      const result = await login(username, password, callbackUrl);
 
       if (result.success) {
-        window.location.href = "/leads";
+        window.location.assign(callbackUrl);
       } else {
         setError(result.error || "Login failed");
       }
@@ -332,5 +358,13 @@ export default function LoginPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-background" />}>
+      <LoginPageContent />
+    </Suspense>
   );
 }

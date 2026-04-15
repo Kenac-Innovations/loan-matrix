@@ -18,8 +18,10 @@ interface FailedItem {
   amount: string;
   paymentTypeName: string | null;
   errorMessage: string | null;
+  reversalErrorMessage: string | null;
   processedAt: string | null;
   status: string;
+  reversalStatus: string | null;
 }
 
 interface FailedTabProps {
@@ -43,7 +45,7 @@ export function FailedTab({ selectedUploadId, onCountChange }: FailedTabProps) {
     if (showLoader) setLoading(true);
     try {
       const res = await fetch(
-        `/api/collections/uploads/${selectedUploadId}/items?status=FAILED`
+        `/api/collections/uploads/${selectedUploadId}/items?status=FAILED&reversalStatus=FAILED&mode=or`
       );
       if (res.ok) {
         const data = await res.json();
@@ -139,9 +141,12 @@ export function FailedTab({ selectedUploadId, onCountChange }: FailedTabProps) {
       id: "errorMessage",
       header: "Error",
       accessorKey: "errorMessage",
-      cell: ({ getValue }) => (
-        <span className="text-xs text-destructive max-w-[300px] truncate block" title={String(getValue() || "")}>
-          {String(getValue() || "Unknown error")}
+      cell: ({ row, getValue }) => (
+        <span
+          className="text-xs text-destructive max-w-[300px] truncate block"
+          title={String(getValue() || row.original.reversalErrorMessage || "")}
+        >
+          {String(getValue() || row.original.reversalErrorMessage || "Unknown error")}
         </span>
       ),
     },
@@ -161,6 +166,16 @@ export function FailedTab({ selectedUploadId, onCountChange }: FailedTabProps) {
       },
     },
     {
+      id: "failureType",
+      header: "Failure Type",
+      enableSorting: false,
+      cell: ({ row }) => (
+        <span className="text-xs text-muted-foreground">
+          {row.original.status === "FAILED" ? "Repayment" : "Undo"}
+        </span>
+      ),
+    },
+    {
       id: "actions",
       header: "Retry",
       enableSorting: false,
@@ -171,11 +186,14 @@ export function FailedTab({ selectedUploadId, onCountChange }: FailedTabProps) {
           className="h-7 text-xs"
           onClick={(e) => {
             e.stopPropagation();
-            handleRetrySingle(row.original.id);
+            if (row.original.status === "FAILED") {
+              handleRetrySingle(row.original.id);
+            }
           }}
+          disabled={row.original.status !== "FAILED"}
         >
           <RotateCcw className="h-3 w-3 mr-1" />
-          Retry
+          {row.original.status === "FAILED" ? "Retry" : "Use Undo"}
         </Button>
       ),
     },

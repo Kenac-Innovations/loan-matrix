@@ -18,6 +18,7 @@ interface QueuedItem {
   amount: string;
   paymentTypeName: string | null;
   status: string;
+  reversalStatus: string | null;
   createdAt: string;
 }
 
@@ -41,7 +42,7 @@ export function QueuedTab({ selectedUploadId, onCountChange }: QueuedTabProps) {
     if (showLoader) setLoading(true);
     try {
       const res = await fetch(
-        `/api/collections/uploads/${selectedUploadId}/items?status=QUEUED,PROCESSING`
+        `/api/collections/uploads/${selectedUploadId}/items?status=QUEUED,PROCESSING&reversalStatus=QUEUED,PROCESSING&mode=or`
       );
       if (res.ok) {
         const data = await res.json();
@@ -108,15 +109,20 @@ export function QueuedTab({ selectedUploadId, onCountChange }: QueuedTabProps) {
       id: "status",
       header: "Status",
       accessorKey: "status",
-      cell: ({ getValue }) => {
+      cell: ({ row, getValue }) => {
         const status = String(getValue());
+        const reversalStatus = row.original.reversalStatus;
+        const displayStatus =
+          status === "SUCCESS" && reversalStatus
+            ? `UNDO_${reversalStatus}`
+            : status;
         return (
           <Badge
             variant="secondary"
             className="text-xs bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-400"
           >
             <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-            {status}
+            {displayStatus}
           </Badge>
         );
       },

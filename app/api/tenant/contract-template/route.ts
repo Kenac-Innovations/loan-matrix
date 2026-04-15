@@ -89,6 +89,11 @@ const TENANT_TEMPLATES: Record<string, { dir: string; file: string; name: string
     file: "full-loan-template-from-db.html",
     name: "Omama Full Loan Contract",
   },
+  "omama-training": {
+    dir: path.join(process.cwd(), "templates", "omama-full-loan"),
+    file: "full-loan-template-from-db.html",
+    name: "Omama Full Loan Contract",
+  },
 };
 
 /**

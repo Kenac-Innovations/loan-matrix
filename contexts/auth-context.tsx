@@ -13,7 +13,11 @@ type AuthContextType = {
     email?: string | null;
     image?: string | null;
   } | null;
-  login: (username: string, password: string) => Promise<LoginResult>;
+  login: (
+    username: string,
+    password: string,
+    callbackUrl?: string
+  ) => Promise<LoginResult>;
   logout: () => void;
 };
 
@@ -51,14 +55,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = async (
     username: string,
-    password: string
+    password: string,
+    callbackUrl = "/leads"
   ): Promise<LoginResult> => {
     try {
       const result = await signIn("credentials", {
         username,
         password,
         redirect: false,
-        callbackUrl: "/leads",
+        callbackUrl,
       });
 
       if (result?.error) {

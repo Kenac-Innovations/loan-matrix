@@ -4,17 +4,16 @@ const prisma = new PrismaClient();
 
 async function main() {
   try {
-    // Create or get default tenant
-    console.log("Setting up default tenant...");
-    const tenant = await setupDefaultTenant();
+    console.log("Setting up tenants...");
+    const tenants = await setupDefaultTenants();
 
-    // Setup pipeline stages for the tenant
-    console.log("Setting up pipeline stages...");
-    await setupPipelineStages(tenant.id);
+    for (const tenant of tenants) {
+      console.log(`Setting up pipeline stages for ${tenant.slug}...`);
+      await setupPipelineStages(tenant.id);
 
-    // Setup system roles
-    console.log("Setting up system roles...");
-    await setupSystemRoles(tenant.id);
+      console.log(`Setting up system roles for ${tenant.slug}...`);
+      await setupSystemRoles(tenant.id);
+    }
 
     console.log("Database seeded successfully!");
   } catch (error) {
@@ -23,32 +22,52 @@ async function main() {
   }
 }
 
-async function setupDefaultTenant() {
-  let tenant = await prisma.tenant.findUnique({
-    where: { slug: "goodfellow" },
-  });
+async function setupDefaultTenants() {
+  const tenantDefinitions = [
+    {
+      name: "GoodFellow Organization",
+      slug: "goodfellow",
+      domain: "goodfellow.kenacloanmatrix.com",
+    },
+    {
+      name: "Omama Training",
+      slug: "omama-training",
+      domain: "omama-training.kenacloanmatrix.com",
+    },
+  ];
 
-  if (!tenant) {
-    console.log("Creating tenant...");
-    tenant = await prisma.tenant.create({
-      data: {
-        name: "GoodFellow Organization",
-        slug: "goodfellow",
-        settings: {
-          theme: "default",
-          features: {
-            statemachine: true,
-            notifications: true,
+  const tenants = [];
+
+  for (const definition of tenantDefinitions) {
+    let tenant = await prisma.tenant.findUnique({
+      where: { slug: definition.slug },
+    });
+
+    if (!tenant) {
+      console.log(`Creating tenant ${definition.slug}...`);
+      tenant = await prisma.tenant.create({
+        data: {
+          name: definition.name,
+          slug: definition.slug,
+          domain: definition.domain,
+          settings: {
+            theme: "default",
+            features: {
+              statemachine: true,
+              notifications: true,
+            },
           },
         },
-      },
-    });
-    console.log(`Tenant created: ${tenant.name} (${tenant.slug})`);
-  } else {
-    console.log(`Tenant already exists: ${tenant.name} (${tenant.slug})`);
+      });
+      console.log(`Tenant created: ${tenant.name} (${tenant.slug})`);
+    } else {
+      console.log(`Tenant already exists: ${tenant.name} (${tenant.slug})`);
+    }
+
+    tenants.push(tenant);
   }
 
-  return tenant;
+  return tenants;
 }
 
 async function setupPipelineStages(tenantId: string) {
