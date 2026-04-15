@@ -110,6 +110,7 @@ interface ReportData {
 }
 
 export default function ReportsPage() {
+  const [isOmamaTenant, setIsOmamaTenant] = useState(false);
   const [availableReports, setAvailableReports] = useState<FineractReport[]>(
     []
   );
@@ -164,6 +165,33 @@ export default function ReportsPage() {
   useEffect(() => {
     fetchAvailableReports();
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setIsOmamaTenant(window.location.hostname.toLowerCase().startsWith("omama."));
+  }, []);
+
+  const isOfficeParameter = (param: ReportParameter) =>
+    param.parameter_variable === "officeId" ||
+    param.parameter_label.trim().toLowerCase() === "office";
+
+  const getParameterLabel = (param: ReportParameter) =>
+    isOmamaTenant && isOfficeParameter(param)
+      ? "All branches"
+      : param.parameter_label;
+
+  const getOptionLabel = (param: ReportParameter, option: ParameterOption) => {
+    if (
+      isOmamaTenant &&
+      isOfficeParameter(param) &&
+      (option.id?.toString() === "-1" ||
+        option.tc.trim().toLowerCase() === "all")
+    ) {
+      return "All branches";
+    }
+
+    return option.tc;
+  };
 
   // Load report parameters when a report is selected
   useEffect(() => {
@@ -472,6 +500,7 @@ export default function ReportsPage() {
   const renderParameterInput = (param: ReportParameter) => {
     const value = parameters[param.parameter_variable] || "";
     const options = parameterOptions[param.parameter_name] || [];
+    const displayLabel = getParameterLabel(param);
 
     switch (param.parameter_displayType) {
       case "select":
@@ -483,12 +512,12 @@ export default function ReportsPage() {
             }
           >
             <SelectTrigger>
-              <SelectValue placeholder={`Select ${param.parameter_label}`} />
+              <SelectValue placeholder={`Select ${displayLabel}`} />
             </SelectTrigger>
             <SelectContent>
               {options.map((option) => (
                 <SelectItem key={option.id} value={option.id.toString()}>
-                  {option.tc}
+                  {getOptionLabel(param, option)}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -514,7 +543,7 @@ export default function ReportsPage() {
             onChange={(e) =>
               handleParameterChange(param.parameter_variable, e.target.value)
             }
-            placeholder={param.parameter_label}
+            placeholder={displayLabel}
           />
         );
 
@@ -526,7 +555,7 @@ export default function ReportsPage() {
             onChange={(e) =>
               handleParameterChange(param.parameter_variable, e.target.value)
             }
-            placeholder={param.parameter_label}
+            placeholder={displayLabel}
           />
         );
     }
