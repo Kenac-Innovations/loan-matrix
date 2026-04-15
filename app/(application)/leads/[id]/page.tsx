@@ -20,7 +20,6 @@ import { getSession } from "@/lib/auth";
 import { getFineractServiceWithSession } from "@/lib/fineract-api";
 import { getLeadAccessProfile } from "@/lib/lead-permissions";
 import {
-  canEditPendingLoanApplication,
   isPendingLoanApplicationEditTenant,
 } from "@/lib/pending-loan-application-edit";
 import { canPrintLoanContract } from "@/lib/loan-contract-print";
@@ -415,7 +414,7 @@ export default async function LeadDetailPage({
   const isReadOnly = !isAssignedUser;
   const canEditPendingLoanTerms =
     isPendingLoanApplicationEditTenant(tenantSlug) &&
-    canEditPendingLoanApplication(session, fineractLoanStatus);
+    Boolean(lead?.fineractLoanId || fineractLoanId);
   const canPrintContract = canPrintLoanContract(
     tenantSlug,
     fineractLoanStatus
