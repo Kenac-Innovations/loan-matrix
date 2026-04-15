@@ -1,4 +1,5 @@
 import { fetchFineractAPI } from "./api";
+import { createAndAdjustLoanCharge } from "./fineract-loan-charge";
 import { prisma } from "./prisma";
 
 interface ApplyTopupDisbursementChargesParams {
@@ -308,9 +309,8 @@ export async function applyTopupDisbursementCharges(
       locale: "en",
     };
 
-    await fetchFineractAPI(`/loans/${loanId}/charges`, {
-      method: "POST",
-      body: JSON.stringify(payload),
+    await createAndAdjustLoanCharge(loanId, payload, {
+      adjustmentNote: `Topup disbursement charge adjustment (${source})`,
     });
 
     applied += 1;

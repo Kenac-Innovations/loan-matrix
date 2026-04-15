@@ -13,6 +13,10 @@ import { MoreVertical } from "lucide-react";
 import { Transaction } from "@/shared/types/transaction";
 import { formatCurrency } from "@/lib/format-currency";
 import { formatDate } from "@/lib/format-date";
+import {
+  getLoanTransactionDisplayLabel,
+  getTransactionTypeDisplayLabel,
+} from "@/lib/format-transaction";
 import { GenericDataTable } from "@/components/tables/generic-data-table";
 import { DataTableColumn, DataTableFilter } from "@/shared/types/data-table";
 
@@ -143,8 +147,10 @@ export function TransactionsDataTable({
       id: "type",
       header: "Transaction Type",
       accessorKey: "type",
-      cell: ({ row }) => getDisplayedTransactionType(row.original),
-      getExportValue: (row) => getDisplayedTransactionType(row),
+      cell: ({ row }) => {
+        return getLoanTransactionDisplayLabel(row.original);
+      },
+      getExportValue: (row) => getLoanTransactionDisplayLabel(row),
       filterType: "select",
       filterOptions: [
         { label: "All Types", value: "all" },
