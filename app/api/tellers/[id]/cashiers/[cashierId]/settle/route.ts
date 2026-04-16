@@ -29,8 +29,15 @@ export async function POST(
     }
 
     const body = await request.json();
-    const { amount, currency, notes, date, transactionType, loanPayoutId } =
-      body;
+    const {
+      amount,
+      currency,
+      notes,
+      date,
+      transactionType,
+      loanPayoutId,
+      fineractLoanId,
+    } = body;
 
     if (!amount || amount <= 0) {
       return NextResponse.json(
@@ -52,7 +59,7 @@ export async function POST(
       return NextResponse.json(
         {
           error:
-            "Invalid transaction type. Must be EXPENSE, DISBURSEMENT or CREDIT_BALANCE_REFUND",
+            "Invalid transaction type. Must be EXPENSE, DISBURSEMENT, or CREDIT_BALANCE_REFUND",
         },
         { status: 400 }
       );
@@ -375,8 +382,7 @@ export async function POST(
       }
     }
 
-    // Customer-facing cash-outs require an active cashier session.
-    // For settlements to vault (after close), allow if there's a recent closed session
+    // Cash paid to customer from till (disbursement, credit balance refund): active session required
     if (
       !activeSession &&
       (txnType === "DISBURSEMENT" || txnType === "CREDIT_BALANCE_REFUND")
@@ -385,13 +391,13 @@ export async function POST(
         {
           error: "Session required",
           details:
-            "Cashier must have an active session for customer cash-out transactions. Please start a session first.",
+            "Cashier must have an active session for this transaction. Please start a session first.",
         },
         { status: 400 }
       );
     }
 
-    // For non-disbursement settlements (return to vault), check if there's a closed session
+    // For return-to-vault style settlements, check if there's a closed session
     if (
       !activeSession &&
       txnType !== "DISBURSEMENT" &&
@@ -450,6 +456,29 @@ export async function POST(
       ? formatDateForFineract(date)
       : formatDateForFineract(new Date());
 
+    // Fineract m_cashier_transactions.txn_note is varchar(200)
+    let fineractTxnNote: string;
+    if (txnType === "CREDIT_BALANCE_REFUND") {
+      const loanIdNum =
+        fineractLoanId != null && !Number.isNaN(Number(fineractLoanId))
+          ? Number(fineractLoanId)
+          : null;
+      const base =
+        loanIdNum != null
+          ? `Credit balance refund - Loan #${loanIdNum}`
+          : "Credit balance refund";
+      const trimmed = typeof notes === "string" ? notes.trim() : "";
+      fineractTxnNote = trimmed ? `${base} - ${trimmed}` : base;
+      if (fineractTxnNote.length > 200) {
+        fineractTxnNote = `${fineractTxnNote.slice(0, 197)}...`;
+      }
+    } else {
+      fineractTxnNote = (typeof notes === "string" && notes.trim()) || "Cash Out";
+      if (fineractTxnNote.length > 200) {
+        fineractTxnNote = `${fineractTxnNote.slice(0, 197)}...`;
+      }
+    }
+
     // Settle cash in Fineract (cash out transaction)
     let fineractSettlementId: number | null = null;
     try {
@@ -460,6 +489,7 @@ export async function POST(
         txnDate,
         currencyCode: currency,
         txnAmount: amount.toString(),
+        txnNote: fineractTxnNote,
       });
       const result = await fineractService.settleCashForCashier(
         teller.fineractTellerId,
@@ -468,7 +498,7 @@ export async function POST(
           txnDate,
           currencyCode: currency,
           txnAmount: amount.toString(),
-          txnNote: notes || "Cash Out",
+          txnNote: fineractTxnNote,
           dateFormat: "dd MMMM yyyy",
           locale: "en",
         }
@@ -533,8 +563,7 @@ export async function POST(
         }
 
         // Determine if return to vault for existing settlement
-        const existingIsReturnToVault = txnType !== "DISBURSEMENT" &&
-          txnType !== "CREDIT_BALANCE_REFUND" &&
+        const existingIsReturnToVault = txnType !== "DISBURSEMENT" && 
           (existingSettlement.notes?.toLowerCase().includes("vault") || 
            existingSettlement.notes?.toLowerCase().includes("safe") || 
            existingSettlement.notes?.toLowerCase().includes("settlement") ||
@@ -550,22 +579,29 @@ export async function POST(
       }
     }
 
-    // Distinguish vault returns from customer-facing cash-outs.
-    const isCustomerCashOut =
-      txnType === "DISBURSEMENT" || txnType === "CREDIT_BALANCE_REFUND";
-    const isReturnToVault = !isCustomerCashOut;
+    // Return to vault only for generic EXPENSE flows — not customer cash out (disbursement / credit refund)
+    const isReturnToVault =
+      txnType !== "DISBURSEMENT" && txnType !== "CREDIT_BALANCE_REFUND";
     
     console.log(`Settlement type: ${txnType}, isReturnToVault: ${isReturnToVault}, amount: ${amount}`);
     
     // Create a negative allocation record (cash out from cashier)
-    const settlementNotes =
-      txnType === "DISBURSEMENT"
-        ? `Loan Disbursement: ${loanPayout?.clientName} - ${
-            loanPayout?.loanAccountNo
-          }${notes ? ` - ${notes}` : ""}`
-        : txnType === "CREDIT_BALANCE_REFUND"
-        ? notes || "Credit Balance Refund"
-        : notes || "Return to Vault";
+    const loanIdForNote =
+      fineractLoanId != null && !Number.isNaN(Number(fineractLoanId))
+        ? Number(fineractLoanId)
+        : null;
+    let settlementNotes: string;
+    if (txnType === "DISBURSEMENT") {
+      const extra = notes ? ` - ${notes}` : "";
+      settlementNotes = `Loan Disbursement: ${loanPayout?.clientName} - ${loanPayout?.loanAccountNo}${extra}`;
+    } else if (txnType === "CREDIT_BALANCE_REFUND") {
+      const loanPart =
+        loanIdForNote != null ? ` - Loan #${loanIdForNote}` : "";
+      const extra = notes ? ` - ${notes}` : "";
+      settlementNotes = `Credit balance refund${loanPart}${extra}`;
+    } else {
+      settlementNotes = notes || "Return to Vault";
+    }
 
     const settlement = await prisma.cashAllocation.create({
       data: {

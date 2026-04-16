@@ -1,7 +1,6 @@
 "use client";
 
 import { useCurrency } from "@/contexts/currency-context";
-import { fineractFetch } from "@/lib/fineract-fetch";
 
 import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -84,7 +83,11 @@ export function PaymentModal({ isOpen, onClose, loanId, onSuccess, command, titl
       setLoading(true);
       setError(null);
       
-      const response = await fineractFetch(`/api/fineract/loans/${loanId}/transactions/template?command=${command}`);
+      const response = await fetch(`/api/fineract/loans/${loanId}/transactions/template?command=${command}`);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch payment template: ${response.statusText}`);
+      }
+      
       const data = await response.json();
       setTemplate(data);
       
@@ -147,13 +150,18 @@ export function PaymentModal({ isOpen, onClose, loanId, onSuccess, command, titl
         if (formData.bankNumber) payload.bankNumber = formData.bankNumber;
       }
 
-      const response = await fineractFetch(`/api/fineract/loans/${loanId}/transactions?command=${command}`, {
+      const response = await fetch(`/api/fineract/loans/${loanId}/transactions?command=${command}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(payload),
       });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.defaultUserMessage || errorData.error || `Failed to submit ${title.toLowerCase()}: ${response.statusText}`);
+      }
 
       const result = await response.json();
       console.log(`${title} submitted successfully:`, result);

@@ -15,9 +15,16 @@ import {
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { headers } from "next/headers";
-import { extractTenantSlug } from "@/lib/tenant-service";
+import { extractTenantSlug, getTenantBySlug } from "@/lib/tenant-service";
 import { getSession } from "@/lib/auth";
 import { getFineractServiceWithSession } from "@/lib/fineract-api";
+import { getLeadAccessProfile } from "@/lib/lead-permissions";
+import {
+  isOmamaTenant,
+  isPendingLoanApplicationEditTenant,
+} from "@/lib/pending-loan-application-edit";
+import { canPrintLoanContract } from "@/lib/loan-contract-print";
+import { getTenantFeatures } from "@/lib/tenant-features";
 
 const FINERACT_BASE_URL = process.env.FINERACT_BASE_URL || "http://10.10.0.143";
 
@@ -300,6 +307,7 @@ async function getLeadData(leadId: string) {
 
     // Extract tenant slug from host for Fineract API calls
     const tenantSlug = extractTenantSlug(host);
+    const tenant = await getTenantBySlug(tenantSlug);
 
     // Fetch lead data
     const lead = await prisma.lead.findUnique({
@@ -315,10 +323,12 @@ async function getLeadData(leadId: string) {
       orderBy: { order: "asc" },
     });
 
-    // Fetch Fineract loan info directly from Fineract API
-    // No need for internal HTTP calls - we call Fineract directly from this Server Component
-    // Note: fineractLoanId doesn't exist in schema, so we always fetch by external ID (leadId)
-    const fineractLoanInfo = await getFineractLoanInfo(null, leadId);
+    // Fetch Fineract loan info directly from Fineract API.
+    // Prefer the stored Fineract loan id when we have it, then fall back to the lead external id.
+    const fineractLoanInfo = await getFineractLoanInfo(
+      lead?.fineractLoanId ?? null,
+      leadId
+    );
 
     // Extract CDE result from stateMetadata
     const stateMetadata = (lead as any)?.stateMetadata as any;
@@ -354,6 +364,8 @@ async function getLeadData(leadId: string) {
       clientDocuments: fineractDocs.clientDocuments,
       loanDocuments: fineractDocs.loanDocuments,
       datatableData,
+      tenantSettings: tenant?.settings ?? null,
+      tenantSlug,
     };
   } catch (error) {
     console.error("Error fetching lead data:", error);
@@ -370,6 +382,8 @@ async function getLeadData(leadId: string) {
       datatableData: {},
       clientDocuments: [],
       loanDocuments: [],
+      tenantSettings: null,
+      tenantSlug: null,
     };
   }
 }
@@ -393,6 +407,8 @@ export default async function LeadDetailPage({
     datatableData,
     clientDocuments,
     loanDocuments,
+    tenantSettings,
+    tenantSlug,
   } = await getLeadData(id);
   
   const session = await getSession();
@@ -402,6 +418,25 @@ export default async function LeadDetailPage({
     lead?.assignedToUserId != null &&
     String(lead.assignedToUserId) === currentUserId;
   const isReadOnly = !isAssignedUser;
+  const tenantFeatures = getTenantFeatures(tenantSettings);
+  const showOmamaLeadTabs =
+    tenantFeatures.canEditLoan || isOmamaTenant(tenantSlug);
+  const canEditPendingLoanTerms =
+    isPendingLoanApplicationEditTenant(tenantSlug, tenantSettings) &&
+    Boolean(lead?.fineractLoanId || fineractLoanId);
+  const originalRequestedAmount =
+    typeof (lead?.stateMetadata as any)?.originalRequestedAmount === "number" &&
+    (lead?.stateMetadata as any).originalRequestedAmount > 0
+      ? (lead?.stateMetadata as any).originalRequestedAmount
+      : typeof (lead?.stateMetadata as any)?.originalPendingApprovalLoanTerms?.principal === "number" &&
+          (lead?.stateMetadata as any).originalPendingApprovalLoanTerms.principal > 0
+        ? (lead?.stateMetadata as any).originalPendingApprovalLoanTerms.principal
+        : null;
+  const canPrintContract = canPrintLoanContract(
+    tenantSlug,
+    fineractLoanStatus
+  );
+  const currentStageFineractAction = (lead?.currentStage as any)?.fineractAction;
 
   // Check if current user is in the team for the lead's current stage
   let isUserInStageTeam = false;
@@ -431,6 +466,15 @@ export default async function LeadDetailPage({
       </div>
     );
   }
+
+  const accessProfile = await getLeadAccessProfile({
+    tenantId: lead.tenantId,
+    lead,
+    loanStatus: fineractLoanStatus,
+    session,
+  });
+  const canOpenPendingApprovalEditor =
+    accessProfile.canRestrictedEditPendingApprovalLoanTerms;
 
   const currentStage = lead.currentStage?.name || "New Lead";
   const pageHue = getStatusPageHue(fineractLoanStatus);
@@ -476,7 +520,7 @@ export default async function LeadDetailPage({
                 )}
                 {lead.currentStage && (
                   lead.currentStage.isFinalState ? (
-                    lead.currentStage.fineractAction === "reject" ? (
+                    currentStageFineractAction === "reject" ? (
                       <Badge className="bg-red-600 text-white border-0 text-xs gap-1 shrink-0">
                         <XCircle className="h-3 w-3" />
                         Rejected
@@ -517,12 +561,15 @@ export default async function LeadDetailPage({
                   assignedToUserId={lead.assignedToUserId}
                   fineractClientId={lead.fineractClientId}
                 />
-                {!isReadOnly && (
+                {(!isReadOnly || canOpenPendingApprovalEditor) && (
                   <LeadMoreActions
                     leadId={id}
                     loanStatus={fineractLoanStatus}
                     loanId={fineractLoanId}
                     fineractClientId={lead.fineractClientId}
+                    canModifyPendingApproval={canOpenPendingApprovalEditor}
+                    canModifyPendingApplication={canEditPendingLoanTerms}
+                    canPrintContract={canPrintContract}
                   />
                 )}
               </div>
@@ -577,16 +624,21 @@ export default async function LeadDetailPage({
         <div className="mt-3 sm:mt-4 px-1 sm:px-2 overflow-x-auto scrollbar-thin">
           <div className="flex items-center w-full min-w-[400px]">
             {(() => {
-              const isRejected = lead.currentStage?.fineractAction === "reject";
-              const normalStages = stages.filter((s) => s.fineractAction !== "reject");
+              const isRejected = currentStageFineractAction === "reject";
+              const normalStages = stages.filter(
+                (s) => (s as any).fineractAction !== "reject"
+              );
               const visibleStages = isRejected
-                ? [...normalStages, ...stages.filter((s) => s.fineractAction === "reject")]
+                ? [
+                    ...normalStages,
+                    ...stages.filter((s) => (s as any).fineractAction === "reject"),
+                  ]
                 : normalStages;
               const currentOrder = lead.currentStage?.order ?? -1;
               const isOnFinalStage = lead.currentStage?.isFinalState === true && !isRejected;
               return visibleStages.map((stage, idx) => {
                 const isCurrent = stage.id === lead.currentStage?.id;
-                const isRejectStage = stage.fineractAction === "reject";
+                const isRejectStage = (stage as any).fineractAction === "reject";
                 const isCompleted = isRejected
                   ? (!isRejectStage && stage.order < currentOrder)
                   : isOnFinalStage
@@ -641,7 +693,7 @@ export default async function LeadDetailPage({
                     {!isLast && (
                       <div className="flex-1 mx-1 h-0.5 rounded-full self-start mt-[10px]"
                         style={{
-                          backgroundColor: isRejected && isCompleted && visibleStages[idx + 1]?.fineractAction === "reject"
+                          backgroundColor: isRejected && isCompleted && (visibleStages[idx + 1] as any)?.fineractAction === "reject"
                             ? "#ef4444"
                             : isCompleted ? (stage.color || "#6b7280") : "hsl(var(--border))",
                           opacity: isCompleted ? 0.5 : 0.3,
@@ -662,7 +714,12 @@ export default async function LeadDetailPage({
             leadId={id}
             fineractClientId={lead.fineractClientId || null}
             fineractLoanId={fineractLoanId || null}
-            requestedAmount={lead.requestedAmount || fineractLoanPrincipal || null}
+            requestedAmount={
+              originalRequestedAmount ||
+              lead.requestedAmount ||
+              fineractLoanPrincipal ||
+              null
+            }
             currentStage={currentStage}
             clientTypeName={lead.clientTypeName || undefined}
             clientDatatables={clientDatatables}
@@ -670,6 +727,8 @@ export default async function LeadDetailPage({
             clientDocuments={clientDocuments}
             loanDocuments={loanDocuments}
             readOnly={isReadOnly}
+            showOmamaLeadTabs={showOmamaLeadTabs}
+            canEditPendingLoanApplication={canEditPendingLoanTerms}
           />
         </div>
         <div className="mt-0 lg:mt-10">

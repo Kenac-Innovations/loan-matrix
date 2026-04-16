@@ -31,6 +31,11 @@ export async function GET(
       include: {
         currentStage: true,
         familyMembers: true,
+        entityStakeholders: {
+          orderBy: [{ role: "asc" }, { sortOrder: "asc" }],
+          include: { proofOfResidenceDocument: true },
+        },
+        entityBankAccounts: { orderBy: { sortOrder: "asc" } },
         stateTransitions: {
           include: {
             fromStage: true,
@@ -38,6 +43,13 @@ export async function GET(
           },
           orderBy: {
             triggeredAt: "desc",
+          },
+        },
+        invoiceDiscountingCase: {
+          include: {
+            invoices: {
+              orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+            },
           },
         },
       },
@@ -108,6 +120,7 @@ export async function GET(
         businessOwnership: lead.businessOwnership,
         businessType: lead.businessType,
         requestedAmount: lead.requestedAmount,
+        facilityType: lead.facilityType,
         // Affordability fields
         nationality: lead.nationality,
         mobileInOwnName: lead.mobileInOwnName,
@@ -118,6 +131,7 @@ export async function GET(
         incomeVerified: lead.incomeVerified,
         loanPurpose: lead.loanPurpose,
         loanTerm: lead.loanTerm,
+        stateMetadata: lead.stateMetadata,
         collateralType: lead.collateralType,
         collateralValue: lead.collateralValue,
         riskScore: lead.riskScore,
@@ -145,9 +159,10 @@ export async function GET(
       cdeResult,
       fineractClient: null,
       fineractLoan: null,
+      invoiceDiscounting: lead.invoiceDiscountingCase || null,
     };
 
-    // Get the mapped Fineract tenant ID early (e.g., "goodfellow" -> "goodfellow-training")
+    // Get the Fineract tenant ID early (defaults to the tenant slug unless explicitly mapped)
     const fineractTenantId = await getFineractTenantId();
 
     // Use service-level credentials (same as page.tsx) for reliable Fineract access
@@ -484,9 +499,47 @@ export async function GET(
       console.log("No Fineract loan found for lead:", leadId);
     }
 
-    // NOTE: Pipeline stage is managed exclusively by TeamAwareStateMachineService.
-    // The legacy auto-sync that mapped Fineract status to stages was removed because
-    // it used an outdated mapping and overwrote correct stages on every page load.
+    // Auto-sync pipeline stage based on Fineract loan status
+    if (response.fineractLoan?.status?.value && lead.tenantId) {
+      const fineractStatus = response.fineractLoan.status.value.toLowerCase();
+      let targetStageName: string | null = null;
+
+      // Map Fineract status to pipeline stage
+      if (fineractStatus.includes("reject") || fineractStatus.includes("withdrawn")) {
+        targetStageName = "Rejected";
+      } else if (fineractStatus.includes("active") || fineractStatus.includes("closed")) {
+        targetStageName = "Disbursement";
+      } else if (fineractStatus.includes("approved")) {
+        targetStageName = "Approval";
+      }
+
+      // Check if stage needs to be updated
+      if (targetStageName && lead.currentStage?.name !== targetStageName) {
+        console.log(`Auto-sync: Fineract status "${fineractStatus}" should be stage "${targetStageName}", current: "${lead.currentStage?.name}"`);
+        
+        try {
+          // Find the target stage
+          const targetStage = await prisma.pipelineStage.findFirst({
+            where: { tenantId: lead.tenantId, name: targetStageName },
+          });
+
+          if (targetStage) {
+            // Update the lead's stage
+            await prisma.lead.update({
+              where: { id: lead.id },
+              data: { currentStageId: targetStage.id },
+            });
+
+            // Update the response with corrected stage
+            response.lead.currentStage = targetStage;
+            console.log(`Auto-sync: Updated lead ${lead.id} to stage "${targetStageName}"`);
+          }
+        } catch (syncErr) {
+          console.error("Auto-sync error:", syncErr);
+          // Don't fail the request if auto-sync fails
+        }
+      }
+    }
 
     console.log("=== COMPLETE DETAILS RESPONSE READY ===");
     console.log("Has Fineract Client:", !!response.fineractClient);

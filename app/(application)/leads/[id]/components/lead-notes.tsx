@@ -36,10 +36,21 @@ interface LeadNotesProps {
   readOnly?: boolean;
 }
 
-export function LeadNotes({ leadId, fineractLoanId, readOnly = false }: LeadNotesProps) {
+export function LeadNotes({
+  leadId,
+  fineractLoanId,
+  readOnly = false,
+}: LeadNotesProps) {
   const [notes, setNotes] = useState<Note[]>([]);
   const [transitionNotes, setTransitionNotes] = useState<
-    { id: string; fromStage: string; toStage: string; reason: string; triggeredBy: string; triggeredAt: string }[]
+    {
+      id: string;
+      fromStage: string;
+      toStage: string;
+      reason: string;
+      triggeredBy: string;
+      triggeredAt: string;
+    }[]
   >([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -51,7 +62,6 @@ export function LeadNotes({ leadId, fineractLoanId, readOnly = false }: LeadNote
     try {
       const promises: Promise<any>[] = [];
 
-      // Fetch Fineract loan notes
       if (fineractLoanId) {
         promises.push(
           fetch(`/api/fineract/loans/${fineractLoanId}/notes`)
@@ -62,7 +72,6 @@ export function LeadNotes({ leadId, fineractLoanId, readOnly = false }: LeadNote
         promises.push(Promise.resolve([]));
       }
 
-      // Fetch transition notes from state transitions
       promises.push(
         fetch(`/api/leads/${leadId}/transition`)
           .then(async (r) => {
@@ -73,7 +82,6 @@ export function LeadNotes({ leadId, fineractLoanId, readOnly = false }: LeadNote
           .catch(() => [])
       );
 
-      // Fetch state transition history for notes
       promises.push(
         fetch(`/api/leads/${leadId}/transitions-history`)
           .then((r) => (r.ok ? r.json() : []))
@@ -85,7 +93,6 @@ export function LeadNotes({ leadId, fineractLoanId, readOnly = false }: LeadNote
       const fNotes = Array.isArray(fineractNotes) ? fineractNotes : [];
       setNotes(fNotes);
 
-      // Extract notes from transition metadata
       const tNotes = (Array.isArray(transitionHistory) ? transitionHistory : [])
         .filter((t: any) => t.metadata?.reason)
         .map((t: any) => ({
@@ -120,7 +127,10 @@ export function LeadNotes({ leadId, fineractLoanId, readOnly = false }: LeadNote
       });
 
       if (res.ok) {
-        toast({ title: "Note Added", description: "Note has been posted to the loan." });
+        toast({
+          title: "Note Added",
+          description: "Note has been posted to the loan.",
+        });
         setNewNote("");
         fetchNotes();
       } else {
@@ -132,7 +142,11 @@ export function LeadNotes({ leadId, fineractLoanId, readOnly = false }: LeadNote
         });
       }
     } catch {
-      toast({ title: "Error", description: "Failed to add note", variant: "destructive" });
+      toast({
+        title: "Error",
+        description: "Failed to add note",
+        variant: "destructive",
+      });
     } finally {
       setSubmitting(false);
     }
@@ -151,7 +165,6 @@ export function LeadNotes({ leadId, fineractLoanId, readOnly = false }: LeadNote
     });
   };
 
-  // Combine and sort all notes by date
   const allNotes: {
     type: "fineract" | "transition";
     date: Date;
@@ -191,7 +204,6 @@ export function LeadNotes({ leadId, fineractLoanId, readOnly = false }: LeadNote
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {/* Add Note */}
         {fineractLoanId && !readOnly && (
           <div className="flex gap-2">
             <Textarea
@@ -216,17 +228,16 @@ export function LeadNotes({ leadId, fineractLoanId, readOnly = false }: LeadNote
           </div>
         )}
 
-        {/* Notes List */}
         {loading ? (
           <div className="flex items-center justify-center py-8">
             <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
           </div>
         ) : allNotes.length === 0 ? (
-          <div className="text-center py-8 text-muted-foreground">
-            <MessageSquarePlus className="h-10 w-10 mx-auto mb-3 opacity-40" />
+          <div className="py-8 text-center text-muted-foreground">
+            <MessageSquarePlus className="mx-auto mb-3 h-10 w-10 opacity-40" />
             <p className="text-sm">No notes yet.</p>
             {fineractLoanId && (
-              <p className="text-xs mt-1">Add a note above to get started.</p>
+              <p className="mt-1 text-xs">Add a note above to get started.</p>
             )}
           </div>
         ) : (
@@ -236,23 +247,23 @@ export function LeadNotes({ leadId, fineractLoanId, readOnly = false }: LeadNote
                 key={`${note.type}-${note.id}`}
                 className={`rounded-lg border p-3 ${
                   note.type === "transition"
-                    ? "border-blue-200 bg-blue-50/50 dark:bg-blue-950/10 dark:border-blue-900"
+                    ? "border-blue-200 bg-blue-50/50 dark:border-blue-900 dark:bg-blue-950/10"
                     : "bg-background"
                 }`}
               >
-                <div className="flex items-start justify-between gap-2 mb-1.5">
+                <div className="mb-1.5 flex items-start justify-between gap-2">
                   <div className="flex items-center gap-2">
                     {note.type === "transition" ? (
                       <Badge
                         variant="outline"
-                        className="text-[10px] border-blue-300 text-blue-700 bg-blue-100 dark:bg-blue-950/30 dark:text-blue-400"
+                        className="border-blue-300 bg-blue-100 text-[10px] text-blue-700 dark:bg-blue-950/30 dark:text-blue-400"
                       >
-                        <ArrowRightLeft className="h-2.5 w-2.5 mr-0.5" />
+                        <ArrowRightLeft className="mr-0.5 h-2.5 w-2.5" />
                         Transition
                       </Badge>
                     ) : (
                       <Badge variant="outline" className="text-[10px]">
-                        <StickyNote className="h-2.5 w-2.5 mr-0.5" />
+                        <StickyNote className="mr-0.5 h-2.5 w-2.5" />
                         Note
                       </Badge>
                     )}
@@ -262,12 +273,12 @@ export function LeadNotes({ leadId, fineractLoanId, readOnly = false }: LeadNote
                       </span>
                     )}
                   </div>
-                  <span className="text-[10px] text-muted-foreground whitespace-nowrap">
+                  <span className="whitespace-nowrap text-[10px] text-muted-foreground">
                     {formatDate(note.date.getTime())}
                   </span>
                 </div>
-                <p className="text-sm whitespace-pre-wrap">{note.content}</p>
-                <p className="text-[10px] text-muted-foreground mt-1.5">
+                <p className="whitespace-pre-wrap text-sm">{note.content}</p>
+                <p className="mt-1.5 text-[10px] text-muted-foreground">
                   by {note.author}
                 </p>
               </div>

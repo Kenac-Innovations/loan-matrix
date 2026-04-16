@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getTenantBySlug, extractTenantSlugFromRequest } from "@/lib/tenant-service";
+import { isInvoiceDiscountingEnabled } from "@/lib/tenant-features";
+import { getSession } from "@/lib/auth";
+import { getLeadAccessProfile } from "@/lib/lead-permissions";
 
 export async function POST(
   request: NextRequest,
@@ -23,6 +26,7 @@ export async function POST(
 
     const tenantSlug = extractTenantSlugFromRequest(request);
     const tenant = await getTenantBySlug(tenantSlug);
+    const session = await getSession();
 
     if (!tenant) {
       return NextResponse.json({ error: "Tenant not found" }, { status: 404 });
@@ -33,6 +37,14 @@ export async function POST(
       where: {
         id: leadId,
       },
+      include: {
+        currentStage: {
+          select: {
+            name: true,
+            fineractStatus: true,
+          },
+        },
+      },
     });
 
     if (!lead) {
@@ -40,6 +52,26 @@ export async function POST(
       return NextResponse.json(
         { success: false, error: "Lead not found" },
         { status: 404 }
+      );
+    }
+
+    const accessProfile = await getLeadAccessProfile({
+      tenantId: tenant.id,
+      lead,
+      session,
+    });
+
+    if (
+      accessProfile.isPendingApproval &&
+      !accessProfile.canFullyEditPendingApprovalLoanTerms
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Pending Approval edits are limited to loan amount, tenure, repayments, and interest rate on the Loan Terms tab.",
+        },
+        { status: 403 }
       );
     }
 
@@ -60,6 +92,7 @@ export async function POST(
     const updatedLead = await prisma.lead.update({
       where: { id: leadId },
       data: {
+        facilityType: data.facilityType ?? null,
         loanProductName: data.productName || null,
         loanProductId: productId,
         loanPurpose: data.loanPurposeName || null,
@@ -115,6 +148,7 @@ export async function GET(
         id: leadId,
       },
       select: {
+        facilityType: true,
         loanProductName: true,
         loanProductId: true,
         loanPurpose: true,
@@ -147,6 +181,7 @@ export async function GET(
     return NextResponse.json({
       success: true,
       data: {
+        facilityType: lead.facilityType || "TERM_LOAN",
         productName: lead.loanProductName || "",
         productId: lead.loanProductId?.toString() || "",
         loanPurpose: lead.loanPurposeId?.toString() || "",

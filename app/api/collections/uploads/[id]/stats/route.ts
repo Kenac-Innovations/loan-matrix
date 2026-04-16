@@ -18,6 +18,7 @@ export async function GET(
         queuedCount: true,
         successCount: true,
         failedCount: true,
+        reversedCount: true,
         totalAmount: true,
       },
     });
@@ -26,25 +27,33 @@ export async function GET(
       return NextResponse.json({ error: "Upload not found" }, { status: 404 });
     }
 
-    const statusCounts = await prisma.bulkRepaymentItem.groupBy({
-      by: ["status"],
+    const items = await prisma.bulkRepaymentItem.findMany({
       where: { uploadId: id },
-      _count: { status: true },
+      select: { status: true, reversalStatus: true },
     });
 
-    const countMap: Record<string, number> = {};
-    statusCounts.forEach((s) => {
-      countMap[s.status] = s._count.status;
-    });
+    const processingCount = items.filter(
+      (item) =>
+        item.status === "PROCESSING" ||
+        (item.status === "SUCCESS" && item.reversalStatus === "PROCESSING")
+    ).length;
+    const queuedCount = items.filter(
+      (item) =>
+        item.status === "QUEUED" ||
+        (item.status === "SUCCESS" && item.reversalStatus === "QUEUED") ||
+        item.status === "PROCESSING" ||
+        (item.status === "SUCCESS" && item.reversalStatus === "PROCESSING")
+    ).length;
 
     return NextResponse.json({
       ...upload,
       totalAmount: upload.totalAmount.toString(),
-      stagedCount: countMap["STAGED"] || 0,
-      queuedCount: countMap["QUEUED"] || 0,
-      processingCount: countMap["PROCESSING"] || 0,
-      successCount: countMap["SUCCESS"] || 0,
-      failedCount: countMap["FAILED"] || 0,
+      stagedCount: items.filter((item) => item.status === "STAGED").length,
+      queuedCount,
+      processingCount,
+      successCount: upload.successCount,
+      failedCount: upload.failedCount,
+      reversedCount: upload.reversedCount,
     });
   } catch (error) {
     console.error("Error fetching upload stats:", error);

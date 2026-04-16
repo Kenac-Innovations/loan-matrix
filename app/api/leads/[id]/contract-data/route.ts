@@ -5,6 +5,58 @@ import { format } from "date-fns";
 import { fetchFineractAPI } from "@/lib/api";
 import { getOrgDefaultCurrencyCode } from "@/lib/currency-utils";
 import { getSession } from "@/lib/auth";
+import { getLeadAccessProfile } from "@/lib/lead-permissions";
+
+function getRequestOrigin(request: NextRequest): string {
+  const forwardedProto = request.headers.get("x-forwarded-proto");
+  const forwardedHost = request.headers.get("x-forwarded-host");
+  const host = forwardedHost || request.headers.get("host");
+
+  if (host) {
+    return `${forwardedProto || "https"}://${host}`;
+  }
+
+  return request.nextUrl.origin;
+}
+
+function getForwardedHeaders(request: NextRequest): HeadersInit {
+  const forwardedHeaders: HeadersInit = {};
+
+  for (const headerName of [
+    "cookie",
+    "origin",
+    "referer",
+    "x-forwarded-host",
+    "x-forwarded-proto",
+    "host",
+  ]) {
+    const value = request.headers.get(headerName);
+    if (value) {
+      forwardedHeaders[headerName] = value;
+    }
+  }
+
+  return forwardedHeaders;
+}
+
+async function readJsonResponse<T>(response: Response): Promise<T> {
+  const rawBody = await response.text();
+
+  if (!rawBody) {
+    return {} as T;
+  }
+
+  try {
+    return JSON.parse(rawBody) as T;
+  } catch {
+    return {
+      error:
+        rawBody.length > 500
+          ? `${rawBody.slice(0, 500)}…`
+          : rawBody,
+    } as T;
+  }
+}
 
 export async function GET(
   request: NextRequest,
@@ -16,6 +68,8 @@ export async function GET(
     console.log("Fetching contract data for leadId:", leadId);
 
     const tenantSlug = extractTenantSlugFromRequest(request);
+    const requestOrigin = getRequestOrigin(request);
+    const forwardedHeaders = getForwardedHeaders(request);
     console.log("Tenant slug:", tenantSlug);
     const tenant = await getTenantBySlug(tenantSlug);
 
@@ -48,6 +102,7 @@ export async function GET(
         accountNumber: true,
         fineractAccountNo: true,
         fineractClientId: true,
+        fineractLoanId: true,
         officeName: true,
 
         // Loan details
@@ -83,6 +138,12 @@ export async function GET(
         stateMetadata: true,
         stateContext: true,
         familyMembers: true,
+        currentStage: {
+          select: {
+            name: true,
+            fineractStatus: true,
+          },
+        },
       },
     });
 
@@ -103,18 +164,38 @@ export async function GET(
       );
     }
 
+    const session = await getSession();
+    let fineractLoanStatus: string | null = null;
+    if (lead.fineractLoanId) {
+      try {
+        const fineractLoan = await fetchFineractAPI(`/loans/${lead.fineractLoanId}`);
+        fineractLoanStatus = fineractLoan?.status?.value || null;
+      } catch (err) {
+        console.warn("Could not resolve Fineract loan status for contract printing:", err);
+      }
+    }
+
+    const accessProfile = await getLeadAccessProfile({
+      tenantId: tenant.id,
+      lead,
+      loanStatus: fineractLoanStatus,
+      session,
+    });
+
     // Fetch loan details
     console.log("Fetching loan details...");
     const loanDetailsResponse = await fetch(
-      `${request.nextUrl.origin}/api/leads/${leadId}/loan-details`,
+      `${requestOrigin}/api/leads/${leadId}/loan-details`,
       {
-        headers: {
-          origin: request.headers.get("origin") || "",
-          referer: request.headers.get("referer") || "",
-        },
+        headers: forwardedHeaders,
+        cache: "no-store",
       },
     );
-    const loanDetailsResult = await loanDetailsResponse.json();
+    const loanDetailsResult = await readJsonResponse<{
+      success?: boolean;
+      data?: any;
+      error?: string;
+    }>(loanDetailsResponse);
     const loanDetails = loanDetailsResult.success
       ? loanDetailsResult.data
       : null;
@@ -123,15 +204,17 @@ export async function GET(
     // Fetch loan terms
     console.log("Fetching loan terms...");
     const loanTermsResponse = await fetch(
-      `${request.nextUrl.origin}/api/leads/${leadId}/loan-terms`,
+      `${requestOrigin}/api/leads/${leadId}/loan-terms`,
       {
-        headers: {
-          origin: request.headers.get("origin") || "",
-          referer: request.headers.get("referer") || "",
-        },
+        headers: forwardedHeaders,
+        cache: "no-store",
       },
     );
-    const loanTermsResult = await loanTermsResponse.json();
+    const loanTermsResult = await readJsonResponse<{
+      success?: boolean;
+      data?: any;
+      error?: string;
+    }>(loanTermsResponse);
     const loanTerms = loanTermsResult.success ? loanTermsResult.data : null;
     console.log("Loan terms fetched:", loanTerms ? "Found" : "Not found");
 
@@ -278,16 +361,14 @@ export async function GET(
     let clientTemplate: any = null;
     try {
       const clientTemplateResponse = await fetch(
-        `${request.nextUrl.origin}/api/fineract/clients/template`,
+        `${requestOrigin}/api/fineract/clients/template`,
         {
-          headers: {
-            origin: request.headers.get("origin") || "",
-          referer: request.headers.get("referer") || "",
-          },
+          headers: forwardedHeaders,
+          cache: "no-store",
         },
       );
       if (clientTemplateResponse.ok) {
-        clientTemplate = await clientTemplateResponse.json();
+        clientTemplate = await readJsonResponse<any>(clientTemplateResponse);
       }
     } catch (err) {
       console.error("Error fetching client template:", err);
@@ -298,16 +379,14 @@ export async function GET(
     if (lead.fineractClientId && loanDetails?.productId) {
       try {
         const templateResponse = await fetch(
-          `${request.nextUrl.origin}/api/fineract/loans/template?clientId=${lead.fineractClientId}&productId=${loanDetails.productId}&activeOnly=true&staffInSelectedOfficeOnly=true&templateType=individual`,
+          `${requestOrigin}/api/fineract/loans/template?clientId=${lead.fineractClientId}&productId=${loanDetails.productId}&activeOnly=true&staffInSelectedOfficeOnly=true&templateType=individual`,
           {
-            headers: {
-              origin: request.headers.get("origin") || "",
-          referer: request.headers.get("referer") || "",
-            },
+            headers: forwardedHeaders,
+            cache: "no-store",
           },
         );
         if (templateResponse.ok) {
-          loanTemplate = await templateResponse.json();
+          loanTemplate = await readJsonResponse<any>(templateResponse);
         }
       } catch (err) {
         console.error("Error fetching loan template:", err);
@@ -393,20 +472,19 @@ export async function GET(
         };
 
         const scheduleResponse = await fetch(
-          `${request.nextUrl.origin}/api/fineract/loans/calculate-schedule`,
+          `${requestOrigin}/api/fineract/loans/calculate-schedule`,
           {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              origin: request.headers.get("origin") || "",
-          referer: request.headers.get("referer") || "",
+              ...forwardedHeaders,
             },
             body: JSON.stringify(payload),
           },
         );
 
         if (scheduleResponse.ok) {
-          repaymentSchedule = await scheduleResponse.json();
+          repaymentSchedule = await readJsonResponse<any>(scheduleResponse);
         }
       } catch (err) {
         console.error("Error calculating repayment schedule:", err);
@@ -546,11 +624,14 @@ export async function GET(
     // Net disbursed amount (principal - upfront fees)
     const upfrontFees = formattedCharges
       .filter(
-        (c) =>
+        (c: { name: string; amount: number }) =>
           !c.name.toLowerCase().includes("monthly") &&
           !c.name.toLowerCase().includes("recurring"),
       )
-      .reduce((sum, c) => sum + c.amount, 0);
+      .reduce(
+        (sum: number, c: { name: string; amount: number }) => sum + c.amount,
+        0,
+      );
     const disbursedAmount = principal - upfrontFees;
 
     // Get gender name - priority: Fineract client > genderId map > lead.gender > template lookup
@@ -936,6 +1017,17 @@ export async function GET(
     return NextResponse.json({
       success: true,
       data: contractData,
+      permissions: {
+        canPrintContracts: accessProfile.hasFinalApproval,
+        approvalStatus:
+          fineractLoanStatus ||
+          lead.currentStage?.name ||
+          lead.currentStage?.fineractStatus ||
+          null,
+        printBlockReason: accessProfile.hasFinalApproval
+          ? null
+          : "Printing is available after Final Approval.",
+      },
     });
   } catch (error) {
     console.error("Error fetching contract data:", error);

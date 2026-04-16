@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, ChangeEvent } from "react";
+import { useState, useEffect, useRef, useCallback, ChangeEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm, Controller } from "react-hook-form";
@@ -41,6 +41,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -70,6 +71,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { EntityStructureEditor } from "@/components/entity-structure/entity-structure-editor";
 import {
   saveDraft,
   getLead,
@@ -137,6 +139,7 @@ const clientFormSchema = z
     registrationNumber: z.string().optional(),
     dateOfIncorporation: z.date().optional(),
     natureOfBusiness: z.string().optional(),
+    businessAddress: z.string().optional(),
 
     isStaff: z.boolean().default(false),
     mobileNo: z
@@ -253,14 +256,6 @@ const clientFormSchema = z
   .refine(
     (data) => {
       const isEntity = data.legalFormId === "2";
-      if (!isEntity && !data.externalId) return false;
-      return true;
-    },
-    { message: "National ID is required", path: ["externalId"] }
-  )
-  .refine(
-    (data) => {
-      const isEntity = data.legalFormId === "2";
       if (isEntity && !data.fullname) return false;
       return true;
     },
@@ -283,7 +278,9 @@ const familyMemberSchema = z.object({
   relationship: z.string().min(1, "Relationship is required"),
   dateOfBirth: z.date().optional(),
   mobileNo: z.string().optional(),
-  emailAddress: z.string().email("Invalid email address").optional(),
+  emailAddress: z
+    .union([z.string().email("Invalid email address"), z.literal("")])
+    .optional(),
   isDependent: z.boolean().default(false),
 });
 
@@ -437,7 +434,13 @@ interface ClientRegistrationFormProps {
   externalForm?: any;
   clientCreatedInFineract?: boolean;
   onClientCreated?: () => void;
-  onFormSubmit?: (data: any) => void;
+  onFormSubmit?: (
+    data: any,
+    entityData?: {
+      entityStakeholders: any[];
+      entityBankAccounts: any[];
+    }
+  ) => void | Promise<void>;
   setFormCompletionStatus?: (updater: (prev: any) => any) => void;
   setClientCreatedInFineract?: (value: boolean) => void;
   isSubmitting?: boolean;
@@ -470,6 +473,9 @@ export function ClientRegistrationForm({
   const searchParams = useSearchParams();
   const colors = useThemeColors();
   const { locale: tenantLocale } = useCurrency();
+  const clientSelfieOptionalForCompanies =
+    !!tenantLocale.clientSelfieOptionalForCompanies;
+  const documentsOptional = !!tenantLocale.documentsOptional;
 
   // State for multi-step form
   const [currentStep, setCurrentStep] = useState(1);
@@ -478,6 +484,8 @@ export function ClientRegistrationForm({
   const [closeReason, setCloseReason] = useState("");
   const [showCloseDialog, setShowCloseDialog] = useState(false);
   const [familyMembers, setFamilyMembers] = useState<any[]>([]);
+  const [entityStakeholders, setEntityStakeholders] = useState<any[]>([]);
+  const [entityBankAccounts, setEntityBankAccounts] = useState<any[]>([]);
   const [editingFamilyMemberIndex, setEditingFamilyMemberIndex] = useState<
     number | null
   >(null);
@@ -1295,7 +1303,7 @@ export function ClientRegistrationForm({
 
   const checkContactSection = () => {
     const values = form.getValues();
-    return !!(values.mobileNo && (tenantLocale.emailOptional || values.emailAddress));
+    return !!values.mobileNo;
   };
 
   const checkClassificationSection = () => {
@@ -1310,10 +1318,22 @@ export function ClientRegistrationForm({
   };
 
   const checkSelfieSection = () => {
+    const values = form.getValues();
+    const isEntityLead = values.legalFormId === "2";
+    const isSelfieOptional =
+      clientSelfieOptionalForCompanies && isEntityLead;
+
+    if (isSelfieOptional) {
+      return true;
+    }
+
     return !!(existingClientImage || selfieImage);
   };
 
   const checkIdentityDocumentsSection = () => {
+    if (documentsOptional) {
+      return true;
+    }
     return existingIdentifiers.length > 0;
   };
 
@@ -1471,7 +1491,11 @@ export function ClientRegistrationForm({
   };
 
   const checkKYCTabCompletion = () => {
-    return sectionCompletion.selfie && sectionCompletion.identityDocuments && sectionCompletion.otherDocuments;
+    return (
+      sectionCompletion.selfie &&
+      sectionCompletion.identityDocuments &&
+      sectionCompletion.otherDocuments
+    );
   };
 
   const checkAdditionalDetailsTabCompletion = () => {
@@ -1851,6 +1875,24 @@ export function ClientRegistrationForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leadId, currentLeadId]);
 
+  const refreshEntityStructure = useCallback(async () => {
+    const lid = currentLeadId || leadId;
+    if (!lid) return;
+    const lead = await getLead(lid);
+    if (lead) {
+      setEntityStakeholders((lead as any).entityStakeholders || []);
+      setEntityBankAccounts((lead as any).entityBankAccounts || []);
+    }
+  }, [currentLeadId, leadId]);
+
+  const handleEntityDraftChange = useCallback(
+    (payload: { stakeholders: any[]; bankAccounts: any[] }) => {
+      setEntityStakeholders(payload.stakeholders || []);
+      setEntityBankAccounts(payload.bankAccounts || []);
+    },
+    []
+  );
+
   // Initialize internal form - always call useForm to comply with React hooks rules
   const internalForm = useForm<ClientFormValues>({
     resolver: zodResolver(clientFormSchema) as any,
@@ -1866,6 +1908,7 @@ export function ClientRegistrationForm({
       registrationNumber: "",
       dateOfIncorporation: undefined,
       natureOfBusiness: "",
+      businessAddress: "",
       isStaff: false,
       mobileNo: "",
       countryCode: tenantLocale.countryCode,
@@ -2183,9 +2226,11 @@ export function ClientRegistrationForm({
 
         setIsLoadingOptions(false);
 
+        // Prefer synced state; fall back to prop so first effect run after ?id= still loads
+        const effectiveLeadId = currentLeadId ?? leadId;
         // If leadId is provided, load the lead data
-        if (currentLeadId) {
-          const lead = await getLead(currentLeadId);
+        if (effectiveLeadId) {
+          const lead = await getLead(effectiveLeadId);
           if (lead) {
             // Set form values from saved lead data
             form.reset({
@@ -2202,6 +2247,7 @@ export function ClientRegistrationForm({
               registrationNumber: lead.registrationNumber || "",
               dateOfIncorporation: lead.dateOfIncorporation || undefined,
               natureOfBusiness: lead.natureOfBusiness || "",
+              businessAddress: lead.businessAddress || "",
               isStaff: lead.isStaff || false,
               mobileNo: lead.mobileNo || "",
               countryCode: lead.countryCode || tenantLocale.countryCode,
@@ -2219,6 +2265,8 @@ export function ClientRegistrationForm({
 
             // Set family members
             setFamilyMembers(lead.familyMembers || []);
+            setEntityStakeholders((lead as any).entityStakeholders || []);
+            setEntityBankAccounts((lead as any).entityBankAccounts || []);
 
             // Mark sections as saved if they are complete (data is coming from server)
             // Wait a bit for form state to update, then check completion
@@ -2420,6 +2468,7 @@ export function ClientRegistrationForm({
                       ? new Date(lead.dateOfIncorporation)
                       : undefined,
                     natureOfBusiness: lead.natureOfBusiness || "",
+                    businessAddress: lead.businessAddress || "",
                   };
 
                   // If we have Fineract data, client exists in Fineract
@@ -2500,14 +2549,15 @@ export function ClientRegistrationForm({
     };
 
     loadData();
-  }, [currentLeadId, form, searchParams]);
+  }, [currentLeadId, leadId, form, searchParams]);
 
   // Load stage history when leadId changes
   useEffect(() => {
     const loadStageHistory = async () => {
-      if (currentLeadId) {
+      const lid = currentLeadId ?? leadId;
+      if (lid) {
         try {
-          const history = await getLeadStageHistory(currentLeadId);
+          const history = await getLeadStageHistory(lid);
           setStageHistory(history);
         } catch (error) {
           console.error("Error loading stage history:", error);
@@ -2516,7 +2566,7 @@ export function ClientRegistrationForm({
     };
 
     loadStageHistory();
-  }, [currentLeadId]);
+  }, [currentLeadId, leadId]);
 
   // Handle field blur for auto-save
   // Helper function to determine which section a field belongs to
@@ -2535,6 +2585,7 @@ export function ClientRegistrationForm({
       "registrationNumber",
       "dateOfIncorporation",
       "natureOfBusiness",
+      "businessAddress",
     ];
     const contactFields = ["mobileNo", "emailAddress", "countryCode"];
     const classificationFields = ["clientTypeId", "clientClassificationId"];
@@ -3098,6 +3149,7 @@ export function ClientRegistrationForm({
       registrationNumber: "",
       dateOfIncorporation: undefined,
       natureOfBusiness: "",
+      businessAddress: "",
       isStaff: false,
       mobileNo: "",
       countryCode: tenantLocale.countryCode,
@@ -3350,6 +3402,7 @@ export function ClientRegistrationForm({
             ? new Date(localData.dateOfIncorporation)
             : undefined,
           natureOfBusiness: localData?.natureOfBusiness || "",
+          businessAddress: localData?.businessAddress || "",
           dateOfBirth: fineractData?.dateOfBirth
             ? new Date(fineractData.dateOfBirth)
             : localData?.dateOfBirth
@@ -3677,6 +3730,7 @@ export function ClientRegistrationForm({
       registrationNumber: "",
       dateOfIncorporation: undefined,
       natureOfBusiness: "",
+      businessAddress: "",
       isStaff: false,
       mobileNo: "",
       countryCode: tenantLocale.countryCode,
@@ -3856,6 +3910,8 @@ export function ClientRegistrationForm({
         const lead = await getLead(effectiveLeadId!);
         if (lead) {
           setFamilyMembers(lead.familyMembers || []);
+          setEntityStakeholders((lead as any).entityStakeholders || []);
+          setEntityBankAccounts((lead as any).entityBankAccounts || []);
         }
       } else {
         error({
@@ -3934,7 +3990,9 @@ export function ClientRegistrationForm({
           newCompletion.additional;
 
         const kycComplete =
-          newCompletion.selfie && newCompletion.identityDocuments;
+          newCompletion.selfie &&
+          newCompletion.identityDocuments &&
+          newCompletion.otherDocuments;
 
         const additionalComplete = clientCreatedInFineract
           ? newCompletion.datatables
@@ -3969,6 +4027,8 @@ export function ClientRegistrationForm({
     clientCreatedInFineract,
     dataTables,
     clientAddress,
+    clientSelfieOptionalForCompanies,
+    documentsOptional,
   ]);
 
   const handleSelfieFileSelect = (e: ChangeEvent<HTMLInputElement>) => {
@@ -4598,10 +4658,13 @@ export function ClientRegistrationForm({
         });
 
         // Refresh family members
-        if (leadId) {
-          const lead = await getLead(leadId);
+        const lid = currentLeadId || leadId;
+        if (lid) {
+          const lead = await getLead(lid);
           if (lead) {
             setFamilyMembers(lead.familyMembers || []);
+            setEntityStakeholders((lead as any).entityStakeholders || []);
+            setEntityBankAccounts((lead as any).entityBankAccounts || []);
           }
         }
       } else {
@@ -5269,216 +5332,12 @@ export function ClientRegistrationForm({
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  {/* Client Search and Listing - Hidden when client is found */}
-                  {clientLookupStatus !== "found" && (
-                    <div className="space-y-3">
-                      <Label className={colors.textColor}>
-                        Select Existing Client
-                      </Label>
-                      {/* Search input */}
-                      <div className="flex gap-2">
-                        <div className="flex-1 relative">
-                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                          <Input
-                            placeholder="Search by name, account no, or ID..."
-                            value={clientPickerSearch}
-                            onChange={(e) =>
-                              setClientPickerSearch(e.target.value)
-                            }
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") {
-                                e.preventDefault();
-                                setClientPickerPage(0);
-                                fetchClientsForPicker(clientPickerSearch, 0);
-                              }
-                            }}
-                            className="pl-9"
-                          />
-                        </div>
-                        <Button
-                          type="button"
-                          onClick={() => {
-                            setClientPickerPage(0);
-                            fetchClientsForPicker(clientPickerSearch, 0);
-                          }}
-                          disabled={isLoadingClients}
-                          size="sm"
-                        >
-                          {isLoadingClients ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            "Search"
-                          )}
-                        </Button>
-                      </div>
-
-                      {/* Client list */}
-                      <div className="border rounded-lg overflow-hidden">
-                        <div className="max-h-80 overflow-y-auto">
-                          {isLoadingClients &&
-                          (!Array.isArray(clientPickerResults) ||
-                            clientPickerResults.length === 0) ? (
-                            <div className="flex items-center justify-center py-8">
-                              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                            </div>
-                          ) : !Array.isArray(clientPickerResults) ||
-                            clientPickerResults.length === 0 ? (
-                            <div className="text-center py-8 text-muted-foreground">
-                              No clients found. Try a different search or
-                              register a new client below.
-                            </div>
-                          ) : (
-                            <table className="w-full">
-                              <thead className="bg-muted/50 sticky top-0">
-                                <tr className="border-b">
-                                  <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground">
-                                    Client
-                                  </th>
-                                  <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground hidden sm:table-cell">
-                                    Account No
-                                  </th>
-                                  <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground hidden md:table-cell">
-                                    External ID
-                                  </th>
-                                  <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground">
-                                    Status
-                                  </th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {clientPickerResults.map((client: any) => {
-                                  const isSelected =
-                                    selectedClientId === client.id;
-                                  return (
-                                    <tr
-                                      key={client.id}
-                                      onClick={() =>
-                                        !selectedClientId &&
-                                        handleSelectClientFromPicker(client)
-                                      }
-                                      onKeyDown={(e) => {
-                                        if (
-                                          (e.key === "Enter" ||
-                                            e.key === " ") &&
-                                          !selectedClientId
-                                        ) {
-                                          e.preventDefault();
-                                          handleSelectClientFromPicker(client);
-                                        }
-                                      }}
-                                      tabIndex={selectedClientId ? -1 : 0}
-                                      role="button"
-                                      className={`border-b transition-colors ${
-                                        isSelected
-                                          ? "bg-primary/10"
-                                          : selectedClientId
-                                          ? "opacity-50 cursor-not-allowed"
-                                          : "hover:bg-muted/50 cursor-pointer"
-                                      }`}
-                                    >
-                                      <td className="py-3 px-3">
-                                        <div className="flex items-center gap-3">
-                                          {isSelected ? (
-                                            <div className="h-8 w-8 rounded-full bg-primary/20 flex items-center justify-center">
-                                              <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                                            </div>
-                                          ) : (
-                                            <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary text-sm font-medium">
-                                              {client.firstname?.[0] || ""}
-                                              {client.lastname?.[0] || ""}
-                                            </div>
-                                          )}
-                                          <span className="font-medium truncate">
-                                            {client.displayName ||
-                                              `${client.firstname} ${client.lastname}`}
-                                            {isSelected && (
-                                              <span className="ml-2 text-sm text-muted-foreground">
-                                                Loading...
-                                              </span>
-                                            )}
-                                          </span>
-                                        </div>
-                                      </td>
-                                      <td className="py-3 px-3 text-sm text-muted-foreground hidden sm:table-cell">
-                                        {client.accountNo}
-                                      </td>
-                                      <td className="py-3 px-3 text-sm text-muted-foreground hidden md:table-cell">
-                                        {client.externalId || "-"}
-                                      </td>
-                                      <td className="py-3 px-3">
-                                        <Badge
-                                          variant="outline"
-                                          className={
-                                            client.active
-                                              ? "bg-green-500 text-white border-0"
-                                              : "bg-gray-500 text-white border-0"
-                                          }
-                                        >
-                                          {client.active
-                                            ? "Active"
-                                            : "Inactive"}
-                                        </Badge>
-                                      </td>
-                                    </tr>
-                                  );
-                                })}
-                              </tbody>
-                            </table>
-                          )}
-                        </div>
-                        {hasMoreClients &&
-                          Array.isArray(clientPickerResults) &&
-                          clientPickerResults.length > 0 && (
-                            <div className="border-t p-2 bg-muted/30">
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                className="w-full"
-                                onClick={() => {
-                                  const nextPage = clientPickerPage + 1;
-                                  setClientPickerPage(nextPage);
-                                  fetchClientsForPicker(
-                                    clientPickerSearch,
-                                    nextPage,
-                                    true
-                                  );
-                                }}
-                                disabled={isLoadingClients}
-                                size="sm"
-                              >
-                                {isLoadingClients ? (
-                                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                                ) : null}
-                                Load More Clients
-                              </Button>
-                            </div>
-                          )}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Divider - Hidden when client is found */}
-                  {clientLookupStatus !== "found" && (
-                    <div className="relative py-2">
-                      <div className="absolute inset-0 flex items-center">
-                        <span className="w-full border-t" />
-                      </div>
-                      <div className="relative flex justify-center text-xs uppercase">
-                        <span
-                          className={`px-2 ${colors.cardBg} text-muted-foreground`}
-                        >
-                          Or register new client
-                        </span>
-                      </div>
-                    </div>
-                  )}
-
                   <div className="space-y-2">
                     <Label
                       htmlFor="nationalIdLookup"
                       className={colors.textColor}
                     >
-                      National ID Number <span className="text-red-500">*</span>
+                      National ID Number
                     </Label>
                     <div className="space-y-2">
                       {/* Mobile layout - stacked */}
@@ -5637,7 +5496,7 @@ export function ClientRegistrationForm({
                       <UserCheck className="h-4 w-4 text-green-600 dark:text-green-400" />
                       <AlertDescription className="text-green-800 dark:text-green-200">
                         <strong>Client Found:</strong> The form has been
-                        pre-populated with the existing client's information.
+                        pre-populated with the existing client&apos;s information.
                         You can review and update the details as needed.
                       </AlertDescription>
                     </Alert>
@@ -5662,6 +5521,210 @@ export function ClientRegistrationForm({
                         try again or proceed with manual entry.
                       </AlertDescription>
                     </Alert>
+                  )}
+
+                  {/* Divider - Hidden when client is found */}
+                  {clientLookupStatus !== "found" && (
+                    <div className="relative py-2">
+                      <div className="absolute inset-0 flex items-center">
+                        <span className="w-full border-t" />
+                      </div>
+                      <div className="relative flex justify-center text-xs uppercase">
+                        <span
+                          className={`px-2 ${colors.cardBg} text-muted-foreground`}
+                        >
+                          Or select existing client
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Client Search and Listing - Hidden when client is found */}
+                  {clientLookupStatus !== "found" && (
+                    <div className="space-y-3">
+                      <Label className={colors.textColor}>
+                        Select Existing Client
+                      </Label>
+                      {/* Search input */}
+                      <div className="flex gap-2">
+                        <div className="flex-1 relative">
+                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                          <Input
+                            placeholder="Search by name, account no, or ID..."
+                            value={clientPickerSearch}
+                            onChange={(e) =>
+                              setClientPickerSearch(e.target.value)
+                            }
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.preventDefault();
+                                setClientPickerPage(0);
+                                fetchClientsForPicker(clientPickerSearch, 0);
+                              }
+                            }}
+                            className="pl-9"
+                          />
+                        </div>
+                        <Button
+                          type="button"
+                          onClick={() => {
+                            setClientPickerPage(0);
+                            fetchClientsForPicker(clientPickerSearch, 0);
+                          }}
+                          disabled={isLoadingClients}
+                          size="sm"
+                        >
+                          {isLoadingClients ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            "Search"
+                          )}
+                        </Button>
+                      </div>
+
+                      {/* Client list */}
+                      <div className="border rounded-lg overflow-hidden">
+                        <div className="max-h-80 overflow-y-auto">
+                          {isLoadingClients &&
+                          (!Array.isArray(clientPickerResults) ||
+                            clientPickerResults.length === 0) ? (
+                            <div className="flex items-center justify-center py-8">
+                              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                            </div>
+                          ) : !Array.isArray(clientPickerResults) ||
+                            clientPickerResults.length === 0 ? (
+                            <div className="text-center py-8 text-muted-foreground">
+                              No clients found. Try a different search or
+                              register a new client above.
+                            </div>
+                          ) : (
+                            <table className="w-full">
+                              <thead className="bg-muted/50 sticky top-0">
+                                <tr className="border-b">
+                                  <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground">
+                                    Client
+                                  </th>
+                                  <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground hidden sm:table-cell">
+                                    Account No
+                                  </th>
+                                  <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground hidden md:table-cell">
+                                    External ID
+                                  </th>
+                                  <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground">
+                                    Status
+                                  </th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {clientPickerResults.map((client: any) => {
+                                  const isSelected =
+                                    selectedClientId === client.id;
+                                  return (
+                                    <tr
+                                      key={client.id}
+                                      onClick={() =>
+                                        !selectedClientId &&
+                                        handleSelectClientFromPicker(client)
+                                      }
+                                      onKeyDown={(e) => {
+                                        if (
+                                          (e.key === "Enter" ||
+                                            e.key === " ") &&
+                                          !selectedClientId
+                                        ) {
+                                          e.preventDefault();
+                                          handleSelectClientFromPicker(client);
+                                        }
+                                      }}
+                                      tabIndex={selectedClientId ? -1 : 0}
+                                      role="button"
+                                      className={`border-b transition-colors ${
+                                        isSelected
+                                          ? "bg-primary/10"
+                                          : selectedClientId
+                                          ? "opacity-50 cursor-not-allowed"
+                                          : "hover:bg-muted/50 cursor-pointer"
+                                      }`}
+                                    >
+                                      <td className="py-3 px-3">
+                                        <div className="flex items-center gap-3">
+                                          {isSelected ? (
+                                            <div className="h-8 w-8 rounded-full bg-primary/20 flex items-center justify-center">
+                                              <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                                            </div>
+                                          ) : (
+                                            <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary text-sm font-medium">
+                                              {client.firstname?.[0] || ""}
+                                              {client.lastname?.[0] || ""}
+                                            </div>
+                                          )}
+                                          <span className="font-medium truncate">
+                                            {client.displayName ||
+                                              `${client.firstname} ${client.lastname}`}
+                                            {isSelected && (
+                                              <span className="ml-2 text-sm text-muted-foreground">
+                                                Loading...
+                                              </span>
+                                            )}
+                                          </span>
+                                        </div>
+                                      </td>
+                                      <td className="py-3 px-3 text-sm text-muted-foreground hidden sm:table-cell">
+                                        {client.accountNo}
+                                      </td>
+                                      <td className="py-3 px-3 text-sm text-muted-foreground hidden md:table-cell">
+                                        {client.externalId || "-"}
+                                      </td>
+                                      <td className="py-3 px-3">
+                                        <Badge
+                                          variant="outline"
+                                          className={
+                                            client.active
+                                              ? "bg-green-500 text-white border-0"
+                                              : "bg-gray-500 text-white border-0"
+                                          }
+                                        >
+                                          {client.active
+                                            ? "Active"
+                                            : "Inactive"}
+                                        </Badge>
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          )}
+                        </div>
+                        {hasMoreClients &&
+                          Array.isArray(clientPickerResults) &&
+                          clientPickerResults.length > 0 && (
+                            <div className="border-t p-2 bg-muted/30">
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                className="w-full"
+                                onClick={() => {
+                                  const nextPage = clientPickerPage + 1;
+                                  setClientPickerPage(nextPage);
+                                  fetchClientsForPicker(
+                                    clientPickerSearch,
+                                    nextPage,
+                                    true
+                                  );
+                                }}
+                                disabled={isLoadingClients}
+                                size="sm"
+                              >
+                                {isLoadingClients ? (
+                                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                                ) : null}
+                                Load More Clients
+                              </Button>
+                            </div>
+                          )}
+                      </div>
+                    </div>
                   )}
                 </div>
               </CardContent>
@@ -5758,11 +5821,20 @@ export function ClientRegistrationForm({
                               const identityComplete =
                                 checkIdentityDocumentsSection();
 
-                              if (!selfieComplete || !identityComplete) {
+                              if (!selfieComplete) {
                                 error({
                                   title: "Incomplete KYC",
                                   description:
-                                    "Please complete the selfie and identity documents sections before proceeding.",
+                                    "Client selfie is required before proceeding.",
+                                });
+                                return;
+                              }
+
+                              if (!identityComplete) {
+                                error({
+                                  title: "Incomplete KYC",
+                                  description:
+                                    "Please complete the identity documents section before proceeding.",
                                 });
                                 return;
                               }
@@ -6385,6 +6457,39 @@ export function ClientRegistrationForm({
                                     </div>
                                   </div>
 
+                                  {/* Business address (optional) */}
+                                  <div className="space-y-3 mt-6">
+                                    <Label htmlFor="businessAddress" className={colors.textColor}>
+                                      Business address
+                                    </Label>
+                                    <div className="relative">
+                                      <Textarea
+                                        id="businessAddress"
+                                        placeholder="Registered business / trading address"
+                                        rows={4}
+                                        className={`min-h-[100px] border-${colors.borderColor} ${colors.inputBg}`}
+                                        {...(externalForm
+                                          ? externalForm.register("businessAddress", {
+                                              onBlur: (e: { target: { value: string } }) =>
+                                                handleFieldBlur("businessAddress", e.target.value),
+                                            })
+                                          : form.register("businessAddress", {
+                                              onBlur: (e: { target: { value: string } }) =>
+                                                handleFieldBlur("businessAddress", e.target.value),
+                                            }))}
+                                        disabled={isFormDisabled}
+                                      />
+                                      {lastSavedField === "businessAddress" && isAutoSaving && (
+                                        <div className="absolute right-3 top-3 flex items-center">
+                                          <div className="w-3 h-3 border border-gray-300 border-t-gray-600 rounded-full animate-spin"></div>
+                                        </div>
+                                      )}
+                                    </div>
+                                    <p className={`text-xs ${colors.textColorMuted}`}>
+                                      Optional — postal or physical address of the business
+                                    </p>
+                                  </div>
+
                                   {/* External ID for Entity */}
                                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-6">
                                     <div className="space-y-3">
@@ -6413,6 +6518,7 @@ export function ClientRegistrationForm({
                                       </p>
                                     </div>
                                   </div>
+
                                 </>
                               ) : (
                                 <>
@@ -6633,37 +6739,60 @@ export function ClientRegistrationForm({
                                     {/* External ID (National ID) */}
                                     <div className="space-y-3">
                                       <Label htmlFor="externalId" className={colors.textColor}>
-                                        National ID{" "}
-                                        <span className="text-red-500">*</span>
+                                        National ID
                                       </Label>
                                       <div className="relative">
                                         <Input
                                           id="externalId"
-                                          placeholder="Enter national ID (e.g. 48-147220J12)"
+                                          placeholder="Enter national ID"
                                           className={getInputErrorStyling(
-                                            hasFieldError(form, "externalId", externalForm),
+                                            hasFieldError(
+                                              form,
+                                              "externalId",
+                                              externalForm
+                                            ),
                                             `h-10 w-full border-${colors.borderColor} ${colors.inputBg}`
                                           )}
                                           {...(externalForm
-                                            ? externalForm.register("externalId", {
-                                                onBlur: (e: { target: { value: any } }) =>
-                                                  handleFieldBlur("externalId", e.target.value),
-                                                pattern: {
-                                                  value: /^[0-9]{2}-[0-9]{6}[A-Za-z][0-9]{2}$/,
-                                                  message: "National ID must be in format 48-147220J12",
-                                                },
-                                              })
+                                            ? externalForm.register(
+                                                "externalId",
+                                                {
+                                                  onChange: (e: {
+                                                    target: { value: string };
+                                                  }) => {
+                                                    setNationalIdLookup(
+                                                      e.target.value
+                                                    );
+                                                  },
+                                                  onBlur: (e: {
+                                                    target: { value: string };
+                                                  }) =>
+                                                    handleFieldBlur(
+                                                      "externalId",
+                                                      e.target.value
+                                                    ),
+                                                }
+                                              )
                                             : form.register("externalId", {
-                                                onBlur: (e: { target: { value: any } }) =>
-                                                  handleFieldBlur("externalId", e.target.value),
-                                                pattern: {
-                                                  value: /^[0-9]{2}-[0-9]{6}[A-Za-z][0-9]{2}$/,
-                                                  message: "National ID must be in format 48-147220J12",
+                                                onChange: (e: {
+                                                  target: { value: string };
+                                                }) => {
+                                                  setNationalIdLookup(
+                                                    e.target.value
+                                                  );
                                                 },
+                                                onBlur: (e: {
+                                                  target: { value: string };
+                                                }) =>
+                                                  handleFieldBlur(
+                                                    "externalId",
+                                                    e.target.value
+                                                  ),
                                               }))}
-                                          disabled={true}
+                                          disabled={isFormDisabled}
                                         />
-                                        {lastSavedField === "externalId" && isAutoSaving && (
+                                        {lastSavedField === "externalId" &&
+                                          isAutoSaving && (
                                           <div className="absolute right-2 top-1/2 -translate-y-1/2">
                                             <div className="w-3 h-3 border border-gray-300 border-t-gray-600 rounded-full animate-spin"></div>
                                           </div>
@@ -6867,14 +6996,13 @@ export function ClientRegistrationForm({
                                     htmlFor="emailAddress"
                                     className={colors.textColor}
                                   >
-                                    Email Address{" "}
-                                    {!tenantLocale.emailOptional && <span className="text-red-500">*</span>}
+                                    Email Address
                                   </Label>
                                   <div className="relative">
                                     <Input
                                       id="emailAddress"
-                                      type={tenantLocale.emailOptional ? "text" : "email"}
-                                      placeholder={tenantLocale.emailOptional ? "Enter email address (optional)" : "Enter email address"}
+                                      type="email"
+                                      placeholder="Enter email address (optional)"
                                       className={getInputErrorStyling(
                                         hasFieldError(
                                           form,
@@ -7048,8 +7176,7 @@ export function ClientRegistrationForm({
                                     htmlFor="clientClassificationId"
                                     className={colors.textColor}
                                   >
-                                    Client Classification{" "}
-                                    <span className="text-red-500">*</span>
+                                    Client Classification
                                   </Label>
 
                                   <Controller
@@ -7395,7 +7522,10 @@ export function ClientRegistrationForm({
                                   } else if (externalForm && onFormSubmit) {
                                     // Client doesn't exist yet, submit the form to create it
                                     try {
-                                      await onFormSubmit(formValues);
+                                      await onFormSubmit(formValues, {
+                                        entityStakeholders,
+                                        entityBankAccounts,
+                                      });
                                       // Mark all completed sections as saved after successful submission
                                       setSectionCompletion((prevCompletion) => {
                                         setSectionSaved({
@@ -7486,6 +7616,10 @@ export function ClientRegistrationForm({
                                                 formValues.savingsProductId
                                               )
                                             : undefined,
+                                        entityStakeholdersDraft:
+                                          entityStakeholders,
+                                        entityBankAccountsDraft:
+                                          entityBankAccounts,
                                       };
 
                                       // Call API to create lead with client in Fineract
@@ -7840,8 +7974,7 @@ export function ClientRegistrationForm({
                                       <UserCheck className="h-5 w-5 text-red-500" />
                                     )}
                                     <Label className={colors.textColor}>
-                                      Client Selfie{" "}
-                                      <span className="text-red-500">*</span>
+                                      Client Selfie
                                     </Label>
                                     {getSectionStatus("selfie") === "saved" && (
                                       <Badge className="ml-2 bg-green-500 text-white">
@@ -7947,252 +8080,337 @@ export function ClientRegistrationForm({
                                       </div>
                                     )}
 
-                                    {/* Show upload options if no existing image and no new image */}
-                                    {!existingClientImage && !selfieImage && (
-                                      <div className="flex gap-4">
-                                        <Button
-                                          type="button"
-                                          variant="outline"
-                                          onClick={handleStartCamera}
-                                          disabled={!fineractClientId}
-                                          className="flex items-center gap-2"
-                                        >
-                                          <UserCheck className="h-4 w-4" />
-                                          Capture from Camera
-                                        </Button>
-                                        <label>
-                                          <Button
-                                            type="button"
-                                            variant="outline"
-                                            asChild
-                                            disabled={!fineractClientId}
-                                            className="flex items-center gap-2 cursor-pointer"
-                                          >
-                                            <span>
-                                              <UserPlus className="h-4 w-4" />
-                                              Upload from File
-                                            </span>
-                                          </Button>
-                                          <input
-                                            type="file"
-                                            accept="image/*"
-                                            onChange={handleSelfieFileSelect}
-                                            className="hidden"
-                                          />
-                                        </label>
-                                      </div>
-                                    )}
+                                        {/* Show upload options if no existing image and no new image */}
+                                        {!existingClientImage &&
+                                          !selfieImage && (
+                                            <div className="flex gap-4">
+                                              <Button
+                                                type="button"
+                                                variant="outline"
+                                                onClick={handleStartCamera}
+                                                disabled={!fineractClientId}
+                                                className="flex items-center gap-2"
+                                              >
+                                                <UserCheck className="h-4 w-4" />
+                                                Capture from Camera
+                                              </Button>
+                                              <label>
+                                                <Button
+                                                  type="button"
+                                                  variant="outline"
+                                                  asChild
+                                                  disabled={!fineractClientId}
+                                                  className="flex items-center gap-2 cursor-pointer"
+                                                >
+                                                  <span>
+                                                    <UserPlus className="h-4 w-4" />
+                                                    Upload from File
+                                                  </span>
+                                                </Button>
+                                                <input
+                                                  type="file"
+                                                  accept="image/*"
+                                                  onChange={
+                                                    handleSelfieFileSelect
+                                                  }
+                                                  className="hidden"
+                                                />
+                                              </label>
+                                            </div>
+                                          )}
 
-                                    {selfieImage && (
-                                      <div className="space-y-4">
-                                        <div className="relative w-full max-w-md">
-                                          <img
-                                            src={selfieImage}
-                                            alt="Selfie preview"
-                                            className="w-full rounded-lg border"
-                                          />
-                                          <Button
-                                            type="button"
-                                            variant="ghost"
-                                            size="sm"
-                                            onClick={() => setSelfieImage(null)}
-                                            className="absolute top-2 right-2"
-                                          >
-                                            <X className="h-4 w-4" />
-                                          </Button>
-                                        </div>
-                                        <div className="flex gap-4">
-                                          <Button
-                                            type="button"
-                                            onClick={handleUploadSelfie}
-                                            disabled={
-                                              uploadingSelfie ||
-                                              !fineractClientId
-                                            }
-                                            className="bg-blue-500 hover:bg-blue-600"
-                                          >
-                                            {uploadingSelfie ? (
-                                              <>
-                                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                                Uploading...
-                                              </>
-                                            ) : (
-                                              <>
-                                                <Save className="h-4 w-4 mr-2" />
-                                                Upload Selfie
-                                              </>
-                                            )}
-                                          </Button>
-                                          <Button
-                                            type="button"
-                                            variant="outline"
-                                            onClick={() => setSelfieImage(null)}
-                                          >
-                                            Remove
-                                          </Button>
-                                        </div>
-                                      </div>
-                                    )}
-
-                                    <canvas
-                                      ref={canvasRef}
-                                      className="hidden"
-                                    />
-                                  </div>
-                                </div>
-
-                                {/* Camera Modal */}
-                                <Dialog
-                                  open={showCameraModal}
-                                  onOpenChange={(open) => {
-                                    setShowCameraModal(open);
-                                    if (!open) {
-                                      if (videoRef.current) {
-                                        const stream = videoRef.current
-                                          .srcObject as MediaStream;
-                                        stream
-                                          ?.getTracks()
-                                          .forEach((track) => track.stop());
-                                      }
-                                      setCapturedImage(null);
-                                      setCameraPermissionDenied(false);
-                                    }
-                                  }}
-                                >
-                                  <DialogContent className="max-w-2xl">
-                                    <DialogHeader>
-                                      <DialogTitle className={colors.textColor}>
-                                        {cameraPermissionDenied ? "Camera Permission Required" : "Capture Selfie"}
-                                      </DialogTitle>
-                                      <DialogDescription
-                                        className={colors.textColorMuted}
-                                      >
-                                        {cameraPermissionDenied
-                                          ? "Camera access was blocked. Please follow the steps below to enable it."
-                                          : capturedImage
-                                            ? "Review your photo. You can retake or confirm."
-                                            : "Position your face in the frame and click capture."}
-                                      </DialogDescription>
-                                    </DialogHeader>
-                                    <div className="space-y-4">
-                                      {cameraPermissionDenied ? (
-                                        <div className="space-y-4">
-                                          <div className="flex items-center gap-3 p-4 rounded-lg bg-amber-50 border border-amber-200 dark:bg-amber-950/30 dark:border-amber-800">
-                                            <Camera className="h-6 w-6 text-amber-600 flex-shrink-0" />
-                                            <p className="text-sm text-amber-800 dark:text-amber-200">
-                                              Your browser has blocked camera access for this site. You need to manually allow it in your browser settings.
-                                            </p>
-                                          </div>
-                                          <div className="space-y-3 p-4 rounded-lg bg-muted/50">
-                                            <h4 className="font-medium text-sm flex items-center gap-2">
-                                              <Settings className="h-4 w-4" />
-                                              How to enable camera access:
-                                            </h4>
-                                            <div className="space-y-4 text-sm text-muted-foreground">
-                                              <div>
-                                                <p className="font-medium text-foreground mb-1">Chrome / Edge:</p>
-                                                <ol className="list-decimal list-inside space-y-1 ml-2">
-                                                  <li>Click the <strong>lock icon</strong> (or tune icon) in the address bar</li>
-                                                  <li>Find <strong>Camera</strong> and set it to <strong>Allow</strong></li>
-                                                  <li>Click the <strong>Try Again</strong> button below</li>
-                                                </ol>
-                                              </div>
-                                              <div>
-                                                <p className="font-medium text-foreground mb-1">Safari:</p>
-                                                <ol className="list-decimal list-inside space-y-1 ml-2">
-                                                  <li>Go to <strong>Safari &gt; Settings &gt; Websites &gt; Camera</strong></li>
-                                                  <li>Find this site and set it to <strong>Allow</strong></li>
-                                                  <li>Click the <strong>Try Again</strong> button below</li>
-                                                </ol>
-                                              </div>
-                                              <div>
-                                                <p className="font-medium text-foreground mb-1">Firefox:</p>
-                                                <ol className="list-decimal list-inside space-y-1 ml-2">
-                                                  <li>Click the <strong>lock icon</strong> in the address bar</li>
-                                                  <li>Click <strong>Clear permissions</strong> or find Camera and set to <strong>Allow</strong></li>
-                                                  <li>Click the <strong>Try Again</strong> button below</li>
-                                                </ol>
-                                              </div>
+                                        {selfieImage && (
+                                          <div className="space-y-4">
+                                            <div className="relative w-full max-w-md">
+                                              <img
+                                                src={selfieImage}
+                                                alt="Selfie preview"
+                                                className="w-full rounded-lg border"
+                                              />
+                                              <Button
+                                                type="button"
+                                                variant="ghost"
+                                                size="sm"
+                                                onClick={() =>
+                                                  setSelfieImage(null)
+                                                }
+                                                className="absolute top-2 right-2"
+                                              >
+                                                <X className="h-4 w-4" />
+                                              </Button>
+                                            </div>
+                                            <div className="flex gap-4">
+                                              <Button
+                                                type="button"
+                                                onClick={handleUploadSelfie}
+                                                disabled={
+                                                  uploadingSelfie ||
+                                                  !fineractClientId
+                                                }
+                                                className="bg-blue-500 hover:bg-blue-600"
+                                              >
+                                                {uploadingSelfie ? (
+                                                  <>
+                                                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                                    Uploading...
+                                                  </>
+                                                ) : (
+                                                  <>
+                                                    <Save className="h-4 w-4 mr-2" />
+                                                    Upload Selfie
+                                                  </>
+                                                )}
+                                              </Button>
+                                              <Button
+                                                type="button"
+                                                variant="outline"
+                                                onClick={() =>
+                                                  setSelfieImage(null)
+                                                }
+                                              >
+                                                Remove
+                                              </Button>
                                             </div>
                                           </div>
-                                        </div>
-                                      ) : !capturedImage ? (
-                                        <div className="relative w-full aspect-video bg-black rounded-lg overflow-hidden">
-                                          <video
-                                            ref={videoRef}
-                                            autoPlay
-                                            playsInline
-                                            muted
-                                            className="w-full h-full object-cover"
-                                          />
-                                        </div>
-                                      ) : (
-                                        <div className="relative w-full aspect-video bg-black rounded-lg overflow-hidden">
-                                          <img
-                                            src={capturedImage}
-                                            alt="Captured selfie"
-                                            className="w-full h-full object-cover"
-                                          />
-                                        </div>
-                                      )}
+                                        )}
+
+                                        <canvas
+                                          ref={canvasRef}
+                                          className="hidden"
+                                        />
+                                      </div>
                                     </div>
-                                    <DialogFooter>
-                                      {cameraPermissionDenied ? (
-                                        <>
-                                          <Button
-                                            type="button"
-                                            variant="outline"
-                                            onClick={handleStopCamera}
+
+                                    {/* Camera Modal */}
+                                    <Dialog
+                                      open={showCameraModal}
+                                      onOpenChange={(open) => {
+                                        setShowCameraModal(open);
+                                        if (!open) {
+                                          if (videoRef.current) {
+                                            const stream = videoRef.current
+                                              .srcObject as MediaStream;
+                                            stream
+                                              ?.getTracks()
+                                              .forEach((track) =>
+                                                track.stop()
+                                              );
+                                          }
+                                          setCapturedImage(null);
+                                          setCameraPermissionDenied(false);
+                                        }
+                                      }}
+                                    >
+                                      <DialogContent className="max-w-2xl">
+                                        <DialogHeader>
+                                          <DialogTitle
+                                            className={colors.textColor}
                                           >
-                                            Cancel
-                                          </Button>
-                                          <Button
-                                            type="button"
-                                            onClick={() => attemptCameraAccess()}
-                                            className="bg-blue-500 hover:bg-blue-600 flex items-center gap-2"
+                                            {cameraPermissionDenied
+                                              ? "Camera Permission Required"
+                                              : "Capture Selfie"}
+                                          </DialogTitle>
+                                          <DialogDescription
+                                            className={colors.textColorMuted}
                                           >
-                                            <RefreshCw className="h-4 w-4" />
-                                            Try Again
-                                          </Button>
-                                        </>
-                                      ) : !capturedImage ? (
-                                        <>
-                                          <Button
-                                            type="button"
-                                            variant="outline"
-                                            onClick={handleStopCamera}
-                                          >
-                                            Cancel
-                                          </Button>
-                                          <Button
-                                            type="button"
-                                            onClick={handleCaptureSelfie}
-                                            className="bg-blue-500 hover:bg-blue-600"
-                                          >
-                                            Capture Photo
-                                          </Button>
-                                        </>
-                                      ) : (
-                                        <>
-                                          <Button
-                                            type="button"
-                                            variant="outline"
-                                            onClick={handleRetakePhoto}
-                                          >
-                                            Retake
-                                          </Button>
-                                          <Button
-                                            type="button"
-                                            onClick={handleConfirmCapture}
-                                            className="bg-blue-500 hover:bg-blue-600"
-                                          >
-                                            Use This Photo
-                                          </Button>
-                                        </>
-                                      )}
-                                    </DialogFooter>
-                                  </DialogContent>
-                                </Dialog>
+                                            {cameraPermissionDenied
+                                              ? "Camera access was blocked. Please follow the steps below to enable it."
+                                              : capturedImage
+                                                ? "Review your photo. You can retake or confirm."
+                                                : "Position your face in the frame and click capture."}
+                                          </DialogDescription>
+                                        </DialogHeader>
+                                        <div className="space-y-4">
+                                          {cameraPermissionDenied ? (
+                                            <div className="space-y-4">
+                                              <div className="flex items-center gap-3 p-4 rounded-lg bg-amber-50 border border-amber-200 dark:bg-amber-950/30 dark:border-amber-800">
+                                                <Camera className="h-6 w-6 text-amber-600 flex-shrink-0" />
+                                                <p className="text-sm text-amber-800 dark:text-amber-200">
+                                                  Your browser has blocked camera
+                                                  access for this site. You need
+                                                  to manually allow it in your
+                                                  browser settings.
+                                                </p>
+                                              </div>
+                                              <div className="space-y-3 p-4 rounded-lg bg-muted/50">
+                                                <h4 className="font-medium text-sm flex items-center gap-2">
+                                                  <Settings className="h-4 w-4" />
+                                                  How to enable camera access:
+                                                </h4>
+                                                <div className="space-y-4 text-sm text-muted-foreground">
+                                                  <div>
+                                                    <p className="font-medium text-foreground mb-1">
+                                                      Chrome / Edge:
+                                                    </p>
+                                                    <ol className="list-decimal list-inside space-y-1 ml-2">
+                                                      <li>
+                                                        Click the{" "}
+                                                        <strong>
+                                                          lock icon
+                                                        </strong>{" "}
+                                                        (or tune icon) in the
+                                                        address bar
+                                                      </li>
+                                                      <li>
+                                                        Find{" "}
+                                                        <strong>Camera</strong>{" "}
+                                                        and set it to{" "}
+                                                        <strong>
+                                                          Allow
+                                                        </strong>
+                                                      </li>
+                                                      <li>
+                                                        Click the{" "}
+                                                        <strong>
+                                                          Try Again
+                                                        </strong>{" "}
+                                                        button below
+                                                      </li>
+                                                    </ol>
+                                                  </div>
+                                                  <div>
+                                                    <p className="font-medium text-foreground mb-1">
+                                                      Safari:
+                                                    </p>
+                                                    <ol className="list-decimal list-inside space-y-1 ml-2">
+                                                      <li>
+                                                        Go to{" "}
+                                                        <strong>
+                                                          Safari &gt; Settings
+                                                          &gt; Websites &gt;
+                                                          Camera
+                                                        </strong>
+                                                      </li>
+                                                      <li>
+                                                        Find this site and set
+                                                        it to{" "}
+                                                        <strong>
+                                                          Allow
+                                                        </strong>
+                                                      </li>
+                                                      <li>
+                                                        Click the{" "}
+                                                        <strong>
+                                                          Try Again
+                                                        </strong>{" "}
+                                                        button below
+                                                      </li>
+                                                    </ol>
+                                                  </div>
+                                                  <div>
+                                                    <p className="font-medium text-foreground mb-1">
+                                                      Firefox:
+                                                    </p>
+                                                    <ol className="list-decimal list-inside space-y-1 ml-2">
+                                                      <li>
+                                                        Click the{" "}
+                                                        <strong>
+                                                          lock icon
+                                                        </strong>{" "}
+                                                        in the address bar
+                                                      </li>
+                                                      <li>
+                                                        Click{" "}
+                                                        <strong>
+                                                          Clear permissions
+                                                        </strong>{" "}
+                                                        or find Camera and set
+                                                        to{" "}
+                                                        <strong>
+                                                          Allow
+                                                        </strong>
+                                                      </li>
+                                                      <li>
+                                                        Click the{" "}
+                                                        <strong>
+                                                          Try Again
+                                                        </strong>{" "}
+                                                        button below
+                                                      </li>
+                                                    </ol>
+                                                  </div>
+                                                </div>
+                                              </div>
+                                            </div>
+                                          ) : !capturedImage ? (
+                                            <div className="relative w-full aspect-video bg-black rounded-lg overflow-hidden">
+                                              <video
+                                                ref={videoRef}
+                                                autoPlay
+                                                playsInline
+                                                muted
+                                                className="w-full h-full object-cover"
+                                              />
+                                            </div>
+                                          ) : (
+                                            <div className="relative w-full aspect-video bg-black rounded-lg overflow-hidden">
+                                              <img
+                                                src={capturedImage}
+                                                alt="Captured selfie"
+                                                className="w-full h-full object-cover"
+                                              />
+                                            </div>
+                                          )}
+                                        </div>
+                                        <DialogFooter>
+                                          {cameraPermissionDenied ? (
+                                            <>
+                                              <Button
+                                                type="button"
+                                                variant="outline"
+                                                onClick={handleStopCamera}
+                                              >
+                                                Cancel
+                                              </Button>
+                                              <Button
+                                                type="button"
+                                                onClick={() =>
+                                                  attemptCameraAccess()
+                                                }
+                                                className="bg-blue-500 hover:bg-blue-600 flex items-center gap-2"
+                                              >
+                                                <RefreshCw className="h-4 w-4" />
+                                                Try Again
+                                              </Button>
+                                            </>
+                                          ) : !capturedImage ? (
+                                            <>
+                                              <Button
+                                                type="button"
+                                                variant="outline"
+                                                onClick={handleStopCamera}
+                                              >
+                                                Cancel
+                                              </Button>
+                                              <Button
+                                                type="button"
+                                                onClick={handleCaptureSelfie}
+                                                className="bg-blue-500 hover:bg-blue-600"
+                                              >
+                                                Capture Photo
+                                              </Button>
+                                            </>
+                                          ) : (
+                                            <>
+                                              <Button
+                                                type="button"
+                                                variant="outline"
+                                                onClick={handleRetakePhoto}
+                                              >
+                                                Retake
+                                              </Button>
+                                              <Button
+                                                type="button"
+                                                onClick={handleConfirmCapture}
+                                                className="bg-blue-500 hover:bg-blue-600"
+                                              >
+                                                Use This Photo
+                                              </Button>
+                                            </>
+                                          )}
+                                        </DialogFooter>
+                                      </DialogContent>
+                                    </Dialog>
 
                                 {/* Document Type Selection Dialog */}
                                 <Dialog
@@ -8594,6 +8812,7 @@ export function ClientRegistrationForm({
                                         <div className="flex items-center gap-2">
                                           <Label className={colors.textColor}>
                                             Identity Documents
+                                            {documentsOptional ? " (Optional)" : ""}
                                           </Label>
                                           {getSectionStatus(
                                             "identityDocuments"
@@ -9258,6 +9477,36 @@ export function ClientRegistrationForm({
                                   </CardContent>
                                 </Card>
 
+                                {isEntity && (
+                                  <>
+                                    <div className="my-8 border-t border-gray-300 dark:border-gray-700"></div>
+                                    <div className="space-y-3">
+                                      <h4
+                                        className={`text-md font-medium ${colors.textColor}`}
+                                      >
+                                        Directors, shareholders &amp; entity banking
+                                      </h4>
+                                      <p
+                                        className={`text-sm ${colors.textColorMuted}`}
+                                      >
+                                        Manage directors and shareholders (including UBO, PEP status,
+                                        and control structure), plus entity bank accounts.
+                                      </p>
+                                      <EntityStructureEditor
+                                        leadId={currentLeadId ?? null}
+                                        fineractClientId={fineractClientId}
+                                        initialStakeholders={entityStakeholders}
+                                        initialBankAccounts={entityBankAccounts}
+                                        onRefresh={refreshEntityStructure}
+                                        persistMode={
+                                          currentLeadId ? "immediate" : "deferred"
+                                        }
+                                        onDraftChange={handleEntityDraftChange}
+                                      />
+                                    </div>
+                                  </>
+                                )}
+
                                 {/* Divider */}
                                 <div className="my-8 border-t border-gray-300 dark:border-gray-700"></div>
 
@@ -9649,11 +9898,20 @@ export function ClientRegistrationForm({
                                     checkIdentityDocumentsSection();
                                   const docsComplete = checkOtherDocumentsSection();
 
-                                  if (!selfieComplete || !identityComplete) {
+                                  if (!selfieComplete) {
                                     error({
                                       title: "Incomplete KYC",
                                       description:
-                                        "Please complete the selfie and identity documents sections before proceeding.",
+                                        "Client selfie is required before proceeding.",
+                                    });
+                                    return;
+                                  }
+
+                                  if (!identityComplete) {
+                                    error({
+                                      title: "Incomplete KYC",
+                                      description:
+                                        "Please complete the identity documents section before proceeding.",
                                     });
                                     return;
                                   }
@@ -10111,42 +10369,7 @@ export function ClientRegistrationForm({
                                                     if (
                                                       fieldName === "isActive"
                                                     ) {
-                                                      // Boolean field
-                                                      return (
-                                                        <div
-                                                          key={fieldName}
-                                                          className="space-y-2"
-                                                        >
-                                                          <div className="flex items-center space-x-2">
-                                                            <Checkbox
-                                                              checked={Boolean(
-                                                                fieldValue
-                                                              )}
-                                                              onCheckedChange={(
-                                                                checked
-                                                              ) =>
-                                                                setEditedAddress(
-                                                                  {
-                                                                    ...editedAddress,
-                                                                    [fieldName]:
-                                                                      checked,
-                                                                  }
-                                                                )
-                                                              }
-                                                            />
-                                                            <Label
-                                                              className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
-                                                            >
-                                                              {label}
-                                                              {isRequired && (
-                                                                <span className="text-red-500 ml-1">
-                                                                  *
-                                                                </span>
-                                                              )}
-                                                            </Label>
-                                                          </div>
-                                                        </div>
-                                                      );
+                                                      return null;
                                                     }
 
                                                     // Default: text input
@@ -10453,26 +10676,6 @@ export function ClientRegistrationForm({
                                                       emptyMessage="No countries available"
                                                     />
                                                   </div>
-                                                  <div className="flex items-center space-x-2">
-                                                    <Checkbox
-                                                      checked={Boolean(
-                                                        editedAddress.isActive
-                                                      )}
-                                                      onCheckedChange={(
-                                                        checked
-                                                      ) =>
-                                                        setEditedAddress({
-                                                          ...editedAddress,
-                                                          isActive: checked,
-                                                        })
-                                                      }
-                                                    />
-                                                    <Label
-                                                      className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
-                                                    >
-                                                      Is Active
-                                                    </Label>
-                                                  </div>
                                                 </>
                                               )}
                                             </div>
@@ -10591,6 +10794,7 @@ export function ClientRegistrationForm({
                                                     const addressPayload = {
                                                       ...editedAddress,
                                                       addressType: addressType, // Ensure we use the validated addressType
+                                                      isActive: true,
                                                       dateFormat: "yyyy-MM-dd",
                                                       locale: "en",
                                                     };

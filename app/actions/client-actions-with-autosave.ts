@@ -24,6 +24,7 @@ const clientFormSchema = z.object({
   registrationNumber: z.string().optional(),
   dateOfIncorporation: z.coerce.date().optional(),
   natureOfBusiness: z.string().optional(),
+  businessAddress: z.string().optional(),
   isStaff: z.boolean().default(false),
   mobileNo: z.union([z.string(), z.number()]).optional().transform(val => val !== undefined ? String(val) : undefined),
   countryCode: z.string().default("+260"),
@@ -160,6 +161,9 @@ export async function autoSaveField(
           ...(validatedData.natureOfBusiness !== undefined && {
             natureOfBusiness: validatedData.natureOfBusiness,
           }),
+          ...(validatedData.businessAddress !== undefined && {
+            businessAddress: validatedData.businessAddress,
+          }),
           ...(validatedData.isStaff !== undefined && {
             isStaff: validatedData.isStaff,
           }),
@@ -220,18 +224,14 @@ export async function autoSaveField(
       console.log("Lead updated successfully:", updatedLead.id);
       return { success: true, leadId };
     } else {
-      console.log("Creating new lead with initial stage");
-      const initialStage = await prisma.pipelineStage.findFirst({
-        where: { tenantId, isInitialState: true, isActive: true },
-        select: { id: true },
-      });
+      console.log("Creating new lead with PROSPECT stage");
 
       try {
+        // Create new lead with prospect stage
         const lead = await prisma.lead.create({
           data: {
             userId,
             tenantId,
-            currentStageId: initialStage?.id ?? null,
             officeId: validatedData.officeId || null,
             officeName: validatedData.officeName || null,
             legalFormId: validatedData.legalFormId || null,
@@ -286,7 +286,6 @@ export async function autoSaveField(
           const leadData = {
             userId,
             tenantId,
-            currentStageId: initialStage?.id ?? null,
             officeId: validatedData.officeId || null,
             officeName: validatedData.officeName || null,
             legalFormId: validatedData.legalFormId || null,
@@ -303,6 +302,7 @@ export async function autoSaveField(
             registrationNumber: validatedData.registrationNumber || null,
             dateOfIncorporation: validatedData.dateOfIncorporation || null,
             natureOfBusiness: validatedData.natureOfBusiness || null,
+            businessAddress: validatedData.businessAddress || null,
             isStaff: validatedData.isStaff || false,
             mobileNo: validatedData.mobileNo || null,
             countryCode: validatedData.countryCode || "+260",
@@ -409,6 +409,11 @@ export async function getLeadById(leadId: string) {
       where: { id: leadId },
       include: {
         familyMembers: true,
+        entityStakeholders: {
+          orderBy: [{ role: "asc" }, { sortOrder: "asc" }],
+          include: { proofOfResidenceDocument: true },
+        },
+        entityBankAccounts: { orderBy: { sortOrder: "asc" } },
       },
     });
 

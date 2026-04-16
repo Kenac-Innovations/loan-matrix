@@ -10,6 +10,12 @@ export interface Transaction {
       repaymentAtDisbursement?: boolean;
       accrual?: boolean;
     };
+    loanChargePaidByList?: Array<{
+      name?: string;
+      amount?: number;
+      chargeId?: number;
+      loanChargeId?: number;
+    }>;
     amount: number;
     principalPortion: number;
     interestPortion: number;
@@ -17,4 +23,12 @@ export interface Transaction {
     penaltyChargesPortion: number;
     outstandingLoanBalance: number;
     transactionId?: string;
+    loanChargePaidByList?: Array<{
+      chargeName?: string;
+      name?: string;
+      loanChargeName?: string;
+      charge?: {
+        name?: string;
+      };
+    }>;
   }

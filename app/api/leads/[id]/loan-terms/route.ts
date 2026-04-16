@@ -1,6 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getTenantBySlug, extractTenantSlugFromRequest } from "@/lib/tenant-service";
+import { getSession } from "@/lib/auth";
+import {
+  getLeadAccessProfile,
+  PENDING_APPROVAL_EDITABLE_LOAN_TERM_FIELDS,
+} from "@/lib/lead-permissions";
+import { isPendingLoanApplicationEditTenant } from "@/lib/pending-loan-application-edit";
+import { SpecificPermission } from "@/shared/types/auth";
+
+type LeadStateMetadata = {
+  originalRequestedAmount?: number;
+  loanTerms?: Record<string, unknown>;
+  [key: string]: unknown;
+};
 
 export async function POST(
   request: NextRequest,
@@ -16,16 +29,28 @@ export async function POST(
 
     const tenantSlug = extractTenantSlugFromRequest(request);
     const tenant = await getTenantBySlug(tenantSlug);
+    const session = await getSession();
 
     if (!tenant) {
       return NextResponse.json({ error: "Tenant not found" }, { status: 404 });
     }
 
-    const lead = await prisma.lead.findUnique({
+    const lead = (await prisma.lead.findUnique({
       where: {
         id: leadId,
       },
-    });
+      select: {
+        id: true,
+        requestedAmount: true,
+        loanTerm: true,
+        stateMetadata: true,
+        currentStage: {
+          select: {
+            name: true,
+          },
+        },
+      },
+    })) as any;
 
     if (!lead) {
       console.error("Lead not found:", leadId);
@@ -35,41 +60,133 @@ export async function POST(
       );
     }
 
+    const invoiceDiscountingPrincipal = null;
+    const resolvedPrincipal = invoiceDiscountingPrincipal ?? data.principal;
+
     // Store loan terms in stateMetadata
     const currentMetadata = (lead.stateMetadata as any) || {};
+    const existingLoanTerms = (currentMetadata.loanTerms as any) || {};
+    const accessProfile = await getLeadAccessProfile({
+      tenantId: tenant.id,
+      lead,
+      session,
+    });
+    const requestedLoanTerms = {
+      principal: resolvedPrincipal,
+      loanTerm: data.loanTerm,
+      termFrequency: data.termFrequency,
+      numberOfRepayments: data.numberOfRepayments,
+      repaymentEvery: data.repaymentEvery,
+      repaymentFrequency: data.repaymentFrequency,
+      repaymentFrequencyNthDay: data.repaymentFrequencyNthDay,
+      repaymentFrequencyDayOfWeek: data.repaymentFrequencyDayOfWeek,
+      nominalInterestRate: data.nominalInterestRate,
+      interestRateFrequency: data.interestRateFrequency,
+      interestMethod: data.interestMethod,
+      amortization: data.amortization,
+      isEqualAmortization: data.isEqualAmortization,
+      repaymentStrategy: data.repaymentStrategy,
+      interestCalculationPeriod: data.interestCalculationPeriod,
+      calculateInterestForExactDays: data.calculateInterestForExactDays,
+      arrearsTolerance: data.arrearsTolerance,
+      interestFreePeriod: data.interestFreePeriod,
+      graceOnPrincipalPayment: data.graceOnPrincipalPayment,
+      graceOnInterestPayment: data.graceOnInterestPayment,
+      onArrearsAgeing: data.onArrearsAgeing,
+      firstRepaymentOn: data.firstRepaymentOn,
+      interestChargedFrom: data.interestChargedFrom,
+      balloonRepaymentAmount: data.balloonRepaymentAmount,
+      collaterals: data.collaterals,
+      charges: data.charges || [],
+      isTopup: data.isTopup || false,
+      loanIdToClose: data.loanIdToClose || "",
+    };
+
+    const isRestrictedPendingApprovalEdit =
+      accessProfile.isPendingApproval &&
+      !accessProfile.canFullyEditPendingApprovalLoanTerms;
+
+    if (
+      accessProfile.isPendingApproval &&
+      !accessProfile.canRestrictedEditPendingApprovalLoanTerms
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Pending Approval applications can only be updated by Credit Analysts or administrators.",
+        },
+        { status: 403 }
+      );
+    }
+
+    if (isRestrictedPendingApprovalEdit && !accessProfile.isCreditAnalyst) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Pending Approval loan-term edits are restricted to Credit Analysts.",
+        },
+        { status: 403 }
+      );
+    }
+
+    const loanTerms = isRestrictedPendingApprovalEdit
+      ? {
+          ...existingLoanTerms,
+          ...Object.fromEntries(
+            PENDING_APPROVAL_EDITABLE_LOAN_TERM_FIELDS
+              .filter((fieldName) => requestedLoanTerms[fieldName] !== undefined)
+              .map((fieldName) => [fieldName, requestedLoanTerms[fieldName]])
+          ),
+        }
+      : requestedLoanTerms;
+
     const updatedMetadata = {
       ...currentMetadata,
-      loanTerms: {
-        principal: data.principal,
-        loanTerm: data.loanTerm,
-        termFrequency: data.termFrequency,
-        numberOfRepayments: data.numberOfRepayments,
-        repaymentEvery: data.repaymentEvery,
-        repaymentFrequency: data.repaymentFrequency,
-        repaymentFrequencyNthDay: data.repaymentFrequencyNthDay,
-        repaymentFrequencyDayOfWeek: data.repaymentFrequencyDayOfWeek,
-        nominalInterestRate: data.nominalInterestRate,
-        interestRateFrequency: data.interestRateFrequency,
-        interestMethod: data.interestMethod,
-        amortization: data.amortization,
-        isEqualAmortization: data.isEqualAmortization,
-        repaymentStrategy: data.repaymentStrategy,
-        interestCalculationPeriod: data.interestCalculationPeriod,
-        calculateInterestForExactDays: data.calculateInterestForExactDays,
-        arrearsTolerance: data.arrearsTolerance,
-        interestFreePeriod: data.interestFreePeriod,
-        graceOnPrincipalPayment: data.graceOnPrincipalPayment,
-        graceOnInterestPayment: data.graceOnInterestPayment,
-        onArrearsAgeing: data.onArrearsAgeing,
-        firstRepaymentOn: data.firstRepaymentOn,
-        interestChargedFrom: data.interestChargedFrom,
-        balloonRepaymentAmount: data.balloonRepaymentAmount,
-        collaterals: data.collaterals,
-        charges: data.charges || [],
-        isTopup: data.isTopup || false,
-        loanIdToClose: data.loanIdToClose || "",
-      },
+      loanTerms,
+      ...(isPendingLoanApplicationEditTenant(tenantSlug, tenant.settings)
+        ? {
+            originalRequestedAmount:
+              currentMetadata.originalRequestedAmount ??
+              (lead.requestedAmount != null
+                ? Number(lead.requestedAmount)
+                : undefined),
+          }
+        : {}),
     };
+
+    if (isRestrictedPendingApprovalEdit) {
+      const changes = Object.fromEntries(
+        PENDING_APPROVAL_EDITABLE_LOAN_TERM_FIELDS.filter(
+          (fieldName) => existingLoanTerms[fieldName] !== loanTerms[fieldName]
+        ).map((fieldName) => [
+          fieldName,
+          {
+            from: existingLoanTerms[fieldName] ?? null,
+            to: loanTerms[fieldName] ?? null,
+          },
+        ])
+      );
+
+      if (Object.keys(changes).length > 0) {
+        const currentHistory = Array.isArray(currentMetadata.pendingApprovalEditHistory)
+          ? currentMetadata.pendingApprovalEditHistory
+          : [];
+
+        updatedMetadata.pendingApprovalEditHistory = [
+          ...currentHistory,
+          {
+            editedAt: new Date().toISOString(),
+            editedByUserId: session?.user?.userId ?? null,
+            editedByName: session?.user?.name ?? null,
+            roleNames: accessProfile.roleNames,
+            scope: "pending-approval-credit-analyst",
+            changes,
+          },
+        ];
+      }
+    }
     
     console.log("Saving loan terms with charges:", data.charges);
 
@@ -77,6 +194,16 @@ export async function POST(
       where: { id: leadId },
       data: {
         stateMetadata: updatedMetadata,
+        requestedAmount:
+          isPendingLoanApplicationEditTenant(tenantSlug, tenant.settings)
+            ? lead.requestedAmount
+            : typeof loanTerms.principal === "number"
+            ? loanTerms.principal
+            : lead.requestedAmount,
+        loanTerm:
+          typeof loanTerms.loanTerm === "number"
+            ? loanTerms.loanTerm
+            : lead.loanTerm,
         lastModified: new Date(),
       },
     });
@@ -113,19 +240,25 @@ export async function GET(
 
     const tenantSlug = extractTenantSlugFromRequest(request);
     const tenant = await getTenantBySlug(tenantSlug);
+    const session = await getSession();
 
     if (!tenant) {
       return NextResponse.json({ error: "Tenant not found" }, { status: 404 });
     }
 
-    const lead = await prisma.lead.findUnique({
+    const lead = (await prisma.lead.findUnique({
       where: {
         id: leadId,
       },
       select: {
         stateMetadata: true,
+        currentStage: {
+          select: {
+            name: true,
+          },
+        },
       },
-    });
+    })) as any;
 
     if (!lead) {
       console.error("Lead not found:", leadId);
@@ -135,14 +268,41 @@ export async function GET(
       );
     }
 
-    const metadata = (lead.stateMetadata as any) || {};
-    const loanTerms = metadata.loanTerms || null;
+    const metadata = (lead.stateMetadata as LeadStateMetadata | null) || {};
+    const storedLoanTerms = metadata.loanTerms || null;
+    const invoiceDiscountingPrincipal = null;
+    const loanTerms = storedLoanTerms
+      ? {
+          ...storedLoanTerms,
+          principal: invoiceDiscountingPrincipal ?? storedLoanTerms.principal,
+        }
+      : invoiceDiscountingPrincipal != null
+        ? { principal: invoiceDiscountingPrincipal }
+        : null;
+        const accessProfile = await getLeadAccessProfile({
+      tenantId: tenant.id,
+      lead,
+      session,
+    });
+
 
     console.log("Found loan terms data:", loanTerms);
 
     return NextResponse.json({
       success: true,
       data: loanTerms,
+      permissions: {
+        canEditAllLoanTerms:
+          !!session?.user?.permissions?.includes(SpecificPermission.ALL_FUNCTIONS) ||
+          accessProfile.canFullyEditPendingApprovalLoanTerms,
+        canEditPendingApprovalRestrictedTerms:
+          accessProfile.canRestrictedEditPendingApprovalLoanTerms &&
+          !accessProfile.canFullyEditPendingApprovalLoanTerms,
+        editableFields: accessProfile.canRestrictedEditPendingApprovalLoanTerms
+          ? [...PENDING_APPROVAL_EDITABLE_LOAN_TERM_FIELDS]
+          : [],
+        isPendingApproval: accessProfile.isPendingApproval,
+      },
     });
   } catch (error) {
     console.error("Error fetching loan terms:", error);

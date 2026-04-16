@@ -111,8 +111,10 @@ export async function fetchFineractAPI(
           specificErrorMessage;
       }
 
-      // Create a custom error with user-friendly message
-      const error = new Error(specificErrorMessage);
+      // Create a custom error that includes the backend error data
+      const error = new Error(
+        `API error: ${response.status} ${response.statusText}`
+      );
       (error as any).status = response.status;
       (error as any).errorData = {
         ...errorData,
@@ -298,8 +300,10 @@ export function createClientFineractAPI(accessToken?: string) {
             specificErrorMessage;
         }
 
-        // Create a custom error with user-friendly message
-        const error = new Error(specificErrorMessage);
+        // Create a custom error that includes the backend error data
+        const error = new Error(
+          `API error: ${response.status} ${response.statusText}`
+        );
         (error as any).status = response.status;
         (error as any).errorData = {
           ...errorData,

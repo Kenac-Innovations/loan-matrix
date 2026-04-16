@@ -1,7 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import React, { createContext, useContext } from "react";
 import { signIn, signOut, useSession, getSession } from "next-auth/react";
 
 type LoginResult = { success: boolean; error?: string };
@@ -14,7 +13,11 @@ type AuthContextType = {
     email?: string | null;
     image?: string | null;
   } | null;
-  login: (username: string, password: string) => Promise<LoginResult>;
+  login: (
+    username: string,
+    password: string,
+    callbackUrl?: string
+  ) => Promise<LoginResult>;
   logout: () => void;
 };
 
@@ -31,21 +34,45 @@ export const useAuth = () => useContext(AuthContext);
 // Provider component that wraps the app and makes auth available
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const { data: session, status: sessionStatus } = useSession();
-  const router = useRouter();
+
+  const hasActiveSession = async (
+    attempts = 5,
+    delayMs = 120
+  ): Promise<boolean> => {
+    for (let attempt = 0; attempt < attempts; attempt++) {
+      const currentSession = await getSession();
+      if (currentSession) {
+        return true;
+      }
+
+      if (attempt < attempts - 1) {
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
+    }
+
+    return false;
+  };
 
   const login = async (
     username: string,
-    password: string
+    password: string,
+    callbackUrl = "/leads"
   ): Promise<LoginResult> => {
     try {
       const result = await signIn("credentials", {
         username,
         password,
         redirect: false,
-        callbackUrl: "/leads",
+        callbackUrl,
       });
 
       if (result?.error) {
+        // In some environments, signIn reports a transient client error
+        // while the session cookie is already being written.
+        if (await hasActiveSession()) {
+          return { success: true };
+        }
+
         console.error("SignIn error:", result.error);
 
         try {
@@ -67,6 +94,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
 
         return { success: false, error: "Invalid username or password" };
+      }
+
+      // Avoid false negatives caused by short session propagation delays.
+      if (!(await hasActiveSession())) {
+        return {
+          success: false,
+          error: "Authentication is taking longer than expected. Please try again.",
+        };
       }
 
       try {
@@ -92,11 +127,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (error) {
       console.error("Login failed:", error);
 
-      if (error instanceof TypeError && error.message.includes("Invalid URL")) {
-        const session = await getSession();
-        if (session) {
-          return { success: true };
-        }
+      if (await hasActiveSession()) {
+        return { success: true };
       }
 
       return {

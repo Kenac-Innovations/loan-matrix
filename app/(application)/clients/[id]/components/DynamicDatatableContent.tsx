@@ -1,7 +1,17 @@
 "use client";
 
 import { useEffect, useState, useRef, useCallback } from "react";
-import { Loader2, AlertCircle, Edit2, Save, X, Plus } from "lucide-react";
+import {
+  Loader2,
+  AlertCircle,
+  Edit2,
+  Save,
+  X,
+  Plus,
+  Eye,
+  Download,
+  FileText,
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -36,6 +46,29 @@ import {
   hasEmploymentDetailFields,
   getEmploymentDetailColumnNames,
 } from "@/components/datatables/EmploymentDetailsFields";
+
+const normalizeTableName = (value: string): string =>
+  value.toLowerCase().replace(/[^a-z0-9]+/g, "");
+
+const isProposedSecurityDatatable = (datatableName: string): boolean =>
+  normalizeTableName(datatableName).includes("proposedsecurity");
+
+const formatDocumentLabelPart = (value: string): string =>
+  value
+    .trim()
+    .replace(/\.[^.]+$/, "")
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+const extractDocumentId = (payload: any): string | null => {
+  const id =
+    payload?.resourceId ??
+    payload?.documentId ??
+    payload?.id ??
+    payload?.resourceIdentifier;
+  return id == null ? null : String(id);
+};
 
 const isMaritalStatusField = (columnName: string): boolean => {
   const lower = columnName.toLowerCase();
@@ -149,7 +182,15 @@ export function DynamicDatatableContent({
   const [newCodeValueName, setNewCodeValueName] = useState("");
   const [newCodeValueDescription, setNewCodeValueDescription] = useState("");
   const [addingCodeValue, setAddingCodeValue] = useState(false);
+  const [pendingSupportingDocument, setPendingSupportingDocument] =
+    useState<File | null>(null);
+  const [showSupportingDocumentPreview, setShowSupportingDocumentPreview] =
+    useState(false);
+  const [supportingDocumentPreviewUrl, setSupportingDocumentPreviewUrl] =
+    useState<string | null>(null);
   const { toast } = useToast();
+  const isProposedSecurityTable =
+    isProposedSecurityDatatable(datatableName);
 
   // Check if spouse fields should be visible based on marital status
   const shouldShowSpouseFields = useCallback((rowCells?: any[]) => {
@@ -186,6 +227,126 @@ export function DynamicDatatableContent({
       onEditingChangeRef.current(editingRowIndex !== null);
     }
   }, [editingRowIndex]);
+
+  useEffect(() => {
+    if (!pendingSupportingDocument) {
+      setSupportingDocumentPreviewUrl(null);
+      setShowSupportingDocumentPreview(false);
+      return;
+    }
+
+    const previewUrl = URL.createObjectURL(pendingSupportingDocument);
+    setSupportingDocumentPreviewUrl(previewUrl);
+
+    return () => {
+      URL.revokeObjectURL(previewUrl);
+    };
+  }, [pendingSupportingDocument]);
+
+  const buildProposedSecurityDocumentName = useCallback(
+    (values: Record<string, any>, file: File): string => {
+      const description =
+        values.description ??
+        values.Description ??
+        values.DESCRIPTION ??
+        "";
+      const model = values.model ?? values.Model ?? values.MODEL ?? "";
+      const valueAmount = values.value ?? values.Value ?? values.VALUE ?? "";
+      const serialNumber =
+        values.serialNumber ??
+        values.serial_number ??
+        values["serial number"] ??
+        values["Serial Number"] ??
+        values.SERIAL_NUMBER ??
+        "";
+
+      const primaryLabel = formatDocumentLabelPart(
+        String(description || model || serialNumber || file.name || datatableName)
+      );
+      const secondaryLabel = formatDocumentLabelPart(
+        String(
+          serialNumber ||
+            (description ? model : "") ||
+            valueAmount ||
+            ""
+        )
+      );
+
+      return ["Proposed Security", primaryLabel || "Entry", secondaryLabel]
+        .filter(Boolean)
+        .join(" - ");
+    },
+    [datatableName]
+  );
+
+  const buildProposedSecurityDocumentDescription = useCallback(
+    (values: Record<string, any>): string => {
+      const description =
+        values.description ??
+        values.Description ??
+        values.DESCRIPTION ??
+        "";
+      const model = values.model ?? values.Model ?? values.MODEL ?? "";
+      const serialNumber =
+        values.serialNumber ??
+        values.serial_number ??
+        values["serial number"] ??
+        values["Serial Number"] ??
+        values.SERIAL_NUMBER ??
+        "";
+      const valueAmount = values.value ?? values.Value ?? values.VALUE ?? "";
+
+      return [
+        "Collateral supporting document for Proposed Security entry",
+        description ? `Description: ${description}` : null,
+        model ? `Model: ${model}` : null,
+        serialNumber ? `Serial Number: ${serialNumber}` : null,
+        valueAmount ? `Value: ${valueAmount}` : null,
+      ]
+        .filter(Boolean)
+        .join(" | ");
+    },
+    [datatableName]
+  );
+
+  const uploadProposedSecurityDocument = useCallback(
+    async (values: Record<string, any>, file: File): Promise<string | null> => {
+      const formData = new FormData();
+      formData.append(
+        "name",
+        buildProposedSecurityDocumentName(values, file)
+      );
+      formData.append(
+        "description",
+        buildProposedSecurityDocumentDescription(values)
+      );
+      formData.append("file", file);
+
+      const response = await fetch(
+        `/api/fineract/clients/${clientId}/documents`,
+        {
+          method: "POST",
+          body: formData,
+        }
+      );
+
+      const json = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(
+          typeof json?.error === "string"
+            ? json.error
+            : "Failed to upload supporting document"
+        );
+      }
+
+      return extractDocumentId(json);
+    },
+    [
+      buildProposedSecurityDocumentDescription,
+      buildProposedSecurityDocumentName,
+      clientId,
+    ]
+  );
 
   useEffect(() => {
     const load = async () => {
@@ -445,12 +606,14 @@ export function DynamicDatatableContent({
     });
 
     setEditedData(initialData);
+    setPendingSupportingDocument(null);
     setEditingRowIndex(rowIndex);
   };
 
   const cancelEditing = () => {
     setEditingRowIndex(null);
     setEditedData({});
+    setPendingSupportingDocument(null);
   };
 
   const handleFieldChange = useCallback((columnName: string, value: any) => {
@@ -459,6 +622,199 @@ export function DynamicDatatableContent({
       [columnName]: value,
     }));
   }, []);
+
+  const handleDownloadPendingSupportingDocument = useCallback(() => {
+    if (!pendingSupportingDocument) {
+      return;
+    }
+
+    const downloadUrl = URL.createObjectURL(pendingSupportingDocument);
+    const anchor = document.createElement("a");
+    anchor.href = downloadUrl;
+    anchor.download = pendingSupportingDocument.name || "supporting-document";
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    URL.revokeObjectURL(downloadUrl);
+  }, [pendingSupportingDocument]);
+
+  const renderSupportingDocumentUpload = () => {
+    if (!isProposedSecurityTable) {
+      return null;
+    }
+
+    const isImageDocument = pendingSupportingDocument
+      ? pendingSupportingDocument.type.startsWith("image/") ||
+        pendingSupportingDocument.name.match(
+          /\.(jpg|jpeg|png|gif|webp|bmp)$/i
+        )
+      : false;
+    const isPdfDocument = pendingSupportingDocument
+      ? pendingSupportingDocument.type.includes("pdf") ||
+        pendingSupportingDocument.name.match(/\.pdf$/i)
+      : false;
+
+    return (
+      <div className="col-span-1 md:col-span-2 lg:col-span-3 space-y-2 rounded-lg border border-dashed p-4">
+        <Label className="text-sm font-medium">
+          Supporting Document <span className="text-muted-foreground">(Optional)</span>
+        </Label>
+        <Input
+          type="file"
+          accept=".pdf,image/jpeg,image/png,image/webp"
+          className="cursor-pointer"
+          onChange={(e) => {
+            const file = e.target.files?.[0] || null;
+            e.target.value = "";
+            setPendingSupportingDocument(file);
+            setShowSupportingDocumentPreview(false);
+          }}
+          disabled={saving}
+        />
+        <p className="text-xs text-muted-foreground">
+          If provided, the file will be uploaded to the client documents after the
+          Proposed Security entry is saved.
+        </p>
+        {pendingSupportingDocument && (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 rounded bg-muted/40 p-2 text-xs">
+              <FileText className="h-3 w-3 text-blue-500 flex-shrink-0" />
+              <span
+                className="flex-1 truncate cursor-pointer text-foreground"
+                onClick={() =>
+                  setShowSupportingDocumentPreview((current) => !current)
+                }
+                title={pendingSupportingDocument.name}
+              >
+                {pendingSupportingDocument.name}
+              </span>
+              <span className="flex-shrink-0 text-muted-foreground">
+                {(pendingSupportingDocument.size / 1024).toFixed(1)} KB
+              </span>
+              <div className="flex items-center gap-1 flex-shrink-0">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className={`h-6 w-6 p-0 ${
+                    showSupportingDocumentPreview
+                      ? "bg-blue-100 dark:bg-blue-900"
+                      : ""
+                  }`}
+                  onClick={() =>
+                    setShowSupportingDocumentPreview((current) => !current)
+                  }
+                  title={
+                    showSupportingDocumentPreview
+                      ? "Hide preview"
+                      : "View document"
+                  }
+                  disabled={saving}
+                >
+                  <Eye className="h-3 w-3" />
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 w-6 p-0"
+                  onClick={handleDownloadPendingSupportingDocument}
+                  title="Download document"
+                  disabled={saving}
+                >
+                  <Download className="h-3 w-3" />
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 px-2"
+                  onClick={() => setPendingSupportingDocument(null)}
+                  disabled={saving}
+                >
+                  Clear
+                </Button>
+              </div>
+            </div>
+
+            {showSupportingDocumentPreview && supportingDocumentPreviewUrl && (
+              <div className="rounded-lg border bg-background p-3">
+                {isImageDocument ? (
+                  <div className="flex items-center justify-center">
+                    <img
+                      src={supportingDocumentPreviewUrl}
+                      alt={pendingSupportingDocument.name || "Document preview"}
+                      className="max-w-full max-h-96 object-contain rounded-lg shadow-sm"
+                    />
+                  </div>
+                ) : isPdfDocument ? (
+                  <div className="h-96 w-full">
+                    <iframe
+                      src={supportingDocumentPreviewUrl}
+                      className="h-full w-full rounded-lg border-0"
+                      title={pendingSupportingDocument.name || "Document preview"}
+                    />
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center h-32 space-y-2">
+                    <FileText className="h-8 w-8 text-muted-foreground" />
+                    <p className="text-sm text-muted-foreground text-center">
+                      Preview not available for this file type.
+                    </p>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={handleDownloadPendingSupportingDocument}
+                    >
+                      <Download className="h-3 w-3 mr-2" />
+                      Download to View
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const uploadOptionalSupportingDocument = useCallback(
+    async (values: Record<string, any>) => {
+      if (!isProposedSecurityTable || !pendingSupportingDocument) {
+        return {
+          attempted: false,
+          documentId: null as string | null,
+          errorMessage: null as string | null,
+        };
+      }
+
+      try {
+        const documentId = await uploadProposedSecurityDocument(
+          values,
+          pendingSupportingDocument
+        );
+        return {
+          attempted: true,
+          documentId,
+          errorMessage: null as string | null,
+        };
+      } catch (error: any) {
+        return {
+          attempted: true,
+          documentId: null as string | null,
+          errorMessage:
+            error?.message || "Failed to upload supporting document",
+        };
+      }
+    },
+    [
+      isProposedSecurityTable,
+      pendingSupportingDocument,
+      uploadProposedSecurityDocument,
+    ]
+  );
 
   const saveRow = async (rowIndex: number) => {
     setSaving(true);
@@ -558,14 +914,25 @@ export function DynamicDatatableContent({
         );
       }
 
+      const uploadResult = await uploadOptionalSupportingDocument(payload);
+      const baseDescription = "Data table entry updated successfully";
+      const documentUploadDescription = uploadResult.attempted
+        ? uploadResult.errorMessage
+          ? ` Entry was saved, but the supporting document upload failed: ${uploadResult.errorMessage}`
+          : uploadResult.documentId
+            ? ` Supporting document uploaded to client documents (ID: ${uploadResult.documentId}).`
+            : " Supporting document uploaded to client documents."
+        : "";
+
       toast({
-        title: "Success",
-        description: "Data table entry updated successfully",
+        title: uploadResult.errorMessage ? "Saved with warning" : "Success",
+        description: `${baseDescription}${documentUploadDescription}`,
       });
 
       // Refresh data
       setEditingRowIndex(null);
       setEditedData({});
+      setPendingSupportingDocument(null);
 
       // Reload the data
       const res = await fetch(
@@ -898,6 +1265,7 @@ export function DynamicDatatableContent({
       }
     });
     setEditedData(initialData);
+    setPendingSupportingDocument(null);
     setEditingRowIndex(-1); // Use -1 to indicate new row
   };
 
@@ -1054,16 +1422,27 @@ export function DynamicDatatableContent({
         }
       }
 
+      const uploadResult = await uploadOptionalSupportingDocument(payload);
+      const baseDescription = usedPut
+        ? "Data table entry updated successfully"
+        : "Data table entry created successfully";
+      const documentUploadDescription = uploadResult.attempted
+        ? uploadResult.errorMessage
+          ? ` Entry was saved, but the supporting document upload failed: ${uploadResult.errorMessage}`
+          : uploadResult.documentId
+            ? ` Supporting document uploaded to client documents (ID: ${uploadResult.documentId}).`
+            : " Supporting document uploaded to client documents."
+        : "";
+
       toast({
-        title: "Success",
-        description: usedPut
-          ? "Data table entry updated successfully"
-          : "Data table entry created successfully",
+        title: uploadResult.errorMessage ? "Saved with warning" : "Success",
+        description: `${baseDescription}${documentUploadDescription}`,
       });
 
       // Refresh data
       setEditingRowIndex(null);
       setEditedData({});
+      setPendingSupportingDocument(null);
 
       // Reload the data
       const res = await fetch(
@@ -1198,6 +1577,7 @@ export function DynamicDatatableContent({
               index
             );
           })}
+          {renderSupportingDocumentUpload()}
         </div>
       </div>
     );
@@ -1595,6 +1975,7 @@ export function DynamicDatatableContent({
                     </div>
                   );
                 })}
+                {isEditing && renderSupportingDocumentUpload()}
               </div>
             </div>
           );

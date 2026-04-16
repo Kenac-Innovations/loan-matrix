@@ -53,6 +53,7 @@ import { cn } from "@/lib/utils";
 import { formatCurrency } from "@/lib/format-currency";
 
 import type { FirstRepaymentDateConfig } from "@/shared/types/tenant";
+import { InvoiceDiscountingForm } from "@/app/(application)/leads/new/components/invoice-discounting-form";
 
 /**
  * Calculate the default first repayment date based on tenant strategy.
@@ -91,6 +92,8 @@ const calculateFirstRepaymentDate = (
   targetDate.setHours(0, 0, 0, 0);
   return targetDate;
 };
+
+type FacilityType = "TERM_LOAN" | "INVOICE_DISCOUNTING";
 
 // Form validation schema
 const loanDetailsSchema = z
@@ -303,6 +306,9 @@ export function LoanDetailsForm({
     loanInfo: false,
     savingsLinkage: false,
   });
+  const [isInvoiceDiscountingProduct, setIsInvoiceDiscountingProduct] = useState(false);
+  const [isCheckingProduct, setIsCheckingProduct] = useState(false);
+  const invoiceDiscountingSaveRef = useRef<(() => Promise<boolean>) | null>(null);
   const [firstRepaymentConfig, setFirstRepaymentConfig] =
     useState<FirstRepaymentDateConfig | null>(null);
   const [tenantConfigLoaded, setTenantConfigLoaded] = useState(false);
@@ -515,61 +521,62 @@ export function LoanDetailsForm({
           const firstProduct = productData.productOptions[0];
           form.setValue("productName", firstProduct.name);
 
-          // Now fetch the detailed template with the selected product
-          const templateResponse = await fetch(
-            `/api/fineract/loans/template?clientId=${clientId}&productId=${firstProduct.id}&activeOnly=true&staffInSelectedOfficeOnly=true&templateType=individual`,
-          );
+          // Fetch detailed template and invoice-discounting check in parallel.
+          // The template may legitimately fail for 0%-interest products in Fineract.
+          const [templateResponse, idCheckResponse] = await Promise.allSettled([
+            fetch(
+              `/api/fineract/loans/template?clientId=${clientId}&productId=${firstProduct.id}&activeOnly=true&staffInSelectedOfficeOnly=true&templateType=individual`,
+            ),
+            fetch(`/api/invoice-discounting-products?fineractProductId=${firstProduct.id}`),
+          ]);
 
-          if (!templateResponse.ok) {
-            throw new Error("Failed to fetch loan template");
+          // Invoice discounting check
+          if (idCheckResponse.status === "fulfilled" && idCheckResponse.value.ok) {
+            try {
+              const idData = await idCheckResponse.value.json();
+              setIsInvoiceDiscountingProduct(idData.isInvoiceDiscounting === true);
+            } catch { /* ignore */ }
           }
 
-          const templateData = await templateResponse.json();
-          console.log("Detailed loan template data:", templateData); // Debug log
-          console.log(
-            "Loan officer options in detailed response:",
-            templateData.loanOfficerOptions,
-          ); // Debug log
+          // Template
+          if (templateResponse.status === "fulfilled" && templateResponse.value.ok) {
+            const templateData = await templateResponse.value.json();
+            console.log("Detailed loan template data:", templateData);
+            console.log("Loan officer options in detailed response:", templateData.loanOfficerOptions);
 
-          // Merge the detailed template data while preserving critical arrays from initial response
-          // (in case the detailed response doesn't include them)
-          const mergedTemplate = {
-            ...templateData,
-            productOptions:
-              templateData.productOptions || productData.productOptions || [],
-            loanOfficerOptions:
-              templateData.loanOfficerOptions ||
-              productData.loanOfficerOptions ||
-              [],
-            loanPurposeOptions:
-              templateData.loanPurposeOptions ||
-              productData.loanPurposeOptions ||
-              [],
-            fundOptions:
-              templateData.fundOptions || productData.fundOptions || [],
-          };
+            const mergedTemplate = {
+              ...templateData,
+              productOptions:
+                templateData.productOptions || productData.productOptions || [],
+              loanOfficerOptions:
+                templateData.loanOfficerOptions ||
+                productData.loanOfficerOptions ||
+                [],
+              loanPurposeOptions:
+                templateData.loanPurposeOptions ||
+                productData.loanPurposeOptions ||
+                [],
+              fundOptions:
+                templateData.fundOptions || productData.fundOptions || [],
+            };
 
-          console.log(
-            "Merged template loanOfficerOptions:",
-            mergedTemplate.loanOfficerOptions,
-          );
-          console.log(
-            "Merged template loanOfficerOptions length:",
-            mergedTemplate.loanOfficerOptions?.length,
-          );
+            console.log("Merged template loanOfficerOptions:", mergedTemplate.loanOfficerOptions);
+            console.log("Merged template loanOfficerOptions length:", mergedTemplate.loanOfficerOptions?.length);
 
-          // Update the template with the merged data
-          setLoanTemplate(mergedTemplate);
-          console.log(
-            "Updated loanTemplate state, checking if it has loanOfficerOptions",
-          );
+            setLoanTemplate(mergedTemplate);
+            console.log("Updated loanTemplate state, checking if it has loanOfficerOptions");
+
+            if (templateData.expectedDisbursementDate) {
+              const [year, month, day] = templateData.expectedDisbursementDate;
+              form.setValue("disbursementOn", new Date(year, month - 1, day));
+            }
+          } else {
+            // Template unavailable — use the base productData so the product list still renders.
+            console.warn(`Fineract template unavailable for product ${firstProduct.id} — falling back to base template.`);
+            setLoanTemplate(productData);
+          }
+
           setHasCompleteTemplate(true);
-
-          if (templateData.expectedDisbursementDate) {
-            const [year, month, day] = templateData.expectedDisbursementDate;
-            const disbursementDate = new Date(year, month - 1, day);
-            form.setValue("disbursementOn", disbursementDate);
-          }
         }
       } catch (err) {
         setError(
@@ -585,27 +592,55 @@ export function LoanDetailsForm({
     }
   }, [clientId, form]);
 
-  const handleProductChange = async (productName: string) => {
+  const checkIsInvoiceDiscountingProduct = async (productId: number) => {
+    setIsCheckingProduct(true);
     try {
-      // Find the product by name to get its ID
-      const selectedProduct = loanTemplate?.productOptions?.find(
-        (product) => product.name === productName,
-      );
+      const res = await fetch(`/api/invoice-discounting-products?fineractProductId=${productId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setIsInvoiceDiscountingProduct(data.isInvoiceDiscounting === true);
+      } else {
+        setIsInvoiceDiscountingProduct(false);
+      }
+    } catch {
+      setIsInvoiceDiscountingProduct(false);
+    } finally {
+      setIsCheckingProduct(false);
+    }
+  };
 
-      if (selectedProduct) {
-        // Fetch the detailed template for the selected product
-        const response = await fetch(
-          `/api/fineract/loans/template?clientId=${clientId}&productId=${selectedProduct.id}&activeOnly=true&staffInSelectedOfficeOnly=true&templateType=individual`,
-        );
+  const handleProductChange = async (productName: string) => {
+    const selectedProduct = loanTemplate?.productOptions?.find(
+      (product) => product.name === productName,
+    );
 
-        if (!response.ok) {
-          throw new Error("Failed to fetch loan template for selected product");
-        }
+    if (!selectedProduct) return;
 
-        const data = await response.json();
+    // Run the invoice-discounting check and the Fineract template fetch in parallel.
+    // We intentionally don't let a template failure block the invoice-discounting check,
+    // because Fineract may refuse to build a loan template for products with 0% interest.
+    const [templateResult, idCheckResult] = await Promise.allSettled([
+      fetch(
+        `/api/fineract/loans/template?clientId=${clientId}&productId=${selectedProduct.id}&activeOnly=true&staffInSelectedOfficeOnly=true&templateType=individual`,
+      ),
+      fetch(`/api/invoice-discounting-products?fineractProductId=${selectedProduct.id}`),
+    ]);
 
-        // Merge the detailed template data while preserving critical arrays
-        // (in case the detailed response doesn't include them)
+    // --- Invoice discounting check ---
+    let isIdProduct = false;
+    if (idCheckResult.status === "fulfilled" && idCheckResult.value.ok) {
+      try {
+        const idData = await idCheckResult.value.json();
+        isIdProduct = idData.isInvoiceDiscounting === true;
+      } catch { /* ignore */ }
+    }
+    setIsInvoiceDiscountingProduct(isIdProduct);
+
+    // --- Fineract template ---
+    if (templateResult.status === "fulfilled" && templateResult.value.ok) {
+      try {
+        const data = await templateResult.value.json();
+
         const mergedTemplate = {
           ...data,
           productOptions:
@@ -623,23 +658,34 @@ export function LoanDetailsForm({
           selectedProductId: selectedProduct.id,
         });
 
-        // Update the template with the merged data
         setLoanTemplate(mergedTemplate);
 
-        // Update disbursement date if available
         if (data.expectedDisbursementDate) {
           const [year, month, day] = data.expectedDisbursementDate;
-          const disbursementDate = new Date(year, month - 1, day);
-          form.setValue("disbursementOn", disbursementDate);
+          form.setValue("disbursementOn", new Date(year, month - 1, day));
         }
+
+        // Clear any previous template error for this product
+        setError(null);
+      } catch (err) {
+        console.error("Error parsing template for selected product:", err);
       }
-    } catch (err) {
-      console.error("Error fetching template for selected product:", err);
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Failed to fetch template for selected product",
+    } else if (!isIdProduct) {
+      // Only surface a template error for non-invoice-discounting products,
+      // since Fineract may legitimately reject 0%-interest products from the template endpoint.
+      const reason =
+        templateResult.status === "rejected"
+          ? templateResult.reason?.message
+          : "Failed to fetch loan template for selected product";
+      console.error("Error fetching template for selected product:", reason);
+      setError(reason ?? "Failed to fetch loan template for selected product");
+    } else {
+      // Invoice discounting product — template unavailable from Fineract, but that's fine.
+      // Keep the existing template so the rest of the form still works.
+      console.warn(
+        `Fineract template unavailable for invoice discounting product ${selectedProduct.id} — skipping template update.`,
       );
+      setError(null);
     }
   };
 
@@ -1016,10 +1062,29 @@ export function LoanDetailsForm({
       (p) => p.id.toString() === data.loanPurpose,
     );
 
-    // Save loan details to database if leadId is available
+    // Derive facility type from the detected product type (not a manual form field)
+    const resolvedFacilityType: FacilityType = isInvoiceDiscountingProduct
+      ? "INVOICE_DISCOUNTING"
+      : "TERM_LOAN";
+
     if (leadId) {
       setIsSaving(true);
       try {
+        if (resolvedFacilityType === "INVOICE_DISCOUNTING") {
+          const saveInvoiceDiscounting = invoiceDiscountingSaveRef.current;
+          if (!saveInvoiceDiscounting) {
+            throw new Error(
+              "Invoice discounting form is not ready yet. Please wait and try again."
+            );
+          }
+
+          const invoiceSaved = await saveInvoiceDiscounting();
+          if (!invoiceSaved) {
+            setIsSaving(false);
+            return;
+          }
+        }
+
         // Get productId - try from selectedProduct first, fallback to template productId or empty
         const productId =
           selectedProduct?.id?.toString() ||
@@ -1027,6 +1092,7 @@ export function LoanDetailsForm({
           "";
 
         const loanDetailsData = {
+          facilityType: resolvedFacilityType,
           productName: data.productName,
           productId: productId,
           loanPurpose: data.loanPurpose || "",
@@ -1135,11 +1201,14 @@ export function LoanDetailsForm({
           loanPurposeOptions: [
             ...(prev.loanPurposeOptions || []),
             {
-              id: newPurpose.resourceId || newPurpose.id,
+              id: Number(newPurpose.resourceId || newPurpose.id),
               name: loanPurposeName,
-              position: newPurpose.position,
+              position:
+                Number(newPurpose.position) ||
+                (prev.loanPurposeOptions?.length || 0) + 1,
               description: loanPurposeDescription,
               active: true,
+              mandatory: false,
             },
           ],
         };
@@ -1237,9 +1306,9 @@ export function LoanDetailsForm({
               Enter the loan application details and requirements
             </CardDescription>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="w-full">
             {/* Left Column */}
-            <div className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Product Name */}
               <div className="space-y-2">
                 <Label htmlFor="productName" className="text-sm font-medium">
@@ -1292,7 +1361,7 @@ export function LoanDetailsForm({
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <Label htmlFor="loanPurpose" className="text-sm font-medium">
-                    Loan Purpose
+                    Purpose
                   </Label>
                   <Button
                     type="button"
@@ -1543,6 +1612,20 @@ export function LoanDetailsForm({
             </div>
           </div>
         </div>
+
+        {/* Invoice Discounting Details — shown only when the selected loan product is an invoice discounting product */}
+        {isInvoiceDiscountingProduct && (
+          <InvoiceDiscountingForm
+            leadId={leadId}
+            onBack={() => {}}
+            onNext={() => {}}
+            onComplete={() => {}}
+            onRegisterSave={(saveFn) => {
+              invoiceDiscountingSaveRef.current = saveFn;
+            }}
+            embedded
+          />
+        )}
 
         {/* Navigation Buttons */}
         <Card>

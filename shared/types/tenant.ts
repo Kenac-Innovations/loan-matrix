@@ -18,6 +18,10 @@ export interface TenantFeatures {
   reports: boolean;
   /** Enable managed receipt number ranges for cash transactions */
   receiptRanges: boolean;
+  /** Allow editing loan terms fields in lead creation */
+  canEditLoan: boolean;
+  /** Enable invoice discounting module inside lead creation flow */
+  hasInvoiceDiscounting: boolean;
 }
 
 /**
@@ -64,6 +68,8 @@ export const DEFAULT_FEATURES: TenantFeatures = {
   accounting: true,
   reports: true,
   receiptRanges: false,
+  canEditLoan: false,
+  hasInvoiceDiscounting: false,
 };
 
 export interface TenantInfo {
