@@ -36,7 +36,7 @@ function injectContractChrome(
   html: string,
   origin: string,
   options: {
-    action: "print" | "pdf";
+    action: "print" | "pdf" | "view";
     fileName: string;
   }
 ): string {
@@ -49,6 +49,9 @@ function injectContractChrome(
       <button type="button" id="download-pdf-btn" data-filename="${options.fileName}" style="border:1px solid #cbd5e1;border-radius:8px;background:#ffffff;padding:10px 14px;font:600 14px sans-serif;cursor:pointer;">
         Download PDF
       </button>
+      <button type="button" onclick="window.location.reload()" style="border:1px solid #cbd5e1;border-radius:8px;background:#ffffff;padding:10px 14px;font:600 14px sans-serif;cursor:pointer;">
+        Refresh
+      </button>
       <span style="font:400 12px sans-serif;color:#64748b;">
         If the browser adds headers or footers, turn them off in the print dialog.
       </span>
@@ -58,47 +61,54 @@ function injectContractChrome(
     <script>
       window.addEventListener("load", function () {
         var action = ${JSON.stringify(options.action)};
+        var btn = document.getElementById("download-pdf-btn");
+        var exportPdf = function () {
+          if (!btn || typeof window.html2pdf !== "function") {
+            return;
+          }
+
+          var filename = btn.getAttribute("data-filename") || "loan-contract.pdf";
+          var target = document.querySelector("[data-contract-content]");
+          if (!target) {
+            return;
+          }
+
+          btn.disabled = true;
+          btn.textContent = "Generating PDF...";
+
+          window.html2pdf()
+            .set({
+              margin: 10,
+              filename: filename,
+              image: { type: "jpeg", quality: 0.98 },
+              html2canvas: { scale: 2, useCORS: true },
+              jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+              pagebreak: { mode: ["avoid-all", "css", "legacy"] }
+            })
+            .from(target)
+            .save()
+            .then(function () {
+              btn.disabled = false;
+              btn.textContent = "Download PDF";
+            })
+            .catch(function () {
+              btn.disabled = false;
+              btn.textContent = "Download PDF";
+            });
+        };
+
+        if (btn) {
+          btn.addEventListener("click", exportPdf);
+        }
+
         if (action === "print") {
           window.print();
           return;
         }
 
-        var btn = document.getElementById("download-pdf-btn");
-        if (!btn || typeof window.html2pdf !== "function") {
-          return;
+        if (action === "pdf") {
+          exportPdf();
         }
-
-        var filename = btn.getAttribute("data-filename") || "loan-contract.pdf";
-        var target = document.querySelector("[data-contract-content]");
-        if (!target) {
-          return;
-        }
-
-        btn.disabled = true;
-        btn.textContent = "Generating PDF...";
-
-        window.html2pdf()
-          .set({
-            margin: 10,
-            filename: filename,
-            image: { type: "jpeg", quality: 0.98 },
-            html2canvas: { scale: 2, useCORS: true },
-            jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
-            pagebreak: { mode: ["avoid-all", "css", "legacy"] }
-          })
-          .from(target)
-          .save()
-          .then(function () {
-            btn.disabled = false;
-            btn.textContent = "Download PDF";
-            setTimeout(function () {
-              window.close();
-            }, 400);
-          })
-          .catch(function () {
-            btn.disabled = false;
-            btn.textContent = "Download PDF";
-          });
       });
     </script>
   `;
@@ -151,8 +161,9 @@ export async function GET(
     const { id: leadId } = await context.params;
     const tenantSlug = extractTenantSlugFromRequest(request);
     const forwardedHeaders = getForwardedHeaders(request);
+    const actionParam = request.nextUrl.searchParams.get("action");
     const action =
-      request.nextUrl.searchParams.get("action") === "pdf" ? "pdf" : "print";
+      actionParam === "pdf" || actionParam === "view" ? actionParam : "print";
 
     const lead = await prisma.lead.findUnique({
       where: { id: leadId },
