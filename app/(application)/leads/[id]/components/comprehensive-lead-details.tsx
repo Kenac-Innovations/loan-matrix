@@ -480,10 +480,14 @@ export function ComprehensiveLeadDetails({
     : "Not provided";
 
   const originalRequestedAmount =
-    typeof lead.stateMetadata?.originalRequestedAmount === "number" &&
+    (typeof lead.stateMetadata?.originalRequestedAmount === "number" &&
     lead.stateMetadata.originalRequestedAmount > 0
       ? lead.stateMetadata.originalRequestedAmount
-      : null;
+      : null) ??
+    (typeof lead.stateMetadata?.originalPendingApprovalLoanTerms?.principal === "number" &&
+    lead.stateMetadata.originalPendingApprovalLoanTerms.principal > 0
+      ? lead.stateMetadata.originalPendingApprovalLoanTerms.principal
+      : null);
 
   const requestedAmount =
     originalRequestedAmount
