@@ -55,6 +55,7 @@ jobs:
         fi
 
     - name: Set up Docker Buildx
+      if: steps.branch-context.outputs.should_publish == 'true'
       uses: docker/setup-buildx-action@v3
 
     - name: Log in to GHCR
@@ -74,6 +75,7 @@ jobs:
         password: ${{ secrets.HARBOR_PASSWORD }}
 
     - name: Extract metadata
+      if: steps.branch-context.outputs.should_publish == 'true'
       id: meta
       uses: docker/metadata-action@v5
       with:
@@ -87,6 +89,7 @@ jobs:
           type=raw,value=latest,enable={{is_default_branch}}
 
     - name: Checkout application repository
+      if: steps.branch-context.outputs.should_publish == 'true'
       uses: actions/checkout@v4
       with:
         repository: Kenac-Innovations/loan-matrix
@@ -94,11 +97,12 @@ jobs:
         fetch-depth: 0
 
     - name: Build and push Docker image
+      if: steps.branch-context.outputs.should_publish == 'true'
       uses: docker/build-push-action@v5
       with:
         context: ./app-source
         file: ./app-source/Dockerfile
-        push: ${{ steps.branch-context.outputs.should_publish == 'true' }}
+        push: true
         tags: ${{ steps.meta.outputs.tags }}
         labels: ${{ steps.meta.outputs.labels }}
         cache-from: type=gha
@@ -210,11 +214,12 @@ jobs:
         echo "- GitOps repo updated (pulling from Harbor)"
         echo "- ArgoCD will automatically sync the changes"
 
-    - name: CI summary for non-deploy branches
+    - name: CI summary when publish is skipped
       if: steps.branch-context.outputs.should_publish != 'true'
       run: |
         echo "CI Summary:"
         echo "- Branch: ${{ steps.branch-context.outputs.branch_name }}"
-        echo "- Deploy branch: false"
+        echo "- Deploy branch: ${{ steps.branch-context.outputs.is_deploy_branch }}"
+        echo "- Publish triggered by push to deploy branch: false"
         echo "- Docker image push skipped"
         echo "- GitOps update skipped"
