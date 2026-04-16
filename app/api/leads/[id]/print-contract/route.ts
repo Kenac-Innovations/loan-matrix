@@ -7,6 +7,7 @@ import { canPrintLoanContract } from "@/lib/loan-contract-print";
 import { fillOmamaContractTemplate } from "@/app/(application)/leads/new/components/omama-contract-template";
 import { generateContractHTML } from "@/app/(application)/leads/new/components/contract-template";
 import type { ContractData } from "@/app/(application)/leads/new/components/contract-types";
+import type { FineractLoan } from "@/lib/fineract-api";
 
 type TemplateResponse = {
   html?: string | null;
@@ -113,7 +114,7 @@ function injectContractChrome(
     </script>
   `;
   const pdfScript =
-    options.action === "pdf"
+    options.action === "pdf" || options.action === "view"
       ? `<script src="/html2pdf.bundle.min.js"></script>`
       : "";
 
@@ -145,6 +146,29 @@ function injectContractChrome(
   }
 
   return output;
+}
+
+async function resolveLoanStatus(
+  leadId: string,
+  fineractLoanId: number | null,
+) {
+  const fineractService = await getFineractServiceWithSession();
+
+  if (fineractLoanId) {
+    try {
+      const loan = await fineractService.getLoan(Number(fineractLoanId));
+      return loan.status?.value || null;
+    } catch (error) {
+      console.warn(
+        `Failed to fetch contract loan by ID ${fineractLoanId}, falling back to external ID lookup:`,
+        error
+      );
+    }
+  }
+
+  const loans = await fineractService.searchLoansByExternalId(leadId);
+  const matchingLoan = loans.find((loan: FineractLoan) => loan.externalId === leadId);
+  return matchingLoan?.status?.value || null;
 }
 
 export async function GET(
@@ -183,9 +207,7 @@ export async function GET(
       );
     }
 
-    const fineractService = await getFineractServiceWithSession();
-    const loan = await fineractService.getLoan(Number(lead.fineractLoanId));
-    const loanStatus = loan.status?.value || null;
+    const loanStatus = await resolveLoanStatus(leadId, lead.fineractLoanId);
 
     if (!canPrintLoanContract(tenantSlug, loanStatus)) {
       return NextResponse.json(
