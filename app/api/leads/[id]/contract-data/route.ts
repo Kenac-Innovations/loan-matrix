@@ -6,6 +6,22 @@ import { fetchFineractAPI } from "@/lib/api";
 import { getOrgDefaultCurrencyCode } from "@/lib/currency-utils";
 import { getSession } from "@/lib/auth";
 
+function getForwardedHeaders(
+  request: NextRequest,
+  extraHeaders: HeadersInit = {}
+): HeadersInit {
+  const forwardedHeaders: HeadersInit = { ...extraHeaders };
+
+  for (const headerName of ["cookie", "origin", "referer"]) {
+    const value = request.headers.get(headerName);
+    if (value) {
+      forwardedHeaders[headerName] = value;
+    }
+  }
+
+  return forwardedHeaders;
+}
+
 export async function GET(
   request: NextRequest,
   context: { params: Promise<{ id: string }> },
@@ -18,6 +34,7 @@ export async function GET(
     const tenantSlug = extractTenantSlugFromRequest(request);
     console.log("Tenant slug:", tenantSlug);
     const tenant = await getTenantBySlug(tenantSlug);
+    const forwardedHeaders = getForwardedHeaders(request);
 
     if (!tenant) {
       console.error("Tenant not found for slug:", tenantSlug);
@@ -108,10 +125,7 @@ export async function GET(
     const loanDetailsResponse = await fetch(
       `${request.nextUrl.origin}/api/leads/${leadId}/loan-details`,
       {
-        headers: {
-          origin: request.headers.get("origin") || "",
-          referer: request.headers.get("referer") || "",
-        },
+        headers: forwardedHeaders,
       },
     );
     const loanDetailsResult = await loanDetailsResponse.json();
@@ -125,10 +139,7 @@ export async function GET(
     const loanTermsResponse = await fetch(
       `${request.nextUrl.origin}/api/leads/${leadId}/loan-terms`,
       {
-        headers: {
-          origin: request.headers.get("origin") || "",
-          referer: request.headers.get("referer") || "",
-        },
+        headers: forwardedHeaders,
       },
     );
     const loanTermsResult = await loanTermsResponse.json();
@@ -277,15 +288,12 @@ export async function GET(
     // Fetch client template to get gender options (fallback)
     let clientTemplate: any = null;
     try {
-      const clientTemplateResponse = await fetch(
-        `${request.nextUrl.origin}/api/fineract/clients/template`,
-        {
-          headers: {
-            origin: request.headers.get("origin") || "",
-          referer: request.headers.get("referer") || "",
+        const clientTemplateResponse = await fetch(
+          `${request.nextUrl.origin}/api/fineract/clients/template`,
+          {
+            headers: forwardedHeaders,
           },
-        },
-      );
+        );
       if (clientTemplateResponse.ok) {
         clientTemplate = await clientTemplateResponse.json();
       }
@@ -300,10 +308,7 @@ export async function GET(
         const templateResponse = await fetch(
           `${request.nextUrl.origin}/api/fineract/loans/template?clientId=${lead.fineractClientId}&productId=${loanDetails.productId}&activeOnly=true&staffInSelectedOfficeOnly=true&templateType=individual`,
           {
-            headers: {
-              origin: request.headers.get("origin") || "",
-          referer: request.headers.get("referer") || "",
-            },
+            headers: forwardedHeaders,
           },
         );
         if (templateResponse.ok) {
@@ -396,11 +401,9 @@ export async function GET(
           `${request.nextUrl.origin}/api/fineract/loans/calculate-schedule`,
           {
             method: "POST",
-            headers: {
+            headers: getForwardedHeaders(request, {
               "Content-Type": "application/json",
-              origin: request.headers.get("origin") || "",
-          referer: request.headers.get("referer") || "",
-            },
+            }),
             body: JSON.stringify(payload),
           },
         );
