@@ -37,12 +37,19 @@ export function extractTenantSlug(host: string): string {
   return defaultSlug;
 }
 
+function normalizeHostHeader(host: string | null): string | null {
+  if (!host) return null;
+  const firstHost = host.split(",")[0]?.trim();
+  return firstHost || null;
+}
+
 /**
  * Get tenant information from request headers.
  * Checks multiple header sources to reliably resolve the tenant in
  * environments where the Host header may be rewritten (e.g. Kubernetes/Istio).
  *
- * Resolves tenant from the browser's origin/referer hostname.
+ * Resolves tenant from the browser's origin/referer hostname, then
+ * falls back to forwarded host headers for direct navigations to API routes.
  */
 export async function getTenantFromHeaders(): Promise<TenantInfo | null> {
   const headersList = await headers();
@@ -63,6 +70,14 @@ export async function getTenantFromHeaders(): Promise<TenantInfo | null> {
     } catch {}
   }
 
+  for (const headerName of ["x-forwarded-host", "host"]) {
+    const host = normalizeHostHeader(headersList.get(headerName));
+    if (!host) continue;
+
+    const t = await getTenantBySlug(extractTenantSlug(host));
+    if (t) return t;
+  }
+
   const envTenant = process.env.FINERACT_TENANT_ID;
   if (envTenant) {
     const t = await getTenantBySlug(envTenant);
@@ -73,8 +88,8 @@ export async function getTenantFromHeaders(): Promise<TenantInfo | null> {
 }
 
 /**
- * Extract tenant slug from a request's origin or referer header.
- * These are browser-set and cannot be rewritten by reverse proxies.
+ * Extract tenant slug from a request's origin or referer header, then
+ * fall back to forwarded host headers for direct navigations.
  */
 export function extractTenantSlugFromRequest(req: Request): string {
   const origin = req.headers.get("origin");
@@ -84,6 +99,14 @@ export function extractTenantSlugFromRequest(req: Request): string {
   const referer = req.headers.get("referer");
   if (referer) {
     try { return extractTenantSlug(new URL(referer).hostname); } catch {}
+  }
+  const forwardedHost = normalizeHostHeader(req.headers.get("x-forwarded-host"));
+  if (forwardedHost) {
+    return extractTenantSlug(forwardedHost);
+  }
+  const host = normalizeHostHeader(req.headers.get("host"));
+  if (host) {
+    return extractTenantSlug(host);
   }
   return process.env.FINERACT_TENANT_ID || "goodfellow";
 }

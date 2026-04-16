@@ -2,9 +2,9 @@ name: loan-matrix CI/CD
 
 on:
   push:
-    branches: [main, master, dev, qa, uat]
+    branches: [main, master, prod, dev, qa, uat]
   pull_request:
-    branches: [main, master, dev, qa, uat]
+    branches: [main, master, prod, dev, qa, uat]
 
 env:
   REGISTRY: ghcr.io
@@ -26,10 +26,40 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
 
+    - name: Determine branch behavior
+      id: branch-context
+      run: |
+        if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+          BRANCH_NAME="${{ github.head_ref }}"
+        else
+          BRANCH_NAME="${{ github.ref_name }}"
+        fi
+
+        echo "branch_name=$BRANCH_NAME" >> "$GITHUB_OUTPUT"
+
+        if [[ "$BRANCH_NAME" == "main" || "$BRANCH_NAME" == "master" || "$BRANCH_NAME" == "prod" ]]; then
+          echo "environment=prod" >> "$GITHUB_OUTPUT"
+          echo "is_deploy_branch=true" >> "$GITHUB_OUTPUT"
+        elif [[ "$BRANCH_NAME" == "dev" || "$BRANCH_NAME" == "qa" || "$BRANCH_NAME" == "uat" ]]; then
+          echo "environment=$BRANCH_NAME" >> "$GITHUB_OUTPUT"
+          echo "is_deploy_branch=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "environment=" >> "$GITHUB_OUTPUT"
+          echo "is_deploy_branch=false" >> "$GITHUB_OUTPUT"
+        fi
+
+        if [[ "${{ github.event_name }}" == "push" && ( "$BRANCH_NAME" == "main" || "$BRANCH_NAME" == "master" || "$BRANCH_NAME" == "prod" || "$BRANCH_NAME" == "dev" || "$BRANCH_NAME" == "qa" || "$BRANCH_NAME" == "uat" ) ]]; then
+          echo "should_publish=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "should_publish=false" >> "$GITHUB_OUTPUT"
+        fi
+
     - name: Set up Docker Buildx
+      if: steps.branch-context.outputs.should_publish == 'true'
       uses: docker/setup-buildx-action@v3
 
     - name: Log in to GHCR
+      if: steps.branch-context.outputs.should_publish == 'true'
       uses: docker/login-action@v3
       with:
         registry: ${{ env.REGISTRY }}
@@ -37,7 +67,7 @@ jobs:
         password: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Log in to Harbor Registry
-      if: github.event_name == 'push'
+      if: steps.branch-context.outputs.should_publish == 'true'
       uses: docker/login-action@v3
       with:
         registry: ${{ env.HARBOR_REGISTRY }}
@@ -45,6 +75,7 @@ jobs:
         password: ${{ secrets.HARBOR_PASSWORD }}
 
     - name: Extract metadata
+      if: steps.branch-context.outputs.should_publish == 'true'
       id: meta
       uses: docker/metadata-action@v5
       with:
@@ -58,6 +89,7 @@ jobs:
           type=raw,value=latest,enable={{is_default_branch}}
 
     - name: Checkout application repository
+      if: steps.branch-context.outputs.should_publish == 'true'
       uses: actions/checkout@v4
       with:
         repository: Kenac-Innovations/loan-matrix
@@ -65,11 +97,12 @@ jobs:
         fetch-depth: 0
 
     - name: Build and push Docker image
+      if: steps.branch-context.outputs.should_publish == 'true'
       uses: docker/build-push-action@v5
       with:
         context: ./app-source
         file: ./app-source/Dockerfile
-        push: ${{ github.event_name == 'push' }}
+        push: true
         tags: ${{ steps.meta.outputs.tags }}
         labels: ${{ steps.meta.outputs.labels }}
         cache-from: type=gha
@@ -78,28 +111,20 @@ jobs:
         sbom: false
 
     - name: Determine environment
-      if: github.event_name == 'push'
+      if: steps.branch-context.outputs.should_publish == 'true'
       id: env
       run: |
-        if [[ "${{ github.ref_name }}" == "main" || "${{ github.ref_name }}" == "master" ]]; then
-          echo "environment=prod" >> $GITHUB_OUTPUT
-        elif [[ "${{ github.ref_name }}" == "qa" ]]; then
-          echo "environment=qa" >> $GITHUB_OUTPUT
-        elif [[ "${{ github.ref_name }}" == "uat" ]]; then
-          echo "environment=uat" >> $GITHUB_OUTPUT
-        else
-          echo "environment=dev" >> $GITHUB_OUTPUT
-        fi
+        echo "environment=${{ steps.branch-context.outputs.environment }}" >> "$GITHUB_OUTPUT"
 
     - name: Extract image tag
-      if: github.event_name == 'push'
+      if: steps.branch-context.outputs.should_publish == 'true'
       id: image-tag
       run: |
         TAGS="${{ steps.meta.outputs.tags }}"
-        SHA_TAG=$(echo "$TAGS" | grep -E "${{ github.ref_name }}-[a-f0-9]{7}" | head -1 | cut -d':' -f2)
+        SHA_TAG=$(echo "$TAGS" | grep -E "${{ steps.branch-context.outputs.branch_name }}-[a-f0-9]{7}" | head -1 | cut -d':' -f2)
         if [ -z "$SHA_TAG" ]; then
           # Fallback to branch name if no SHA tag found
-          SHA_TAG="${{ github.ref_name }}"
+          SHA_TAG="${{ steps.branch-context.outputs.branch_name }}"
         fi
         echo "tag=$SHA_TAG" >> $GITHUB_OUTPUT
         echo "Found image tag: $SHA_TAG"
@@ -107,7 +132,7 @@ jobs:
     # GitHub App Token Generation
     - name: Generate GitHub App Token
       id: github-app-token
-      if: env.GITOPS_APP_ID != ''
+      if: steps.branch-context.outputs.should_publish == 'true' && env.GITOPS_APP_ID != ''
       uses: tibdex/github-app-token@v2
       with:
         app_id: ${{ secrets.GITOPS_APP_ID }}
@@ -115,7 +140,7 @@ jobs:
         repository: Kenac-Innovations/kenac-gitops
 
     - name: Checkout GitOps repository
-      if: github.event_name == 'push'
+      if: steps.branch-context.outputs.should_publish == 'true'
       uses: actions/checkout@v4
       with:
         repository: Kenac-Innovations/kenac-gitops
@@ -123,7 +148,7 @@ jobs:
         path: gitops-repo
 
     - name: Update image tag in GitOps repo
-      if: github.event_name == 'push'
+      if: steps.branch-context.outputs.should_publish == 'true'
       run: |
         cd gitops-repo
         
@@ -154,7 +179,7 @@ jobs:
         cat "$VALUES_FILE"
 
     - name: Commit and push changes
-      if: github.event_name == 'push'
+      if: steps.branch-context.outputs.should_publish == 'true'
       run: |
         cd gitops-repo
         
@@ -180,7 +205,7 @@ jobs:
         git push origin master
 
     - name: Deployment summary
-      if: github.event_name == 'push'
+      if: steps.branch-context.outputs.should_publish == 'true'
       run: |
         echo "Deployment Summary:"
         echo "- Environment: ${{ steps.env.outputs.environment }}"
@@ -188,3 +213,13 @@ jobs:
         echo "- Pushed to: GHCR + Harbor"
         echo "- GitOps repo updated (pulling from Harbor)"
         echo "- ArgoCD will automatically sync the changes"
+
+    - name: CI summary when publish is skipped
+      if: steps.branch-context.outputs.should_publish != 'true'
+      run: |
+        echo "CI Summary:"
+        echo "- Branch: ${{ steps.branch-context.outputs.branch_name }}"
+        echo "- Deploy branch: ${{ steps.branch-context.outputs.is_deploy_branch }}"
+        echo "- Publish triggered by push to deploy branch: false"
+        echo "- Docker image push skipped"
+        echo "- GitOps update skipped"

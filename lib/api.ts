@@ -11,10 +11,42 @@ const baseUrl = process.env.FINERACT_BASE_URL || "http://10.10.0.143:8443";
 const SERVICE_TOKEN = "bWlmb3M6cGFzc3dvcmQ=";
 
 /**
- * Get access token - returns hardcoded service token
- * TODO: Restore session-based token when needed
+ * Get access token - prefer the logged-in user's Fineract session and
+ * fall back to the service token when no session is available.
  */
 export async function getAccessToken(): Promise<string> {
+  try {
+    const { getSession } = await import("./auth");
+    const nextAuthSession = (await getSession()) as {
+      base64EncodedAuthenticationKey?: string;
+      accessToken?: string;
+    } | null;
+
+    if (nextAuthSession?.base64EncodedAuthenticationKey) {
+      return nextAuthSession.base64EncodedAuthenticationKey;
+    }
+
+    if (nextAuthSession?.accessToken) {
+      return nextAuthSession.accessToken;
+    }
+
+    const { getSession: getCustomSession } = await import("@/app/actions/auth");
+    const customSession = (await getCustomSession()) as {
+      base64EncodedAuthenticationKey?: string;
+      accessToken?: string;
+    } | null;
+
+    if (customSession?.base64EncodedAuthenticationKey) {
+      return customSession.base64EncodedAuthenticationKey;
+    }
+
+    if (customSession?.accessToken) {
+      return customSession.accessToken;
+    }
+  } catch (error) {
+    console.error("Error resolving Fineract access token:", error);
+  }
+
   return SERVICE_TOKEN;
 }
 
