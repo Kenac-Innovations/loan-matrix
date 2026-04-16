@@ -769,9 +769,21 @@ export class FineractAPIService {
   }
 
   // Get parameter options (for select dropdowns)
-  async getParameterOptions(parameterName: string): Promise<any> {
+  async getParameterOptions(
+    parameterName: string,
+    parameters: Record<string, any> = {}
+  ): Promise<any> {
+    const params = new URLSearchParams({ parameterType: "true" });
+
+    Object.entries(parameters).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== "") {
+        const paramKey = key.startsWith("R_") ? key : `R_${key}`;
+        params.append(paramKey, value.toString());
+      }
+    });
+
     const response = await this.client.get(
-      `/runreports/${parameterName}?parameterType=true`
+      `/runreports/${parameterName}?${params.toString()}`
     );
     return response.data;
   }
