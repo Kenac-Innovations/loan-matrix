@@ -13,7 +13,10 @@ import { MoreVertical } from "lucide-react";
 import { Transaction } from "@/shared/types/transaction";
 import { formatCurrency } from "@/lib/format-currency";
 import { formatDate } from "@/lib/format-date";
-import { getTransactionTypeDisplayLabel } from "@/lib/format-transaction";
+import {
+  getLoanTransactionDisplayLabel,
+  getTransactionTypeDisplayLabel,
+} from "@/lib/format-transaction";
 import { GenericDataTable } from "@/components/tables/generic-data-table";
 import { DataTableColumn, DataTableFilter } from "@/shared/types/data-table";
 
@@ -45,6 +48,32 @@ export function TransactionsDataTable({
 }: TransactionsDataTableProps) {
   const router = useRouter();
 
+  const formatChargeName = (name: string): string =>
+    name
+      .trim()
+      .toLowerCase()
+      .replace(/_/g, " ")
+      .replace(/\b\w/g, (char) => char.toUpperCase());
+
+  const getDisplayedTransactionType = (transaction: Transaction): string => {
+    const paidCharges = transaction.loanChargePaidByList;
+
+    if (Array.isArray(paidCharges) && paidCharges.length === 1) {
+      const charge = paidCharges[0];
+      const chargeName =
+        charge?.chargeName ||
+        charge?.name ||
+        charge?.loanChargeName ||
+        charge?.charge?.name;
+
+      if (typeof chargeName === "string" && chargeName.trim()) {
+        return formatChargeName(chargeName);
+      }
+    }
+
+    return getTransactionTypeDisplayLabel(transaction.type);
+  };
+
   const displayTransactions = useMemo(() => {
     if (!reversedPayout?.voidedAt) return transactions;
     const d = new Date(reversedPayout.voidedAt);
@@ -71,18 +100,12 @@ export function TransactionsDataTable({
     }
   ]);
 
-  // Get unique transaction types for filter options (show "Admin Fee" for repayment at disbursement)
+  // Get unique transaction types for filter options
   const transactionTypes = useMemo(() => {
     const types = Array.from(
-      new Set(displayTransactions.map((t) => getTransactionTypeDisplayLabel(t.type)).filter(Boolean))
+      new Set(displayTransactions.map((t) => t.type?.value).filter(Boolean))
     );
-    return types.sort().map((displayLabel) => {
-      // Use actual type.value for filtering; "Admin Fee" maps to "Repayment (at time of disbursement)"
-      const filterValue = displayLabel === "Admin Fee"
-        ? "Repayment (at time of disbursement)"
-        : displayLabel;
-      return { label: displayLabel, value: filterValue };
-    }).filter((t) => t.label !== "Admin Fee"); // Admin Fee is in hardcoded filterOptions
+    return types.sort().map(type => ({ label: type || '', value: type || '' }));
   }, [displayTransactions]);
 
   const getTransactionRef = (transaction: Transaction): string | undefined => {
@@ -124,17 +147,16 @@ export function TransactionsDataTable({
       id: "type",
       header: "Transaction Type",
       accessorKey: "type",
-      cell: ({ getValue }) => {
-        const type = getValue() as Transaction["type"];
-        return getTransactionTypeDisplayLabel(type);
+      cell: ({ row }) => {
+        return getLoanTransactionDisplayLabel(row.original);
       },
-      getExportValue: (row) => getTransactionTypeDisplayLabel(row.type),
+      getExportValue: (row) => getLoanTransactionDisplayLabel(row),
       filterType: "select",
       filterOptions: [
         { label: "All Types", value: "all" },
         { label: "Disbursement", value: "disbursement" },
         { label: "Repayment", value: "repayment" },
-        { label: "Admin Fee", value: "Repayment (at time of disbursement)" },
+        { label: "Repayment (at disbursement)", value: "repaymentAtDisbursement" },
         { label: "Accrual", value: "accrual" },
         ...transactionTypes,
       ],

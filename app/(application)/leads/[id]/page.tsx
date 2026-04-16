@@ -18,6 +18,12 @@ import { headers } from "next/headers";
 import { extractTenantSlug } from "@/lib/tenant-service";
 import { getSession } from "@/lib/auth";
 import { getFineractServiceWithSession } from "@/lib/fineract-api";
+import { getLeadAccessProfile } from "@/lib/lead-permissions";
+import {
+  canEditPendingLoanApplication,
+  isPendingLoanApplicationEditTenant,
+} from "@/lib/pending-loan-application-edit";
+import { canPrintLoanContract } from "@/lib/loan-contract-print";
 
 const FINERACT_BASE_URL = process.env.FINERACT_BASE_URL || "http://10.10.0.143";
 
@@ -354,6 +360,7 @@ async function getLeadData(leadId: string) {
       clientDocuments: fineractDocs.clientDocuments,
       loanDocuments: fineractDocs.loanDocuments,
       datatableData,
+      tenantSlug,
     };
   } catch (error) {
     console.error("Error fetching lead data:", error);
@@ -370,6 +377,7 @@ async function getLeadData(leadId: string) {
       datatableData: {},
       clientDocuments: [],
       loanDocuments: [],
+      tenantSlug: null,
     };
   }
 }
@@ -393,6 +401,7 @@ export default async function LeadDetailPage({
     datatableData,
     clientDocuments,
     loanDocuments,
+    tenantSlug,
   } = await getLeadData(id);
   
   const session = await getSession();
@@ -402,6 +411,13 @@ export default async function LeadDetailPage({
     lead?.assignedToUserId != null &&
     String(lead.assignedToUserId) === currentUserId;
   const isReadOnly = !isAssignedUser;
+  const canEditPendingLoanTerms =
+    isPendingLoanApplicationEditTenant(tenantSlug) &&
+    canEditPendingLoanApplication(session, fineractLoanStatus);
+  const canPrintContract = canPrintLoanContract(
+    tenantSlug,
+    fineractLoanStatus
+  );
 
   // Check if current user is in the team for the lead's current stage
   let isUserInStageTeam = false;
@@ -431,6 +447,15 @@ export default async function LeadDetailPage({
       </div>
     );
   }
+
+  const accessProfile = await getLeadAccessProfile({
+    tenantId: lead.tenantId,
+    lead,
+    loanStatus: fineractLoanStatus,
+    session,
+  });
+  const canOpenPendingApprovalEditor =
+    accessProfile.canRestrictedEditPendingApprovalLoanTerms;
 
   const currentStage = lead.currentStage?.name || "New Lead";
   const pageHue = getStatusPageHue(fineractLoanStatus);
@@ -517,12 +542,15 @@ export default async function LeadDetailPage({
                   assignedToUserId={lead.assignedToUserId}
                   fineractClientId={lead.fineractClientId}
                 />
-                {!isReadOnly && (
+                {(!isReadOnly || canOpenPendingApprovalEditor) && (
                   <LeadMoreActions
                     leadId={id}
                     loanStatus={fineractLoanStatus}
                     loanId={fineractLoanId}
                     fineractClientId={lead.fineractClientId}
+                    canModifyPendingApproval={canOpenPendingApprovalEditor}
+                    canModifyPendingApplication={canEditPendingLoanTerms}
+                    canPrintContract={canPrintContract}
                   />
                 )}
               </div>
@@ -670,6 +698,7 @@ export default async function LeadDetailPage({
             clientDocuments={clientDocuments}
             loanDocuments={loanDocuments}
             readOnly={isReadOnly}
+            canEditPendingLoanApplication={canEditPendingLoanTerms}
           />
         </div>
         <div className="mt-0 lg:mt-10">

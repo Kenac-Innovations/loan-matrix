@@ -30,8 +30,19 @@ export const goodfellowTenantConfig = {
   },
 };
 
+export const omamaTrainingTenantConfig = {
+  name: "Omama Training",
+  slug: "omama-training",
+  domain: "omama-training.kenacloanmatrix.com",
+  settings: {
+    theme: "default",
+    features: { ...DEFAULT_FEATURES },
+  },
+};
+
 export const allTenantConfigs = [
   defaultTenantConfig,
   demoTenantConfig,
   goodfellowTenantConfig,
+  omamaTrainingTenantConfig,
 ];

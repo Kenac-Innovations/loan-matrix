@@ -3,6 +3,35 @@ import { getFineractServiceWithSession } from "@/lib/fineract-api";
 import { prisma } from "@/lib/prisma";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
 
+interface FineractCashierDetails {
+  description?: string;
+  staffId?: number;
+  isFullDay?: boolean;
+}
+
+const formatDateForFineract = (date: Date) => {
+  const monthNames = [
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
+  ];
+
+  const day = String(date.getUTCDate()).padStart(2, "0");
+  const month = monthNames[date.getUTCMonth()];
+  const year = date.getUTCFullYear();
+
+  return `${day} ${month} ${year}`;
+};
+
 /**
  * PUT /api/tellers/[id]/cashiers/[cashierId]
  * Update a cashier
@@ -21,7 +50,12 @@ export async function PUT(
     }
 
     const body = await request.json();
-    const { endDate, isFullDay, startTime, endTime } = body;
+    const { startDate, endDate, isFullDay, startTime, endTime } = body;
+    const hasStartDate = Object.prototype.hasOwnProperty.call(body, "startDate");
+    const hasEndDate = Object.prototype.hasOwnProperty.call(body, "endDate");
+    const hasIsFullDay = Object.prototype.hasOwnProperty.call(body, "isFullDay");
+    const hasStartTime = Object.prototype.hasOwnProperty.call(body, "startTime");
+    const hasEndTime = Object.prototype.hasOwnProperty.call(body, "endTime");
 
     // Try to find teller by database ID first, then by Fineract ID
     let teller = await prisma.teller.findFirst({
@@ -66,52 +100,85 @@ export async function PUT(
       return NextResponse.json({ error: "Cashier not found" }, { status: 404 });
     }
 
-    // Format date for Fineract (dd MMMM yyyy format)
-    const formatDateForFineract = (dateString: string | null): string => {
-      if (!dateString) return "";
-      const date = new Date(dateString);
-      const monthNames = [
-        "January",
-        "February",
-        "March",
-        "April",
-        "May",
-        "June",
-        "July",
-        "August",
-        "September",
-        "October",
-        "November",
-        "December",
-      ];
-      const day = date.getDate().toString().padStart(2, "0");
-      const month = monthNames[date.getMonth()];
-      const year = date.getFullYear();
-      return `${day} ${month} ${year}`;
-    };
+    const parsedStartDate = hasStartDate
+      ? new Date(startDate)
+      : new Date(cashier.startDate);
+    const parsedEndDate = hasEndDate
+      ? endDate
+        ? new Date(endDate)
+        : null
+      : cashier.endDate;
 
-    // Update in Fineract if we have the ID
-    if (teller.fineractTellerId && cashier.fineractCashierId) {
-      try {
-        const fineractService = await getFineractServiceWithSession();
-        // Fineract doesn't have a direct update endpoint for cashiers,
-        // but we can update the end date by closing and reopening if needed
-        // For now, we'll just update the database
-        console.log("Cashier update - Fineract update not supported, updating database only");
-      } catch (error: any) {
-        console.error("Error updating cashier in Fineract:", error);
-        // Continue with database update even if Fineract fails
-      }
+    if (Number.isNaN(parsedStartDate.getTime())) {
+      return NextResponse.json(
+        { error: "A valid start date is required" },
+        { status: 400 }
+      );
     }
 
-    // Update in database
+    if (parsedEndDate && Number.isNaN(parsedEndDate.getTime())) {
+      return NextResponse.json(
+        { error: "End date is invalid" },
+        { status: 400 }
+      );
+    }
+
+    if (parsedEndDate && parsedEndDate < parsedStartDate) {
+      return NextResponse.json(
+        { error: "End date cannot be earlier than start date" },
+        { status: 400 }
+      );
+    }
+
+    if (!teller.fineractTellerId || !cashier.fineractCashierId) {
+      return NextResponse.json(
+        { error: "Cashier is not linked to Fineract and cannot be updated" },
+        { status: 400 }
+      );
+    }
+
+    const fineractService = await getFineractServiceWithSession();
+    const currentFineractCashier =
+      (await fineractService.getCashier(
+        teller.fineractTellerId,
+        cashier.fineractCashierId
+      )) as FineractCashierDetails;
+
+    await fineractService.updateCashier(
+      teller.fineractTellerId,
+      cashier.fineractCashierId,
+      {
+        staffId: currentFineractCashier.staffId ?? cashier.staffId,
+        description: currentFineractCashier.description || "",
+        startDate: formatDateForFineract(parsedStartDate),
+        endDate: parsedEndDate ? formatDateForFineract(parsedEndDate) : "",
+        isFullDay: hasIsFullDay
+          ? isFullDay !== undefined
+            ? isFullDay
+            : true
+          : currentFineractCashier.isFullDay ?? cashier.isFullDay,
+        dateFormat: "dd MMMM yyyy",
+        locale: "en",
+      }
+    );
+
     const updatedCashier = await prisma.cashier.update({
       where: { id: cashier.id },
       data: {
-        endDate: endDate ? new Date(endDate) : null,
-        isFullDay: isFullDay !== undefined ? isFullDay : true,
-        startTime: startTime && startTime.trim() ? startTime.trim() : null,
-        endTime: endTime && endTime.trim() ? endTime.trim() : null,
+        startDate: parsedStartDate,
+        endDate: parsedEndDate,
+        ...(hasIsFullDay
+          ? { isFullDay: isFullDay !== undefined ? isFullDay : true }
+          : {}),
+        ...(hasStartTime
+          ? {
+              startTime:
+                startTime && startTime.trim() ? startTime.trim() : null,
+            }
+          : {}),
+        ...(hasEndTime
+          ? { endTime: endTime && endTime.trim() ? endTime.trim() : null }
+          : {}),
       },
     });
 
@@ -127,6 +194,3 @@ export async function PUT(
     );
   }
 }
-
-
-

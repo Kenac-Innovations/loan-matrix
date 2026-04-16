@@ -84,73 +84,174 @@ type ClientFormData = {
 // Simple fetcher for SWR
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
-// Form validation schema
-const leadFormSchema = z.object({
-  // Client Information
-  officeId: z.string().min(1, { message: "Office is required" }),
-  legalFormId: z.string().min(1, { message: "Legal form is required" }),
-  externalId: z.string().optional(),
-  firstname: z.string().min(2, { message: "First name is required" }),
-  middlename: z.string().optional(),
-  lastname: z.string().min(2, { message: "Last name is required" }),
-  dateOfBirth: z.date().optional(),
-  gender: z.string().optional(),
-  isStaff: z.boolean().default(false),
-  mobileNo: z
-    .string()
-    .min(1, { message: "Mobile number is required" })
-    .refine((val) => {
-      const digitsOnly = val.replace(/\D/g, "");
-      return digitsOnly.length >= 7 && digitsOnly.length <= 12;
-    }, "Please enter a valid phone number"),
-  countryCode: z.string().default("+260"),
-  emailAddress: z.union([z.string().email({ message: "Valid email is required" }), z.literal("")]).default(""),
-  clientTypeId: z.string().optional(),
-  clientClassificationId: z.string().optional(),
-  submittedOnDate: z.date().default(() => new Date()),
-  active: z.boolean().default(true),
-  activationDate: z.date().optional(),
-  openSavingsAccount: z.boolean().default(false),
-  savingsProductId: z.string().optional(),
+// Form validation schema — mirrors client-registration-form clientFormSchema for Person vs Entity
+const leadFormSchema = z
+  .object({
+    officeId: z.string().min(1, { message: "Office is required" }),
+    legalFormId: z.string().min(1, { message: "Legal form is required" }),
+    externalId: z.string().optional(),
 
-  // Financial fields
-  monthlyIncomeRange: z.string().optional(),
-  employmentStatus: z.string().optional(),
-  employerName: z.string().optional(),
-  yearsAtCurrentJob: z.string().optional(),
-  hasExistingLoans: z.boolean().default(false),
-  monthlyDebtPayments: z
-    .union([z.number(), z.string()])
-    .transform((val) => {
-      if (typeof val === "string") {
-        const parsed = parseFloat(val);
-        return isNaN(parsed) ? 0 : parsed;
-      }
-      return val;
-    })
-    .default(0),
-  propertyOwnership: z.string().optional(),
-  businessOwnership: z.boolean().default(false),
-  businessType: z.string().optional(),
+    firstname: z.string().optional(),
+    middlename: z.string().optional(),
+    lastname: z.string().optional(),
+    dateOfBirth: z.date().optional(),
+    genderId: z.string().optional(),
 
-  // Additional Information fields
-  priority: z.string().optional(),
-  assignTo: z.string().optional(),
-  notes: z.string().optional(),
-});
+    fullname: z.string().optional(),
+    tradingName: z.string().optional(),
+    registrationNumber: z.string().optional(),
+    dateOfIncorporation: z.date().optional(),
+    natureOfBusiness: z.string().optional(),
+    businessAddress: z.string().optional(),
+
+    isStaff: z.boolean().default(false),
+    mobileNo: z
+      .string()
+      .min(1, { message: "Mobile number is required" })
+      .refine((val) => {
+        const digitsOnly = val.replace(/\D/g, "");
+        return digitsOnly.length >= 7 && digitsOnly.length <= 12;
+      }, "Please enter a valid phone number"),
+    countryCode: z.string().default("+260"),
+    emailAddress: z
+      .union([
+        z.string().email({ message: "Valid email is required" }),
+        z.literal(""),
+      ])
+      .default(""),
+    clientTypeId: z.string().optional(),
+    clientClassificationId: z.string().optional(),
+    submittedOnDate: z
+      .date()
+      .default(() => new Date())
+      .refine(
+        (d) => {
+          const today = new Date();
+          today.setHours(23, 59, 59, 999);
+          return d.getTime() <= today.getTime();
+        },
+        { message: "Submitted date cannot be in the future" },
+      ),
+    active: z.boolean().default(true),
+    activationDate: z.date().optional(),
+    openSavingsAccount: z.boolean().default(false),
+    savingsProductId: z.string().optional(),
+
+    monthlyIncomeRange: z.string().optional(),
+    employmentStatus: z.string().optional(),
+    employerName: z.string().optional(),
+    yearsAtCurrentJob: z.string().optional(),
+    hasExistingLoans: z.boolean().default(false),
+    monthlyDebtPayments: z
+      .union([z.number(), z.string()])
+      .transform((val) => {
+        if (typeof val === "string") {
+          const parsed = parseFloat(val);
+          return isNaN(parsed) ? 0 : parsed;
+        }
+        return val;
+      })
+      .default(0),
+    propertyOwnership: z.string().optional(),
+    businessOwnership: z.boolean().default(false),
+    businessType: z.string().optional(),
+
+    priority: z.string().optional(),
+    assignTo: z.string().optional(),
+    notes: z.string().optional(),
+  })
+  .refine(
+    (data) => {
+      if (data.active && !data.activationDate) return false;
+      return true;
+    },
+    {
+      message: "Activation date is required when account is active",
+      path: ["activationDate"],
+    },
+  )
+  .refine(
+    (data) => {
+      if (data.openSavingsAccount && !data.savingsProductId) return false;
+      return true;
+    },
+    {
+      message: "Savings product is required when opening a savings account",
+      path: ["savingsProductId"],
+    },
+  )
+  .refine(
+    (data) => {
+      const isEntity = data.legalFormId === "2";
+      if (!isEntity && !data.firstname) return false;
+      return true;
+    },
+    { message: "First name is required", path: ["firstname"] },
+  )
+  .refine(
+    (data) => {
+      const isEntity = data.legalFormId === "2";
+      if (!isEntity && !data.lastname) return false;
+      return true;
+    },
+    { message: "Last name is required", path: ["lastname"] },
+  )
+  .refine(
+    (data) => {
+      const isEntity = data.legalFormId === "2";
+      if (!isEntity && !data.dateOfBirth) return false;
+      return true;
+    },
+    { message: "Date of birth is required", path: ["dateOfBirth"] },
+  )
+  .refine(
+    (data) => {
+      const isEntity = data.legalFormId === "2";
+      if (isEntity && !data.fullname) return false;
+      return true;
+    },
+    { message: "Business name is required", path: ["fullname"] },
+  )
+  .refine(
+    (data) => {
+      const isEntity = data.legalFormId === "2";
+      if (isEntity && !data.registrationNumber) return false;
+      return true;
+    },
+    {
+      message: "Registration number is required",
+      path: ["registrationNumber"],
+    },
+  );
 
 type LeadFormValues = z.infer<typeof leadFormSchema>;
+
+const VALID_TABS = new Set([
+  "client",
+  "affordability",
+  "loan",
+  "invoice",
+  "terms",
+  "schedule",
+  "contracts",
+]);
 
 export function NewLeadForm() {
   // ALL HOOKS MUST BE CALLED FIRST, BEFORE ANY CONDITIONAL RETURNS
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { currencyCode, currencySymbol } = useCurrency();
+  const { currencyCode, currencySymbol, locale: tenantLocale } = useCurrency();
+  const skipAffordabilityForCompanies =
+    !!tenantLocale.skipAffordabilityForCompanies;
+  const requestedTab = searchParams?.get("tab");
+  const initialTab =
+    requestedTab && VALID_TABS.has(requestedTab) ? requestedTab : "client";
+  const [hideAffordability, setHideAffordability] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [affordabilityResult, setAffordabilityResult] =
     useState<AffordabilityResult | null>(null);
   const [selectedOffer, setSelectedOffer] = useState<LoanOffer | null>(null);
-  const [activeTab, setActiveTab] = useState("client");
+  const [activeTab, setActiveTab] = useState(initialTab);
   const [loanTemplateData, setLoanTemplateData] = useState<any>(null);
   const [formCompletionStatus, setFormCompletionStatus] = useState({
     client: false,
@@ -160,7 +261,13 @@ export function NewLeadForm() {
     schedule: false,
     contracts: false,
   });
-  const [currentLeadId, setCurrentLeadId] = useState<string | null>(null);
+  const [affordabilityAutoSkipped, setAffordabilityAutoSkipped] =
+    useState(false);
+  const [currentLeadId, setCurrentLeadId] = useState<string | null>(() => {
+    const fromUrl =
+      searchParams?.get("id") || searchParams?.get("leadId");
+    return fromUrl || null;
+  });
   const [clientCreatedInFineract, setClientCreatedInFineract] = useState(false);
   const [fineractClientId, setFineractClientId] = useState<number | null>(null);
   const [loanProductId, setLoanProductId] = useState<number | null>(null);
@@ -173,6 +280,11 @@ export function NewLeadForm() {
     Date | undefined
   >(undefined);
   const [showWipeConfirm, setShowWipeConfirm] = useState(false);
+
+  const tabsCount = hideAffordability ? 5 : 6;
+  const tabsGridClass = hideAffordability
+    ? "grid-cols-5 lg:grid-cols-5"
+    : "grid-cols-6 lg:grid-cols-6";
 
   const handleWipeLead = () => {
     setCurrentLeadId(null);
@@ -195,6 +307,7 @@ export function NewLeadForm() {
       schedule: false,
       contracts: false,
     });
+    setAffordabilityAutoSkipped(false);
     setActiveTab("client");
 
     form.reset();
@@ -252,28 +365,30 @@ export function NewLeadForm() {
           console.error("Error loading lead data:", error);
         }
 
-        // Check if affordability data exists for this lead
-        try {
-          const response = await fetch(`/api/leads/${leadId}/affordability`);
-          if (response.ok) {
-            const result = await response.json();
-            if (result.success && result.data) {
-              // Check if affordability data has been filled
-              const hasAffordabilityData =
-                result.data.netMonthlyIncome > 0 ||
-                result.data.grossMonthlyIncome > 0;
+        if (!hideAffordability) {
+          // Check if affordability data exists for this lead
+          try {
+            const response = await fetch(`/api/leads/${leadId}/affordability`);
+            if (response.ok) {
+              const result = await response.json();
+              if (result.success && result.data) {
+                // Check if affordability data has been filled
+                const hasAffordabilityData =
+                  result.data.netMonthlyIncome > 0 ||
+                  result.data.grossMonthlyIncome > 0;
 
-              if (hasAffordabilityData) {
-                console.log("Affordability data found, marking as complete");
-                setFormCompletionStatus((prev) => ({
-                  ...prev,
-                  affordability: true,
-                }));
+                if (hasAffordabilityData) {
+                  console.log("Affordability data found, marking as complete");
+                  setFormCompletionStatus((prev) => ({
+                    ...prev,
+                    affordability: true,
+                  }));
+                }
               }
             }
+          } catch (error) {
+            console.error("Error checking affordability data:", error);
           }
-        } catch (error) {
-          console.error("Error checking affordability data:", error);
         }
 
         // Check if loan details exist for this lead
@@ -296,7 +411,7 @@ export function NewLeadForm() {
                   "Loan details found, marking as complete and setting state",
                 );
                 loadedLoanDetails = loanResult.data;
-                setLoanDetails(loanResult.data); // Actually set the state!
+                setLoanDetails(loanResult.data);
                 setFormCompletionStatus((prev) => ({
                   ...prev,
                   loan: true,
@@ -511,7 +626,30 @@ export function NewLeadForm() {
     };
 
     loadLeadData();
+  }, [searchParams, hideAffordability]);
+
+  useEffect(() => {
+    const nextTab = searchParams?.get("tab");
+    if (nextTab && VALID_TABS.has(nextTab)) {
+      setActiveTab(nextTab);
+    }
   }, [searchParams]);
+
+  useEffect(() => {
+    if (hideAffordability) {
+      setFormCompletionStatus((prev) => ({ ...prev, affordability: true }));
+      setAffordabilityAutoSkipped(true);
+      if (activeTab === "affordability") {
+        setActiveTab("loan");
+      }
+      return;
+    }
+
+    if (affordabilityAutoSkipped) {
+      setFormCompletionStatus((prev) => ({ ...prev, affordability: false }));
+      setAffordabilityAutoSkipped(false);
+    }
+  }, [hideAffordability, activeTab, affordabilityAutoSkipped]);
 
   // Debug state changes
   useEffect(() => {
@@ -597,7 +735,13 @@ export function NewLeadForm() {
       middlename: "",
       lastname: "",
       dateOfBirth: undefined,
-      gender: "",
+      genderId: "",
+      fullname: "",
+      tradingName: "",
+      registrationNumber: "",
+      dateOfIncorporation: undefined,
+      natureOfBusiness: "",
+      businessAddress: "",
       isStaff: false,
       mobileNo: "",
       countryCode: "+263",
@@ -625,6 +769,25 @@ export function NewLeadForm() {
       notes: "",
     },
   });
+
+  useEffect(() => {
+    const updateAffordabilityVisibility = (legalFormId: unknown) => {
+      const isEntityLead = String(legalFormId || "") === "2";
+      setHideAffordability(skipAffordabilityForCompanies && isEntityLead);
+    };
+
+    // Initialize from current form state
+    updateAffordabilityVisibility(form.getValues("legalFormId"));
+
+    // Keep in sync as legal form changes
+    const subscription = form.watch((values, { name }) => {
+      if (!name || name === "legalFormId") {
+        updateAffordabilityVisibility(values.legalFormId);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, [form, skipAffordabilityForCompanies]);
 
   // Handle template loading error
   if (templateError) {
@@ -697,7 +860,13 @@ export function NewLeadForm() {
   }
 
   // Handle form submission
-  const onSubmit = async (data: LeadFormValues) => {
+  const onSubmit = async (
+    data: LeadFormValues,
+    entityData?: {
+      entityStakeholders: any[];
+      entityBankAccounts: any[];
+    },
+  ) => {
     setIsSubmitting(true);
 
     try {
@@ -746,7 +915,11 @@ export function NewLeadForm() {
         clientClassificationId: data.clientClassificationId
           ? Number(data.clientClassificationId)
           : undefined,
-        genderId: data.gender ? Number(data.gender) : undefined,
+        genderId: (() => {
+          const raw = data.genderId?.trim();
+          if (raw) return Number(raw);
+          return undefined;
+        })(),
         // Convert data types to match the schema expectations
         dateOfBirth: data.dateOfBirth ? new Date(data.dateOfBirth) : undefined,
         submittedOnDate: data.submittedOnDate
@@ -764,6 +937,8 @@ export function NewLeadForm() {
         // Add affordability data
         affordabilityResult,
         selectedOffer,
+        entityStakeholdersDraft: entityData?.entityStakeholders || [],
+        entityBankAccountsDraft: entityData?.entityBankAccounts || [],
       };
 
       // If updating client, add the Fineract client ID and existing lead ID
@@ -875,10 +1050,10 @@ export function NewLeadForm() {
         title: "Success",
         description:
           operation === "updateClient"
-            ? `Client updated successfully! Fineract Account: ${
+            ? `Client updated successfully! Account: ${
                 result.fineractAccountNo || "N/A"
               }`
-            : `Lead and client created successfully! Fineract Account: ${
+            : `Lead and client created successfully! Account: ${
                 result.fineractAccountNo || "N/A"
               }`,
       });
@@ -964,14 +1139,9 @@ export function NewLeadForm() {
 
   // Check if next button should be disabled
   const isNextButtonDisabled = (currentTab: string) => {
-    const tabOrder = [
-      "client",
-      "affordability",
-      "loan",
-      "terms",
-      "schedule",
-      "contracts",
-    ];
+    const tabOrder = hideAffordability
+      ? ["client", "loan", "terms", "schedule", "contracts"]
+      : ["client", "affordability", "loan", "terms", "schedule", "contracts"];
     const currentIndex = tabOrder.indexOf(currentTab);
 
     // Disable if any previous tab is not completed
@@ -1062,7 +1232,9 @@ export function NewLeadForm() {
             onValueChange={setActiveTab}
             className="space-y-4"
           >
-            <TabsList className="w-full grid grid-cols-7 gap-0 lg:grid lg:grid-cols-7 lg:gap-0">
+            <TabsList
+              className={`w-full grid gap-0 lg:grid lg:gap-0 ${tabsGridClass}`}
+            >
               <TabsTrigger
                 value="client"
                 className={`data-[state=active]:bg-blue-500 flex-1 justify-center ${
@@ -1080,25 +1252,27 @@ export function NewLeadForm() {
                   </Badge>
                 )}
               </TabsTrigger>
-              <TabsTrigger
-                value="affordability"
-                className={`data-[state=active]:bg-blue-500 flex-1 justify-center ${
-                  formCompletionStatus.affordability
-                    ? "bg-green-100 text-green-700"
-                    : ""
-                }`}
-                title="Affordability"
-              >
-                <Calculator className="h-4 w-4" />
-                <span className="hidden sm:inline ml-1 lg:ml-2">
-                  Affordability
-                </span>
-                {formCompletionStatus.affordability && (
-                  <Badge className="ml-1 bg-green-500 text-white text-xs">
-                    ✓
-                  </Badge>
-                )}
-              </TabsTrigger>
+              {!hideAffordability && (
+                <TabsTrigger
+                  value="affordability"
+                  className={`data-[state=active]:bg-blue-500 flex-1 justify-center ${
+                    formCompletionStatus.affordability
+                      ? "bg-green-100 text-green-700"
+                      : ""
+                  }`}
+                  title="Affordability"
+                >
+                  <Calculator className="h-4 w-4" />
+                  <span className="hidden sm:inline ml-1 lg:ml-2">
+                    Affordability
+                  </span>
+                  {formCompletionStatus.affordability && (
+                    <Badge className="ml-1 bg-green-500 text-white text-xs">
+                      ✓
+                    </Badge>
+                  )}
+                </TabsTrigger>
+              )}
               <TabsTrigger
                 value="loan"
                 className={`data-[state=active]:bg-blue-500 flex-1 justify-center ${
@@ -1221,14 +1395,19 @@ export function NewLeadForm() {
                       disabled={
                         !clientCreatedInFineract || !allClientSectionsComplete
                       }
-                      onClick={() => setActiveTab("affordability")}
+                      onClick={() =>
+                        setActiveTab(hideAffordability ? "loan" : "affordability")
+                      }
                     >
                       {!clientCreatedInFineract ? (
                         "Complete Client Registration First"
                       ) : !allClientSectionsComplete ? (
                         "Complete All Client Tabs"
                       ) : (
-                        <>✓ All Tabs Complete - Next: Affordability</>
+                        <>
+                          ✓ All Tabs Complete - Next:{" "}
+                          {hideAffordability ? "Loan Details" : "Affordability"}
+                        </>
                       )}
                     </Button>
                   </div>
@@ -1237,35 +1416,37 @@ export function NewLeadForm() {
             </TabsContent>
 
             {/* Affordability Tab */}
-            <TabsContent value="affordability" className="mt-0">
-              <Card className="px-2 py-2 lg:px-6 lg:py-6">
-                <CardHeader className="px-2 lg:px-6">
-                  <CardTitle>Affordability Assessment</CardTitle>
-                  <CardDescription>
-                    Capture loan request and affordability details for the
-                    client
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="px-2 lg:px-6">
-                  <SimplifiedAffordabilityForm
-                    leadId={currentLeadId || undefined}
-                    onComplete={() => {
-                      setFormCompletionStatus((prev) => ({
-                        ...prev,
-                        affordability: true,
-                      }));
-                      toast({
-                        title: "Success",
-                        description:
-                          "Affordability assessment completed. You can now proceed to loan details.",
-                      });
-                      setActiveTab("loan");
-                    }}
-                    onBack={() => setActiveTab("client")}
-                  />
-                </CardContent>
-              </Card>
-            </TabsContent>
+            {!hideAffordability && (
+              <TabsContent value="affordability" className="mt-0">
+                <Card className="px-2 py-2 lg:px-6 lg:py-6">
+                  <CardHeader className="px-2 lg:px-6">
+                    <CardTitle>Affordability Assessment</CardTitle>
+                    <CardDescription>
+                      Capture loan request and affordability details for the
+                      client
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="px-2 lg:px-6">
+                    <SimplifiedAffordabilityForm
+                      leadId={currentLeadId || undefined}
+                      onComplete={() => {
+                        setFormCompletionStatus((prev) => ({
+                          ...prev,
+                          affordability: true,
+                        }));
+                        toast({
+                          title: "Success",
+                          description:
+                            "Affordability assessment completed. You can now proceed to loan details.",
+                        });
+                        setActiveTab("loan");
+                      }}
+                      onBack={() => setActiveTab("client")}
+                    />
+                  </CardContent>
+                </Card>
+              </TabsContent>
+            )}
 
             {/* Loan Details Tab */}
             <TabsContent value="loan" className="mt-0">
@@ -1279,7 +1460,9 @@ export function NewLeadForm() {
                         console.log("Loan details submitted:", data);
                         // Handle loan details submission
                       }}
-                      onBack={() => setActiveTab("affordability")}
+                      onBack={() =>
+                        setActiveTab(hideAffordability ? "client" : "affordability")
+                      }
                       onNext={(templateData) => {
                         console.log(
                           "Received template data in main form:",
@@ -1326,6 +1509,7 @@ export function NewLeadForm() {
               </Card>
             </TabsContent>
 
+
             {/* Loan Terms Tab */}
             <TabsContent value="terms" className="mt-0">
               <Card className="p-2 lg:p-6">
@@ -1342,7 +1526,7 @@ export function NewLeadForm() {
                         // Update loanTerms state with submitted data including charges
                         setLoanTerms(data);
                         // Handle loan terms submission
-                        form.handleSubmit(onSubmit)();
+                        form.handleSubmit((formValues) => onSubmit(formValues))();
                       }}
                       onBack={() => setActiveTab("loan")}
                       onNext={() => setActiveTab("schedule")}

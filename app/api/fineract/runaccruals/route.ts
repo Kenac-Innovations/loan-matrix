@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { fetchFineractAPI } from '@/lib/api';
-import { getFineractErrorMessage } from '@/lib/fineract-error';
 
 export async function POST(request: NextRequest) {
   try {
@@ -17,10 +16,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(response);
   } catch (error: any) {
     console.error('Error running accruals:', error);
-    const status = error.status || 500;
+    
+    if (error.errorData) {
+      return NextResponse.json(error.errorData, { status: error.status || 500 });
+    }
+    
     return NextResponse.json(
-      { error: getFineractErrorMessage(error) },
-      { status }
+      { error: 'Failed to run accruals' },
+      { status: 500 }
     );
   }
 } 

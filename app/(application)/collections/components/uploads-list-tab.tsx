@@ -22,6 +22,7 @@ import {
   XCircle,
   Clock,
   AlertCircle,
+  Undo2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatCurrency } from "@/lib/format-currency";
@@ -37,6 +38,7 @@ interface UploadRecord {
   queuedCount: number;
   successCount: number;
   failedCount: number;
+  reversedCount: number;
   totalAmount: string;
   createdAt: string;
   updatedAt: string;
@@ -164,7 +166,10 @@ export function UploadsListTab({ onCountChange }: UploadsListTabProps) {
               {uploads.map((upload) => {
                 const statusCfg = STATUS_CONFIG[upload.status] || STATUS_CONFIG.STAGING;
                 const totalAmount = parseFloat(upload.totalAmount) || 0;
-                const processed = upload.successCount + upload.failedCount;
+                const processed =
+                  upload.successCount +
+                  upload.failedCount +
+                  upload.reversedCount;
                 const hasProcessing = upload.status === "PROCESSING" || upload.status === "COMPLETED";
 
                 return (
@@ -200,6 +205,11 @@ export function UploadsListTab({ onCountChange }: UploadsListTabProps) {
                           <span className="text-red-600 flex items-center gap-0.5">
                             <XCircle className="h-3 w-3" /> {upload.failedCount}
                           </span>
+                          {upload.reversedCount > 0 && (
+                            <span className="text-amber-600 flex items-center gap-0.5">
+                              <Undo2 className="h-3 w-3" /> {upload.reversedCount}
+                            </span>
+                          )}
                           {upload.queuedCount > 0 && (
                             <span className="text-purple-600 flex items-center gap-0.5">
                               <Clock className="h-3 w-3" /> {upload.queuedCount}

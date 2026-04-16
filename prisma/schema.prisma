@@ -32,9 +32,85 @@ model Tenant {
   usedReceipts           UsedReceipt[]
   loanContractTemplates  LoanContractTemplate[]
   requiredDocuments      RequiredDocument[]
+  invoiceDiscountingCases InvoiceDiscountingCase[]
+  invoiceDiscountingInvoices InvoiceDiscountingInvoice[]
+  chargeProducts         ChargeProduct[]
 
   @@index([slug])
   @@index([isActive])
+}
+
+enum ChargeProductType {
+  LOAN
+  SAVINGS
+  CLIENT
+  SHARES
+}
+
+enum ChargeProductTimeType {
+  DISBURSEMENT
+  SPECIFIED_DUE_DATE
+  SAVINGS_ACTIVATION
+  SAVINGS_CLOSURE
+  WITHDRAWAL_FEE
+  ANNUAL_FEE
+  MONTHLY_FEE
+  INSTALMENT_FEE
+  OVERDUE_INSTALLMENT
+  OVERDRAFT_FEE
+  WEEKLY_FEE
+  TRANCHE_DISBURSEMENT
+  SHAREACCOUNT_ACTIVATION
+  SHARE_PURCHASE
+  SHARE_REDEEM
+  SAVINGS_NOACTIVITY_FEE
+}
+
+enum ChargeProductCalculationType {
+  FLAT
+  PERCENT_OF_AMOUNT
+  PERCENT_OF_AMOUNT_AND_INTEREST
+  PERCENT_OF_INTEREST
+  PERCENT_OF_DISBURSEMENT_AMOUNT
+}
+
+enum ChargeProductPaymentMode {
+  REGULAR
+  ACCOUNT_TRANSFER
+}
+
+enum ChargeProductSyncStatus {
+  PENDING
+  SYNCED
+  FAILED
+}
+
+model ChargeProduct {
+  id                            String                       @id @default(cuid())
+  tenantId                      String
+  name                          String
+  amount                        Decimal                      @db.Decimal(18, 6)
+  currencyCode                  String
+  isInvoiceDiscountIncome       Boolean                      @default(false)
+  type                          ChargeProductType
+  chargeTimeType                ChargeProductTimeType
+  chargeCalculationType         ChargeProductCalculationType @default(FLAT)
+  chargePaymentMode             ChargeProductPaymentMode     @default(REGULAR)
+  active                        Boolean                      @default(true)
+  fineractChargeId              Int?
+  fineractChargeTimeType        ChargeProductTimeType?
+  fineractChargeCalculationType ChargeProductCalculationType?
+  fineractAmount                Decimal?                     @db.Decimal(18, 6)
+  syncStatus                    ChargeProductSyncStatus      @default(PENDING)
+  syncError                     String?
+  createdAt                     DateTime                     @default(now())
+  updatedAt                     DateTime                     @updatedAt
+  tenant                        Tenant                       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, isInvoiceDiscountIncome])
+  @@index([tenantId, syncStatus])
+  @@unique([tenantId, fineractChargeId])
 }
 
 model LoanContractTemplate {
@@ -98,6 +174,7 @@ model Lead {
   registrationNumber         String?
   dateOfIncorporation        DateTime?
   natureOfBusiness           String?
+  businessAddress            String?
   externalId                 String?
   firstname                  String?
   middlename                 String?
@@ -175,6 +252,8 @@ model Lead {
   incomeVerified             Boolean?            @default(false)
   /** Preferred payment method for payout (same options as payout modal): CASH, MOBILE_MONEY, BANK_TRANSFER */
   preferredPaymentMethod     String?
+  /** Facility mode for this lead — auto-detected from the chosen loan product via InvoiceDiscountingProduct table */
+  facilityType               FacilityType?       @default(TERM_LOAN)
   clientCreatedInFineract    Boolean             @default(false)
   clientCreationDate         DateTime?
   fineractAccountNo          String?
@@ -188,10 +267,14 @@ model Lead {
   assignedAt                 DateTime?           // When the lead was assigned
   assignedByUserId           String?             // App user who made the assignment
   familyMembers              FamilyMember[]
+  entityStakeholders         EntityStakeholder[]
+  entityBankAccounts         EntityBankAccount[]
   currentStage               PipelineStage?      @relation("LeadCurrentStage", fields: [currentStageId], references: [id])
   tenant                     Tenant              @relation(fields: [tenantId], references: [id])
   communications             LeadCommunication[]
   documents                  LeadDocument[]
+  invoiceDiscountingCase     InvoiceDiscountingCase?
+  invoiceDiscountingInvoices InvoiceDiscountingInvoice[]
   stageApprovals             StageApproval[]
   stateTransitions           StateTransition[]
 
@@ -200,6 +283,81 @@ model Lead {
   @@index([tenantId, currentStageId])
   @@index([userId])
   @@index([status])
+}
+
+enum FacilityType {
+  TERM_LOAN
+  INVOICE_DISCOUNTING
+}
+
+enum InvoiceRecourseType {
+  WITH_RECOURSE
+  WITHOUT_RECOURSE
+}
+
+enum InvoiceDiscountingInvoiceStatus {
+  APPROVED
+  PENDING
+  VERIFIED
+  REJECTED
+  FINANCED
+}
+
+model InvoiceDiscountingCase {
+  id                        String                          @id @default(cuid())
+  leadId                    String                          @unique
+  tenantId                  String
+  debtorName                String
+  debtorRegistrationNumber  String?
+  debtorTaxId               String?
+  debtorContactName         String?
+  debtorContactPhone        String?
+  debtorContactEmail        String?
+  recourseType              InvoiceRecourseType?
+  advanceRate               Float                           @default(0)
+  concentrationLimit        Float?
+  debtorTermsDays           Int?
+  reservePercent            Float?
+  notes                     String?
+  totalPresentedAmount      Float                           @default(0)
+  totalEligibleAmount       Float?
+  totalFinancedAmount       Float                           @default(0)
+  totalReserveAmount        Float                           @default(0)
+  createdAt                 DateTime                        @default(now())
+  updatedAt                 DateTime                        @updatedAt
+  lead                      Lead                            @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  tenant                    Tenant                          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  invoices                  InvoiceDiscountingInvoice[]
+
+  @@index([tenantId])
+}
+
+model InvoiceDiscountingInvoice {
+  id                        String                          @id @default(cuid())
+  caseId                    String
+  tenantId                  String
+  leadId                    String
+  invoiceNumber             String
+  invoiceDate               DateTime
+  dueDate                   DateTime
+  grossAmount               Float
+  eligibleAmount            Float?
+  financedAmount            Float
+  reserveAmount             Float
+  currencyCode              String?
+  fineractDocumentId        String?
+  status                    InvoiceDiscountingInvoiceStatus @default(APPROVED)
+  sortOrder                 Int                             @default(0)
+  createdAt                 DateTime                        @default(now())
+  updatedAt                 DateTime                        @updatedAt
+  invoiceCase               InvoiceDiscountingCase          @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  lead                      Lead                            @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  tenant                    Tenant                          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([caseId])
+  @@index([tenantId])
+  @@index([leadId])
+  @@unique([caseId, invoiceNumber])
 }
 
 model StateTransition {
@@ -354,11 +512,57 @@ model LeadDocument {
   updatedAt    DateTime  @updatedAt
   lead         Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
   tenant       Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  stakeholderProofs EntityStakeholder[] @relation("StakeholderProofOfResidence")
 
   @@index([leadId])
   @@index([tenantId])
   @@index([category])
   @@index([status])
+}
+
+enum EntityStakeholderRole {
+  DIRECTOR
+  SHAREHOLDER
+}
+
+model EntityStakeholder {
+  id                               String                 @id @default(cuid())
+  leadId                           String
+  role                             EntityStakeholderRole
+  fullName                         String
+  nationalIdOrPassport             String
+  nationalIdFineractDocumentId     String?
+  residentialAddress               String                 @db.Text
+  proofOfResidenceLeadDocumentId   String?
+  fineractDocumentId               String?
+  pepStatusCodeValueId             Int?
+  pepStatusLabel                   String?
+  shareholdingPercentage           Decimal?               @db.Decimal(5, 2)
+  isUltimateBeneficialOwner        Boolean                @default(false)
+  controlStructureCodeValueId      Int?
+  controlStructureLabel            String?
+  sortOrder                        Int                    @default(0)
+  createdAt                        DateTime               @default(now())
+  updatedAt                        DateTime               @updatedAt
+  lead                             Lead                   @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  proofOfResidenceDocument         LeadDocument?          @relation("StakeholderProofOfResidence", fields: [proofOfResidenceLeadDocumentId], references: [id], onDelete: SetNull)
+
+  @@index([leadId])
+  @@index([leadId, role])
+}
+
+model EntityBankAccount {
+  id                  String   @id @default(cuid())
+  leadId              String
+  bankName            String
+  accountNumber       String
+  accountSignatories  String   @db.Text
+  sortOrder           Int      @default(0)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  lead                Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([leadId])
 }
 
 model RequiredDocument {
@@ -908,6 +1112,7 @@ model BulkRepaymentUpload {
   queuedCount   Int                  @default(0)
   successCount  Int                  @default(0)
   failedCount   Int                  @default(0)
+  reversedCount Int                  @default(0)
   totalAmount   Decimal              @default(0) @db.Decimal(19, 4)
   columnMapping Json?
   createdAt     DateTime             @default(now())
@@ -936,14 +1141,19 @@ model BulkRepaymentItem {
   bankNumber      String?
   note            String?
   transactionDate DateTime?
-  status          String              @default("STAGED") // STAGED, QUEUED, PROCESSING, SUCCESS, FAILED
+  status          String              @default("STAGED") // STAGED, QUEUED, PROCESSING, SUCCESS, FAILED, REVERSED
   errorMessage    String?
   fineractTxnId   String?
   processedAt     DateTime?
+  reversalStatus  String?             // QUEUED, PROCESSING, FAILED, REVERSED
+  reversalErrorMessage String?
+  reversedAt      DateTime?
+  reversedBy      String?
   createdAt       DateTime            @default(now())
   updatedAt       DateTime            @updatedAt
 
   @@index([uploadId, status])
+  @@index([uploadId, reversalStatus])
   @@index([loanId])
 }
 
@@ -959,6 +1169,18 @@ model ReceiptRange {
   updatedAt  DateTime @updatedAt
 
   @@index([tenantId, isActive])
+}
+
+// Marks a Fineract loan product as an invoice discounting product.
+// Enforces 0% interest guardrails in the product creation UI.
+model InvoiceDiscountingProduct {
+  id                String   @id @default(cuid())
+  fineractProductId Int      @unique
+  productName       String
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([fineractProductId])
 }
 
 model UsedReceipt {

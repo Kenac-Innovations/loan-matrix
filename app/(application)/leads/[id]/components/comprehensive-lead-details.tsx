@@ -54,15 +54,20 @@ import { format } from "date-fns";
 import { useCurrency } from "@/contexts/currency-context";
 import { CreditBalanceRefundModal } from "./credit-balance-refund-modal";
 import { TransferFundsModal } from "./transfer-funds-modal";
+import { useFeatureFlags } from "@/hooks/use-feature-flags";
+import { PendingApprovalLoanTermsEditor } from "./pending-approval-loan-terms-editor";
 
 interface ComprehensiveLeadDetailsProps {
   leadId: string;
+  canEditPendingLoanApplication?: boolean;
 }
 
 export function ComprehensiveLeadDetails({
   leadId,
+  canEditPendingLoanApplication = false,
 }: ComprehensiveLeadDetailsProps) {
   const { currencyCode, currencySymbol } = useCurrency();
+  const { isEnabled } = useFeatureFlags();
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -440,7 +445,11 @@ export function ComprehensiveLeadDetails({
     );
   }
 
-  const { lead, loanInfo, fineractClient, fineractLoan, cdeResult } = data;
+  const { lead, loanInfo, fineractClient, fineractLoan, cdeResult, invoiceDiscounting } = data;
+  const invoiceDiscountingEnabled = isEnabled("hasInvoiceDiscounting");
+  const isInvoiceDiscountingLead = lead?.facilityType === "INVOICE_DISCOUNTING";
+  const showInvoiceDiscountingDetails =
+    invoiceDiscountingEnabled && isInvoiceDiscountingLead;
 
   // Get loan ID from multiple sources
   const loanId = lead?.fineractLoanId || fineractLoan?.id;
@@ -470,10 +479,19 @@ export function ComprehensiveLeadDetails({
     ? `${lead.countryCode} ${lead.mobileNo}`
     : "Not provided";
 
+  const originalRequestedAmount =
+    typeof lead.stateMetadata?.originalRequestedAmount === "number" &&
+    lead.stateMetadata.originalRequestedAmount > 0
+      ? lead.stateMetadata.originalRequestedAmount
+      : null;
+
   const requestedAmount =
-    lead.requestedAmount && lead.requestedAmount > 0
+    originalRequestedAmount
+      ? originalRequestedAmount
+      : lead.requestedAmount && lead.requestedAmount > 0
       ? lead.requestedAmount
-      : fineractLoan?.approvedPrincipal
+      : fineractLoan?.proposedPrincipal
+        || fineractLoan?.approvedPrincipal
         || fineractLoan?.principal
         || loanInfo?.loanTerms?.principal
         || 0;
@@ -481,6 +499,24 @@ export function ComprehensiveLeadDetails({
   // Get Fineract loan status
   const fineractLoanStatus = fineractLoan?.status?.value || null;
   const fineractLoanId = fineractLoan?.id || lead?.fineractLoanId || null;
+  const isLoanApprovedOrBeyond = Boolean(
+    fineractLoan?.status?.approved ||
+      fineractLoan?.status?.active ||
+      fineractLoan?.status?.closed
+  );
+  const approvalAmountLabel = isLoanApprovedOrBeyond
+    ? "Approved Amount"
+    : "Amount To Be Approved";
+  const approvalAmount =
+    isLoanApprovedOrBeyond
+      ? fineractLoan?.approvedPrincipal
+        || fineractLoan?.principal
+        || requestedAmount
+      : fineractLoan?.principal
+        || fineractLoan?.proposedPrincipal
+        || fineractLoan?.approvedPrincipal
+        || loanInfo?.loanTerms?.principal
+        || requestedAmount;
 
   // Get status badge color
   const getStatusBadgeColor = (status: string | null) => {
@@ -546,7 +582,7 @@ export function ComprehensiveLeadDetails({
             </Dialog>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+            <div className="grid grid-cols-2 gap-4 text-sm">
               <div className="flex items-center gap-2">
                 <Phone className="h-4 w-4 text-muted-foreground" />
                 <span>{phoneNumber}</span>
@@ -614,6 +650,12 @@ export function ComprehensiveLeadDetails({
               <p className="text-xs text-muted-foreground">Requested Amount</p>
               <p className="text-2xl font-bold">
                 {currencyCode} {requestedAmount.toLocaleString()}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">{approvalAmountLabel}</p>
+              <p className="text-2xl font-bold">
+                {currencyCode} {approvalAmount.toLocaleString()}
               </p>
             </div>
             <div>
@@ -715,6 +757,135 @@ export function ComprehensiveLeadDetails({
         </TabsContent>
 
         <TabsContent value="loan" className="mt-4">
+          {showInvoiceDiscountingDetails && (
+            <Card className="mb-6">
+              <CardHeader>
+                <CardTitle>Invoice Discounting Details</CardTitle>
+                <CardDescription>
+                  Facility setup and debtor invoice summary captured during lead creation.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                  <div>
+                    <p className="text-sm text-muted-foreground">Facility Type</p>
+                    <p className="font-semibold">Invoice Discounting</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Debtor</p>
+                    <p className="font-semibold">{invoiceDiscounting?.debtorName || "N/A"}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Advance Rate</p>
+                    <p className="font-semibold">
+                      {invoiceDiscounting?.advanceRate != null
+                        ? `${invoiceDiscounting.advanceRate}%`
+                        : "N/A"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Debtor Terms</p>
+                    <p className="font-semibold">
+                      {invoiceDiscounting?.debtorTermsDays != null
+                        ? `${invoiceDiscounting.debtorTermsDays} days`
+                        : "N/A"}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-4 rounded-md border bg-muted/30 p-4 md:grid-cols-3">
+                  <div>
+                    <p className="text-xs text-muted-foreground">Presented</p>
+                    <p className="text-base font-semibold">
+                      {currencyCode}{" "}
+                      {(invoiceDiscounting?.totalPresentedAmount || 0).toLocaleString()}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Financed</p>
+                    <p className="text-base font-semibold">
+                      {currencyCode}{" "}
+                      {(invoiceDiscounting?.totalFinancedAmount || 0).toLocaleString()}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Income</p>
+                    <p className="text-base font-semibold">
+                      {currencyCode}{" "}
+                      {(invoiceDiscounting?.totalReserveAmount || 0).toLocaleString()}
+                    </p>
+                  </div>
+                </div>
+
+                {Array.isArray(invoiceDiscounting?.invoices) &&
+                invoiceDiscounting.invoices.length > 0 ? (
+                  <div className="space-y-3">
+                    <p className="text-sm font-medium">Invoices</p>
+                    <div className="overflow-x-auto rounded-md border">
+                      <table className="w-full text-sm">
+                        <thead className="bg-muted/50">
+                          <tr>
+                            <th className="px-3 py-2 text-left font-medium">Invoice #</th>
+                            <th className="px-3 py-2 text-left font-medium">Invoice Date</th>
+                            <th className="px-3 py-2 text-left font-medium">Due Date</th>
+                            <th className="px-3 py-2 text-left font-medium">File</th>
+                            <th className="px-3 py-2 text-left font-medium">Gross</th>
+                            <th className="px-3 py-2 text-left font-medium">Financed</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {invoiceDiscounting.invoices.map((invoice: any) => (
+                            <tr key={invoice.id} className="border-t">
+                              <td className="px-3 py-2">{invoice.invoiceNumber}</td>
+                              <td className="px-3 py-2">
+                                {invoice.invoiceDate
+                                  ? format(new Date(invoice.invoiceDate), "PP")
+                                  : "N/A"}
+                              </td>
+                              <td className="px-3 py-2">
+                                {invoice.dueDate
+                                  ? format(new Date(invoice.dueDate), "PP")
+                                  : "N/A"}
+                              </td>
+                              <td className="px-3 py-2">
+                                {invoice.fineractDocumentId && lead?.fineractClientId ? (
+                                  <a
+                                    href={`/api/fineract/clients/${lead.fineractClientId}/documents/${invoice.fineractDocumentId}/attachment`}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="text-blue-600 hover:underline"
+                                  >
+                                    View file
+                                  </a>
+                                ) : (
+                                  "N/A"
+                                )}
+                              </td>
+                              <td className="px-3 py-2">
+                                {invoice.currencyCode || currencyCode}{" "}
+                                {(invoice.grossAmount || 0).toLocaleString()}
+                              </td>
+                              <td className="px-3 py-2">
+                                {invoice.currencyCode || currencyCode}{" "}
+                                {(invoice.financedAmount || 0).toLocaleString()}
+                              </td>
+                              {/* Invoice status is intentionally hidden in UI for now.
+                                  Backend defaults invoice rows to APPROVED. */}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    No invoice rows were captured yet.
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
           {lead.fineractLoanId && !fineractLoan ? (
             <Card>
               <CardContent className="py-12">
@@ -842,7 +1013,30 @@ export function ComprehensiveLeadDetails({
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <Card>
                   <CardHeader>
-                    <CardTitle>Loan Terms</CardTitle>
+                    <div className="flex items-start justify-between gap-3">
+                      <CardTitle>Loan Terms</CardTitle>
+                      {fineractLoan?.id ? (
+                        <PendingApprovalLoanTermsEditor
+                          leadId={leadId}
+                          canEdit={canEditPendingLoanApplication}
+                          loan={{
+                            id: fineractLoan.id,
+                            principal: fineractLoan.principal,
+                            termFrequency: fineractLoan.termFrequency,
+                            termPeriodLabel:
+                              fineractLoan.termPeriodFrequencyType?.value || null,
+                            numberOfRepayments: fineractLoan.numberOfRepayments,
+                            interestRatePerPeriod:
+                              fineractLoan.interestRatePerPeriod,
+                            interestRateFrequencyLabel:
+                              fineractLoan.interestRateFrequencyType?.value || null,
+                          }}
+                          onSaved={() => {
+                            fetchData(false);
+                          }}
+                        />
+                      ) : null}
+                    </div>
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div>
@@ -916,7 +1110,7 @@ export function ComprehensiveLeadDetails({
                           <h4 className="text-sm font-semibold text-foreground border-b pb-2">
                             Principal
                           </h4>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <div className="grid grid-cols-2 gap-4">
                             <div>
                               <p className="text-xs text-muted-foreground">
                                 Disbursed
@@ -971,7 +1165,7 @@ export function ComprehensiveLeadDetails({
                           <h4 className="text-sm font-semibold text-foreground border-b pb-2">
                             Interest
                           </h4>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <div className="grid grid-cols-2 gap-4">
                             <div>
                               <p className="text-xs text-muted-foreground">
                                 Charged
@@ -1031,7 +1225,7 @@ export function ComprehensiveLeadDetails({
                             <h4 className="text-sm font-semibold text-foreground border-b pb-2">
                               Charges
                             </h4>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div className="grid grid-cols-2 gap-4">
                               {fineractLoan.summary.feeChargesCharged > 0 && (
                                 <>
                                   <div>
@@ -1209,7 +1403,7 @@ export function ComprehensiveLeadDetails({
                     <CardTitle>Loan Timeline</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                       {fineractLoan.timeline.submittedOnDate && (
                         <div>
                           <p className="text-sm text-muted-foreground">
@@ -1393,7 +1587,7 @@ export function ComprehensiveLeadDetails({
                     <CardTitle>Credit Scoring</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                       <div>
                         <p className="text-sm text-muted-foreground">
                           Credit Score
@@ -1478,7 +1672,7 @@ export function ComprehensiveLeadDetails({
                     <CardTitle>Affordability Assessment</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                       <div>
                         <p className="text-sm text-muted-foreground">
                           DTI Ratio
@@ -1553,7 +1747,7 @@ export function ComprehensiveLeadDetails({
                     <CardTitle>Pricing & Risk Assessment</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                       <div>
                         <p className="text-sm text-muted-foreground">APR</p>
                         <p className="text-2xl font-bold text-red-600">
@@ -1859,7 +2053,7 @@ export function ComprehensiveLeadDetails({
                 {fineractLoan.repaymentSchedule.periods && (
                   <div className="space-y-4">
                     {/* Summary */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-muted/50 rounded-lg">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-muted/50 rounded-lg">
                       <div>
                         <p className="text-xs text-muted-foreground">
                           Total Principal

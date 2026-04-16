@@ -1,7 +1,6 @@
 "use client";
 
 import { useCurrency } from "@/contexts/currency-context";
-import { fineractFetch } from "@/lib/fineract-fetch";
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -41,6 +40,41 @@ import {
   KeyFactsData,
 } from "./key-facts-statement-template";
 
+function parseFineractErrorResponse(responseText: string): string {
+  try {
+    const parsed = JSON.parse(responseText);
+    const errors = Array.isArray(parsed?.errors) ? parsed.errors : [];
+    const message =
+      errors.find((error: any) => typeof error?.defaultUserMessage === "string")
+        ?.defaultUserMessage ||
+      parsed?.defaultUserMessage ||
+      parsed?.message ||
+      parsed?.error;
+
+    if (typeof message === "string" && message.trim()) {
+      return message;
+    }
+  } catch {
+    // Fall through to the raw response text.
+  }
+
+  return responseText || "Fineract request failed";
+}
+
+async function fineractFetch(
+  url: string,
+  options?: RequestInit,
+): Promise<Response> {
+  const response = await fetch(url, options);
+
+  if (!response.ok) {
+    const responseText = await response.text();
+    throw new Error(parseFineractErrorResponse(responseText));
+  }
+
+  return response;
+}
+
 interface LoanContractsProps {
   leadId?: string;
   clientId?: number;
@@ -64,7 +98,9 @@ export function LoanContracts({
   onComplete,
   onBack,
 }: LoanContractsProps) {
-  const { currencyCode: orgCurrency } = useCurrency();
+  const { currencyCode: orgCurrency, locale: tenantLocale } = useCurrency();
+  const signaturesOptional =
+    !!tenantLocale.createLeadSignaturesOnContractOptional;
   const [contractData, setContractData] = useState<ContractData | null>(
     initialContractData || null,
   );
@@ -90,8 +126,22 @@ export function LoanContracts({
   const [showKeyFacts, setShowKeyFacts] = useState(false);
   const [tenantContractHtml, setTenantContractHtml] = useState<string | null>(null);
   const [tenantLogoUrl, setTenantLogoUrl] = useState<string | null>(null);
+  const [printPermissions, setPrintPermissions] = useState({
+    canPrintContracts: false,
+    approvalStatus: null as string | null,
+    printBlockReason: "Printing is available after Final Approval.",
+  });
   const { toast } = useToast();
   const router = useRouter();
+  const isInvoiceDiscountingLoan =
+    loanDetails?.facilityType === "INVOICE_DISCOUNTING";
+
+  const extractLoanChargeId = (payload: any): number | null => {
+    const candidate =
+      payload?.resourceId ?? payload?.entityId ?? payload?.id ?? null;
+    const parsed = Number(candidate);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+  };
 
   const filledTenantContractHtml = useMemo(() => {
     if (!tenantContractHtml) return null;
@@ -138,6 +188,35 @@ export function LoanContracts({
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!leadId) {
+      return;
+    }
+
+    fetch(`/api/leads/${leadId}/contract-data`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((result) => {
+        if (cancelled || !result?.permissions) {
+          return;
+        }
+
+        setPrintPermissions({
+          canPrintContracts: !!result.permissions.canPrintContracts,
+          approvalStatus: result.permissions.approvalStatus || null,
+          printBlockReason:
+            result.permissions.printBlockReason ||
+            "Printing is available after Final Approval.",
+        });
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [leadId]);
 
   // Transform contract data to Key Facts Statement format
   const getKeyFactsData = (): KeyFactsData | null => {
@@ -1045,6 +1124,15 @@ export function LoanContracts({
 
       if (result.success && result.data) {
         setContractData(result.data);
+        if (result.permissions) {
+          setPrintPermissions({
+            canPrintContracts: !!result.permissions.canPrintContracts,
+            approvalStatus: result.permissions.approvalStatus || null,
+            printBlockReason:
+              result.permissions.printBlockReason ||
+              "Printing is available after Final Approval.",
+          });
+        }
         console.log("Contract data loaded successfully");
       } else {
         throw new Error(result.error || "No contract data available");
@@ -1076,6 +1164,15 @@ export function LoanContracts({
           const result = await dataRes.json();
           if (result.success && result.data) {
             setContractData(result.data);
+            if (result.permissions) {
+              setPrintPermissions({
+                canPrintContracts: !!result.permissions.canPrintContracts,
+                approvalStatus: result.permissions.approvalStatus || null,
+                printBlockReason:
+                  result.permissions.printBlockReason ||
+                  "Printing is available after Final Approval.",
+              });
+            }
             dataRefreshed = true;
           }
         }
@@ -1222,6 +1319,17 @@ export function LoanContracts({
   };
 
   const handlePrint = (printType: "kfs" | "contract" | "both" = "both") => {
+    if (!printPermissions.canPrintContracts) {
+      toast({
+        title: "Printing locked",
+        description:
+          printPermissions.printBlockReason ||
+          "Printing is available after Final Approval.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     const printWindow = window.open("", "_blank");
     if (!printWindow) return;
 
@@ -1865,7 +1973,7 @@ export function LoanContracts({
   };
 
   const handleComplete = async () => {
-    if (!borrowerSignature) {
+    if (!signaturesOptional && !borrowerSignature) {
       toast({
         title: "Signature required",
         description: "Please upload the borrower's signature before completing",
@@ -1874,7 +1982,7 @@ export function LoanContracts({
       return;
     }
 
-    if (!loanOfficerSignature) {
+    if (!signaturesOptional && !loanOfficerSignature) {
       toast({
         title: "Signature required",
         description:
@@ -1935,6 +2043,10 @@ export function LoanContracts({
         description: "Submitting loan application to Fineract",
       });
 
+      const requestedCharges = Array.isArray(loanTerms.charges)
+        ? loanTerms.charges
+        : [];
+
       const loanPayload = {
         productId: loanDetails.productId || loanDetails.product,
         loanOfficerId: loanDetails.loanOfficer || "",
@@ -1987,17 +2099,19 @@ export function LoanContracts({
           ? parseInt(loanTerms.interestRateFrequency)
           : 2,
         interestRatePerPeriod: loanTerms.nominalInterestRate || 0,
-        charges: (loanTerms.charges || []).map((charge: any) => {
-          const chargeData: any = {
-            chargeId: charge.chargeId,
-            amount: charge.amount,
-          };
-          // Include dueDate if present (required for "Specified Due Date" charges)
-          if (charge.dueDate) {
-            chargeData.dueDate = charge.dueDate;
-          }
-          return chargeData;
-        }),
+        charges: isInvoiceDiscountingLoan
+          ? []
+          : requestedCharges.map((charge: any) => {
+              const chargeData: any = {
+                chargeId: charge.chargeId,
+                amount: charge.amount,
+              };
+              // Include dueDate if present (required for "Specified Due Date" charges)
+              if (charge.dueDate) {
+                chargeData.dueDate = charge.dueDate;
+              }
+              return chargeData;
+            }),
         collateral:
           loanTerms.collaterals?.map((coll: any) => ({
             collateralTypeId: coll.id || 0,
@@ -2016,7 +2130,7 @@ export function LoanContracts({
       console.log("Loan charges being sent:", loanPayload.charges);
       console.log("Raw loanTerms.charges:", loanTerms.charges);
 
-      const loanResponse = await fineractFetch("/api/fineract/loans", {
+      const loanResponse = await fetch("/api/fineract/loans", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -2024,11 +2138,55 @@ export function LoanContracts({
         body: JSON.stringify(loanPayload),
       });
 
+      if (!loanResponse.ok) {
+        const errorData = await loanResponse.json();
+        throw new Error(errorData.error || "Failed to create loan");
+      }
+
       const loanResult = await loanResponse.json();
       const createdLoanId =
         loanResult.data.loanId || loanResult.data.resourceId;
 
       console.log("Loan created successfully:", createdLoanId);
+
+      if (isInvoiceDiscountingLoan && createdLoanId && requestedCharges.length > 0) {
+        console.log("Applying invoice discounting charges via add-charge endpoint");
+
+        for (const charge of requestedCharges) {
+          const chargePayload: any = {
+            chargeId: charge.chargeId,
+            amount: charge.amount,
+            locale: "en",
+          };
+
+          if (charge.dueDate) {
+            chargePayload.dueDate = charge.dueDate;
+            chargePayload.dateFormat = "dd MMMM yyyy";
+          }
+
+          const addChargeResponse = await fineractFetch(
+            `/api/fineract/loans/${createdLoanId}/charges`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify(chargePayload),
+            },
+          );
+
+          const addChargeResult = await addChargeResponse
+            .json()
+            .catch(() => ({}));
+          const createdLoanChargeId = extractLoanChargeId(addChargeResult);
+
+          if (!createdLoanChargeId) {
+            throw new Error(
+              "Loan charge was created but no loan charge id was returned",
+            );
+          }
+        }
+      }
 
       // Save the Fineract loan ID and submission status to the lead
       if (leadId && createdLoanId) {
@@ -2063,13 +2221,17 @@ export function LoanContracts({
         formData.append("name", documentName);
         formData.append("description", `Loan contract: ${documentName}`);
 
-        const uploadResponse = await fineractFetch(
+        const uploadResponse = await fetch(
           `/api/fineract/loans/${createdLoanId}/documents`,
           {
             method: "POST",
             body: formData,
           },
         );
+
+        if (!uploadResponse.ok) {
+          throw new Error(`Failed to upload ${documentName}`);
+        }
 
         return uploadResponse.json();
       };
@@ -2224,10 +2386,12 @@ export function LoanContracts({
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {/* Borrower Signature */}
-            <div className="space-y-2">
-              <Label htmlFor="borrower-signature">Borrower Signature *</Label>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {/* Borrower Signature */}
+              <div className="space-y-2">
+                <Label htmlFor="borrower-signature">
+                  Borrower Signature{!signaturesOptional ? " *" : ""}
+                </Label>
               {availableSignatures.length > 0 && !borrowerSignature && (
                 <Select
                   onValueChange={(value) => {
@@ -2361,11 +2525,11 @@ export function LoanContracts({
               </div>
             </div>
 
-            {/* Loan Officer Signature */}
-            <div className="space-y-2">
-              <Label htmlFor="officer-signature">
-                Loan Officer Signature *
-              </Label>
+              {/* Loan Officer Signature */}
+              <div className="space-y-2">
+                <Label htmlFor="officer-signature">
+                  Loan Officer Signature{!signaturesOptional ? " *" : ""}
+                </Label>
               {availableSignatures.length > 0 && !loanOfficerSignature && (
                 <Select
                   onValueChange={(value) => {
@@ -3169,18 +3333,41 @@ export function LoanContracts({
               </Button>
             )}
             <div className="flex gap-4 ml-auto">
+              {!printPermissions.canPrintContracts && (
+                <div className="max-w-xs self-center text-right text-xs text-amber-600 dark:text-amber-400">
+                  {printPermissions.printBlockReason}
+                  {printPermissions.approvalStatus
+                    ? ` Current status: ${printPermissions.approvalStatus}.`
+                    : ""}
+                </div>
+              )}
               {!tenantContractHtml && (
-                <Button onClick={handlePrintKeyFacts} variant="outline" size="sm">
+                <Button
+                  onClick={handlePrintKeyFacts}
+                  variant="outline"
+                  size="sm"
+                  disabled={!printPermissions.canPrintContracts}
+                >
                   <FileText className="mr-2 h-4 w-4" />
                   Print Key Facts
                 </Button>
               )}
-              <Button onClick={handlePrintContract} variant="outline" size="sm">
+              <Button
+                onClick={handlePrintContract}
+                variant="outline"
+                size="sm"
+                disabled={!printPermissions.canPrintContracts}
+              >
                 <FileText className="mr-2 h-4 w-4" />
                 Print Contract
               </Button>
               {!tenantContractHtml && (
-                <Button onClick={handlePrintBoth} variant="outline" size="sm">
+                <Button
+                  onClick={handlePrintBoth}
+                  variant="outline"
+                  size="sm"
+                  disabled={!printPermissions.canPrintContracts}
+                >
                   <FileText className="mr-2 h-4 w-4" />
                   Print All
                 </Button>

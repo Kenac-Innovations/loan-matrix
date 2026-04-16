@@ -19,6 +19,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
   TableBody,
@@ -77,6 +78,7 @@ export default function ReportDetailPage() {
   const params = useParams();
   const router = useRouter();
   const reportName = decodeURIComponent(params.reportName as string);
+  const [isOmamaTenant, setIsOmamaTenant] = useState(false);
 
   const [reportParameters, setReportParameters] = useState<ReportParameter[]>(
     []
@@ -89,11 +91,113 @@ export default function ReportDetailPage() {
   const [loadingParameters, setLoadingParameters] = useState(true);
   const [parameters, setParameters] = useState<Record<string, string>>({});
 
+  const normalizeParameterValues = (
+    paramValues: Record<string, string>
+  ): Record<string, string> =>
+    Object.fromEntries(
+      Object.entries(paramValues).filter(
+        ([, value]) =>
+          value !== undefined &&
+          value !== null &&
+          value !== ""
+      )
+    );
+
+  const withSelectAllOption = (
+    param: ReportParameter,
+    options: ParameterOption[]
+  ): ParameterOption[] => {
+    if (param.selectAll !== "Y") return options;
+    const hasAllOption = options.some(
+      (option) =>
+        option.id?.toString() === "-1" ||
+        option.tc?.trim().toLowerCase() === "all"
+    );
+    return hasAllOption ? options : [...options, { id: -1, tc: "All" }];
+  };
+
+  const getInitialParameterValue = (param: ReportParameter): string => {
+    if (param.parameter_displayType === "none" && param.parameter_default) {
+      return param.parameter_default;
+    }
+    if (param.selectAll === "Y") return "-1";
+    if (param.parameter_default && param.parameter_default !== "0") {
+      return param.parameter_default;
+    }
+    return "";
+  };
+
+  const isHiddenParameter = (param: ReportParameter) =>
+    param.parameter_displayType === "none";
+
+  const isNumericParameter = (param: ReportParameter) =>
+    param.parameter_displayType === "number" ||
+    (param.parameter_displayType === "text" &&
+      param.parameter_FormatType === "number");
+
+  const isMandatoryParameter = (param: ReportParameter) =>
+    !isHiddenParameter(param);
+
+  const visibleReportParameters = reportParameters.filter(
+    (param) => !isHiddenParameter(param)
+  );
+
+  const missingMandatoryParameters = visibleReportParameters.filter((param) => {
+    if (!isMandatoryParameter(param)) return false;
+    const value = parameters[param.parameter_variable];
+    return value === undefined || value === null || value === "";
+  });
+
+  const applyParentParameterFallback = (
+    fetchParams: Record<string, string>,
+    params: ReportParameter[],
+    parentParameterName?: string
+  ) => {
+    if (!parentParameterName) return;
+
+    const parentParam = params.find(
+      (candidate) => candidate.parameter_name === parentParameterName
+    );
+    if (!parentParam || fetchParams[parentParam.parameter_variable]) return;
+
+    const fallbackValue = getInitialParameterValue(parentParam);
+    if (fallbackValue) {
+      fetchParams[parentParam.parameter_variable] = fallbackValue;
+    }
+  };
+
   useEffect(() => {
     if (reportName) {
       fetchReportParameters(reportName);
     }
   }, [reportName]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setIsOmamaTenant(window.location.hostname.toLowerCase().startsWith("omama."));
+  }, []);
+
+  const isOfficeParameter = (param: ReportParameter) =>
+    param.parameter_variable === "officeId" ||
+    param.parameter_label.trim().toLowerCase() === "office";
+
+  const getParameterLabel = (param: ReportParameter) =>
+    isOmamaTenant && isOfficeParameter(param)
+      ? "All branches"
+      : param.parameter_label;
+
+  const getOptionLabel = (param: ReportParameter, option: ParameterOption) => {
+    if (
+      isOmamaTenant &&
+      isOfficeParameter(param) &&
+      (option.id?.toString() === "-1" ||
+        option.tc.trim().toLowerCase() === "all")
+    ) {
+      return "All branches";
+    }
+
+    return option.tc;
+  };
 
   const fetchReportParameters = async (reportName: string) => {
     try {
@@ -128,8 +232,9 @@ export default function ReportDetailPage() {
         // Initialize parameters with default values
         const defaultParams: Record<string, string> = {};
         params.forEach((param) => {
-          if (param.parameter_default && param.parameter_default !== "0") {
-            defaultParams[param.parameter_variable] = param.parameter_default;
+          const initialValue = getInitialParameterValue(param);
+          if (initialValue) {
+            defaultParams[param.parameter_variable] = initialValue;
           }
         });
         setParameters(defaultParams);
@@ -162,17 +267,14 @@ export default function ReportDetailPage() {
       if (param.parameter_displayType === "select") {
         try {
           // Build params for dependent selects (e.g. loanOfficerIdSelectAll needs R_officeId)
-          const fetchParams: Record<string, string> = { ...currentParamValues };
-          if (param.parentparametername) {
-            const parentParam = params.find(
-              (p) => p.parameter_name === param.parentparametername
-            );
-            if (parentParam && !fetchParams[parentParam.parameter_variable]) {
-              // Fallback: officeId=1 when parent Office has no selection yet
-              fetchParams[parentParam.parameter_variable] =
-                parentParam.parameter_variable === "officeId" ? "1" : "";
-            }
-          }
+          const fetchParams: Record<string, string> = normalizeParameterValues(
+            currentParamValues
+          );
+          applyParentParameterFallback(
+            fetchParams,
+            params,
+            param.parentparametername
+          );
 
           const searchParams = new URLSearchParams({
             action: "parameterOptions",
@@ -184,14 +286,17 @@ export default function ReportDetailPage() {
           );
           if (response.ok) {
             const optionData = await response.json();
-            if (optionData.data && optionData.data.length > 0) {
-              options[param.parameter_name] = optionData.data.map(
-                (item: any) => ({
-                  id: item.row[0],
-                  tc: item.row[1],
-                })
-              );
-            }
+            const fetchedOptions =
+              optionData.data && optionData.data.length > 0
+                ? optionData.data.map((item: any) => ({
+                    id: item.row[0],
+                    tc: item.row[1],
+                  }))
+                : [];
+            options[param.parameter_name] = withSelectAllOption(
+              param,
+              fetchedOptions
+            );
           }
         } catch (error) {
           console.error(
@@ -206,11 +311,23 @@ export default function ReportDetailPage() {
   };
 
   const runReport = async () => {
+    if (missingMandatoryParameters.length > 0) {
+      toast({
+        title: "Missing required parameters",
+        description: `Provide: ${missingMandatoryParameters
+          .map((param) => getParameterLabel(param))
+          .join(", ")}`,
+        variant: "destructive",
+      });
+      return;
+    }
+
     setLoading(true);
     try {
+      const paramsForReport = normalizeParameterValues(parameters);
       const params = new URLSearchParams({
         reportName: reportName,
-        ...parameters,
+        ...paramsForReport,
       });
 
       const response = await fetch(`/api/fineract/reports?${params}`);
@@ -302,16 +419,14 @@ export default function ReportDetailPage() {
       const newOptions = { ...parameterOptions };
       for (const param of toReload) {
         try {
-          const fetchParams: Record<string, string> = { ...newParams };
-          if (param.parentparametername) {
-            const parent = reportParameters.find(
-              (p) => p.parameter_name === param.parentparametername
-            );
-            if (parent && !fetchParams[parent.parameter_variable]) {
-              fetchParams[parent.parameter_variable] =
-                parent.parameter_variable === "officeId" ? "1" : "";
-            }
-          }
+          const fetchParams: Record<string, string> = normalizeParameterValues(
+            newParams
+          );
+          applyParentParameterFallback(
+            fetchParams,
+            reportParameters,
+            param.parentparametername
+          );
           const searchParams = new URLSearchParams({
             action: "parameterOptions",
             parameterName: param.parameter_name,
@@ -322,13 +437,17 @@ export default function ReportDetailPage() {
           );
           if (response.ok) {
             const optionData = await response.json();
-            newOptions[param.parameter_name] =
+            const fetchedOptions =
               optionData.data && optionData.data.length > 0
                 ? optionData.data.map((item: any) => ({
                     id: item.row[0],
                     tc: item.row[1],
                   }))
                 : [];
+            newOptions[param.parameter_name] = withSelectAllOption(
+              param,
+              fetchedOptions
+            );
           }
         } catch (error) {
           console.error(
@@ -346,6 +465,11 @@ export default function ReportDetailPage() {
   const renderParameterInput = (param: ReportParameter) => {
     const value = parameters[param.parameter_variable] || "";
     const options = parameterOptions[param.parameter_name] || [];
+    const displayLabel = getParameterLabel(param);
+
+    if (isHiddenParameter(param)) {
+      return null;
+    }
 
     switch (param.parameter_displayType) {
       case "select":
@@ -357,12 +481,12 @@ export default function ReportDetailPage() {
             }
           >
             <SelectTrigger>
-              <SelectValue placeholder={`Select ${param.parameter_label}`} />
+              <SelectValue placeholder={`Select ${displayLabel}`} />
             </SelectTrigger>
             <SelectContent>
               {options.map((option) => (
                 <SelectItem key={option.id} value={option.id.toString()}>
-                  {option.tc}
+                  {getOptionLabel(param, option)}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -381,14 +505,27 @@ export default function ReportDetailPage() {
         );
 
       case "number":
+      case "text":
+        if (isNumericParameter(param)) {
+          return (
+            <Input
+              type="number"
+              value={value}
+              onChange={(e) =>
+                handleParameterChange(param.parameter_variable, e.target.value)
+              }
+              placeholder={displayLabel}
+            />
+          );
+        }
         return (
           <Input
-            type="number"
+            type="text"
             value={value}
             onChange={(e) =>
               handleParameterChange(param.parameter_variable, e.target.value)
             }
-            placeholder={param.parameter_label}
+            placeholder={displayLabel}
           />
         );
 
@@ -400,7 +537,7 @@ export default function ReportDetailPage() {
             onChange={(e) =>
               handleParameterChange(param.parameter_variable, e.target.value)
             }
-            placeholder={param.parameter_label}
+            placeholder={displayLabel}
           />
         );
     }
@@ -455,7 +592,7 @@ export default function ReportDetailPage() {
           )}
           <Button
             onClick={runReport}
-            disabled={loading}
+            disabled={loading || loadingParameters}
             className="bg-blue-500 hover:bg-blue-600"
           >
             {loading ? (
@@ -476,7 +613,9 @@ export default function ReportDetailPage() {
             <Filter className="h-4 w-4 text-blue-400" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{reportParameters.length}</div>
+            <div className="text-2xl font-bold">
+              {visibleReportParameters.length}
+            </div>
             <p className="text-xs text-muted-foreground">
               Configuration options
             </p>
@@ -535,19 +674,21 @@ export default function ReportDetailPage() {
         </CardHeader>
         <CardContent>
           {loadingParameters ? (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <RefreshCw className="h-4 w-4 animate-spin" />
-              Loading parameters...
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {Array.from({ length: 6 }).map((_, index) => (
+                <div key={index} className="space-y-2">
+                  <Skeleton className="h-4 w-28" />
+                  <Skeleton className="h-10 w-full" />
+                </div>
+              ))}
             </div>
-          ) : reportParameters.length > 0 ? (
+          ) : visibleReportParameters.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {reportParameters.map((param, index) => (
+              {visibleReportParameters.map((param, index) => (
                 <div key={index} className="space-y-2">
                   <Label htmlFor={param.parameter_variable} className="text-sm">
-                    {param.parameter_label}
-                    {param.parameter_name
-                      .toLowerCase()
-                      .includes("mandatory") && (
+                    {getParameterLabel(param)}
+                    {isMandatoryParameter(param) && (
                       <span className="text-red-500 ml-1">*</span>
                     )}
                   </Label>

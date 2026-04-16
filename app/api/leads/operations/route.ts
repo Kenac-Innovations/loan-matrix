@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { EntityStakeholderRole } from "@/app/generated/prisma";
 import { z } from "zod";
 import { getFineractServiceWithSession } from "@/lib/fineract-api";
 import { getSession } from "@/lib/auth";
@@ -49,16 +50,6 @@ async function resolveCurrentTenant(tx?: any, req?: Request) {
     );
   }
   return fallbackTenant;
-}
-
-// Resolve the initial pipeline stage for a tenant (used when creating new leads)
-async function getInitialStageId(tenantId: string, tx?: any): Promise<string | null> {
-  const db = tx || prisma;
-  const stage = await db.pipelineStage.findFirst({
-    where: { tenantId, isInitialState: true, isActive: true },
-    select: { id: true },
-  });
-  return stage?.id ?? null;
 }
 
 // Helper function to format dates for Fineract API
@@ -111,6 +102,7 @@ const clientFormSchema = z.object({
   registrationNumber: z.string().optional(),
   dateOfIncorporation: z.coerce.date().optional(),
   natureOfBusiness: z.string().optional(),
+  businessAddress: z.string().optional(),
   isStaff: z.boolean().default(false),
   mobileNo: z.string(),
   countryCode: z.string().default("+260"),
@@ -141,6 +133,221 @@ const clientFormSchema = z.object({
 // Holds the current request so resolveCurrentTenant can read headers
 // without changing every handler's signature.
 let _currentRequest: Request | undefined;
+
+const ENTITY_LEGAL_FORM_ID = 2;
+
+async function resolveLeadIdForEntityOps(
+  leadId: string | undefined,
+  data: any,
+  req?: Request
+): Promise<string> {
+  if (leadId) return leadId;
+  const fromBody = data?.leadId as string | undefined;
+  if (fromBody) return fromBody;
+  const fineractClientId = data?.fineractClientId;
+  if (fineractClientId == null) {
+    throw new Error("leadId or fineractClientId is required");
+  }
+  const tenant = await resolveCurrentTenant(undefined, req);
+  const lead = await prisma.lead.findFirst({
+    where: {
+      fineractClientId: Number(fineractClientId),
+      tenantId: tenant.id,
+    },
+    select: { id: true },
+  });
+  if (!lead) {
+    throw new Error("No lead found for this Fineract client in your tenant");
+  }
+  return lead.id;
+}
+
+async function assertLeadIsEntity(leadId: string) {
+  const lead = await prisma.lead.findUnique({
+    where: { id: leadId },
+    select: { legalFormId: true },
+  });
+  if (!lead) throw new Error("Lead not found");
+  if (lead.legalFormId !== ENTITY_LEGAL_FORM_ID) {
+    throw new Error(
+      "Directors, shareholders, and entity banking apply only to Entity legal form"
+    );
+  }
+}
+
+async function validateProofDocument(
+  leadId: string,
+  docId: string | null | undefined
+) {
+  if (!docId) return;
+  const doc = await prisma.leadDocument.findFirst({
+    where: { id: docId, leadId },
+  });
+  if (!doc) {
+    throw new Error("Proof of residence document not found for this lead");
+  }
+}
+
+async function validateShareholderTotals(leadId: string) {
+  const rows = await prisma.entityStakeholder.findMany({
+    where: { leadId, role: EntityStakeholderRole.SHAREHOLDER },
+    select: { shareholdingPercentage: true },
+  });
+  const total = rows.reduce(
+    (s, r) => s + Number(r.shareholdingPercentage ?? 0),
+    0
+  );
+  if (total > 100.001) {
+    throw new Error("Total shareholding percentage cannot exceed 100%");
+  }
+}
+
+function toNullableTrimmedString(value: any): string | null {
+  if (value == null) return null;
+  const trimmed = String(value).trim();
+  return trimmed ? trimmed : null;
+}
+
+function toNullableNumber(value: any): number | null {
+  if (value == null || value === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+async function persistEntityStructureDraftForLead(
+  tx: any,
+  leadId: string,
+  legalFormId: number,
+  payload: any
+) {
+  if (legalFormId !== ENTITY_LEGAL_FORM_ID) return;
+
+  const rawStakeholders = Array.isArray(payload?.entityStakeholdersDraft)
+    ? payload.entityStakeholdersDraft
+    : [];
+  const rawBankAccounts = Array.isArray(payload?.entityBankAccountsDraft)
+    ? payload.entityBankAccountsDraft
+    : [];
+
+  const stakeholdersToCreate: any[] = [];
+  let totalShareholding = 0;
+  for (let i = 0; i < rawStakeholders.length; i++) {
+    const raw = rawStakeholders[i] || {};
+    const roleRaw = String(raw.role || "").toUpperCase();
+    if (
+      roleRaw !== EntityStakeholderRole.DIRECTOR &&
+      roleRaw !== EntityStakeholderRole.SHAREHOLDER
+    ) {
+      continue;
+    }
+
+    const fullName = toNullableTrimmedString(raw.fullName);
+    const nationalIdOrPassport = toNullableTrimmedString(raw.nationalIdOrPassport);
+    const residentialAddress = toNullableTrimmedString(raw.residentialAddress);
+    const allEmpty = !fullName && !nationalIdOrPassport && !residentialAddress;
+    if (allEmpty) continue;
+    if (!fullName || !nationalIdOrPassport || !residentialAddress) {
+      throw new Error(
+        `Incomplete stakeholder details at row ${i + 1}. Full name, national ID/passport, and residential address are required.`
+      );
+    }
+
+    const sortOrderCandidate = Number(raw.sortOrder);
+    const sortOrder = Number.isFinite(sortOrderCandidate)
+      ? sortOrderCandidate
+      : stakeholdersToCreate.length;
+
+    let shareholdingPercentage: number | null = null;
+    if (roleRaw === EntityStakeholderRole.SHAREHOLDER) {
+      const shareCandidate = toNullableNumber(raw.shareholdingPercentage);
+      if (shareCandidate == null) {
+        throw new Error(
+          `Incomplete stakeholder details at row ${i + 1}. Shareholding percentage is required for shareholders.`
+        );
+      }
+      if (shareCandidate < 0 || shareCandidate > 100) {
+        throw new Error(
+          `Invalid shareholding percentage at row ${i + 1}. Value must be between 0 and 100.`
+        );
+      }
+      shareholdingPercentage = shareCandidate;
+      totalShareholding += shareCandidate;
+    }
+
+    const isUltimateBeneficialOwner =
+      roleRaw === EntityStakeholderRole.SHAREHOLDER
+        ? Boolean(raw.isUltimateBeneficialOwner)
+        : false;
+
+    const controlStructureCodeValueId = isUltimateBeneficialOwner
+      ? toNullableNumber(raw.controlStructureCodeValueId)
+      : null;
+
+    stakeholdersToCreate.push({
+      leadId,
+      role: roleRaw,
+      fullName,
+      nationalIdOrPassport,
+      residentialAddress,
+      nationalIdFineractDocumentId: toNullableTrimmedString(
+        raw.nationalIdFineractDocumentId
+      ),
+      proofOfResidenceLeadDocumentId: toNullableTrimmedString(
+        raw.proofOfResidenceLeadDocumentId
+      ),
+      fineractDocumentId: toNullableTrimmedString(raw.fineractDocumentId),
+      pepStatusCodeValueId: toNullableNumber(raw.pepStatusCodeValueId),
+      pepStatusLabel: toNullableTrimmedString(raw.pepStatusLabel),
+      shareholdingPercentage,
+      isUltimateBeneficialOwner,
+      controlStructureCodeValueId,
+      controlStructureLabel: isUltimateBeneficialOwner
+        ? toNullableTrimmedString(raw.controlStructureLabel)
+        : null,
+      sortOrder,
+    });
+  }
+
+  if (totalShareholding > 100.001) {
+    throw new Error("Total shareholding percentage cannot exceed 100%");
+  }
+
+  if (stakeholdersToCreate.length > 0) {
+    await tx.entityStakeholder.createMany({ data: stakeholdersToCreate });
+  }
+
+  const bankAccountsToCreate: any[] = [];
+  for (let i = 0; i < rawBankAccounts.length; i++) {
+    const raw = rawBankAccounts[i] || {};
+    const bankName = toNullableTrimmedString(raw.bankName);
+    const accountNumber = toNullableTrimmedString(raw.accountNumber);
+    const accountSignatories = toNullableTrimmedString(raw.accountSignatories) || "";
+    const allEmpty = !bankName && !accountNumber && !accountSignatories;
+    if (allEmpty) continue;
+    if (!bankName || !accountNumber) {
+      throw new Error(
+        `Incomplete bank account details at row ${i + 1}. Bank name and account number are required.`
+      );
+    }
+
+    const sortOrderCandidate = Number(raw.sortOrder);
+    const sortOrder = Number.isFinite(sortOrderCandidate)
+      ? sortOrderCandidate
+      : bankAccountsToCreate.length;
+
+    bankAccountsToCreate.push({
+      leadId,
+      bankName,
+      accountNumber,
+      accountSignatories,
+      sortOrder,
+    });
+  }
+
+  if (bankAccountsToCreate.length > 0) {
+    await tx.entityBankAccount.createMany({ data: bankAccountsToCreate });
+  }
+}
 
 /**
  * POST /api/leads/operations
@@ -174,6 +381,26 @@ export async function POST(request: Request) {
         return await handleAddFamilyMember(leadId, data);
       case "removeFamilyMember":
         return await handleRemoveFamilyMember(data.id);
+      case "upsertEntityStakeholder":
+        return await handleUpsertEntityStakeholder(
+          await resolveLeadIdForEntityOps(leadId, data, _currentRequest),
+          data
+        );
+      case "removeEntityStakeholder":
+        return await handleRemoveEntityStakeholder(
+          await resolveLeadIdForEntityOps(leadId, data, _currentRequest),
+          data.id
+        );
+      case "reorderEntityStakeholders":
+        return await handleReorderEntityStakeholders(
+          await resolveLeadIdForEntityOps(leadId, data, _currentRequest),
+          data
+        );
+      case "replaceEntityBankAccounts":
+        return await handleReplaceEntityBankAccounts(
+          await resolveLeadIdForEntityOps(leadId, data, _currentRequest),
+          data
+        );
       default:
         return NextResponse.json(
           { error: `Unknown operation: ${operation}` },
@@ -240,7 +467,6 @@ async function handleSaveDraft(data: any, leadId?: string) {
     // Resolve current tenant from subdomain/headers
     const currentTenant = await resolveCurrentTenant(undefined, _currentRequest);
     const tenantId = currentTenant.id;
-    const initialStageId = await getInitialStageId(tenantId);
 
     if (leadId) {
       // Update existing lead
@@ -263,6 +489,7 @@ async function handleSaveDraft(data: any, leadId?: string) {
           registrationNumber: validatedData.registrationNumber,
           dateOfIncorporation: validatedData.dateOfIncorporation || undefined,
           natureOfBusiness: validatedData.natureOfBusiness,
+          businessAddress: validatedData.businessAddress,
           isStaff: validatedData.isStaff,
           mobileNo: validatedData.mobileNo,
           countryCode: validatedData.countryCode,
@@ -300,7 +527,6 @@ async function handleSaveDraft(data: any, leadId?: string) {
         data: {
           userId,
           tenantId,
-          currentStageId: initialStageId,
           officeId: validatedData.officeId,
           officeName: validatedData.officeName,
           legalFormId: validatedData.legalFormId,
@@ -317,6 +543,7 @@ async function handleSaveDraft(data: any, leadId?: string) {
           registrationNumber: validatedData.registrationNumber,
           dateOfIncorporation: validatedData.dateOfIncorporation || undefined,
           natureOfBusiness: validatedData.natureOfBusiness,
+          businessAddress: validatedData.businessAddress,
           isStaff: validatedData.isStaff,
           mobileNo: validatedData.mobileNo,
           countryCode: validatedData.countryCode,
@@ -440,6 +667,256 @@ async function handleRemoveFamilyMember(id: string) {
   }
 }
 
+async function handleUpsertEntityStakeholder(leadId: string, data: any) {
+  try {
+    await assertLeadIsEntity(leadId);
+
+    const role = data.role as EntityStakeholderRole;
+    if (
+      role !== EntityStakeholderRole.DIRECTOR &&
+      role !== EntityStakeholderRole.SHAREHOLDER
+    ) {
+      return NextResponse.json({ error: "Invalid stakeholder role" }, { status: 400 });
+    }
+
+    await validateProofDocument(leadId, data.proofOfResidenceLeadDocumentId);
+
+    const isDirector = role === EntityStakeholderRole.DIRECTOR;
+    const sharePct =
+      isDirector || data.shareholdingPercentage == null || data.shareholdingPercentage === ""
+        ? null
+        : Number(data.shareholdingPercentage);
+
+    if (!isDirector && sharePct == null) {
+      return NextResponse.json(
+        { error: "shareholdingPercentage is required for shareholders" },
+        { status: 400 }
+      );
+    }
+
+    if (!isDirector && sharePct != null && (sharePct < 0 || sharePct > 100)) {
+      return NextResponse.json(
+        { error: "Shareholding must be between 0 and 100" },
+        { status: 400 }
+      );
+    }
+
+    const payload = {
+      fullName: String(data.fullName ?? "").trim(),
+      nationalIdOrPassport: String(data.nationalIdOrPassport ?? "").trim(),
+      residentialAddress: String(data.residentialAddress ?? "").trim(),
+      nationalIdFineractDocumentId:
+        data.nationalIdFineractDocumentId != null &&
+        String(data.nationalIdFineractDocumentId).trim() !== ""
+          ? String(data.nationalIdFineractDocumentId).trim()
+          : null,
+      proofOfResidenceLeadDocumentId:
+        data.proofOfResidenceLeadDocumentId || null,
+      fineractDocumentId:
+        data.fineractDocumentId != null && String(data.fineractDocumentId).trim() !== ""
+          ? String(data.fineractDocumentId).trim()
+          : null,
+      pepStatusCodeValueId:
+        data.pepStatusCodeValueId != null
+          ? Number(data.pepStatusCodeValueId)
+          : null,
+      pepStatusLabel: data.pepStatusLabel
+        ? String(data.pepStatusLabel)
+        : null,
+      shareholdingPercentage: isDirector ? null : sharePct,
+      isUltimateBeneficialOwner: isDirector
+        ? false
+        : Boolean(data.isUltimateBeneficialOwner),
+      controlStructureCodeValueId:
+        isDirector || !data.isUltimateBeneficialOwner
+          ? null
+          : data.controlStructureCodeValueId != null
+            ? Number(data.controlStructureCodeValueId)
+            : null,
+      controlStructureLabel:
+        isDirector || !data.isUltimateBeneficialOwner
+          ? null
+          : data.controlStructureLabel
+            ? String(data.controlStructureLabel)
+            : null,
+      sortOrder:
+        data.sortOrder != null ? Number(data.sortOrder) : 0,
+    };
+
+    if (
+      !payload.fullName ||
+      !payload.nationalIdOrPassport ||
+      !payload.residentialAddress ||
+      !payload.nationalIdFineractDocumentId
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "fullName, nationalIdOrPassport, residentialAddress, and nationalIdFineractDocumentId are required",
+        },
+        { status: 400 }
+      );
+    }
+
+    const id = data.id as string | undefined;
+
+    if (id) {
+      const existing = await prisma.entityStakeholder.findFirst({
+        where: { id, leadId },
+      });
+      if (!existing) {
+        return NextResponse.json({ error: "Stakeholder not found" }, { status: 404 });
+      }
+    }
+
+    if (!isDirector && payload.isUltimateBeneficialOwner) {
+      await prisma.entityStakeholder.updateMany({
+        where: { leadId, role: EntityStakeholderRole.SHAREHOLDER },
+        data: { isUltimateBeneficialOwner: false },
+      });
+    }
+
+    let stakeholder;
+    if (id) {
+      stakeholder = await prisma.entityStakeholder.update({
+        where: { id },
+        data: {
+          role,
+          ...payload,
+        },
+        include: { proofOfResidenceDocument: true },
+      });
+    } else {
+      stakeholder = await prisma.entityStakeholder.create({
+        data: {
+          leadId,
+          role,
+          ...payload,
+        },
+        include: { proofOfResidenceDocument: true },
+      });
+    }
+
+    await validateShareholderTotals(leadId);
+
+    return NextResponse.json({ success: true, stakeholder });
+  } catch (error: any) {
+    console.error("Error upserting entity stakeholder:", error);
+    return NextResponse.json(
+      { error: error.message || "Failed to save stakeholder" },
+      { status: 500 }
+    );
+  }
+}
+
+async function handleRemoveEntityStakeholder(leadId: string, id: string) {
+  try {
+    await assertLeadIsEntity(leadId);
+    const row = await prisma.entityStakeholder.findFirst({
+      where: { id, leadId },
+    });
+    if (!row) {
+      return NextResponse.json({ error: "Stakeholder not found" }, { status: 404 });
+    }
+    await prisma.entityStakeholder.delete({ where: { id } });
+    return NextResponse.json({ success: true });
+  } catch (error: any) {
+    console.error("Error removing entity stakeholder:", error);
+    return NextResponse.json(
+      { error: error.message || "Failed to remove stakeholder" },
+      { status: 500 }
+    );
+  }
+}
+
+async function handleReorderEntityStakeholders(leadId: string, data: any) {
+  try {
+    await assertLeadIsEntity(leadId);
+    const items = data.items as { id: string; sortOrder: number }[];
+    if (!Array.isArray(items) || items.length === 0) {
+      return NextResponse.json({ success: true });
+    }
+    const ids = items.map((i) => i.id);
+    const count = await prisma.entityStakeholder.count({
+      where: { leadId, id: { in: ids } },
+    });
+    if (count !== ids.length) {
+      return NextResponse.json(
+        { error: "One or more stakeholder ids are invalid" },
+        { status: 400 }
+      );
+    }
+    await prisma.$transaction(
+      items.map((item) =>
+        prisma.entityStakeholder.update({
+          where: { id: item.id },
+          data: { sortOrder: Number(item.sortOrder) },
+        })
+      )
+    );
+    return NextResponse.json({ success: true });
+  } catch (error: any) {
+    console.error("Error reordering stakeholders:", error);
+    return NextResponse.json(
+      { error: error.message || "Failed to reorder" },
+      { status: 500 }
+    );
+  }
+}
+
+async function handleReplaceEntityBankAccounts(leadId: string, data: any) {
+  try {
+    await assertLeadIsEntity(leadId);
+    const accounts = data.accounts as Array<{
+      bankName: string;
+      accountNumber: string;
+      accountSignatories: string;
+      sortOrder?: number;
+    }>;
+    if (!Array.isArray(accounts)) {
+      return NextResponse.json(
+        { error: "accounts array is required" },
+        { status: 400 }
+      );
+    }
+    for (const a of accounts) {
+      if (
+        !String(a.bankName ?? "").trim() ||
+        !String(a.accountNumber ?? "").trim()
+      ) {
+        return NextResponse.json(
+          { error: "Each account needs bankName and accountNumber" },
+          { status: 400 }
+        );
+      }
+    }
+    await prisma.$transaction(async (tx) => {
+      await tx.entityBankAccount.deleteMany({ where: { leadId } });
+      if (accounts.length === 0) return;
+      await tx.entityBankAccount.createMany({
+        data: accounts.map((a, idx) => ({
+          leadId,
+          bankName: String(a.bankName).trim(),
+          accountNumber: String(a.accountNumber).trim(),
+          accountSignatories: String(a.accountSignatories ?? "").trim(),
+          sortOrder: a.sortOrder ?? idx,
+        })),
+      });
+    });
+    const updated = await prisma.entityBankAccount.findMany({
+      where: { leadId },
+      orderBy: { sortOrder: "asc" },
+    });
+    return NextResponse.json({ success: true, entityBankAccounts: updated });
+  } catch (error: any) {
+    console.error("Error replacing entity bank accounts:", error);
+    return NextResponse.json(
+      { error: error.message || "Failed to save bank accounts" },
+      { status: 500 }
+    );
+  }
+}
+
 async function handleCreateLeadWithClient(data: any) {
   let leadId: string | null = null;
   let fineractClientId: number | null = null;
@@ -522,14 +999,12 @@ async function handleCreateLeadWithClient(data: any) {
             // Resolve current tenant from subdomain/headers
             const currentTenant = await resolveCurrentTenant(tx, _currentRequest);
             const tenantId = currentTenant.id;
-            const initialStageId = await getInitialStageId(tenantId, tx);
 
             // Create lead in database with existing Fineract client data
             const newLead = await tx.lead.create({
               data: {
                 userId,
                 tenantId,
-                currentStageId: initialStageId,
                 officeId: validatedData.officeId,
                 officeName: validatedData.officeName,
                 legalFormId: validatedData.legalFormId,
@@ -564,6 +1039,7 @@ async function handleCreateLeadWithClient(data: any) {
                 propertyOwnership: validatedData.propertyOwnership,
                 businessOwnership: validatedData.businessOwnership,
                 businessType: validatedData.businessType,
+                businessAddress: validatedData.businessAddress,
                 fineractClientId: existingClient.id,
                 fineractAccountNo: existingClient.accountNo || null,
                 clientCreatedInFineract: true,
@@ -572,6 +1048,13 @@ async function handleCreateLeadWithClient(data: any) {
                 currentStep: 2,
               },
             });
+
+            await persistEntityStructureDraftForLead(
+              tx,
+              newLead.id,
+              validatedData.legalFormId,
+              data
+            );
 
             return {
               lead: newLead,
@@ -655,14 +1138,12 @@ async function handleCreateLeadWithClient(data: any) {
       // Resolve current tenant from subdomain/headers
       const currentTenant = await resolveCurrentTenant(tx, _currentRequest);
       const tenantId = currentTenant.id;
-      const initialStageId = await getInitialStageId(tenantId, tx);
 
       // Create lead in database with Fineract data
       const newLead = await tx.lead.create({
         data: {
           userId,
           tenantId,
-          currentStageId: initialStageId,
           officeId: validatedData.officeId,
           officeName: validatedData.officeName,
           legalFormId: validatedData.legalFormId,
@@ -679,6 +1160,7 @@ async function handleCreateLeadWithClient(data: any) {
           registrationNumber: validatedData.registrationNumber,
           dateOfIncorporation: validatedData.dateOfIncorporation || undefined,
           natureOfBusiness: validatedData.natureOfBusiness,
+          businessAddress: validatedData.businessAddress,
           isStaff: validatedData.isStaff,
           mobileNo: validatedData.mobileNo,
           countryCode: validatedData.countryCode,
@@ -714,6 +1196,13 @@ async function handleCreateLeadWithClient(data: any) {
           currentStep: 2,
         },
       });
+
+      await persistEntityStructureDraftForLead(
+        tx,
+        newLead.id,
+        validatedData.legalFormId,
+        data
+      );
 
       leadId = newLead.id;
 
@@ -1125,6 +1614,7 @@ async function handleUpdateClient(data: any, leadId?: string) {
                 ? new Date(data.dateOfIncorporation)
                 : undefined,
               natureOfBusiness: data.natureOfBusiness,
+              businessAddress: data.businessAddress,
 
               isStaff: data.isStaff || false,
 
@@ -1176,16 +1666,12 @@ async function handleUpdateClient(data: any, leadId?: string) {
           }
           const userId = session.user.id;
 
-          // Resolve initial pipeline stage for this tenant
-          const initialStageId = await getInitialStageId(currentTenant.id, tx);
-
           // Create a new lead record
           const newLead = await tx.lead.create({
             data: {
               // User and tenant identification
               userId: userId,
               tenantId: currentTenant.id,
-              currentStageId: initialStageId,
 
               // Client identification
               externalId: data.externalId,
@@ -1218,6 +1704,7 @@ async function handleUpdateClient(data: any, leadId?: string) {
                 ? new Date(data.dateOfIncorporation)
                 : undefined,
               natureOfBusiness: data.natureOfBusiness,
+              businessAddress: data.businessAddress,
 
               isStaff: data.isStaff || false,
 
@@ -1252,6 +1739,13 @@ async function handleUpdateClient(data: any, leadId?: string) {
               updatedAt: new Date(),
             },
           });
+
+          await persistEntityStructureDraftForLead(
+            tx,
+            newLead.id,
+            Number(data.legalFormId),
+            data
+          );
 
           console.log("==========> New lead created successfully:", newLead.id);
           return newLead;

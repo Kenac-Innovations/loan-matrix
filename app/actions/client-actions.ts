@@ -25,6 +25,7 @@ const clientFormSchema = z.object({
   registrationNumber: z.string().optional(),
   dateOfIncorporation: z.coerce.date().optional(),
   natureOfBusiness: z.string().optional(),
+  businessAddress: z.string().optional(),
   isStaff: z.boolean().default(false),
   mobileNo: z.string(),
   countryCode: z.string().default("+260"),
@@ -134,6 +135,7 @@ export async function saveDraft(
           registrationNumber: validatedData.registrationNumber,
           dateOfIncorporation: validatedData.dateOfIncorporation || undefined,
           natureOfBusiness: validatedData.natureOfBusiness,
+          businessAddress: validatedData.businessAddress,
           isStaff: validatedData.isStaff,
           mobileNo: validatedData.mobileNo,
           countryCode: validatedData.countryCode,
@@ -159,16 +161,12 @@ export async function saveDraft(
       return { success: true, leadId };
     } else {
       console.log("==========> Creating new lead...");
-      const initialStage = await prisma.pipelineStage.findFirst({
-        where: { tenantId, isInitialState: true, isActive: true },
-        select: { id: true },
-      });
+      // Create new lead
       const lead = await prisma.lead.create({
         data: {
           userId,
           createdByUserName,
           tenantId,
-          currentStageId: initialStage?.id ?? null,
           officeId: validatedData.officeId,
           officeName: validatedData.officeName,
           legalFormId: validatedData.legalFormId,
@@ -185,6 +183,7 @@ export async function saveDraft(
           registrationNumber: validatedData.registrationNumber,
           dateOfIncorporation: validatedData.dateOfIncorporation || undefined,
           natureOfBusiness: validatedData.natureOfBusiness,
+          businessAddress: validatedData.businessAddress,
           isStaff: validatedData.isStaff,
           mobileNo: validatedData.mobileNo,
           countryCode: validatedData.countryCode,
@@ -236,6 +235,11 @@ export async function getLead(leadId: string) {
       where: { id: leadId },
       include: {
         familyMembers: true,
+        entityStakeholders: {
+          orderBy: [{ role: "asc" }, { sortOrder: "asc" }],
+          include: { proofOfResidenceDocument: true },
+        },
+        entityBankAccounts: { orderBy: { sortOrder: "asc" } },
       },
     });
 

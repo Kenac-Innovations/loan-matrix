@@ -1,6 +1,4 @@
 "use client";
-
-import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -35,6 +33,9 @@ interface LeadMoreActionsProps {
   loanStatus?: string | null;
   loanId?: number | null;
   fineractClientId?: number | null;
+  canModifyPendingApproval?: boolean;
+  canModifyPendingApplication?: boolean;
+  canPrintContract?: boolean;
 }
 
 export function LeadMoreActions({
@@ -42,6 +43,9 @@ export function LeadMoreActions({
   loanStatus,
   loanId,
   fineractClientId,
+  canModifyPendingApproval = false,
+  canModifyPendingApplication = false,
+  canPrintContract = false,
 }: LeadMoreActionsProps) {
   const statusLower = (loanStatus || "").toLowerCase();
   const isPending =
@@ -61,6 +65,55 @@ export function LeadMoreActions({
     toast.info(`${label} — coming soon`);
   };
 
+  const handleModifyApplication = () => {
+    if (!canModifyPendingApplication) {
+      toast.error(
+        "This action is only available on Omama while the loan is still pending approval."
+      );
+      return;
+    }
+
+    window.dispatchEvent(new Event("open-pending-loan-terms-editor"));
+  };
+
+  const handlePrintContract = async () => {
+    if (!canPrintContract) {
+      toast.error(
+        "Loan contracts can only be printed after the application has reached final approval."
+      );
+      return;
+    }
+
+    const printWindow = window.open(
+      `/api/leads/${leadId}/print-contract?action=print`,
+      "_blank",
+      "noopener,noreferrer"
+    );
+
+    if (!printWindow) {
+      toast.error("Please allow pop-ups to print the contract.");
+    }
+  };
+
+  const handleExportPdf = () => {
+    if (!canPrintContract) {
+      toast.error(
+        "Loan contracts can only be exported after the application has reached final approval."
+      );
+      return;
+    }
+
+    const exportWindow = window.open(
+      `/api/leads/${leadId}/print-contract?action=pdf`,
+      "_blank",
+      "noopener,noreferrer"
+    );
+
+    if (!exportWindow) {
+      toast.error("Please allow pop-ups to export the contract PDF.");
+    }
+  };
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -75,11 +128,11 @@ export function LeadMoreActions({
           <Copy className="mr-2 h-4 w-4" />
           Copy Lead ID
         </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => handleComingSoon("Print Contract")}>
+        <DropdownMenuItem onClick={handlePrintContract}>
           <Printer className="mr-2 h-4 w-4" />
           Print Contract
         </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => handleComingSoon("Export PDF")}>
+        <DropdownMenuItem onClick={handleExportPdf}>
           <FileText className="mr-2 h-4 w-4" />
           Export PDF
         </DropdownMenuItem>
@@ -109,10 +162,19 @@ export function LeadMoreActions({
                   Add Loan Charge
                 </DropdownMenuItem>
                 <DropdownMenuItem
-                  onClick={() => handleComingSoon("Modify Application")}
+                  onClick={handleModifyApplication}
                 >
-                  <Edit className="mr-2 h-4 w-4" />
-                  Modify Application
+                  {canModifyPendingApproval ? (
+                    <Link href={`/leads/new?id=${leadId}&tab=terms`}>
+                      <Edit className="mr-2 h-4 w-4" />
+                      Modify Application
+                    </Link>
+                  ) : (
+                    <>
+                      <Edit className="mr-2 h-4 w-4" />
+                      Modify Application
+                    </>
+                  )}
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   onClick={() => handleComingSoon("Add Collateral")}
