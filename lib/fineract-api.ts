@@ -1546,13 +1546,48 @@ export function getFineractService(
 // TODO: Move to environment variable
 const SERVICE_TOKEN = "bWlmb3M6cGFzc3dvcmQ=";
 
+async function resolveAuthToken(): Promise<string> {
+  try {
+    const { getSession } = await import("./auth");
+    const nextAuthSession = (await getSession()) as {
+      base64EncodedAuthenticationKey?: string;
+      accessToken?: string;
+    } | null;
+
+    if (nextAuthSession?.base64EncodedAuthenticationKey) {
+      return nextAuthSession.base64EncodedAuthenticationKey;
+    }
+
+    if (nextAuthSession?.accessToken) {
+      return nextAuthSession.accessToken;
+    }
+
+    const { getSession: getCustomSession } = await import("@/app/actions/auth");
+    const customSession = (await getCustomSession()) as {
+      base64EncodedAuthenticationKey?: string;
+      accessToken?: string;
+    } | null;
+
+    if (customSession?.base64EncodedAuthenticationKey) {
+      return customSession.base64EncodedAuthenticationKey;
+    }
+
+    if (customSession?.accessToken) {
+      return customSession.accessToken;
+    }
+  } catch (error) {
+    console.error("Error resolving Fineract auth token:", error);
+  }
+
+  return SERVICE_TOKEN;
+}
+
 export async function getFineractServiceWithSession(): Promise<FineractAPIService> {
   try {
     const { getFineractTenantId } = await import("./fineract-tenant-service");
     const fineractTenantId = await getFineractTenantId();
-
-    // Use hardcoded service token for all API calls
-    return getFineractService(SERVICE_TOKEN, fineractTenantId);
+    const authToken = await resolveAuthToken();
+    return getFineractService(authToken, fineractTenantId);
   } catch (error) {
     console.error("Error in getFineractServiceWithSession:", error);
     throw new Error(

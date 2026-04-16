@@ -96,7 +96,7 @@ export function LeadMoreActions({
             <a
               href={contractActionHref("view")}
               target="_blank"
-              rel="noopener noreferrer"
+              rel="noopener"
             >
               <Eye className="mr-2 h-4 w-4" />
               View Contract
@@ -119,7 +119,7 @@ export function LeadMoreActions({
             <a
               href={contractActionHref("print")}
               target="_blank"
-              rel="noopener noreferrer"
+              rel="noopener"
             >
               <Printer className="mr-2 h-4 w-4" />
               Print Contract
@@ -142,7 +142,7 @@ export function LeadMoreActions({
             <a
               href={contractActionHref("pdf")}
               target="_blank"
-              rel="noopener noreferrer"
+              rel="noopener"
             >
               <FileText className="mr-2 h-4 w-4" />
               Export PDF
