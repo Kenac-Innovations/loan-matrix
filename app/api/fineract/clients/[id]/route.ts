@@ -11,11 +11,19 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
+    const clientId = Number(id);
 
-    console.log("Client Details API: Fetching client", { id });
+    console.log("Client Details API: Fetching client", { id, clientId });
+
+    if (!Number.isFinite(clientId) || clientId <= 0) {
+      return NextResponse.json(
+        { error: `Invalid Fineract client ID: ${id}` },
+        { status: 400 }
+      );
+    }
 
     const fineractService = await getFineractServiceWithSession();
-    const data = await fineractService.getClient(parseInt(id));
+    const data = await fineractService.getClient(clientId);
 
     console.log("Client Details API: Fetched client data:", {
       hasData: !!data,
@@ -52,10 +60,18 @@ export async function PUT(
 ) {
   try {
     const { id } = await params;
+    const clientId = Number(id);
     const payload = await request.json();
 
+    if (!Number.isFinite(clientId) || clientId <= 0) {
+      return NextResponse.json(
+        { error: `Invalid Fineract client ID: ${id}` },
+        { status: 400 }
+      );
+    }
+
     const fineractService = await getFineractServiceWithSession();
-    const data = await fineractService.updateClient(parseInt(id), payload);
+    const data = await fineractService.updateClient(clientId, payload);
 
     return NextResponse.json(data);
   } catch (error: any) {
@@ -86,9 +102,17 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
+    const clientId = Number(id);
+
+    if (!Number.isFinite(clientId) || clientId <= 0) {
+      return NextResponse.json(
+        { error: `Invalid Fineract client ID: ${id}` },
+        { status: 400 }
+      );
+    }
 
     const fineractService = await getFineractServiceWithSession();
-    await fineractService.deleteClient(parseInt(id));
+    await fineractService.deleteClient(clientId);
 
     return NextResponse.json({ success: true });
   } catch (error: any) {

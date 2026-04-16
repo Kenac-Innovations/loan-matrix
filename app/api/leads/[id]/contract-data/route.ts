@@ -6,6 +6,175 @@ import { fetchFineractAPI } from "@/lib/api";
 import { getOrgDefaultCurrencyCode } from "@/lib/currency-utils";
 import { getSession } from "@/lib/auth";
 
+type FineractLoanLike = {
+  id?: number;
+  externalId?: string;
+  loanProductId?: number;
+  loanProductName?: string;
+  loanOfficerId?: number;
+  loanOfficerName?: string;
+  fundId?: number;
+  currency?: {
+    code?: string;
+    displaySymbol?: string;
+  };
+  principal?: number;
+  approvedPrincipal?: number;
+  proposedPrincipal?: number;
+  termFrequency?: number;
+  termPeriodFrequencyType?: { id?: number; value?: string };
+  numberOfRepayments?: number;
+  repaymentEvery?: number;
+  repaymentFrequencyType?: { id?: number; value?: string };
+  interestRatePerPeriod?: number;
+  interestRateFrequencyType?: { id?: number; value?: string };
+  annualInterestRate?: number;
+  interestType?: { id?: number; value?: string };
+  amortizationType?: { id?: number; value?: string };
+  interestCalculationPeriodType?: { id?: number; value?: string };
+  transactionProcessingStrategyCode?: string;
+  transactionProcessingStrategyName?: string;
+  interestChargedFromDate?: string;
+  isEqualAmortization?: boolean;
+  isTopup?: boolean;
+  topupDetails?: { loanIdToClose?: number | string } | null;
+  charges?: Array<{
+    chargeId?: number;
+    id?: number;
+    name?: string;
+    chargeName?: string;
+    amount?: number;
+    amountOrPercentage?: number;
+    dueDate?: string | number[];
+  }>;
+  repaymentSchedule?: any;
+  summary?: {
+    currency?: {
+      code?: string;
+      displaySymbol?: string;
+    };
+    interestCharged?: number;
+    feeChargesCharged?: number;
+    penaltyChargesCharged?: number;
+    totalExpectedRepayment?: number;
+    totalRepayment?: number;
+  };
+};
+
+function normalizeDateValue(value: string | number[] | null | undefined): string | null {
+  if (!value) return null;
+  if (Array.isArray(value) && value.length >= 3) {
+    return new Date(Date.UTC(value[0], value[1] - 1, value[2])).toISOString();
+  }
+
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+}
+
+function getFirstRepaymentFromSchedule(schedule: any): string | null {
+  const periods = Array.isArray(schedule?.periods) ? schedule.periods : [];
+  const firstRepaymentPeriod = periods.find(
+    (period: any) =>
+      period &&
+      period.period !== undefined &&
+      !period.downPaymentPeriod &&
+      period.dueDate
+  );
+
+  return normalizeDateValue(firstRepaymentPeriod?.dueDate);
+}
+
+function mapFineractLoanToLoanTerms(fineractLoan: FineractLoanLike) {
+  return {
+    principal:
+      fineractLoan.principal ??
+      fineractLoan.approvedPrincipal ??
+      fineractLoan.proposedPrincipal ??
+      0,
+    loanTerm: fineractLoan.termFrequency || fineractLoan.numberOfRepayments || 1,
+    termFrequency: fineractLoan.termPeriodFrequencyType?.id?.toString() || "2",
+    numberOfRepayments:
+      fineractLoan.numberOfRepayments || fineractLoan.termFrequency || 1,
+    repaymentEvery: fineractLoan.repaymentEvery || 1,
+    repaymentFrequency:
+      fineractLoan.repaymentFrequencyType?.id?.toString() || "2",
+    repaymentFrequencyNthDay: "",
+    repaymentFrequencyDayOfWeek: "",
+    nominalInterestRate:
+      fineractLoan.interestRatePerPeriod ?? fineractLoan.annualInterestRate ?? 0,
+    interestRateFrequency:
+      fineractLoan.interestRateFrequencyType?.id?.toString() || "2",
+    interestMethod: fineractLoan.interestType?.id?.toString() || "1",
+    amortization: fineractLoan.amortizationType?.id?.toString() || "1",
+    isEqualAmortization: fineractLoan.isEqualAmortization || false,
+    repaymentStrategy:
+      fineractLoan.transactionProcessingStrategyCode ||
+      fineractLoan.transactionProcessingStrategyName ||
+      "",
+    interestCalculationPeriod:
+      fineractLoan.interestCalculationPeriodType?.id?.toString() || "1",
+    calculateInterestForExactDays: false,
+    arrearsTolerance: 0,
+    interestFreePeriod: 0,
+    graceOnPrincipalPayment: 0,
+    graceOnInterestPayment: 0,
+    onArrearsAgeing: 0,
+    firstRepaymentOn: getFirstRepaymentFromSchedule(fineractLoan.repaymentSchedule),
+    interestChargedFrom: normalizeDateValue(fineractLoan.interestChargedFromDate),
+    balloonRepaymentAmount: 0,
+    collaterals: [],
+    charges: Array.isArray(fineractLoan.charges)
+      ? fineractLoan.charges.map((charge) => ({
+          chargeId: charge.chargeId || charge.id || null,
+          name: charge.name || charge.chargeName || "Unknown Charge",
+          amount: charge.amount ?? charge.amountOrPercentage ?? 0,
+          dueDate: charge.dueDate || null,
+        }))
+      : [],
+    isTopup: fineractLoan.isTopup || Boolean(fineractLoan.topupDetails),
+    loanIdToClose: fineractLoan.topupDetails?.loanIdToClose?.toString() || "",
+  };
+}
+
+async function resolveFineractLoan(
+  leadId: string,
+  fineractLoanId?: number | null
+): Promise<FineractLoanLike | null> {
+  if (fineractLoanId) {
+    try {
+      return (await fetchFineractAPI(`/loans/${fineractLoanId}?associations=all`)) as FineractLoanLike;
+    } catch (error) {
+      console.warn(
+        `Failed to fetch Fineract loan by ID ${fineractLoanId}, trying external ID lookup:`,
+        error
+      );
+    }
+  }
+
+  try {
+    const loans = (await fetchFineractAPI(
+      `/loans?externalId=${encodeURIComponent(leadId)}`
+    )) as any;
+    const loanList = Array.isArray(loans)
+      ? loans
+      : Array.isArray(loans?.pageItems)
+        ? loans.pageItems
+        : Array.isArray(loans?.content)
+          ? loans.content
+          : [];
+    const matchingLoan = loanList.find((loan: any) => loan?.externalId === leadId);
+
+    if (!matchingLoan?.id) return null;
+
+    return (await fetchFineractAPI(
+      `/loans/${matchingLoan.id}?associations=all`
+    )) as FineractLoanLike;
+  } catch (error) {
+    console.warn(`Failed to fetch Fineract loan by external ID ${leadId}:`, error);
+    return null;
+  }
+}
+
 function getForwardedHeaders(
   request: NextRequest,
   extraHeaders: HeadersInit = {}
@@ -65,6 +234,7 @@ export async function GET(
         accountNumber: true,
         fineractAccountNo: true,
         fineractClientId: true,
+        fineractLoanId: true,
         officeName: true,
 
         // Loan details
@@ -143,7 +313,7 @@ export async function GET(
       },
     );
     const loanTermsResult = await loanTermsResponse.json();
-    const loanTerms = loanTermsResult.success ? loanTermsResult.data : null;
+    let loanTerms = loanTermsResult.success ? loanTermsResult.data : null;
     console.log("Loan terms fetched:", loanTerms ? "Found" : "Not found");
 
     // Check if we have the minimum required data
@@ -159,24 +329,33 @@ export async function GET(
       );
     }
 
-    if (!lead.loanProductId && !loanDetails?.productId) {
+    let fineractLoan: FineractLoanLike | null = null;
+    if (!loanTerms) {
+      console.warn("Loan terms not found locally, attempting Fineract fallback");
+      fineractLoan = await resolveFineractLoan(leadId, lead.fineractLoanId);
+      if (fineractLoan) {
+        loanTerms = mapFineractLoanToLoanTerms(fineractLoan);
+        console.log("Loan terms restored from Fineract loan fallback");
+      } else {
+        console.error("Missing loan terms and no Fineract fallback found");
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              "Missing loan terms locally, and no Fineract loan terms could be found for fallback.",
+          },
+          { status: 400 },
+        );
+      }
+    }
+
+    if (!lead.loanProductId && !loanDetails?.productId && !fineractLoan?.loanProductId) {
       console.error("Missing loanProductId");
       return NextResponse.json(
         {
           success: false,
           error:
             "Missing loan product information. Please complete the loan details first.",
-        },
-        { status: 400 },
-      );
-    }
-
-    if (!loanTerms) {
-      console.error("Missing loan terms");
-      return NextResponse.json(
-        {
-          success: false,
-          error: "Missing loan terms. Please complete the loan terms first.",
         },
         { status: 400 },
       );
@@ -288,25 +467,23 @@ export async function GET(
     // Fetch client template to get gender options (fallback)
     let clientTemplate: any = null;
     try {
-        const clientTemplateResponse = await fetch(
-          `${request.nextUrl.origin}/api/fineract/clients/template`,
-          {
-            headers: forwardedHeaders,
-          },
-        );
-      if (clientTemplateResponse.ok) {
-        clientTemplate = await clientTemplateResponse.json();
-      }
+      clientTemplate = await fetchFineractAPI(`/clients/template`);
     } catch (err) {
       console.error("Error fetching client template:", err);
     }
 
     // Fetch loan template for additional info
     let loanTemplate: any = null;
-    if (lead.fineractClientId && loanDetails?.productId) {
+    const resolvedProductId =
+      loanDetails?.productId ||
+      lead.loanProductId?.toString() ||
+      fineractLoan?.loanProductId?.toString() ||
+      "";
+
+    if (lead.fineractClientId && resolvedProductId) {
       try {
         const templateResponse = await fetch(
-          `${request.nextUrl.origin}/api/fineract/loans/template?clientId=${lead.fineractClientId}&productId=${loanDetails.productId}&activeOnly=true&staffInSelectedOfficeOnly=true&templateType=individual`,
+          `${request.nextUrl.origin}/api/fineract/loans/template?clientId=${lead.fineractClientId}&productId=${resolvedProductId}&activeOnly=true&staffInSelectedOfficeOnly=true&templateType=individual`,
           {
             headers: forwardedHeaders,
           },
@@ -338,10 +515,16 @@ export async function GET(
         }));
 
         const payload = {
-          productId: parseInt(loanDetails.productId, 10),
-          loanOfficerId: loanDetails.loanOfficer || "",
+          productId: parseInt(resolvedProductId, 10),
+          loanOfficerId:
+            loanDetails.loanOfficer ||
+            fineractLoan?.loanOfficerId?.toString() ||
+            "",
           loanPurposeId: loanDetails.loanPurpose || "",
-          fundId: loanDetails.fund || "",
+          fundId:
+            loanDetails.fund ||
+            fineractLoan?.fundId?.toString() ||
+            "",
           submittedOnDate: submittedDate,
           expectedDisbursementDate: disbursementDate,
           externalId: "",
@@ -416,6 +599,11 @@ export async function GET(
       }
     }
 
+    if (!repaymentSchedule && fineractLoan?.repaymentSchedule) {
+      repaymentSchedule = fineractLoan.repaymentSchedule;
+      console.log("Using Fineract repayment schedule fallback for contract data");
+    }
+
     // Format data for contracts
     const clientName = [lead.firstname, lead.middlename, lead.lastname]
       .filter(Boolean)
@@ -426,13 +614,30 @@ export async function GET(
     const rawCurrency =
       loanTemplate?.currency?.code ||
       repaymentSchedule?.currency?.code ||
+      fineractLoan?.repaymentSchedule?.currency?.code ||
+      fineractLoan?.summary?.currency?.code ||
+      fineractLoan?.currency?.code ||
       orgCurrency;
     const currency = rawCurrency === "ZMK" ? "ZMW" : rawCurrency;
-    const principal = loanTerms?.principal || 0;
-    const interest = repaymentSchedule?.totalInterestCharged || 0;
-    const fees = repaymentSchedule?.totalFeeChargesCharged || 0;
+    const principal =
+      loanTerms?.principal ||
+      fineractLoan?.principal ||
+      fineractLoan?.approvedPrincipal ||
+      fineractLoan?.proposedPrincipal ||
+      0;
+    const interest =
+      repaymentSchedule?.totalInterestCharged ||
+      fineractLoan?.summary?.interestCharged ||
+      0;
+    const fees =
+      repaymentSchedule?.totalFeeChargesCharged ||
+      ((fineractLoan?.summary?.feeChargesCharged || 0) +
+        (fineractLoan?.summary?.penaltyChargesCharged || 0));
     const totalRepayment =
-      repaymentSchedule?.totalRepaymentExpected || principal + interest + fees;
+      repaymentSchedule?.totalRepaymentExpected ||
+      fineractLoan?.summary?.totalExpectedRepayment ||
+      fineractLoan?.summary?.totalRepayment ||
+      principal + interest + fees;
 
     // Calculate monthly percentage rate
     const numberOfPayments = loanTerms?.numberOfRepayments || 1;
@@ -536,14 +741,23 @@ export async function GET(
         loanOfficerName = officer?.displayName || "N/A";
       }
     }
+    if (
+      loanOfficerName === "N/A" &&
+      (fineractLoan?.loanOfficerName || fineractLoan?.loanOfficerId)
+    ) {
+      loanOfficerName =
+        fineractLoan.loanOfficerName ||
+        fineractLoan.loanOfficerId?.toString() ||
+        "N/A";
+    }
 
     // Get loan purpose name
-    let loanPurposeName = "N/A";
+    let loanPurposeName = lead.loanPurpose || "N/A";
     if (loanTemplate?.loanPurposeOptions && loanDetails?.loanPurpose) {
       const purpose = loanTemplate.loanPurposeOptions.find(
         (p: any) => p.id.toString() === loanDetails.loanPurpose,
       );
-      loanPurposeName = purpose?.name || "N/A";
+      loanPurposeName = purpose?.name || loanPurposeName;
     }
 
     // Net disbursed amount (principal - upfront fees)
