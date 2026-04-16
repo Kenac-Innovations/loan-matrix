@@ -142,13 +142,43 @@ function emptyBank(sort: number): BankRow {
   };
 }
 
-function getDirectorFormError(draft: StakeholderRow): string | null {
+function parseAccountSignatories(value: string): string[] {
+  const parsed = value
+    .split(/[,\n]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+  return parsed.length ? parsed : [""];
+}
+
+function serializeAccountSignatories(values: string[]): string {
+  return values
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .join(", ");
+}
+
+function getStakeholderFormError(draft: StakeholderRow): string | null {
   if (!draft.fullName.trim()) return "Full name is required.";
   if (!draft.nationalIdOrPassport.trim()) {
     return "National ID or passport is required.";
   }
   if (!draft.residentialAddress.trim()) {
     return "Residential address is required.";
+  }
+  if (
+    draft.role === "SHAREHOLDER" &&
+    String(draft.shareholdingPercentage ?? "").trim() === ""
+  ) {
+    return "Shareholding percentage is required.";
+  }
+  return null;
+}
+
+function getBankFormError(draft: BankRow, signatories: string[]): string | null {
+  if (!draft.bankName.trim()) return "Bank name is required.";
+  if (!draft.accountNumber.trim()) return "Account number is required.";
+  if (signatories.some((item) => !item.trim())) {
+    return "Each signatory field must be completed or removed.";
   }
   return null;
 }
@@ -265,6 +295,7 @@ export function EntityStructureEditor({
   const [bankModal, setBankModal] = useState<null | {
     draft: BankRow;
     index: number | null;
+    signatories: string[];
   }>(null);
 
   const [directors, setDirectors] = useState<StakeholderRow[]>([]);
@@ -648,6 +679,21 @@ export function EntityStructureEditor({
     setStakeholderModal((m) => (m ? { ...m, draft: updater(m.draft) } : m));
   };
 
+  const patchBankSignatories = (values: string[]) => {
+    setBankModal((m) =>
+      m
+        ? {
+            ...m,
+            signatories: values,
+            draft: {
+              ...m.draft,
+              accountSignatories: serializeAccountSignatories(values),
+            },
+          }
+        : m
+    );
+  };
+
   useEffect(() => {
     if (isDeferredMode || !leadId || !fineractClientId) return;
     const pendingKeys = Object.keys(pendingNationalIdFilesByKey);
@@ -772,6 +818,9 @@ export function EntityStructureEditor({
     ? stakeholderModal.draft.id ||
       `new-${stakeholderModal.kind}-${stakeholderModal.draft.sortOrder}`
     : null;
+  const bankSignatories = bankModal
+    ? bankModal.signatories
+    : [""];
 
   return (
     <div className="space-y-8">
@@ -804,9 +853,7 @@ export function EntityStructureEditor({
                   <div className="space-y-1 w-full">
                     <Label>
                       Full name
-                      {stakeholderModal.kind === "dir" && (
-                        <span className="text-destructive"> *</span>
-                      )}
+                      <span className="text-destructive"> *</span>
                     </Label>
                     <Input
                       className="w-full"
@@ -817,15 +864,13 @@ export function EntityStructureEditor({
                           fullName: e.target.value,
                         }))
                       }
-                      required={stakeholderModal.kind === "dir"}
+                      required
                     />
                   </div>
                   <div className="space-y-1 w-full">
                     <Label>
                       National ID / Passport
-                      {stakeholderModal.kind === "dir" && (
-                        <span className="text-destructive"> *</span>
-                      )}
+                      <span className="text-destructive"> *</span>
                     </Label>
                     <Input
                       className="w-full"
@@ -836,16 +881,14 @@ export function EntityStructureEditor({
                           nationalIdOrPassport: e.target.value,
                         }))
                       }
-                      required={stakeholderModal.kind === "dir"}
+                      required
                     />
                   </div>
                 </div>
                 <div className="space-y-1 w-full">
                   <Label>
                     Residential address
-                    {stakeholderModal.kind === "dir" && (
-                      <span className="text-destructive"> *</span>
-                    )}
+                    <span className="text-destructive"> *</span>
                   </Label>
                   <Textarea
                     className="w-full"
@@ -857,12 +900,14 @@ export function EntityStructureEditor({
                       }))
                     }
                     rows={2}
-                    required={stakeholderModal.kind === "dir"}
+                    required
                   />
                 </div>
                 {stakeholderModal.kind === "sh" && (
                   <div className="space-y-1 w-full">
-                    <Label>Shareholding %</Label>
+                    <Label>
+                      Shareholding %<span className="text-destructive"> *</span>
+                    </Label>
                     <Input
                       className="w-full"
                       type="number"
@@ -876,6 +921,7 @@ export function EntityStructureEditor({
                           shareholdingPercentage: e.target.value,
                         }))
                       }
+                      required
                     />
                   </div>
                 )}
@@ -1067,16 +1113,14 @@ export function EntityStructureEditor({
                   onClick={async () => {
                     const m = stakeholderModal;
                     if (!m) return;
-                    if (m.kind === "dir") {
-                      const err = getDirectorFormError(m.draft);
-                      if (err) {
-                        toast({
-                          variant: "destructive",
-                          title: "Required fields",
-                          description: err,
-                        });
-                        return;
-                      }
+                    const err = getStakeholderFormError(m.draft);
+                    if (err) {
+                      toast({
+                        variant: "destructive",
+                        title: "Required fields",
+                        description: err,
+                      });
+                      return;
                     }
                     const ok = await saveStakeholder(
                       m.draft,
@@ -1118,7 +1162,9 @@ export function EntityStructureEditor({
               </DialogHeader>
               <div className="space-y-3 py-1">
                 <div className="space-y-1 w-full">
-                  <Label>Bank name</Label>
+                  <Label>
+                    Bank name<span className="text-destructive"> *</span>
+                  </Label>
                   <Input
                     className="w-full"
                     value={bankModal.draft.bankName}
@@ -1127,10 +1173,13 @@ export function EntityStructureEditor({
                         m ? { ...m, draft: { ...m.draft, bankName: e.target.value } } : m
                       )
                     }
+                    required
                   />
                 </div>
                 <div className="space-y-1 w-full">
-                  <Label>Account number</Label>
+                  <Label>
+                    Account number<span className="text-destructive"> *</span>
+                  </Label>
                   <Input
                     className="w-full"
                     value={bankModal.draft.accountNumber}
@@ -1141,26 +1190,53 @@ export function EntityStructureEditor({
                           : m
                       )
                     }
+                    required
                   />
                 </div>
                 <div className="space-y-1 w-full">
-                  <Label>Account signatories</Label>
-                  <Textarea
-                    className="w-full"
-                    value={bankModal.draft.accountSignatories}
-                    onChange={(e) =>
-                      setBankModal((m) =>
-                        m
-                          ? {
-                              ...m,
-                              draft: { ...m.draft, accountSignatories: e.target.value },
-                            }
-                          : m
-                      )
-                    }
-                    rows={2}
-                    placeholder="Names of authorized signatories"
-                  />
+                  <Label>
+                    Account signatories<span className="text-destructive"> *</span>
+                  </Label>
+                  <div className="space-y-2">
+                    {bankSignatories.map((signatory, index) => (
+                      <div key={`signatory-${index}`} className="flex items-center gap-2">
+                        <Input
+                          className="w-full"
+                          value={signatory}
+                          onChange={(e) => {
+                            const next = [...bankSignatories];
+                            next[index] = e.target.value;
+                            patchBankSignatories(next);
+                          }}
+                          placeholder={`Signatory ${index + 1}`}
+                          required
+                        />
+                        {bankSignatories.length > 1 && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="icon"
+                            onClick={() => {
+                              const next = bankSignatories.filter((_, i) => i !== index);
+                              patchBankSignatories(next.length ? next : [""]);
+                            }}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                            <span className="sr-only">Remove signatory</span>
+                          </Button>
+                        )}
+                      </div>
+                    ))}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => patchBankSignatories([...bankSignatories, ""])}
+                    >
+                      <Plus className="h-4 w-4 mr-1" />
+                      Add signatory
+                    </Button>
+                  </div>
                 </div>
               </div>
               <DialogFooter className="gap-2 sm:gap-0">
@@ -1179,6 +1255,15 @@ export function EntityStructureEditor({
                   onClick={async () => {
                     const bm = bankModal;
                     if (!bm) return;
+                    const err = getBankFormError(bm.draft, bm.signatories);
+                    if (err) {
+                      toast({
+                        variant: "destructive",
+                        title: "Required fields",
+                        description: err,
+                      });
+                      return;
+                    }
                     const next =
                       bm.index === null
                         ? [...banks, { ...bm.draft, sortOrder: banks.length }]
@@ -1385,7 +1470,11 @@ export function EntityStructureEditor({
             variant="outline"
             className="w-full"
             onClick={() =>
-              setBankModal({ draft: emptyBank(banks.length), index: null })
+              setBankModal({
+                draft: emptyBank(banks.length),
+                index: null,
+                signatories: [""],
+              })
             }
           >
             <Plus className="h-4 w-4 mr-1" />
@@ -1415,7 +1504,11 @@ export function EntityStructureEditor({
                     variant="outline"
                     size="sm"
                     onClick={() =>
-                      setBankModal({ draft: { ...b }, index: idx })
+                      setBankModal({
+                        draft: { ...b },
+                        index: idx,
+                        signatories: parseAccountSignatories(b.accountSignatories),
+                      })
                     }
                   >
                     <Pencil className="h-4 w-4" />
