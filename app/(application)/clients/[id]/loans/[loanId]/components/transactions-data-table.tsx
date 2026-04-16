@@ -45,6 +45,32 @@ export function TransactionsDataTable({
 }: TransactionsDataTableProps) {
   const router = useRouter();
 
+  const formatChargeName = (name: string): string =>
+    name
+      .trim()
+      .toLowerCase()
+      .replace(/_/g, " ")
+      .replace(/\b\w/g, (char) => char.toUpperCase());
+
+  const getDisplayedTransactionType = (transaction: Transaction): string => {
+    const paidCharges = transaction.loanChargePaidByList;
+
+    if (Array.isArray(paidCharges) && paidCharges.length === 1) {
+      const charge = paidCharges[0];
+      const chargeName =
+        charge?.chargeName ||
+        charge?.name ||
+        charge?.loanChargeName ||
+        charge?.charge?.name;
+
+      if (typeof chargeName === "string" && chargeName.trim()) {
+        return formatChargeName(chargeName);
+      }
+    }
+
+    return getTransactionTypeDisplayLabel(transaction.type);
+  };
+
   const displayTransactions = useMemo(() => {
     if (!reversedPayout?.voidedAt) return transactions;
     const d = new Date(reversedPayout.voidedAt);
@@ -124,11 +150,8 @@ export function TransactionsDataTable({
       id: "type",
       header: "Transaction Type",
       accessorKey: "type",
-      cell: ({ getValue }) => {
-        const type = getValue() as Transaction["type"];
-        return getTransactionTypeDisplayLabel(type);
-      },
-      getExportValue: (row) => getTransactionTypeDisplayLabel(row.type),
+      cell: ({ row }) => getDisplayedTransactionType(row.original),
+      getExportValue: (row) => getDisplayedTransactionType(row),
       filterType: "select",
       filterOptions: [
         { label: "All Types", value: "all" },
