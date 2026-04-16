@@ -6,6 +6,7 @@ import { getSession } from "@/lib/auth";
 import { callCDEAndStore } from "@/lib/cde-utils";
 import { sendLoanStatusSms } from "@/lib/notification-service";
 import { createLoanCharge } from "@/lib/fineract-loan-charge";
+import { filterInitialLoanChargesForTopup } from "@/lib/topup-disbursement-charge-service";
 
 /**
  * POST /api/leads/[id]/create-loan
@@ -66,6 +67,14 @@ export async function POST(
     const requestedCharges = Array.isArray(loanData.charges)
       ? loanData.charges
       : [];
+    const isTopup = Boolean(loanData.isTopup && loanData.loanIdToClose);
+    const initialLoanCharges = isInvoiceDiscountingLead
+      ? []
+      : await filterInitialLoanChargesForTopup({
+          tenantId: lead.tenantId,
+          isTopup,
+          charges: requestedCharges,
+        });
 
     // Build loan payload
     const payload: any = {
@@ -94,9 +103,7 @@ export async function POST(
       externalId: leadId,
       allowPartialPeriodInterestCalcualtion: false,
       isEqualAmortization: false,
-      charges: isInvoiceDiscountingLead
-        ? []
-        : requestedCharges.map((charge: any) => {
+      charges: initialLoanCharges.map((charge: any) => {
             const chargePayload: any = {
               chargeId: charge.chargeId,
               amount: charge.amount,
@@ -110,7 +117,7 @@ export async function POST(
           }),
       collateral: [],
       loanType: "individual",
-      ...(loanData.isTopup && loanData.loanIdToClose
+      ...(isTopup
         ? { isTopup: true, loanIdToClose: parseInt(loanData.loanIdToClose) }
         : {}),
     };

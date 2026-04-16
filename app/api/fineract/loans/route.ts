@@ -3,6 +3,8 @@ import { getSession } from "@/lib/auth";
 import { getSession as getCustomSession } from "@/app/actions/auth";
 import { getFineractTenantId } from "@/lib/fineract-tenant-service";
 import { getSearchHeaders } from "@/lib/fineract-search-auth";
+import { extractTenantSlugFromRequest, getTenantBySlug } from "@/lib/tenant-service";
+import { filterInitialLoanChargesForTopup } from "@/lib/topup-disbursement-charge-service";
 
 const baseUrl = process.env.FINERACT_BASE_URL || "http://10.10.0.143:8443";
 
@@ -242,8 +244,37 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
+    const isTopup = Boolean(body?.isTopup && body?.loanIdToClose);
+    let sanitizedBody = body;
 
-    console.log("Creating loan in Fineract with data:", body);
+    if (isTopup && Array.isArray(body?.charges) && body.charges.length > 0) {
+      const tenantSlug = extractTenantSlugFromRequest(request);
+      const tenant = await getTenantBySlug(tenantSlug);
+
+      if (tenant) {
+        const filteredCharges = await filterInitialLoanChargesForTopup({
+          tenantId: tenant.id,
+          isTopup: true,
+          charges: body.charges,
+        });
+
+        sanitizedBody = {
+          ...body,
+          charges: filteredCharges,
+        };
+
+        console.info("[TopupDisbursementCharges] Filtered initial topup charges", {
+          tenantId: tenant.id,
+          requested: body.charges.length,
+          retained: filteredCharges.length,
+          removed: body.charges.length - filteredCharges.length,
+        });
+      } else {
+        console.warn("[TopupDisbursementCharges] Tenant not found while filtering topup charges");
+      }
+    }
+
+    console.log("Creating loan in Fineract with data:", sanitizedBody);
 
     const response = await fetch(`${baseUrl}/fineract-provider/api/v1/loans`, {
       method: "POST",
@@ -253,7 +284,7 @@ export async function POST(request: NextRequest) {
         "Content-Type": "application/json",
         Accept: "application/json",
       },
-      body: JSON.stringify(body),
+      body: JSON.stringify(sanitizedBody),
     });
 
     if (!response.ok) {

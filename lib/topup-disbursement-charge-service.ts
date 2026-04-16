@@ -15,6 +15,11 @@ interface ApplyTopupDisbursementChargesResult {
   reason?: string;
 }
 
+interface InitialLoanChargePayload {
+  chargeId?: unknown;
+  [key: string]: unknown;
+}
+
 interface FineractTopupDetails {
   topupAmount?: unknown;
   loanBalance?: unknown;
@@ -140,6 +145,53 @@ function extractChargeList(payload: unknown): FineractLoanChargeSummary[] {
   return [];
 }
 
+async function getTopupDisbursementChargeProducts(tenantId: string) {
+  return prisma.chargeProduct.findMany({
+    where: {
+      tenantId,
+      type: "LOAN",
+      chargeTimeType: "DISBURSEMENT",
+      active: true,
+      syncStatus: "SYNCED",
+      fineractChargeId: { not: null },
+      fineractChargeTimeType: "SPECIFIED_DUE_DATE",
+    },
+    orderBy: { createdAt: "asc" },
+  });
+}
+
+export async function filterInitialLoanChargesForTopup(params: {
+  tenantId: string;
+  isTopup: boolean;
+  charges: InitialLoanChargePayload[];
+}): Promise<InitialLoanChargePayload[]> {
+  const { tenantId, isTopup, charges } = params;
+
+  if (!isTopup || charges.length === 0) {
+    return charges;
+  }
+
+  const chargeProducts = await getTopupDisbursementChargeProducts(tenantId);
+  if (chargeProducts.length === 0) {
+    return charges;
+  }
+
+  const topupChargeIds = new Set(
+    chargeProducts
+      .map((product) => toNumber(product.fineractChargeId))
+      .filter((chargeId): chargeId is number => chargeId != null && chargeId > 0)
+  );
+
+  if (topupChargeIds.size === 0) {
+    return charges;
+  }
+
+  return charges.filter((charge) => {
+    const chargeId = toNumber(charge?.chargeId);
+    return chargeId == null || !topupChargeIds.has(chargeId);
+  });
+}
+
 function hasExistingChargeForToday(
   existingCharges: FineractLoanChargeSummary[],
   chargeId: number,
@@ -233,17 +285,7 @@ export async function applyTopupDisbursementCharges(
     };
   }
 
-  const chargeProducts = await prisma.chargeProduct.findMany({
-    where: {
-      tenantId,
-      type: "LOAN",
-      chargeTimeType: "DISBURSEMENT",
-      active: true,
-      syncStatus: "SYNCED",
-      fineractChargeId: { not: null },
-    },
-    orderBy: { createdAt: "asc" },
-  });
+  const chargeProducts = await getTopupDisbursementChargeProducts(tenantId);
 
   if (chargeProducts.length === 0) {
     return {
