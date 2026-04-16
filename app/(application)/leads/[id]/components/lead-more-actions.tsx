@@ -74,62 +74,8 @@ export function LeadMoreActions({
     window.dispatchEvent(new Event("open-pending-loan-terms-editor"));
   };
 
-  const handlePrintContract = async () => {
-    if (!canPrintContract) {
-      toast.error(
-        "Loan contracts can only be printed after the application has reached final approval."
-      );
-      return;
-    }
-
-    const printWindow = window.open(
-      `/api/leads/${leadId}/print-contract?action=print`,
-      "_blank",
-      "noopener,noreferrer"
-    );
-
-    if (!printWindow) {
-      toast.error("Please allow pop-ups to print the contract.");
-    }
-  };
-
-  const handleViewContract = () => {
-    if (!canPrintContract) {
-      toast.error(
-        "Loan contracts can only be viewed after the application has reached final approval."
-      );
-      return;
-    }
-
-    const viewWindow = window.open(
-      `/api/leads/${leadId}/print-contract?action=view`,
-      "_blank",
-      "noopener,noreferrer"
-    );
-
-    if (!viewWindow) {
-      toast.error("Please allow pop-ups to view the contract.");
-    }
-  };
-
-  const handleExportPdf = () => {
-    if (!canPrintContract) {
-      toast.error(
-        "Loan contracts can only be exported after the application has reached final approval."
-      );
-      return;
-    }
-
-    const exportWindow = window.open(
-      `/api/leads/${leadId}/print-contract?action=pdf`,
-      "_blank",
-      "noopener,noreferrer"
-    );
-
-    if (!exportWindow) {
-      toast.error("Please allow pop-ups to export the contract PDF.");
-    }
-  };
+  const contractActionHref = (action: "view" | "print" | "pdf") =>
+    `/api/leads/${leadId}/print-contract?action=${action}`;
 
   return (
     <DropdownMenu>
@@ -145,18 +91,75 @@ export function LeadMoreActions({
           <Copy className="mr-2 h-4 w-4" />
           Copy Lead ID
         </DropdownMenuItem>
-        <DropdownMenuItem onClick={handleViewContract}>
-          <Eye className="mr-2 h-4 w-4" />
-          View Contract
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={handlePrintContract}>
-          <Printer className="mr-2 h-4 w-4" />
-          Print Contract
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={handleExportPdf}>
-          <FileText className="mr-2 h-4 w-4" />
-          Export PDF
-        </DropdownMenuItem>
+        {canPrintContract ? (
+          <DropdownMenuItem asChild>
+            <a
+              href={contractActionHref("view")}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <Eye className="mr-2 h-4 w-4" />
+              View Contract
+            </a>
+          </DropdownMenuItem>
+        ) : (
+          <DropdownMenuItem
+            onClick={() =>
+              toast.error(
+                "Loan contracts can only be viewed after the application has reached final approval."
+              )
+            }
+          >
+            <Eye className="mr-2 h-4 w-4" />
+            View Contract
+          </DropdownMenuItem>
+        )}
+        {canPrintContract ? (
+          <DropdownMenuItem asChild>
+            <a
+              href={contractActionHref("print")}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <Printer className="mr-2 h-4 w-4" />
+              Print Contract
+            </a>
+          </DropdownMenuItem>
+        ) : (
+          <DropdownMenuItem
+            onClick={() =>
+              toast.error(
+                "Loan contracts can only be printed after the application has reached final approval."
+              )
+            }
+          >
+            <Printer className="mr-2 h-4 w-4" />
+            Print Contract
+          </DropdownMenuItem>
+        )}
+        {canPrintContract ? (
+          <DropdownMenuItem asChild>
+            <a
+              href={contractActionHref("pdf")}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <FileText className="mr-2 h-4 w-4" />
+              Export PDF
+            </a>
+          </DropdownMenuItem>
+        ) : (
+          <DropdownMenuItem
+            onClick={() =>
+              toast.error(
+                "Loan contracts can only be exported after the application has reached final approval."
+              )
+            }
+          >
+            <FileText className="mr-2 h-4 w-4" />
+            Export PDF
+          </DropdownMenuItem>
+        )}
 
         {/* Fineract actions — only if loan exists */}
         {hasLoan && (
