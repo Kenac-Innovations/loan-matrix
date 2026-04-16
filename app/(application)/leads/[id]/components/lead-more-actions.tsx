@@ -93,6 +93,25 @@ export function LeadMoreActions({
     }
   };
 
+  const handleViewContract = () => {
+    if (!canPrintContract) {
+      toast.error(
+        "Loan contracts can only be viewed after the application has reached final approval."
+      );
+      return;
+    }
+
+    const viewWindow = window.open(
+      `/api/leads/${leadId}/print-contract?action=view`,
+      "_blank",
+      "noopener,noreferrer"
+    );
+
+    if (!viewWindow) {
+      toast.error("Please allow pop-ups to view the contract.");
+    }
+  };
+
   const handleExportPdf = () => {
     if (!canPrintContract) {
       toast.error(
@@ -125,6 +144,10 @@ export function LeadMoreActions({
         <DropdownMenuItem onClick={handleCopyId}>
           <Copy className="mr-2 h-4 w-4" />
           Copy Lead ID
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={handleViewContract}>
+          <Eye className="mr-2 h-4 w-4" />
+          View Contract
         </DropdownMenuItem>
         <DropdownMenuItem onClick={handlePrintContract}>
           <Printer className="mr-2 h-4 w-4" />
