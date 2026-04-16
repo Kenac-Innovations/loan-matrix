@@ -67,11 +67,12 @@ export async function GET(request: NextRequest) {
         );
       }
       // Extract parent/dependent params (e.g. officeId for loanOfficerIdSelectAll)
-      const optionParams: Record<string, any> = {};
+      const optionParams: Record<string, string> = {};
       searchParams.forEach((value, key) => {
         if (
-          key !== "parameterName" &&
           key !== "action" &&
+          key !== "parameterName" &&
+          key !== "reportName" &&
           value !== undefined &&
           value !== null &&
           value !== ""
@@ -88,6 +89,7 @@ export async function GET(request: NextRequest) {
       } catch (error: any) {
         console.error("Error fetching parameter options:", {
           parameterName,
+          parameters: optionParams,
           message: error.message,
           response: error.response?.data,
           status: error.response?.status,
