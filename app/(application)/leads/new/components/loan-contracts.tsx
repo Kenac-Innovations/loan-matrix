@@ -41,6 +41,41 @@ import {
   KeyFactsData,
 } from "./key-facts-statement-template";
 
+function parseFineractErrorResponse(responseText: string): string {
+  try {
+    const parsed = JSON.parse(responseText);
+    const errors = Array.isArray(parsed?.errors) ? parsed.errors : [];
+    const message =
+      errors.find((error: any) => typeof error?.defaultUserMessage === "string")
+        ?.defaultUserMessage ||
+      parsed?.defaultUserMessage ||
+      parsed?.message ||
+      parsed?.error;
+
+    if (typeof message === "string" && message.trim()) {
+      return message;
+    }
+  } catch {
+    // Fall through to the raw response text.
+  }
+
+  return responseText || "Fineract request failed";
+}
+
+async function fineractFetch(
+  url: string,
+  options?: RequestInit,
+): Promise<Response> {
+  const response = await fetch(url, options);
+
+  if (!response.ok) {
+    const responseText = await response.text();
+    throw new Error(parseFineractErrorResponse(responseText));
+  }
+
+  return response;
+}
+
 interface LoanContractsProps {
   leadId?: string;
   clientId?: number;
@@ -94,6 +129,15 @@ export function LoanContracts({
   const [tenantLogoUrl, setTenantLogoUrl] = useState<string | null>(null);
   const { toast } = useToast();
   const router = useRouter();
+  const isInvoiceDiscountingLoan =
+    loanDetails?.facilityType === "INVOICE_DISCOUNTING";
+
+  const extractLoanChargeId = (payload: any): number | null => {
+    const candidate =
+      payload?.resourceId ?? payload?.entityId ?? payload?.id ?? null;
+    const parsed = Number(candidate);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+  };
 
   const filledTenantContractHtml = useMemo(() => {
     if (!tenantContractHtml) return null;
@@ -1937,6 +1981,10 @@ export function LoanContracts({
         description: "Submitting loan application to Fineract",
       });
 
+      const requestedCharges = Array.isArray(loanTerms.charges)
+        ? loanTerms.charges
+        : [];
+
       const loanPayload = {
         productId: loanDetails.productId || loanDetails.product,
         loanOfficerId: loanDetails.loanOfficer || "",
@@ -1989,17 +2037,19 @@ export function LoanContracts({
           ? parseInt(loanTerms.interestRateFrequency)
           : 2,
         interestRatePerPeriod: loanTerms.nominalInterestRate || 0,
-        charges: (loanTerms.charges || []).map((charge: any) => {
-          const chargeData: any = {
-            chargeId: charge.chargeId,
-            amount: charge.amount,
-          };
-          // Include dueDate if present (required for "Specified Due Date" charges)
-          if (charge.dueDate) {
-            chargeData.dueDate = charge.dueDate;
-          }
-          return chargeData;
-        }),
+        charges: isInvoiceDiscountingLoan
+          ? []
+          : requestedCharges.map((charge: any) => {
+              const chargeData: any = {
+                chargeId: charge.chargeId,
+                amount: charge.amount,
+              };
+              // Include dueDate if present (required for "Specified Due Date" charges)
+              if (charge.dueDate) {
+                chargeData.dueDate = charge.dueDate;
+              }
+              return chargeData;
+            }),
         collateral:
           loanTerms.collaterals?.map((coll: any) => ({
             collateralTypeId: coll.id || 0,
@@ -2031,6 +2081,45 @@ export function LoanContracts({
         loanResult.data.loanId || loanResult.data.resourceId;
 
       console.log("Loan created successfully:", createdLoanId);
+
+      if (isInvoiceDiscountingLoan && createdLoanId && requestedCharges.length > 0) {
+        console.log("Applying invoice discounting charges via add-charge endpoint");
+
+        for (const charge of requestedCharges) {
+          const chargePayload: any = {
+            chargeId: charge.chargeId,
+            amount: charge.amount,
+            locale: "en",
+          };
+
+          if (charge.dueDate) {
+            chargePayload.dueDate = charge.dueDate;
+            chargePayload.dateFormat = "dd MMMM yyyy";
+          }
+
+          const addChargeResponse = await fineractFetch(
+            `/api/fineract/loans/${createdLoanId}/charges`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify(chargePayload),
+            },
+          );
+
+          const addChargeResult = await addChargeResponse
+            .json()
+            .catch(() => ({}));
+          const createdLoanChargeId = extractLoanChargeId(addChargeResult);
+
+          if (!createdLoanChargeId) {
+            throw new Error(
+              "Loan charge was created but no loan charge id was returned",
+            );
+          }
+        }
+      }
 
       // Save the Fineract loan ID and submission status to the lead
       if (leadId && createdLoanId) {

@@ -19,6 +19,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
   TableBody,
@@ -115,6 +116,55 @@ export default function ReportDetailPage() {
     return hasAllOption ? options : [...options, { id: -1, tc: "All" }];
   };
 
+  const getInitialParameterValue = (param: ReportParameter): string => {
+    if (param.parameter_displayType === "none" && param.parameter_default) {
+      return param.parameter_default;
+    }
+    if (param.selectAll === "Y") return "-1";
+    if (param.parameter_default && param.parameter_default !== "0") {
+      return param.parameter_default;
+    }
+    return "";
+  };
+
+  const isHiddenParameter = (param: ReportParameter) =>
+    param.parameter_displayType === "none";
+
+  const isNumericParameter = (param: ReportParameter) =>
+    param.parameter_displayType === "number" ||
+    (param.parameter_displayType === "text" &&
+      param.parameter_FormatType === "number");
+
+  const isMandatoryParameter = (param: ReportParameter) =>
+    !isHiddenParameter(param);
+
+  const visibleReportParameters = reportParameters.filter(
+    (param) => !isHiddenParameter(param)
+  );
+
+  const missingMandatoryParameters = visibleReportParameters.filter((param) => {
+    if (!isMandatoryParameter(param)) return false;
+    const value = parameters[param.parameter_variable];
+    return value === undefined || value === null || value === "";
+  });
+
+  const applyParentParameterFallback = (
+    fetchParams: Record<string, string>,
+    params: ReportParameter[],
+    parentParameterName?: string
+  ) => {
+    if (!parentParameterName) return;
+
+    const parentParam = params.find(
+      (candidate) => candidate.parameter_name === parentParameterName
+    );
+    if (!parentParam || fetchParams[parentParam.parameter_variable]) return;
+
+    const fallbackValue = getInitialParameterValue(parentParam);
+    if (fallbackValue) {
+      fetchParams[parentParam.parameter_variable] = fallbackValue;
+    }
+  };
   useEffect(() => {
     if (reportName) {
       fetchReportParameters(reportName);
@@ -264,6 +314,17 @@ export default function ReportDetailPage() {
   };
 
   const runReport = async () => {
+    if (missingMandatoryParameters.length > 0) {
+      toast({
+        title: "Missing required parameters",
+        description: `Provide: ${missingMandatoryParameters
+          .map((param) => getParameterLabel(param))
+          .join(", ")}`,
+        variant: "destructive",
+      });
+      return;
+    }
+
     setLoading(true);
     try {
       const paramsForReport = normalizeParameterValues(parameters);
@@ -413,6 +474,10 @@ export default function ReportDetailPage() {
     const options = parameterOptions[param.parameter_name] || [];
     const displayLabel = getParameterLabel(param);
 
+    if (isHiddenParameter(param)) {
+      return null;
+    }
+
     switch (param.parameter_displayType) {
       case "select":
         return (
@@ -447,9 +512,22 @@ export default function ReportDetailPage() {
         );
 
       case "number":
+      case "text":
+        if (isNumericParameter(param)) {
+          return (
+            <Input
+              type="number"
+              value={value}
+              onChange={(e) =>
+                handleParameterChange(param.parameter_variable, e.target.value)
+              }
+              placeholder={displayLabel}
+            />
+          );
+        }
         return (
           <Input
-            type="number"
+            type="text"
             value={value}
             onChange={(e) =>
               handleParameterChange(param.parameter_variable, e.target.value)
@@ -521,7 +599,7 @@ export default function ReportDetailPage() {
           )}
           <Button
             onClick={runReport}
-            disabled={loading}
+            disabled={loading || loadingParameters}
             className="bg-blue-500 hover:bg-blue-600"
           >
             {loading ? (
@@ -542,7 +620,9 @@ export default function ReportDetailPage() {
             <Filter className="h-4 w-4 text-blue-400" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{reportParameters.length}</div>
+            <div className="text-2xl font-bold">
+              {visibleReportParameters.length}
+            </div>
             <p className="text-xs text-muted-foreground">
               Configuration options
             </p>
@@ -601,19 +681,21 @@ export default function ReportDetailPage() {
         </CardHeader>
         <CardContent>
           {loadingParameters ? (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <RefreshCw className="h-4 w-4 animate-spin" />
-              Loading parameters...
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {Array.from({ length: 6 }).map((_, index) => (
+                <div key={index} className="space-y-2">
+                  <Skeleton className="h-4 w-28" />
+                  <Skeleton className="h-10 w-full" />
+                </div>
+              ))}
             </div>
-          ) : reportParameters.length > 0 ? (
+          ) : visibleReportParameters.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {reportParameters.map((param, index) => (
+              {visibleReportParameters.map((param, index) => (
                 <div key={index} className="space-y-2">
                   <Label htmlFor={param.parameter_variable} className="text-sm">
                     {getParameterLabel(param)}
-                    {param.parameter_name
-                      .toLowerCase()
-                      .includes("mandatory") && (
+                    {isMandatoryParameter(param) && (
                       <span className="text-red-500 ml-1">*</span>
                     )}
                   </Label>

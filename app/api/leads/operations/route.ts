@@ -270,15 +270,18 @@ async function persistEntityStructureDraftForLead(
     let shareholdingPercentage: number | null = null;
     if (roleRaw === EntityStakeholderRole.SHAREHOLDER) {
       const shareCandidate = toNullableNumber(raw.shareholdingPercentage);
-      if (shareCandidate != null) {
-        if (shareCandidate < 0 || shareCandidate > 100) {
-          throw new Error(
-            `Invalid shareholding percentage at row ${i + 1}. Value must be between 0 and 100.`
-          );
-        }
-        shareholdingPercentage = shareCandidate;
-        totalShareholding += shareCandidate;
+      if (shareCandidate == null) {
+        throw new Error(
+          `Incomplete stakeholder details at row ${i + 1}. Shareholding percentage is required for shareholders.`
+        );
       }
+      if (shareCandidate < 0 || shareCandidate > 100) {
+        throw new Error(
+          `Invalid shareholding percentage at row ${i + 1}. Value must be between 0 and 100.`
+        );
+      }
+      shareholdingPercentage = shareCandidate;
+      totalShareholding += shareCandidate;
     }
 
     const isUltimateBeneficialOwner =
@@ -695,6 +698,13 @@ async function handleUpsertEntityStakeholder(leadId: string, data: any) {
       isDirector || data.shareholdingPercentage == null || data.shareholdingPercentage === ""
         ? null
         : Number(data.shareholdingPercentage);
+
+    if (!isDirector && sharePct == null) {
+      return NextResponse.json(
+        { error: "shareholdingPercentage is required for shareholders" },
+        { status: 400 }
+      );
+    }
 
     if (!isDirector && sharePct != null && (sharePct < 0 || sharePct > 100)) {
       return NextResponse.json(

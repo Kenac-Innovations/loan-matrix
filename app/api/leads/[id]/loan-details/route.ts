@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getTenantBySlug, extractTenantSlugFromRequest } from "@/lib/tenant-service";
-import { isInvoiceDiscountingEnabled } from "@/lib/tenant-features";
-
 export async function POST(
   request: NextRequest,
   context: { params: Promise<{ id: string }> }
@@ -58,20 +56,10 @@ export async function POST(
     // Get current stateMetadata
     const currentMetadata = (lead.stateMetadata as any) || {};
 
-    if (
-      data.facilityType === "INVOICE_DISCOUNTING" &&
-      !isInvoiceDiscountingEnabled(tenant.settings)
-    ) {
-      return NextResponse.json(
-        { success: false, error: "Invoice discounting is disabled for this tenant" },
-        { status: 403 }
-      );
-    }
-
     const updatedLead = await prisma.lead.update({
       where: { id: leadId },
       data: {
-        facilityType: data.facilityType || undefined,
+        facilityType: data.facilityType ?? null,
         loanProductName: data.productName || null,
         loanProductId: productId,
         loanPurpose: data.loanPurposeName || null,

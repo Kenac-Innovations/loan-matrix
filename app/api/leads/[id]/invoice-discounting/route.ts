@@ -3,7 +3,11 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { isInvoiceDiscountingEnabled } from "@/lib/tenant-features";
 
-const recourseTypeSchema = z.enum(["WITH_RECOURSE", "WITHOUT_RECOURSE"]);
+type LeadStateMetadata = {
+  loanTerms?: Record<string, unknown>;
+  invoiceDiscountingSummary?: Record<string, unknown>;
+  [key: string]: unknown;
+};
 
 const invoiceRowSchema = z.object({
   id: z.string().optional(),
@@ -11,7 +15,6 @@ const invoiceRowSchema = z.object({
   invoiceDate: z.coerce.date(),
   dueDate: z.coerce.date(),
   grossAmount: z.coerce.number().positive("Gross amount must be greater than 0"),
-  eligibleAmount: z.coerce.number().nonnegative().optional(),
   currencyCode: z.string().optional(),
   fineractDocumentId: z.string().optional(),
 });
@@ -23,25 +26,17 @@ const invoiceDiscountingPayloadSchema = z.object({
   debtorContactName: z.string().optional(),
   debtorContactPhone: z.string().optional(),
   debtorContactEmail: z.string().optional(),
-  recourseType: recourseTypeSchema.default("WITH_RECOURSE"),
-  advanceRate: z.coerce
-    .number()
-    .min(0, "Advance rate cannot be negative")
-    .max(100, "Advance rate cannot exceed 100"),
-  concentrationLimit: z.coerce
-    .number()
-    .min(0, "Concentration limit cannot be negative")
-    .max(100, "Concentration limit cannot exceed 100")
-    .optional(),
+  advanceRate: z.preprocess(
+    (value) => (value === "" || value == null ? undefined : value),
+    z.coerce
+      .number()
+      .min(0, "Advance rate cannot be negative")
+      .max(100, "Advance rate cannot exceed 100")
+  ),
   debtorTermsDays: z.coerce
     .number()
     .int("Debtor terms must be a whole number")
     .min(0, "Debtor terms cannot be negative")
-    .optional(),
-  reservePercent: z.coerce
-    .number()
-    .min(0, "Reserve percent cannot be negative")
-    .max(100, "Reserve percent cannot exceed 100")
     .optional(),
   notes: z.string().optional(),
   invoices: z.array(invoiceRowSchema).min(1, "At least one invoice is required"),
@@ -53,13 +48,10 @@ function round2(value: number): number {
 
 function deriveInvoiceNumbers(row: z.infer<typeof invoiceRowSchema>, advanceRate: number) {
   const grossAmount = round2(row.grossAmount);
-  const eligibleRaw = row.eligibleAmount == null ? grossAmount : row.eligibleAmount;
-  const eligibleAmount = round2(Math.max(0, Math.min(eligibleRaw, grossAmount)));
-  const financedAmount = round2((eligibleAmount * advanceRate) / 100);
-  const reserveAmount = round2(eligibleAmount - financedAmount);
+  const financedAmount = round2((grossAmount * advanceRate) / 100);
+  const reserveAmount = round2(grossAmount - financedAmount);
   return {
     grossAmount,
-    eligibleAmount,
     financedAmount,
     reserveAmount,
   };
@@ -151,7 +143,7 @@ export async function POST(
         invoiceDate: row.invoiceDate,
         dueDate: row.dueDate,
         grossAmount: derived.grossAmount,
-        eligibleAmount: derived.eligibleAmount,
+        eligibleAmount: null,
         financedAmount: derived.financedAmount,
         reserveAmount: derived.reserveAmount,
         currencyCode: row.currencyCode || null,
@@ -164,14 +156,12 @@ export async function POST(
     const totals = invoicesWithDerived.reduce(
       (acc, row) => {
         acc.totalPresentedAmount += row.grossAmount;
-        acc.totalEligibleAmount += row.eligibleAmount;
         acc.totalFinancedAmount += row.financedAmount;
         acc.totalReserveAmount += row.reserveAmount;
         return acc;
       },
       {
         totalPresentedAmount: 0,
-        totalEligibleAmount: 0,
         totalFinancedAmount: 0,
         totalReserveAmount: 0,
       }
@@ -187,14 +177,14 @@ export async function POST(
           debtorContactName: payload.debtorContactName || null,
           debtorContactPhone: payload.debtorContactPhone || null,
           debtorContactEmail: payload.debtorContactEmail || null,
-          recourseType: payload.recourseType,
+          recourseType: null,
           advanceRate: payload.advanceRate,
-          concentrationLimit: payload.concentrationLimit ?? null,
+          concentrationLimit: null,
           debtorTermsDays: payload.debtorTermsDays ?? null,
-          reservePercent: payload.reservePercent ?? 0,
+          reservePercent: null,
           notes: payload.notes || null,
           totalPresentedAmount: round2(totals.totalPresentedAmount),
-          totalEligibleAmount: round2(totals.totalEligibleAmount),
+          totalEligibleAmount: null,
           totalFinancedAmount: round2(totals.totalFinancedAmount),
           totalReserveAmount: round2(totals.totalReserveAmount),
         },
@@ -207,14 +197,14 @@ export async function POST(
           debtorContactName: payload.debtorContactName || null,
           debtorContactPhone: payload.debtorContactPhone || null,
           debtorContactEmail: payload.debtorContactEmail || null,
-          recourseType: payload.recourseType,
+          recourseType: null,
           advanceRate: payload.advanceRate,
-          concentrationLimit: payload.concentrationLimit ?? null,
+          concentrationLimit: null,
           debtorTermsDays: payload.debtorTermsDays ?? null,
-          reservePercent: payload.reservePercent ?? 0,
+          reservePercent: null,
           notes: payload.notes || null,
           totalPresentedAmount: round2(totals.totalPresentedAmount),
-          totalEligibleAmount: round2(totals.totalEligibleAmount),
+          totalEligibleAmount: null,
           totalFinancedAmount: round2(totals.totalFinancedAmount),
           totalReserveAmount: round2(totals.totalReserveAmount),
         },
@@ -236,21 +226,26 @@ export async function POST(
         });
       }
 
-      const currentMetadata = (lead.stateMetadata as any) || {};
+      const currentMetadata =
+        (lead.stateMetadata as LeadStateMetadata | null) || {};
+      const currentLoanTerms = currentMetadata.loanTerms || {};
+      const financedPrincipal = round2(totals.totalFinancedAmount);
       await tx.lead.update({
         where: { id: leadId },
         data: {
           facilityType: "INVOICE_DISCOUNTING",
           stateMetadata: {
             ...currentMetadata,
+            loanTerms: {
+              ...currentLoanTerms,
+              principal: financedPrincipal,
+            },
             invoiceDiscountingSummary: {
               debtorName: payload.debtorName.trim(),
-              recourseType: payload.recourseType,
               advanceRate: payload.advanceRate,
               invoiceCount: invoicesWithDerived.length,
               totals: {
                 totalPresentedAmount: round2(totals.totalPresentedAmount),
-                totalEligibleAmount: round2(totals.totalEligibleAmount),
                 totalFinancedAmount: round2(totals.totalFinancedAmount),
                 totalReserveAmount: round2(totals.totalReserveAmount),
               },
@@ -275,7 +270,7 @@ export async function POST(
       success: true,
       data: result,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error saving invoice discounting data:", error);
     if (error instanceof z.ZodError) {
       return NextResponse.json(
@@ -283,9 +278,21 @@ export async function POST(
         { status: 400 }
       );
     }
-    const message = error?.issues
-      ? error.issues.map((issue: any) => issue.message).join(", ")
-      : error?.message || "Failed to save invoice discounting data";
+    const message =
+      error &&
+      typeof error === "object" &&
+      "issues" in error &&
+      Array.isArray(error.issues)
+        ? error.issues
+            .map((issue) =>
+              issue && typeof issue === "object" && "message" in issue
+                ? String(issue.message)
+                : "Unknown validation error"
+            )
+            .join(", ")
+        : error instanceof Error
+          ? error.message
+          : "Failed to save invoice discounting data";
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

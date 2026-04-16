@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getTenantBySlug, extractTenantSlugFromRequest } from "@/lib/tenant-service";
 
+type LeadStateMetadata = {
+  loanTerms?: Record<string, unknown>;
+  [key: string]: unknown;
+};
+
 export async function POST(
   request: NextRequest,
   context: { params: Promise<{ id: string }> }
@@ -25,6 +30,16 @@ export async function POST(
       where: {
         id: leadId,
       },
+      select: {
+        id: true,
+        facilityType: true,
+        stateMetadata: true,
+        invoiceDiscountingCase: {
+          select: {
+            totalFinancedAmount: true,
+          },
+        },
+      },
     });
 
     if (!lead) {
@@ -35,12 +50,19 @@ export async function POST(
       );
     }
 
+    const invoiceDiscountingPrincipal =
+      lead.facilityType === "INVOICE_DISCOUNTING"
+        ? lead.invoiceDiscountingCase?.totalFinancedAmount ?? null
+        : null;
+    const resolvedPrincipal = invoiceDiscountingPrincipal ?? data.principal;
+
     // Store loan terms in stateMetadata
-    const currentMetadata = (lead.stateMetadata as any) || {};
+    const currentMetadata =
+      (lead.stateMetadata as LeadStateMetadata | null) || {};
     const updatedMetadata = {
       ...currentMetadata,
       loanTerms: {
-        principal: data.principal,
+        principal: resolvedPrincipal,
         loanTerm: data.loanTerm,
         termFrequency: data.termFrequency,
         numberOfRepayments: data.numberOfRepayments,
@@ -123,7 +145,13 @@ export async function GET(
         id: leadId,
       },
       select: {
+        facilityType: true,
         stateMetadata: true,
+        invoiceDiscountingCase: {
+          select: {
+            totalFinancedAmount: true,
+          },
+        },
       },
     });
 
@@ -135,8 +163,20 @@ export async function GET(
       );
     }
 
-    const metadata = (lead.stateMetadata as any) || {};
-    const loanTerms = metadata.loanTerms || null;
+    const metadata = (lead.stateMetadata as LeadStateMetadata | null) || {};
+    const storedLoanTerms = metadata.loanTerms || null;
+    const invoiceDiscountingPrincipal =
+      lead.facilityType === "INVOICE_DISCOUNTING"
+        ? lead.invoiceDiscountingCase?.totalFinancedAmount ?? null
+        : null;
+    const loanTerms = storedLoanTerms
+      ? {
+          ...storedLoanTerms,
+          principal: invoiceDiscountingPrincipal ?? storedLoanTerms.principal,
+        }
+      : invoiceDiscountingPrincipal != null
+        ? { principal: invoiceDiscountingPrincipal }
+        : null;
 
     console.log("Found loan terms data:", loanTerms);
 

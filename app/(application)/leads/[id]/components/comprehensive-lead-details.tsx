@@ -780,26 +780,10 @@ export function ComprehensiveLeadDetails({
                     <p className="font-semibold">{invoiceDiscounting?.debtorName || "N/A"}</p>
                   </div>
                   <div>
-                    <p className="text-sm text-muted-foreground">Recourse</p>
-                    <p className="font-semibold">
-                      {invoiceDiscounting?.recourseType === "WITHOUT_RECOURSE"
-                        ? "Without Recourse"
-                        : "With Recourse"}
-                    </p>
-                  </div>
-                  <div>
                     <p className="text-sm text-muted-foreground">Advance Rate</p>
                     <p className="font-semibold">
                       {invoiceDiscounting?.advanceRate != null
                         ? `${invoiceDiscounting.advanceRate}%`
-                        : "N/A"}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Concentration Limit</p>
-                    <p className="font-semibold">
-                      {invoiceDiscounting?.concentrationLimit != null
-                        ? `${invoiceDiscounting.concentrationLimit}%`
                         : "N/A"}
                     </p>
                   </div>
@@ -813,19 +797,12 @@ export function ComprehensiveLeadDetails({
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 gap-4 rounded-md border bg-muted/30 p-4 md:grid-cols-4">
+                <div className="grid grid-cols-1 gap-4 rounded-md border bg-muted/30 p-4 md:grid-cols-3">
                   <div>
                     <p className="text-xs text-muted-foreground">Presented</p>
                     <p className="text-base font-semibold">
                       {currencyCode}{" "}
                       {(invoiceDiscounting?.totalPresentedAmount || 0).toLocaleString()}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Eligible</p>
-                    <p className="text-base font-semibold">
-                      {currencyCode}{" "}
-                      {(invoiceDiscounting?.totalEligibleAmount || 0).toLocaleString()}
                     </p>
                   </div>
                   <div>
@@ -836,7 +813,7 @@ export function ComprehensiveLeadDetails({
                     </p>
                   </div>
                   <div>
-                    <p className="text-xs text-muted-foreground">Reserve</p>
+                    <p className="text-xs text-muted-foreground">Income</p>
                     <p className="text-base font-semibold">
                       {currencyCode}{" "}
                       {(invoiceDiscounting?.totalReserveAmount || 0).toLocaleString()}
@@ -857,7 +834,6 @@ export function ComprehensiveLeadDetails({
                             <th className="px-3 py-2 text-left font-medium">Due Date</th>
                             <th className="px-3 py-2 text-left font-medium">File</th>
                             <th className="px-3 py-2 text-left font-medium">Gross</th>
-                            <th className="px-3 py-2 text-left font-medium">Eligible</th>
                             <th className="px-3 py-2 text-left font-medium">Financed</th>
                           </tr>
                         </thead>
@@ -892,10 +868,6 @@ export function ComprehensiveLeadDetails({
                               <td className="px-3 py-2">
                                 {invoice.currencyCode || currencyCode}{" "}
                                 {(invoice.grossAmount || 0).toLocaleString()}
-                              </td>
-                              <td className="px-3 py-2">
-                                {invoice.currencyCode || currencyCode}{" "}
-                                {(invoice.eligibleAmount || 0).toLocaleString()}
                               </td>
                               <td className="px-3 py-2">
                                 {invoice.currencyCode || currencyCode}{" "}

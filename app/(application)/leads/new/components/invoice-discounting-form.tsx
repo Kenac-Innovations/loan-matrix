@@ -6,13 +6,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useCurrency } from "@/contexts/currency-context";
 import { useToast } from "@/hooks/use-toast";
 
-type RecourseType = "WITH_RECOURSE" | "WITHOUT_RECOURSE";
 type InvoiceStatus = "APPROVED" | "PENDING" | "VERIFIED" | "REJECTED" | "FINANCED";
 
 interface InvoiceRowForm {
@@ -21,7 +20,6 @@ interface InvoiceRowForm {
   invoiceDate: string;
   dueDate: string;
   grossAmount: string;
-  eligibleAmount: string;
   currencyCode: string;
   fineractDocumentId?: string;
   documentFile?: File | null;
@@ -32,6 +30,9 @@ interface InvoiceDiscountingFormProps {
   onBack: () => void;
   onNext: () => void;
   onComplete?: () => void;
+  onRegisterSave?: (saveFn: (() => Promise<boolean>) | null) => void;
+  /** When true, hides Previous/Next navigation buttons and shows a standalone Save button */
+  embedded?: boolean;
 }
 
 interface InvoiceDiscountingCaseResponse {
@@ -41,11 +42,8 @@ interface InvoiceDiscountingCaseResponse {
   debtorContactName?: string | null;
   debtorContactPhone?: string | null;
   debtorContactEmail?: string | null;
-  recourseType: RecourseType;
   advanceRate: number;
-  concentrationLimit?: number | null;
   debtorTermsDays?: number | null;
-  reservePercent?: number | null;
   notes?: string | null;
   invoices: Array<{
     id: string;
@@ -53,7 +51,7 @@ interface InvoiceDiscountingCaseResponse {
     invoiceDate: string;
     dueDate: string;
     grossAmount: number;
-    eligibleAmount: number;
+    eligibleAmount?: number | null;
     financedAmount: number;
     reserveAmount: number;
     currencyCode?: string | null;
@@ -67,7 +65,6 @@ const defaultInvoiceRow = (currencyCode: string): InvoiceRowForm => ({
   invoiceDate: "",
   dueDate: "",
   grossAmount: "",
-  eligibleAmount: "",
   currencyCode,
   fineractDocumentId: "",
   documentFile: null,
@@ -87,11 +84,85 @@ function round2(value: number): number {
   return Math.round((value + Number.EPSILON) * 100) / 100;
 }
 
+function InvoiceDiscountingFormSkeleton() {
+  return (
+    <Card>
+      <CardHeader className="space-y-3">
+        <Skeleton className="h-7 w-52" />
+        <Skeleton className="h-4 w-full max-w-md" />
+      </CardHeader>
+      <CardContent className="space-y-6">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          {Array.from({ length: 6 }).map((_, index) => (
+            <div key={`invoice-field-skeleton-${index}`} className="space-y-2">
+              <Skeleton className="h-4 w-32" />
+              <Skeleton className="h-10 w-full" />
+            </div>
+          ))}
+        </div>
+
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <Skeleton className="h-5 w-20" />
+            <Skeleton className="h-9 w-28" />
+          </div>
+
+          <div className="rounded-md border">
+            <div className="border-b px-4 py-3">
+              <div className="grid grid-cols-6 gap-3">
+                {Array.from({ length: 6 }).map((_, index) => (
+                  <Skeleton
+                    key={`invoice-header-skeleton-${index}`}
+                    className="h-4 w-full"
+                  />
+                ))}
+              </div>
+            </div>
+            <div className="space-y-3 p-4">
+              {Array.from({ length: 3 }).map((_, rowIndex) => (
+                <div
+                  key={`invoice-row-skeleton-${rowIndex}`}
+                  className="grid grid-cols-1 gap-3 md:grid-cols-6"
+                >
+                  {Array.from({ length: 6 }).map((_, colIndex) => (
+                    <Skeleton
+                      key={`invoice-cell-skeleton-${rowIndex}-${colIndex}`}
+                      className="h-10 w-full"
+                    />
+                  ))}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+          {Array.from({ length: 3 }).map((_, index) => (
+            <div
+              key={`invoice-total-skeleton-${index}`}
+              className="space-y-2 rounded-md border p-4"
+            >
+              <Skeleton className="h-4 w-24" />
+              <Skeleton className="h-7 w-32" />
+            </div>
+          ))}
+        </div>
+      </CardContent>
+      <CardFooter className="flex justify-between">
+        <Skeleton className="h-10 w-24" />
+        <Skeleton className="h-10 w-32" />
+      </CardFooter>
+    </Card>
+  );
+}
+
 export function InvoiceDiscountingForm({
   leadId,
   onBack,
   onNext,
   onComplete,
+  onRegisterSave,
+  embedded = false,
 }: InvoiceDiscountingFormProps) {
   const { currencyCode, currencySymbol } = useCurrency();
   const { toast } = useToast();
@@ -107,11 +178,8 @@ export function InvoiceDiscountingForm({
   const [debtorContactName, setDebtorContactName] = useState("");
   const [debtorContactPhone, setDebtorContactPhone] = useState("");
   const [debtorContactEmail, setDebtorContactEmail] = useState("");
-  const [recourseType, setRecourseType] = useState<RecourseType>("WITH_RECOURSE");
   const [advanceRate, setAdvanceRate] = useState("70");
-  const [concentrationLimit, setConcentrationLimit] = useState("");
   const [debtorTermsDays, setDebtorTermsDays] = useState("");
-  const [reservePercent, setReservePercent] = useState("");
   const [notes, setNotes] = useState("");
   const [invoices, setInvoices] = useState<InvoiceRowForm[]>([
     defaultInvoiceRow(currencyCode),
@@ -157,13 +225,8 @@ export function InvoiceDiscountingForm({
         setDebtorContactName(data.debtorContactName || "");
         setDebtorContactPhone(data.debtorContactPhone || "");
         setDebtorContactEmail(data.debtorContactEmail || "");
-        setRecourseType(data.recourseType || "WITH_RECOURSE");
         setAdvanceRate(`${data.advanceRate ?? 0}`);
-        setConcentrationLimit(
-          data.concentrationLimit == null ? "" : `${data.concentrationLimit}`
-        );
         setDebtorTermsDays(data.debtorTermsDays == null ? "" : `${data.debtorTermsDays}`);
-        setReservePercent(data.reservePercent == null ? "" : `${data.reservePercent}`);
         setNotes(data.notes || "");
         setInvoices(
           data.invoices.length > 0
@@ -173,7 +236,6 @@ export function InvoiceDiscountingForm({
                 invoiceDate: toDateInput(row.invoiceDate),
                 dueDate: toDateInput(row.dueDate),
                 grossAmount: `${row.grossAmount}`,
-                eligibleAmount: `${row.eligibleAmount}`,
                 currencyCode: row.currencyCode || currencyCode,
                 fineractDocumentId: row.fineractDocumentId || "",
                 documentFile: null,
@@ -201,13 +263,10 @@ export function InvoiceDiscountingForm({
   const derivedRows = useMemo(() => {
     return invoices.map((row) => {
       const gross = Number(row.grossAmount) || 0;
-      const rawEligible = row.eligibleAmount === "" ? gross : Number(row.eligibleAmount) || 0;
-      const eligible = round2(Math.max(0, Math.min(rawEligible, gross)));
-      const financed = round2((eligible * advanceRateNumber) / 100);
-      const reserve = round2(eligible - financed);
+      const financed = round2((gross * advanceRateNumber) / 100);
+      const reserve = round2(gross - financed);
       return {
         gross,
-        eligible,
         financed,
         reserve,
       };
@@ -218,12 +277,11 @@ export function InvoiceDiscountingForm({
     return derivedRows.reduce(
       (acc, row) => {
         acc.gross += row.gross;
-        acc.eligible += row.eligible;
         acc.financed += row.financed;
         acc.reserve += row.reserve;
         return acc;
       },
-      { gross: 0, eligible: 0, financed: 0, reserve: 0 }
+      { gross: 0, financed: 0, reserve: 0 }
     );
   }, [derivedRows]);
 
@@ -250,14 +308,14 @@ export function InvoiceDiscountingForm({
     });
   };
 
-  const handleSaveAndNext = async () => {
+  const saveInvoiceDetails = async (shouldAdvance = true): Promise<boolean> => {
     if (!leadId) {
       toast({
         title: "Missing lead",
         description: "Please complete lead setup first.",
         variant: "destructive",
       });
-      return;
+      return false;
     }
 
     if (!debtorName.trim()) {
@@ -266,19 +324,33 @@ export function InvoiceDiscountingForm({
         description: "Debtor name is required.",
         variant: "destructive",
       });
-      return;
+      return false;
+    }
+
+    if (advanceRate.trim() === "") {
+      toast({
+        title: "Validation error",
+        description: "Advance rate is required.",
+        variant: "destructive",
+      });
+      return false;
     }
 
     const hasInvalidInvoice = invoices.some(
-      (row) => !row.invoiceNumber.trim() || !row.invoiceDate || !row.dueDate || Number(row.grossAmount) <= 0
+      (row) =>
+        !row.invoiceNumber.trim() ||
+        !row.invoiceDate ||
+        !row.dueDate ||
+        (!row.documentFile && !row.fineractDocumentId) ||
+        Number(row.grossAmount) <= 0
     );
     if (hasInvalidInvoice) {
       toast({
         title: "Validation error",
-        description: "Each invoice must include number, dates, and gross amount.",
+        description: "Each invoice must include number, dates, file, and gross amount.",
         variant: "destructive",
       });
-      return;
+      return false;
     }
 
     if (invoices.some((row) => !!row.documentFile) && !fineractClientId) {
@@ -287,7 +359,7 @@ export function InvoiceDiscountingForm({
         description: "Cannot upload invoice files until the lead has a linked Fineract client.",
         variant: "destructive",
       });
-      return;
+      return false;
     }
 
     try {
@@ -355,11 +427,8 @@ export function InvoiceDiscountingForm({
         debtorContactName: debtorContactName || undefined,
         debtorContactPhone: debtorContactPhone || undefined,
         debtorContactEmail: debtorContactEmail || undefined,
-        recourseType,
         advanceRate: advanceRateNumber,
-        concentrationLimit: concentrationLimit === "" ? undefined : Number(concentrationLimit),
         debtorTermsDays: debtorTermsDays === "" ? undefined : Number(debtorTermsDays),
-        reservePercent: reservePercent === "" ? undefined : Number(reservePercent),
         notes: notes || undefined,
         invoices: rowsWithDocumentIds.map((row) => ({
           id: row.id,
@@ -367,7 +436,6 @@ export function InvoiceDiscountingForm({
           invoiceDate: row.invoiceDate,
           dueDate: row.dueDate,
           grossAmount: Number(row.grossAmount),
-          eligibleAmount: row.eligibleAmount === "" ? undefined : Number(row.eligibleAmount),
           currencyCode: row.currencyCode || currencyCode,
           fineractDocumentId: row.fineractDocumentId || undefined,
         })),
@@ -396,7 +464,6 @@ export function InvoiceDiscountingForm({
             invoiceDate: toDateInput(row.invoiceDate),
             dueDate: toDateInput(row.dueDate),
             grossAmount: `${row.grossAmount}`,
-            eligibleAmount: `${row.eligibleAmount}`,
             currencyCode: row.currencyCode || currencyCode,
             fineractDocumentId: row.fineractDocumentId || "",
             documentFile: null,
@@ -413,7 +480,10 @@ export function InvoiceDiscountingForm({
       if (onComplete) {
         onComplete();
       }
-      onNext();
+      if (shouldAdvance) {
+        onNext();
+      }
+      return true;
     } catch (err) {
       console.error("Error saving invoice discounting data:", err);
       const message = err instanceof Error ? err.message : "Failed to save data";
@@ -423,19 +493,43 @@ export function InvoiceDiscountingForm({
         description: message,
         variant: "destructive",
       });
+      return false;
     } finally {
       setIsSaving(false);
     }
   };
 
+  useEffect(() => {
+    if (!onRegisterSave) return;
+
+    onRegisterSave(() => saveInvoiceDetails(false));
+
+    return () => {
+      onRegisterSave(null);
+    };
+  }, [
+    advanceRate,
+    currencyCode,
+    debtorContactEmail,
+    debtorContactName,
+    debtorContactPhone,
+    debtorName,
+    debtorRegistrationNumber,
+    debtorTaxId,
+    debtorTermsDays,
+    fineractClientId,
+    invoices,
+    leadId,
+    notes,
+    onRegisterSave,
+  ]);
+
+  const handleSaveAndNext = async () => {
+    await saveInvoiceDetails(true);
+  };
+
   if (isLoading) {
-    return (
-      <Card>
-        <CardContent className="py-10 text-center text-muted-foreground">
-          Loading invoice discounting details...
-        </CardContent>
-      </Card>
-    );
+    return <InvoiceDiscountingFormSkeleton />;
   }
 
   return (
@@ -484,41 +578,19 @@ export function InvoiceDiscountingForm({
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="recourseType">Recourse Type</Label>
-            <Select value={recourseType} onValueChange={(value: RecourseType) => setRecourseType(value)}>
-              <SelectTrigger id="recourseType">
-                <SelectValue placeholder="Select recourse type" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="WITH_RECOURSE">With Recourse</SelectItem>
-                <SelectItem value="WITHOUT_RECOURSE">Without Recourse</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="advanceRate">Advance Rate (%)</Label>
+            <Label htmlFor="advanceRate">
+              Advance Rate (%) <span className="text-red-500">*</span>
+            </Label>
             <Input
               id="advanceRate"
               type="number"
               min={0}
               max={100}
               step="0.01"
+              required
               value={advanceRate}
               onChange={(e) => setAdvanceRate(e.target.value)}
               placeholder="e.g. 70"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="concentrationLimit">Concentration Limit (%)</Label>
-            <Input
-              id="concentrationLimit"
-              type="number"
-              min={0}
-              max={100}
-              step="0.01"
-              value={concentrationLimit}
-              onChange={(e) => setConcentrationLimit(e.target.value)}
-              placeholder="Optional"
             />
           </div>
           <div className="space-y-2">
@@ -529,19 +601,6 @@ export function InvoiceDiscountingForm({
               min={0}
               value={debtorTermsDays}
               onChange={(e) => setDebtorTermsDays(e.target.value)}
-              placeholder="Optional"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="reservePercent">Reserve Percent (%)</Label>
-            <Input
-              id="reservePercent"
-              type="number"
-              min={0}
-              max={100}
-              step="0.01"
-              value={reservePercent}
-              onChange={(e) => setReservePercent(e.target.value)}
               placeholder="Optional"
             />
           </div>
@@ -598,14 +657,22 @@ export function InvoiceDiscountingForm({
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Invoice #</TableHead>
-                  <TableHead>Invoice Date</TableHead>
-                  <TableHead>Due Date</TableHead>
-                  <TableHead>File</TableHead>
-                  <TableHead>Gross</TableHead>
-                  <TableHead>Eligible</TableHead>
+                  <TableHead>
+                    Invoice # <span className="text-red-500">*</span>
+                  </TableHead>
+                  <TableHead>
+                    Invoice Date <span className="text-red-500">*</span>
+                  </TableHead>
+                  <TableHead>
+                    Due Date <span className="text-red-500">*</span>
+                  </TableHead>
+                  <TableHead>
+                    File <span className="text-red-500">*</span>
+                  </TableHead>
+                  <TableHead>
+                    Gross <span className="text-red-500">*</span>
+                  </TableHead>
                   <TableHead>Financed</TableHead>
-                  <TableHead>Reserve</TableHead>
                   <TableHead className="w-[60px]">Action</TableHead>
                 </TableRow>
               </TableHeader>
@@ -617,6 +684,7 @@ export function InvoiceDiscountingForm({
                       <TableCell>
                         <Input
                           value={row.invoiceNumber}
+                          required
                           onChange={(e) => updateInvoice(index, "invoiceNumber", e.target.value)}
                           placeholder="INV-001"
                         />
@@ -624,6 +692,7 @@ export function InvoiceDiscountingForm({
                       <TableCell>
                         <Input
                           type="date"
+                          required
                           value={row.invoiceDate}
                           onChange={(e) => updateInvoice(index, "invoiceDate", e.target.value)}
                         />
@@ -631,6 +700,7 @@ export function InvoiceDiscountingForm({
                       <TableCell>
                         <Input
                           type="date"
+                          required
                           value={row.dueDate}
                           onChange={(e) => updateInvoice(index, "dueDate", e.target.value)}
                         />
@@ -639,6 +709,7 @@ export function InvoiceDiscountingForm({
                         <div className="space-y-2">
                           <Input
                             type="file"
+                            required={!row.fineractDocumentId}
                             accept="image/*,.pdf"
                             onChange={(e) =>
                               updateInvoiceFile(index, e.target.files?.[0] || null)
@@ -662,27 +733,14 @@ export function InvoiceDiscountingForm({
                           type="number"
                           min={0}
                           step="0.01"
+                          required
                           value={row.grossAmount}
                           onChange={(e) => updateInvoice(index, "grossAmount", e.target.value)}
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <Input
-                          type="number"
-                          min={0}
-                          step="0.01"
-                          value={row.eligibleAmount}
-                          onChange={(e) => updateInvoice(index, "eligibleAmount", e.target.value)}
-                          placeholder="Auto=Gross"
                         />
                       </TableCell>
                       <TableCell className="text-sm">
                         {currencySymbol}
                         {round2(derived?.financed || 0).toLocaleString()}
-                      </TableCell>
-                      <TableCell className="text-sm">
-                        {currencySymbol}
-                        {round2(derived?.reserve || 0).toLocaleString()}
                       </TableCell>
                       {/* Invoice status is intentionally hidden for now.
                           Backend defaults every invoice row to APPROVED. */}
@@ -705,17 +763,11 @@ export function InvoiceDiscountingForm({
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-3 rounded-md border bg-muted/30 p-3 md:grid-cols-4">
+        <div className="grid grid-cols-1 gap-3 rounded-md border bg-muted/30 p-3 md:grid-cols-3">
           <div>
             <p className="text-xs text-muted-foreground">Presented</p>
             <p className="text-sm font-medium">
               {currencyCode} {round2(totals.gross).toLocaleString()}
-            </p>
-          </div>
-          <div>
-            <p className="text-xs text-muted-foreground">Eligible</p>
-            <p className="text-sm font-medium">
-              {currencyCode} {round2(totals.eligible).toLocaleString()}
             </p>
           </div>
           <div>
@@ -725,21 +777,23 @@ export function InvoiceDiscountingForm({
             </p>
           </div>
           <div>
-            <p className="text-xs text-muted-foreground">Reserve</p>
+            <p className="text-xs text-muted-foreground">Income</p>
             <p className="text-sm font-medium">
               {currencyCode} {round2(totals.reserve).toLocaleString()}
             </p>
           </div>
         </div>
       </CardContent>
-      <CardFooter className="flex justify-between border-t pt-4">
-        <Button type="button" variant="outline" onClick={onBack}>
-          Previous
-        </Button>
-        <Button type="button" onClick={handleSaveAndNext} disabled={isSaving}>
-          {isSaving ? "Saving..." : "Save & Next"}
-        </Button>
-      </CardFooter>
+      {!embedded && (
+        <CardFooter className="flex justify-between border-t pt-4">
+          <Button type="button" variant="outline" onClick={onBack}>
+            Previous
+          </Button>
+          <Button type="button" onClick={handleSaveAndNext} disabled={isSaving}>
+            {isSaving ? "Saving..." : "Save & Next"}
+          </Button>
+        </CardFooter>
+      )}
     </Card>
   );
 }
