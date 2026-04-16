@@ -1394,6 +1394,40 @@ export function ClientRegistrationForm({
     });
   };
 
+  const requiredAddressFields = [
+    "addressType",
+    "addressLine1",
+    "city",
+    "stateProvinceId",
+    "countryId",
+  ] as const;
+
+  const isAddressFieldRequired = (fieldName: string) =>
+    requiredAddressFields.includes(fieldName as (typeof requiredAddressFields)[number]);
+
+  const hasAddressFieldValue = (address: any, fieldName: string) => {
+    if (!address) return false;
+
+    if (fieldName === "addressType") {
+      return Boolean(address.addressType || address.addressTypeId);
+    }
+
+    const value = address[fieldName];
+    if (typeof value === "string") return value.trim().length > 0;
+    if (typeof value === "number") return !Number.isNaN(value) && value !== 0;
+    return value !== null && value !== undefined && value !== "";
+  };
+
+  const getAddressFieldInputClass = (fieldName: string, currentValue: any) => {
+    const isMissing =
+      isAddressFieldRequired(fieldName) &&
+      !hasAddressFieldValue({ [fieldName]: currentValue }, fieldName);
+
+    return isMissing
+      ? "border-red-500 focus-visible:ring-red-500/20"
+      : colors.textColor;
+  };
+
   // Check if address details are complete (required for affordability)
   const checkAddressSection = () => {
     if (!clientAddress) {
@@ -1404,50 +1438,16 @@ export function ClientRegistrationForm({
     // Log what we have for debugging
     console.log("checkAddressSection: clientAddress =", clientAddress);
 
-    // Check for any meaningful address data
-    // Fineract can return various field names depending on configuration
-    const hasAddressLine = !!(
-      clientAddress.addressLine1 ||
-      clientAddress.addressLine2 ||
-      clientAddress.addressLine3 ||
-      clientAddress.street ||
-      clientAddress.streetAddress ||
-      clientAddress.address
-    );
-
-    const hasLocation = !!(
-      clientAddress.city ||
-      clientAddress.townVillage ||
-      clientAddress.town ||
-      clientAddress.village ||
-      clientAddress.district ||
-      clientAddress.stateProvinceId ||
-      clientAddress.countryId ||
-      clientAddress.postalCode
-    );
-
-    // If we have an address object with any content, consider it valid
-    // This is more lenient - just having any address field is enough
-    const hasAnyAddressContent = Object.keys(clientAddress).some(
-      (key) =>
-        clientAddress[key] !== null &&
-        clientAddress[key] !== undefined &&
-        clientAddress[key] !== "" &&
-        key !== "addressId" &&
-        key !== "clientId" &&
-        key !== "client_id" &&
-        key !== "addressTypeId" &&
-        key !== "addressType" &&
-        key !== "isActive"
-    );
+    const requiredFieldStatus = requiredAddressFields.map((fieldName) => ({
+      fieldName,
+      hasValue: hasAddressFieldValue(clientAddress, fieldName),
+    }));
 
     console.log("checkAddressSection:", {
-      hasAddressLine,
-      hasLocation,
-      hasAnyAddressContent,
+      requiredFieldStatus,
     });
 
-    return hasAddressLine || hasLocation || hasAnyAddressContent;
+    return requiredFieldStatus.every((field) => field.hasValue);
   };
 
   // Helper function to get section status: 'incomplete', 'pending', or 'saved'
@@ -10113,7 +10113,10 @@ export function ClientRegistrationForm({
                                                         fieldName
                                                       ] || "";
                                                     const isRequired =
-                                                      fieldConfig.isMandatory;
+                                                      fieldConfig.isMandatory ||
+                                                      isAddressFieldRequired(
+                                                        fieldName
+                                                      );
                                                     const label =
                                                       formatHeaderName(
                                                         fieldName
@@ -10177,7 +10180,7 @@ export function ClientRegistrationForm({
                                                               })
                                                             }
                                                             placeholder={`Select ${label}`}
-                                                            className={`border-${colors.borderColor} ${colors.inputBg}`}
+                                                            className={`${isRequired && !hasAddressFieldValue(editedAddress, fieldName) ? "border-red-500 ring-red-500/20" : `border-${colors.borderColor}`} ${colors.inputBg}`}
                                                             onAddNew={() =>
                                                               setShowAddAddressTypeDialog(
                                                                 true
@@ -10243,7 +10246,7 @@ export function ClientRegistrationForm({
                                                               })
                                                             }
                                                             placeholder={`Select ${label}`}
-                                                            className={`border-${colors.borderColor} ${colors.inputBg}`}
+                                                            className={`${isRequired && !hasAddressFieldValue(editedAddress, fieldName) ? "border-red-500 ring-red-500/20" : `border-${colors.borderColor}`} ${colors.inputBg}`}
                                                             onAddNew={() =>
                                                               setShowAddStateProvinceDialog(
                                                                 true
@@ -10306,7 +10309,7 @@ export function ClientRegistrationForm({
                                                               })
                                                             }
                                                             placeholder={`Select ${label}`}
-                                                            className={`border-${colors.borderColor} ${colors.inputBg}`}
+                                                            className={`${isRequired && !hasAddressFieldValue(editedAddress, fieldName) ? "border-red-500 ring-red-500/20" : `border-${colors.borderColor}`} ${colors.inputBg}`}
                                                             onAddNew={() =>
                                                               setShowAddCountryDialog(
                                                                 true
@@ -10354,13 +10357,14 @@ export function ClientRegistrationForm({
                                                                   ) || 0,
                                                               })
                                                             }
-                                                            placeholder={label}
-                                                            className={
-                                                              colors.textColor
-                                                            }
-                                                            required={
-                                                              isRequired
-                                                            }
+                                                          placeholder={label}
+                                                          className={getAddressFieldInputClass(
+                                                            fieldName,
+                                                            fieldValue
+                                                          )}
+                                                          required={
+                                                            isRequired
+                                                          }
                                                           />
                                                         </div>
                                                       );
@@ -10398,9 +10402,10 @@ export function ClientRegistrationForm({
                                                             })
                                                           }
                                                           placeholder={label}
-                                                          className={
-                                                            colors.textColor
-                                                          }
+                                                          className={getAddressFieldInputClass(
+                                                            fieldName,
+                                                            fieldValue
+                                                          )}
                                                           required={isRequired}
                                                         />
                                                       </div>
@@ -10415,6 +10420,9 @@ export function ClientRegistrationForm({
                                                       className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
                                                     >
                                                       Address Type
+                                                      <span className="text-red-500 ml-1">
+                                                        *
+                                                      </span>
                                                     </Label>
                                                     <SearchableSelect
                                                       options={(
@@ -10443,7 +10451,7 @@ export function ClientRegistrationForm({
                                                         })
                                                       }
                                                       placeholder="Select Address Type"
-                                                      className={`border-${colors.borderColor} ${colors.inputBg}`}
+                                                      className={`${!hasAddressFieldValue(editedAddress, "addressType") ? "border-red-500 ring-red-500/20" : `border-${colors.borderColor}`} ${colors.inputBg}`}
                                                       onAddNew={() =>
                                                         setShowAddAddressTypeDialog(
                                                           true
@@ -10457,6 +10465,9 @@ export function ClientRegistrationForm({
                                                       className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
                                                     >
                                                       Address Line 1
+                                                      <span className="text-red-500 ml-1">
+                                                        *
+                                                      </span>
                                                     </Label>
                                                     <Input
                                                       value={
@@ -10471,9 +10482,11 @@ export function ClientRegistrationForm({
                                                         })
                                                       }
                                                       placeholder="Address Line 1"
-                                                      className={
-                                                        colors.textColor
-                                                      }
+                                                      className={getAddressFieldInputClass(
+                                                        "addressLine1",
+                                                        editedAddress.addressLine1
+                                                      )}
+                                                      required
                                                     />
                                                   </div>
                                                   <div className="space-y-2">
@@ -10529,6 +10542,9 @@ export function ClientRegistrationForm({
                                                       className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
                                                     >
                                                       City
+                                                      <span className="text-red-500 ml-1">
+                                                        *
+                                                      </span>
                                                     </Label>
                                                     <Input
                                                       value={
@@ -10541,9 +10557,11 @@ export function ClientRegistrationForm({
                                                         })
                                                       }
                                                       placeholder="City"
-                                                      className={
-                                                        colors.textColor
-                                                      }
+                                                      className={getAddressFieldInputClass(
+                                                        "city",
+                                                        editedAddress.city
+                                                      )}
+                                                      required
                                                     />
                                                   </div>
                                                   <div className="space-y-2">
@@ -10599,6 +10617,9 @@ export function ClientRegistrationForm({
                                                       className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
                                                     >
                                                       State/Province
+                                                      <span className="text-red-500 ml-1">
+                                                        *
+                                                      </span>
                                                     </Label>
                                                     <SearchableSelect
                                                       options={(
@@ -10625,7 +10646,7 @@ export function ClientRegistrationForm({
                                                         })
                                                       }
                                                       placeholder="Select State/Province"
-                                                      className={`border-${colors.borderColor} ${colors.inputBg}`}
+                                                      className={`${!hasAddressFieldValue(editedAddress, "stateProvinceId") ? "border-red-500 ring-red-500/20" : `border-${colors.borderColor}`} ${colors.inputBg}`}
                                                       onAddNew={() =>
                                                         setShowAddStateProvinceDialog(
                                                           true
@@ -10640,6 +10661,9 @@ export function ClientRegistrationForm({
                                                       className={`text-xs font-semibold uppercase tracking-wide ${colors.textColorMuted}`}
                                                     >
                                                       Country
+                                                      <span className="text-red-500 ml-1">
+                                                        *
+                                                      </span>
                                                     </Label>
                                                     <SearchableSelect
                                                       options={(
@@ -10666,7 +10690,7 @@ export function ClientRegistrationForm({
                                                         })
                                                       }
                                                       placeholder="Select Country"
-                                                      className={`border-${colors.borderColor} ${colors.inputBg}`}
+                                                      className={`${!hasAddressFieldValue(editedAddress, "countryId") ? "border-red-500 ring-red-500/20" : `border-${colors.borderColor}`} ${colors.inputBg}`}
                                                       onAddNew={() =>
                                                         setShowAddCountryDialog(
                                                           true
@@ -10770,6 +10794,51 @@ export function ClientRegistrationForm({
                                                           "Validation Error",
                                                         description:
                                                           "Please select an address type before saving",
+                                                      });
+                                                      setSavingAddress(false);
+                                                      return;
+                                                    }
+
+                                                    const missingAddressFields =
+                                                      [
+                                                        {
+                                                          key: "addressLine1",
+                                                          label:
+                                                            "address line 1",
+                                                        },
+                                                        {
+                                                          key: "city",
+                                                          label: "city",
+                                                        },
+                                                        {
+                                                          key: "stateProvinceId",
+                                                          label: "state",
+                                                        },
+                                                        {
+                                                          key: "countryId",
+                                                          label: "country",
+                                                        },
+                                                      ].filter(
+                                                        ({ key }) =>
+                                                          !hasAddressFieldValue(
+                                                            editedAddress,
+                                                            key
+                                                          )
+                                                      );
+
+                                                    if (
+                                                      missingAddressFields.length >
+                                                      0
+                                                    ) {
+                                                      error({
+                                                        title:
+                                                          "Validation Error",
+                                                        description: `Please complete ${missingAddressFields
+                                                          .map(
+                                                            ({ label }) =>
+                                                              label
+                                                          )
+                                                          .join(", ")} before saving`,
                                                       });
                                                       setSavingAddress(false);
                                                       return;
