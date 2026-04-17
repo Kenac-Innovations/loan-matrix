@@ -6,6 +6,7 @@ import {
 } from "@/lib/loan-statement-template";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
 import { getSession, getCurrentUserDetails } from "@/lib/auth";
+import { resolveInterestRateDisplayMode } from "@/lib/interest-rate-display";
 
 const baseUrl = process.env.FINERACT_BASE_URL || "http://10.10.0.143:8443";
 
@@ -100,6 +101,10 @@ export async function GET(
       name: tenant?.name || "Organization",
       logoUrl: tenant?.logoFileUrl || undefined,
     };
+    const interestRateDisplayMode = resolveInterestRateDisplayMode(
+      tenant?.slug,
+      tenant?.settings
+    );
 
     const session = await getSession();
     let preparedBy: string | undefined;
@@ -153,7 +158,8 @@ export async function GET(
       formattedFromDate,
       formattedToDate,
       undefined,
-      preparedBy
+      preparedBy,
+      interestRateDisplayMode
     );
 
     // Return based on requested format
