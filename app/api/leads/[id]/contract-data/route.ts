@@ -430,6 +430,18 @@ function getForwardedHeaders(
   return forwardedHeaders;
 }
 
+function getRequestOrigin(request: NextRequest): string {
+  const forwardedProto = request.headers.get("x-forwarded-proto");
+  const forwardedHost = request.headers.get("x-forwarded-host");
+  const host = forwardedHost || request.headers.get("host");
+
+  if (host) {
+    return `${forwardedProto || "https"}://${host}`;
+  }
+
+  return request.nextUrl.origin;
+}
+
 export async function GET(
   request: NextRequest,
   context: { params: Promise<{ id: string }> },
@@ -443,6 +455,7 @@ export async function GET(
     console.log("Tenant slug:", tenantSlug);
     const tenant = await getTenantBySlug(tenantSlug);
     const forwardedHeaders = getForwardedHeaders(request);
+    const requestOrigin = getRequestOrigin(request);
 
     if (!tenant) {
       console.error("Tenant not found for slug:", tenantSlug);
@@ -543,7 +556,7 @@ export async function GET(
     // Fetch loan details
     console.log("Fetching loan details...");
     const loanDetailsResponse = await fetch(
-      `${request.nextUrl.origin}/api/leads/${leadId}/loan-details`,
+      `${requestOrigin}/api/leads/${leadId}/loan-details`,
       {
         headers: forwardedHeaders,
       },
@@ -557,7 +570,7 @@ export async function GET(
     // Fetch loan terms
     console.log("Fetching loan terms...");
     const loanTermsResponse = await fetch(
-      `${request.nextUrl.origin}/api/leads/${leadId}/loan-terms`,
+      `${requestOrigin}/api/leads/${leadId}/loan-terms`,
       {
         headers: forwardedHeaders,
       },
@@ -731,7 +744,7 @@ export async function GET(
     if (lead.fineractClientId && resolvedProductId) {
       try {
         const templateResponse = await fetch(
-          `${request.nextUrl.origin}/api/fineract/loans/template?clientId=${lead.fineractClientId}&productId=${resolvedProductId}&activeOnly=true&staffInSelectedOfficeOnly=true&templateType=individual`,
+          `${requestOrigin}/api/fineract/loans/template?clientId=${lead.fineractClientId}&productId=${resolvedProductId}&activeOnly=true&staffInSelectedOfficeOnly=true&templateType=individual`,
           {
             headers: forwardedHeaders,
           },
@@ -833,7 +846,7 @@ export async function GET(
         };
 
         const scheduleResponse = await fetch(
-          `${request.nextUrl.origin}/api/fineract/loans/calculate-schedule`,
+          `${requestOrigin}/api/fineract/loans/calculate-schedule`,
           {
             method: "POST",
             headers: getForwardedHeaders(request, {
