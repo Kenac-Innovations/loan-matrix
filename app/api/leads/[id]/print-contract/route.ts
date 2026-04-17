@@ -20,10 +20,29 @@ type ContractDataResponse = {
   error?: string;
 };
 
+function getRequestOrigin(request: NextRequest): string {
+  const forwardedProto = request.headers.get("x-forwarded-proto");
+  const forwardedHost = request.headers.get("x-forwarded-host");
+  const host = forwardedHost || request.headers.get("host");
+
+  if (host) {
+    return `${forwardedProto || "https"}://${host}`;
+  }
+
+  return request.nextUrl.origin;
+}
+
 function getForwardedHeaders(request: NextRequest): HeadersInit {
   const forwardedHeaders: HeadersInit = {};
 
-  for (const headerName of ["cookie", "origin", "referer"]) {
+  for (const headerName of [
+    "cookie",
+    "origin",
+    "referer",
+    "x-forwarded-host",
+    "x-forwarded-proto",
+    "host",
+  ]) {
     const value = request.headers.get(headerName);
     if (value) {
       forwardedHeaders[headerName] = value;
@@ -44,18 +63,15 @@ function injectContractChrome(
   const baseTag = `<base href="${origin}/">`;
   const toolbar = `
     <div style="position:sticky;top:0;z-index:9999;display:flex;gap:12px;align-items:center;padding:12px 16px;border-bottom:1px solid #e5e7eb;background:#ffffff;">
-      <button type="button" onclick="window.print()" style="border:1px solid #cbd5e1;border-radius:8px;background:#ffffff;padding:10px 14px;font:600 14px sans-serif;cursor:pointer;">
-        Print
-      </button>
+      <span style="flex:1;font:400 12px sans-serif;color:#64748b;">
+        To hide browser-added headers and footers, open the print dialog settings and turn off headers and footers.
+      </span>
       <button type="button" id="download-pdf-btn" data-filename="${options.fileName}" style="border:1px solid #cbd5e1;border-radius:8px;background:#ffffff;padding:10px 14px;font:600 14px sans-serif;cursor:pointer;">
         Download PDF
       </button>
-      <button type="button" onclick="window.location.reload()" style="border:1px solid #cbd5e1;border-radius:8px;background:#ffffff;padding:10px 14px;font:600 14px sans-serif;cursor:pointer;">
-        Refresh
+      <button type="button" onclick="window.print()" style="border:1px solid #cbd5e1;border-radius:8px;background:#ffffff;padding:10px 14px;font:600 14px sans-serif;cursor:pointer;">
+        Print
       </button>
-      <span style="font:400 12px sans-serif;color:#64748b;">
-        If the browser adds headers or footers, turn them off in the print dialog.
-      </span>
     </div>
   `;
   const actionScript = `
@@ -113,10 +129,7 @@ function injectContractChrome(
       });
     </script>
   `;
-  const pdfScript =
-    options.action === "pdf" || options.action === "view"
-      ? `<script src="/html2pdf.bundle.min.js"></script>`
-      : "";
+  const pdfScript = `<script src="/html2pdf.bundle.min.js"></script>`;
 
   let output = html;
 
@@ -184,6 +197,7 @@ export async function GET(
 
     const { id: leadId } = await context.params;
     const tenantSlug = extractTenantSlugFromRequest(request);
+    const requestOrigin = getRequestOrigin(request);
     const forwardedHeaders = getForwardedHeaders(request);
     const actionParam = request.nextUrl.searchParams.get("action");
     const action =
@@ -220,11 +234,11 @@ export async function GET(
     }
 
     const [contractDataResponse, templateResponse] = await Promise.all([
-      fetch(`${request.nextUrl.origin}/api/leads/${leadId}/contract-data`, {
+      fetch(`${requestOrigin}/api/leads/${leadId}/contract-data`, {
         headers: forwardedHeaders,
         cache: "no-store",
       }),
-      fetch(`${request.nextUrl.origin}/api/tenant/contract-template?slug=full-loan`, {
+      fetch(`${requestOrigin}/api/tenant/contract-template?slug=full-loan`, {
         headers: forwardedHeaders,
         cache: "no-store",
       }),
@@ -256,7 +270,7 @@ export async function GET(
       : generateContractHTML(contractPayload.data);
 
     const contractFileName = `loan-contract-${leadId}.pdf`;
-    const printableHtml = injectContractChrome(contractHtml, request.nextUrl.origin, {
+    const printableHtml = injectContractChrome(contractHtml, requestOrigin, {
       action,
       fileName: contractFileName,
     });
