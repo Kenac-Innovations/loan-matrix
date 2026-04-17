@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getFineractServiceWithSession } from "@/lib/fineract-api";
 import { prisma } from "@/lib/prisma";
 import { extractTenantSlugFromRequest } from "@/lib/tenant-service";
+import { getTenantFeatures } from "@/lib/tenant-features";
 
 /**
  * GET /api/leads/reports
@@ -18,8 +19,28 @@ export async function GET(request: NextRequest) {
     const report = searchParams.get("report") || "pending";
     const startDate = searchParams.get("startDate");
     const endDate = searchParams.get("endDate");
+    const tenantSlug = extractTenantSlugFromRequest(request);
+    const tenant = await prisma.tenant.findFirst({
+      where: { slug: tenantSlug, isActive: true },
+      select: {
+        id: true,
+        slug: true,
+        settings: true,
+      },
+    });
+    const tenantFeatures = getTenantFeatures(tenant?.settings);
+    const allowOpenDateRange =
+      tenantFeatures.showAllLeadsByDefault === true || tenantSlug === "omama";
+    const hasFullDateRange = Boolean(startDate && endDate);
 
-    if (!startDate || !endDate) {
+    if ((startDate && !endDate) || (!startDate && endDate)) {
+      return NextResponse.json(
+        { error: "startDate and endDate must be provided together" },
+        { status: 400 }
+      );
+    }
+
+    if (!hasFullDateRange && !allowOpenDateRange) {
       return NextResponse.json(
         { error: "startDate and endDate are required" },
         { status: 400 }
@@ -28,7 +49,13 @@ export async function GET(request: NextRequest) {
 
     // Handle drafts from local database
     if (report === "drafts") {
-      return await getDraftsFromLocalDB(startDate, endDate, request);
+      return await getDraftsFromLocalDB({
+        startDate,
+        endDate,
+        tenantId: tenant?.id ?? null,
+        tenantSlug,
+        allowOpenDateRange,
+      });
     }
 
     // Map report type to Fineract report name
@@ -51,8 +78,7 @@ export async function GET(request: NextRequest) {
     
     // Call the Fineract report API
     const data = await fineractService.runReport(reportName, {
-      startDate,
-      endDate,
+      ...(hasFullDateRange ? { startDate, endDate } : {}),
       locale: "en",
       dateFormat: "yyyy-MM-dd",
     });
@@ -66,12 +92,6 @@ export async function GET(request: NextRequest) {
 
     // Enrich with local lead IDs and payout status by looking up via fineractLoanId
     if (result.length > 0) {
-      // Get tenant from header
-      const tenantSlug = extractTenantSlugFromRequest(request);
-      const tenant = await prisma.tenant.findFirst({
-        where: { slug: tenantSlug, isActive: true },
-      });
-
       if (tenant) {
         // Extract loan IDs and external IDs (lead IDs) from the report data
         const loanIds = result
@@ -114,8 +134,8 @@ export async function GET(request: NextRequest) {
           ];
           const uniqueFineractLoanIds = [...new Set(allFineractLoanIds)];
 
-          let payoutStatusMap = new Map<number, string>();
-          let payoutPaymentMethodMap = new Map<number, string>();
+          const payoutStatusMap = new Map<number, string>();
+          const payoutPaymentMethodMap = new Map<number, string>();
           if (report === "disbursed" && uniqueFineractLoanIds.length > 0) {
             const payouts = await prisma.loanPayout.findMany({
               where: {
@@ -235,15 +255,21 @@ export async function GET(request: NextRequest) {
 /**
  * Fetch draft leads from local database
  */
-async function getDraftsFromLocalDB(startDate: string, endDate: string, request: NextRequest) {
+async function getDraftsFromLocalDB({
+  startDate,
+  endDate,
+  tenantId,
+  tenantSlug,
+  allowOpenDateRange,
+}: {
+  startDate: string | null;
+  endDate: string | null;
+  tenantId: string | null;
+  tenantSlug: string;
+  allowOpenDateRange: boolean;
+}) {
   try {
-    const tenantSlug = extractTenantSlugFromRequest(request);
-    
-    const tenant = await prisma.tenant.findFirst({
-      where: { slug: tenantSlug, isActive: true },
-    });
-    
-    if (!tenant) {
+    if (!tenantId) {
       console.error("Tenant not found for slug:", tenantSlug);
       return NextResponse.json(
         { error: `Tenant not found: ${tenantSlug}` },
@@ -251,16 +277,28 @@ async function getDraftsFromLocalDB(startDate: string, endDate: string, request:
       );
     }
 
-    const startDateTime = new Date(startDate);
-    startDateTime.setHours(0, 0, 0, 0);
-    
-    const endDateTime = new Date(endDate);
-    endDateTime.setHours(23, 59, 59, 999);
+    const hasFullDateRange = Boolean(startDate && endDate);
+    const startDateTime = hasFullDateRange ? new Date(startDate!) : null;
+    const endDateTime = hasFullDateRange ? new Date(endDate!) : null;
 
-    console.log("Fetching drafts for tenant:", tenant.id, "from", startDateTime, "to", endDateTime);
+    if (startDateTime) {
+      startDateTime.setHours(0, 0, 0, 0);
+    }
+    if (endDateTime) {
+      endDateTime.setHours(23, 59, 59, 999);
+    }
+
+    console.log(
+      "Fetching drafts for tenant:",
+      tenantId,
+      "from",
+      startDateTime,
+      "to",
+      endDateTime
+    );
 
     // Fetch Fineract users to map user IDs to names and offices
-    let userMap: Record<string, { name: string; office: string }> = {};
+    const userMap: Record<string, { name: string; office: string }> = {};
     try {
       const fineractService = await getFineractServiceWithSession();
       const users = await fineractService.getUsers();
@@ -275,16 +313,34 @@ async function getDraftsFromLocalDB(startDate: string, endDate: string, request:
     }
 
     const draftMaxAge = new Date(Date.now() - 48 * 60 * 60 * 1000);
+    let createdAtFilter:
+      | {
+          gte: Date;
+          lte?: Date;
+        }
+      | undefined;
+
+    if (hasFullDateRange && startDateTime && endDateTime) {
+      createdAtFilter = {
+        gte: allowOpenDateRange
+          ? startDateTime
+          : startDateTime > draftMaxAge
+          ? startDateTime
+          : draftMaxAge,
+        lte: endDateTime,
+      };
+    } else if (!allowOpenDateRange) {
+      createdAtFilter = {
+        gte: draftMaxAge,
+      };
+    }
 
     const drafts = await prisma.lead.findMany({
       where: {
-        tenantId: tenant.id,
+        tenantId,
         loanSubmittedToFineract: false,
         status: "DRAFT",
-        createdAt: {
-          gte: startDateTime > draftMaxAge ? startDateTime : draftMaxAge,
-          lte: endDateTime,
-        },
+        ...(createdAtFilter ? { createdAt: createdAtFilter } : {}),
       },
       orderBy: { createdAt: "desc" },
       select: {

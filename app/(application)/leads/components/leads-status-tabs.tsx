@@ -31,6 +31,7 @@ import {
 import { format, startOfDay, endOfDay } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useIsMobile } from "@/hooks/use-media-query";
+import { useFeatureFlags } from "@/hooks/use-feature-flags";
 import Link from "next/link";
 import { GenericDataTable, DataTableColumn } from "@/components/tables/generic-data-table";
 import { formatCurrency } from "@/lib/format-currency";
@@ -50,8 +51,8 @@ interface DateRange {
 interface ReportData {
   report: string;
   reportName: string;
-  startDate: string;
-  endDate: string;
+  startDate: string | null;
+  endDate: string | null;
   count: number;
   data: any[];
   rawColumnHeaders?: string[];
@@ -119,6 +120,13 @@ const TABS: TabConfig[] = [
 // Auto-refresh interval (10 seconds)
 const REFRESH_INTERVAL = 10000;
 
+function createTodayDateRange(): DateRange {
+  return {
+    from: startOfDay(new Date()),
+    to: endOfDay(new Date()),
+  };
+}
+
 function formatDuration(ms: number): string {
   if (ms < 0) return "—";
   const mins = Math.floor(ms / 60000);
@@ -130,9 +138,19 @@ function formatDuration(ms: number): string {
 }
 
 // Helper component for date range label
-function DateRangeLabel({ dateRange }: { dateRange: DateRange }) {
-  if (!dateRange.to) {
-    return <>{format(dateRange.from, "MMM d, yyyy")}</>;
+function DateRangeLabel({
+  dateRange,
+  isReady,
+}: {
+  dateRange: DateRange | null;
+  isReady: boolean;
+}) {
+  if (!isReady) {
+    return <>Loading dates...</>;
+  }
+
+  if (!dateRange) {
+    return <>All dates</>;
   }
   
   return (
@@ -171,15 +189,20 @@ function getTenantSlugFromHost(): string {
 export function LeadsStatusTabs() {
   const { data: session } = useSession();
   const { currencyCode: orgCurrency, locale: tenantLocale } = useCurrency();
+  const {
+    isEnabled,
+    isLoading: featureFlagsLoading,
+    tenantSlug: featureTenantSlug,
+  } = useFeatureFlags();
   const isMobile = useIsMobile();
   const [activeTab, setActiveTab] = useState("drafts");
-  const [dateRange, setDateRange] = useState<DateRange>({
-    from: startOfDay(new Date()),
-    to: endOfDay(new Date()),
-  });
+  const [dateRange, setDateRange] = useState<DateRange | null>(null);
+  const [dateRangeReady, setDateRangeReady] = useState(false);
   
   // Get tenant slug from hostname
-  const tenantSlug = getTenantSlugFromHost();
+  const tenantSlug = featureTenantSlug || getTenantSlugFromHost();
+  const showAllLeadsByDefault =
+    isEnabled("showAllLeadsByDefault") || tenantSlug === "omama";
   
   // Get user info for role-based filtering
   const sessionOfficeName = (session?.user as any)?.officeName;
@@ -336,6 +359,13 @@ export function LeadsStatusTabs() {
   // Format date for API
   const formatDateForAPI = (date: Date) => format(date, "yyyy-MM-dd");
 
+  useEffect(() => {
+    if (featureFlagsLoading || dateRangeReady) return;
+
+    setDateRange(showAllLeadsByDefault ? null : createTodayDateRange());
+    setDateRangeReady(true);
+  }, [dateRangeReady, featureFlagsLoading, showAllLeadsByDefault]);
+
   // Fetch pipeline progress for a set of lead IDs and merge into cache
   const fetchPipelineProgress = useCallback(async (leadIds: string[]) => {
     if (leadIds.length === 0) return;
@@ -358,17 +388,19 @@ export function LeadsStatusTabs() {
   // Fetch report data
   const fetchReport = useCallback(
     async (report: string, showLoader = true) => {
+      if (!dateRangeReady) return;
+
       if (showLoader) {
         setLoading((prev) => ({ ...prev, [report]: true }));
       }
       setErrors((prev) => ({ ...prev, [report]: null }));
 
       try {
-        const params = new URLSearchParams({
-          report,
-          startDate: formatDateForAPI(dateRange.from),
-          endDate: formatDateForAPI(dateRange.to),
-        });
+        const params = new URLSearchParams({ report });
+        if (dateRange) {
+          params.set("startDate", formatDateForAPI(dateRange.from));
+          params.set("endDate", formatDateForAPI(dateRange.to));
+        }
 
         const response = await fetch(`/api/leads/reports?${params}`, {
           headers: {
@@ -406,22 +438,25 @@ export function LeadsStatusTabs() {
         setLoading((prev) => ({ ...prev, [report]: false }));
       }
     },
-    [dateRange, tenantSlug, fetchPipelineProgress]
+    [dateRange, dateRangeReady, tenantSlug, fetchPipelineProgress]
   );
 
   // Fetch all counts on mount and when date range changes
   useEffect(() => {
+    if (!dateRangeReady) return;
     TABS.forEach((tab) => fetchReport(tab.report));
-  }, [dateRange, fetchReport]);
+  }, [dateRangeReady, fetchReport]);
 
   // Auto-refresh active tab
   useEffect(() => {
+    if (!dateRangeReady) return;
+
     const interval = setInterval(() => {
       fetchReport(activeTab, false); // Silent refresh without loader
     }, REFRESH_INTERVAL);
 
     return () => clearInterval(interval);
-  }, [activeTab, fetchReport]);
+  }, [activeTab, dateRangeReady, fetchReport]);
 
   // Handle tab change
   const handleTabChange = (tabId: string) => {
@@ -836,6 +871,14 @@ export function LeadsStatusTabs() {
     const error = errors[report];
     const columns = tabColumns[report];
 
+    if (!dateRangeReady) {
+      return (
+        <div className="flex items-center justify-center py-16">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </div>
+      );
+    }
+
     if (isLoading && !data) {
       return (
         <div className="flex items-center justify-center py-16">
@@ -862,9 +905,18 @@ export function LeadsStatusTabs() {
       return (
         <div className="text-center py-16 text-muted-foreground">
           <Clock className="h-12 w-12 mx-auto mb-4 opacity-50" />
-          <p>No records found for the selected date range.</p>
+          <p>
+            {dateRange
+              ? "No records found for the selected date range."
+              : "No records found across all available dates."}
+          </p>
           <p className="text-sm mt-2">
-            {format(dateRange.from, "MMM d, yyyy")} - {format(dateRange.to, "MMM d, yyyy")}
+            {dateRange
+              ? `${format(dateRange.from, "MMM d, yyyy")} - ${format(
+                  dateRange.to,
+                  "MMM d, yyyy"
+                )}`
+              : "Showing all dates"}
           </p>
         </div>
       );
@@ -996,7 +1048,9 @@ export function LeadsStatusTabs() {
           enableColumnVisibility={true}
           enableExport={true}
           pageSize={20}
-          exportFileName={`leads-${report}-${format(dateRange.from, "yyyy-MM-dd")}`}
+          exportFileName={`leads-${report}-${
+            dateRange ? format(dateRange.from, "yyyy-MM-dd") : "all-dates"
+          }`}
           onRowClick={navigatingRowId ? undefined : (row: any) => {
             // Get the lead ID from available fields
             const leadId = row.lead_id || row.external_id || row.client_external_id;
@@ -1100,19 +1154,19 @@ export function LeadsStatusTabs() {
                     variant="outline"
                     className={cn(
                       "justify-start text-left font-normal flex-1 sm:flex-none sm:min-w-[240px] text-xs sm:text-sm",
-                      !dateRange && "text-muted-foreground"
+                      !dateRangeReady && "text-muted-foreground"
                     )}
                   >
                     <CalendarIcon className="mr-2 h-4 w-4 flex-shrink-0" />
-                    <DateRangeLabel dateRange={dateRange} />
+                    <DateRangeLabel dateRange={dateRange} isReady={dateRangeReady} />
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-0" align="end">
                   <Calendar
                     initialFocus
                     mode="range"
-                    defaultMonth={dateRange?.from}
-                    selected={{ from: dateRange.from, to: dateRange.to }}
+                    defaultMonth={dateRange?.from ?? new Date()}
+                    selected={dateRange ? { from: dateRange.from, to: dateRange.to } : undefined}
                     onSelect={(range) => {
                       if (range?.from) {
                         setDateRange({
@@ -1124,15 +1178,20 @@ export function LeadsStatusTabs() {
                     numberOfMonths={isMobile ? 1 : 2}
                   />
                   <div className="border-t dark:border-border p-3 flex gap-2 flex-wrap">
+                    {showAllLeadsByDefault && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setDateRange(null)}
+                      >
+                        All dates
+                      </Button>
+                    )}
                     <Button
                       variant="outline"
                       size="sm"
                       onClick={() => {
-                        const today = new Date();
-                        setDateRange({
-                          from: startOfDay(today),
-                          to: endOfDay(today),
-                        });
+                        setDateRange(createTodayDateRange());
                       }}
                     >
                       Today

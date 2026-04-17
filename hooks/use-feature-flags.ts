@@ -18,12 +18,18 @@ function getTenantSlugFromHost(): string {
   
   const host = globalThis.location.hostname;
   
-  // Handle localhost development
+  // Handle plain localhost (no subdomain)
   if (host === "localhost" || host === "127.0.0.1") {
     return "goodfellow";
   }
+
+  // Handle subdomain.localhost (e.g. omama.localhost)
+  if (host.endsWith(".localhost")) {
+    const subdomain = host.replace(".localhost", "");
+    return subdomain || "goodfellow";
+  }
   
-  // Extract subdomain (first part of hostname)
+  // Extract subdomain from full domains (e.g. omama.kenacloanmatrix.com)
   const parts = host.split(".");
   if (parts.length > 2) {
     return parts[0];
@@ -73,7 +79,7 @@ export function useFeatureFlags() {
           features: { ...DEFAULT_FEATURES, ...data.features },
           isLoading: false,
           error: null,
-          tenantSlug,
+          tenantSlug: data.tenantSlug || tenantSlug,
         });
       } catch (error) {
         console.error("Error fetching feature flags:", error);

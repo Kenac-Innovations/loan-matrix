@@ -22,6 +22,8 @@ export interface TenantFeatures {
   canEditLoan: boolean;
   /** Enable invoice discounting module inside lead creation flow */
   hasInvoiceDiscounting: boolean;
+  /** Default lead pipeline to all dates instead of today's date */
+  showAllLeadsByDefault: boolean;
 }
 
 /**
@@ -70,6 +72,7 @@ export const DEFAULT_FEATURES: TenantFeatures = {
   receiptRanges: false,
   canEditLoan: false,
   hasInvoiceDiscounting: false,
+  showAllLeadsByDefault: false,
 };
 
 export interface TenantInfo {

@@ -29,6 +29,12 @@ export async function GET(
     const lead = await prisma.lead.findUnique({
       where: { id: leadId },
       include: {
+        tenant: {
+          select: {
+            slug: true,
+            settings: true,
+          },
+        },
         currentStage: true,
         familyMembers: true,
         entityStakeholders: {
@@ -160,6 +166,12 @@ export async function GET(
       fineractClient: null,
       fineractLoan: null,
       invoiceDiscounting: lead.invoiceDiscountingCase || null,
+      tenant: lead.tenant
+        ? {
+            slug: lead.tenant.slug,
+            settings: lead.tenant.settings,
+          }
+        : null,
     };
 
     // Get the mapped Fineract tenant ID early (e.g., "goodfellow" -> "goodfellow-training")
