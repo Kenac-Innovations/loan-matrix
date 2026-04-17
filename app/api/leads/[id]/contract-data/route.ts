@@ -11,9 +11,15 @@ type FineractLoanLike = {
   externalId?: string;
   loanProductId?: number;
   loanProductName?: string;
+  loanPurposeId?: number;
   loanOfficerId?: number;
   loanOfficerName?: string;
   fundId?: number;
+  timeline?: {
+    submittedOnDate?: string | number[];
+    expectedDisbursementDate?: string | number[];
+    actualDisbursementDate?: string | number[];
+  };
   currency?: {
     code?: string;
     displaySymbol?: string;
@@ -60,6 +66,30 @@ type FineractLoanLike = {
     totalRepayment?: number;
   };
 };
+
+type LoanDetailsLike = {
+  facilityType: string;
+  productName: string;
+  productId: string;
+  loanPurpose: string;
+  loanPurposeName: string;
+  loanOfficer: string;
+  fund: string;
+  submittedOn: string | null;
+  disbursementOn: string | null;
+  firstRepaymentOn: string | null;
+  linkSavings: string;
+  createStandingInstructions: boolean;
+};
+
+type LoanTermsLike = ReturnType<typeof mapFineractLoanToLoanTerms>;
+
+function hasMeaningfulValue(value: unknown): boolean {
+  if (value === null || value === undefined) return false;
+  if (typeof value === "string") return value.trim() !== "";
+  if (Array.isArray(value)) return value.length > 0;
+  return true;
+}
 
 function normalizeDateValue(value: string | number[] | null | undefined): string | null {
   if (!value) return null;
@@ -136,6 +166,208 @@ function mapFineractLoanToLoanTerms(fineractLoan: FineractLoanLike) {
   };
 }
 
+function mapFineractLoanToLoanDetails(
+  fineractLoan: FineractLoanLike,
+  lead: {
+    facilityType?: string | null;
+    loanProductName?: string | null;
+    loanProductId?: number | null;
+    loanPurpose?: string | null;
+    loanPurposeId?: number | null;
+    loanOfficerId?: number | null;
+    fundId?: number | null;
+    submittedOnDate?: Date | string | null;
+    expectedDisbursementDate?: Date | string | null;
+  }
+): LoanDetailsLike {
+  const submittedOn =
+    normalizeDateValue(fineractLoan.timeline?.submittedOnDate) ||
+    (lead.submittedOnDate ? new Date(lead.submittedOnDate).toISOString() : null);
+  const disbursementOn =
+    normalizeDateValue(fineractLoan.timeline?.expectedDisbursementDate) ||
+    normalizeDateValue(fineractLoan.timeline?.actualDisbursementDate) ||
+    (lead.expectedDisbursementDate
+      ? new Date(lead.expectedDisbursementDate).toISOString()
+      : null);
+
+  return {
+    facilityType: lead.facilityType || "TERM_LOAN",
+    productName: lead.loanProductName || fineractLoan.loanProductName || "",
+    productId:
+      lead.loanProductId?.toString() ||
+      fineractLoan.loanProductId?.toString() ||
+      "",
+    loanPurpose:
+      lead.loanPurposeId?.toString() ||
+      fineractLoan.loanPurposeId?.toString() ||
+      "",
+    loanPurposeName: lead.loanPurpose || "",
+    loanOfficer:
+      lead.loanOfficerId?.toString() ||
+      fineractLoan.loanOfficerId?.toString() ||
+      "",
+    fund:
+      lead.fundId?.toString() ||
+      fineractLoan.fundId?.toString() ||
+      "",
+    submittedOn,
+    disbursementOn,
+    firstRepaymentOn: getFirstRepaymentFromSchedule(fineractLoan.repaymentSchedule),
+    linkSavings: "",
+    createStandingInstructions: false,
+  };
+}
+
+function mergeLoanDetailsWithFineract(
+  localLoanDetails: LoanDetailsLike | null,
+  fineractLoan: FineractLoanLike,
+  lead: Parameters<typeof mapFineractLoanToLoanDetails>[1]
+): LoanDetailsLike {
+  const fineractLoanDetails = mapFineractLoanToLoanDetails(fineractLoan, lead);
+
+  return {
+    facilityType:
+      fineractLoanDetails.facilityType ||
+      localLoanDetails?.facilityType ||
+      "TERM_LOAN",
+    productName:
+      fineractLoanDetails.productName || localLoanDetails?.productName || "",
+    productId:
+      fineractLoanDetails.productId || localLoanDetails?.productId || "",
+    loanPurpose:
+      fineractLoanDetails.loanPurpose || localLoanDetails?.loanPurpose || "",
+    loanPurposeName:
+      localLoanDetails?.loanPurposeName ||
+      fineractLoanDetails.loanPurposeName ||
+      "",
+    loanOfficer:
+      fineractLoanDetails.loanOfficer || localLoanDetails?.loanOfficer || "",
+    fund: fineractLoanDetails.fund || localLoanDetails?.fund || "",
+    submittedOn:
+      fineractLoanDetails.submittedOn || localLoanDetails?.submittedOn || null,
+    disbursementOn:
+      fineractLoanDetails.disbursementOn ||
+      localLoanDetails?.disbursementOn ||
+      null,
+    firstRepaymentOn:
+      fineractLoanDetails.firstRepaymentOn ||
+      localLoanDetails?.firstRepaymentOn ||
+      null,
+    linkSavings: localLoanDetails?.linkSavings || fineractLoanDetails.linkSavings,
+    createStandingInstructions:
+      localLoanDetails?.createStandingInstructions ||
+      fineractLoanDetails.createStandingInstructions,
+  };
+}
+
+function mergeLoanTermsWithFineract(
+  localLoanTerms: Partial<LoanTermsLike> | null,
+  fineractLoan: FineractLoanLike
+): LoanTermsLike {
+  const fineractLoanTerms = mapFineractLoanToLoanTerms(fineractLoan);
+
+  return {
+    principal: hasMeaningfulValue(fineractLoan.principal) ||
+      hasMeaningfulValue(fineractLoan.approvedPrincipal) ||
+      hasMeaningfulValue(fineractLoan.proposedPrincipal)
+      ? fineractLoanTerms.principal
+      : localLoanTerms?.principal ?? fineractLoanTerms.principal,
+    loanTerm: hasMeaningfulValue(fineractLoan.termFrequency)
+      ? fineractLoanTerms.loanTerm
+      : localLoanTerms?.loanTerm ?? fineractLoanTerms.loanTerm,
+    termFrequency: hasMeaningfulValue(fineractLoan.termPeriodFrequencyType?.id)
+      ? fineractLoanTerms.termFrequency
+      : localLoanTerms?.termFrequency ?? fineractLoanTerms.termFrequency,
+    numberOfRepayments: hasMeaningfulValue(fineractLoan.numberOfRepayments)
+      ? fineractLoanTerms.numberOfRepayments
+      : localLoanTerms?.numberOfRepayments ?? fineractLoanTerms.numberOfRepayments,
+    repaymentEvery: hasMeaningfulValue(fineractLoan.repaymentEvery)
+      ? fineractLoanTerms.repaymentEvery
+      : localLoanTerms?.repaymentEvery ?? fineractLoanTerms.repaymentEvery,
+    repaymentFrequency: hasMeaningfulValue(
+      fineractLoan.repaymentFrequencyType?.id
+    )
+      ? fineractLoanTerms.repaymentFrequency
+      : localLoanTerms?.repaymentFrequency ?? fineractLoanTerms.repaymentFrequency,
+    repaymentFrequencyNthDay:
+      localLoanTerms?.repaymentFrequencyNthDay ??
+      fineractLoanTerms.repaymentFrequencyNthDay,
+    repaymentFrequencyDayOfWeek:
+      localLoanTerms?.repaymentFrequencyDayOfWeek ??
+      fineractLoanTerms.repaymentFrequencyDayOfWeek,
+    nominalInterestRate:
+      hasMeaningfulValue(fineractLoan.interestRatePerPeriod) ||
+      hasMeaningfulValue(fineractLoan.annualInterestRate)
+        ? fineractLoanTerms.nominalInterestRate
+        : localLoanTerms?.nominalInterestRate ?? fineractLoanTerms.nominalInterestRate,
+    interestRateFrequency: hasMeaningfulValue(
+      fineractLoan.interestRateFrequencyType?.id
+    )
+      ? fineractLoanTerms.interestRateFrequency
+      : localLoanTerms?.interestRateFrequency ??
+        fineractLoanTerms.interestRateFrequency,
+    interestMethod: hasMeaningfulValue(fineractLoan.interestType?.id)
+      ? fineractLoanTerms.interestMethod
+      : localLoanTerms?.interestMethod ?? fineractLoanTerms.interestMethod,
+    amortization: hasMeaningfulValue(fineractLoan.amortizationType?.id)
+      ? fineractLoanTerms.amortization
+      : localLoanTerms?.amortization ?? fineractLoanTerms.amortization,
+    isEqualAmortization: hasMeaningfulValue(fineractLoan.isEqualAmortization)
+      ? fineractLoanTerms.isEqualAmortization
+      : localLoanTerms?.isEqualAmortization ??
+        fineractLoanTerms.isEqualAmortization,
+    repaymentStrategy:
+      fineractLoan.transactionProcessingStrategyCode ||
+      fineractLoan.transactionProcessingStrategyName ||
+      localLoanTerms?.repaymentStrategy ||
+      fineractLoanTerms.repaymentStrategy,
+    interestCalculationPeriod: hasMeaningfulValue(
+      fineractLoan.interestCalculationPeriodType?.id
+    )
+      ? fineractLoanTerms.interestCalculationPeriod
+      : localLoanTerms?.interestCalculationPeriod ??
+        fineractLoanTerms.interestCalculationPeriod,
+    calculateInterestForExactDays:
+      localLoanTerms?.calculateInterestForExactDays ??
+      fineractLoanTerms.calculateInterestForExactDays,
+    arrearsTolerance:
+      localLoanTerms?.arrearsTolerance ?? fineractLoanTerms.arrearsTolerance,
+    interestFreePeriod:
+      localLoanTerms?.interestFreePeriod ?? fineractLoanTerms.interestFreePeriod,
+    graceOnPrincipalPayment:
+      localLoanTerms?.graceOnPrincipalPayment ??
+      fineractLoanTerms.graceOnPrincipalPayment,
+    graceOnInterestPayment:
+      localLoanTerms?.graceOnInterestPayment ??
+      fineractLoanTerms.graceOnInterestPayment,
+    onArrearsAgeing:
+      localLoanTerms?.onArrearsAgeing ?? fineractLoanTerms.onArrearsAgeing,
+    firstRepaymentOn:
+      fineractLoanTerms.firstRepaymentOn || localLoanTerms?.firstRepaymentOn || null,
+    interestChargedFrom:
+      fineractLoanTerms.interestChargedFrom ||
+      localLoanTerms?.interestChargedFrom ||
+      null,
+    balloonRepaymentAmount:
+      localLoanTerms?.balloonRepaymentAmount ??
+      fineractLoanTerms.balloonRepaymentAmount,
+    collaterals: localLoanTerms?.collaterals ?? fineractLoanTerms.collaterals,
+    charges:
+      fineractLoanTerms.charges.length > 0
+        ? fineractLoanTerms.charges
+        : localLoanTerms?.charges ?? fineractLoanTerms.charges,
+    isTopup:
+      hasMeaningfulValue(fineractLoan.isTopup) ||
+      hasMeaningfulValue(fineractLoan.topupDetails)
+        ? fineractLoanTerms.isTopup
+        : localLoanTerms?.isTopup ?? fineractLoanTerms.isTopup,
+    loanIdToClose:
+      fineractLoanTerms.loanIdToClose ||
+      localLoanTerms?.loanIdToClose ||
+      "",
+  };
+}
+
 async function resolveFineractLoan(
   leadId: string,
   fineractLoanId?: number | null
@@ -181,7 +413,14 @@ function getForwardedHeaders(
 ): HeadersInit {
   const forwardedHeaders: HeadersInit = { ...extraHeaders };
 
-  for (const headerName of ["cookie", "origin", "referer"]) {
+  for (const headerName of [
+    "cookie",
+    "origin",
+    "referer",
+    "x-forwarded-host",
+    "x-forwarded-proto",
+    "host",
+  ]) {
     const value = request.headers.get(headerName);
     if (value) {
       forwardedHeaders[headerName] = value;
@@ -238,6 +477,7 @@ export async function GET(
         officeName: true,
 
         // Loan details
+        facilityType: true,
         loanProductName: true,
         loanProductId: true,
         loanPurpose: true,
@@ -290,6 +530,16 @@ export async function GET(
       );
     }
 
+    const fineractLoan: FineractLoanLike | null = await resolveFineractLoan(
+      leadId,
+      lead.fineractLoanId
+    );
+    if (fineractLoan) {
+      console.log("Live Fineract loan fetched for contract data:", fineractLoan.id);
+    } else {
+      console.warn("No live Fineract loan found for contract data");
+    }
+
     // Fetch loan details
     console.log("Fetching loan details...");
     const loanDetailsResponse = await fetch(
@@ -299,7 +549,7 @@ export async function GET(
       },
     );
     const loanDetailsResult = await loanDetailsResponse.json();
-    const loanDetails = loanDetailsResult.success
+    let loanDetails: LoanDetailsLike | null = loanDetailsResult.success
       ? loanDetailsResult.data
       : null;
     console.log("Loan details fetched:", loanDetails ? "Found" : "Not found");
@@ -329,24 +579,22 @@ export async function GET(
       );
     }
 
-    let fineractLoan: FineractLoanLike | null = null;
+    if (fineractLoan) {
+      loanDetails = mergeLoanDetailsWithFineract(loanDetails, fineractLoan, lead);
+      loanTerms = mergeLoanTermsWithFineract(loanTerms, fineractLoan);
+      console.log("Contract data using Fineract-first loan details and terms");
+    }
+
     if (!loanTerms) {
-      console.warn("Loan terms not found locally, attempting Fineract fallback");
-      fineractLoan = await resolveFineractLoan(leadId, lead.fineractLoanId);
-      if (fineractLoan) {
-        loanTerms = mapFineractLoanToLoanTerms(fineractLoan);
-        console.log("Loan terms restored from Fineract loan fallback");
-      } else {
-        console.error("Missing loan terms and no Fineract fallback found");
-        return NextResponse.json(
-          {
-            success: false,
-            error:
-              "Missing loan terms locally, and no Fineract loan terms could be found for fallback.",
-          },
-          { status: 400 },
-        );
-      }
+      console.error("Missing loan terms and no Fineract fallback found");
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Missing loan terms locally, and no Fineract loan terms could be found for fallback.",
+        },
+        { status: 400 },
+      );
     }
 
     if (!lead.loanProductId && !loanDetails?.productId && !fineractLoan?.loanProductId) {
@@ -496,9 +744,13 @@ export async function GET(
       }
     }
 
-    // Calculate repayment schedule
-    let repaymentSchedule: any = null;
-    if (loanTerms && loanDetails && loanTemplate) {
+    // Prefer the live Fineract repayment schedule used by the lead details page.
+    let repaymentSchedule: any = fineractLoan?.repaymentSchedule || null;
+    if (repaymentSchedule) {
+      console.log("Using live Fineract repayment schedule for contract data");
+    }
+
+    if (!repaymentSchedule && loanTerms && loanDetails && loanTemplate) {
       try {
         const submittedDate = loanDetails.submittedOn
           ? format(new Date(loanDetails.submittedOn), "dd MMMM yyyy")
@@ -597,11 +849,6 @@ export async function GET(
       } catch (err) {
         console.error("Error calculating repayment schedule:", err);
       }
-    }
-
-    if (!repaymentSchedule && fineractLoan?.repaymentSchedule) {
-      repaymentSchedule = fineractLoan.repaymentSchedule;
-      console.log("Using Fineract repayment schedule fallback for contract data");
     }
 
     // Format data for contracts
