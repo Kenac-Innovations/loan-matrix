@@ -19,10 +19,12 @@ interface ApplyTopupDisbursementChargesResult {
 interface FineractTopupDetails {
   topupAmount?: unknown;
   loanBalance?: unknown;
+  loanIdToClose?: unknown;
 }
 
 interface FineractLoanSnapshot {
   isTopup?: boolean;
+  closureLoanId?: unknown;
   topupDetails?: FineractTopupDetails;
   loanBalance?: unknown;
   principal?: unknown;
@@ -141,6 +143,48 @@ function extractChargeList(payload: unknown): FineractLoanChargeSummary[] {
   return [];
 }
 
+async function resolveOutstandingOnLoanBeingClosed(
+  loan: FineractLoanSnapshot
+): Promise<number | null> {
+  const closureLoanId =
+    toNumber((loan as { closureLoanId?: unknown }).closureLoanId) ??
+    toNumber(loan?.topupDetails?.loanIdToClose);
+
+  if (closureLoanId != null && closureLoanId > 0) {
+    try {
+      const closureLoan = (await fetchFineractAPI(
+        `/loans/${closureLoanId}?associations=summary&exclude=guarantors,futureSchedule`,
+        { method: "GET" }
+      )) as Record<string, unknown>;
+
+      const summary = closureLoan.summary as Record<string, unknown> | undefined;
+      const fromSummary = pickFirstPositive(
+        summary?.totalOutstanding,
+        summary?.principalOutstanding
+      );
+      if (fromSummary != null) {
+        return fromSummary;
+      }
+
+      const fromLoan = pickFirstPositive(closureLoan.loanBalance);
+      if (fromLoan != null) {
+        return fromLoan;
+      }
+    } catch (error) {
+      console.warn("[TopupDisbursementCharges] Failed to fetch closure loan balance", {
+        closureLoanId,
+        error,
+      });
+    }
+  }
+
+  return pickFirstPositive(
+    loan?.topupDetails?.loanBalance,
+    loan?.topupDetails?.topupAmount,
+    loan?.loanBalance
+  );
+}
+
 function hasExistingChargeForToday(
   existingCharges: FineractLoanChargeSummary[],
   chargeId: number,
@@ -194,11 +238,7 @@ export async function applyTopupDisbursementCharges(
     };
   }
 
-  const previousLoanBalance = pickFirstPositive(
-    loan?.topupDetails?.topupAmount,
-    loan?.topupDetails?.loanBalance,
-    loan?.loanBalance
-  );
+  const previousLoanBalance = await resolveOutstandingOnLoanBeingClosed(loan);
 
   const principal = pickFirstPositive(
     loan?.principal,

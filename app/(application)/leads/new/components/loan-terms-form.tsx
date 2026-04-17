@@ -36,6 +36,11 @@ import { CheckCircle2, AlertCircle } from "lucide-react";
 import { Calendar } from "@/components/ui/calender";
 import { cn } from "@/lib/utils";
 import { useFeatureFlags } from "@/hooks/use-feature-flags";
+import {
+  recomputeTopupAwareDisbursementChargeAmounts,
+  roundMoney,
+  type EditableLoanChargeRow,
+} from "@/lib/topup-charge-base";
 
 // Helper function to format repayment strategy name
 // Replaces "Penalties" with "Interest on Unpaid Balance" for display
@@ -1888,6 +1893,80 @@ export function LoanTermsForm({
     watchedValues.interestCalculationPeriod,
   ]);
 
+  const watchedPrincipal = watchedValues.principal;
+
+  const topupTakeHomePreview = useMemo(() => {
+    if (!isTopup || !loanIdToClose.trim() || !loanTemplate?.clientActiveLoanOptions?.length) {
+      return null;
+    }
+    const match = loanTemplate.clientActiveLoanOptions.find(
+      (l) => String(l.id) === loanIdToClose.trim()
+    );
+    if (!match) return null;
+    const decimals =
+      (loanTemplate as { currency?: { decimalPlaces?: number } } | null)?.currency
+        ?.decimalPlaces ?? 2;
+    const p = Number(watchedPrincipal);
+    if (!Number.isFinite(p) || p <= 0) return null;
+    const takeHome = Math.max(0, p - Number(match.loanBalance));
+    return {
+      takeHome: roundMoney(takeHome, decimals),
+      loanBalance: Number(match.loanBalance),
+    };
+  }, [
+    isTopup,
+    loanIdToClose,
+    watchedPrincipal,
+    loanTemplate?.clientActiveLoanOptions,
+    (loanTemplate as { currency?: { decimalPlaces?: number } } | null)?.currency
+      ?.decimalPlaces,
+  ]);
+
+  // Top-up: disbursement percentage fees use take-home (principal − loan to close), not gross principal.
+  useEffect(() => {
+    if (isInvoiceDiscountingLead) return;
+
+    setEditableCharges((prev) => {
+      if (prev.length === 0) return prev;
+
+      const templatePrincipal =
+        loanTemplate?.principal != null ? Number(loanTemplate.principal) : null;
+      const decimalsRaw = (loanTemplate as { currency?: { decimalPlaces?: number } } | null)
+        ?.currency?.decimalPlaces;
+
+      const next = recomputeTopupAwareDisbursementChargeAmounts(
+        prev as EditableLoanChargeRow[],
+        {
+          principal: watchedPrincipal,
+          isTopup,
+          loanIdToClose,
+          activeLoanOptions: loanTemplate?.clientActiveLoanOptions,
+          templateDefaultPrincipal: templatePrincipal,
+          currencyDecimalPlaces: decimalsRaw ?? 2,
+        }
+      );
+
+      const unchanged =
+        next.length === prev.length &&
+        next.every(
+          (c, i) =>
+            c.amount === prev[i].amount &&
+            c.chargeId === prev[i].chargeId &&
+            c.name === prev[i].name
+        );
+      return unchanged ? prev : (next as typeof prev);
+    });
+  }, [
+    isInvoiceDiscountingLead,
+    watchedPrincipal,
+    isTopup,
+    loanIdToClose,
+    loanTemplate?.principal,
+    loanTemplate?.clientActiveLoanOptions,
+    (loanTemplate as { currency?: { decimalPlaces?: number } } | null)?.currency
+      ?.decimalPlaces,
+  ]);
+
   // Helper function to get section status
   const getSectionStatus = (
     sectionName: keyof typeof sectionCompletion
@@ -3333,6 +3412,26 @@ export function LoanTermsForm({
                       ? "Edit charge amounts only. Adding or removing charges and due dates is fixed for this product."
                       : "Manage loan charges and fees. Add, remove, or edit charges and their due dates."}
                   </CardDescription>
+                  {!isInvoiceDiscountingLead && topupTakeHomePreview && (
+                    <p className="text-sm text-muted-foreground mt-2 rounded-md border border-blue-200 bg-blue-50/80 px-3 py-2 dark:border-blue-900 dark:bg-blue-950/40">
+                      Top-up: percentage disbursement fees use your estimated take-home (
+                      {(loanTemplate as { currency?: { displaySymbol?: string; code?: string } })
+                        ?.currency?.displaySymbol ||
+                        (loanTemplate as { currency?: { code?: string } })?.currency?.code ||
+                        ""}
+                      {topupTakeHomePreview.takeHome.toLocaleString("en-US", {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
+                      ), not the full new principal. Take-home is new principal minus the selected
+                      loan's balance (
+                      {topupTakeHomePreview.loanBalance.toLocaleString("en-US", {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
+                      ).
+                    </p>
+                  )}
                 </div>
                 {loanTemplate?.chargeOptions &&
                   canEditLoan &&
@@ -3512,7 +3611,9 @@ export function LoanTermsForm({
                                 calcHighlight.kind === "flat"
                                   ? "Flat fee: amount is a fixed currency value"
                                   : calcHighlight.kind === "percent"
-                                    ? "Percentage: amount is a percent of principal or another base"
+                                    ? topupTakeHomePreview
+                                      ? "Percentage: amount is applied to take-home (net after closing the selected loan)"
+                                      : "Percentage: amount is a percent of principal or another base"
                                     : undefined
                               }
                             >
@@ -3551,7 +3652,9 @@ export function LoanTermsForm({
                               {calcHighlight.kind === "flat" &&
                                 "(fixed currency amount)"}
                               {calcHighlight.kind === "percent" &&
-                                "(% of principal or defined base)"}
+                                (topupTakeHomePreview
+                                  ? "(% of take-home)"
+                                  : "(% of principal or defined base)")}
                               {calcHighlight.kind === "other" && ""}
                             </span>
                           </Label>
