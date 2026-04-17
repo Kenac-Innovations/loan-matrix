@@ -1,4 +1,5 @@
 "use client";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -12,7 +13,6 @@ import { toast } from "sonner";
 import {
   MoreHorizontal,
   ExternalLink,
-  Printer,
   FileText,
   Plus,
   Edit,
@@ -45,6 +45,9 @@ export function LeadMoreActions({
   canModifyPendingApplication = false,
   canPrintContract = false,
 }: LeadMoreActionsProps) {
+  void canPrintContract;
+  const [isOpeningContract, setIsOpeningContract] = useState(false);
+
   const statusLower = (loanStatus || "").toLowerCase();
   const isPending =
     statusLower.includes("submitted") || statusLower.includes("pending");
@@ -74,8 +77,21 @@ export function LeadMoreActions({
     window.dispatchEvent(new Event("open-pending-loan-terms-editor"));
   };
 
-  const contractActionHref = (action: "view" | "print" | "pdf") =>
-    `/api/leads/${leadId}/print-contract?action=${action}`;
+  const handleViewContract = () => {
+    setIsOpeningContract(true);
+
+    const contractWindow = window.open(
+      `/leads/${leadId}/contract`,
+      "_blank",
+      "noopener,noreferrer"
+    );
+
+    if (!contractWindow) {
+      toast.error("Popup blocked. Please allow popups for this site.");
+    }
+
+    setIsOpeningContract(false);
+  };
 
   return (
     <DropdownMenu>
@@ -91,16 +107,17 @@ export function LeadMoreActions({
           <Copy className="mr-2 h-4 w-4" />
           Copy Lead ID
         </DropdownMenuItem>
+        <DropdownMenuItem onClick={handleViewContract} disabled={isOpeningContract}>
+          <Eye className="mr-2 h-4 w-4" />
+          {isOpeningContract ? "Checking Contract..." : "View Contract"}
+        </DropdownMenuItem>
+        {/*
         {canPrintContract ? (
           <DropdownMenuItem asChild>
-            <a
-              href={contractActionHref("view")}
-              target="_blank"
-              rel="noopener"
-            >
+            <Link href={`/leads/${leadId}/contract`} target="_blank" rel="noopener">
               <Eye className="mr-2 h-4 w-4" />
               View Contract
-            </a>
+            </Link>
           </DropdownMenuItem>
         ) : (
           <DropdownMenuItem
@@ -114,52 +131,7 @@ export function LeadMoreActions({
             View Contract
           </DropdownMenuItem>
         )}
-        {canPrintContract ? (
-          <DropdownMenuItem asChild>
-            <a
-              href={contractActionHref("print")}
-              target="_blank"
-              rel="noopener"
-            >
-              <Printer className="mr-2 h-4 w-4" />
-              Print Contract
-            </a>
-          </DropdownMenuItem>
-        ) : (
-          <DropdownMenuItem
-            onClick={() =>
-              toast.error(
-                "Loan contracts can only be printed after the application has reached final approval."
-              )
-            }
-          >
-            <Printer className="mr-2 h-4 w-4" />
-            Print Contract
-          </DropdownMenuItem>
-        )}
-        {canPrintContract ? (
-          <DropdownMenuItem asChild>
-            <a
-              href={contractActionHref("pdf")}
-              target="_blank"
-              rel="noopener"
-            >
-              <FileText className="mr-2 h-4 w-4" />
-              Export PDF
-            </a>
-          </DropdownMenuItem>
-        ) : (
-          <DropdownMenuItem
-            onClick={() =>
-              toast.error(
-                "Loan contracts can only be exported after the application has reached final approval."
-              )
-            }
-          >
-            <FileText className="mr-2 h-4 w-4" />
-            Export PDF
-          </DropdownMenuItem>
-        )}
+        */}
 
         {/* Fineract actions — only if loan exists */}
         {hasLoan && (
