@@ -1,4 +1,6 @@
 import { format } from "date-fns";
+import type { InterestRateDisplayMode } from "@/shared/types/tenant";
+import { getLoanInterestRateDisplay } from "@/lib/interest-rate-display";
 
 export interface LoanStatementData {
   // Company info
@@ -12,6 +14,10 @@ export interface LoanStatementData {
   printDate: string;
   periodFrom: string;
   periodTo: string;
+  interestRateLabel: string;
+  interestRateValue: string;
+  disbursedAmountLabel: string;
+  disbursedAmountValue: string;
 
   // Currency
   currency: string;
@@ -423,6 +429,12 @@ export function generateLoanStatementHTML(data: LoanStatementData): string {
             <td class="account-info-label">Print Date: ${data.printDate}</td>
           </tr>
           <tr>
+            <td class="account-info-label">${data.disbursedAmountLabel}: ${data.disbursedAmountValue}</td>
+          </tr>
+          <tr>
+            <td class="account-info-label">${data.interestRateLabel}: ${data.interestRateValue}</td>
+          </tr>
+          <tr>
             <td class="account-info-label">From ${data.periodFrom} To ${data.periodTo}</td>
           </tr>
         </table>
@@ -817,7 +829,8 @@ export function transformFineractLoanToStatement(
   periodFrom?: string,
   periodTo?: string,
   defaultCurrency?: string,
-  preparedBy?: string
+  preparedBy?: string,
+  interestRateDisplayMode: InterestRateDisplayMode = "annual"
 ): LoanStatementData {
   const currency = loan.currency || {};
   const summary = loan.summary || {};
@@ -925,6 +938,17 @@ export function transformFineractLoanToStatement(
   // Determine period dates
   const now = new Date();
   const timeline = loan.timeline || {};
+  const interestRateDisplay = getLoanInterestRateDisplay(
+    loan,
+    interestRateDisplayMode
+  );
+  const disbursedAmount =
+    summary.principalDisbursed ??
+    summary.totalPrincipalDisbursed ??
+    loan.principal ??
+    loan.approvedPrincipal ??
+    loan.proposedPrincipal ??
+    0;
   const actualPeriodFrom =
     periodFrom ||
     parseFineractDate(timeline.actualDisbursementDate || timeline.submittedOnDate);
@@ -945,6 +969,13 @@ export function transformFineractLoanToStatement(
     printDate,
     periodFrom: actualPeriodFrom,
     periodTo: actualPeriodTo,
+    disbursedAmountLabel: "Disbursed Amount",
+    disbursedAmountValue: formatCurrency(
+      disbursedAmount,
+      `${currency.code || defaultCurrency || "ZMW"} `
+    ),
+    interestRateLabel: interestRateDisplay.label,
+    interestRateValue: interestRateDisplay.statementValue,
 
     currency: currency.code || defaultCurrency || "ZMW",
     currencySymbol: currency.displaySymbol || defaultCurrency || "ZMW",

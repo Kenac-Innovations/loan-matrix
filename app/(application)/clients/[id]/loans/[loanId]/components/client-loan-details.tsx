@@ -41,6 +41,11 @@ import SellLoanModal from "@/components/SellLoanModal";
 import { TransactionsDataTable } from "./transactions-data-table";
 import { FineractClient, FineractLoan } from "@/shared/types";
 import { getTransactionTypeDisplayLabel } from "@/lib/format-transaction";
+import { useFeatureFlags } from "@/hooks/use-feature-flags";
+import {
+  getLoanInterestRateDisplay,
+  resolveInterestRateDisplayMode,
+} from "@/lib/interest-rate-display";
 
 interface ClientLoanDetailsProps {
   clientId: number;
@@ -49,6 +54,7 @@ interface ClientLoanDetailsProps {
 
 export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) {
   const router = useRouter();
+  const { tenantSlug } = useFeatureFlags();
   const [client, setClient] = useState<FineractClient | null>(null);
   const [loan, setLoan] = useState<FineractLoan | null>(null);
   const [loading, setLoading] = useState(true);
@@ -1023,6 +1029,10 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
   };
 
   const loanCurrencyCode = loan?.currency?.code || orgCurrency;
+  const interestRateDisplay = getLoanInterestRateDisplay(
+    loan,
+    resolveInterestRateDisplayMode(tenantSlug)
+  );
 
   const formatCurrency = (amount: number | undefined | null, currencyCode?: string): string => {
     if (amount === undefined || amount === null || Number.isNaN(amount)) {
@@ -2888,7 +2898,7 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
               <div>
                 <p className="text-sm font-medium text-purple-600 dark:text-purple-400">Interest Rate</p>
                 <p className="text-2xl font-bold text-purple-900 dark:text-purple-100">
-                  {loan.annualInterestRate}%
+                  {interestRateDisplay.formattedRate}
                 </p>
               </div>
               <div className="h-12 w-12 rounded-lg bg-purple-500 flex items-center justify-center">
@@ -3257,7 +3267,9 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                   </div>
                   <div className="flex justify-between">
                     <span className="text-sm font-medium text-muted-foreground">Interest:</span>
-                    <span className="text-sm">{loan.annualInterestRate}% per annum ({loan.interestRatePerPeriod}% Per {loan.interestRateFrequencyType.value})</span>
+                    <span className="text-sm">
+                      {interestRateDisplay.statementValue}
+                    </span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-sm font-medium text-muted-foreground">Interest Type:</span>
@@ -5682,4 +5694,4 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
       />
     </div>
   );
-} 
+}
