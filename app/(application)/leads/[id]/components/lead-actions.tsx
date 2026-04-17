@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { ExternalLink, CheckCircle } from "lucide-react";
+import { ExternalLink, CheckCircle, FileText } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import useSWR from "swr";
@@ -21,14 +21,17 @@ interface LeadActionsProps {
   assignedToUserId?: number | null;
   fineractClientId?: number | null;
   currency?: string | null;
+  canViewContract?: boolean;
   onRefresh?: () => void;
 }
 
 export function LeadActions({
   leadId,
+  currentStage,
   loanStatus,
   loanId,
   fineractClientId,
+  canViewContract = false,
 }: LeadActionsProps) {
   const router = useRouter();
 
@@ -55,9 +58,13 @@ export function LeadActions({
   }, [router, mutatePayoutStatus]);
 
   const statusLower = (loanStatus || "").toLowerCase();
+  const stageLower = (currentStage || "").toLowerCase();
   const isDisbursed = statusLower.includes("active");
+  const isAtDisbursementStage =
+    stageLower.includes("awaiting disbursement") ||
+    stageLower.includes("disbursement");
 
-  if (!loanId || !fineractClientId || !isDisbursed) {
+  if (!loanId || !fineractClientId || (!isDisbursed && !isAtDisbursementStage)) {
     return null;
   }
 
@@ -76,6 +83,15 @@ export function LeadActions({
           View Loan
         </Link>
       </Button>
+
+      {canViewContract && (
+        <Button asChild variant="outline">
+          <Link href={`/leads/${leadId}/contract`}>
+            <FileText className="mr-2 h-4 w-4" />
+            View Loan Contract
+          </Link>
+        </Button>
+      )}
     </div>
   );
 }
