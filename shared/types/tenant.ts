@@ -36,6 +36,8 @@ export type FirstRepaymentDateStrategy =
   | "cutoff"
   | "month-after-disbursement";
 
+export type InterestRateDisplayMode = "annual" | "monthly";
+
 export interface FirstRepaymentDateConfig {
   strategy: FirstRepaymentDateStrategy;
   /** Day-of-month cutoff (only used with "cutoff" strategy). Defaults to 16. */
@@ -48,6 +50,8 @@ export interface FirstRepaymentDateConfig {
 export interface TenantSettings {
   theme: string;
   features: TenantFeatures;
+  /** How loan interest rates should be displayed in the UI and documents */
+  loanTermsInterestRateDisplay?: InterestRateDisplayMode;
   /** Monthly lead target */
   monthlyTarget?: number;
   /** Conversion rate target (percentage) */
