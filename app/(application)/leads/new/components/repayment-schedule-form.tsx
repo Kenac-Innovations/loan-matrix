@@ -21,6 +21,10 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { format } from "date-fns";
+import {
+  recomputeTopupAwareDisbursementChargeAmounts,
+  type EditableLoanChargeRow,
+} from "@/lib/topup-charge-base";
 import { Calendar, FileText, Loader2, Plus, Trash2, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -112,15 +116,7 @@ export function RepaymentScheduleForm({
   const [loanTerms, setLoanTerms] = useState<any>(null);
   const [loanDetails, setLoanDetails] = useState<any>(null);
   const [loanTemplate, setLoanTemplate] = useState<any>(null);
-  const [editableCharges, setEditableCharges] = useState<
-    Array<{
-      chargeId: number;
-      name: string;
-      amount: number;
-      dueDate: string;
-      originalCharge?: any;
-    }>
-  >([]);
+  const [editableCharges, setEditableCharges] = useState<EditableLoanChargeRow[]>([]);
   const [showAddCharge, setShowAddCharge] = useState(false);
   const [selectedChargeOption, setSelectedChargeOption] = useState<string>("");
   const [newChargeAmount, setNewChargeAmount] = useState<string>("");
@@ -189,9 +185,20 @@ export function RepaymentScheduleForm({
                   name: charge.name || "Unknown Charge",
                   amount: charge.amount || 0,
                   dueDate: charge.dueDate || disbursementDate,
+                  originalCharge: charge.originalCharge,
                 }),
               );
-              setEditableCharges(savedCharges);
+              setEditableCharges(
+                recomputeTopupAwareDisbursementChargeAmounts(savedCharges, {
+                  principal: termsResult.data.principal,
+                  isTopup: Boolean(termsResult.data.isTopup),
+                  loanIdToClose: termsResult.data.loanIdToClose || "",
+                  activeLoanOptions: templateData?.clientActiveLoanOptions,
+                  templateDefaultPrincipal: templateData?.principal,
+                  currencyDecimalPlaces:
+                    templateData?.currency?.decimalPlaces ?? 2,
+                })
+              );
             } else if (
               templateData?.charges &&
               templateData.charges.length > 0
@@ -206,7 +213,17 @@ export function RepaymentScheduleForm({
                   originalCharge: charge,
                 }),
               );
-              setEditableCharges(initialCharges);
+              setEditableCharges(
+                recomputeTopupAwareDisbursementChargeAmounts(initialCharges, {
+                  principal: termsResult.data.principal,
+                  isTopup: Boolean(termsResult.data.isTopup),
+                  loanIdToClose: termsResult.data.loanIdToClose || "",
+                  activeLoanOptions: templateData?.clientActiveLoanOptions,
+                  templateDefaultPrincipal: templateData?.principal,
+                  currencyDecimalPlaces:
+                    templateData?.currency?.decimalPlaces ?? 2,
+                })
+              );
             }
           }
         }
@@ -272,8 +289,23 @@ export function RepaymentScheduleForm({
           )
         : format(new Date(), "dd MMMM yyyy");
 
-      // Build charges array from editable charges
-      const charges = editableCharges.map((charge) => ({
+      const decimalPlaces =
+        (loanTemplate as { currency?: { decimalPlaces?: number } })?.currency
+          ?.decimalPlaces ?? 2;
+
+      const chargesForSchedule = recomputeTopupAwareDisbursementChargeAmounts(
+        editableCharges,
+        {
+          principal: loanTerms.principal || 0,
+          isTopup: Boolean(loanTerms.isTopup),
+          loanIdToClose: loanTerms.loanIdToClose || "",
+          activeLoanOptions: loanTemplate?.clientActiveLoanOptions,
+          templateDefaultPrincipal: loanTemplate?.principal,
+          currencyDecimalPlaces: decimalPlaces,
+        }
+      );
+
+      const charges = chargesForSchedule.map((charge) => ({
         chargeId: charge.chargeId,
         amount: charge.amount,
         dueDate: charge.dueDate,
