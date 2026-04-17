@@ -67,7 +67,7 @@ export function ComprehensiveLeadDetails({
   canEditPendingLoanApplication = false,
 }: ComprehensiveLeadDetailsProps) {
   const { currencyCode, currencySymbol } = useCurrency();
-  const { isEnabled } = useFeatureFlags();
+  const { isEnabled, tenantSlug } = useFeatureFlags();
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -452,7 +452,7 @@ export function ComprehensiveLeadDetails({
     invoiceDiscountingEnabled && isInvoiceDiscountingLead;
 
   // Get loan ID from multiple sources
-  const loanId = lead?.fineractLoanId || fineractLoan?.id;
+  const loanId = fineractLoan?.id || lead?.fineractLoanId || null;
 
   // Debug logging
   console.log("=== COMPREHENSIVE LEAD DETAILS DEBUG ===");
@@ -489,16 +489,46 @@ export function ComprehensiveLeadDetails({
       ? lead.stateMetadata.originalPendingApprovalLoanTerms.principal
       : null);
 
+  const principalAmountFallback =
+    fineractLoan?.principal ||
+    fineractLoan?.approvedPrincipal ||
+    fineractLoan?.proposedPrincipal ||
+    loanInfo?.loanTerms?.principal ||
+    0;
+
   const requestedAmount =
-    originalRequestedAmount
-      ? originalRequestedAmount
-      : lead.requestedAmount && lead.requestedAmount > 0
-      ? lead.requestedAmount
-      : fineractLoan?.proposedPrincipal
-        || fineractLoan?.approvedPrincipal
-        || fineractLoan?.principal
-        || loanInfo?.loanTerms?.principal
-        || 0;
+    originalRequestedAmount ??
+    (typeof lead.requestedAmount === "number" && lead.requestedAmount > 0
+        ? lead.requestedAmount
+        : principalAmountFallback);
+  const tenantSettings =
+    data?.tenant?.settings && typeof data.tenant.settings === "object"
+      ? (data.tenant.settings as Record<string, any>)
+      : null;
+  const resolvedTenantSlug = (data?.tenant?.slug || tenantSlug || "")
+    .trim()
+    .toLowerCase();
+  const interestRateDisplayMode =
+    tenantSettings?.loanTermsInterestRateDisplay ||
+    (resolvedTenantSlug === "omama" ? "monthly" : "annual");
+  const annualInterestRate =
+    typeof fineractLoan?.annualInterestRate === "number"
+      ? fineractLoan.annualInterestRate
+      : typeof fineractLoan?.interestRatePerPeriod === "number"
+        ? fineractLoan.interestRatePerPeriod * 12
+        : 0;
+  const monthlyInterestRate =
+    typeof fineractLoan?.interestRatePerPeriod === "number"
+      ? fineractLoan.interestRatePerPeriod
+      : annualInterestRate / 12;
+  const interestRateLabel =
+    interestRateDisplayMode === "monthly"
+      ? "Monthly Interest Rate"
+      : "Annual Interest Rate";
+  const displayedInterestRate =
+    interestRateDisplayMode === "monthly"
+      ? monthlyInterestRate
+      : annualInterestRate;
 
   // Get Fineract loan status
   const fineractLoanStatus = fineractLoan?.status?.value || null;
@@ -1052,10 +1082,10 @@ export function ComprehensiveLeadDetails({
                     </div>
                     <div>
                       <p className="text-sm text-muted-foreground">
-                        Annual Interest Rate
+                        {interestRateLabel}
                       </p>
                       <p className="text-xl font-semibold">
-                        {(fineractLoan.annualInterestRate || 0).toFixed(2)}%
+                        {(displayedInterestRate || 0).toFixed(2)}%
                       </p>
                     </div>
                     <div>
