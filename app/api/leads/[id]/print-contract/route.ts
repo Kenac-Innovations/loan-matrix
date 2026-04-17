@@ -214,13 +214,6 @@ export async function GET(
       return NextResponse.json({ error: "Lead not found" }, { status: 404 });
     }
 
-    if (!lead.fineractLoanId) {
-      return NextResponse.json(
-        { error: "This lead does not have a linked Fineract loan." },
-        { status: 400 }
-      );
-    }
-
     const loanStatus = await resolveLoanStatus(leadId, lead.fineractLoanId);
     void tenantSlug;
     void loanStatus;

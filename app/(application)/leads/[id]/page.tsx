@@ -523,6 +523,7 @@ export default async function LeadDetailPage({
                 />
                 <LeadActions
                   leadId={id}
+                  currentStage={currentStage}
                   loanStatus={fineractLoanStatus}
                   loanId={fineractLoanId}
                   loanPrincipal={fineractLoanPrincipal}
@@ -531,6 +532,7 @@ export default async function LeadDetailPage({
                   currency={fineractLoanCurrency}
                   assignedToUserId={lead.assignedToUserId}
                   fineractClientId={lead.fineractClientId}
+                  canViewContract={canPrintContract}
                 />
                 {!isReadOnly && (
                   <LeadMoreActions
