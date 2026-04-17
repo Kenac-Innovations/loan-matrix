@@ -3,7 +3,6 @@ import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { extractTenantSlugFromRequest } from "@/lib/tenant-service";
 import { getFineractServiceWithSession } from "@/lib/fineract-api";
-import { canPrintLoanContract } from "@/lib/loan-contract-print";
 import { fillOmamaContractTemplate } from "@/app/(application)/leads/new/components/omama-contract-template";
 import { generateContractHTML } from "@/app/(application)/leads/new/components/contract-template";
 import type { ContractData } from "@/app/(application)/leads/new/components/contract-types";
@@ -200,6 +199,7 @@ export async function GET(
     const requestOrigin = getRequestOrigin(request);
     const forwardedHeaders = getForwardedHeaders(request);
     const actionParam = request.nextUrl.searchParams.get("action");
+    const validateOnly = request.nextUrl.searchParams.get("validate") === "true";
     const action =
       actionParam === "pdf" || actionParam === "view" ? actionParam : "print";
 
@@ -222,7 +222,10 @@ export async function GET(
     }
 
     const loanStatus = await resolveLoanStatus(leadId, lead.fineractLoanId);
+    void tenantSlug;
+    void loanStatus;
 
+    /*
     if (!canPrintLoanContract(tenantSlug, loanStatus)) {
       return NextResponse.json(
         {
@@ -232,6 +235,7 @@ export async function GET(
         { status: 409 }
       );
     }
+    */
 
     const [contractDataResponse, templateResponse] = await Promise.all([
       fetch(`${requestOrigin}/api/leads/${leadId}/contract-data`, {
@@ -255,6 +259,10 @@ export async function GET(
         },
         { status: contractDataResponse.status || 500 }
       );
+    }
+
+    if (validateOnly) {
+      return NextResponse.json({ success: true });
     }
 
     const templatePayload = templateResponse.ok
