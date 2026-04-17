@@ -56,6 +56,11 @@ import { CreditBalanceRefundModal } from "./credit-balance-refund-modal";
 import { TransferFundsModal } from "./transfer-funds-modal";
 import { useFeatureFlags } from "@/hooks/use-feature-flags";
 import { PendingApprovalLoanTermsEditor } from "./pending-approval-loan-terms-editor";
+import {
+  getLoanInterestRateDisplay,
+  resolveInterestRateDisplayMode,
+} from "@/lib/interest-rate-display";
+import type { TenantSettings } from "@/shared/types/tenant";
 
 interface ComprehensiveLeadDetailsProps {
   leadId: string;
@@ -503,32 +508,15 @@ export function ComprehensiveLeadDetails({
         : principalAmountFallback);
   const tenantSettings =
     data?.tenant?.settings && typeof data.tenant.settings === "object"
-      ? (data.tenant.settings as Record<string, any>)
+      ? (data.tenant.settings as Partial<TenantSettings>)
       : null;
   const resolvedTenantSlug = (data?.tenant?.slug || tenantSlug || "")
     .trim()
     .toLowerCase();
-  const interestRateDisplayMode =
-    tenantSettings?.loanTermsInterestRateDisplay ||
-    (resolvedTenantSlug === "omama" ? "monthly" : "annual");
-  const annualInterestRate =
-    typeof fineractLoan?.annualInterestRate === "number"
-      ? fineractLoan.annualInterestRate
-      : typeof fineractLoan?.interestRatePerPeriod === "number"
-        ? fineractLoan.interestRatePerPeriod * 12
-        : 0;
-  const monthlyInterestRate =
-    typeof fineractLoan?.interestRatePerPeriod === "number"
-      ? fineractLoan.interestRatePerPeriod
-      : annualInterestRate / 12;
-  const interestRateLabel =
-    interestRateDisplayMode === "monthly"
-      ? "Monthly Interest Rate"
-      : "Annual Interest Rate";
-  const displayedInterestRate =
-    interestRateDisplayMode === "monthly"
-      ? monthlyInterestRate
-      : annualInterestRate;
+  const interestRateDisplay = getLoanInterestRateDisplay(
+    fineractLoan,
+    resolveInterestRateDisplayMode(resolvedTenantSlug, tenantSettings)
+  );
 
   // Get Fineract loan status
   const fineractLoanStatus = fineractLoan?.status?.value || null;
@@ -1082,10 +1070,10 @@ export function ComprehensiveLeadDetails({
                     </div>
                     <div>
                       <p className="text-sm text-muted-foreground">
-                        {interestRateLabel}
+                        {interestRateDisplay.label}
                       </p>
                       <p className="text-xl font-semibold">
-                        {(displayedInterestRate || 0).toFixed(2)}%
+                        {interestRateDisplay.formattedRate}
                       </p>
                     </div>
                     <div>

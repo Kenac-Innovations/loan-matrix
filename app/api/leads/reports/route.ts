@@ -32,6 +32,18 @@ export async function GET(request: NextRequest) {
     const allowOpenDateRange =
       tenantFeatures.showAllLeadsByDefault === true || tenantSlug === "omama";
     const hasFullDateRange = Boolean(startDate && endDate);
+    const effectiveStartDate =
+      hasFullDateRange
+        ? startDate
+        : allowOpenDateRange
+          ? "2000-01-01"
+          : null;
+    const effectiveEndDate =
+      hasFullDateRange
+        ? endDate
+        : allowOpenDateRange
+          ? new Date().toISOString().slice(0, 10)
+          : null;
 
     if ((startDate && !endDate) || (!startDate && endDate)) {
       return NextResponse.json(
@@ -78,7 +90,9 @@ export async function GET(request: NextRequest) {
     
     // Call the Fineract report API
     const data = await fineractService.runReport(reportName, {
-      ...(hasFullDateRange ? { startDate, endDate } : {}),
+      ...(effectiveStartDate && effectiveEndDate
+        ? { startDate: effectiveStartDate, endDate: effectiveEndDate }
+        : {}),
       locale: "en",
       dateFormat: "yyyy-MM-dd",
     });
@@ -236,6 +250,8 @@ export async function GET(request: NextRequest) {
       reportName,
       startDate,
       endDate,
+      effectiveStartDate,
+      effectiveEndDate,
       count: result.length,
       data: result,
       rawColumnHeaders: data?.columnHeaders?.map((c: any) => c.columnName || c.name || c),
