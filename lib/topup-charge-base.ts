@@ -94,22 +94,34 @@ export function computeTopupTakeHomeChargeBase(params: {
   return Math.max(0, roundMoney(principal - bal, 6));
 }
 
+/** Fineract template principal can be a product minimum (e.g. 100); fee amounts are often computed for the real loan. */
+const MAX_PLAUSIBLE_PERCENT_FEE = 100;
+
 function extractPercentRateFromCharge(
   originalCharge: EditableLoanChargeRow["originalCharge"],
   referencePrincipalForRatio: number,
+  loanPrincipal: number,
   currentAmount: number
 ): number | null {
   if (!originalCharge) return null;
+
+  const ref = Math.max(
+    1,
+    toNumber(referencePrincipalForRatio) ?? 0,
+    toNumber(loanPrincipal) ?? 0
+  );
+
   const fromField = toNumber(originalCharge.percentage);
-  if (fromField != null && fromField > 0) {
+  if (
+    fromField != null &&
+    fromField > 0 &&
+    fromField <= MAX_PLAUSIBLE_PERCENT_FEE
+  ) {
     return fromField;
   }
-  if (
-    referencePrincipalForRatio > 0 &&
-    Number.isFinite(currentAmount) &&
-    currentAmount >= 0
-  ) {
-    return (currentAmount / referencePrincipalForRatio) * 100;
+
+  if (ref > 0 && Number.isFinite(currentAmount) && currentAmount >= 0) {
+    return (currentAmount / ref) * 100;
   }
   return null;
 }
@@ -138,17 +150,25 @@ export function recomputeTopupAwareDisbursementChargeAmounts(
     activeLoanOptions: params.activeLoanOptions,
   });
 
-  const refPrincipal =
-    toNumber(params.templateDefaultPrincipal) && Number(params.templateDefaultPrincipal) > 0
-      ? Number(params.templateDefaultPrincipal)
-      : params.principal;
+  const templatePrincipal = toNumber(params.templateDefaultPrincipal);
+  const loanPrincipal = toNumber(params.principal) ?? 0;
+  const refPrincipalForRatio = Math.max(
+    1,
+    templatePrincipal ?? 0,
+    loanPrincipal
+  );
 
   return charges.map((charge) => {
     const oc = charge.originalCharge;
     if (!shouldRebaseTopupDisbursementCharge(oc) || !oc) {
       return charge;
     }
-    const rate = extractPercentRateFromCharge(oc, refPrincipal, charge.amount);
+    const rate = extractPercentRateFromCharge(
+      oc,
+      refPrincipalForRatio,
+      loanPrincipal,
+      charge.amount
+    );
     if (rate == null) {
       return charge;
     }
