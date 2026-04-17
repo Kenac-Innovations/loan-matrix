@@ -452,7 +452,7 @@ export function ComprehensiveLeadDetails({
     invoiceDiscountingEnabled && isInvoiceDiscountingLead;
 
   // Get loan ID from multiple sources
-  const loanId = lead?.fineractLoanId || fineractLoan?.id;
+  const loanId = fineractLoan?.id || lead?.fineractLoanId || null;
 
   // Debug logging
   console.log("=== COMPREHENSIVE LEAD DETAILS DEBUG ===");
@@ -501,7 +501,6 @@ export function ComprehensiveLeadDetails({
     (typeof lead.requestedAmount === "number" && lead.requestedAmount > 0
         ? lead.requestedAmount
         : principalAmountFallback);
-  const loanId = fineractLoan?.id || lead?.fineractLoanId || null;
   const tenantSettings =
     data?.tenant?.settings && typeof data.tenant.settings === "object"
       ? (data.tenant.settings as Record<string, any>)
