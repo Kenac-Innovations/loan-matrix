@@ -69,7 +69,7 @@ export function LeadMoreActions({
   const handleModifyApplication = () => {
     if (!canModifyPendingApplication) {
       toast.error(
-        "This action is only available on Omama while the loan is still pending approval."
+        "This action is only available on Omama tenants while the loan is still pending approval."
       );
       return;
     }

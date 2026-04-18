@@ -2,7 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { getFineractServiceWithSession } from "@/lib/fineract-api";
 import { prisma } from "@/lib/prisma";
 import { extractTenantSlugFromRequest } from "@/lib/tenant-service";
+import { getSession } from "@/lib/auth";
 import { getTenantFeatures } from "@/lib/tenant-features";
+import { isOmamaTenantSlug } from "@/lib/omama-tenant";
+import {
+  matchesOfficeName,
+  shouldUseOmamaOfficeAdminDashboard,
+} from "@/lib/omama-office-admin";
 
 /**
  * GET /api/leads/reports
@@ -29,8 +35,22 @@ export async function GET(request: NextRequest) {
       },
     });
     const tenantFeatures = getTenantFeatures(tenant?.settings);
+    const session = await getSession();
+    const userOfficeName =
+      ((session?.user as any)?.officeName as string | undefined) || null;
+    const userRoles = ((session?.user as any)?.roles || []) as Array<{
+      name?: string | null;
+      disabled?: boolean | null;
+    }>;
+    const officeAdminOfficeName = shouldUseOmamaOfficeAdminDashboard({
+      tenantSlug,
+      featureEnabled: tenantFeatures.officeScopedAdminLeadsDashboard,
+      roles: userRoles,
+    })
+      ? userOfficeName
+      : null;
     const allowOpenDateRange =
-      tenantFeatures.showAllLeadsByDefault === true || tenantSlug === "omama";
+      tenantFeatures.showAllLeadsByDefault === true || isOmamaTenantSlug(tenantSlug);
     const hasFullDateRange = Boolean(startDate && endDate);
     const effectiveStartDate =
       hasFullDateRange
@@ -67,6 +87,7 @@ export async function GET(request: NextRequest) {
         tenantId: tenant?.id ?? null,
         tenantSlug,
         allowOpenDateRange,
+        officeNameFilter: officeAdminOfficeName,
       });
     }
 
@@ -231,11 +252,27 @@ export async function GET(request: NextRequest) {
             return enrichedRow;
           });
 
+          if (officeAdminOfficeName) {
+            result = result.filter((row: any) =>
+              matchesOfficeName(
+                row.branch || row.office || row.office_name || row.Branch || null,
+                officeAdminOfficeName
+              )
+            );
+          }
 
           console.log(`Enriched ${leads.length} rows with local lead IDs`);
         } else {
           // No local leads found — still add payment_type column so it's visible
           result = result.map((row: any) => ({ ...row, payment_type: null }));
+          if (officeAdminOfficeName) {
+            result = result.filter((row: any) =>
+              matchesOfficeName(
+                row.branch || row.office || row.office_name || row.Branch || null,
+                officeAdminOfficeName
+              )
+            );
+          }
         }
       }
     }
@@ -243,6 +280,15 @@ export async function GET(request: NextRequest) {
     // Ensure payment_type column is always present even if enrichment was skipped
     if (result.length > 0 && !("payment_type" in result[0])) {
       result = result.map((row: any) => ({ ...row, payment_type: null }));
+    }
+
+    if (officeAdminOfficeName && report !== "drafts") {
+      result = result.filter((row: any) =>
+        matchesOfficeName(
+          row.branch || row.office || row.office_name || row.Branch || null,
+          officeAdminOfficeName
+        )
+      );
     }
 
     return NextResponse.json({
@@ -277,12 +323,14 @@ async function getDraftsFromLocalDB({
   tenantId,
   tenantSlug,
   allowOpenDateRange,
+  officeNameFilter,
 }: {
   startDate: string | null;
   endDate: string | null;
   tenantId: string | null;
   tenantSlug: string;
   allowOpenDateRange: boolean;
+  officeNameFilter?: string | null;
 }) {
   try {
     if (!tenantId) {
@@ -356,6 +404,9 @@ async function getDraftsFromLocalDB({
         tenantId,
         loanSubmittedToFineract: false,
         status: "DRAFT",
+        ...(officeNameFilter
+          ? { officeName: { equals: officeNameFilter, mode: "insensitive" } }
+          : {}),
         ...(createdAtFilter ? { createdAt: createdAtFilter } : {}),
       },
       orderBy: { createdAt: "desc" },
@@ -372,6 +423,7 @@ async function getDraftsFromLocalDB({
         userId: true,
         createdByUserName: true,
         preferredPaymentMethod: true,
+        officeName: true,
         currentStage: {
           select: {
             name: true,
@@ -390,14 +442,14 @@ async function getDraftsFromLocalDB({
       
       // Get user name and branch from Fineract user data
       let createdByName = draft.createdByUserName;
-      let branch = "";
+      let branch = draft.officeName || "";
       const fineractUser = draft.userId ? userMap[draft.userId] : null;
       if (!createdByName && fineractUser) {
         createdByName = fineractUser.name;
       } else if (!createdByName && draft.userId) {
         createdByName = draft.userId;
       }
-      if (fineractUser) {
+      if (!branch && fineractUser) {
         branch = fineractUser.office;
       }
       

@@ -242,7 +242,7 @@ export async function PUT(
 
     if (!isPendingLoanApplicationEditTenant(tenantSlug)) {
       return NextResponse.json(
-        { error: "Pending loan application editing is only enabled for Omama." },
+        { error: "Pending loan application editing is only enabled for Omama tenants." },
         { status: 403 }
       );
     }
