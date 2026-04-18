@@ -27,11 +27,14 @@ import {
   Target,
   Timer,
   ArrowRight,
+  Wallet,
 } from "lucide-react";
 import { format, startOfDay, endOfDay } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useIsMobile } from "@/hooks/use-media-query";
 import { useFeatureFlags } from "@/hooks/use-feature-flags";
+import { isOmamaTenantSlug } from "@/lib/omama-tenant";
+import { shouldUseOmamaOfficeAdminDashboard } from "@/lib/omama-office-admin";
 import Link from "next/link";
 import { GenericDataTable, DataTableColumn } from "@/components/tables/generic-data-table";
 import { formatCurrency } from "@/lib/format-currency";
@@ -67,6 +70,22 @@ interface TabConfig {
   activeBg: string;
   inactiveText: string;
   icon: React.ReactNode;
+}
+
+interface OfficeAdminMetrics {
+  officeId: number;
+  officeName: string | null;
+  currencyCode: string;
+  totalLoans: number;
+  activeLoans: number;
+  collectionSuccessPercentage: number;
+  collectionExpectedAmount: number;
+  collectionOverdueAmount: number;
+  par30Percentage: number;
+  par30OutstandingAmount: number;
+  currentMonthDisbursementAmount: number;
+  loanBookAmount: number;
+  generatedAt: string;
 }
 
 const TABS: TabConfig[] = [
@@ -202,7 +221,7 @@ export function LeadsStatusTabs() {
   // Get tenant slug from hostname
   const tenantSlug = featureTenantSlug || getTenantSlugFromHost();
   const showAllLeadsByDefault =
-    isEnabled("showAllLeadsByDefault") || tenantSlug === "omama";
+    isEnabled("showAllLeadsByDefault") || isOmamaTenantSlug(tenantSlug);
   
   // Get user info for role-based filtering
   const sessionOfficeName = (session?.user as any)?.officeName;
@@ -230,6 +249,11 @@ export function LeadsStatusTabs() {
 
   const userRoles = sessionRoles.length > 0 ? sessionRoles : fineractRoles;
   const userOfficeName = sessionOfficeName || fineractOfficeName;
+  const useOmamaOfficeAdminDashboard = shouldUseOmamaOfficeAdminDashboard({
+    tenantSlug,
+    featureEnabled: isEnabled("officeScopedAdminLeadsDashboard"),
+    roles: userRoles,
+  });
   const [tabData, setTabData] = useState<Record<string, ReportData | null>>({
     drafts: null,
     pending: null,
@@ -260,6 +284,9 @@ export function LeadsStatusTabs() {
   });
   const [navigatingRowId, setNavigatingRowId] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [officeAdminMetrics, setOfficeAdminMetrics] = useState<OfficeAdminMetrics | null>(null);
+  const [officeAdminMetricsLoading, setOfficeAdminMetricsLoading] = useState(false);
+  const [officeAdminMetricsError, setOfficeAdminMetricsError] = useState<string | null>(null);
   
   // Pipeline progress cache keyed by lead ID
   const [pipelineProgress, setPipelineProgress] = useState<Record<string, any>>({});
@@ -468,6 +495,27 @@ export function LeadsStatusTabs() {
   // Manual refresh
   const handleRefresh = () => {
     fetchReport(activeTab);
+    if (useOmamaOfficeAdminDashboard) {
+      fetch("/api/leads/office-admin-metrics", {
+        headers: {
+          "x-tenant-slug": tenantSlug,
+        },
+      })
+        .then(async (response) => {
+          const payload = await response.json().catch(() => ({}));
+          if (!response.ok) {
+            throw new Error(payload.error || "Failed to fetch office admin dashboard metrics");
+          }
+          setOfficeAdminMetrics(payload);
+          setOfficeAdminMetricsError(null);
+        })
+        .catch((error) => {
+          console.error("Failed to refresh office admin metrics:", error);
+          setOfficeAdminMetricsError(
+            error instanceof Error ? error.message : "Failed to fetch office admin dashboard metrics"
+          );
+        });
+    }
   };
 
   // Get user permissions
@@ -499,6 +547,14 @@ export function LeadsStatusTabs() {
     if (!session) {
       return { type: "all" as const, label: "All Leads" };
     }
+
+    if (useOmamaOfficeAdminDashboard && userOfficeName) {
+      return {
+        type: "branch" as const,
+        value: userOfficeName,
+        label: `${userOfficeName} Office`,
+      };
+    }
     
     // Check for admin/super admin - they see all
     if (isAdminUser) {
@@ -528,7 +584,7 @@ export function LeadsStatusTabs() {
     }
     
     return { type: "all" as const, label: "All Leads" };
-  }, [session, isAdminUser, hasRole, userOfficeName, userName]);
+  }, [session, useOmamaOfficeAdminDashboard, isAdminUser, hasRole, userOfficeName, userName]);
 
   // Filter data based on user's role scope
   const getRoleScopedData = useCallback((data: any[]): any[] => {
@@ -537,7 +593,7 @@ export function LeadsStatusTabs() {
     return data.filter((row) => {
       if (userFilterScope.type === "branch") {
         const branch = row.branch || row.Branch || row.office || row.Office || "";
-        return String(branch).toLowerCase().includes(String(userFilterScope.value).toLowerCase());
+        return String(branch).trim().toLowerCase() === String(userFilterScope.value).trim().toLowerCase();
       }
       if (userFilterScope.type === "user") {
         const submittedBy = row.submitted_by || row.created_by || row["Submitted By"] || row["Created By"] || row.loan_officer || "";
@@ -559,6 +615,44 @@ export function LeadsStatusTabs() {
       userFilterScope,
     });
   }, [session, userName, userRoles, userPermissions, hasAllFunctions, isAdminUser, userFilterScope]);
+
+  const fetchOfficeAdminMetrics = useCallback(async () => {
+    if (!useOmamaOfficeAdminDashboard) {
+      setOfficeAdminMetrics(null);
+      setOfficeAdminMetricsError(null);
+      return;
+    }
+
+    setOfficeAdminMetricsLoading(true);
+    try {
+      const response = await fetch("/api/leads/office-admin-metrics", {
+        headers: {
+          "x-tenant-slug": tenantSlug,
+        },
+      });
+
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload.error || "Failed to fetch office admin dashboard metrics");
+      }
+
+      setOfficeAdminMetrics(payload);
+      setOfficeAdminMetricsError(null);
+    } catch (error) {
+      console.error("Error fetching office admin dashboard metrics:", error);
+      setOfficeAdminMetrics(null);
+      setOfficeAdminMetricsError(
+        error instanceof Error ? error.message : "Failed to fetch office admin dashboard metrics"
+      );
+    } finally {
+      setOfficeAdminMetricsLoading(false);
+    }
+  }, [tenantSlug, useOmamaOfficeAdminDashboard]);
+
+  useEffect(() => {
+    if (!dateRangeReady) return;
+    fetchOfficeAdminMetrics();
+  }, [dateRangeReady, fetchOfficeAdminMetrics]);
 
   // Calculate pipeline stats based on role-scoped and filtered data
   const pipelineStats = useMemo(() => {
@@ -1082,61 +1176,170 @@ export function LeadsStatusTabs() {
   return (
     <div className="space-y-6">
       {/* Pipeline Stats Cards */}
-      <div className="grid gap-2 sm:gap-3 lg:gap-4 grid-cols-2 md:grid-cols-4">
-        <Card className="bg-gradient-to-br from-blue-500/10 to-blue-600/5 border-blue-500/20">
-          <CardHeader className="flex flex-row items-center justify-between pb-1 sm:pb-2 p-3 sm:p-6">
-            <CardTitle className="text-xs sm:text-sm font-medium text-muted-foreground">Total Leads</CardTitle>
-            <Users className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-blue-500" />
-          </CardHeader>
-          <CardContent className="p-3 pt-0 sm:p-6 sm:pt-0">
-            <div className="text-xl sm:text-2xl font-bold">{pipelineStats.totalLeads}</div>
-            <p className="text-[10px] sm:text-xs text-muted-foreground mt-1">
-              {userFilterScope.label}
-            </p>
-          </CardContent>
-        </Card>
-        
-        <Card className="bg-gradient-to-br from-green-500/10 to-green-600/5 border-green-500/20">
-          <CardHeader className="flex flex-row items-center justify-between pb-1 sm:pb-2 p-3 sm:p-6">
-            <CardTitle className="text-xs sm:text-sm font-medium text-muted-foreground">Conversion Rate</CardTitle>
-            <TrendingUp className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-green-500" />
-          </CardHeader>
-          <CardContent className="p-3 pt-0 sm:p-6 sm:pt-0">
-            <div className="text-xl sm:text-2xl font-bold">{pipelineStats.conversionRate}%</div>
-            <p className="text-[10px] sm:text-xs text-muted-foreground mt-1">
-              {pipelineStats.approved} approved / {pipelineStats.approved + pipelineStats.rejected} decided
-            </p>
-          </CardContent>
-        </Card>
-        
-        <Card className="bg-gradient-to-br from-purple-500/10 to-purple-600/5 border-purple-500/20">
-          <CardHeader className="flex flex-row items-center justify-between pb-1 sm:pb-2 p-3 sm:p-6">
-            <CardTitle className="text-xs sm:text-sm font-medium text-muted-foreground">Submission Rate</CardTitle>
-            <Target className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-purple-500" />
-          </CardHeader>
-          <CardContent className="p-3 pt-0 sm:p-6 sm:pt-0">
-            <div className="text-xl sm:text-2xl font-bold">{pipelineStats.submissionRate}%</div>
-            <p className="text-[10px] sm:text-xs text-muted-foreground mt-1 truncate">
-              {pipelineStats.drafts} drafts pending
-            </p>
-          </CardContent>
-        </Card>
-        
-        <Card className="bg-gradient-to-br from-amber-500/10 to-amber-600/5 border-amber-500/20">
-          <CardHeader className="flex flex-row items-center justify-between pb-1 sm:pb-2 p-3 sm:p-6">
-            <CardTitle className="text-xs sm:text-sm font-medium text-muted-foreground">SLA Status</CardTitle>
-            <Timer className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-amber-500" />
-          </CardHeader>
-          <CardContent className="p-3 pt-0 sm:p-6 sm:pt-0">
-            <div className={cn("text-xl sm:text-2xl font-bold", pipelineStats.slaColor)}>
-              {pipelineStats.slaStatus}
-            </div>
-            <p className="text-[10px] sm:text-xs text-muted-foreground mt-1">
-              {pipelineStats.pending} pending approval
-            </p>
-          </CardContent>
-        </Card>
-      </div>
+      {useOmamaOfficeAdminDashboard ? (
+        <div className="grid gap-2 sm:gap-3 lg:gap-4 grid-cols-2 lg:grid-cols-5">
+          <Card className="bg-gradient-to-br from-blue-500/10 to-blue-600/5 border-blue-500/20">
+            <CardHeader className="flex flex-row items-center justify-between pb-1 sm:pb-2 p-3 sm:p-6">
+              <CardTitle className="text-xs sm:text-sm font-medium text-muted-foreground">Total Loans</CardTitle>
+              <Users className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-blue-500" />
+            </CardHeader>
+            <CardContent className="p-3 pt-0 sm:p-6 sm:pt-0">
+              <div className="text-xl sm:text-2xl font-bold">
+                {officeAdminMetricsLoading ? "..." : officeAdminMetrics?.activeLoans ?? 0}
+              </div>
+              <p className="text-[10px] sm:text-xs text-muted-foreground mt-1">
+                {`${officeAdminMetrics?.totalLoans ?? 0} total loans in ${(officeAdminMetrics?.officeName || userOfficeName || "office")}`}
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-gradient-to-br from-green-500/10 to-green-600/5 border-green-500/20">
+            <CardHeader className="flex flex-row items-center justify-between pb-1 sm:pb-2 p-3 sm:p-6">
+              <CardTitle className="text-xs sm:text-sm font-medium text-muted-foreground">Collection Success</CardTitle>
+              <Target className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-green-500" />
+            </CardHeader>
+            <CardContent className="p-3 pt-0 sm:p-6 sm:pt-0">
+              <div className="text-xl sm:text-2xl font-bold">
+                {officeAdminMetricsLoading
+                  ? "..."
+                  : `${(officeAdminMetrics?.collectionSuccessPercentage ?? 0).toFixed(1)}%`}
+              </div>
+              <p className="text-[10px] sm:text-xs text-muted-foreground mt-1">
+                Overdue {formatCurrency(
+                  officeAdminMetrics?.collectionOverdueAmount ?? 0,
+                  officeAdminMetrics?.currencyCode || orgCurrency
+                )} / Due {formatCurrency(
+                  officeAdminMetrics?.collectionExpectedAmount ?? 0,
+                  officeAdminMetrics?.currencyCode || orgCurrency
+                )}
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-gradient-to-br from-red-500/10 to-red-600/5 border-red-500/20">
+            <CardHeader className="flex flex-row items-center justify-between pb-1 sm:pb-2 p-3 sm:p-6">
+              <CardTitle className="text-xs sm:text-sm font-medium text-muted-foreground">PAR 30</CardTitle>
+              <AlertCircle className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-red-500" />
+            </CardHeader>
+            <CardContent className="p-3 pt-0 sm:p-6 sm:pt-0">
+              <div className="text-xl sm:text-2xl font-bold">
+                {officeAdminMetricsLoading
+                  ? "..."
+                  : `${(officeAdminMetrics?.par30Percentage ?? 0).toFixed(1)}%`}
+              </div>
+              <p className="text-[10px] sm:text-xs text-muted-foreground mt-1">
+                At risk {formatCurrency(
+                  officeAdminMetrics?.par30OutstandingAmount ?? 0,
+                  officeAdminMetrics?.currencyCode || orgCurrency
+                )}
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-gradient-to-br from-purple-500/10 to-purple-600/5 border-purple-500/20">
+            <CardHeader className="flex flex-row items-center justify-between pb-1 sm:pb-2 p-3 sm:p-6">
+              <CardTitle className="text-xs sm:text-sm font-medium text-muted-foreground">Current Disbursement</CardTitle>
+              <TrendingUp className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-purple-500" />
+            </CardHeader>
+            <CardContent className="p-3 pt-0 sm:p-6 sm:pt-0">
+              <div className="text-xl sm:text-2xl font-bold">
+                {officeAdminMetricsLoading
+                  ? "..."
+                  : formatCurrency(
+                      officeAdminMetrics?.currentMonthDisbursementAmount ?? 0,
+                      officeAdminMetrics?.currencyCode || orgCurrency
+                    )}
+              </div>
+              <p className="text-[10px] sm:text-xs text-muted-foreground mt-1">
+                Disbursed this month
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-gradient-to-br from-amber-500/10 to-amber-600/5 border-amber-500/20">
+            <CardHeader className="flex flex-row items-center justify-between pb-1 sm:pb-2 p-3 sm:p-6">
+              <CardTitle className="text-xs sm:text-sm font-medium text-muted-foreground">Loan Book</CardTitle>
+              <Wallet className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-amber-500" />
+            </CardHeader>
+            <CardContent className="p-3 pt-0 sm:p-6 sm:pt-0">
+              <div className="text-xl sm:text-2xl font-bold">
+                {officeAdminMetricsLoading
+                  ? "..."
+                  : formatCurrency(
+                      officeAdminMetrics?.loanBookAmount ?? 0,
+                      officeAdminMetrics?.currencyCode || orgCurrency
+                    )}
+              </div>
+              <p className="text-[10px] sm:text-xs text-muted-foreground mt-1">
+                Principal + interest + fees outstanding
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      ) : (
+        <div className="grid gap-2 sm:gap-3 lg:gap-4 grid-cols-2 md:grid-cols-4">
+          <Card className="bg-gradient-to-br from-blue-500/10 to-blue-600/5 border-blue-500/20">
+            <CardHeader className="flex flex-row items-center justify-between pb-1 sm:pb-2 p-3 sm:p-6">
+              <CardTitle className="text-xs sm:text-sm font-medium text-muted-foreground">Total Leads</CardTitle>
+              <Users className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-blue-500" />
+            </CardHeader>
+            <CardContent className="p-3 pt-0 sm:p-6 sm:pt-0">
+              <div className="text-xl sm:text-2xl font-bold">{pipelineStats.totalLeads}</div>
+              <p className="text-[10px] sm:text-xs text-muted-foreground mt-1">
+                {userFilterScope.label}
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-gradient-to-br from-green-500/10 to-green-600/5 border-green-500/20">
+            <CardHeader className="flex flex-row items-center justify-between pb-1 sm:pb-2 p-3 sm:p-6">
+              <CardTitle className="text-xs sm:text-sm font-medium text-muted-foreground">Conversion Rate</CardTitle>
+              <TrendingUp className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-green-500" />
+            </CardHeader>
+            <CardContent className="p-3 pt-0 sm:p-6 sm:pt-0">
+              <div className="text-xl sm:text-2xl font-bold">{pipelineStats.conversionRate}%</div>
+              <p className="text-[10px] sm:text-xs text-muted-foreground mt-1">
+                {pipelineStats.approved} approved / {pipelineStats.approved + pipelineStats.rejected} decided
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-gradient-to-br from-purple-500/10 to-purple-600/5 border-purple-500/20">
+            <CardHeader className="flex flex-row items-center justify-between pb-1 sm:pb-2 p-3 sm:p-6">
+              <CardTitle className="text-xs sm:text-sm font-medium text-muted-foreground">Submission Rate</CardTitle>
+              <Target className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-purple-500" />
+            </CardHeader>
+            <CardContent className="p-3 pt-0 sm:p-6 sm:pt-0">
+              <div className="text-xl sm:text-2xl font-bold">{pipelineStats.submissionRate}%</div>
+              <p className="text-[10px] sm:text-xs text-muted-foreground mt-1 truncate">
+                {pipelineStats.drafts} drafts pending
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-gradient-to-br from-amber-500/10 to-amber-600/5 border-amber-500/20">
+            <CardHeader className="flex flex-row items-center justify-between pb-1 sm:pb-2 p-3 sm:p-6">
+              <CardTitle className="text-xs sm:text-sm font-medium text-muted-foreground">SLA Status</CardTitle>
+              <Timer className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-amber-500" />
+            </CardHeader>
+            <CardContent className="p-3 pt-0 sm:p-6 sm:pt-0">
+              <div className={cn("text-xl sm:text-2xl font-bold", pipelineStats.slaColor)}>
+                {pipelineStats.slaStatus}
+              </div>
+              <p className="text-[10px] sm:text-xs text-muted-foreground mt-1">
+                {pipelineStats.pending} pending approval
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {useOmamaOfficeAdminDashboard && officeAdminMetricsError && (
+        <div className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+          <AlertCircle className="h-4 w-4" />
+          <span>{officeAdminMetricsError}</span>
+        </div>
+      )}
 
       <Card className="border dark:border-border">
         <CardHeader className="border-b dark:border-border px-4 sm:px-6">

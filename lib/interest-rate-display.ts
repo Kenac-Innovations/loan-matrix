@@ -2,6 +2,7 @@ import type {
   InterestRateDisplayMode,
   TenantSettings,
 } from "@/shared/types/tenant";
+import { isOmamaTenantSlug } from "@/lib/omama-tenant";
 
 type InterestRateLoanLike = {
   annualInterestRate?: number | null;
@@ -49,7 +50,7 @@ export function resolveInterestRateDisplayMode(
     return configuredMode;
   }
 
-  return tenantSlug?.trim().toLowerCase() === "omama" ? "monthly" : "annual";
+  return isOmamaTenantSlug(tenantSlug) ? "monthly" : "annual";
 }
 
 export function getLoanInterestRateDisplay(
