@@ -44,6 +44,12 @@ export function TransactionsDataTable({
 }: TransactionsDataTableProps) {
   const router = useRouter();
 
+  const isReversedTransaction = (transaction: Transaction) =>
+    !!transaction?.manuallyReversed;
+
+  const getReversedTextClass = (transaction: Transaction) =>
+    isReversedTransaction(transaction) ? "text-red-600 line-through" : "";
+
   const displayTransactions = useMemo(() => {
     if (!reversedPayout?.voidedAt) return transactions;
     const d = new Date(reversedPayout.voidedAt);
@@ -97,7 +103,11 @@ export function TransactionsDataTable({
       header: "#",
       cell: ({ row }) => {
         const index = displayTransactions.findIndex(t => t.id === row.original.id);
-        return <span className="font-medium">{index + 1}</span>;
+        return (
+          <span className={`font-medium ${getReversedTextClass(row.original)}`}>
+            {index + 1}
+          </span>
+        );
       },
       enableSorting: false,
       enableHiding: false,
@@ -106,20 +116,34 @@ export function TransactionsDataTable({
       id: "officeName",
       header: "Office",
       accessorKey: "officeName",
+      cell: ({ row, getValue }) => (
+        <span className={getReversedTextClass(row.original)}>
+          {String(getValue() || "")}
+        </span>
+      ),
     },
     {
       id: "date",
       header: "Transaction Date",
       accessorKey: "date",
-      cell: ({ getValue }) => formatDate(getValue()),
+      cell: ({ row, getValue }) => (
+        <span className={getReversedTextClass(row.original)}>
+          {formatDate(getValue())}
+        </span>
+      ),
     },
     {
       id: "type",
       header: "Transaction Type",
       accessorKey: "type",
-      cell: ({ getValue }) => {
+      cell: ({ row, getValue }) => {
         const type = getValue() as Transaction["type"];
-        return type?.value || "";
+        return (
+          <span className={getReversedTextClass(row.original)}>
+            {type?.value || ""}
+            {isReversedTransaction(row.original) ? " (Reversed)" : ""}
+          </span>
+        );
       },
       filterType: "select",
       filterOptions: [
@@ -135,37 +159,61 @@ export function TransactionsDataTable({
       id: "amount",
       header: "Amount",
       accessorKey: "amount",
-      cell: ({ getValue }) => formatCurrency(getValue(), currencyCode),
+      cell: ({ row, getValue }) => (
+        <span className={getReversedTextClass(row.original)}>
+          {formatCurrency(getValue(), currencyCode)}
+        </span>
+      ),
     },
     {
       id: "principalPortion",
       header: "Principal",
       accessorKey: "principalPortion",
-      cell: ({ getValue }) => formatCurrency(getValue(), currencyCode),
+      cell: ({ row, getValue }) => (
+        <span className={getReversedTextClass(row.original)}>
+          {formatCurrency(getValue(), currencyCode)}
+        </span>
+      ),
     },
     {
       id: "interestPortion",
       header: "Interest",
       accessorKey: "interestPortion",
-      cell: ({ getValue }) => formatCurrency(getValue(), currencyCode),
+      cell: ({ row, getValue }) => (
+        <span className={getReversedTextClass(row.original)}>
+          {formatCurrency(getValue(), currencyCode)}
+        </span>
+      ),
     },
     {
       id: "feeChargesPortion",
       header: "Fees",
       accessorKey: "feeChargesPortion",
-      cell: ({ getValue }) => formatCurrency(getValue(), currencyCode),
+      cell: ({ row, getValue }) => (
+        <span className={getReversedTextClass(row.original)}>
+          {formatCurrency(getValue(), currencyCode)}
+        </span>
+      ),
     },
     {
       id: "penaltyChargesPortion",
       header: "Penalties",
       accessorKey: "penaltyChargesPortion",
-      cell: ({ getValue }) => formatCurrency(getValue(), currencyCode),
+      cell: ({ row, getValue }) => (
+        <span className={getReversedTextClass(row.original)}>
+          {formatCurrency(getValue(), currencyCode)}
+        </span>
+      ),
     },
     {
       id: "outstandingLoanBalance",
       header: "Loan Balance",
       accessorKey: "outstandingLoanBalance",
-      cell: ({ getValue }) => formatCurrency(getValue(), currencyCode),
+      cell: ({ row, getValue }) => (
+        <span className={getReversedTextClass(row.original)}>
+          {formatCurrency(getValue(), currencyCode)}
+        </span>
+      ),
     },
     {
       id: "actions",

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getFineractServiceWithSession } from "@/lib/fineract-api";
 import { prisma } from "@/lib/prisma";
+import { upsertRepaymentCashLink } from "@/lib/repayment-cash-link";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
 import { getSession } from "@/lib/auth";
 import { getOrgRawCurrencyCode } from "@/lib/currency-utils";
@@ -29,6 +30,14 @@ export async function POST(
 
     const body = await request.json();
     const { amount, currency, notes, date, source } = body;
+    const fineractTransactionId =
+      body.fineractTransactionId != null ? Number(body.fineractTransactionId) : null;
+    const loanId = body.loanId != null ? Number(body.loanId) : null;
+    const transactionType =
+      typeof body.transactionType === "string" && body.transactionType.trim()
+        ? body.transactionType.trim().toUpperCase()
+        : "REPAYMENT";
+    const isCash = body.isCash !== false;
 
     // Loan repayments: money flows customer → cashier, NOT vault → cashier. Skip vault check.
     const isRepayment = source === "repayment" || (notes && String(notes).toLowerCase().includes("loan repayment"));
@@ -362,12 +371,34 @@ export async function POST(
     // Repayments: customer → cashier. Only Fineract was updated. Do NOT create local record.
     // Local CashAllocation would incorrectly count toward allocatedToCashiers (vault math).
     if (isRepayment) {
+      if (
+        cashier &&
+        fineractTransactionId != null &&
+        !isNaN(fineractTransactionId) &&
+        loanId != null &&
+        !isNaN(loanId)
+      ) {
+        await upsertRepaymentCashLink({
+          tenantId: tenant.id,
+          fineractTransactionId,
+          loanId,
+          transactionType,
+          amount: parseFloat(amount),
+          currency: allocateCurrency,
+          tellerId: teller.id,
+          cashierId: cashier.id,
+          fineractAllocationId,
+          isCash,
+        });
+      }
+
       return NextResponse.json({
         success: true,
         source: "repayment",
         message: "Cashier balance updated in Fineract (customer payment, no vault change)",
         fineractResult: {
           resourceId: fineractAllocationId,
+          fineractTransactionId,
           tellerId: teller.fineractTellerId,
           cashierId: fineractCashierId,
           txnAmount: amount,
