@@ -131,14 +131,14 @@ export default function CashierTransactionsPage({
           data?.cashierTransactions?.pageItems &&
           Array.isArray(data.cashierTransactions.pageItems)
         ) {
-          setTransactions(data.cashierTransactions.pageItems);
+          setTransactions(sortByDateDesc(data.cashierTransactions.pageItems));
         } else if (
           data?.cashierTransactions &&
           Array.isArray(data.cashierTransactions)
         ) {
-          setTransactions(data.cashierTransactions);
+          setTransactions(sortByDateDesc(data.cashierTransactions));
         } else if (Array.isArray(data)) {
-          setTransactions(data);
+          setTransactions(sortByDateDesc(data));
         } else {
           setTransactions([]);
         }
@@ -155,6 +155,25 @@ export default function CashierTransactionsPage({
       setLoading(false);
     }
   };
+
+  const toTimestamp = (date: string | number[] | undefined): number => {
+    if (!date) return 0;
+    if (Array.isArray(date) && date.length >= 3) {
+      return new Date(date[0], date[1] - 1, date[2]).getTime();
+    }
+    if (typeof date === "string") {
+      const d = new Date(date);
+      if (!isNaN(d.getTime())) return d.getTime();
+    }
+    return 0;
+  };
+
+  const sortByDateDesc = (txns: Transaction[]) =>
+    [...txns].sort((a, b) => {
+      const dateA = a.txnDate || a.transactionDate || a.createdDate;
+      const dateB = b.txnDate || b.transactionDate || b.createdDate;
+      return toTimestamp(dateB) - toTimestamp(dateA);
+    });
 
   const formatTransactionDate = (date: string | number[] | undefined) => {
     if (!date) return "—";
