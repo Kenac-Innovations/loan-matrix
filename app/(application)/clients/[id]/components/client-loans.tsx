@@ -8,8 +8,6 @@ import {
   Calendar,
   AlertCircle,
   TrendingUp,
-  TrendingDown,
-  Clock,
   ExternalLink,
 } from "lucide-react";
 import {
@@ -28,6 +26,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { getDisplayLoanStatus } from "@/lib/loan-status";
 
 interface FineractLoan {
   id: number;
@@ -47,6 +46,9 @@ interface FineractLoan {
     active: boolean;
     closed: boolean;
   };
+  displayStatus: string;
+  chargedOff?: boolean;
+  inArrears?: boolean;
   timeline: {
     submittedOnDate: string;
     approvedOnDate?: string;
@@ -66,6 +68,46 @@ interface ClientLoansProps {
   clientId: number;
 }
 
+interface RawClientLoan {
+  id: number;
+  accountNo: string;
+  productName?: string;
+  loanProductName?: string;
+  originalLoan?: number;
+  principal?: number;
+  approvedPrincipal?: number;
+  interestRatePerPeriod?: number;
+  numberOfRepayments?: number;
+  currency?: {
+    code?: string;
+  };
+  status?: {
+    id?: number;
+    code?: string;
+    value?: string;
+    active?: boolean;
+    closed?: boolean;
+    closedWrittenOff?: boolean;
+  };
+  timeline?: {
+    submittedOnDate?: string;
+    approvedOnDate?: string;
+    actualDisbursementDate?: string;
+    expectedMaturityDate?: string;
+  };
+  summary?: {
+    totalOverdue?: number;
+  };
+  loanBalance?: number;
+  inArrears?: boolean;
+  chargedOff?: boolean;
+  delinquent?: {
+    pastDueDays?: number;
+    delinquentDays?: number;
+    delinquentAmount?: number;
+  };
+}
+
 // Simple fetcher for SWR
 const fetcher = (url: string) => fetch(url).then(res => res.json());
 
@@ -77,7 +119,7 @@ export function ClientLoans({ clientId }: ClientLoansProps) {
   const loans: FineractLoan[] = (() => {
     if (!data) return [];
     
-    let rawLoans: any[] = [];
+    let rawLoans: RawClientLoan[] = [];
     
     // If data is directly an array
     if (Array.isArray(data)) {
@@ -101,12 +143,20 @@ export function ClientLoans({ clientId }: ClientLoansProps) {
     }
     
     // Transform the loan data to match the expected interface
-    return rawLoans.map((loan: any) => ({
+    return rawLoans.map((loan) => ({
       id: loan.id,
       accountNo: loan.accountNo,
       loanProductName: loan.productName || loan.loanProductName,
-      principal: loan.originalLoan || loan.principal,
-      approvedPrincipal: loan.originalLoan || loan.approvedPrincipal || loan.principal,
+      principal:
+        loan.originalLoan ||
+        loan.principal ||
+        loan.approvedPrincipal ||
+        0,
+      approvedPrincipal:
+        loan.originalLoan ||
+        loan.approvedPrincipal ||
+        loan.principal ||
+        0,
       interestRatePerPeriod: loan.interestRatePerPeriod || 0,
       numberOfRepayments: loan.numberOfRepayments || 0,
       currency: loan.currency ? { code: loan.currency.code } : undefined,
@@ -117,6 +167,9 @@ export function ClientLoans({ clientId }: ClientLoansProps) {
         active: loan.status?.active || false,
         closed: loan.status?.closed || false,
       },
+      displayStatus: getDisplayLoanStatus(loan),
+      chargedOff: loan.chargedOff || false,
+      inArrears: loan.inArrears || false,
       timeline: {
         submittedOnDate: loan.timeline?.submittedOnDate || "",
         approvedOnDate: loan.timeline?.approvedOnDate || "",
@@ -126,43 +179,53 @@ export function ClientLoans({ clientId }: ClientLoansProps) {
       summary: {
         principalOutstanding: loan.loanBalance || 0,
         totalOutstanding: loan.loanBalance || 0,
-        totalOverdue: loan.inArrears ? (loan.loanBalance || 0) : 0,
+        totalOverdue: loan.summary?.totalOverdue || (loan.inArrears ? (loan.loanBalance || 0) : 0),
       },
     }));
   })();
 
-  const getStatusBadge = (status: FineractLoan["status"]) => {
-    if (status.active) {
-      return (
-        <Badge variant="outline" className="bg-green-500 text-white border-0">
-          Active
-        </Badge>
-      );
-    }
-    if (status.closed) {
+  const getStatusBadge = (loan: FineractLoan) => {
+    const status = loan.displayStatus;
+    const statusLower = status.toLowerCase();
+
+    if (statusLower.includes("written off") || statusLower.includes("closed")) {
       return (
         <Badge variant="outline" className="bg-gray-500 text-white border-0">
-          Closed
+          {status}
         </Badge>
       );
     }
-    if (status.code === "loanStatusType.approved") {
+    if (statusLower.includes("overdue") || statusLower.includes("arrears")) {
+      return (
+        <Badge variant="outline" className="bg-orange-500 text-white border-0">
+          {status}
+        </Badge>
+      );
+    }
+    if (statusLower.includes("active")) {
+      return (
+        <Badge variant="outline" className="bg-green-500 text-white border-0">
+          {status}
+        </Badge>
+      );
+    }
+    if (statusLower.includes("approved") && !statusLower.includes("pending")) {
       return (
         <Badge variant="outline" className="bg-blue-500 text-white border-0">
-          Approved
+          {status}
         </Badge>
       );
     }
-    if (status.code === "loanStatusType.pending") {
+    if (statusLower.includes("pending") || statusLower.includes("submitted")) {
       return (
         <Badge variant="outline" className="bg-yellow-500 text-white border-0">
-          Pending
+          {status}
         </Badge>
       );
     }
     return (
       <Badge variant="outline" className="bg-purple-500 text-white border-0">
-        {status.value}
+        {status}
       </Badge>
     );
   };
@@ -197,7 +260,10 @@ export function ClientLoans({ clientId }: ClientLoansProps) {
   };
 
   // Calculate summary metrics
-  const totalPrincipal = loans.reduce((sum, loan) => sum + loan.principal, 0);
+  const totalPrincipal = loans.reduce(
+    (sum, loan) => sum + (loan.approvedPrincipal || loan.principal || 0),
+    0
+  );
   const totalOutstanding = loans.reduce(
     (sum, loan) => sum + loan.summary.totalOutstanding,
     0
@@ -206,7 +272,10 @@ export function ClientLoans({ clientId }: ClientLoansProps) {
     (sum, loan) => sum + loan.summary.totalOverdue,
     0
   );
-  const activeLoans = loans.filter((loan) => loan.status.active).length;
+  const activeLoans = loans.filter((loan) => {
+    const statusLower = loan.displayStatus.toLowerCase();
+    return statusLower.includes("active") || statusLower.includes("overdue");
+  }).length;
 
   // Get currency for display - use first loan's currency when all share same currency
   const summaryCurrency =
@@ -400,7 +469,7 @@ export function ClientLoans({ clientId }: ClientLoansProps) {
                           )}
                         </div>
                       </TableCell>
-                      <TableCell>{getStatusBadge(loan.status)}</TableCell>
+                      <TableCell>{getStatusBadge(loan)}</TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1 text-sm">
                           <Calendar className="h-3 w-3" />

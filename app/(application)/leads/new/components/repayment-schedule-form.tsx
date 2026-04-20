@@ -25,22 +25,7 @@ import {
   recomputeTopupAwareDisbursementChargeAmounts,
   type EditableLoanChargeRow,
 } from "@/lib/topup-charge-base";
-import { Calendar, FileText, Loader2, Plus, Trash2, X } from "lucide-react";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import { Calendar as CalendarComponent } from "@/components/ui/calender";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { FileText, Loader2, X } from "lucide-react";
 
 interface RepaymentSchedulePeriod {
   period?: number;
@@ -117,12 +102,6 @@ export function RepaymentScheduleForm({
   const [loanDetails, setLoanDetails] = useState<any>(null);
   const [loanTemplate, setLoanTemplate] = useState<any>(null);
   const [editableCharges, setEditableCharges] = useState<EditableLoanChargeRow[]>([]);
-  const [showAddCharge, setShowAddCharge] = useState(false);
-  const [selectedChargeOption, setSelectedChargeOption] = useState<string>("");
-  const [newChargeAmount, setNewChargeAmount] = useState<string>("");
-  const [newChargeDueDate, setNewChargeDueDate] = useState<Date | undefined>(
-    undefined,
-  );
 
   // Load loan terms and loan details
   useEffect(() => {
@@ -289,27 +268,38 @@ export function RepaymentScheduleForm({
           )
         : format(new Date(), "dd MMMM yyyy");
 
-      const decimalPlaces =
-        (loanTemplate as { currency?: { decimalPlaces?: number } })?.currency
-          ?.decimalPlaces ?? 2;
+      // editableCharges are already rebased on load — no need to recompute again.
+      // Fineract's calculateLoanSchedule treats `amount` as a percentage for % charges and
+      // applies it to the full principal (not take-home). To get the correct take-home-based fee,
+      // send the rebased percentage p = r×(H/P) so that p% × P = r% × H = desired fee.
+      const charges = editableCharges.map((charge) => {
+        const formattedDueDate =
+          charge.dueDate instanceof Date
+            ? format(charge.dueDate, "dd MMMM yyyy")
+            : charge.dueDate;
 
-      const chargesForSchedule = recomputeTopupAwareDisbursementChargeAmounts(
-        editableCharges,
-        {
-          principal: loanTerms.principal || 0,
-          isTopup: Boolean(loanTerms.isTopup),
-          loanIdToClose: loanTerms.loanIdToClose || "",
-          activeLoanOptions: loanTemplate?.clientActiveLoanOptions,
-          templateDefaultPrincipal: loanTemplate?.principal,
-          currencyDecimalPlaces: decimalPlaces,
+        const calcCode = (
+          charge.originalCharge?.chargeCalculationType?.code ?? ""
+        ).toLowerCase();
+        const isPercentCharge =
+          calcCode.includes("percent") &&
+          !calcCode.includes("percent.of.amount.and.interest") &&
+          !calcCode.includes("percent.of.interest");
+
+        if (isPercentCharge) {
+          const rebasedPct =
+            charge.originalCharge?.percentage != null
+              ? Number(charge.originalCharge.percentage)
+              : null;
+
+          if (rebasedPct != null && Number.isFinite(rebasedPct) && rebasedPct > 0) {
+            // Send rebased %: Fineract computes rebasedPct% × P = r% × H = correct fee
+            return { chargeId: charge.chargeId, amount: rebasedPct, dueDate: formattedDueDate };
+          }
         }
-      );
 
-      const charges = chargesForSchedule.map((charge) => ({
-        chargeId: charge.chargeId,
-        amount: charge.amount,
-        dueDate: charge.dueDate,
-      }));
+        return { chargeId: charge.chargeId, amount: charge.amount, dueDate: formattedDueDate };
+      });
 
       // Build payload for schedule calculation matching Fineract API structure
       const payload = {
@@ -476,12 +466,13 @@ export function RepaymentScheduleForm({
       const scheduleData = await response.json();
       setRepaymentSchedule(scheduleData);
 
-      // Mark as complete and pass data
+      // Mark as complete and pass data — merge rebased editableCharges back into loanTerms
+      // so loan-contracts.tsx reads the correct originalCharge.percentage values.
       if (onComplete) {
         onComplete({
           repaymentSchedule: scheduleData,
           loanDetails,
-          loanTerms,
+          loanTerms: loanTerms ? { ...loanTerms, charges: editableCharges } : loanTerms,
           loanTemplate,
         });
       }
@@ -804,7 +795,7 @@ export function RepaymentScheduleForm({
                     onComplete({
                       repaymentSchedule,
                       loanDetails,
-                      loanTerms,
+                      loanTerms: loanTerms ? { ...loanTerms, charges: editableCharges } : loanTerms,
                       loanTemplate,
                     });
                   }

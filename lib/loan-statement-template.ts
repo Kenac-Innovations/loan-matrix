@@ -754,66 +754,36 @@ export function parseFineractDate(dateValue: string | number[] | undefined): str
   }
 }
 
+function formatChargeName(name: string): string {
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
 /**
- * Map Fineract transaction type to readable description using the
- * narration from Fineract (type.value) and the transaction breakdown.
- * For fee accruals, attempts to match the fee amount to a loan charge name.
+ * Get the display label for a statement transaction, matching the loan details
+ * transactions tab: repaymentAtDisbursement → "Admin Fee", single charge from
+ * loanChargePaidByList → charge name, otherwise type.value.
  */
-export function mapTransactionType(
-  type: { code?: string; value?: string } | string,
-  accountNo?: string,
-  paymentDetail?: string,
-  breakdown?: {
-    interestPortion?: number;
-    feeChargesPortion?: number;
-    penaltyChargesPortion?: number;
-    principalPortion?: number;
-  },
-  chargeNameByAmount?: Map<number, string>
-): string {
-  const typeCode = typeof type === "string" ? type : type?.code || "";
-  const typeValue = typeof type === "string" ? type : type?.value || "";
+function getStatementTransactionType(tx: any): string {
+  if (tx.type?.repaymentAtDisbursement) return "Admin Fee";
 
-  if (typeCode.includes("disbursement") || typeValue.toLowerCase().includes("disbursement")) {
-    return `Disbursement ${accountNo || ""}`.trim();
-  }
-
-  if (typeCode.includes("repayment") || typeValue.toLowerCase().includes("repayment")) {
-    const desc = paymentDetail || "Capital Repayment";
-    return `${desc} ${accountNo || ""}`.trim();
-  }
-
-  if (typeCode.includes("accrual") || typeValue.toLowerCase().includes("accrual")) {
-    const feeAmt = breakdown?.feeChargesPortion || 0;
-    const intAmt = breakdown?.interestPortion || 0;
-    const penAmt = breakdown?.penaltyChargesPortion || 0;
-
-    const acct = accountNo ? ` ${accountNo}` : "";
-
-    if (feeAmt > 0 && intAmt === 0 && penAmt === 0) {
-      const chargeName = chargeNameByAmount?.get(feeAmt);
-      if (chargeName) return `${chargeName} Accrual${acct}`;
-      return `Fee Accrual${acct}`;
+  const paidCharges = tx.loanChargePaidByList;
+  if (Array.isArray(paidCharges) && paidCharges.length === 1) {
+    const charge = paidCharges[0];
+    const chargeName =
+      charge?.chargeName ||
+      charge?.name ||
+      charge?.loanChargeName ||
+      charge?.charge?.name;
+    if (typeof chargeName === "string" && chargeName.trim()) {
+      return formatChargeName(chargeName);
     }
-    if (intAmt > 0 && feeAmt === 0 && penAmt === 0) return `Interest Accrual${acct}`;
-    if (penAmt > 0 && feeAmt === 0 && intAmt === 0) return `Penalty Accrual${acct}`;
-
-    const parts: string[] = [];
-    if (intAmt > 0) parts.push("Interest");
-    if (feeAmt > 0) {
-      const chargeName = chargeNameByAmount?.get(feeAmt);
-      parts.push(chargeName || "Fee");
-    }
-    if (penAmt > 0) parts.push("Penalty");
-    return parts.length > 0 ? `${parts.join(" & ")} Accrual${acct}` : `${typeValue || "Accrual"}${acct}`;
   }
 
-  if (typeCode.includes("waiveInterest")) return "Interest Waiver";
-  if (typeCode.includes("waiveCharges")) return "Charges Waiver";
-  if (typeCode.includes("writeOff")) return "Write-Off";
-  if (typeCode.includes("chargePayment")) return "Fee Payment";
-
-  return typeValue || typeCode || "Unknown";
+  return tx.type?.value || "";
 }
 
 /**
@@ -836,7 +806,6 @@ export function transformFineractLoanToStatement(
   const summary = loan.summary || {};
   const transactions = loan.transactions || [];
   const accountNo = loan.accountNo || "";
-  const charges: any[] = loan.charges || [];
 
   // Calculate totals
   let openingBalance = 0;
@@ -859,17 +828,6 @@ export function transformFineractLoanToStatement(
     isHighlighted: false,
   });
 
-  // Build lookup: per-installment fee amount → charge name for labeling fee accruals
-  const chargeNameByAmount = new Map<number, string>();
-  for (const c of charges) {
-    if (!c.name || c.chargeTimeType?.code !== "chargeTimeType.instalmentFee") continue;
-    const isFlat = c.chargeCalculationType?.code === "chargeCalculationType.flat";
-    const perInstallment = isFlat ? (c.amountOrPercentage ?? c.amount) : null;
-    if (perInstallment != null) {
-      chargeNameByAmount.set(perInstallment, c.name);
-    }
-  }
-
   // Sort transactions by date
   const sortedTransactions = [...transactions].sort((a: any, b: any) => {
     const dateA = Array.isArray(a.date)
@@ -882,15 +840,17 @@ export function transformFineractLoanToStatement(
   });
 
   sortedTransactions.forEach((tx: any) => {
-    const isDisbursement =
-      tx.type?.code?.includes("disbursement") ||
-      tx.type?.value?.toLowerCase().includes("disbursement");
-    const isRepayment =
-      tx.type?.code?.includes("repayment") ||
-      tx.type?.value?.toLowerCase().includes("repayment");
-    const isAccrual =
-      tx.type?.code?.includes("accrual") ||
-      tx.type?.value?.toLowerCase().includes("accrual");
+    const isDisbursement = tx.type?.disbursement;
+    const isRepayment = tx.type?.repayment;
+    const isRepaymentAtDisbursement = tx.type?.repaymentAtDisbursement;
+    const isAccrual = tx.type?.accrual;
+    const isChargePayment = tx.type?.code?.includes("chargePayment");
+    const isWaiver =
+      tx.type?.code?.includes("waive") ||
+      tx.type?.value?.toLowerCase().includes("waiv");
+    const isWriteOff =
+      tx.type?.code?.includes("writeOff") ||
+      tx.type?.value?.toLowerCase().includes("write-off");
 
     let debit = 0;
     let credit = 0;
@@ -902,33 +862,33 @@ export function transformFineractLoanToStatement(
       runningBalance += debit;
       isHighlighted = true;
     } else if (isAccrual) {
-      // Interest accrual adds to debit (what's owed)
       debit = tx.amount || 0;
       totalDebits += debit;
       runningBalance += debit;
-      // isHighlighted stays false for accruals
-    } else if (isRepayment || tx.type?.code?.includes("chargePayment")) {
+    } else if (isRepaymentAtDisbursement || isRepayment || isChargePayment) {
       credit = tx.amount || 0;
       totalCredits += credit;
       runningBalance -= credit;
       isHighlighted = true;
+    } else if (isWaiver || isWriteOff) {
+      credit = tx.amount || 0;
+      totalCredits += credit;
+      runningBalance -= credit;
     }
 
-    const paymentDetail = tx.paymentDetailData?.paymentType?.name || tx.note || "";
+    const cumulativeBalance =
+      typeof tx.outstandingLoanBalance === "number"
+        ? tx.outstandingLoanBalance
+        : Math.max(0, runningBalance);
 
     processedTransactions.push({
       id: tx.id,
       date: parseFineractDate(tx.date),
-      type: mapTransactionType(tx.type, accountNo, paymentDetail, {
-        interestPortion: tx.interestPortion,
-        feeChargesPortion: tx.feeChargesPortion,
-        penaltyChargesPortion: tx.penaltyChargesPortion,
-        principalPortion: tx.principalPortion,
-      }, chargeNameByAmount),
+      type: getStatementTransactionType(tx),
       trxnId: tx.id?.toString() || "",
       debit,
       credit,
-      cumulativeBalance: Math.max(0, runningBalance),
+      cumulativeBalance,
       isHighlighted,
     });
   });
@@ -987,7 +947,12 @@ export function transformFineractLoanToStatement(
     openingBalance,
     totalDebits,
     totalCredits,
-    closingBalance: Math.max(0, runningBalance),
+    closingBalance: (() => {
+      const lastTx = sortedTransactions[sortedTransactions.length - 1];
+      return typeof lastTx?.outstandingLoanBalance === "number"
+        ? lastTx.outstandingLoanBalance
+        : Math.max(0, runningBalance);
+    })(),
 
     preparedBy,
   };
