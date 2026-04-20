@@ -15,6 +15,24 @@ type SessionRole = {
   disabled?: boolean | null;
 };
 
+function parseFineractDate(dateValue?: string | number[] | null): Date | null {
+  if (!dateValue) return null;
+
+  if (Array.isArray(dateValue) && dateValue.length >= 3) {
+    const [year, month, day] = dateValue;
+    return new Date(year, month - 1, day);
+  }
+
+  if (typeof dateValue === "string") {
+    const parsed = new Date(dateValue);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed;
+    }
+  }
+
+  return null;
+}
+
 function parseReportData(reportData: any): any[] {
   if (!reportData) return [];
 
@@ -132,21 +150,25 @@ function isLoanForOffice(
   return matchesOfficeName(candidateOfficeName, officeName);
 }
 
-function isThirtyDaysPast(dateValue?: string | number[] | null): boolean {
-  if (!dateValue) return false;
-
-  let date: Date | null = null;
-  if (Array.isArray(dateValue) && dateValue.length >= 3) {
-    const [year, month, day] = dateValue;
-    date = new Date(year, month - 1, day);
-  } else if (typeof dateValue === "string") {
-    const parsed = new Date(dateValue);
-    if (!Number.isNaN(parsed.getTime())) date = parsed;
+function getLoanPastDueDays(loan: FineractLoan): number {
+  const delinquentPastDueDays = Number((loan as any)?.delinquent?.pastDueDays || 0);
+  if (delinquentPastDueDays > 0) {
+    return delinquentPastDueDays;
   }
 
-  if (!date) return false;
-  const diffMs = Date.now() - date.getTime();
-  return diffMs >= 30 * 24 * 60 * 60 * 1000;
+  const directDaysInArrears = Number((loan as any)?.daysInArrears || 0);
+  if (directDaysInArrears > 0) {
+    return directDaysInArrears;
+  }
+
+  const overdueSinceDate = loan.summary?.overdueSinceDate;
+  const overdueSince = parseFineractDate(overdueSinceDate);
+  if (!overdueSince) {
+    return 0;
+  }
+
+  const diffMs = Date.now() - overdueSince.getTime();
+  return Math.max(0, Math.floor(diffMs / (24 * 60 * 60 * 1000)));
 }
 
 export async function GET(request: NextRequest) {
@@ -207,10 +229,11 @@ export async function GET(request: NextRequest) {
     );
 
     const par30OutstandingAmount = activeOfficeLoans.reduce((sum, loan) => {
-      const overdueSince = loan.summary?.overdueSinceDate;
       const totalOutstanding = loan.summary?.totalOutstanding || 0;
       const totalOverdue = loan.summary?.totalOverdue || 0;
-      return isThirtyDaysPast(overdueSince) || totalOverdue > 0
+      const pastDueDays = getLoanPastDueDays(loan);
+
+      return totalOverdue > 0 && pastDueDays >= 30
         ? sum + totalOutstanding
         : sum;
     }, 0);
@@ -221,15 +244,7 @@ export async function GET(request: NextRequest) {
     const currentMonthDisbursementAmount = officeLoans.reduce((sum, loan) => {
       const disbursementDate = loan.timeline?.actualDisbursementDate;
       const currentMonthStart = startOfMonth(new Date());
-      let parsedDate: Date | null = null;
-
-      if (Array.isArray(disbursementDate) && disbursementDate.length >= 3) {
-        const [year, month, day] = disbursementDate;
-        parsedDate = new Date(year, month - 1, day);
-      } else if (typeof disbursementDate === "string") {
-        const temp = new Date(disbursementDate);
-        if (!Number.isNaN(temp.getTime())) parsedDate = temp;
-      }
+      const parsedDate = parseFineractDate(disbursementDate);
 
       if (!parsedDate || parsedDate < currentMonthStart) return sum;
       return sum + (loan.summary?.principalDisbursed || loan.principal || 0);
