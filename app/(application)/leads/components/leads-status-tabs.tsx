@@ -755,11 +755,14 @@ export function LeadsStatusTabs() {
       header: "#",
       enableSorting: false,
       enableHiding: false,
-      cell: ({ row }) => (
-        <span className="text-muted-foreground font-mono text-xs">
-          {row.index + 1}
-        </span>
-      ),
+      cell: ({ row }) => {
+        const rowIndex = data.indexOf(row.original);
+        return (
+          <span className="text-muted-foreground font-mono text-xs">
+            {rowIndex >= 0 ? rowIndex + 1 : "—"}
+          </span>
+        );
+      },
     });
 
     // Pipeline stage + progress column (skip for drafts)
@@ -1185,10 +1188,10 @@ export function LeadsStatusTabs() {
             </CardHeader>
             <CardContent className="p-3 pt-0 sm:p-6 sm:pt-0">
               <div className="text-xl sm:text-2xl font-bold">
-                {officeAdminMetricsLoading ? "..." : officeAdminMetrics?.activeLoans ?? 0}
+                {officeAdminMetricsLoading ? "..." : officeAdminMetrics?.totalLoans ?? 0}
               </div>
               <p className="text-[10px] sm:text-xs text-muted-foreground mt-1">
-                {`${officeAdminMetrics?.totalLoans ?? 0} total loans in ${(officeAdminMetrics?.officeName || userOfficeName || "office")}`}
+                {`${officeAdminMetrics?.activeLoans ?? 0} active loans in ${(officeAdminMetrics?.officeName || userOfficeName || "office")}`}
               </p>
             </CardContent>
           </Card>
