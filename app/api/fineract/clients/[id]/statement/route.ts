@@ -4,10 +4,34 @@ import { format } from "date-fns";
 import {
   generateConsolidatedStatementHTML,
   parseFineractDate,
-  mapTransactionType,
   type ConsolidatedStatementData,
   type ConsolidatedTransaction,
 } from "@/lib/loan-statement-template";
+
+function formatChargeName(name: string): string {
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function getConsolidatedTransactionType(tx: any): string {
+  if (tx.type?.repaymentAtDisbursement) return "Admin Fee";
+  const paidCharges = tx.loanChargePaidByList;
+  if (Array.isArray(paidCharges) && paidCharges.length === 1) {
+    const charge = paidCharges[0];
+    const chargeName =
+      charge?.chargeName ||
+      charge?.name ||
+      charge?.loanChargeName ||
+      charge?.charge?.name;
+    if (typeof chargeName === "string" && chargeName.trim()) {
+      return formatChargeName(chargeName);
+    }
+  }
+  return tx.type?.value || "";
+}
 import { getTenantFromHeaders } from "@/lib/tenant-service";
 import { getSession, getCurrentUserDetails } from "@/lib/auth";
 
@@ -98,23 +122,13 @@ export async function GET(
       sortDate: number;
       accountNo: string;
       tx: any;
-      chargeNameByAmount: Map<number, string>;
     }
     const rawTxs: RawTx[] = [];
 
     for (const loan of allLoans) {
       const accountNo: string = loan.accountNo || "";
       const productName: string = loan.loanProductName || loan.loanProductDescription || "";
-      const charges: any[] = loan.charges || [];
       const transactions: any[] = loan.transactions || [];
-
-      const chargeNameByAmount = new Map<number, string>();
-      for (const c of charges) {
-        if (!c.name || c.chargeTimeType?.code !== "chargeTimeType.instalmentFee") continue;
-        const isFlat = c.chargeCalculationType?.code === "chargeCalculationType.flat";
-        const perInstallment = isFlat ? (c.amountOrPercentage ?? c.amount) : null;
-        if (perInstallment != null) chargeNameByAmount.set(perInstallment, c.name);
-      }
 
       perLoanTotals.set(accountNo, {
         productName,
@@ -134,7 +148,7 @@ export async function GET(
         if (fromDate && sortDate < new Date(fromDate).getTime()) continue;
         if (toDate && sortDate > new Date(toDate).getTime()) continue;
 
-        rawTxs.push({ sortDate, accountNo, tx, chargeNameByAmount });
+        rawTxs.push({ sortDate, accountNo, tx });
       }
     }
 
@@ -147,16 +161,18 @@ export async function GET(
     let runningBalance = 0;
     const consolidatedTxs: ConsolidatedTransaction[] = [];
 
-    for (const { accountNo, tx, chargeNameByAmount } of rawTxs) {
-      const isDisbursement =
-        tx.type?.code?.includes("disbursement") ||
-        tx.type?.value?.toLowerCase().includes("disbursement");
-      const isRepayment =
-        tx.type?.code?.includes("repayment") ||
-        tx.type?.value?.toLowerCase().includes("repayment");
-      const isAccrual =
-        tx.type?.code?.includes("accrual") ||
-        tx.type?.value?.toLowerCase().includes("accrual");
+    for (const { accountNo, tx } of rawTxs) {
+      const isDisbursement = tx.type?.disbursement;
+      const isRepayment = tx.type?.repayment;
+      const isRepaymentAtDisbursement = tx.type?.repaymentAtDisbursement;
+      const isAccrual = tx.type?.accrual;
+      const isChargePayment = tx.type?.code?.includes("chargePayment");
+      const isWaiver =
+        tx.type?.code?.includes("waive") ||
+        tx.type?.value?.toLowerCase().includes("waiv");
+      const isWriteOff =
+        tx.type?.code?.includes("writeOff") ||
+        tx.type?.value?.toLowerCase().includes("write-off");
 
       let debit = 0;
       let credit = 0;
@@ -167,9 +183,11 @@ export async function GET(
         isHighlighted = true;
       } else if (isAccrual) {
         debit = tx.amount || 0;
-      } else if (isRepayment || tx.type?.code?.includes("chargePayment")) {
+      } else if (isRepaymentAtDisbursement || isRepayment || isChargePayment) {
         credit = tx.amount || 0;
         isHighlighted = true;
+      } else if (isWaiver || isWriteOff) {
+        credit = tx.amount || 0;
       }
 
       grandDebits += debit;
@@ -181,23 +199,10 @@ export async function GET(
       loanTotals.totalCredits += credit;
       loanTotals.closingBalance += debit - credit;
 
-      const paymentDetail = tx.paymentDetailData?.paymentType?.name || tx.note || "";
-
       consolidatedTxs.push({
         date: parseFineractDate(tx.date),
         loanAccount: accountNo,
-        type: mapTransactionType(
-          tx.type,
-          accountNo,
-          paymentDetail,
-          {
-            interestPortion: tx.interestPortion,
-            feeChargesPortion: tx.feeChargesPortion,
-            penaltyChargesPortion: tx.penaltyChargesPortion,
-            principalPortion: tx.principalPortion,
-          },
-          chargeNameByAmount
-        ),
+        type: getConsolidatedTransactionType(tx),
         trxnId: tx.id?.toString() || "",
         debit,
         credit,

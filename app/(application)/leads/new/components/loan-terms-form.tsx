@@ -1719,6 +1719,24 @@ export function LoanTermsForm({
     );
   };
 
+  const handleUpdateChargePercentage = (index: number, percentage: number) => {
+    const principal = Number(watchedPrincipal) || 0;
+    const amount = roundMoney((percentage / 100) * principal, 2);
+    setEditableCharges((prev) =>
+      prev.map((charge, i) =>
+        i === index
+          ? {
+              ...charge,
+              amount,
+              originalCharge: charge.originalCharge
+                ? { ...charge.originalCharge, percentage }
+                : charge.originalCharge,
+            }
+          : charge
+      )
+    );
+  };
+
   const handleUpdateChargeDueDate = (index: number, dueDate: Date) => {
     setEditableCharges((prev) =>
       prev.map((charge, i) => (i === index ? { ...charge, dueDate } : charge))
@@ -3610,28 +3628,34 @@ export function LoanTermsForm({
                           )}
                         >
                           <Label className="flex items-center gap-2">
-                            Amount
+                            {calcHighlight.kind === "percent" ? "Percentage" : "Amount"}
                             <span className="text-xs font-normal text-muted-foreground">
                               {calcHighlight.kind === "flat" &&
                                 "(fixed currency amount)"}
                               {calcHighlight.kind === "percent" &&
                                 (topupTakeHomePreview
-                                  ? "(% of take-home)"
-                                  : "(% of principal or defined base)")}
+                                  ? "(% applied to principal, equals take-home fee)"
+                                  : "(% of principal)")}
                               {calcHighlight.kind === "other" && ""}
                             </span>
                           </Label>
                           <Input
                             type="number"
                             step="0.01"
-                            value={charge.amount}
-                            disabled={!canEditLoan || isLockedInvoiceIncomeCharge}
-                            onChange={(e) =>
-                              handleUpdateChargeAmount(
-                                index,
-                                parseFloat(e.target.value) || 0
-                              )
+                            value={
+                              calcHighlight.kind === "percent"
+                                ? (charge.originalCharge?.percentage ?? charge.amount)
+                                : charge.amount
                             }
+                            disabled={!canEditLoan || isLockedInvoiceIncomeCharge}
+                            onChange={(e) => {
+                              const val = parseFloat(e.target.value) || 0;
+                              if (calcHighlight.kind === "percent") {
+                                handleUpdateChargePercentage(index, val);
+                              } else {
+                                handleUpdateChargeAmount(index, val);
+                              }
+                            }}
                           />
                           {isLockedInvoiceIncomeCharge && (
                             <p className="text-xs text-muted-foreground">

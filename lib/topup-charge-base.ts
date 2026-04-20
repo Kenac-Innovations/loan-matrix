@@ -17,6 +17,8 @@ export type EditableLoanChargeRow = {
     chargeTimeType?: ChargeTimeTypeRef;
     chargeCalculationType?: ChargeCalcTypeRef;
     percentage?: unknown;
+    /** Original take-home rate set on first rebase; never overwritten on subsequent recalculations. */
+    _takeHomePercentage?: unknown;
     amount?: unknown;
     penalty?: boolean;
   };
@@ -128,6 +130,13 @@ function extractPercentRateFromCharge(
     toNumber(loanPrincipal) ?? 0
   );
 
+  // Prefer the preserved original take-home rate so recalculations always
+  // start from the product's configured rate, not a previously rebased value.
+  const fromPreserved = toNumber(originalCharge._takeHomePercentage);
+  if (fromPreserved != null && fromPreserved > 0 && fromPreserved <= MAX_PLAUSIBLE_PERCENT_FEE) {
+    return fromPreserved;
+  }
+
   const fromField = toNumber(originalCharge.percentage);
   if (
     fromField != null &&
@@ -209,7 +218,12 @@ export function recomputeTopupAwareDisbursementChargeAmounts(
         return charge;
       }
       const nextAmount = roundMoney((P * pOnPrincipal) / 100, decimals);
-      const nextOc = { ...oc, percentage: pOnPrincipal };
+      // Preserve the original take-home rate on first rebase; never overwrite on subsequent runs.
+      const nextOc = {
+        ...oc,
+        percentage: pOnPrincipal,
+        _takeHomePercentage: oc._takeHomePercentage ?? rate,
+      };
       const prevPct = toNumber(oc.percentage);
       if (
         nextAmount === charge.amount &&

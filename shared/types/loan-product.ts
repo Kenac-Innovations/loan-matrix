@@ -73,6 +73,7 @@ export interface LoanProductTemplate {
   };
   chargeOptions: FineractCharge[];
   penaltyOptions?: FineractCharge[];
+  chargeOffReasonOptions?: Array<{ id: number; name: string }>;
   floatingRateOptions?: FineractFloatingRate[];
   interestRecalculationCompoundingTypeOptions?: FineractEnumOption[];
   rescheduleStrategyTypeOptions?: FineractEnumOption[];
@@ -124,6 +125,11 @@ export interface PaymentChannelMapping {
 export interface FeeIncomeMapping {
   chargeId: number;
   incomeAccountId: number;
+}
+
+export interface ChargeOffReasonMapping {
+  chargeOffReasonCodeValueId: number;
+  expenseAccountId: number;
 }
 
 export interface LoanProductFormData {
@@ -229,25 +235,30 @@ export interface LoanProductFormData {
   accountingRule: number | "";
   fundSourceAccountId: number | "";
   loanPortfolioAccountId: number | "";
+  transfersInSuspenseAccountId: number | "";
   interestOnLoanAccountId: number | "";
   incomeFromFeeAccountId: number | "";
   incomeFromPenaltyAccountId: number | "";
-  writeOffAccountId: number | "";
-  overpaymentLiabilityAccountId: number | "";
-  receivableInterestAccountId: number | "";
-  receivableFeeAccountId: number | "";
-  receivablePenaltyAccountId: number | "";
+  incomeFromRecoveryAccountId: number | "";
   incomeFromChargeOffInterestAccountId: number | "";
   incomeFromChargeOffFeesAccountId: number | "";
   incomeFromChargeOffPenaltyAccountId: number | "";
   incomeFromGoodwillCreditInterestAccountId: number | "";
   incomeFromGoodwillCreditFeesAccountId: number | "";
   incomeFromGoodwillCreditPenaltyAccountId: number | "";
-  incomeFromRecoveryAccountId: number | "";
+  writeOffAccountId: number | "";
+  goodwillCreditAccountId: number | "";
+  chargeOffExpenseAccountId: number | "";
+  chargeOffFraudExpenseAccountId: number | "";
+  overpaymentLiabilityAccountId: number | "";
+  receivableInterestAccountId: number | "";
+  receivableFeeAccountId: number | "";
+  receivablePenaltyAccountId: number | "";
   advancedAccountingRules: boolean;
   paymentChannelToFundSourceMappings: PaymentChannelMapping[];
   feeToIncomeAccountMappings: FeeIncomeMapping[];
   penaltyToIncomeAccountMappings: FeeIncomeMapping[];
+  chargeOffReasonToExpenseAccountMappings: ChargeOffReasonMapping[];
 }
 
 export const defaultLoanProductFormData: LoanProductFormData = {
@@ -261,7 +272,7 @@ export const defaultLoanProductFormData: LoanProductFormData = {
   includeInBorrowerCycle: false,
   isInvoiceDiscounting: false,
   currencyCode: "",
-  digitsAfterDecimal: "",
+  digitsAfterDecimal: 2,
   inMultiplesOf: "",
   installmentAmountInMultiplesOf: "",
   supportedInterestRefundTypes: [],
@@ -340,25 +351,30 @@ export const defaultLoanProductFormData: LoanProductFormData = {
   accountingRule: "",
   fundSourceAccountId: "",
   loanPortfolioAccountId: "",
+  transfersInSuspenseAccountId: "",
   interestOnLoanAccountId: "",
   incomeFromFeeAccountId: "",
   incomeFromPenaltyAccountId: "",
-  writeOffAccountId: "",
-  overpaymentLiabilityAccountId: "",
-  receivableInterestAccountId: "",
-  receivableFeeAccountId: "",
-  receivablePenaltyAccountId: "",
+  incomeFromRecoveryAccountId: "",
   incomeFromChargeOffInterestAccountId: "",
   incomeFromChargeOffFeesAccountId: "",
   incomeFromChargeOffPenaltyAccountId: "",
   incomeFromGoodwillCreditInterestAccountId: "",
   incomeFromGoodwillCreditFeesAccountId: "",
   incomeFromGoodwillCreditPenaltyAccountId: "",
-  incomeFromRecoveryAccountId: "",
+  writeOffAccountId: "",
+  goodwillCreditAccountId: "",
+  chargeOffExpenseAccountId: "",
+  chargeOffFraudExpenseAccountId: "",
+  overpaymentLiabilityAccountId: "",
+  receivableInterestAccountId: "",
+  receivableFeeAccountId: "",
+  receivablePenaltyAccountId: "",
   advancedAccountingRules: false,
   paymentChannelToFundSourceMappings: [],
   feeToIncomeAccountMappings: [],
   penaltyToIncomeAccountMappings: [],
+  chargeOffReasonToExpenseAccountMappings: [],
 };
 
 /**
@@ -508,10 +524,21 @@ export function buildFineractPayload(form: LoanProductFormData): Record<string, 
     if (rule === 2 || rule === 3 || rule === 4) {
       if (form.fundSourceAccountId !== "") payload.fundSourceAccountId = form.fundSourceAccountId;
       if (form.loanPortfolioAccountId !== "") payload.loanPortfolioAccountId = form.loanPortfolioAccountId;
+      if (form.transfersInSuspenseAccountId !== "") payload.transfersInSuspenseAccountId = form.transfersInSuspenseAccountId;
       if (form.interestOnLoanAccountId !== "") payload.interestOnLoanAccountId = form.interestOnLoanAccountId;
       if (form.incomeFromFeeAccountId !== "") payload.incomeFromFeeAccountId = form.incomeFromFeeAccountId;
       if (form.incomeFromPenaltyAccountId !== "") payload.incomeFromPenaltyAccountId = form.incomeFromPenaltyAccountId;
+      if (form.incomeFromRecoveryAccountId !== "") payload.incomeFromRecoveryAccountId = form.incomeFromRecoveryAccountId;
+      if (form.incomeFromChargeOffInterestAccountId !== "") payload.incomeFromChargeOffInterestAccountId = form.incomeFromChargeOffInterestAccountId;
+      if (form.incomeFromChargeOffFeesAccountId !== "") payload.incomeFromChargeOffFeesAccountId = form.incomeFromChargeOffFeesAccountId;
+      if (form.incomeFromChargeOffPenaltyAccountId !== "") payload.incomeFromChargeOffPenaltyAccountId = form.incomeFromChargeOffPenaltyAccountId;
+      if (form.incomeFromGoodwillCreditInterestAccountId !== "") payload.incomeFromGoodwillCreditInterestAccountId = form.incomeFromGoodwillCreditInterestAccountId;
+      if (form.incomeFromGoodwillCreditFeesAccountId !== "") payload.incomeFromGoodwillCreditFeesAccountId = form.incomeFromGoodwillCreditFeesAccountId;
+      if (form.incomeFromGoodwillCreditPenaltyAccountId !== "") payload.incomeFromGoodwillCreditPenaltyAccountId = form.incomeFromGoodwillCreditPenaltyAccountId;
       if (form.writeOffAccountId !== "") payload.writeOffAccountId = form.writeOffAccountId;
+      if (form.goodwillCreditAccountId !== "") payload.goodwillCreditAccountId = form.goodwillCreditAccountId;
+      if (form.chargeOffExpenseAccountId !== "") payload.chargeOffExpenseAccountId = form.chargeOffExpenseAccountId;
+      if (form.chargeOffFraudExpenseAccountId !== "") payload.chargeOffFraudExpenseAccountId = form.chargeOffFraudExpenseAccountId;
       if (form.overpaymentLiabilityAccountId !== "") payload.overpaymentLiabilityAccountId = form.overpaymentLiabilityAccountId;
     }
     if (rule === 3 || rule === 4) {
@@ -519,13 +546,6 @@ export function buildFineractPayload(form: LoanProductFormData): Record<string, 
       if (form.receivableFeeAccountId !== "") payload.receivableFeeAccountId = form.receivableFeeAccountId;
       if (form.receivablePenaltyAccountId !== "") payload.receivablePenaltyAccountId = form.receivablePenaltyAccountId;
     }
-    if (form.incomeFromRecoveryAccountId !== "") payload.incomeFromRecoveryAccountId = form.incomeFromRecoveryAccountId;
-    if (form.incomeFromChargeOffInterestAccountId !== "") payload.incomeFromChargeOffInterestAccountId = form.incomeFromChargeOffInterestAccountId;
-    if (form.incomeFromChargeOffFeesAccountId !== "") payload.incomeFromChargeOffFeesAccountId = form.incomeFromChargeOffFeesAccountId;
-    if (form.incomeFromChargeOffPenaltyAccountId !== "") payload.incomeFromChargeOffPenaltyAccountId = form.incomeFromChargeOffPenaltyAccountId;
-    if (form.incomeFromGoodwillCreditInterestAccountId !== "") payload.incomeFromGoodwillCreditInterestAccountId = form.incomeFromGoodwillCreditInterestAccountId;
-    if (form.incomeFromGoodwillCreditFeesAccountId !== "") payload.incomeFromGoodwillCreditFeesAccountId = form.incomeFromGoodwillCreditFeesAccountId;
-    if (form.incomeFromGoodwillCreditPenaltyAccountId !== "") payload.incomeFromGoodwillCreditPenaltyAccountId = form.incomeFromGoodwillCreditPenaltyAccountId;
 
     if (form.advancedAccountingRules) {
       payload.advancedAccountingRules = true;
@@ -535,6 +555,8 @@ export function buildFineractPayload(form: LoanProductFormData): Record<string, 
         payload.feeToIncomeAccountMappings = form.feeToIncomeAccountMappings;
       if (form.penaltyToIncomeAccountMappings.length)
         payload.penaltyToIncomeAccountMappings = form.penaltyToIncomeAccountMappings;
+      if (form.chargeOffReasonToExpenseAccountMappings.length)
+        payload.chargeOffReasonToExpenseAccountMappings = form.chargeOffReasonToExpenseAccountMappings;
     }
   }
 

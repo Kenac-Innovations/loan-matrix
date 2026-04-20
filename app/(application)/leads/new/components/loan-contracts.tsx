@@ -2040,11 +2040,22 @@ export function LoanContracts({
         charges: isInvoiceDiscountingLoan
           ? []
           : requestedCharges.map((charge: any) => {
-              const chargeData: any = {
-                chargeId: charge.chargeId,
-                amount: charge.amount,
-              };
-              // Include dueDate if present (required for "Specified Due Date" charges)
+              const calcCode: string =
+                charge.originalCharge?.chargeCalculationType?.code ?? "";
+              const isPercentage =
+                calcCode.toLowerCase().includes("percent") &&
+                typeof charge.originalCharge?.percentage === "number" &&
+                Number.isFinite(charge.originalCharge.percentage);
+
+              const chargeData: any = { chargeId: charge.chargeId };
+
+              if (isPercentage) {
+                // Fineract POST /loans treats `amount` as the percentage value for % charges
+                chargeData.amount = charge.originalCharge.percentage;
+              } else {
+                chargeData.amount = charge.amount;
+              }
+
               if (charge.dueDate) {
                 chargeData.dueDate = charge.dueDate;
               }
