@@ -16,10 +16,15 @@ function normalizeRoleName(name?: string | null): string {
 export function hasOmamaOfficeAdminRole(roles: RoleLike[] | null | undefined): boolean {
   if (!Array.isArray(roles)) return false;
 
-  const allowed = new Set(["admin", "administrator"]);
+  const allowed = new Set(["admin", "administrator", "app administrator"]);
   return roles.some((role) => {
     if (role?.disabled) return false;
-    return allowed.has(normalizeRoleName(role?.name));
+    const normalizedRoleName = normalizeRoleName(role?.name);
+    return (
+      allowed.has(normalizedRoleName) ||
+      normalizedRoleName.endsWith(" admin") ||
+      normalizedRoleName.endsWith(" administrator")
+    );
   });
 }
 
@@ -28,9 +33,14 @@ export function shouldUseOmamaOfficeAdminDashboard(args: {
   featureEnabled?: boolean | null;
   roles?: RoleLike[] | null;
 }): boolean {
+  const isOmamaTenant = isOmamaTenantSlug(args.tenantSlug);
+  const isEnabledForTenant = isOmamaTenant || args.featureEnabled === true;
+
+  // Omama and Omama Training should always expose the office-admin dashboard
+  // when the signed-in user is in an allowed admin role.
   return (
-    isOmamaTenantSlug(args.tenantSlug) &&
-    args.featureEnabled === true &&
+    isOmamaTenant &&
+    isEnabledForTenant &&
     hasOmamaOfficeAdminRole(args.roles)
   );
 }

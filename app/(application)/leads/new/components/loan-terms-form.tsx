@@ -39,6 +39,8 @@ import { useFeatureFlags } from "@/hooks/use-feature-flags";
 import {
   recomputeTopupAwareDisbursementChargeAmounts,
   roundMoney,
+  isLoanDisbursementChargeTime,
+  isSimplePrincipalPercentCalculation,
   type EditableLoanChargeRow,
 } from "@/lib/topup-charge-base";
 
@@ -3573,6 +3575,10 @@ export function LoanTermsForm({
                       isInvoiceDiscountingLead &&
                       index === invoiceIncomeChargeIndex &&
                       invoiceDiscountingReserveAmount != null;
+                    const isTopupLockedCharge =
+                      isTopup &&
+                      isLoanDisbursementChargeTime(charge.originalCharge?.chargeTimeType) &&
+                      isSimplePrincipalPercentCalculation(charge.originalCharge?.chargeCalculationType);
                     return (
                     <div
                       key={`${charge.chargeId}-${index}`}
@@ -3601,6 +3607,21 @@ export function LoanTermsForm({
                               {calcHighlight.label}
                             </Badge>
                           )}
+                          {charge.originalCharge?.chargeTimeType && (
+                            <Badge
+                              variant="outline"
+                              className={cn(
+                                "text-xs font-medium border",
+                                isLoanDisbursementChargeTime(charge.originalCharge.chargeTimeType)
+                                  ? "border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-700 dark:bg-blue-950 dark:text-blue-300"
+                                  : "border-slate-300 bg-slate-50 text-slate-600 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-400"
+                              )}
+                            >
+                              {charge.originalCharge.chargeTimeType.value ||
+                                charge.originalCharge.chargeTimeType.code ||
+                                `Time type ${charge.originalCharge.chargeTimeType.id}`}
+                            </Badge>
+                          )}
                           {charge.originalCharge?.penalty && (
                             <span className="inline-block px-2 py-1 text-xs bg-orange-100 text-orange-800 rounded dark:bg-orange-950 dark:text-orange-200">
                               Penalty
@@ -3609,7 +3630,8 @@ export function LoanTermsForm({
                         </div>
                         {canEditLoan &&
                           !isChargesStructureReadOnly &&
-                          !isLockedInvoiceIncomeCharge && (
+                          !isLockedInvoiceIncomeCharge &&
+                          !isTopupLockedCharge && (
                         <Button
                           type="button"
                           variant="ghost"
@@ -3647,7 +3669,7 @@ export function LoanTermsForm({
                                 ? (charge.originalCharge?.percentage ?? charge.amount)
                                 : charge.amount
                             }
-                            disabled={!canEditLoan || isLockedInvoiceIncomeCharge}
+                            disabled={!canEditLoan || isLockedInvoiceIncomeCharge || isTopupLockedCharge}
                             onChange={(e) => {
                               const val = parseFloat(e.target.value) || 0;
                               if (calcHighlight.kind === "percent") {
@@ -3673,10 +3695,10 @@ export function LoanTermsForm({
                             <PopoverTrigger asChild>
                               <Button
                                 variant="outline"
-                                disabled={!canEditLoan || isChargesStructureReadOnly}
+                                disabled={!canEditLoan || isChargesStructureReadOnly || isTopupLockedCharge}
                                 className={cn(
                                   "w-full justify-start text-left font-normal",
-                                  (!canEditLoan || isChargesStructureReadOnly) &&
+                                  (!canEditLoan || isChargesStructureReadOnly || isTopupLockedCharge) &&
                                     "cursor-not-allowed opacity-70",
                                   !charge.dueDate && "text-muted-foreground"
                                 )}
