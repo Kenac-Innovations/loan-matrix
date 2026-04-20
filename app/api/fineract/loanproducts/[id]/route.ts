@@ -18,12 +18,15 @@ function toFineractApiError(error: unknown): FineractApiError {
 }
 
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { id } = await params;
-    const data = await fetchFineractAPI(`/loanproducts/${id}`);
+    const { searchParams } = new URL(request.url);
+    const withTemplate = searchParams.get("template") === "true";
+    const qs = withTemplate ? "?template=true" : "";
+    const data = await fetchFineractAPI(`/loanproducts/${id}${qs}`);
     return NextResponse.json(data);
   } catch (error: unknown) {
     const apiError = toFineractApiError(error);
