@@ -29,6 +29,7 @@ model Tenant {
   teams                  Team[]
   validationRules        ValidationRule[]
   receiptRanges          ReceiptRange[]
+  repaymentCashLinks     RepaymentCashLink[]
   usedReceipts           UsedReceipt[]
   loanContractTemplates  LoanContractTemplate[]
 
@@ -616,6 +617,7 @@ model Teller {
   bank             Bank?            @relation(fields: [bankId], references: [id])
   cashAllocations  CashAllocation[]
   cashiers         Cashier[]
+  repaymentCashLinks RepaymentCashLink[]
   settlements      CashSettlement[]
   sessions         CashierSession[]
 
@@ -643,6 +645,7 @@ model Cashier {
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt
   teller            Teller           @relation(fields: [tellerId], references: [id], onDelete: Cascade)
+  repaymentCashLinks RepaymentCashLink[]
   settlements       CashSettlement[]
   sessions          CashierSession[]
   cashAllocations   CashAllocation[]
@@ -934,4 +937,34 @@ model UsedReceipt {
 
   @@unique([tenantId, receiptNumber])
   @@index([tenantId])
+}
+
+model RepaymentCashLink {
+  id                    String    @id @default(cuid())
+  tenantId              String
+  fineractTransactionId Int
+  loanId                Int
+  transactionType       String    @default("REPAYMENT") // REPAYMENT, RECOVERY_REPAYMENT
+  amount                Float
+  currency              String    @default("ZMW")
+  tellerId              String?
+  cashierId             String?
+  fineractAllocationId  Int?
+  isCash                Boolean   @default(false)
+  linkedAt              DateTime  @default(now())
+  reversedAt            DateTime?
+  reversalNotes         String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  tenant                Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  teller                Teller?   @relation(fields: [tellerId], references: [id], onDelete: SetNull)
+  cashier               Cashier?  @relation(fields: [cashierId], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, fineractTransactionId])
+  @@index([tenantId, loanId])
+  @@index([tenantId, tellerId])
+  @@index([tenantId, cashierId])
+  @@index([tenantId, transactionType])
+  @@index([tenantId, isCash])
+  @@index([tenantId, fineractAllocationId])
 }

@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { fetchFineractAPI } from '@/lib/api';
 import { getFineractServiceWithSession } from '@/lib/fineract-api';
 import { isPaymentTypeCash } from '@/lib/cash-repayment-teller';
+import { upsertRepaymentCashLink } from '@/lib/repayment-cash-link';
+import { getTenantFromHeaders } from '@/lib/tenant-service';
 
 /** Ensure date is yyyy-MM-dd for Fineract allocate */
 function formatDateForAllocate(isoDate: string): string {
@@ -26,6 +28,7 @@ export async function POST(
   try {
     const { id } = await params;
     const loanId = parseInt(id, 10);
+    const tenant = await getTenantFromHeaders();
     const { searchParams } = new URL(request.url);
     const command = searchParams.get('command');
 
@@ -54,13 +57,22 @@ export async function POST(
       if (isNaN(cashierId)) cashierId = null;
     }
 
-    // Build repayment body for Fineract WITHOUT tellerId and cashierId
-    const { tellerId: _t, cashierId: _c, ...repaymentBody } = body;
+    // Build repayment body for Fineract WITHOUT local teller/cashier metadata
+    const {
+      tellerId: _t,
+      cashierId: _c,
+      dbTellerId: _dbT,
+      dbCashierId: _dbC,
+      ...repaymentBody
+    } = body;
 
     const data = await fetchFineractAPI(`/loans/${id}/transactions?command=${command}`, {
       method: 'POST',
       body: JSON.stringify(repaymentBody),
     });
+    const fineractTransactionId = Number(
+      data?.resourceId ?? data?.transactionId ?? data?.id
+    );
 
     let cashierAllocateResult: { success: boolean; error?: string; details?: unknown } | undefined;
 
@@ -72,6 +84,26 @@ export async function POST(
       body.transactionAmount > 0
     ) {
       const isCash = await isPaymentTypeCash(Number(body.paymentTypeId));
+      const currency = body.currencyCode ?? body.currency?.code ?? 'ZMW';
+      const normalizedCurrency =
+        String(currency).toUpperCase() === 'ZMK' ? 'ZMW' : currency;
+
+      if (tenant && Number.isFinite(fineractTransactionId) && fineractTransactionId > 0) {
+        await upsertRepaymentCashLink({
+          tenantId: tenant.id,
+          fineractTransactionId,
+          loanId,
+          transactionType: command.toUpperCase(),
+          amount: Number(body.transactionAmount),
+          currency: normalizedCurrency,
+          // These local foreign keys are enriched later by the allocate route after
+          // it resolves the selected teller/cashier to real Prisma records.
+          tellerId: null,
+          cashierId: null,
+          isCash,
+        });
+      }
+
       console.log('[CashRepayment] Repayment succeeded', {
         loanId,
         paymentTypeId: body.paymentTypeId,
@@ -86,10 +118,6 @@ export async function POST(
           typeof body.transactionDate === 'string'
             ? body.transactionDate
             : new Date().toISOString().split('T')[0];
-        const currency =
-          body.currencyCode ?? body.currency?.code ?? 'ZMW';
-        const normalizedCurrency =
-          String(currency).toUpperCase() === 'ZMK' ? 'ZMW' : currency;
 
         if (
           tellerId != null &&

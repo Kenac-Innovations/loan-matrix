@@ -289,6 +289,8 @@ export function RepaymentModal({ isOpen, onClose, loanId, onSuccess }: Repayment
       if (formData.externalId) payload.externalId = formData.externalId;
       payload.paymentTypeId = parseInt(formData.paymentTypeId, 10);
       if (formData.note) payload.note = formData.note;
+      if (selectedTeller) payload.dbTellerId = selectedTeller;
+      if (selectedCashier) payload.dbCashierId = selectedCashier;
 
       // Do NOT send tellerId/cashierId in repayment - Fineract returns 400. Store only; use for allocate after 200.
 
@@ -342,10 +344,14 @@ export function RepaymentModal({ isOpen, onClose, loanId, onSuccess }: Repayment
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 amount,
-                currency,
+                currency: normalizedCurrency,
                 date,
                 notes: "Loan repayment",
                 source: "repayment",
+                fineractTransactionId: result.resourceId,
+                loanId: Number(loanId),
+                transactionType: "REPAYMENT",
+                isCash: true,
               }),
             }
           );
@@ -604,7 +610,7 @@ export function RepaymentModal({ isOpen, onClose, loanId, onSuccess }: Repayment
                       {tellers.map((teller) => (
                         <SelectItem
                           key={teller.id}
-                          value={teller.fineractTellerId?.toString() || teller.id}
+                          value={teller.id}
                         >
                           {teller.name}
                           {teller.officeName ? ` - ${teller.officeName}` : ""}
@@ -637,7 +643,7 @@ export function RepaymentModal({ isOpen, onClose, loanId, onSuccess }: Repayment
                       {cashiers.map((cashier) => (
                         <SelectItem
                           key={cashier.dbId || cashier.id}
-                          value={String(cashier.id)}
+                          value={String(cashier.dbId || cashier.id)}
                         >
                           {cashier.staffName}
                           {cashier.sessionStatus === "ACTIVE" && (

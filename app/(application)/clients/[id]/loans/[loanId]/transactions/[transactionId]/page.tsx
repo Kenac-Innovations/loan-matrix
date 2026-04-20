@@ -11,11 +11,35 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Label } from "@/components/ui/label";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
+import { toast } from "@/components/ui/use-toast";
 
 interface LoanResponse {
   id: number;
   currency?: { code: string; name: string };
   transactions?: any[];
+}
+
+interface PaymentTypeOption {
+  id: number;
+  name: string;
+  isCashPayment?: boolean;
+}
+
+interface RepaymentCashLinkData {
+  tellerId: string | null;
+  cashierId: string | null;
+  teller?: {
+    id: string;
+    name: string;
+    fineractTellerId?: number | null;
+    officeName?: string | null;
+  } | null;
+  cashier?: {
+    id: string;
+    staffName: string;
+    fineractCashierId?: number | null;
+  } | null;
+  reversedAt?: string | null;
 }
 
 export default function TransactionDetailsPage() {
@@ -32,11 +56,14 @@ export default function TransactionDetailsPage() {
   const [loanCurrency, setLoanCurrency] = useState<string>("");
   const [showChargeback, setShowChargeback] = useState(false);
   const [showUndo, setShowUndo] = useState(false);
-  const [paymentTypes, setPaymentTypes] = useState<Array<{ id: number; name: string }>>([]);
+  const [paymentTypes, setPaymentTypes] = useState<PaymentTypeOption[]>([]);
   const [paymentTypeId, setPaymentTypeId] = useState<string>("");
   const [amount, setAmount] = useState<string>("");
   const [posting, setPosting] = useState(false);
   const [postingUndo, setPostingUndo] = useState(false);
+  const [undoError, setUndoError] = useState<string | null>(null);
+  const [repaymentLink, setRepaymentLink] = useState<RepaymentCashLinkData | null>(null);
+  const [loadingRepaymentLink, setLoadingRepaymentLink] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -67,14 +94,66 @@ export default function TransactionDetailsPage() {
         if (!res.ok) return;
         const data = await res.json();
         if (Array.isArray(data)) {
-          setPaymentTypes(data.map((p: any) => ({ id: p.id, name: p.name })));
+          setPaymentTypes(
+            data.map((p: any) => ({
+              id: p.id,
+              name: p.name,
+              isCashPayment: p.isCashPayment,
+            }))
+          );
         } else if (Array.isArray(data.pageItems)) {
-          setPaymentTypes(data.pageItems.map((p: any) => ({ id: p.id, name: p.name })));
+          setPaymentTypes(
+            data.pageItems.map((p: any) => ({
+              id: p.id,
+              name: p.name,
+              isCashPayment: p.isCashPayment,
+            }))
+          );
         }
       } catch {}
     };
     fetchPaymentTypes();
   }, []);
+
+  const isRepaymentTransaction = !!(
+    transaction?.type?.repayment || transaction?.type?.recoveryRepayment
+  );
+  const isDisbursementTransaction = !!transaction?.type?.disbursement;
+  const transactionPaymentTypeId = transaction?.paymentDetailData?.paymentType?.id;
+  const transactionPaymentType = paymentTypes.find(
+    (pt) => pt.id === transactionPaymentTypeId
+  );
+  const isCashRepaymentUndo =
+    isRepaymentTransaction && !!transactionPaymentType?.isCashPayment;
+
+  useEffect(() => {
+    if (showUndo && isCashRepaymentUndo) {
+      const fetchRepaymentLink = async () => {
+        try {
+          setLoadingRepaymentLink(true);
+          const response = await fetch(
+            `/api/loans/${loanId}/repayment-link/${transactionId}`
+          );
+          if (!response.ok) {
+            setRepaymentLink(null);
+            return;
+          }
+          const data = await response.json();
+          setRepaymentLink(data);
+        } catch (e) {
+          console.error("Error fetching repayment link:", e);
+          setRepaymentLink(null);
+        } finally {
+          setLoadingRepaymentLink(false);
+        }
+      };
+
+      fetchRepaymentLink();
+    } else {
+      setRepaymentLink(null);
+      setLoadingRepaymentLink(false);
+    }
+  }, [showUndo, isCashRepaymentUndo, loanId, transactionId]);
 
   const formatDate = (arr?: number[]) => {
     if (!arr || arr.length !== 3) return "";
@@ -116,19 +195,24 @@ export default function TransactionDetailsPage() {
           <ChevronLeft className="h-4 w-4" /> Back
         </Button>
         <div className="flex items-center gap-2">
+          {/*
           <Button variant="outline" disabled>
             Edit
           </Button>
+          */}
           <Button
             variant="destructive"
-            disabled={!(transaction?.type?.disbursement) || transaction?.manuallyReversed}
-            onClick={() => setShowUndo(true)}
+            disabled={!(isDisbursementTransaction || isRepaymentTransaction) || transaction?.manuallyReversed}
+            onClick={() => {
+              setUndoError(null);
+              setShowUndo(true);
+            }}
           >
             Undo
           </Button>
           <Button
             variant="outline"
-            disabled={!(transaction?.type?.repayment)}
+            disabled={!(transaction?.type?.repayment) || transaction?.manuallyReversed}
             onClick={() => {
               setPaymentTypeId("");
               setAmount((transaction?.amount ?? 0).toFixed(2));
@@ -234,10 +318,16 @@ export default function TransactionDetailsPage() {
       <Dialog open={showUndo} onOpenChange={setShowUndo}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Undo Disbursement</DialogTitle>
+            <DialogTitle>
+              {isRepaymentTransaction ? "Undo Repayment" : "Undo Disbursement"}
+            </DialogTitle>
           </DialogHeader>
           <div className="space-y-3 text-sm">
-            <p>Are you sure you want to undo this disbursement transaction?</p>
+            <p>
+              {isRepaymentTransaction
+                ? "Are you sure you want to undo this repayment transaction?"
+                : "Are you sure you want to undo this disbursement transaction?"}
+            </p>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
                 <div className="text-muted-foreground">Transaction Date</div>
@@ -248,6 +338,41 @@ export default function TransactionDetailsPage() {
                 <div className="font-medium">{formatMoney(transaction?.amount)}</div>
               </div>
             </div>
+            {undoError ? <div className="text-red-600">{undoError}</div> : null}
+            {isCashRepaymentUndo ? (
+              <div className="space-y-3 border rounded-md p-3">
+                <div className="text-sm text-muted-foreground">
+                  This repayment used a cash payment type. Loan Matrix will use the teller and cashier linked to the original repayment to reduce the cashier float after the undo succeeds.
+                </div>
+                {loadingRepaymentLink ? (
+                  <div className="text-sm text-muted-foreground">
+                    Loading linked teller and cashier...
+                  </div>
+                ) : repaymentLink?.tellerId && repaymentLink?.cashierId ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <div className="text-muted-foreground">Teller</div>
+                      <div className="font-medium">
+                        {repaymentLink.teller?.name || repaymentLink.tellerId}
+                        {repaymentLink.teller?.officeName
+                          ? ` - ${repaymentLink.teller.officeName}`
+                          : ""}
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <div className="text-muted-foreground">Cashier</div>
+                      <div className="font-medium">
+                        {repaymentLink.cashier?.staffName || repaymentLink.cashierId}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-sm text-red-600">
+                    No linked teller/cashier was found for this repayment, so Loan Matrix cannot safely reduce the cashier float for the undo.
+                  </div>
+                )}
+              </div>
+            ) : null}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowUndo(false)}>Cancel</Button>
@@ -257,6 +382,15 @@ export default function TransactionDetailsPage() {
               onClick={async () => {
                 try {
                   setPostingUndo(true);
+                  setUndoError(null);
+                  if (isCashRepaymentUndo) {
+                    if (!repaymentLink?.tellerId || !repaymentLink?.cashierId) {
+                      setUndoError(
+                        "No linked teller/cashier was found for this repayment."
+                      );
+                      return;
+                    }
+                  }
                   const df = "dd MMMM yyyy";
                   const dArr = transaction?.date as number[] | undefined;
                   const formatUndoDate = (a?: number[]) => {
@@ -276,12 +410,62 @@ export default function TransactionDetailsPage() {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(body),
                   });
-                  if (!resp.ok) throw new Error('Undo failed');
+                  if (!resp.ok) {
+                    const err = await resp.json().catch(() => ({}));
+                    throw new Error(err.error || 'Undo failed');
+                  }
+
+                  if (isCashRepaymentUndo) {
+                    const settleResp = await fetch(
+                      `/api/tellers/${repaymentLink!.tellerId}/cashiers/${repaymentLink!.cashierId}/settle`,
+                      {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          amount: Number(transaction?.amount || 0),
+                          currency: loanCurrency,
+                          notes: `Repayment reversal - Loan #${loanId} / Txn #${transactionId}`,
+                          date: new Date().toISOString().split("T")[0],
+                          transactionType: "EXPENSE",
+                        }),
+                      }
+                    );
+                    if (!settleResp.ok) {
+                      const err = await settleResp.json().catch(() => ({}));
+                      throw new Error(
+                        err.details ||
+                          err.error ||
+                          "Repayment was undone, but cashier float reduction failed"
+                      );
+                    }
+                    await fetch(`/api/loans/${loanId}/repayment-link/${transactionId}`, {
+                      method: "PATCH",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        reversalNotes: `Repayment reversal - Loan #${loanId} / Txn #${transactionId}`,
+                      }),
+                    }).catch((err) => {
+                      console.error("Failed to mark repayment link reversed:", err);
+                    });
+                  }
+                  toast({
+                    title: "Undo successful",
+                    description: isCashRepaymentUndo
+                      ? "Transaction was undone and the cashier float was reduced."
+                      : "Transaction was undone successfully.",
+                  });
                   setShowUndo(false);
-                  router.refresh();
+                  window.location.reload();
                 } catch (e) {
                   console.error(e);
-                  alert('Undo failed');
+                  const message = e instanceof Error ? e.message : "Undo failed";
+                  setUndoError(message);
+                  toast({
+                    title: "Undo failed",
+                    description: message,
+                    variant: "destructive",
+                  });
+                  window.location.reload();
                 } finally {
                   setPostingUndo(false);
                 }
