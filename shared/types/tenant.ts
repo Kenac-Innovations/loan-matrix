@@ -24,6 +24,8 @@ export interface TenantFeatures {
   hasInvoiceDiscounting: boolean;
   /** Default lead pipeline to all dates instead of today's date */
   showAllLeadsByDefault: boolean;
+  /** Omama-only office-scoped dashboard for Admin/Administrator users on the leads page */
+  officeScopedAdminLeadsDashboard: boolean;
 }
 
 /**
@@ -77,6 +79,7 @@ export const DEFAULT_FEATURES: TenantFeatures = {
   canEditLoan: false,
   hasInvoiceDiscounting: false,
   showAllLeadsByDefault: false,
+  officeScopedAdminLeadsDashboard: false,
 };
 
 export interface TenantInfo {

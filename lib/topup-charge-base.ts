@@ -17,6 +17,8 @@ export type EditableLoanChargeRow = {
     chargeTimeType?: ChargeTimeTypeRef;
     chargeCalculationType?: ChargeCalcTypeRef;
     percentage?: unknown;
+    /** Original take-home rate set on first rebase; never overwritten on subsequent recalculations. */
+    _takeHomePercentage?: unknown;
     amount?: unknown;
     penalty?: boolean;
   };
@@ -73,8 +75,25 @@ export function shouldRebaseTopupDisbursementCharge(
 }
 
 /**
- * Take-home principal for disbursement fee base (top-up with loan to close), else full principal.
+ * Fineract applies disbursement % on new principal `P`: fee = `P × p / 100`.
+ * To match **`H × r / 100`** (rate `r` on take-home `H` only), set **`p = r × (H / P)`**
+ * (if `H = P − B` then **`p = r × (1 − B/P)`**). When `H = P`, this returns `r`.
  */
+export function equivalentPrincipalPercentForTakeHomeRate(params: {
+  /** Intended percent on take-home only (e.g. 5 means 5%). */
+  percentOnTakeHome: number;
+  principal: number;
+  takeHome: number;
+}): number | null {
+  const P = toNumber(params.principal);
+  const H = toNumber(params.takeHome);
+  const r = toNumber(params.percentOnTakeHome);
+  if (P == null || P <= 0 || r == null || r <= 0 || H == null || H < 0) return null;
+  if (H > P + 1e-6) return null;
+  return roundMoney(r * (H / P), 10);
+}
+
+/** Take-home `H`: principal minus loan-to-close balance when top-up applies; otherwise full principal. */
 export function computeTopupTakeHomeChargeBase(params: {
   principal: number;
   isTopup: boolean;
@@ -110,6 +129,13 @@ function extractPercentRateFromCharge(
     toNumber(referencePrincipalForRatio) ?? 0,
     toNumber(loanPrincipal) ?? 0
   );
+
+  // Prefer the preserved original take-home rate so recalculations always
+  // start from the product's configured rate, not a previously rebased value.
+  const fromPreserved = toNumber(originalCharge._takeHomePercentage);
+  if (fromPreserved != null && fromPreserved > 0 && fromPreserved <= MAX_PLAUSIBLE_PERCENT_FEE) {
+    return fromPreserved;
+  }
 
   const fromField = toNumber(originalCharge.percentage);
   if (
@@ -172,7 +198,44 @@ export function recomputeTopupAwareDisbursementChargeAmounts(
     if (rate == null) {
       return charge;
     }
-    const next = roundMoney((rate / 100) * base, decimals);
+
+    const P = loanPrincipal;
+    const H = base;
+
+    // Fineract only edits % of principal: use p = r×(H/P) so P×p/100 = H×r/100 only when
+    // this is a top-up with take-home strictly below principal. Otherwise keep product
+    // percentage on the charge row and only set currency amount.
+    const useEquivalentPrincipalPercent =
+      params.isTopup && P > 0 && H + 1e-9 < P;
+
+    if (useEquivalentPrincipalPercent) {
+      const pOnPrincipal = equivalentPrincipalPercentForTakeHomeRate({
+        percentOnTakeHome: rate,
+        principal: P,
+        takeHome: H,
+      });
+      if (pOnPrincipal == null) {
+        return charge;
+      }
+      const nextAmount = roundMoney((P * pOnPrincipal) / 100, decimals);
+      // Preserve the original take-home rate on first rebase; never overwrite on subsequent runs.
+      const nextOc = {
+        ...oc,
+        percentage: pOnPrincipal,
+        _takeHomePercentage: oc._takeHomePercentage ?? rate,
+      };
+      const prevPct = toNumber(oc.percentage);
+      if (
+        nextAmount === charge.amount &&
+        prevPct != null &&
+        Math.abs(prevPct - pOnPrincipal) < 1e-6
+      ) {
+        return charge;
+      }
+      return { ...charge, amount: nextAmount, originalCharge: nextOc };
+    }
+
+    const next = roundMoney((rate / 100) * H, decimals);
     if (next === charge.amount) {
       return charge;
     }

@@ -35,7 +35,7 @@ function mapFineractProductToForm(product: Record<string, unknown>): LoanProduct
     currencyCode: (product.currency as Record<string, unknown>)?.code
       ? s((product.currency as Record<string, unknown>).code)
       : "",
-    digitsAfterDecimal: n(product.digitsAfterDecimal),
+    digitsAfterDecimal: product.digitsAfterDecimal != null ? n(product.digitsAfterDecimal) : 2,
     inMultiplesOf: n(product.inMultiplesOf),
     installmentAmountInMultiplesOf: n(product.installmentAmountInMultiplesOf),
 
@@ -146,49 +146,67 @@ function mapFineractProductToForm(product: Record<string, unknown>): LoanProduct
       : [],
 
     accountingRule: getEnumId(product.accountingRule),
-    fundSourceAccountId: n((product.fundSourceAccount as Record<string, unknown>)?.id),
-    loanPortfolioAccountId: n((product.loanPortfolioAccount as Record<string, unknown>)?.id),
-    interestOnLoanAccountId: n((product.interestOnLoanAccount as Record<string, unknown>)?.id),
-    incomeFromFeeAccountId: n((product.incomeFromFeeAccount as Record<string, unknown>)?.id),
-    incomeFromPenaltyAccountId: n(
-      (product.incomeFromPenaltyAccount as Record<string, unknown>)?.id
+
+    // Fineract nests all GL account objects under accountingMappings
+    ...(() => {
+      const am = (product.accountingMappings as Record<string, unknown>) ?? {};
+      const aid = (key: string) => n((am[key] as Record<string, unknown>)?.id);
+      return {
+        fundSourceAccountId:                       aid("fundSourceAccount"),
+        loanPortfolioAccountId:                    aid("loanPortfolioAccount"),
+        transfersInSuspenseAccountId:              aid("transfersInSuspenseAccount"),
+        interestOnLoanAccountId:                   aid("interestOnLoanAccount"),
+        incomeFromFeeAccountId:                    aid("incomeFromFeeAccount"),
+        incomeFromPenaltyAccountId:                aid("incomeFromPenaltyAccount"),
+        incomeFromRecoveryAccountId:               aid("incomeFromRecoveryAccount"),
+        incomeFromChargeOffInterestAccountId:      aid("incomeFromChargeOffInterestAccount"),
+        incomeFromChargeOffFeesAccountId:          aid("incomeFromChargeOffFeesAccount"),
+        incomeFromChargeOffPenaltyAccountId:       aid("incomeFromChargeOffPenaltyAccount"),
+        incomeFromGoodwillCreditInterestAccountId: aid("incomeFromGoodwillCreditInterestAccount"),
+        incomeFromGoodwillCreditFeesAccountId:     aid("incomeFromGoodwillCreditFeesAccount"),
+        incomeFromGoodwillCreditPenaltyAccountId:  aid("incomeFromGoodwillCreditPenaltyAccount"),
+        writeOffAccountId:                         aid("writeOffAccount"),
+        goodwillCreditAccountId:                   aid("goodwillCreditAccount"),
+        chargeOffExpenseAccountId:                 aid("chargeOffExpenseAccount"),
+        chargeOffFraudExpenseAccountId:            aid("chargeOffFraudExpenseAccount"),
+        overpaymentLiabilityAccountId:             aid("overpaymentLiabilityAccount"),
+        receivableInterestAccountId:               aid("receivableInterestAccount"),
+        receivableFeeAccountId:                    aid("receivableFeeAccount"),
+        receivablePenaltyAccountId:                aid("receivablePenaltyAccount"),
+      };
+    })(),
+
+    // advancedAccountingRules is derived from whether any mapping arrays are non-empty
+    advancedAccountingRules: !!(
+      (Array.isArray(product.paymentChannelToFundSourceMappings) && (product.paymentChannelToFundSourceMappings as unknown[]).length > 0) ||
+      (Array.isArray(product.feeToIncomeAccountMappings) && (product.feeToIncomeAccountMappings as unknown[]).length > 0) ||
+      (Array.isArray(product.penaltyToIncomeAccountMappings) && (product.penaltyToIncomeAccountMappings as unknown[]).length > 0) ||
+      (Array.isArray(product.chargeOffReasonToExpenseAccountMappings) && (product.chargeOffReasonToExpenseAccountMappings as unknown[]).length > 0)
     ),
-    writeOffAccountId: n((product.writeOffAccount as Record<string, unknown>)?.id),
-    overpaymentLiabilityAccountId: n(
-      (product.overpaymentLiabilityAccount as Record<string, unknown>)?.id
-    ),
-    receivableInterestAccountId: n(
-      (product.receivableInterestAccount as Record<string, unknown>)?.id
-    ),
-    receivableFeeAccountId: n((product.receivableFeeAccount as Record<string, unknown>)?.id),
-    receivablePenaltyAccountId: n(
-      (product.receivablePenaltyAccount as Record<string, unknown>)?.id
-    ),
-    incomeFromChargeOffInterestAccountId: n(
-      (product.incomeFromChargeOffInterestAccount as Record<string, unknown>)?.id
-    ),
-    incomeFromChargeOffFeesAccountId: n(
-      (product.incomeFromChargeOffFeesAccount as Record<string, unknown>)?.id
-    ),
-    incomeFromChargeOffPenaltyAccountId: n(
-      (product.incomeFromChargeOffPenaltyAccount as Record<string, unknown>)?.id
-    ),
-    incomeFromGoodwillCreditInterestAccountId: n(
-      (product.incomeFromGoodwillCreditInterestAccount as Record<string, unknown>)?.id
-    ),
-    incomeFromGoodwillCreditFeesAccountId: n(
-      (product.incomeFromGoodwillCreditFeesAccount as Record<string, unknown>)?.id
-    ),
-    incomeFromGoodwillCreditPenaltyAccountId: n(
-      (product.incomeFromGoodwillCreditPenaltyAccount as Record<string, unknown>)?.id
-    ),
-    incomeFromRecoveryAccountId: n(
-      (product.incomeFromRecoveryAccount as Record<string, unknown>)?.id
-    ),
-    advancedAccountingRules: b(product.advancedAccountingRules),
-    paymentChannelToFundSourceMappings: [],
-    feeToIncomeAccountMappings: [],
-    penaltyToIncomeAccountMappings: [],
+    paymentChannelToFundSourceMappings: Array.isArray(product.paymentChannelToFundSourceMappings)
+      ? (product.paymentChannelToFundSourceMappings as Record<string, unknown>[]).map((m) => ({
+          paymentTypeId: ((m.paymentType as Record<string, unknown>)?.id as number) ?? 0,
+          fundSourceAccountId: ((m.fundSourceAccount as Record<string, unknown>)?.id as number) ?? 0,
+        }))
+      : [],
+    feeToIncomeAccountMappings: Array.isArray(product.feeToIncomeAccountMappings)
+      ? (product.feeToIncomeAccountMappings as Record<string, unknown>[]).map((m) => ({
+          chargeId: ((m.charge as Record<string, unknown>)?.id as number) ?? 0,
+          incomeAccountId: ((m.incomeAccount as Record<string, unknown>)?.id as number) ?? 0,
+        }))
+      : [],
+    penaltyToIncomeAccountMappings: Array.isArray(product.penaltyToIncomeAccountMappings)
+      ? (product.penaltyToIncomeAccountMappings as Record<string, unknown>[]).map((m) => ({
+          chargeId: ((m.charge as Record<string, unknown>)?.id as number) ?? 0,
+          incomeAccountId: ((m.incomeAccount as Record<string, unknown>)?.id as number) ?? 0,
+        }))
+      : [],
+    chargeOffReasonToExpenseAccountMappings: Array.isArray(product.chargeOffReasonToExpenseAccountMappings)
+      ? (product.chargeOffReasonToExpenseAccountMappings as Record<string, unknown>[]).map((m) => ({
+          chargeOffReasonCodeValueId: ((m.chargeOffReasonCodeValue as Record<string, unknown>)?.id as number) ?? 0,
+          expenseAccountId: ((m.expenseAccount as Record<string, unknown>)?.id as number) ?? 0,
+        }))
+      : [],
   };
 }
 
@@ -206,30 +224,28 @@ export default function EditLoanProductPage({
   useEffect(() => {
     async function load() {
       try {
-        const [templateRes, productRes] = await Promise.all([
-          fetch("/api/fineract/loanproducts/template"),
-          fetch(`/api/fineract/loanproducts/${id}`),
+        // Fetch product with ?template=true — Fineract returns product values + all template
+        // options (including accountingMappingOptions) combined, exactly as Mifos does.
+        const [productRes, idFlagRes] = await Promise.all([
+          fetch(`/api/fineract/loanproducts/${id}?template=true`),
+          fetch(`/api/invoice-discounting-products?fineractProductId=${id}`).catch(() => null),
         ]);
-        const [templateBody, productBody] = await Promise.all([
-          templateRes.json(),
-          productRes.json(),
-        ]);
-        if (!templateRes.ok) throw new Error(templateBody?.error || "Failed to load template");
+
+        const productBody = await productRes.json();
         if (!productRes.ok) throw new Error(productBody?.error || "Failed to load product");
 
-        // Check invoice discounting flag — non-fatal if it fails
         let isInvoiceDiscounting = false;
         try {
-          const idFlagRes = await fetch(`/api/invoice-discounting-products?fineractProductId=${id}`);
-          if (idFlagRes.ok) {
+          if (idFlagRes?.ok) {
             const idFlagBody = await idFlagRes.json();
             isInvoiceDiscounting = idFlagBody?.isInvoiceDiscounting ?? false;
           }
         } catch {
-          // Flag check failed — default to false, product still loads
+          // non-fatal
         }
 
-        setTemplate(templateBody);
+        // The combined response is the template (has all option arrays) AND the product data
+        setTemplate(productBody as LoanProductTemplate);
         setInitialData({
           ...mapFineractProductToForm(productBody),
           isInvoiceDiscounting,

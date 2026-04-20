@@ -40,6 +40,7 @@ import {
   BarChart3,
 } from "lucide-react";
 import { toast } from "@/components/ui/use-toast";
+import { isOmamaTenantHostname } from "@/lib/omama-tenant";
 
 interface ReportParameter {
   parameter_name: string;
@@ -173,7 +174,7 @@ export default function ReportDetailPage() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    setIsOmamaTenant(window.location.hostname.toLowerCase().startsWith("omama."));
+    setIsOmamaTenant(isOmamaTenantHostname(window.location.hostname));
   }, []);
 
   const isOfficeParameter = (param: ReportParameter) =>

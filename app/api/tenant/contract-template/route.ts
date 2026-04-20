@@ -4,6 +4,8 @@ import http from "http";
 import fs from "fs";
 import path from "path";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
+import { prisma } from "@/lib/prisma";
+import { isOmamaTenantSlug } from "@/lib/omama-tenant";
 
 const MIME_BY_EXT: Record<string, string> = {
   ".png": "image/png",
@@ -83,13 +85,19 @@ async function fetchLogoAsDataUrl(url: string): Promise<string | null> {
   return doGet(url, MAX_REDIRECTS);
 }
 
-const TENANT_TEMPLATES: Record<string, { dir: string; file: string; name: string }> = {
-  omama: {
-    dir: path.join(process.cwd(), "templates", "omama-full-loan"),
-    file: "full-loan-template-from-db.html",
-    name: "Omama Full Loan Contract",
-  },
+const OMAMA_TEMPLATE = {
+  dir: path.join(process.cwd(), "templates", "omama-full-loan"),
+  file: "full-loan-template-from-db.html",
+  name: "Omama Full Loan Contract",
 };
+
+function getLocalTemplateConfig(tenantSlug: string) {
+  if (isOmamaTenantSlug(tenantSlug)) {
+    return OMAMA_TEMPLATE;
+  }
+
+  return null;
+}
 
 /**
  * GET /api/tenant/contract-template?slug=full-loan
@@ -110,12 +118,31 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ html: null, name: null });
     }
 
-    const templateConfig = TENANT_TEMPLATES[tenant.slug];
-    if (!templateConfig) {
-      return NextResponse.json({ html: null, name: null });
+    const dbTemplate = await prisma.loanContractTemplate.findFirst({
+      where: {
+        tenantId: tenant.id,
+        slug,
+      },
+      orderBy: [{ isDefault: "desc" }, { updatedAt: "desc" }],
+      select: {
+        content: true,
+        name: true,
+      },
+    });
+
+    let html = dbTemplate?.content || null;
+    let name = dbTemplate?.name || null;
+
+    if (!html) {
+      const templateConfig = getLocalTemplateConfig(tenant.slug);
+      if (!templateConfig) {
+        return NextResponse.json({ html: null, name: null });
+      }
+
+      html = loadLocalTemplate(templateConfig.dir, templateConfig.file);
+      name = templateConfig.name;
     }
 
-    const html = loadLocalTemplate(templateConfig.dir, templateConfig.file);
     if (!html) {
       return NextResponse.json({ html: null, name: null });
     }
@@ -127,7 +154,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       html,
-      name: templateConfig.name,
+      name,
       slug,
       logoUrl,
     });

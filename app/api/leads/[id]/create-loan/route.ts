@@ -97,10 +97,21 @@ export async function POST(
       charges: isInvoiceDiscountingLead
         ? []
         : requestedCharges.map((charge: any) => {
-            const chargePayload: any = {
-              chargeId: charge.chargeId,
-              amount: charge.amount,
-            };
+            const calcCode: string =
+              charge.originalCharge?.chargeCalculationType?.code ?? "";
+            const isPercentage =
+              calcCode.toLowerCase().includes("percent") &&
+              typeof charge.originalCharge?.percentage === "number" &&
+              Number.isFinite(charge.originalCharge.percentage);
+
+            const chargePayload: any = { chargeId: charge.chargeId };
+
+            if (isPercentage) {
+              // Fineract POST /loans treats `amount` as the percentage value for % charges
+              chargePayload.amount = charge.originalCharge.percentage;
+            } else {
+              chargePayload.amount = charge.amount;
+            }
 
             if (charge.dueDate) {
               chargePayload.dueDate = charge.dueDate;

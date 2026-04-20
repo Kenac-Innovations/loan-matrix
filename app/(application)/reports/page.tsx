@@ -53,6 +53,7 @@ import {
   List,
 } from "lucide-react";
 import { toast } from "@/components/ui/use-toast";
+import { isOmamaTenantHostname } from "@/lib/omama-tenant";
 import {
   Dialog,
   DialogContent,
@@ -168,7 +169,7 @@ export default function ReportsPage() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    setIsOmamaTenant(window.location.hostname.toLowerCase().startsWith("omama."));
+    setIsOmamaTenant(isOmamaTenantHostname(window.location.hostname));
   }, []);
 
   const isOfficeParameter = (param: ReportParameter) =>
