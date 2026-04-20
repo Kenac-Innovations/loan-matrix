@@ -8,10 +8,40 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Search, X, Loader2 } from "lucide-react";
 import { LoansDataTable, Loan } from "@/components/tables/loans-data-table";
+import { getDisplayLoanStatus, getLoanDaysInArrears } from "@/lib/loan-status";
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
-function transformLoanData(rawLoan: any, payoutStatusMap?: Map<number, string>, defaultCurrency?: string): Loan {
+type RawLoan = {
+  id?: number;
+  accountNo?: string;
+  clientName?: string;
+  clientId?: number | string;
+  productName?: string;
+  loanProductName?: string;
+  status?: { value?: string; code?: string; closedWrittenOff?: boolean } | string;
+  principal?: number | string;
+  principalAmount?: number | string;
+  currency?: { code?: string } | string;
+  disbursedAmount?: number | string;
+  outstandingBalance?: number | string;
+  daysInArrears?: number | string;
+  chargedOff?: boolean;
+  inArrears?: boolean;
+  delinquent?: {
+    pastDueDays?: number | string;
+    delinquentDays?: number | string;
+    delinquentAmount?: number | string;
+  };
+  summary?: {
+    totalOverdue?: number | string;
+  };
+  approvedOnDate?: string;
+  disbursedOnDate?: string;
+  maturityDate?: string;
+};
+
+function transformLoanData(rawLoan: RawLoan, payoutStatusMap?: Map<number, string>, defaultCurrency?: string): Loan {
   const loanId = rawLoan.id;
   return {
     id: loanId?.toString() || "",
@@ -21,12 +51,12 @@ function transformLoanData(rawLoan: any, payoutStatusMap?: Map<number, string>, 
     clientId: rawLoan.clientId?.toString() || "",
     productName:
       rawLoan.productName || rawLoan.loanProductName || "Unknown Product",
-    status: rawLoan.status?.value || rawLoan.status || "Unknown",
+    status: getDisplayLoanStatus(rawLoan),
     principal: parseFloat(rawLoan.principal || rawLoan.principalAmount || "0"),
     currency: rawLoan.currency?.code || rawLoan.currency || defaultCurrency || "USD",
     disbursedAmount: parseFloat(rawLoan.disbursedAmount || "0"),
     outstandingBalance: parseFloat(rawLoan.outstandingBalance || "0"),
-    daysInArrears: parseInt(rawLoan.daysInArrears || "0"),
+    daysInArrears: getLoanDaysInArrears(rawLoan),
     approvedOnDate: rawLoan.approvedOnDate || "",
     disbursedOnDate: rawLoan.disbursedOnDate || "",
     maturityDate: rawLoan.maturityDate || "",
@@ -57,8 +87,9 @@ export default function LoansPage() {
   // Create a map of loan ID to payout status
   const payoutStatusMap = useMemo(() => {
     const map = new Map<number, string>();
-    if (payoutData?.payouts && Array.isArray(payoutData.payouts)) {
-      payoutData.payouts.forEach((payout: any) => {
+    const payouts = payoutData?.payouts as Array<{ fineractLoanId: number; status: string }> | undefined;
+    if (payouts && Array.isArray(payouts)) {
+      payouts.forEach((payout) => {
         map.set(payout.fineractLoanId, payout.status);
       });
     }
@@ -100,10 +131,17 @@ export default function LoansPage() {
   }, [searchTimeout]);
 
   // Parse loans from response
-  const parseLoans = (data: any): any[] => {
+  const parseLoans = (data: unknown): RawLoan[] => {
     if (!data) return [];
-    if (data.pageItems && Array.isArray(data.pageItems)) return data.pageItems;
-    if (Array.isArray(data)) return data;
+    if (
+      typeof data === "object" &&
+      data !== null &&
+      "pageItems" in data &&
+      Array.isArray((data as { pageItems?: RawLoan[] }).pageItems)
+    ) {
+      return (data as { pageItems: RawLoan[] }).pageItems;
+    }
+    if (Array.isArray(data)) return data as RawLoan[];
     return [];
   };
 
