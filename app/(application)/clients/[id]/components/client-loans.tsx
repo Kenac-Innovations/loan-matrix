@@ -97,6 +97,8 @@ interface RawClientLoan {
   };
   summary?: {
     totalOverdue?: number;
+    totalOutstanding?: number;
+    principalOutstanding?: number;
   };
   loanBalance?: number;
   inArrears?: boolean;
@@ -177,9 +179,17 @@ export function ClientLoans({ clientId }: ClientLoansProps) {
         expectedMaturityDate: loan.timeline?.expectedMaturityDate || "",
       },
       summary: {
-        principalOutstanding: loan.loanBalance || 0,
-        totalOutstanding: loan.loanBalance || 0,
-        totalOverdue: loan.summary?.totalOverdue || (loan.inArrears ? (loan.loanBalance || 0) : 0),
+        principalOutstanding:
+          loan.summary?.principalOutstanding ||
+          loan.loanBalance ||
+          0,
+        totalOutstanding:
+          loan.summary?.totalOutstanding ||
+          loan.loanBalance ||
+          0,
+        totalOverdue:
+          loan.summary?.totalOverdue ||
+          (loan.inArrears ? (loan.loanBalance || 0) : 0),
       },
     }));
   })();
