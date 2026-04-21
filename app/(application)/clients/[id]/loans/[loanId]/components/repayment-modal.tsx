@@ -333,7 +333,7 @@ export function RepaymentModal({ isOpen, onClose, loanId, onSuccess }: Repayment
       if (selectedPaymentTypeIsCash && selectedTeller && selectedCashier) {
         const amount = parseFloat(formData.transactionAmount);
         const currency = template?.currency?.code ?? orgCurrency;
-        const normalizedCurrency = currency?.toUpperCase() === "ZMK" ? "ZMW" : currency ?? orgCurrency;
+        const normalizedCurrency = currency ?? orgCurrency;
         const date = formData.transactionDate || new Date().toISOString().split("T")[0];
 
         try {

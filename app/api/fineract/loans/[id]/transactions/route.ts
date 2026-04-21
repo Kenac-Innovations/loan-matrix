@@ -4,6 +4,7 @@ import { getFineractServiceWithSession } from '@/lib/fineract-api';
 import { isPaymentTypeCash } from '@/lib/cash-repayment-teller';
 import { upsertRepaymentCashLink } from '@/lib/repayment-cash-link';
 import { getTenantFromHeaders } from '@/lib/tenant-service';
+import { getOrgRawCurrencyCode } from '@/lib/currency-utils';
 
 /** Ensure date is yyyy-MM-dd for Fineract allocate */
 function formatDateForAllocate(isoDate: string): string {
@@ -84,9 +85,9 @@ export async function POST(
       body.transactionAmount > 0
     ) {
       const isCash = await isPaymentTypeCash(Number(body.paymentTypeId));
-      const currency = body.currencyCode ?? body.currency?.code ?? 'ZMW';
-      const normalizedCurrency =
-        String(currency).toUpperCase() === 'ZMK' ? 'ZMW' : currency;
+      const rawCurrency = await getOrgRawCurrencyCode();
+      const currency = body.currencyCode ?? body.currency?.code ?? rawCurrency;
+      console.log("[CashRepayment]: ")
 
       if (tenant && Number.isFinite(fineractTransactionId) && fineractTransactionId > 0) {
         await upsertRepaymentCashLink({
@@ -95,7 +96,7 @@ export async function POST(
           loanId,
           transactionType: command.toUpperCase(),
           amount: Number(body.transactionAmount),
-          currency: normalizedCurrency,
+          currency,
           // These local foreign keys are enriched later by the allocate route after
           // it resolves the selected teller/cashier to real Prisma records.
           tellerId: null,
@@ -134,7 +135,7 @@ export async function POST(
               {
                 txnDate: formatDateForAllocate(transactionDate),
                 txnAmount: String(body.transactionAmount),
-                currencyCode: normalizedCurrency,
+                currencyCode: currency,
                 txnNote: 'Loan repayment',
                 dateFormat: 'yyyy-MM-dd',
                 locale: 'en',
@@ -142,7 +143,7 @@ export async function POST(
             );
             cashierAllocateResult = { success: true };
             console.log(
-              `[CashRepayment] Allocated ${body.transactionAmount} ${normalizedCurrency} for loan ${loanId} to teller ${tellerId}/cashier ${cashierId}`
+              `[CashRepayment] Allocated ${body.transactionAmount} ${currency} for loan ${loanId} to teller ${tellerId}/cashier ${cashierId}`
             );
           } catch (err: any) {
             const fineractError = err?.response?.data;

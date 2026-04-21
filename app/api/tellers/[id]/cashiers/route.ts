@@ -192,12 +192,25 @@ export async function GET(
 
         let fineractBalance = 0;
         try {
-          const summary = await fineractService.getCashierSummaryAndTransactions(
-            teller.fineractTellerId!,
-            fc.id,
-            rawCurrencyCode
-          );
-          fineractBalance = summary.netCash || 0;
+          const needsDualFetch = rawCurrencyCode !== orgCurrency;
+          const [primarySummary, secondarySummary] = await Promise.all([
+            fineractService.getCashierSummaryAndTransactions(
+              teller.fineractTellerId!,
+              fc.id,
+              rawCurrencyCode
+            ),
+            needsDualFetch
+              ? fineractService
+                  .getCashierSummaryAndTransactions(
+                    teller.fineractTellerId!,
+                    fc.id,
+                    orgCurrency
+                  )
+                  .catch(() => null)
+              : Promise.resolve(null),
+          ]);
+          fineractBalance =
+            (primarySummary?.netCash ?? 0) + (secondarySummary?.netCash ?? 0);
         } catch (err) {
           console.error(`Error getting Fineract balance for cashier ${fc.id}:`, err);
         }

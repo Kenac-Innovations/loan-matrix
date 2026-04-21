@@ -181,14 +181,14 @@ export default function CashierTransactionsPage({
       return formatDate(date);
     }
     if (typeof date === "string") {
-      const d = new Date(date);
+      const isDateOnly = /^\d{4}-\d{2}-\d{2}$/.test(date.trim());
+      const d = isDateOnly ? new Date(date + "T00:00:00") : new Date(date);
       if (!isNaN(d.getTime())) {
         return d.toLocaleDateString("en-US", {
           year: "numeric",
           month: "short",
           day: "numeric",
-          hour: "2-digit",
-          minute: "2-digit",
+          ...(isDateOnly ? {} : { hour: "2-digit", minute: "2-digit" }),
         });
       }
     }
@@ -262,7 +262,7 @@ export default function CashierTransactionsPage({
       {
         id: "date",
         header: "Date",
-        accessorKey: "createdDate" as keyof Transaction,
+        accessorKey: "txnDate" as keyof Transaction,
         enableSorting: true,
         cell: ({ row }) => {
           const tx = row.original;
