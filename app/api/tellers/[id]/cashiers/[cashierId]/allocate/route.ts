@@ -293,9 +293,10 @@ export async function POST(
       : formatDateForFineract(new Date());
     const dateFormat = isIsoDate ? "yyyy-MM-dd" : "dd MMMM yyyy";
 
-    // Use the same currency the loan (and summary view) expects – do NOT map ZMW→ZMK.
-    // Fineract filters cashier summary by currencyCode; ZMK allocations do not appear in ZMW summary.
-    const allocateCurrency = currency?.toUpperCase() || "ZMW";
+    // Always use the raw Fineract currency code (e.g. "ZMK") so allocations are stored
+    // under the same code that cashier summary queries use. validationCurrency is already
+    // the raw code from getOrgRawCurrencyCode() fetched above.
+    const allocateCurrency = validationCurrency || currency?.toUpperCase() || "ZMW";
 
     // Allocate cash in Fineract – require resourceId as proof the request hit Fineract
     let fineractAllocationId: number | null = null;

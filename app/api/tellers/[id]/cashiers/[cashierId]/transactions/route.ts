@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getFineractServiceWithSession } from "@/lib/fineract-api";
 import { prisma } from "@/lib/prisma";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
-import { getOrgRawCurrencyCode } from "@/lib/currency-utils";
+import { getOrgDefaultCurrencyCode, getOrgRawCurrencyCode } from "@/lib/currency-utils";
 
 /**
  * GET /api/tellers/[id]/cashiers/[cashierId]/transactions
@@ -82,7 +82,10 @@ export async function GET(
 
     // Get currency code and pagination from query params
     const searchParams = request.nextUrl?.searchParams ?? new URL(request.url).searchParams;
-    const rawCurrency = await getOrgRawCurrencyCode();
+    const [rawCurrency, normalizedCurrency] = await Promise.all([
+      getOrgRawCurrencyCode(),
+      getOrgDefaultCurrencyCode(),
+    ]);
     const currencyCode = searchParams.get("currencyCode") || rawCurrency;
     const limitParam = searchParams.get("limit");
     const offsetParam = searchParams.get("offset");
@@ -96,12 +99,61 @@ export async function GET(
       offset > 0 || limit !== 500
         ? { offset, limit: Math.min(limit, 500) }
         : undefined;
-    const summaryAndTransactions = await fineractService.getCashierSummaryAndTransactions(
-      teller.fineractTellerId,
-      fineractCashierId,
-      currencyCode,
-      paginationOptions
-    );
+
+    // Dual-fetch: some orgs have repayments stored under both ZMK and ZMW due to historical
+    // normalization. Fetch both and merge so nothing is invisible in the UI.
+    const needsDualFetch = rawCurrency !== normalizedCurrency;
+    const altCurrency = currencyCode === rawCurrency ? normalizedCurrency : rawCurrency;
+    const [primaryResult, secondaryResult] = await Promise.all([
+      fineractService.getCashierSummaryAndTransactions(
+        teller.fineractTellerId,
+        fineractCashierId,
+        currencyCode,
+        paginationOptions
+      ),
+      needsDualFetch
+        ? fineractService
+            .getCashierSummaryAndTransactions(
+              teller.fineractTellerId,
+              fineractCashierId,
+              altCurrency,
+              paginationOptions
+            )
+            .catch(() => null)
+        : Promise.resolve(null),
+    ]);
+
+    // Merge secondary result into primary
+    let summaryAndTransactions = primaryResult;
+    if (secondaryResult) {
+      const primaryItems: unknown[] = Array.isArray(primaryResult?.cashierTransactions?.pageItems)
+        ? primaryResult.cashierTransactions.pageItems
+        : Array.isArray(primaryResult?.cashierTransactions)
+        ? primaryResult.cashierTransactions
+        : [];
+      const secondaryItems: unknown[] = Array.isArray(secondaryResult?.cashierTransactions?.pageItems)
+        ? secondaryResult.cashierTransactions.pageItems
+        : Array.isArray(secondaryResult?.cashierTransactions)
+        ? secondaryResult.cashierTransactions
+        : [];
+
+      // Deduplicate by id — primary takes precedence
+      const seen = new Set(primaryItems.map((t: any) => t.id));
+      const merged = [...primaryItems, ...secondaryItems.filter((t: any) => !seen.has(t.id))];
+
+      summaryAndTransactions = {
+        ...primaryResult,
+        netCash: (primaryResult?.netCash ?? 0) + (secondaryResult?.netCash ?? 0),
+        sumCashAllocation: (primaryResult?.sumCashAllocation ?? 0) + (secondaryResult?.sumCashAllocation ?? 0),
+        sumCashSettlement: (primaryResult?.sumCashSettlement ?? 0) + (secondaryResult?.sumCashSettlement ?? 0),
+        sumOutwardCash: (primaryResult?.sumOutwardCash ?? 0) + (secondaryResult?.sumOutwardCash ?? 0),
+        cashierTransactions: {
+          ...(primaryResult?.cashierTransactions ?? {}),
+          pageItems: merged,
+          totalFilteredRecords: merged.length,
+        },
+      };
+    }
 
     // Merge REVERSED loan payouts for this cashier into transaction history (so reversals show as Cash In)
     const dbCashierId = cashier?.id ?? null;
