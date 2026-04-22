@@ -68,7 +68,7 @@ export async function GET(request: NextRequest) {
 
     console.log(`Report ${reportName} parsed ${result.length} rows`);
 
-    // Enrich with local lead IDs and payout status by looking up via fineractLoanId
+    // Enrich with local lead IDs, creator names, and payout status by looking up via fineractLoanId
     if (result.length > 0) {
       // Get tenant from header
       const tenantSlug = extractTenantSlugFromRequest(request);
@@ -77,6 +77,25 @@ export async function GET(request: NextRequest) {
       });
 
       if (tenant) {
+        let userMap: Record<string, { name: string; office: string }> = {};
+        try {
+          const users = await fineractService.getUsers();
+          users.forEach((user: any) => {
+            const displayName =
+              [user.firstname, user.lastname].filter(Boolean).join(" ") ||
+              user.displayName ||
+              user.username ||
+              `User ${user.id}`;
+
+            userMap[String(user.id)] = {
+              name: displayName,
+              office: user.officeName || "",
+            };
+          });
+        } catch (err) {
+          console.error("Error fetching Fineract users:", err);
+        }
+
         // Extract loan IDs and external IDs (lead IDs) from the report data
         const loanIds = result
           .map((row: any) => row.loan_id)
@@ -98,6 +117,8 @@ export async function GET(request: NextRequest) {
             select: {
               id: true,
               fineractLoanId: true,
+              userId: true,
+              createdByUserName: true,
               preferredPaymentMethod: true,
             },
           });
@@ -179,12 +200,21 @@ export async function GET(request: NextRequest) {
             const paymentTypeLabel = rawPaymentType
               ? (PAYMENT_TYPE_LABELS[String(rawPaymentType).toUpperCase().replace(/\s+/g, "_")] || rawPaymentType)
               : null;
+            const originatorName =
+              resolvedLead?.createdByUserName ||
+              (resolvedLead?.userId ? userMap[String(resolvedLead.userId)]?.name : null) ||
+              resolvedLead?.userId ||
+              null;
 
             const enrichedRow: any = {
               ...row,
               lead_id: resolvedLeadId,
               payment_type: paymentTypeLabel,
             };
+
+            if (originatorName) {
+              enrichedRow.created_by = originatorName;
+            }
 
             if (report === "disbursed" || report === "payout") {
               enrichedRow.payout_status = resolvedFineractLoanId

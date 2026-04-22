@@ -1080,6 +1080,10 @@ export function LeadsStatusTabs() {
 
 // Helper to format column headers (snake_case to Title Case)
 function formatColumnHeader(col: string): string {
+  if (col === "created_by") {
+    return "Submitted By";
+  }
+
   return col
     .replaceAll("_", " ")
     .replaceAll(/\b\w/g, (l) => l.toUpperCase());
