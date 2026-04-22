@@ -71,20 +71,22 @@ declare global {
   var __bulkRepaymentConsumerActive: boolean | undefined;
 }
 
-function requireEnv(name: string): string {
-  const value = process.env[name]?.trim();
-  if (!value) {
-    throw new Error(
-      `[BulkRepayment] Missing required environment variable: ${name}`
-    );
-  }
-
-  return value;
+interface BulkRepaymentQueueConfig {
+  exchangeName: string;
+  queueName: string;
+  routingKey: string;
 }
 
-const EXCHANGE_NAME = requireEnv("BULK_REPAYMENT_EXCHANGE");
-const QUEUE_NAME = requireEnv("BULK_REPAYMENT_QUEUE");
-const ROUTING_KEY = requireEnv("BULK_REPAYMENT_ROUTING_KEY");
+function getQueueConfig(): BulkRepaymentQueueConfig {
+  return {
+    exchangeName:
+      process.env.BULK_REPAYMENT_EXCHANGE || "bulkrepayments.prod.exchange",
+    queueName: process.env.BULK_REPAYMENT_QUEUE || "bulkrepayments.prod.queue",
+    routingKey:
+      process.env.BULK_REPAYMENT_ROUTING_KEY ||
+      "bulkrepayments.prod.routing.key",
+  };
+}
 
 export class BulkRepaymentQueueService {
   private connection: Connection | null = null;
@@ -144,22 +146,23 @@ export class BulkRepaymentQueueService {
 
   private async setupQueue(): Promise<void> {
     if (!this.channel) throw new Error("Channel not available");
+    const { exchangeName, queueName, routingKey } = getQueueConfig();
 
-    await this.channel.assertExchange(EXCHANGE_NAME, "direct", {
+    await this.channel.assertExchange(exchangeName, "direct", {
       durable: true,
     });
 
-    await this.channel.assertQueue(QUEUE_NAME, {
+    await this.channel.assertQueue(queueName, {
       durable: true,
       arguments: {
         "x-message-ttl": 86400000, // 24h TTL
       },
     });
 
-    await this.channel.bindQueue(QUEUE_NAME, EXCHANGE_NAME, ROUTING_KEY);
+    await this.channel.bindQueue(queueName, exchangeName, routingKey);
 
     console.log(
-      `[BulkRepayment] Queue: ${QUEUE_NAME} -> ${EXCHANGE_NAME} (${ROUTING_KEY})`
+      `[BulkRepayment] Queue: ${queueName} -> ${exchangeName} (${routingKey})`
     );
   }
 
@@ -178,6 +181,8 @@ export class BulkRepaymentQueueService {
   public async publishRepayment(
     message: BulkRepaymentMessage
   ): Promise<void> {
+    const { exchangeName, routingKey } = getQueueConfig();
+
     if (!this.channel || !this.isConnected) {
       await this.connect();
     }
@@ -188,8 +193,8 @@ export class BulkRepaymentQueueService {
 
     const messageBuffer = Buffer.from(JSON.stringify(message));
     const published = this.channel.publish(
-      EXCHANGE_NAME,
-      ROUTING_KEY,
+      exchangeName,
+      routingKey,
       messageBuffer,
       {
         persistent: true,
@@ -206,6 +211,8 @@ export class BulkRepaymentQueueService {
   }
 
   public async startConsuming(): Promise<void> {
+    const { queueName } = getQueueConfig();
+
     if (global.__bulkRepaymentConsumerActive) {
       console.log("[BulkRepayment] Consumer already active, skipping");
       return;
@@ -229,10 +236,10 @@ export class BulkRepaymentQueueService {
 
     await this.channel.prefetch(3);
 
-    console.log(`[BulkRepayment] Starting consumer on ${QUEUE_NAME}`);
+    console.log(`[BulkRepayment] Starting consumer on ${queueName}`);
 
     await this.channel.consume(
-      QUEUE_NAME,
+      queueName,
       async (msg: ConsumeMessage | null) => {
         if (!msg) return;
         try {

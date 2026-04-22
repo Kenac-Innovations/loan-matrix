@@ -18,20 +18,25 @@ declare global {
   var __bulkRepaymentReversalConsumerActive: boolean | undefined;
 }
 
-function requireEnv(name: string): string {
-  const value = process.env[name]?.trim();
-  if (!value) {
-    throw new Error(
-      `[BulkRepaymentReversal] Missing required environment variable: ${name}`
-    );
-  }
+type BulkRepaymentReversalQueueConfig = {
+  exchangeName: string;
+  queueName: string;
+  routingKey: string;
+};
 
-  return value;
+function getQueueConfig(): BulkRepaymentReversalQueueConfig {
+  return {
+    exchangeName:
+      process.env.BULK_REPAYMENT_REVERSAL_EXCHANGE ||
+      "bulkrepaymentreversals.prod.exchange",
+    queueName:
+      process.env.BULK_REPAYMENT_REVERSAL_QUEUE ||
+      "bulkrepaymentreversals.prod.queue",
+    routingKey:
+      process.env.BULK_REPAYMENT_REVERSAL_ROUTING_KEY ||
+      "bulkrepaymentreversals.prod.routing.key",
+  };
 }
-
-const EXCHANGE_NAME = requireEnv("BULK_REPAYMENT_REVERSAL_EXCHANGE");
-const QUEUE_NAME = requireEnv("BULK_REPAYMENT_REVERSAL_QUEUE");
-const ROUTING_KEY = requireEnv("BULK_REPAYMENT_REVERSAL_ROUTING_KEY");
 
 type QueueAwareError = {
   message?: string;
@@ -113,22 +118,23 @@ export class BulkRepaymentReversalQueueService {
 
   private async setupQueue(): Promise<void> {
     if (!this.channel) throw new Error("Channel not available");
+    const { exchangeName, queueName, routingKey } = getQueueConfig();
 
-    await this.channel.assertExchange(EXCHANGE_NAME, "direct", {
+    await this.channel.assertExchange(exchangeName, "direct", {
       durable: true,
     });
 
-    await this.channel.assertQueue(QUEUE_NAME, {
+    await this.channel.assertQueue(queueName, {
       durable: true,
       arguments: {
         "x-message-ttl": 86400000,
       },
     });
 
-    await this.channel.bindQueue(QUEUE_NAME, EXCHANGE_NAME, ROUTING_KEY);
+    await this.channel.bindQueue(queueName, exchangeName, routingKey);
 
     console.log(
-      `[BulkRepaymentReversal] Queue: ${QUEUE_NAME} -> ${EXCHANGE_NAME} (${ROUTING_KEY})`
+      `[BulkRepaymentReversal] Queue: ${queueName} -> ${exchangeName} (${routingKey})`
     );
   }
 
@@ -146,6 +152,8 @@ export class BulkRepaymentReversalQueueService {
   }
 
   public async publishReversal(message: BulkRepaymentReversalMessage): Promise<void> {
+    const { exchangeName, routingKey } = getQueueConfig();
+
     if (!this.channel || !this.isConnected) {
       await this.connect();
     }
@@ -155,7 +163,7 @@ export class BulkRepaymentReversalQueueService {
     }
 
     const messageBuffer = Buffer.from(JSON.stringify(message));
-    const published = this.channel.publish(EXCHANGE_NAME, ROUTING_KEY, messageBuffer, {
+    const published = this.channel.publish(exchangeName, routingKey, messageBuffer, {
       persistent: true,
       timestamp: Date.now(),
       messageId: `reverse-${message.itemId}`,
@@ -171,6 +179,8 @@ export class BulkRepaymentReversalQueueService {
   }
 
   public async startConsuming(): Promise<void> {
+    const { queueName } = getQueueConfig();
+
     if (global.__bulkRepaymentReversalConsumerActive) {
       console.log("[BulkRepaymentReversal] Consumer already active, skipping");
       return;
@@ -194,9 +204,9 @@ export class BulkRepaymentReversalQueueService {
 
     await this.channel.prefetch(1);
 
-    console.log(`[BulkRepaymentReversal] Starting consumer on ${QUEUE_NAME}`);
+    console.log(`[BulkRepaymentReversal] Starting consumer on ${queueName}`);
 
-    await this.channel.consume(QUEUE_NAME, async (msg: ConsumeMessage | null) => {
+    await this.channel.consume(queueName, async (msg: ConsumeMessage | null) => {
       if (!msg) return;
 
       try {
