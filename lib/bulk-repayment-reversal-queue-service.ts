@@ -18,12 +18,20 @@ declare global {
   var __bulkRepaymentReversalConsumerActive: boolean | undefined;
 }
 
-const EXCHANGE_NAME =
-  process.env.BULK_REPAYMENT_REVERSAL_EXCHANGE || "bulkrepaymentreversals.exchange";
-const QUEUE_NAME =
-  process.env.BULK_REPAYMENT_REVERSAL_QUEUE || "bulkrepaymentreversals.queue";
-const ROUTING_KEY =
-  process.env.BULK_REPAYMENT_REVERSAL_ROUTING_KEY || "bulkrepaymentreversals.routing.key";
+function requireEnv(name: string): string {
+  const value = process.env[name]?.trim();
+  if (!value) {
+    throw new Error(
+      `[BulkRepaymentReversal] Missing required environment variable: ${name}`
+    );
+  }
+
+  return value;
+}
+
+const EXCHANGE_NAME = requireEnv("BULK_REPAYMENT_REVERSAL_EXCHANGE");
+const QUEUE_NAME = requireEnv("BULK_REPAYMENT_REVERSAL_QUEUE");
+const ROUTING_KEY = requireEnv("BULK_REPAYMENT_REVERSAL_ROUTING_KEY");
 
 type QueueAwareError = {
   message?: string;
