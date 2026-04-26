@@ -8,11 +8,25 @@ import { getFineractServiceWithSession } from "@/lib/fineract-api";
 import prisma from "@/lib/prisma";
 import { getOrgDefaultCurrencyCode } from "@/lib/currency-utils";
 
-/** Format YYYY-MM-DD to "dd MMMM yyyy" for Fineract */
+/** Format YYYY-MM-DD to "dd MMMM yyyy" for Fineract allocate */
 function formatDateForFineract(isoDate: string): string {
   const d = new Date(isoDate);
   const day = d.getDate();
   const month = d.toLocaleString("en", { month: "long" });
+  const year = d.getFullYear();
+  return `${day} ${month} ${year}`;
+}
+
+const MONTH_NAMES = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+] as const;
+
+/** "dd MMMM yyyy" with zero-padded day — matches Fineract settle payloads elsewhere */
+function formatTxnDateForTellerSettle(isoDate: string): string {
+  const d = new Date(isoDate);
+  const day = d.getDate().toString().padStart(2, "0");
+  const month = MONTH_NAMES[d.getMonth()];
   const year = d.getFullYear();
   return `${day} ${month} ${year}`;
 }
@@ -191,5 +205,72 @@ export async function recordCashRepaymentToTeller(
       success: false,
       error: err?.message ?? "Unknown error",
     };
+  }
+}
+
+export interface ReturnAllocationFromCashierToTellerOptions {
+  fineractTellerId: number;
+  fineractCashierId: number;
+  amount: number;
+  currencyCode: string;
+  /** ISO date yyyy-MM-dd */
+  transactionDate: string;
+  notes?: string;
+}
+
+/**
+ * Return a prior **cash allocation** from the cashier to the teller (vault side).
+ * Fineract settle on the cashier = cash out from the till back to the teller.
+ * Do not use for loan repayment or disbursement — those must be reversed on the loan in Fineract.
+ */
+export async function returnAllocationFromCashierToTeller(
+  options: ReturnAllocationFromCashierToTellerOptions
+): Promise<{ success: boolean; error?: string; fineractSettlementId?: number | null }> {
+  const {
+    fineractTellerId,
+    fineractCashierId,
+    amount,
+    currencyCode,
+    transactionDate,
+    notes,
+  } = options;
+
+  if (amount <= 0) {
+    return { success: false, error: "Amount must be greater than 0" };
+  }
+
+  const normalizedCurrency =
+    String(currencyCode).toUpperCase() === "ZMK" ? "ZMW" : currencyCode;
+  const txnDate = formatTxnDateForTellerSettle(transactionDate);
+  const txnNote =
+    notes?.trim() || "Allocation return — funds to teller";
+
+  try {
+    const fineractService = await getFineractServiceWithSession();
+    const result = await fineractService.settleCashForCashier(
+      fineractTellerId,
+      fineractCashierId,
+      {
+        txnDate,
+        currencyCode: normalizedCurrency,
+        txnAmount: String(amount),
+        txnNote,
+        dateFormat: "dd MMMM yyyy",
+        locale: "en",
+      }
+    );
+    const fineractSettlementId = result.resourceId ?? result.id ?? null;
+    console.log(
+      `[CashAllocation] Return to teller: settle ${amount} ${normalizedCurrency} teller ${fineractTellerId} cashier ${fineractCashierId}`
+    );
+    return { success: true, fineractSettlementId };
+  } catch (err: any) {
+    console.error("[CashAllocation] Error returning allocation to teller:", err);
+    const msg =
+      err?.response?.data?.defaultUserMessage ||
+      err?.response?.data?.errors?.[0]?.defaultUserMessage ||
+      err?.message ||
+      "Unknown error";
+    return { success: false, error: msg };
   }
 }

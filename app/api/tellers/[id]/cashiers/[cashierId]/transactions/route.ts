@@ -3,6 +3,95 @@ import { getFineractServiceWithSession } from "@/lib/fineract-api";
 import { prisma } from "@/lib/prisma";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
 import { getOrgDefaultCurrencyCode, getOrgRawCurrencyCode } from "@/lib/currency-utils";
+import { getSession } from "@/lib/auth";
+import { returnAllocationFromCashierToTeller } from "@/lib/cash-repayment-teller";
+
+type TellerRow = NonNullable<Awaited<ReturnType<typeof prisma.teller.findFirst>>>;
+type CashierRow = NonNullable<Awaited<ReturnType<typeof prisma.cashier.findFirst>>>;
+
+type ResolveResult =
+  | {
+      ok: true;
+      teller: TellerRow;
+      /** Null when the cashier exists only in Fineract (numeric id); GET still works, POST requires a row */
+      cashier: CashierRow | null;
+      fineractCashierId: number;
+    }
+  | { ok: false; status: number; error: string };
+
+async function resolveTellerCashierForTenant(
+  tellerIdParam: string,
+  cashierIdParam: string,
+  tenantId: string,
+  opts?: { requireDbCashier?: boolean }
+): Promise<ResolveResult> {
+  let fineractTellerIdFromPrefix: number | null = null;
+  if (tellerIdParam.startsWith("fineract-")) {
+    fineractTellerIdFromPrefix = parseInt(tellerIdParam.replace("fineract-", ""), 10);
+  }
+
+  let teller = await prisma.teller.findFirst({
+    where: { id: tellerIdParam, tenantId },
+  });
+
+  const fineractTellerIdToSearch =
+    fineractTellerIdFromPrefix ||
+    (!isNaN(Number(tellerIdParam)) ? Number(tellerIdParam) : null);
+  if (!teller && fineractTellerIdToSearch) {
+    teller = await prisma.teller.findFirst({
+      where: { fineractTellerId: fineractTellerIdToSearch, tenantId },
+    });
+  }
+
+  if (!teller || !teller.fineractTellerId) {
+    return {
+      ok: false,
+      status: 404,
+      error: "Teller not found or does not have a Fineract ID",
+    };
+  }
+
+  const cashierIdNum = parseInt(cashierIdParam, 10);
+  const isNumericId = !isNaN(cashierIdNum);
+
+  let cashier = await prisma.cashier.findFirst({
+    where: { id: cashierIdParam, tellerId: teller.id, tenantId },
+  });
+
+  if (!cashier && isNumericId) {
+    cashier = await prisma.cashier.findFirst({
+      where: {
+        fineractCashierId: cashierIdNum,
+        tellerId: teller.id,
+        tenantId,
+      },
+    });
+  }
+
+  let fineractCashierId: number;
+  if (cashier?.fineractCashierId) {
+    fineractCashierId = cashier.fineractCashierId;
+  } else if (isNumericId) {
+    fineractCashierId = cashierIdNum;
+  } else {
+    return {
+      ok: false,
+      status: 404,
+      error: "Cashier not found or invalid cashier ID",
+    };
+  }
+
+  if (!cashier && opts?.requireDbCashier) {
+    return {
+      ok: false,
+      status: 404,
+      error:
+        "Cashier must exist in Loan Matrix to post a reversal offset (sync cashiers from Fineract if needed)",
+    };
+  }
+
+  return { ok: true, teller, cashier, fineractCashierId };
+}
 
 /**
  * GET /api/tellers/[id]/cashiers/[cashierId]/transactions
@@ -21,66 +110,17 @@ export async function GET(
       return NextResponse.json({ error: "Tenant not found" }, { status: 404 });
     }
 
-    // Handle fineract-prefixed IDs for teller
-    let fineractTellerIdFromPrefix: number | null = null;
-    if (tellerId.startsWith("fineract-")) {
-      fineractTellerIdFromPrefix = parseInt(tellerId.replace("fineract-", ""));
+    const resolved = await resolveTellerCashierForTenant(
+      tellerId,
+      cashierId,
+      tenant.id
+    );
+    if (!resolved.ok) {
+      return NextResponse.json({ error: resolved.error }, { status: resolved.status });
     }
 
-    // Get teller by database ID or Fineract ID
-    let teller = await prisma.teller.findFirst({
-      where: { id: tellerId, tenantId: tenant.id },
-    });
+    const { teller, cashier, fineractCashierId } = resolved;
 
-    // Try by Fineract ID if not found
-    const fineractTellerIdToSearch = fineractTellerIdFromPrefix || (!isNaN(Number(tellerId)) ? Number(tellerId) : null);
-    if (!teller && fineractTellerIdToSearch) {
-      teller = await prisma.teller.findFirst({
-        where: { fineractTellerId: fineractTellerIdToSearch, tenantId: tenant.id },
-      });
-    }
-
-    if (!teller || !teller.fineractTellerId) {
-      return NextResponse.json(
-        { error: "Teller not found or does not have a Fineract ID" },
-        { status: 404 }
-      );
-    }
-
-    // Parse cashierId - could be database ID or Fineract ID
-    const cashierIdNum = parseInt(cashierId);
-    const isNumericId = !isNaN(cashierIdNum);
-
-    // Try to find cashier by database ID first
-    let cashier = await prisma.cashier.findFirst({
-      where: { id: cashierId, tellerId: teller.id, tenantId: tenant.id },
-    });
-
-    // If not found by database ID and cashierId is numeric, try Fineract ID
-    if (!cashier && isNumericId) {
-        cashier = await prisma.cashier.findFirst({
-          where: {
-          fineractCashierId: cashierIdNum,
-          tellerId: teller.id,
-            tenantId: tenant.id,
-          },
-        });
-    }
-
-    // Get Fineract cashier ID
-    let fineractCashierId: number;
-    if (cashier?.fineractCashierId) {
-      fineractCashierId = cashier.fineractCashierId;
-    } else if (isNumericId) {
-      fineractCashierId = cashierIdNum;
-    } else {
-      return NextResponse.json(
-        { error: "Cashier not found or invalid cashier ID" },
-        { status: 404 }
-      );
-    }
-
-    // Get currency code and pagination from query params
     const searchParams = request.nextUrl?.searchParams ?? new URL(request.url).searchParams;
     const [rawCurrency, normalizedCurrency] = await Promise.all([
       getOrgRawCurrencyCode(),
@@ -92,8 +132,6 @@ export async function GET(
     const limit = limitParam ? parseInt(limitParam, 10) : 500;
     const offset = offsetParam ? parseInt(offsetParam, 10) : 0;
 
-    // Fetch summary and transactions from Fineract.
-    // Note: Some Fineract versions don't support offset/limit and may throw. Pass only when explicitly requested.
     const fineractService = await getFineractServiceWithSession();
     const paginationOptions =
       offset > 0 || limit !== 500
@@ -155,54 +193,58 @@ export async function GET(
       };
     }
 
-    // Merge REVERSED loan payouts for this cashier into transaction history (so reversals show as Cash In)
     const dbCashierId = cashier?.id ?? null;
-    if (dbCashierId) {
-      const reversedPayouts = await prisma.loanPayout.findMany({
-        where: {
-          tenantId: tenant.id,
-          cashierId: dbCashierId,
-          status: "REVERSED",
-          voidedAt: { not: null },
-        },
-        orderBy: { voidedAt: "asc" },
-      });
+    const reversedPayouts =
+      dbCashierId != null
+        ? await prisma.loanPayout.findMany({
+            where: {
+              tenantId: tenant.id,
+              cashierId: dbCashierId,
+              status: "REVERSED",
+              voidedAt: { not: null },
+            },
+            orderBy: { voidedAt: "asc" },
+          })
+        : [];
 
-      const reversalTransactions = reversedPayouts.map((p) => {
-        const d = p.voidedAt!;
-        return {
-          id: `reversal-${p.id}`,
-          txnType: { value: "Reversal", code: "REVERSAL" },
-          transactionType: { value: "Reversal", code: "REVERSAL" },
-          txnAmount: p.amount,
-          amount: p.amount,
-          txnDate: [d.getFullYear(), d.getMonth() + 1, d.getDate()] as number[],
-          createdDate: [d.getFullYear(), d.getMonth() + 1, d.getDate()] as number[],
-          transactionDate: [d.getFullYear(), d.getMonth() + 1, d.getDate()] as number[],
-          txnNote: `Reversal - ${p.voidReason ?? "Payout reversed"}`,
-          notes: p.voidReason ?? undefined,
-          _isReversal: true,
-        };
-      });
+    const reversalTransactions = reversedPayouts.map((p) => {
+      const d = p.voidedAt!;
+      return {
+        id: `reversal-${p.id}`,
+        txnType: { value: "Reversal", code: "REVERSAL" },
+        transactionType: { value: "Reversal", code: "REVERSAL" },
+        txnAmount: p.amount,
+        amount: p.amount,
+        txnDate: [d.getFullYear(), d.getMonth() + 1, d.getDate()] as number[],
+        createdDate: [d.getFullYear(), d.getMonth() + 1, d.getDate()] as number[],
+        transactionDate: [d.getFullYear(), d.getMonth() + 1, d.getDate()] as number[],
+        txnNote: `Reversal - ${p.voidReason ?? "Payout reversed"}`,
+        notes: p.voidReason ?? undefined,
+        _isReversal: true,
+      };
+    });
 
-      if (reversalTransactions.length > 0) {
-        const base = summaryAndTransactions?.cashierTransactions ?? {};
-        const pageItems = Array.isArray(base.pageItems) ? base.pageItems : Array.isArray(base) ? base : [];
-        const merged = [...pageItems, ...reversalTransactions].sort((a, b) => {
-          const dateA = a.txnDate ?? a.createdDate ?? a.transactionDate;
-          const dateB = b.txnDate ?? b.createdDate ?? b.transactionDate;
-          if (!dateA || !dateB) return 0;
-          const arrA = Array.isArray(dateA) ? dateA : [0, 0, 0];
-          const arrB = Array.isArray(dateB) ? dateB : [0, 0, 0];
-          const tsA = new Date(arrA[0], (arrA[1] ?? 1) - 1, arrA[2] ?? 1).getTime();
-          const tsB = new Date(arrB[0], (arrB[1] ?? 1) - 1, arrB[2] ?? 1).getTime();
-          return tsB - tsA; // newest first
-        });
-        if (Array.isArray(base)) {
-          (summaryAndTransactions as any).cashierTransactions = merged;
-        } else {
-          (summaryAndTransactions as any).cashierTransactions = { ...base, pageItems: merged };
-        }
+    if (reversalTransactions.length > 0) {
+      const base = summaryAndTransactions?.cashierTransactions ?? {};
+      const pageItems = Array.isArray(base.pageItems)
+        ? base.pageItems
+        : Array.isArray(base)
+          ? base
+          : [];
+      const merged = [...pageItems, ...reversalTransactions].sort((a, b) => {
+        const dateA = a.txnDate ?? a.createdDate ?? a.transactionDate;
+        const dateB = b.txnDate ?? b.createdDate ?? b.transactionDate;
+        if (!dateA || !dateB) return 0;
+        const arrA = Array.isArray(dateA) ? dateA : [0, 0, 0];
+        const arrB = Array.isArray(dateB) ? dateB : [0, 0, 0];
+        const tsA = new Date(arrA[0], (arrA[1] ?? 1) - 1, arrA[2] ?? 1).getTime();
+        const tsB = new Date(arrB[0], (arrB[1] ?? 1) - 1, arrB[2] ?? 1).getTime();
+        return tsB - tsA;
+      });
+      if (Array.isArray(base)) {
+        (summaryAndTransactions as any).cashierTransactions = merged;
+      } else {
+        (summaryAndTransactions as any).cashierTransactions = { ...base, pageItems: merged };
       }
     }
 
@@ -212,6 +254,222 @@ export async function GET(
     return NextResponse.json(
       {
         error: "Failed to fetch transactions",
+        details: error instanceof Error ? error.message : "Unknown error",
+      },
+      { status: 500 }
+    );
+  }
+}
+
+const LOAN_REVERSAL_HINT =
+  "Disbursement and repayment till movements must be reversed from the loan in Fineract / Loan Matrix (undo loan transaction, undo disbursal, etc.). This endpoint only returns **allocated** cash from the cashier back to the teller.";
+
+/**
+ * POST /api/tellers/[id]/cashiers/[cashierId]/transactions
+ * Only **allocation** return: Fineract settle moves cash from cashier back to the teller.
+ * Repayment and disbursement are not reversed here — use loan-side reversal.
+ *
+ * Body: { command: "reverseAllocation", amount, currencyCode, transactionDate?, notes? }
+ */
+export async function POST(
+  request: NextRequest,
+  context: { params: Promise<{ id: string; cashierId: string }> }
+) {
+  try {
+    const params = await context.params;
+    const { id: tellerId, cashierId } = params;
+    const tenant = await getTenantFromHeaders();
+    const session = await getSession();
+
+    if (!tenant) {
+      return NextResponse.json({ error: "Tenant not found" }, { status: 404 });
+    }
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const body = await request.json();
+    const command = body?.command as string | undefined;
+
+    if (command === "repaymentReversalOffset") {
+      return NextResponse.json(
+        {
+          error: "Repayment and disbursement reversals are not supported on this endpoint",
+          details: LOAN_REVERSAL_HINT,
+        },
+        { status: 400 }
+      );
+    }
+
+    if (command !== "reverseAllocation") {
+      return NextResponse.json(
+        {
+          error: "Unsupported command",
+          details: `Use command: "reverseAllocation" with amount, currencyCode, optional transactionDate (yyyy-MM-dd), notes. ${LOAN_REVERSAL_HINT}`,
+        },
+        { status: 400 }
+      );
+    }
+
+    const sourceType = String(body.sourceTransactionType ?? "").toLowerCase();
+    if (
+      sourceType.includes("repayment") ||
+      sourceType.includes("disbursement") ||
+      sourceType.includes("disburs")
+    ) {
+      return NextResponse.json(
+        {
+          error: "Repayment and disbursement must be reversed from the loan",
+          details: LOAN_REVERSAL_HINT,
+        },
+        { status: 400 }
+      );
+    }
+
+    if (body.fineractLoanId != null) {
+      return NextResponse.json(
+        {
+          error: "Do not send fineractLoanId for allocation return",
+          details:
+            "This operation is for vault→cashier allocation only. Loan-linked reversals belong on the loan transaction APIs.",
+        },
+        { status: 400 }
+      );
+    }
+
+    const amount = Number(body.amount);
+    const currencyCode = body.currencyCode as string | undefined;
+    if (!amount || amount <= 0 || !currencyCode) {
+      return NextResponse.json(
+        { error: "amount and currencyCode are required; amount must be > 0" },
+        { status: 400 }
+      );
+    }
+
+    const resolved = await resolveTellerCashierForTenant(tellerId, cashierId, tenant.id, {
+      requireDbCashier: true,
+    });
+    if (!resolved.ok) {
+      return NextResponse.json({ error: resolved.error }, { status: resolved.status });
+    }
+
+    const { teller, cashier, fineractCashierId } = resolved;
+    if (!cashier) {
+      return NextResponse.json({ error: "Cashier not found" }, { status: 404 });
+    }
+
+    let activeSession = await prisma.cashierSession.findFirst({
+      where: {
+        tellerId: teller.id,
+        cashierId: cashier.id,
+        tenantId: tenant.id,
+        sessionStatus: "ACTIVE",
+      },
+    });
+
+    if (!activeSession) {
+      try {
+        const fineractService = await getFineractServiceWithSession();
+        const fineractCashierData = await fineractService.getCashier(
+          teller.fineractTellerId,
+          fineractCashierId
+        );
+        if (fineractCashierData?.isRunning) {
+          activeSession = await prisma.cashierSession.create({
+            data: {
+              tenantId: tenant.id,
+              tellerId: teller.id,
+              cashierId: cashier.id,
+              fineractSessionId: fineractCashierData.id || 0,
+              sessionStatus: "ACTIVE",
+              sessionStartTime: new Date(),
+              allocatedBalance: 0,
+              availableBalance: 0,
+              openingFloat: 0,
+              cashIn: 0,
+              cashOut: 0,
+              netCash: 0,
+            },
+          });
+        }
+      } catch (e) {
+        console.error("Error syncing Fineract session for reversal:", e);
+      }
+    }
+
+    if (!activeSession) {
+      const closedSession = await prisma.cashierSession.findFirst({
+        where: {
+          tellerId: teller.id,
+          cashierId: cashier.id,
+          tenantId: tenant.id,
+          sessionStatus: "CLOSED",
+        },
+        orderBy: { sessionEndTime: "desc" },
+      });
+      if (!closedSession) {
+        return NextResponse.json(
+          {
+            error: "Session required",
+            details:
+              "Cashier must have an active session (or a recent closed session) before returning allocation to the teller.",
+          },
+          { status: 400 }
+        );
+      }
+    }
+
+    const transactionDate =
+      typeof body.transactionDate === "string" && body.transactionDate.length >= 8
+        ? body.transactionDate
+        : new Date().toISOString().split("T")[0];
+
+    const notes = typeof body.notes === "string" ? body.notes : undefined;
+
+    const result = await returnAllocationFromCashierToTeller({
+      fineractTellerId: teller.fineractTellerId,
+      fineractCashierId,
+      amount,
+      currencyCode,
+      transactionDate,
+      notes,
+    });
+
+    if (!result.success) {
+      return NextResponse.json(
+        { error: result.error || "Fineract settle failed" },
+        { status: 502 }
+      );
+    }
+
+    const settlementNotes =
+      notes?.trim() || "Allocation reversed — funds returned to teller";
+
+    const settlement = await prisma.cashAllocation.create({
+      data: {
+        tenantId: tenant.id,
+        tellerId: teller.id,
+        cashierId: cashier.id,
+        fineractAllocationId: result.fineractSettlementId ?? undefined,
+        amount: -Math.abs(amount),
+        currency: String(currencyCode).toUpperCase() === "ZMK" ? "ZMW" : currencyCode,
+        allocatedBy: session.user.id,
+        notes: settlementNotes,
+        status: "ACTIVE",
+      },
+    });
+
+    return NextResponse.json({
+      success: true,
+      command: "reverseAllocation",
+      transaction: settlement,
+      fineractSettlementId: result.fineractSettlementId,
+    });
+  } catch (error) {
+    console.error("Error posting allocation return to teller:", error);
+    return NextResponse.json(
+      {
+        error: "Failed to post reversal",
         details: error instanceof Error ? error.message : "Unknown error",
       },
       { status: 500 }
