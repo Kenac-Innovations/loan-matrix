@@ -4,7 +4,13 @@ import { prisma } from "@/lib/prisma";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
 import { getOrgDefaultCurrencyCode, getOrgRawCurrencyCode } from "@/lib/currency-utils";
 import { getSession } from "@/lib/auth";
-import { returnAllocationFromCashierToTeller } from "@/lib/cash-repayment-teller";
+import {
+  returnAllocationFromCashierToTeller,
+  allocateCashierCounterAfterCashOut,
+} from "@/lib/cash-repayment-teller";
+import {
+  isCashierCounterEntryBlockedByLoanContext,
+} from "@/lib/cashier-txn-reversal-eligibility";
 
 type TellerRow = NonNullable<Awaited<ReturnType<typeof prisma.teller.findFirst>>>;
 type CashierRow = NonNullable<Awaited<ReturnType<typeof prisma.cashier.findFirst>>>;
@@ -262,14 +268,83 @@ export async function GET(
 }
 
 const LOAN_REVERSAL_HINT =
-  "Disbursement and repayment till movements must be reversed from the loan in Fineract / Loan Matrix (undo loan transaction, undo disbursal, etc.). This endpoint only returns **allocated** cash from the cashier back to the teller.";
+  "Loan repayment and disbursement on the till must be reversed from the loan in Fineract / Loan Matrix (transaction Undo, Undo disbursal, etc.). This endpoint only posts an opposing **cashier** entry (settle or allocate) — it does not change the loan.";
+
+async function ensureCashierSessionForCounterEntry(
+  tenantId: string,
+  teller: TellerRow,
+  cashier: CashierRow,
+  fineractCashierId: number
+): Promise<NextResponse | null> {
+  let activeSession = await prisma.cashierSession.findFirst({
+    where: {
+      tellerId: teller.id,
+      cashierId: cashier.id,
+      tenantId,
+      sessionStatus: "ACTIVE",
+    },
+  });
+
+  if (!activeSession) {
+    try {
+      const fineractService = await getFineractServiceWithSession();
+      const fineractCashierData = await fineractService.getCashier(
+        teller.fineractTellerId,
+        fineractCashierId
+      );
+      if (fineractCashierData?.isRunning) {
+        activeSession = await prisma.cashierSession.create({
+          data: {
+            tenantId,
+            tellerId: teller.id,
+            cashierId: cashier.id,
+            fineractSessionId: fineractCashierData.id || 0,
+            sessionStatus: "ACTIVE",
+            sessionStartTime: new Date(),
+            allocatedBalance: 0,
+            availableBalance: 0,
+            openingFloat: 0,
+            cashIn: 0,
+            cashOut: 0,
+            netCash: 0,
+          },
+        });
+      }
+    } catch (e) {
+      console.error("Error syncing Fineract session for cashier counter-entry:", e);
+    }
+  }
+
+  if (!activeSession) {
+    const closedSession = await prisma.cashierSession.findFirst({
+      where: {
+        tellerId: teller.id,
+        cashierId: cashier.id,
+        tenantId,
+        sessionStatus: "CLOSED",
+      },
+      orderBy: { sessionEndTime: "desc" },
+    });
+    if (!closedSession) {
+      return NextResponse.json(
+        {
+          error: "Session required",
+          details:
+            "Cashier must have an active session (or a recent closed session) before posting a counter-entry.",
+        },
+        { status: 400 }
+      );
+    }
+  }
+  return null;
+}
 
 /**
  * POST /api/tellers/[id]/cashiers/[cashierId]/transactions
- * Only **allocation** return: Fineract settle moves cash from cashier back to the teller.
- * Repayment and disbursement are not reversed here — use loan-side reversal.
  *
- * Body: { command: "reverseAllocation", amount, currencyCode, transactionDate?, notes? }
+ * - `reverseAllocation` (legacy): same as reverseCashierEntry with originalCashDirection=cashIn.
+ * - `reverseCashierEntry`: opposing cashier-only movement — cashIn → settle to teller; cashOut → allocate from teller.
+ * Loan repayment / disbursement patterns are rejected.
  */
 export async function POST(
   request: NextRequest,
@@ -301,40 +376,61 @@ export async function POST(
       );
     }
 
-    if (command !== "reverseAllocation") {
+    const isReverseAllocation = command === "reverseAllocation";
+    const isReverseCashierEntry = command === "reverseCashierEntry";
+    if (!isReverseAllocation && !isReverseCashierEntry) {
       return NextResponse.json(
         {
           error: "Unsupported command",
-          details: `Use command: "reverseAllocation" with amount, currencyCode, optional transactionDate (yyyy-MM-dd), notes. ${LOAN_REVERSAL_HINT}`,
+          details: `Use command: "reverseCashierEntry" with originalCashDirection ("cashIn" | "cashOut"), amount, currencyCode, optional transactionDate, notes, and optional sourceTxnTypeCode/sourceTxnTypeValue/sourceNotes from the row. Legacy: "reverseAllocation" (cash-in only). ${LOAN_REVERSAL_HINT}`,
         },
         { status: 400 }
       );
     }
 
-    const sourceType = String(body.sourceTransactionType ?? "").toLowerCase();
     if (
-      sourceType.includes("repayment") ||
-      sourceType.includes("disbursement") ||
-      sourceType.includes("disburs")
+      isCashierCounterEntryBlockedByLoanContext({
+        sourceTxnTypeCode: body.sourceTxnTypeCode,
+        sourceTxnTypeValue: body.sourceTxnTypeValue,
+        sourceNotes: body.sourceNotes,
+        notes: body.notes,
+        sourceTransactionType: body.sourceTransactionType,
+      })
     ) {
       return NextResponse.json(
         {
-          error: "Repayment and disbursement must be reversed from the loan",
+          error: "Repayment or disbursement must be reversed from the loan",
           details: LOAN_REVERSAL_HINT,
         },
         { status: 400 }
       );
     }
 
-    if (body.fineractLoanId != null) {
+    if (isReverseAllocation && body.fineractLoanId != null) {
       return NextResponse.json(
         {
-          error: "Do not send fineractLoanId for allocation return",
-          details:
-            "This operation is for vault→cashier allocation only. Loan-linked reversals belong on the loan transaction APIs.",
+          error: "Do not send fineractLoanId for cashier-only reversal",
+          details: LOAN_REVERSAL_HINT,
         },
         { status: 400 }
       );
+    }
+
+    let originalCashDirection: "cashIn" | "cashOut";
+    if (isReverseAllocation) {
+      originalCashDirection = "cashIn";
+    } else {
+      const d = body.originalCashDirection as string | undefined;
+      if (d !== "cashIn" && d !== "cashOut") {
+        return NextResponse.json(
+          {
+            error: "originalCashDirection is required",
+            details: 'Set to "cashIn" to reverse a cash-in on the till (posts settle), or "cashOut" to reverse a cash-out (posts allocate).',
+          },
+          { status: 400 }
+        );
+      }
+      originalCashDirection = d;
     }
 
     const amount = Number(body.amount);
@@ -358,66 +454,13 @@ export async function POST(
       return NextResponse.json({ error: "Cashier not found" }, { status: 404 });
     }
 
-    let activeSession = await prisma.cashierSession.findFirst({
-      where: {
-        tellerId: teller.id,
-        cashierId: cashier.id,
-        tenantId: tenant.id,
-        sessionStatus: "ACTIVE",
-      },
-    });
-
-    if (!activeSession) {
-      try {
-        const fineractService = await getFineractServiceWithSession();
-        const fineractCashierData = await fineractService.getCashier(
-          teller.fineractTellerId,
-          fineractCashierId
-        );
-        if (fineractCashierData?.isRunning) {
-          activeSession = await prisma.cashierSession.create({
-            data: {
-              tenantId: tenant.id,
-              tellerId: teller.id,
-              cashierId: cashier.id,
-              fineractSessionId: fineractCashierData.id || 0,
-              sessionStatus: "ACTIVE",
-              sessionStartTime: new Date(),
-              allocatedBalance: 0,
-              availableBalance: 0,
-              openingFloat: 0,
-              cashIn: 0,
-              cashOut: 0,
-              netCash: 0,
-            },
-          });
-        }
-      } catch (e) {
-        console.error("Error syncing Fineract session for reversal:", e);
-      }
-    }
-
-    if (!activeSession) {
-      const closedSession = await prisma.cashierSession.findFirst({
-        where: {
-          tellerId: teller.id,
-          cashierId: cashier.id,
-          tenantId: tenant.id,
-          sessionStatus: "CLOSED",
-        },
-        orderBy: { sessionEndTime: "desc" },
-      });
-      if (!closedSession) {
-        return NextResponse.json(
-          {
-            error: "Session required",
-            details:
-              "Cashier must have an active session (or a recent closed session) before returning allocation to the teller.",
-          },
-          { status: 400 }
-        );
-      }
-    }
+    const sessionErr = await ensureCashierSessionForCounterEntry(
+      tenant.id,
+      teller,
+      cashier,
+      fineractCashierId
+    );
+    if (sessionErr) return sessionErr;
 
     const transactionDate =
       typeof body.transactionDate === "string" && body.transactionDate.length >= 8
@@ -425,51 +468,111 @@ export async function POST(
         : new Date().toISOString().split("T")[0];
 
     const notes = typeof body.notes === "string" ? body.notes : undefined;
+    const srcId =
+      body.sourceFineractTransactionId != null
+        ? String(body.sourceFineractTransactionId)
+        : "";
+    const noteSuffix = srcId ? ` (counter for cashier txn #${srcId})` : "";
 
-    const result = await returnAllocationFromCashierToTeller({
+    const normalizedCurrency =
+      String(currencyCode).toUpperCase() === "ZMK" ? "ZMW" : currencyCode;
+
+    if (originalCashDirection === "cashIn") {
+      const result = await returnAllocationFromCashierToTeller({
+        fineractTellerId: teller.fineractTellerId,
+        fineractCashierId,
+        amount,
+        currencyCode,
+        transactionDate,
+        notes: notes?.trim()
+          ? `${notes.trim()}${noteSuffix}`
+          : `Cashier counter-entry (reverse cash-in)${noteSuffix}`,
+      });
+
+      if (!result.success) {
+        return NextResponse.json(
+          { error: result.error || "Fineract settle failed" },
+          { status: 502 }
+        );
+      }
+
+      const settlementNotes =
+        notes?.trim() ||
+        (isReverseAllocation
+          ? "Allocation reversed — funds returned to teller"
+          : `Cashier counter-entry — settle (reverse cash-in)${noteSuffix}`);
+
+      const settlement = await prisma.cashAllocation.create({
+        data: {
+          tenantId: tenant.id,
+          tellerId: teller.id,
+          cashierId: cashier.id,
+          fineractAllocationId: result.fineractSettlementId ?? undefined,
+          amount: -Math.abs(amount),
+          currency: normalizedCurrency,
+          allocatedBy: session.user.id,
+          notes: settlementNotes,
+          status: "ACTIVE",
+        },
+      });
+
+      return NextResponse.json({
+        success: true,
+        command: isReverseAllocation ? "reverseAllocation" : "reverseCashierEntry",
+        opposingMovement: "settle",
+        transaction: settlement,
+        fineractSettlementId: result.fineractSettlementId,
+      });
+    }
+
+    const allocResult = await allocateCashierCounterAfterCashOut({
       fineractTellerId: teller.fineractTellerId,
       fineractCashierId,
       amount,
       currencyCode,
       transactionDate,
-      notes,
+      notes: notes?.trim()
+        ? `${notes.trim()}${noteSuffix}`
+        : `Cashier counter-entry (reverse cash-out)${noteSuffix}`,
     });
 
-    if (!result.success) {
+    if (!allocResult.success) {
       return NextResponse.json(
-        { error: result.error || "Fineract settle failed" },
+        { error: allocResult.error || "Fineract allocate failed" },
         { status: 502 }
       );
     }
 
-    const settlementNotes =
-      notes?.trim() || "Allocation reversed — funds returned to teller";
+    const allocNotes =
+      notes?.trim() ||
+      `Cashier counter-entry — allocate (reverse cash-out)${noteSuffix}`;
 
-    const settlement = await prisma.cashAllocation.create({
+    const allocation = await prisma.cashAllocation.create({
       data: {
         tenantId: tenant.id,
         tellerId: teller.id,
         cashierId: cashier.id,
-        fineractAllocationId: result.fineractSettlementId ?? undefined,
-        amount: -Math.abs(amount),
-        currency: String(currencyCode).toUpperCase() === "ZMK" ? "ZMW" : currencyCode,
+        fineractAllocationId: allocResult.fineractResourceId ?? undefined,
+        amount: Math.abs(amount),
+        currency: normalizedCurrency,
         allocatedBy: session.user.id,
-        notes: settlementNotes,
+        notes: allocNotes,
         status: "ACTIVE",
       },
     });
 
     return NextResponse.json({
       success: true,
-      command: "reverseAllocation",
-      transaction: settlement,
-      fineractSettlementId: result.fineractSettlementId,
+      command: "reverseCashierEntry",
+      opposingMovement: "allocate",
+      transaction: allocation,
+      fineractResourceId: allocResult.fineractResourceId,
     });
   } catch (error) {
-    console.error("Error posting allocation return to teller:", error);
+    console.error("Error posting cashier counter-entry:", error);
     return NextResponse.json(
       {
-        error: "Failed to post reversal",
+        error: "Failed to post cashier counter-entry",
         details: error instanceof Error ? error.message : "Unknown error",
       },
       { status: 500 }

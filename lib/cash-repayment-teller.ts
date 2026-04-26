@@ -274,3 +274,67 @@ export async function returnAllocationFromCashierToTeller(
     return { success: false, error: msg };
   }
 }
+
+export interface AllocateCashierCounterAfterCashOutOptions {
+  fineractTellerId: number;
+  fineractCashierId: number;
+  amount: number;
+  currencyCode: string;
+  transactionDate: string;
+  notes?: string;
+}
+
+/**
+ * Opposing entry for a prior **cash out** on the cashier (e.g. settle): allocate back to the cashier
+ * so the till increases — cashier-only correction, not a loan transaction.
+ */
+export async function allocateCashierCounterAfterCashOut(
+  options: AllocateCashierCounterAfterCashOutOptions
+): Promise<{ success: boolean; error?: string; fineractResourceId?: number | null }> {
+  const {
+    fineractTellerId,
+    fineractCashierId,
+    amount,
+    currencyCode,
+    transactionDate,
+    notes,
+  } = options;
+
+  if (amount <= 0) {
+    return { success: false, error: "Amount must be greater than 0" };
+  }
+
+  const normalizedCurrency =
+    String(currencyCode).toUpperCase() === "ZMK" ? "ZMW" : currencyCode;
+  const txnDate = formatTxnDateForTellerSettle(transactionDate);
+  const txnNote = notes?.trim() || "Cashier counter-entry (reverse cash-out)";
+
+  try {
+    const fineractService = await getFineractServiceWithSession();
+    const result = await fineractService.allocateCashToCashier(
+      fineractTellerId,
+      fineractCashierId,
+      {
+        txnDate,
+        currencyCode: normalizedCurrency,
+        txnAmount: String(amount),
+        txnNote,
+        dateFormat: "dd MMMM yyyy",
+        locale: "en",
+      }
+    );
+    const fineractResourceId = result.resourceId ?? result.id ?? null;
+    console.log(
+      `[CashAllocation] Counter allocate ${amount} ${normalizedCurrency} teller ${fineractTellerId} cashier ${fineractCashierId}`
+    );
+    return { success: true, fineractResourceId };
+  } catch (err: any) {
+    console.error("[CashAllocation] Counter allocate failed:", err);
+    const msg =
+      err?.response?.data?.defaultUserMessage ||
+      err?.response?.data?.errors?.[0]?.defaultUserMessage ||
+      err?.message ||
+      "Unknown error";
+    return { success: false, error: msg };
+  }
+}
