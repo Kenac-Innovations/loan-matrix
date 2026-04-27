@@ -90,6 +90,10 @@ export default function JournalEntriesPage() {
   const totalDebits = debits.reduce((sum, d) => sum + (parseFloat(d.amount) || 0), 0);
   const totalCredits = credits.reduce((sum, c) => sum + (parseFloat(c.amount) || 0), 0);
   const isBalanced = Math.abs(totalDebits - totalCredits) < 0.01;
+  const hasIncompleteDebits = debits.some(d => !d.glAccountId || !d.amount);
+  const hasInvalidDebitAmounts = debits.some(d => d.amount && parseFloat(d.amount) <= 0);
+  const hasIncompleteCredits = credits.some(c => !c.glAccountId || !c.amount);
+  const hasInvalidCreditAmounts = credits.some(c => c.amount && parseFloat(c.amount) <= 0);
 
   const handleSubmit = async () => {
     if (!officeId || !currencyCode || !transactionDate) {
@@ -97,6 +101,24 @@ export default function JournalEntriesPage() {
         title: 'Missing Required Fields', 
         description: 'Please fill in all required fields marked with *',
         variant: 'destructive' 
+      });
+      return;
+    }
+
+    if (hasIncompleteDebits || hasInvalidDebitAmounts) {
+      toast({
+        title: 'Incomplete Debit Entries',
+        description: 'Each debit entry must have a GL account and an amount greater than 0.',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    if (hasIncompleteCredits || hasInvalidCreditAmounts) {
+      toast({
+        title: 'Incomplete Credit Entries',
+        description: 'Each credit entry must have a GL account and an amount greater than 0.',
+        variant: 'destructive'
       });
       return;
     }
@@ -324,41 +346,44 @@ export default function JournalEntriesPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             {debits.map((d, idx) => (
-              <div key={idx} className="flex gap-4 items-center p-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-200 dark:border-gray-700">
-                <Select 
-                  value={d.glAccountId} 
-                  onValueChange={v => updateDebit(idx, 'glAccountId', v)}
-                  className="flex-1"
-                >
-                  <SelectTrigger className="h-11 bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700">
-                    <SelectValue placeholder="Select GL account" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700">
-                    {glAccounts.map(a => (
-                      <SelectItem key={a.id} value={String(a.id)} className="hover:bg-gray-100 dark:hover:bg-gray-800">
-                        <div className="flex items-center gap-2">
-                          <Hash className="h-4 w-4 text-gray-400" />
-                          <span className="text-foreground">{a.nameDecorated}</span>
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <div className="relative">
-                  <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-                  <Input 
-                    type="number" 
-                    placeholder="Amount" 
-                    value={d.amount} 
-                    onChange={e => updateDebit(idx, 'amount', e.target.value)}
-                    className="h-11 pl-10 w-32 bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-foreground"
-                  />
+              <div key={idx} className="flex items-center gap-4 p-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-200 dark:border-gray-700">
+                <div className="grid flex-1 grid-cols-1 gap-4 md:grid-cols-2">
+                  <Select
+                    value={d.glAccountId}
+                    onValueChange={v => updateDebit(idx, 'glAccountId', v)}
+                  >
+                    <SelectTrigger className="h-11 w-full bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700">
+                      <SelectValue placeholder="Select GL account" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700">
+                      {glAccounts.map(a => (
+                        <SelectItem key={a.id} value={String(a.id)} className="hover:bg-gray-100 dark:hover:bg-gray-800">
+                          <div className="flex items-center gap-2">
+                            <Hash className="h-4 w-4 text-gray-400" />
+                            <span className="text-foreground">{a.nameDecorated}</span>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <div className="relative">
+                    <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      placeholder="Amount"
+                      value={d.amount}
+                      onChange={e => updateDebit(idx, 'amount', e.target.value)}
+                      className="h-11 w-full pl-10 bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-foreground"
+                    />
+                  </div>
                 </div>
                 <Button 
                   size="sm" 
                   variant="destructive" 
                   onClick={() => removeDebit(idx)}
-                  className="h-11 w-11 p-0"
+                  className="h-11 w-11 shrink-0 p-0"
                 >
                   <Minus className="h-4 w-4" />
                 </Button>
@@ -395,41 +420,44 @@ export default function JournalEntriesPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             {credits.map((c, idx) => (
-              <div key={idx} className="flex gap-4 items-center p-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-200 dark:border-gray-700">
-                <Select 
-                  value={c.glAccountId} 
-                  onValueChange={v => updateCredit(idx, 'glAccountId', v)}
-                  className="flex-1"
-                >
-                  <SelectTrigger className="h-11 bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700">
-                    <SelectValue placeholder="Select GL account" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700">
-                    {glAccounts.map(a => (
-                      <SelectItem key={a.id} value={String(a.id)} className="hover:bg-gray-100 dark:hover:bg-gray-800">
-                        <div className="flex items-center gap-2">
-                          <Hash className="h-4 w-4 text-gray-400" />
-                          <span className="text-foreground">{a.nameDecorated}</span>
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <div className="relative">
-                  <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-                  <Input 
-                    type="number" 
-                    placeholder="Amount" 
-                    value={c.amount} 
-                    onChange={e => updateCredit(idx, 'amount', e.target.value)}
-                    className="h-11 pl-10 w-32 bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-foreground"
-                  />
+              <div key={idx} className="flex items-center gap-4 p-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-200 dark:border-gray-700">
+                <div className="grid flex-1 grid-cols-1 gap-4 md:grid-cols-2">
+                  <Select
+                    value={c.glAccountId}
+                    onValueChange={v => updateCredit(idx, 'glAccountId', v)}
+                  >
+                    <SelectTrigger className="h-11 w-full bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700">
+                      <SelectValue placeholder="Select GL account" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700">
+                      {glAccounts.map(a => (
+                        <SelectItem key={a.id} value={String(a.id)} className="hover:bg-gray-100 dark:hover:bg-gray-800">
+                          <div className="flex items-center gap-2">
+                            <Hash className="h-4 w-4 text-gray-400" />
+                            <span className="text-foreground">{a.nameDecorated}</span>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <div className="relative">
+                    <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      placeholder="Amount"
+                      value={c.amount}
+                      onChange={e => updateCredit(idx, 'amount', e.target.value)}
+                      className="h-11 w-full pl-10 bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-foreground"
+                    />
+                  </div>
                 </div>
                 <Button 
                   size="sm" 
                   variant="destructive" 
                   onClick={() => removeCredit(idx)}
-                  className="h-11 w-11 p-0"
+                  className="h-11 w-11 shrink-0 p-0"
                 >
                   <Minus className="h-4 w-4" />
                 </Button>
@@ -611,7 +639,7 @@ export default function JournalEntriesPage() {
                 </Button>
                 <Button
                   onClick={handleSubmit}
-                  disabled={submitting || !isBalanced}
+                  disabled={submitting || !isBalanced || hasIncompleteDebits || hasInvalidDebitAmounts || hasIncompleteCredits || hasInvalidCreditAmounts}
                   className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white shadow-lg flex items-center gap-2"
                 >
                   {submitting ? (
