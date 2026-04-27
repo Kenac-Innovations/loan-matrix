@@ -30,6 +30,7 @@ export interface TenantLocale {
   mandatoryDatatables?: string[];
   skipAffordabilityForCompanies?: boolean;
   clientSelfieOptionalForCompanies?: boolean;
+  clientSelfieOptionalForPerson?: boolean;
   createLeadSignaturesOnContractOptional?: boolean;
   documentsOptional?: boolean;
 }
@@ -169,6 +170,7 @@ export function CurrencyProvider({ children }: { children: ReactNode }) {
             mandatoryDatatables: Array.isArray(localeData.mandatoryDatatables) ? localeData.mandatoryDatatables : undefined,
             skipAffordabilityForCompanies: !!localeData.skipAffordabilityForCompanies,
             clientSelfieOptionalForCompanies: !!localeData.clientSelfieOptionalForCompanies,
+            clientSelfieOptionalForPerson: !!localeData.clientSelfieOptionalForPerson,
             createLeadSignaturesOnContractOptional:
               !!localeData.createLeadSignaturesOnContractOptional,
             documentsOptional: !!localeData.documentsOptional,
