@@ -103,6 +103,44 @@ function EnumSelect({
   );
 }
 
+function CodeSelect({
+  id,
+  label,
+  required,
+  value,
+  options,
+  placeholder,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  required?: boolean;
+  value: string;
+  options: { code: string; value: string }[];
+  placeholder?: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <div className="space-y-2">
+      <Label htmlFor={id}>
+        {label} {required && <span className="text-destructive">*</span>}
+      </Label>
+      <Select value={value} onValueChange={onChange}>
+        <SelectTrigger id={id}>
+          <SelectValue placeholder={placeholder ?? "Select…"} />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map((opt) => (
+            <SelectItem key={opt.code} value={opt.code}>
+              {opt.value}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+}
+
 function SwitchRow({
   id,
   label,
@@ -227,7 +265,7 @@ export function StepSettings({ form, template, onChange }: StepSettingsProps) {
             onChange={(v) => onChange({ daysInMonthType: v })}
           />
           {loanScheduleTypes.length > 0 && (
-            <EnumSelect
+            <CodeSelect
               id="loanScheduleType"
               label="Loan Schedule Type"
               value={form.loanScheduleType}
@@ -236,7 +274,7 @@ export function StepSettings({ form, template, onChange }: StepSettingsProps) {
             />
           )}
           {loanScheduleProcessingTypes.length > 0 && (
-            <EnumSelect
+            <CodeSelect
               id="loanScheduleProcessingType"
               label="Loan Schedule Processing Type"
               value={form.loanScheduleProcessingType}
