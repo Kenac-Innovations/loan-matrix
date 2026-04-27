@@ -21,6 +21,12 @@ function mapFineractProductToForm(product: Record<string, unknown>): LoanProduct
     return obj?.id != null ? (obj.id as number) : "";
   };
 
+  const getEnumCode = (v: unknown): string => {
+    if (v == null) return "";
+    const obj = v as Record<string, unknown>;
+    return obj?.code != null ? String(obj.code) : "";
+  };
+
   return {
     ...defaultLoanProductFormData,
     name: s(product.name),
@@ -114,8 +120,8 @@ function mapFineractProductToForm(product: Record<string, unknown>): LoanProduct
     canDefineInstallmentAmount: b(product.canDefineInstallmentAmount),
     principalThresholdForLastInstallment: n(product.principalThresholdForLastInstallment),
     canUseForTopup: b(product.canUseForTopup),
-    loanScheduleType: getEnumId(product.loanScheduleType),
-    loanScheduleProcessingType: getEnumId(product.loanScheduleProcessingType),
+    loanScheduleType: getEnumCode(product.loanScheduleType),
+    loanScheduleProcessingType: getEnumCode(product.loanScheduleProcessingType),
     enableDownPayment: b(product.enableDownPayment),
     disbursedAmountPercentageForDownPayment: n(product.disbursedAmountPercentageForDownPayment),
     enableAutoRepaymentForDownPayment: b(product.enableAutoRepaymentForDownPayment),

@@ -220,8 +220,8 @@ export interface LoanProductFormData {
   canDefineInstallmentAmount: boolean;
   principalThresholdForLastInstallment: number | "";
   canUseForTopup: boolean;
-  loanScheduleType: number | "";
-  loanScheduleProcessingType: number | "";
+  loanScheduleType: string;
+  loanScheduleProcessingType: string;
   enableDownPayment: boolean;
   disbursedAmountPercentageForDownPayment: number | "";
   enableAutoRepaymentForDownPayment: boolean;
