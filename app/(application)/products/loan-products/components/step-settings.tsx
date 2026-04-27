@@ -3,6 +3,7 @@
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Info } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -12,6 +13,7 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import type { LoanProductFormData, LoanProductTemplate } from "@/shared/types/loan-product";
+import { ADVANCED_PAYMENT_ALLOCATION_STRATEGY } from "@/shared/types/loan-product";
 
 interface StepSettingsProps {
   form: LoanProductFormData;
@@ -146,18 +148,27 @@ function SwitchRow({
   label,
   hint,
   checked,
+  disabled,
   onChange,
 }: {
   id: string;
   label: string;
   hint?: string;
   checked: boolean;
+  disabled?: boolean;
   onChange: (v: boolean) => void;
 }) {
   return (
     <div
-      className="flex cursor-pointer select-none items-center justify-between rounded-lg border p-4 transition-colors hover:bg-muted/40"
-      onClick={() => onChange(!checked)}
+      className={[
+        "flex select-none items-center justify-between rounded-lg border p-4 transition-colors",
+        disabled
+          ? "cursor-not-allowed bg-muted/20 opacity-80"
+          : "cursor-pointer hover:bg-muted/40",
+      ].join(" ")}
+      onClick={() => {
+        if (!disabled) onChange(!checked);
+      }}
     >
       <div className="space-y-1">
         <Label htmlFor={id} className="pointer-events-none text-sm font-medium">
@@ -168,6 +179,7 @@ function SwitchRow({
       <Switch
         id={id}
         checked={checked}
+        disabled={disabled}
         onCheckedChange={onChange}
         onClick={(e) => e.stopPropagation()}
       />
@@ -179,7 +191,7 @@ export function StepSettings({ form, template, onChange }: StepSettingsProps) {
   const amortTypes = template.amortizationTypeOptions ?? [];
   const interestTypes = template.interestTypeOptions ?? [];
   const interestCalcTypes = template.interestCalculationPeriodTypeOptions ?? [];
-  const strategies = template.transactionProcessingStrategyOptions ?? [];
+  const allStrategies = template.transactionProcessingStrategyOptions ?? [];
   const daysInYear = template.daysInYearTypeOptions ?? [];
   const daysInMonth = template.daysInMonthTypeOptions ?? [];
   const compoundingMethods = template.interestRecalculationCompoundingTypeOptions ?? [];
@@ -189,6 +201,38 @@ export function StepSettings({ form, template, onChange }: StepSettingsProps) {
   const delinquencyBuckets = template.delinquencyBucketOptions ?? [];
   const loanScheduleTypes = template.loanScheduleTypeOptions ?? [];
   const loanScheduleProcessingTypes = template.loanScheduleProcessingTypeOptions ?? [];
+  const dailyInterestCalculationTypeId =
+    interestCalcTypes.find((opt) => opt.code === "interestCalculationPeriodType.daily")?.id ?? 0;
+  const isDailyInterestCalculation = form.interestCalculationPeriodType === dailyInterestCalculationTypeId;
+
+  const isProgressive = form.loanScheduleType === "PROGRESSIVE";
+
+  // PROGRESSIVE: only the advanced strategy; CUMULATIVE: exclude it
+  const strategies = isProgressive
+    ? allStrategies.filter((s) => s.code === ADVANCED_PAYMENT_ALLOCATION_STRATEGY)
+    : allStrategies.filter((s) => s.code !== ADVANCED_PAYMENT_ALLOCATION_STRATEGY);
+
+  const handleScheduleTypeChange = (v: string) => {
+    if (v === "PROGRESSIVE") {
+      const advancedStrategy = allStrategies.find(
+        (s) => s.code === ADVANCED_PAYMENT_ALLOCATION_STRATEGY
+      );
+      onChange({
+        loanScheduleType: v,
+        transactionProcessingStrategyCode: advancedStrategy?.code ?? ADVANCED_PAYMENT_ALLOCATION_STRATEGY,
+        loanScheduleProcessingType: loanScheduleProcessingTypes[0]?.code ?? "",
+      });
+    } else {
+      const firstNonAdvanced = allStrategies.find(
+        (s) => s.code !== ADVANCED_PAYMENT_ALLOCATION_STRATEGY
+      );
+      onChange({
+        loanScheduleType: v,
+        transactionProcessingStrategyCode: firstNonAdvanced?.code ?? "",
+        loanScheduleProcessingType: "",
+      });
+    }
+  };
 
   return (
     <div className="space-y-8">
@@ -228,7 +272,15 @@ export function StepSettings({ form, template, onChange }: StepSettingsProps) {
             label="Interest Calculation Period"
             value={form.interestCalculationPeriodType}
             options={interestCalcTypes}
-            onChange={(v) => onChange({ interestCalculationPeriodType: v })}
+            onChange={(v) =>
+              onChange({
+                interestCalculationPeriodType: v,
+                allowPartialPeriodInterestCalculation:
+                  v === dailyInterestCalculationTypeId
+                    ? false
+                    : form.allowPartialPeriodInterestCalculation,
+              })
+            }
           />
           <div className="space-y-2">
             <Label htmlFor="transactionProcessingStrategyCode">
@@ -270,10 +322,10 @@ export function StepSettings({ form, template, onChange }: StepSettingsProps) {
               label="Loan Schedule Type"
               value={form.loanScheduleType}
               options={loanScheduleTypes}
-              onChange={(v) => onChange({ loanScheduleType: v })}
+              onChange={handleScheduleTypeChange}
             />
           )}
-          {loanScheduleProcessingTypes.length > 0 && (
+          {isProgressive && loanScheduleProcessingTypes.length > 0 && (
             <CodeSelect
               id="loanScheduleProcessingType"
               label="Loan Schedule Processing Type"
@@ -286,10 +338,24 @@ export function StepSettings({ form, template, onChange }: StepSettingsProps) {
         <SwitchRow
           id="allowPartialPeriodInterestCalculation"
           label="Allow Partial Period Interest Calculation"
-          hint="Allow interest calculation for partial periods at the same rate as full periods."
+          hint={
+            isDailyInterestCalculation
+              ? "Disabled for daily interest calculation because Fineract will force this off."
+              : "Allow interest calculation for partial periods at the same rate as full periods."
+          }
           checked={form.allowPartialPeriodInterestCalculation}
+          disabled={isDailyInterestCalculation}
           onChange={(v) => onChange({ allowPartialPeriodInterestCalculation: v })}
         />
+        {isDailyInterestCalculation && (
+          <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">
+            <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            <p>
+              Partial-period interest is not supported when the interest calculation period is
+              set to Daily. Choose a different interest calculation period to enable this option.
+            </p>
+          </div>
+        )}
         <SwitchRow
           id="isEqualAmortization"
           label="Equal Amortization"

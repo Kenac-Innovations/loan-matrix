@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { LoanProductStepper } from "../../components/loan-product-stepper";
 import { LoanProductFormSkeleton } from "../../components/loan-product-form-skeleton";
 import type { LoanProductTemplate, LoanProductFormData } from "@/shared/types/loan-product";
-import { defaultLoanProductFormData } from "@/shared/types/loan-product";
+import { buildInitialPaymentAllocations, defaultLoanProductFormData, ADVANCED_PAYMENT_ALLOCATION_STRATEGY } from "@/shared/types/loan-product";
 
 function mapFineractProductToForm(product: Record<string, unknown>): LoanProductFormData {
   const n = (v: unknown) => (v == null ? "" : (v as number));
@@ -26,6 +26,12 @@ function mapFineractProductToForm(product: Record<string, unknown>): LoanProduct
     const obj = v as Record<string, unknown>;
     return obj?.code != null ? String(obj.code) : "";
   };
+
+  const loanScheduleTypeCode = getEnumCode(product.loanScheduleType);
+  const isProgressive = loanScheduleTypeCode === "PROGRESSIVE";
+  const { paymentAllocations, creditAllocations } = isProgressive
+    ? buildInitialPaymentAllocations(product as unknown as LoanProductTemplate)
+    : { paymentAllocations: [], creditAllocations: [] };
 
   return {
     ...defaultLoanProductFormData,
@@ -80,7 +86,10 @@ function mapFineractProductToForm(product: Record<string, unknown>): LoanProduct
     amortizationType: getEnumId(product.amortizationType),
     interestType: getEnumId(product.interestType),
     interestCalculationPeriodType: getEnumId(product.interestCalculationPeriodType),
-    allowPartialPeriodInterestCalculation: b(product.allowPartialPeriodInterestCalculation),
+    allowPartialPeriodInterestCalculation: b(
+      product.allowPartialPeriodInterestCalculation ??
+        product.allowPartialPeriodInterestCalcualtion
+    ),
     transactionProcessingStrategyCode: s(product.transactionProcessingStrategyCode),
     daysInYearType: getEnumId(product.daysInYearType),
     daysInMonthType: getEnumId(product.daysInMonthType),
@@ -127,6 +136,9 @@ function mapFineractProductToForm(product: Record<string, unknown>): LoanProduct
     enableAutoRepaymentForDownPayment: b(product.enableAutoRepaymentForDownPayment),
     delinquencyBucketId: n((product.delinquencyBucket as Record<string, unknown>)?.id),
     enableInstallmentLevelDelinquency: b(product.enableInstallmentLevelDelinquency),
+
+    paymentAllocations,
+    creditAllocations,
 
     charges: Array.isArray(product.charges)
       ? (product.charges as Record<string, unknown>[]).map((c) => {
