@@ -12,6 +12,7 @@ import { StepDetails } from "./step-details";
 import { StepCurrency } from "./step-currency";
 import { StepInterestRefund } from "./step-interest-refund";
 import { StepSettings } from "./step-settings";
+import { StepPaymentAllocation } from "./step-payment-allocation";
 import { StepTerms } from "./step-terms";
 import { StepCharges } from "./step-charges";
 import { StepAccounting } from "./step-accounting";
@@ -20,7 +21,12 @@ import type {
   LoanProductFormData,
   LoanProductTemplate,
 } from "@/shared/types/loan-product";
-import { buildFineractPayload, defaultLoanProductFormData } from "@/shared/types/loan-product";
+import {
+  buildFineractPayload,
+  buildInitialPaymentAllocations,
+  defaultLoanProductFormData,
+  ADVANCED_PAYMENT_ALLOCATION_STRATEGY,
+} from "@/shared/types/loan-product";
 
 interface Step {
   id: string;
@@ -28,13 +34,14 @@ interface Step {
 }
 
 const ALL_STEPS: Step[] = [
-  { id: "details",         label: "Details" },
-  { id: "currency",        label: "Currency" },
-  { id: "interest-refund", label: "Int. Refund" },
-  { id: "settings",        label: "Settings" },
-  { id: "terms",           label: "Terms" },
-  { id: "charges",         label: "Charges" },
-  { id: "accounting",      label: "Accounting" },
+  { id: "details",            label: "Details" },
+  { id: "currency",           label: "Currency" },
+  { id: "interest-refund",    label: "Int. Refund" },
+  { id: "settings",           label: "Settings" },
+  { id: "payment-allocation", label: "Payment Alloc." },
+  { id: "terms",              label: "Terms" },
+  { id: "charges",            label: "Charges" },
+  { id: "accounting",         label: "Accounting" },
 ];
 
 interface LoanProductStepperProps {
@@ -52,6 +59,10 @@ function buildTemplateDefaults(template: LoanProductTemplate): Partial<LoanProdu
     amortizationType:              first(template.amortizationTypeOptions),
     interestType:                  first(template.interestTypeOptions),
     interestCalculationPeriodType: first(template.interestCalculationPeriodTypeOptions),
+    allowPartialPeriodInterestCalculation:
+      template.allowPartialPeriodInterestCalculation ??
+      template.allowPartialPeriodInterestCalcualtion ??
+      false,
     daysInYearType:                first(template.daysInYearTypeOptions),
     daysInMonthType:               first(template.daysInMonthTypeOptions),
     repaymentFrequencyType:        first(template.repaymentFrequencyTypeOptions),
@@ -181,12 +192,14 @@ export function LoanProductStepper({
   const [isSubmitting, setIsSubmitting]   = useState(false);
   const [submitError, setSubmitError]     = useState<string | null>(null);
 
-  const hasInterestRefundStep =
-    (template.supportedInterestRefundTypes?.length ?? 0) > 0;
+  const hasInterestRefundStep = (template.supportedInterestRefundTypes?.length ?? 0) > 0;
+  const isProgressive = form.loanScheduleType === "PROGRESSIVE";
 
-  const steps = hasInterestRefundStep
-    ? ALL_STEPS
-    : ALL_STEPS.filter((s) => s.id !== "interest-refund");
+  const steps = ALL_STEPS.filter((s) => {
+    if (s.id === "interest-refund" && !hasInterestRefundStep) return false;
+    if (s.id === "payment-allocation" && !isProgressive) return false;
+    return true;
+  });
 
   const totalSteps = steps.length;
   const isLastStep = currentStep === totalSteps - 1;
@@ -201,7 +214,28 @@ export function LoanProductStepper({
         maxInterestRatePerPeriod: 0,
       };
     }
-    setForm((prev) => ({ ...prev, ...updates }));
+
+    // When switching to PROGRESSIVE initialize payment allocations from template if empty
+    setForm((prev) => {
+      const next = { ...prev, ...updates };
+      if (
+        updates.loanScheduleType === "PROGRESSIVE" &&
+        next.paymentAllocations.length === 0
+      ) {
+        const { paymentAllocations, creditAllocations } = buildInitialPaymentAllocations(template);
+        next.paymentAllocations = paymentAllocations;
+        next.creditAllocations = creditAllocations;
+      }
+      // When switching away from PROGRESSIVE, clear allocation data
+      if (
+        updates.loanScheduleType !== undefined &&
+        updates.loanScheduleType !== "PROGRESSIVE"
+      ) {
+        next.paymentAllocations = [];
+        next.creditAllocations = [];
+      }
+      return next;
+    });
   };
 
   const handleNext = () => {
@@ -369,13 +403,14 @@ export function LoanProductStepper({
 
   const renderStep = () => {
     switch (currentStepObj.id) {
-      case "details":         return <StepDetails form={form} template={template} onChange={onChange} />;
-      case "currency":        return <StepCurrency form={form} template={template} onChange={onChange} />;
-      case "interest-refund": return <StepInterestRefund form={form} template={template} onChange={onChange} />;
-      case "settings":        return <StepSettings form={form} template={template} onChange={onChange} />;
-      case "terms":           return <StepTerms form={form} template={template} onChange={onChange} />;
-      case "charges":         return <StepCharges form={form} template={template} onChange={onChange} />;
-      case "accounting":      return <StepAccounting form={form} template={template} onChange={onChange} />;
+      case "details":            return <StepDetails form={form} template={template} onChange={onChange} />;
+      case "currency":           return <StepCurrency form={form} template={template} onChange={onChange} />;
+      case "interest-refund":    return <StepInterestRefund form={form} template={template} onChange={onChange} />;
+      case "settings":           return <StepSettings form={form} template={template} onChange={onChange} />;
+      case "payment-allocation": return <StepPaymentAllocation form={form} template={template} onChange={onChange} />;
+      case "terms":              return <StepTerms form={form} template={template} onChange={onChange} />;
+      case "charges":            return <StepCharges form={form} template={template} onChange={onChange} />;
+      case "accounting":         return <StepAccounting form={form} template={template} onChange={onChange} />;
       default: return null;
     }
   };
