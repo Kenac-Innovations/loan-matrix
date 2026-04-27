@@ -55,6 +55,7 @@ interface LoanProduct {
   amortizationType?: EnumValue;
   interestCalculationPeriodType?: EnumValue;
   allowPartialPeriodInterestCalculation?: boolean;
+  allowPartialPeriodInterestCalcualtion?: boolean;
   transactionProcessingStrategyName?: string;
   transactionProcessingStrategyCode?: string;
   daysInYearType?: EnumValue;
@@ -418,7 +419,12 @@ export default function LoanProductViewPage({ params }: { params: Promise<{ id: 
             { label: "Interest Type", value: product.interestType?.value },
             { label: "Amortization", value: product.amortizationType?.value },
             { label: "Interest Calculation Period", value: product.interestCalculationPeriodType?.value },
-            { label: "Allow Partial Period Interest", value: product.allowPartialPeriodInterestCalculation },
+            {
+              label: "Allow Partial Period Interest",
+              value:
+                product.allowPartialPeriodInterestCalculation ??
+                product.allowPartialPeriodInterestCalcualtion,
+            },
             { label: "Repayment Strategy", value: product.transactionProcessingStrategyName ?? product.transactionProcessingStrategyCode },
             { label: "Loan Schedule Type", value: product.loanScheduleType?.value },
             { label: "Loan Schedule Processing Type", value: product.loanScheduleProcessingType?.value },

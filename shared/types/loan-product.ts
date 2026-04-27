@@ -53,6 +53,31 @@ export interface FineractPaymentType {
   name: string;
 }
 
+// ─── Payment allocation types ─────────────────────────────────────────────────
+
+export interface AllocationRuleItem {
+  /** Unique key for dnd-kit — same as code. */
+  id: string;
+  code: string;
+  value: string;
+}
+
+export interface PaymentAllocationEntry {
+  transactionTypeCode: string;
+  transactionTypeValue: string;
+  paymentAllocationOrder: AllocationRuleItem[];
+  futureInstallmentAllocationRule: string;
+  isDefault: boolean;
+}
+
+export interface CreditAllocationEntry {
+  transactionTypeCode: string;
+  transactionTypeValue: string;
+  creditAllocationOrder: AllocationRuleItem[];
+}
+
+// ─── Template ─────────────────────────────────────────────────────────────────
+
 export interface LoanProductTemplate {
   currencyOptions: FineractCurrency[];
   fundOptions: FineractFund[];
@@ -85,8 +110,25 @@ export interface LoanProductTemplate {
   loanScheduleTypeOptions?: FineractEnumOption[];
   loanScheduleProcessingTypeOptions?: FineractEnumOption[];
   advancedPaymentAllocationTransactionTypes?: FineractEnumOption[];
+  advancedPaymentAllocationTypes?: FineractEnumOption[];
+  advancedPaymentAllocationFutureInstallmentAllocationRules?: FineractEnumOption[];
+  creditAllocationTransactionTypes?: FineractEnumOption[];
+  creditAllocationAllocationTypes?: FineractEnumOption[];
   supportedInterestRefundTypes?: FineractEnumOption[];
   overAppliedCalculationTypeOptions?: FineractEnumOption[];
+  /** Existing payment allocation on the product (edit mode). */
+  paymentAllocation?: Array<{
+    transactionType: string;
+    futureInstallmentAllocationRule: string;
+    paymentAllocationOrder: Array<{ order: number; paymentAllocationRule: string }>;
+  }>;
+  /** Existing credit allocation on the product (edit mode). */
+  creditAllocation?: Array<{
+    transactionType: string;
+    creditAllocationOrder: Array<{ order: number; creditAllocationRule: string }>;
+  }>;
+  allowPartialPeriodInterestCalculation?: boolean;
+  allowPartialPeriodInterestCalcualtion?: boolean;
 }
 
 export interface LoanProductListItem {
@@ -228,6 +270,10 @@ export interface LoanProductFormData {
   delinquencyBucketId: number | "";
   enableInstallmentLevelDelinquency: boolean;
 
+  // Payment Allocation (progressive loans only)
+  paymentAllocations: PaymentAllocationEntry[];
+  creditAllocations: CreditAllocationEntry[];
+
   // Step 6: Charges
   charges: LoanProductChargeEntry[];
 
@@ -347,6 +393,8 @@ export const defaultLoanProductFormData: LoanProductFormData = {
   enableAutoRepaymentForDownPayment: false,
   delinquencyBucketId: "",
   enableInstallmentLevelDelinquency: false,
+  paymentAllocations: [],
+  creditAllocations: [],
   charges: [],
   accountingRule: "",
   fundSourceAccountId: "",
@@ -376,6 +424,86 @@ export const defaultLoanProductFormData: LoanProductFormData = {
   penaltyToIncomeAccountMappings: [],
   chargeOffReasonToExpenseAccountMappings: [],
 };
+
+export const ADVANCED_PAYMENT_ALLOCATION_STRATEGY = "advanced-payment-allocation-strategy";
+
+/**
+ * Builds initial paymentAllocations + creditAllocations from the Fineract template.
+ * Mirrors what Mifos' AdvancedPaymentStrategy.buildAdvancedPaymentAllocationList() does.
+ */
+export function buildInitialPaymentAllocations(template: LoanProductTemplate): {
+  paymentAllocations: PaymentAllocationEntry[];
+  creditAllocations: CreditAllocationEntry[];
+} {
+  const allocationTypes = template.advancedPaymentAllocationTypes ?? [];
+  const futureRules = template.advancedPaymentAllocationFutureInstallmentAllocationRules ?? [];
+  const txTypes = template.advancedPaymentAllocationTransactionTypes ?? [];
+  const creditTxTypes = template.creditAllocationTransactionTypes ?? [];
+  const creditAllocationTypes = template.creditAllocationAllocationTypes ?? [];
+
+  const toRuleItem = (opt: FineractEnumOption): AllocationRuleItem => ({
+    id: opt.code,
+    code: opt.code,
+    value: opt.value,
+  });
+
+  const defaultOrderItems = allocationTypes.map(toRuleItem);
+  const defaultFutureRule = futureRules[0]?.code ?? "";
+
+  let paymentAllocations: PaymentAllocationEntry[] = [];
+
+  if (template.paymentAllocation && template.paymentAllocation.length > 0) {
+    // Edit mode — rebuild from existing product data
+    paymentAllocations = template.paymentAllocation.map((pa) => {
+      const txType = txTypes.find((t) => t.code === pa.transactionType);
+      const orderedRules = [...pa.paymentAllocationOrder]
+        .sort((a, b) => a.order - b.order)
+        .map((r) => {
+          const opt = allocationTypes.find((t) => t.code === r.paymentAllocationRule);
+          return opt ? toRuleItem(opt) : { id: r.paymentAllocationRule, code: r.paymentAllocationRule, value: r.paymentAllocationRule };
+        });
+      return {
+        transactionTypeCode: pa.transactionType,
+        transactionTypeValue: txType?.value ?? pa.transactionType,
+        paymentAllocationOrder: orderedRules,
+        futureInstallmentAllocationRule: pa.futureInstallmentAllocationRule,
+        isDefault: pa.transactionType === "DEFAULT",
+      };
+    });
+  } else {
+    // Create mode — start with a single DEFAULT entry using the full default order
+    paymentAllocations = [
+      {
+        transactionTypeCode: "DEFAULT",
+        transactionTypeValue: "Default",
+        paymentAllocationOrder: defaultOrderItems,
+        futureInstallmentAllocationRule: defaultFutureRule,
+        isDefault: true,
+      },
+    ];
+  }
+
+  let creditAllocations: CreditAllocationEntry[] = [];
+
+  if (template.creditAllocation && template.creditAllocation.length > 0) {
+    creditAllocations = template.creditAllocation.map((ca) => {
+      const txType = creditTxTypes.find((t) => t.code === ca.transactionType);
+      const orderedRules = [...ca.creditAllocationOrder]
+        .sort((a, b) => a.order - b.order)
+        .map((r) => {
+          const opt = creditAllocationTypes.find((t) => t.code === r.creditAllocationRule);
+          return opt ? toRuleItem(opt) : { id: r.creditAllocationRule, code: r.creditAllocationRule, value: r.creditAllocationRule };
+        });
+      return {
+        transactionTypeCode: ca.transactionType,
+        transactionTypeValue: txType?.value ?? ca.transactionType,
+        creditAllocationOrder: orderedRules,
+      };
+    });
+  }
+
+  return { paymentAllocations, creditAllocations };
+}
 
 /**
  * Builds the Fineract API payload from form data.
@@ -450,7 +578,13 @@ export function buildFineractPayload(form: LoanProductFormData): Record<string, 
   if (form.amortizationType !== "") payload.amortizationType = form.amortizationType;
   if (form.interestType !== "") payload.interestType = form.interestType;
   if (form.interestCalculationPeriodType !== "") payload.interestCalculationPeriodType = form.interestCalculationPeriodType;
-  if (form.allowPartialPeriodInterestCalculation) payload.allowPartialPeriodInterestCalculation = true;
+  // Match Mifos payload behavior: daily interest calculation forces this off,
+  // and the backend expects the legacy misspelled property name.
+  const allowPartialPeriodInterestCalculation =
+    form.interestCalculationPeriodType === 0 ? false : form.allowPartialPeriodInterestCalculation;
+  if (allowPartialPeriodInterestCalculation) {
+    payload.allowPartialPeriodInterestCalcualtion = true;
+  }
   if (form.transactionProcessingStrategyCode) payload.transactionProcessingStrategyCode = form.transactionProcessingStrategyCode;
   if (form.daysInYearType !== "") payload.daysInYearType = form.daysInYearType;
   if (form.daysInMonthType !== "") payload.daysInMonthType = form.daysInMonthType;
@@ -469,6 +603,26 @@ export function buildFineractPayload(form: LoanProductFormData): Record<string, 
   if (form.canUseForTopup) payload.canUseForTopup = true;
   if (form.loanScheduleType !== "") payload.loanScheduleType = form.loanScheduleType;
   if (form.loanScheduleProcessingType !== "") payload.loanScheduleProcessingType = form.loanScheduleProcessingType;
+
+  if (form.loanScheduleType === "PROGRESSIVE" && form.paymentAllocations.length > 0) {
+    payload.paymentAllocation = form.paymentAllocations.map((e) => ({
+      transactionType: e.transactionTypeCode,
+      futureInstallmentAllocationRule: e.futureInstallmentAllocationRule,
+      paymentAllocationOrder: e.paymentAllocationOrder.map((r, i) => ({
+        order: i + 1,
+        paymentAllocationRule: r.code,
+      })),
+    }));
+    if (form.creditAllocations.length > 0) {
+      payload.creditAllocation = form.creditAllocations.map((e) => ({
+        transactionType: e.transactionTypeCode,
+        creditAllocationOrder: e.creditAllocationOrder.map((r, i) => ({
+          order: i + 1,
+          creditAllocationRule: r.code,
+        })),
+      }));
+    }
+  }
   if (form.delinquencyBucketId !== "") payload.delinquencyBucketId = form.delinquencyBucketId;
   if (form.enableInstallmentLevelDelinquency) payload.enableInstallmentLevelDelinquency = true;
 
