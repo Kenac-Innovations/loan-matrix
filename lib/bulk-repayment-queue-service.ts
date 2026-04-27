@@ -23,12 +23,20 @@ declare global {
   var __bulkRepaymentConsumerActive: boolean | undefined;
 }
 
-const EXCHANGE_NAME =
-  process.env.BULK_REPAYMENT_EXCHANGE || "bulkrepayments.exchange";
-const QUEUE_NAME =
-  process.env.BULK_REPAYMENT_QUEUE || "bulkrepayments.queue";
-const ROUTING_KEY =
-  process.env.BULK_REPAYMENT_ROUTING_KEY || "bulkrepayments.routing.key";
+function requireEnv(name: string): string {
+  const value = process.env[name]?.trim();
+  if (!value) {
+    throw new Error(
+      `[BulkRepayment] Missing required environment variable: ${name}`
+    );
+  }
+
+  return value;
+}
+
+const EXCHANGE_NAME = requireEnv("BULK_REPAYMENT_EXCHANGE");
+const QUEUE_NAME = requireEnv("BULK_REPAYMENT_QUEUE");
+const ROUTING_KEY = requireEnv("BULK_REPAYMENT_ROUTING_KEY");
 
 export class BulkRepaymentQueueService {
   private connection: Connection | null = null;
