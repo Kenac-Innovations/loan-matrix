@@ -86,7 +86,7 @@ export default function TellerTransactionsPage({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [pageIndex, setPageIndex] = useState(0);
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize, setPageSize] = useState(25);
   const [exporting, setExporting] = useState(false);
 
   const fetchTransactions = async () => {
@@ -442,7 +442,7 @@ export default function TellerTransactionsPage({
                         <SelectValue placeholder={pageSize} />
                       </SelectTrigger>
                       <SelectContent>
-                        {[10, 20, 30, 40, 50].map((size) => (
+                        {[10, 25, 50, 100].map((size) => (
                           <SelectItem key={size} value={`${size}`}>
                             {size}
                           </SelectItem>

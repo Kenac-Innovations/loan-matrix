@@ -28,16 +28,6 @@ export async function POST(
       );
     }
 
-    // Reset items to QUEUED
-    await prisma.bulkRepaymentItem.updateMany({
-      where: { id: { in: failedItems.map((i) => i.id) } },
-      data: {
-        status: "QUEUED",
-        errorMessage: null,
-        processedAt: null,
-      },
-    });
-
     // Ensure upload is in PROCESSING state
     const upload = await prisma.bulkRepaymentUpload.update({
       where: { id },
@@ -50,7 +40,8 @@ export async function POST(
     });
     const tenantSlug = tenant?.slug || "goodfellow";
 
-    // Re-publish to queue
+    // Re-publish to queue — mark QUEUED per-item only after successful publish
+    // so an item is never QUEUED in the DB without a corresponding message in RabbitMQ.
     const queueService = getBulkRepaymentQueueService();
     let publishedCount = 0;
 
@@ -75,6 +66,10 @@ export async function POST(
           locale: "en",
           dateFormat: "yyyy-MM-dd",
         });
+        await prisma.bulkRepaymentItem.update({
+          where: { id: item.id },
+          data: { status: "QUEUED", errorMessage: null, processedAt: null },
+        });
         publishedCount++;
       } catch (err) {
         console.error(`Failed to re-queue item ${item.id}:`, err);
@@ -88,6 +83,12 @@ export async function POST(
         });
       }
     }
+
+    // Refresh upload stats so queuedCount and status reflect the final state.
+    const { refreshBulkRepaymentUploadStats } = await import(
+      "@/lib/bulk-repayment-upload-stats"
+    );
+    await refreshBulkRepaymentUploadStats(id);
 
     return NextResponse.json({
       success: true,

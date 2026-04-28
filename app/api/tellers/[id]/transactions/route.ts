@@ -82,6 +82,7 @@ export async function GET(
       }
     );
     const summary = summarizeTellerVaultTransactions(transactionsWithBalance);
+    const transactionsNewestFirst = [...transactionsWithBalance].reverse();
 
     return NextResponse.json({
       teller: {
@@ -90,7 +91,7 @@ export async function GET(
         fineractTellerId: teller.fineractTellerId,
       },
       summary,
-      transactions: transactionsWithBalance,
+      transactions: transactionsNewestFirst,
     });
   } catch (error) {
     console.error("Error fetching teller transactions:", error);
