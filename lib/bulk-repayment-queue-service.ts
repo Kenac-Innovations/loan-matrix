@@ -266,13 +266,14 @@ export class BulkRepaymentQueueService {
       `[BulkRepayment] Processing: item=${message.itemId} loan=${message.loanId} amount=${message.amount}`
     );
 
-    // Mark as PROCESSING
-    await prisma.bulkRepaymentItem.update({
-      where: { id: message.itemId },
-      data: { status: "PROCESSING" },
-    });
-
     try {
+      // Mark as PROCESSING inside the try block so any DB failure is caught
+      // and the item gets marked FAILED instead of staying stuck as QUEUED
+      await prisma.bulkRepaymentItem.update({
+        where: { id: message.itemId },
+        data: { status: "PROCESSING" },
+      });
+
       const repaymentBody: RepaymentBody = {
         dateFormat: message.dateFormat,
         locale: message.locale,
