@@ -47,6 +47,7 @@ interface Transaction {
     code: string;
     name: string;
   };
+  currencyCode?: string;
   notes?: string;
 }
 
@@ -88,6 +89,13 @@ function buildSourcePayload(tx: Transaction) {
     sourceFineractTransactionId:
       typeof tx.id === "number" ? tx.id : undefined,
   };
+}
+
+function getTransactionCurrencyCode(
+  tx: Transaction,
+  fallbackCurrencyCode?: string
+): string | undefined {
+  return tx.currency?.code || tx.currencyCode || fallbackCurrencyCode;
 }
 
 interface Summary {
@@ -291,14 +299,6 @@ export default function CashierTransactionsPage({
     return <Badge variant="outline">{label}</Badge>;
   };
 
-  const getTransactionAmount = (tx: Transaction) => {
-    return tx.txnAmount || tx.amount || 0;
-  };
-
-  const getTransactionDate = (tx: Transaction) => {
-    return tx.txnDate || tx.transactionDate;
-  };
-
   const getTransactionNotes = (tx: Transaction) => {
     return tx.txnNote || tx.notes || "—";
   };
@@ -311,6 +311,7 @@ export default function CashierTransactionsPage({
       amount: String(tx.txnAmount ?? tx.amount ?? ""),
       transactionDate: transactionDateToIsoDate(tx),
       notes: "",
+      currencyCode: getTransactionCurrencyCode(tx, currencyCode),
       originalCashDirection: direction,
       sourceTxnTypeCode: sp.sourceTxnTypeCode,
       sourceTxnTypeValue: sp.sourceTxnTypeValue,
@@ -319,7 +320,7 @@ export default function CashierTransactionsPage({
       lockDirection: true,
     });
     setReverseModalOpen(true);
-  }, []);
+  }, [currencyCode]);
 
   const columns: DataTableColumn<Transaction>[] = useMemo(
     () => [
@@ -356,7 +357,7 @@ export default function CashierTransactionsPage({
           <span className="text-sm font-medium text-right block">
             {formatAmount(
               row.original.txnAmount || row.original.amount || 0,
-              currencyCode
+              getTransactionCurrencyCode(row.original, currencyCode)
             )}
           </span>
         ),
@@ -580,4 +581,3 @@ export default function CashierTransactionsPage({
     </div>
   );
 }
-
