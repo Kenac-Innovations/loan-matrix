@@ -475,6 +475,8 @@ export function ClientRegistrationForm({
   const { locale: tenantLocale } = useCurrency();
   const clientSelfieOptionalForCompanies =
     !!tenantLocale.clientSelfieOptionalForCompanies;
+  const clientSelfieOptionalForPerson =
+    !!tenantLocale.clientSelfieOptionalForPerson;
   const documentsOptional = !!tenantLocale.documentsOptional;
 
   // State for multi-step form
@@ -1320,8 +1322,17 @@ export function ClientRegistrationForm({
   const checkSelfieSection = () => {
     const values = form.getValues();
     const isEntityLead = values.legalFormId === "2";
+    const selectedLegalForm = legalForms.find(
+      (legalForm) => String(legalForm.id) === String(values.legalFormId || "")
+    );
+    const legalFormName = String(selectedLegalForm?.name || "")
+      .trim()
+      .toLowerCase();
+    const isPersonLead =
+      values.legalFormId === "1" || legalFormName === "person";
     const isSelfieOptional =
-      clientSelfieOptionalForCompanies && isEntityLead;
+      (clientSelfieOptionalForCompanies && isEntityLead) ||
+      (clientSelfieOptionalForPerson && isPersonLead);
 
     if (isSelfieOptional) {
       return true;
@@ -4028,6 +4039,7 @@ export function ClientRegistrationForm({
     dataTables,
     clientAddress,
     clientSelfieOptionalForCompanies,
+    clientSelfieOptionalForPerson,
     documentsOptional,
   ]);
 
