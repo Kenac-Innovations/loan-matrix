@@ -1,6 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getFineractServiceWithSession } from "@/lib/fineract-api";
 
+const isPentahoReport = (report: unknown) => {
+  if (!report || typeof report !== "object") {
+    return false;
+  }
+
+  const reportType = (report as { reportType?: unknown }).reportType;
+  return (
+    typeof reportType === "string" &&
+    reportType.toLowerCase().includes("pentaho")
+  );
+};
+
 export async function GET(request: NextRequest) {
   try {
     const fineractService = await getFineractServiceWithSession();
@@ -16,7 +28,10 @@ export async function GET(request: NextRequest) {
         const reportsArray = Array.isArray(reports)
           ? reports
           : (reports as any)?.data || [];
-        return NextResponse.json(reportsArray);
+        const visibleReports = reportsArray.filter(
+          (report) => !isPentahoReport(report)
+        );
+        return NextResponse.json(visibleReports);
       } catch (error: any) {
         console.error("Error fetching reports list:", {
           message: error.message,
