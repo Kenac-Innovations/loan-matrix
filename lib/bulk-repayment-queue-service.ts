@@ -247,7 +247,23 @@ export class BulkRepaymentQueueService {
           this.channel?.ack(msg);
         } catch (error) {
           console.error("[BulkRepayment] Processing error:", error);
-          this.channel?.nack(msg, false, false); // Don't requeue, mark as failed
+          // Safety net: if processMessage threw (e.g. the inner FAILED update also
+          // failed), mark the item FAILED here so it never stays stuck as QUEUED.
+          try {
+            const message: BulkRepaymentMessage = JSON.parse(msg.content.toString());
+            await prisma.bulkRepaymentItem.update({
+              where: { id: message.itemId },
+              data: {
+                status: "FAILED",
+                errorMessage: "Unexpected processing error - please retry",
+                processedAt: new Date(),
+              },
+            });
+            await refreshBulkRepaymentUploadStats(message.uploadId);
+          } catch (fallbackError) {
+            console.error("[BulkRepayment] Fallback status update failed:", fallbackError);
+          }
+          this.channel?.nack(msg, false, false);
         }
       }
     );
