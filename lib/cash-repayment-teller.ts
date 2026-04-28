@@ -239,8 +239,7 @@ export async function returnAllocationFromCashierToTeller(
     return { success: false, error: "Amount must be greater than 0" };
   }
 
-  const normalizedCurrency =
-    String(currencyCode).toUpperCase() === "ZMK" ? "ZMW" : currencyCode;
+  const cashierTxnCurrencyCode = String(currencyCode).trim().toUpperCase();
   const txnDate = formatTxnDateForTellerSettle(transactionDate);
   const txnNote =
     notes?.trim() || "Allocation return — funds to teller";
@@ -252,7 +251,7 @@ export async function returnAllocationFromCashierToTeller(
       fineractCashierId,
       {
         txnDate,
-        currencyCode: normalizedCurrency,
+        currencyCode: cashierTxnCurrencyCode,
         txnAmount: String(amount),
         txnNote,
         dateFormat: "dd MMMM yyyy",
@@ -261,7 +260,7 @@ export async function returnAllocationFromCashierToTeller(
     );
     const fineractSettlementId = result.resourceId ?? result.id ?? null;
     console.log(
-      `[CashAllocation] Return to teller: settle ${amount} ${normalizedCurrency} teller ${fineractTellerId} cashier ${fineractCashierId}`
+      `[CashAllocation] Return to teller: settle ${amount} ${cashierTxnCurrencyCode} teller ${fineractTellerId} cashier ${fineractCashierId}`
     );
     return { success: true, fineractSettlementId };
   } catch (err: any) {
@@ -304,8 +303,7 @@ export async function allocateCashierCounterAfterCashOut(
     return { success: false, error: "Amount must be greater than 0" };
   }
 
-  const normalizedCurrency =
-    String(currencyCode).toUpperCase() === "ZMK" ? "ZMW" : currencyCode;
+  const cashierTxnCurrencyCode = String(currencyCode).trim().toUpperCase();
   const txnDate = formatTxnDateForTellerSettle(transactionDate);
   const txnNote = notes?.trim() || "Cashier counter-entry (reverse cash-out)";
 
@@ -316,7 +314,7 @@ export async function allocateCashierCounterAfterCashOut(
       fineractCashierId,
       {
         txnDate,
-        currencyCode: normalizedCurrency,
+        currencyCode: cashierTxnCurrencyCode,
         txnAmount: String(amount),
         txnNote,
         dateFormat: "dd MMMM yyyy",
@@ -325,7 +323,7 @@ export async function allocateCashierCounterAfterCashOut(
     );
     const fineractResourceId = result.resourceId ?? result.id ?? null;
     console.log(
-      `[CashAllocation] Counter allocate ${amount} ${normalizedCurrency} teller ${fineractTellerId} cashier ${fineractCashierId}`
+      `[CashAllocation] Counter allocate ${amount} ${cashierTxnCurrencyCode} teller ${fineractTellerId} cashier ${fineractCashierId}`
     );
     return { success: true, fineractResourceId };
   } catch (err: any) {

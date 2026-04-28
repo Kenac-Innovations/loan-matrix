@@ -226,6 +226,7 @@ export async function GET(
         transactionDate: [d.getFullYear(), d.getMonth() + 1, d.getDate()] as number[],
         txnNote: `Reversal - ${p.voidReason ?? "Payout reversed"}`,
         notes: p.voidReason ?? undefined,
+        currencyCode,
         _isReversal: true,
       };
     });
@@ -252,6 +253,23 @@ export async function GET(
       } else {
         (summaryAndTransactions as any).cashierTransactions = { ...base, pageItems: merged };
       }
+    }
+
+    const cashierTransactions = (summaryAndTransactions as any)?.cashierTransactions;
+    const responseCurrencyCode =
+      (summaryAndTransactions as any)?.currency?.code ||
+      (summaryAndTransactions as any)?.currencyCode ||
+      currencyCode;
+    if (Array.isArray(cashierTransactions?.pageItems)) {
+      cashierTransactions.pageItems = cashierTransactions.pageItems.map((tx: any) => ({
+        ...tx,
+        currencyCode: tx?.currency?.code || tx?.currencyCode || responseCurrencyCode,
+      }));
+    } else if (Array.isArray(cashierTransactions)) {
+      (summaryAndTransactions as any).cashierTransactions = cashierTransactions.map((tx: any) => ({
+        ...tx,
+        currencyCode: tx?.currency?.code || tx?.currencyCode || responseCurrencyCode,
+      }));
     }
 
     return NextResponse.json(summaryAndTransactions);
@@ -474,8 +492,7 @@ export async function POST(
         : "";
     const noteSuffix = srcId ? ` (counter for cashier txn #${srcId})` : "";
 
-    const normalizedCurrency =
-      String(currencyCode).toUpperCase() === "ZMK" ? "ZMW" : currencyCode;
+    const cashierTxnCurrencyCode = String(currencyCode).trim().toUpperCase();
 
     if (originalCashDirection === "cashIn") {
       const result = await returnAllocationFromCashierToTeller({
@@ -509,7 +526,7 @@ export async function POST(
           cashierId: cashier.id,
           fineractAllocationId: result.fineractSettlementId ?? undefined,
           amount: -Math.abs(amount),
-          currency: normalizedCurrency,
+          currency: cashierTxnCurrencyCode,
           allocatedBy: session.user.id,
           notes: settlementNotes,
           status: "ACTIVE",
@@ -554,7 +571,7 @@ export async function POST(
         cashierId: cashier.id,
         fineractAllocationId: allocResult.fineractResourceId ?? undefined,
         amount: Math.abs(amount),
-        currency: normalizedCurrency,
+        currency: cashierTxnCurrencyCode,
         allocatedBy: session.user.id,
         notes: allocNotes,
         status: "ACTIVE",

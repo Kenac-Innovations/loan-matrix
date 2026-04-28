@@ -22,6 +22,7 @@ export type ReverseCashierEntryInitial = {
   amount?: string;
   transactionDate?: string;
   notes?: string;
+  currencyCode?: string;
   originalCashDirection: "cashIn" | "cashOut";
   sourceTxnTypeCode?: string;
   sourceTxnTypeValue?: string;
@@ -67,6 +68,7 @@ export function ReverseCashierEntryModal({
   const [lockDirection, setLockDirection] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const effectiveCurrencyCode = initial?.currencyCode || currencyCode;
 
   useEffect(() => {
     if (!open) return;
@@ -108,7 +110,7 @@ export function ReverseCashierEntryModal({
       setError("Enter a valid amount greater than zero.");
       return;
     }
-    if (!currencyCode) {
+    if (!effectiveCurrencyCode) {
       setError("Select a currency on the page first.");
       return;
     }
@@ -124,7 +126,7 @@ export function ReverseCashierEntryModal({
             command: "reverseCashierEntry",
             originalCashDirection,
             amount: n,
-            currencyCode,
+            currencyCode: effectiveCurrencyCode,
             transactionDate,
             notes: notes.trim() || undefined,
             ...sourcePayload,
@@ -221,7 +223,7 @@ export function ReverseCashierEntryModal({
             )}
           </div>
           <div className="grid gap-2">
-            <Label htmlFor="rc-amount">Amount ({currencyCode || "—"})</Label>
+            <Label htmlFor="rc-amount">Amount ({effectiveCurrencyCode || "—"})</Label>
             <Input
               id="rc-amount"
               type="number"
@@ -230,7 +232,7 @@ export function ReverseCashierEntryModal({
               placeholder="0.00"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
-              disabled={submitting || !currencyCode}
+              disabled={submitting || !effectiveCurrencyCode}
             />
           </div>
           <div className="grid gap-2">
