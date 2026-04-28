@@ -11,6 +11,7 @@ const DEFAULT_LOCALE = {
   phonePlaceholder: "977123456",
   skipAffordabilityForCompanies: false,
   clientSelfieOptionalForCompanies: false,
+  clientSelfieOptionalForPerson: false,
   createLeadSignaturesOnContractOptional: false,
   documentsOptional: false,
 };
@@ -48,6 +49,10 @@ export async function GET(request: NextRequest) {
       settings?.features?.clientSelfieOptionalForCompanies ??
       settings?.clientSelfieOptionalForCompanies ??
       false;
+    const clientSelfieOptionalForPerson =
+      settings?.features?.clientSelfieOptionalForPerson ??
+      settings?.clientSelfieOptionalForPerson ??
+      false;
     const createLeadSignaturesOnContractOptional =
       settings?.features?.createLeadSignaturesOnContractOptional ??
       settings?.createLeadSignaturesOnContractOptional ??
@@ -61,6 +66,7 @@ export async function GET(request: NextRequest) {
       ...settings?.locale,
       skipAffordabilityForCompanies: !!skipAffordabilityForCompanies,
       clientSelfieOptionalForCompanies: !!clientSelfieOptionalForCompanies,
+      clientSelfieOptionalForPerson: !!clientSelfieOptionalForPerson,
       createLeadSignaturesOnContractOptional:
         !!createLeadSignaturesOnContractOptional,
       documentsOptional: !!documentsOptional,
