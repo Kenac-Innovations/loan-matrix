@@ -344,6 +344,8 @@ interface LoanTemplate {
   chargeOptions?: Array<{
     id: number;
     name: string;
+    amount?: number;
+    percentage?: number;
     active: boolean;
     penalty: boolean;
     chargeCalculationType?: ChargeCalcTypeRef;
@@ -488,11 +490,28 @@ function buildEditableCharge(
   };
 }
 
+function getDefaultChargeAmount(charge: {
+  amount?: number;
+  percentage?: number;
+}) {
+  if (typeof charge.amount === "number" && Number.isFinite(charge.amount)) {
+    return charge.amount;
+  }
+  if (
+    typeof charge.percentage === "number" &&
+    Number.isFinite(charge.percentage)
+  ) {
+    return charge.percentage;
+  }
+  return 0;
+}
+
 interface LoanTermsFormProps {
   loanTemplate: LoanTemplate | null;
   clientId?: number;
   productId?: number;
   leadId?: string;
+  ignoreSavedTermsOnLoad?: boolean;
   onSubmit: (data: LoanTermsFormData) => void;
   onBack: () => void;
   onNext: () => void;
@@ -506,6 +525,7 @@ export function LoanTermsForm({
   clientId,
   productId,
   leadId,
+  ignoreSavedTermsOnLoad = false,
   onSubmit,
   onBack,
   onNext,
@@ -562,6 +582,8 @@ export function LoanTermsForm({
   const frequencyValuesSet = useRef(false);
   const templateValuesSet = useRef(false);
   const detailedTemplateFetched = useRef(false);
+  const previousProductIdRef = useRef<number | undefined>(productId);
+  const shouldApplyTemplateDefaultsRef = useRef(true);
   const appliedInvoiceReserveSignature = useRef<string | null>(null);
   const invoiceIncomeChargeFineractId = Number(
     invoiceIncomeChargeProduct?.fineractChargeId
@@ -721,6 +743,69 @@ export function LoanTermsForm({
       collaterals: [],
     },
   });
+
+  useEffect(() => {
+    const previousProductId = previousProductIdRef.current;
+    const hasProductChanged =
+      previousProductId !== undefined &&
+      productId !== undefined &&
+      previousProductId !== productId;
+
+    if (!hasProductChanged) {
+      previousProductIdRef.current = productId;
+      return;
+    }
+
+    frequencyValuesSet.current = false;
+    templateValuesSet.current = false;
+    detailedTemplateFetched.current = false;
+    shouldApplyTemplateDefaultsRef.current = true;
+    appliedInvoiceReserveSignature.current = null;
+
+    form.reset({
+      principal: 0,
+      loanTerm: 0,
+      termFrequency: "",
+      numberOfRepayments: 0,
+      firstRepaymentOn: sharedFirstRepaymentOn,
+      interestChargedFrom: undefined,
+      repaymentEvery: 0,
+      repaymentFrequency: "",
+      repaymentFrequencyNthDay: "",
+      repaymentFrequencyDayOfWeek: "",
+      nominalInterestRate: 0,
+      interestRateFrequency: "",
+      interestMethod: "",
+      amortization: "",
+      isEqualAmortization: false,
+      loanScheduleType: "",
+      repaymentStrategy: "",
+      balloonRepaymentAmount: 0,
+      interestCalculationPeriod: "",
+      calculateInterestForExactDays: false,
+      arrearsTolerance: 0,
+      interestFreePeriod: 0,
+      graceOnPrincipalPayment: 0,
+      graceOnInterestPayment: 0,
+      onArrearsAgeing: 0,
+      recalculateInterest: "",
+      collaterals: [],
+    });
+    setEditableCharges([]);
+    setShowAddCharge(false);
+    setSelectedChargeOption("");
+    setNewChargeAmount("");
+    setNewChargeDueDate(undefined);
+    setIsTopup(false);
+    setLoanIdToClose("");
+    setSectionSaved({
+      basicTerms: false,
+      interestSchedule: false,
+      chargesCollateral: false,
+    });
+
+    previousProductIdRef.current = productId;
+  }, [form, productId, sharedFirstRepaymentOn]);
 
   // Fetch detailed template and product topup config when clientId and productId are available
   useEffect(() => {
@@ -909,6 +994,95 @@ export function LoanTermsForm({
           "AmortizationTypeOptions:",
           loanTemplate.amortizationTypeOptions
         );
+
+        const nextTermFrequencyValue =
+          loanTemplate.termPeriodFrequencyType?.id !== undefined
+            ? loanTemplate.termPeriodFrequencyType.id.toString()
+            : loanTemplate.termFrequencyTypeOptions?.[0]?.id?.toString() || "";
+        const nextRepaymentFrequencyValue =
+          loanTemplate.repaymentFrequencyType?.id !== undefined
+            ? loanTemplate.repaymentFrequencyType.id.toString()
+            : loanTemplate.repaymentFrequencyTypeOptions?.[0]?.id?.toString() || "";
+        const nextInterestRateFrequencyValue =
+          loanTemplate.interestRateFrequencyType?.id !== undefined
+            ? loanTemplate.interestRateFrequencyType.id.toString()
+            : loanTemplate.interestRateFrequencyTypeOptions?.[0]?.id?.toString() || "";
+        const nextInterestMethodValue =
+          loanTemplate.interestTypeOptions?.find(
+            (option) =>
+              option.id === loanTemplate.interestType?.id ||
+              option.value === loanTemplate.interestType?.value ||
+              option.code === loanTemplate.interestType?.code
+          )?.id?.toString() ||
+          loanTemplate.interestTypeOptions?.find((t) => t.id === 1)?.id?.toString() ||
+          loanTemplate.interestTypeOptions?.[0]?.id?.toString() ||
+          "";
+        const nextAmortizationValue =
+          loanTemplate.amortizationTypeOptions?.find(
+            (option) =>
+              option.id === loanTemplate.amortizationType?.id ||
+              option.value === loanTemplate.amortizationType?.value ||
+              option.code === loanTemplate.amortizationType?.code
+          )?.id?.toString() ||
+          loanTemplate.amortizationTypeOptions?.find((t) => t.id === 1)?.id?.toString() ||
+          loanTemplate.amortizationTypeOptions?.[0]?.id?.toString() ||
+          "";
+        const nextRepaymentStrategyValue =
+          loanTemplate.transactionProcessingStrategyCode ||
+          loanTemplate.transactionProcessingStrategyOptions?.find(
+            (t) => t.code === "creocore-strategy"
+          )?.code ||
+          loanTemplate.transactionProcessingStrategyOptions?.[0]?.code ||
+          "";
+        const nextInterestCalculationPeriodValue =
+          loanTemplate.interestCalculationPeriodTypeOptions?.find(
+            (option) =>
+              option.id === loanTemplate.interestCalculationPeriodType?.id ||
+              option.value === loanTemplate.interestCalculationPeriodType?.value ||
+              option.code === loanTemplate.interestCalculationPeriodType?.code
+          )?.id?.toString() ||
+          loanTemplate.interestCalculationPeriodTypeOptions?.find(
+            (t) => t.id === 1
+          )?.id?.toString() ||
+          loanTemplate.interestCalculationPeriodTypeOptions?.[0]?.id?.toString() ||
+          "";
+
+        if (shouldApplyTemplateDefaultsRef.current) {
+          form.reset({
+            principal:
+              loanTemplate.principal !== undefined && !isInvoiceDiscountingLead
+                ? loanTemplate.principal
+                : 0,
+            loanTerm: loanTemplate.termFrequency ?? 0,
+            termFrequency: nextTermFrequencyValue,
+            numberOfRepayments: loanTemplate.numberOfRepayments ?? 0,
+            firstRepaymentOn: sharedFirstRepaymentOn,
+            interestChargedFrom: undefined,
+            repaymentEvery: loanTemplate.repaymentEvery ?? 0,
+            repaymentFrequency: nextRepaymentFrequencyValue,
+            repaymentFrequencyNthDay: "",
+            repaymentFrequencyDayOfWeek: "",
+            nominalInterestRate: loanTemplate.interestRatePerPeriod ?? 0,
+            interestRateFrequency: nextInterestRateFrequencyValue,
+            interestMethod: nextInterestMethodValue,
+            amortization: nextAmortizationValue,
+            isEqualAmortization: loanTemplate.isEqualAmortization ?? false,
+            loanScheduleType:
+              loanTemplate.loanScheduleTypeOptions?.[0]?.value || "",
+            repaymentStrategy: nextRepaymentStrategyValue,
+            balloonRepaymentAmount: 0,
+            interestCalculationPeriod: nextInterestCalculationPeriodValue,
+            calculateInterestForExactDays: false,
+            arrearsTolerance: 0,
+            interestFreePeriod: 0,
+            graceOnPrincipalPayment: 0,
+            graceOnInterestPayment: 0,
+            onArrearsAgeing: 0,
+            recalculateInterest: "",
+            collaterals: [],
+          });
+          shouldApplyTemplateDefaultsRef.current = false;
+        }
 
         // Principal
         if (
@@ -1297,7 +1471,7 @@ export function LoanTermsForm({
           }
         }
 
-        if (loanTermsResponse.ok) {
+        if (!ignoreSavedTermsOnLoad && loanTermsResponse.ok) {
           const result = await loanTermsResponse.json();
           if (result.success && result.data) {
             const loanTermsData = result.data;
@@ -1555,6 +1729,10 @@ export function LoanTermsForm({
               setEditableCharges(initialCharges);
             }
           }
+        } else if (ignoreSavedTermsOnLoad) {
+          console.log(
+            "Skipping saved loan terms reload because the loan product changed",
+          );
         }
 
         // Always load firstRepaymentOn from loan-details (set on Loan tab)
@@ -1577,7 +1755,7 @@ export function LoanTermsForm({
 
     loadExistingLoanTerms();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [leadId]); // Only run when leadId changes, not on every template update
+  }, [leadId, ignoreSavedTermsOnLoad]); // Only rerun when load context changes
 
   useEffect(() => {
     let cancelled = false;
@@ -1731,7 +1909,11 @@ export function LoanTermsForm({
               ...charge,
               amount,
               originalCharge: charge.originalCharge
-                ? { ...charge.originalCharge, percentage }
+                ? {
+                    ...charge.originalCharge,
+                    percentage,
+                    _takeHomePercentage: percentage,
+                  }
                 : charge.originalCharge,
             }
           : charge
@@ -1848,6 +2030,26 @@ export function LoanTermsForm({
 
   // Check section completion
   const watchedValues = form.watch();
+  // Loan term is derived from the number of repayments.
+  useEffect(() => {
+    const currentNumberOfRepayments = form.getValues("numberOfRepayments");
+    const currentLoanTerm = form.getValues("loanTerm");
+
+    if (
+      !currentNumberOfRepayments ||
+      currentNumberOfRepayments <= 0 ||
+      currentLoanTerm === currentNumberOfRepayments
+    ) {
+      return;
+    }
+
+    form.setValue("loanTerm", currentNumberOfRepayments, {
+      shouldValidate: true,
+      shouldDirty: true,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [watchedValues.numberOfRepayments]);
+
   useEffect(() => {
     const basicTermsComplete =
       watchedValues.principal > 0 &&
@@ -2327,7 +2529,7 @@ export function LoanTermsForm({
                 id="loanTerm"
                 type="number"
                 className={cn("h-10", !canEditLoan && "cursor-not-allowed")}
-                disabled={!canEditLoan}
+                disabled
                 {...form.register("loanTerm", { valueAsNumber: true })}
               />
               {form.formState.errors.loanTerm && (
@@ -2366,12 +2568,7 @@ export function LoanTermsForm({
                         updateFrequencyValues({ termFrequency: val });
                       }
                     }}
-                    value={
-                      field.value ||
-                      frequencyState.termFrequency ||
-                      templateDerivedValues.termFrequency ||
-                      ""
-                    }
+                    value={field.value || ""}
                     disabled={!canEditLoan}
                   >
                     <SelectTrigger
@@ -2564,12 +2761,7 @@ export function LoanTermsForm({
                       field.onChange(val);
                       updateFrequencyValues({ repaymentFrequency: val });
                     }}
-                    value={
-                      field.value ||
-                      frequencyState.repaymentFrequency ||
-                      templateDerivedValues.repaymentFrequency ||
-                      ""
-                    }
+                    value={field.value || ""}
                     disabled
                   >
                     <SelectTrigger
@@ -2770,12 +2962,7 @@ export function LoanTermsForm({
                       field.onChange(val);
                       updateFrequencyValues({ interestRateFrequency: val });
                     }}
-                    value={
-                      field.value ||
-                      frequencyState.interestRateFrequency ||
-                      templateDerivedValues.interestRateFrequency ||
-                      ""
-                    }
+                    value={field.value || ""}
                     disabled={isNominalInterestRateLocked}
                   >
                     <SelectTrigger
@@ -2822,12 +3009,7 @@ export function LoanTermsForm({
                       field.onChange(val);
                       updateFrequencyValues({ interestMethod: val });
                     }}
-                    value={
-                      field.value ||
-                      frequencyState.interestMethod ||
-                      templateDerivedValues.interestMethod ||
-                      ""
-                    }
+                    value={field.value || ""}
                     disabled={isNominalInterestRateLocked}
                   >
                     <SelectTrigger
@@ -2872,12 +3054,7 @@ export function LoanTermsForm({
                       field.onChange(val);
                       updateFrequencyValues({ amortization: val });
                     }}
-                    value={
-                      field.value ||
-                      frequencyState.amortization ||
-                      templateDerivedValues.amortization ||
-                      ""
-                    }
+                    value={field.value || ""}
                     disabled={isNominalInterestRateLocked}
                   >
                     <SelectTrigger
@@ -2970,16 +3147,7 @@ export function LoanTermsForm({
                       field.onChange(val);
                       updateFrequencyValues({ repaymentStrategy: val });
                     }}
-                    value={
-                      field.value ||
-                      (canEditLoan
-                        ? frequencyValuesRef.current.repaymentStrategy ||
-                          frequencyState.repaymentStrategy ||
-                          templateDerivedValues.repaymentStrategy
-                        : templateDerivedValues.repaymentStrategy ||
-                          frequencyValuesRef.current.repaymentStrategy ||
-                          frequencyState.repaymentStrategy)
-                    }
+                    value={field.value || ""}
                     disabled={!canEditLoan}
                   >
                     <SelectTrigger
@@ -3074,16 +3242,7 @@ export function LoanTermsForm({
                       field.onChange(val);
                       updateFrequencyValues({ interestCalculationPeriod: val });
                     }}
-                    value={
-                      field.value ||
-                      (canEditLoan
-                        ? frequencyValuesRef.current.interestCalculationPeriod ||
-                          frequencyState.interestCalculationPeriod ||
-                          templateDerivedValues.interestCalculationPeriod
-                        : templateDerivedValues.interestCalculationPeriod ||
-                          frequencyValuesRef.current.interestCalculationPeriod ||
-                          frequencyState.interestCalculationPeriod)
-                    }
+                    value={field.value || ""}
                     disabled={!canEditLoan}
                   >
                     <SelectTrigger
@@ -3456,7 +3615,25 @@ export function LoanTermsForm({
                       <Label>Charge</Label>
                       <Select
                         value={selectedChargeOption}
-                        onValueChange={setSelectedChargeOption}
+                        onValueChange={(value) => {
+                          setSelectedChargeOption(value);
+
+                          const selectedCharge = loanTemplate.chargeOptions?.find(
+                            (opt: any) => opt.id.toString() === value
+                          );
+
+                          if (!selectedCharge) {
+                            setNewChargeAmount("");
+                            return;
+                          }
+
+                          const defaultAmount = getDefaultChargeAmount(
+                            selectedCharge
+                          );
+                          setNewChargeAmount(
+                            defaultAmount > 0 ? defaultAmount.toString() : ""
+                          );
+                        }}
                         disabled={!canEditLoan}
                       >
                         <SelectTrigger>

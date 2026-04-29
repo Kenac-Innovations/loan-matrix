@@ -267,6 +267,59 @@ export function NewLeadForm() {
     Date | undefined
   >(undefined);
   const [showWipeConfirm, setShowWipeConfirm] = useState(false);
+  const [scheduleRefreshTrigger, setScheduleRefreshTrigger] = useState(0);
+  const [ignoreSavedTermsForCurrentProduct, setIgnoreSavedTermsForCurrentProduct] =
+    useState(false);
+
+  const normalizeProductId = (value: unknown): number | null => {
+    if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+      return value;
+    }
+    if (typeof value === "string") {
+      const parsed = parseInt(value, 10);
+      return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+    }
+    return null;
+  };
+
+  const normalizeComparableDate = (value: unknown): string => {
+    if (!value) return "";
+    try {
+      return new Date(value as string | number | Date).toISOString();
+    } catch {
+      return String(value);
+    }
+  };
+
+  const haveLoanDetailsDependenciesChanged = (
+    currentDetails: any,
+    nextDetails: any,
+  ) => {
+    if (!nextDetails) return false;
+    if (!currentDetails) return true;
+
+    return (
+      String(currentDetails.productName || "") !==
+        String(nextDetails.productName || "") ||
+      String(currentDetails.productId || "") !==
+        String(nextDetails.productId || "") ||
+      String(currentDetails.loanPurpose || "") !==
+        String(nextDetails.loanPurpose || "") ||
+      String(currentDetails.loanOfficer || "") !==
+        String(nextDetails.loanOfficer || "") ||
+      String(currentDetails.fund || "") !== String(nextDetails.fund || "") ||
+      normalizeComparableDate(currentDetails.submittedOn) !==
+        normalizeComparableDate(nextDetails.submittedOn) ||
+      normalizeComparableDate(currentDetails.disbursementOn) !==
+        normalizeComparableDate(nextDetails.disbursementOn) ||
+      normalizeComparableDate(currentDetails.firstRepaymentOn) !==
+        normalizeComparableDate(nextDetails.firstRepaymentOn) ||
+      String(currentDetails.linkSavings || "") !==
+        String(nextDetails.linkSavings || "") ||
+      Boolean(currentDetails.createStandingInstructions) !==
+        Boolean(nextDetails.createStandingInstructions)
+    );
+  };
 
   const tabsCount = hideAffordability ? 5 : 6;
   const tabsGridClass = hideAffordability
@@ -1209,7 +1262,7 @@ export function NewLeadForm() {
 
           <Tabs
             value={activeTab}
-            onValueChange={setActiveTab}
+            onValueChange={() => {}}
             className="space-y-4"
           >
             <TabsList
@@ -1217,6 +1270,7 @@ export function NewLeadForm() {
             >
               <TabsTrigger
                 value="client"
+                disabled
                 className={`data-[state=active]:bg-blue-500 flex-1 justify-center ${
                   formCompletionStatus.client
                     ? "bg-green-100 text-green-700"
@@ -1235,6 +1289,7 @@ export function NewLeadForm() {
               {!hideAffordability && (
                 <TabsTrigger
                   value="affordability"
+                  disabled
                   className={`data-[state=active]:bg-blue-500 flex-1 justify-center ${
                     formCompletionStatus.affordability
                       ? "bg-green-100 text-green-700"
@@ -1255,6 +1310,7 @@ export function NewLeadForm() {
               )}
               <TabsTrigger
                 value="loan"
+                disabled
                 className={`data-[state=active]:bg-blue-500 flex-1 justify-center ${
                   formCompletionStatus.loan ? "bg-green-100 text-green-700" : ""
                 }`}
@@ -1270,6 +1326,7 @@ export function NewLeadForm() {
               </TabsTrigger>
               <TabsTrigger
                 value="terms"
+                disabled
                 className={`data-[state=active]:bg-blue-500 flex-1 justify-center ${
                   formCompletionStatus.terms
                     ? "bg-green-100 text-green-700"
@@ -1289,6 +1346,7 @@ export function NewLeadForm() {
               </TabsTrigger>
               <TabsTrigger
                 value="schedule"
+                disabled
                 className={`data-[state=active]:bg-blue-500 flex-1 justify-center ${
                   formCompletionStatus.schedule
                     ? "bg-green-100 text-green-700"
@@ -1306,6 +1364,7 @@ export function NewLeadForm() {
               </TabsTrigger>
               <TabsTrigger
                 value="contracts"
+                disabled
                 className={`data-[state=active]:bg-blue-500 flex-1 justify-center ${
                   formCompletionStatus.contracts
                     ? "bg-green-100 text-green-700"
@@ -1324,7 +1383,7 @@ export function NewLeadForm() {
             </TabsList>
 
             {/* Client Information Tab */}
-            <TabsContent value="client" className="mt-0">
+            <TabsContent value="client" className="mt-0" forceMount>
               <Card className="px-2 py-2 lg:px-6 lg:py-6">
                 <CardHeader className="px-2 lg:px-6">
                   <CardTitle>Client Information</CardTitle>
@@ -1397,7 +1456,7 @@ export function NewLeadForm() {
 
             {/* Affordability Tab */}
             {!hideAffordability && (
-              <TabsContent value="affordability" className="mt-0">
+              <TabsContent value="affordability" className="mt-0" forceMount>
                 <Card className="px-2 py-2 lg:px-6 lg:py-6">
                   <CardHeader className="px-2 lg:px-6">
                     <CardTitle>Affordability Assessment</CardTitle>
@@ -1429,13 +1488,14 @@ export function NewLeadForm() {
             )}
 
             {/* Loan Details Tab */}
-            <TabsContent value="loan" className="mt-0">
+            <TabsContent value="loan" className="mt-0" forceMount>
               <Card className="px-2 py-2 lg:px-6 lg:py-6">
                 <CardContent className="p-2 lg:p-6">
                   {fineractClientId ? (
                     <LoanDetailsForm
                       clientId={fineractClientId}
                       leadId={currentLeadId || undefined}
+                      currentTermsProductId={loanProductId}
                       onSubmit={(data) => {
                         console.log("Loan details submitted:", data);
                         // Handle loan details submission
@@ -1443,15 +1503,78 @@ export function NewLeadForm() {
                       onBack={() =>
                         setActiveTab(hideAffordability ? "client" : "affordability")
                       }
-                      onNext={(templateData) => {
+                      onNext={(payload) => {
+                        const templateData = payload?.templateData;
+                        const nextLoanDetails = payload?.loanDetailsData;
                         console.log(
                           "Received template data in main form:",
                           templateData,
                         );
-                        setLoanTemplateData(templateData);
-                        // Extract productId from templateData if available
-                        if (templateData?.productId) {
-                          setLoanProductId(templateData.productId);
+                        const loanDependenciesChanged =
+                          haveLoanDetailsDependenciesChanged(
+                            loanDetails,
+                            nextLoanDetails,
+                          );
+                        const nextProductId = normalizeProductId(
+                          templateData?.productId,
+                        );
+                        const currentTermsProductId =
+                          normalizeProductId(loanProductId);
+                        const hasProductChanged =
+                          nextProductId !== null &&
+                          nextProductId !== currentTermsProductId;
+
+                        if (hasProductChanged) {
+                          console.log(
+                            "Loan product changed, refreshing terms and downstream state",
+                            {
+                              currentTermsProductId,
+                              nextProductId,
+                            },
+                          );
+                          setLoanTemplateData(templateData);
+                          setLoanProductId(nextProductId);
+                          setLoanDetails(nextLoanDetails || loanDetails);
+                          setLoanTerms(null);
+                          setRepaymentSchedule(null);
+                          setSharedFirstRepaymentOn(undefined);
+                          setIgnoreSavedTermsForCurrentProduct(true);
+                          setFormCompletionStatus((prev) => ({
+                            ...prev,
+                            loan: true,
+                            terms: false,
+                            schedule: false,
+                            contracts: false,
+                          }));
+                        } else {
+                          console.log(
+                            "Loan product unchanged, preserving existing terms state",
+                            {
+                              currentTermsProductId,
+                              nextProductId,
+                            },
+                          );
+                          if (templateData && !loanTemplateData) {
+                            setLoanTemplateData(templateData);
+                          }
+                          if (nextProductId !== null && loanProductId == null) {
+                            setLoanProductId(nextProductId);
+                          }
+                          if (nextLoanDetails) {
+                            setLoanDetails(nextLoanDetails);
+                          }
+                          if (loanDependenciesChanged) {
+                            console.log(
+                              "Loan details changed, invalidating downstream schedule and contracts",
+                            );
+                            setRepaymentSchedule(null);
+                            setFormCompletionStatus((prev) => ({
+                              ...prev,
+                              loan: true,
+                              schedule: false,
+                              contracts: false,
+                            }));
+                          }
                         }
                         setFormCompletionStatus((prev) => ({
                           ...prev,
@@ -1459,7 +1582,24 @@ export function NewLeadForm() {
                         }));
                         setActiveTab("terms");
                       }}
-                      onComplete={() => {
+                      onComplete={(payload) => {
+                        if (payload?.loanDetailsData) {
+                          const loanDependenciesChanged =
+                            haveLoanDetailsDependenciesChanged(
+                              loanDetails,
+                              payload.loanDetailsData,
+                            );
+                          setLoanDetails(payload.loanDetailsData);
+                          if (loanDependenciesChanged) {
+                            setRepaymentSchedule(null);
+                            setFormCompletionStatus((prev) => ({
+                              ...prev,
+                              loan: true,
+                              schedule: false,
+                              contracts: false,
+                            }));
+                          }
+                        }
                         setFormCompletionStatus((prev) => ({
                           ...prev,
                           loan: true,
@@ -1491,26 +1631,34 @@ export function NewLeadForm() {
 
 
             {/* Loan Terms Tab */}
-            <TabsContent value="terms" className="mt-0">
+            <TabsContent value="terms" className="mt-0" forceMount>
               <Card className="p-2 lg:p-6">
                 <CardContent className="p-2 lg:p-6">
                   {loanTemplateData || (fineractClientId && loanProductId) ? (
                     <LoanTermsForm
-                      key={`loan-terms-${currentLeadId}`}
+                      key={`loan-terms-${currentLeadId}-${loanProductId || "none"}`}
                       loanTemplate={loanTemplateData}
                       clientId={fineractClientId || undefined}
                       productId={loanProductId || undefined}
                       leadId={currentLeadId || undefined}
+                      ignoreSavedTermsOnLoad={ignoreSavedTermsForCurrentProduct}
                       onSubmit={(data) => {
                         console.log("Loan terms submitted:", data);
                         // Update loanTerms state with submitted data including charges
                         setLoanTerms(data);
                         // Handle loan terms submission
-                        form.handleSubmit((formValues) => onSubmit(formValues))();
+                        // Commented out because this re-submits the top-level client/lead form,
+                        // which triggers unrelated Fineract client validation errors while
+                        // navigating from Terms to Schedule.
+                        // form.handleSubmit((formValues) => onSubmit(formValues))();
                       }}
                       onBack={() => setActiveTab("loan")}
-                      onNext={() => setActiveTab("schedule")}
+                      onNext={() => {
+                        setScheduleRefreshTrigger((prev) => prev + 1);
+                        setActiveTab("schedule");
+                      }}
                       onComplete={() => {
+                        setIgnoreSavedTermsForCurrentProduct(false);
                         setFormCompletionStatus((prev) => ({
                           ...prev,
                           terms: true,
@@ -1546,12 +1694,13 @@ export function NewLeadForm() {
             </TabsContent>
 
             {/* Repayment Schedule Tab */}
-            <TabsContent value="schedule" className="mt-0">
+            <TabsContent value="schedule" className="mt-0" forceMount>
               <Card className="px-2 py-2 lg:px-6 lg:py-6">
                 <CardContent className="p-2 lg:p-6">
                   <RepaymentScheduleForm
                     leadId={currentLeadId || undefined}
                     clientId={fineractClientId || undefined}
+                    refreshTrigger={scheduleRefreshTrigger}
                     onBack={() => setActiveTab("terms")}
                     onNext={() => setActiveTab("contracts")}
                     onComplete={(data) => {
@@ -1577,7 +1726,7 @@ export function NewLeadForm() {
             </TabsContent>
 
             {/* Loan Contracts Tab */}
-            <TabsContent value="contracts" className="mt-0">
+            <TabsContent value="contracts" className="mt-0" forceMount>
               <Card className="px-2 py-2 lg:px-6 lg:py-6">
                 <CardHeader className="px-2 lg:px-6">
                   <CardTitle>Loan Contracts</CardTitle>
