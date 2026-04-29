@@ -36,6 +36,7 @@ import { CheckCircle2, AlertCircle } from "lucide-react";
 import { Calendar } from "@/components/ui/calender";
 import { cn } from "@/lib/utils";
 import { useFeatureFlags } from "@/hooks/use-feature-flags";
+import { shouldAutoPopulatePrincipalAmount } from "@/lib/tenant-settings";
 import {
   recomputeTopupAwareDisbursementChargeAmounts,
   roundMoney,
@@ -43,6 +44,7 @@ import {
   isSimplePrincipalPercentCalculation,
   type EditableLoanChargeRow,
 } from "@/lib/topup-charge-base";
+import type { TenantSettings } from "@/shared/types/tenant";
 
 // Helper function to format repayment strategy name
 // Replaces "Penalties" with "Interest on Unpaid Balance" for display
@@ -577,6 +579,9 @@ export function LoanTermsForm({
     interestSchedule: false,
     chargesCollateral: false,
   });
+  const [tenantSettingsLoaded, setTenantSettingsLoaded] = useState(false);
+  const [autoPopulatePrincipalAmount, setAutoPopulatePrincipalAmount] =
+    useState(true);
 
   // Track if template values have been set
   const frequencyValuesSet = useRef(false);
@@ -584,6 +589,7 @@ export function LoanTermsForm({
   const detailedTemplateFetched = useRef(false);
   const previousProductIdRef = useRef<number | undefined>(productId);
   const shouldApplyTemplateDefaultsRef = useRef(true);
+  const principalAutoPopulatedRef = useRef(false);
   const appliedInvoiceReserveSignature = useRef<string | null>(null);
   const invoiceIncomeChargeFineractId = Number(
     invoiceIncomeChargeProduct?.fineractChargeId
@@ -745,6 +751,43 @@ export function LoanTermsForm({
   });
 
   useEffect(() => {
+    let cancelled = false;
+
+    async function fetchTenantSettings() {
+      try {
+        const response = await fetch("/api/tenant");
+        if (!response.ok) {
+          return;
+        }
+
+        const data = await response.json();
+        const settings =
+          data?.settings && typeof data.settings === "object"
+            ? (data.settings as Partial<TenantSettings>)
+            : null;
+
+        if (!cancelled) {
+          setAutoPopulatePrincipalAmount(
+            shouldAutoPopulatePrincipalAmount(settings)
+          );
+        }
+      } catch (err) {
+        console.error("Failed to fetch tenant settings:", err);
+      } finally {
+        if (!cancelled) {
+          setTenantSettingsLoaded(true);
+        }
+      }
+    }
+
+    fetchTenantSettings();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     const previousProductId = previousProductIdRef.current;
     const hasProductChanged =
       previousProductId !== undefined &&
@@ -760,6 +803,7 @@ export function LoanTermsForm({
     templateValuesSet.current = false;
     detailedTemplateFetched.current = false;
     shouldApplyTemplateDefaultsRef.current = true;
+    principalAutoPopulatedRef.current = false;
     appliedInvoiceReserveSignature.current = null;
 
     form.reset({
@@ -970,6 +1014,10 @@ export function LoanTermsForm({
 
   // Populate form with template data when it changes
   useEffect(() => {
+    if (!tenantSettingsLoaded) {
+      return;
+    }
+
     if (loanTemplate) {
       try {
         console.log("=== TEMPLATE POPULATION START ===");
@@ -1048,11 +1096,13 @@ export function LoanTermsForm({
           "";
 
         if (shouldApplyTemplateDefaultsRef.current) {
+          const shouldPopulatePrincipal =
+            autoPopulatePrincipalAmount &&
+            loanTemplate.principal !== undefined &&
+            !isInvoiceDiscountingLead;
+
           form.reset({
-            principal:
-              loanTemplate.principal !== undefined && !isInvoiceDiscountingLead
-                ? loanTemplate.principal
-                : 0,
+            principal: shouldPopulatePrincipal ? loanTemplate.principal : 0,
             loanTerm: loanTemplate.termFrequency ?? 0,
             termFrequency: nextTermFrequencyValue,
             numberOfRepayments: loanTemplate.numberOfRepayments ?? 0,
@@ -1086,11 +1136,15 @@ export function LoanTermsForm({
 
         // Principal
         if (
+          autoPopulatePrincipalAmount &&
           loanTemplate.principal !== undefined &&
           !isInvoiceDiscountingLead
         ) {
           form.setValue("principal", loanTemplate.principal);
+          principalAutoPopulatedRef.current = true;
           console.log("Set principal:", loanTemplate.principal);
+        } else {
+          principalAutoPopulatedRef.current = false;
         }
 
         // Term Options
@@ -1411,7 +1465,7 @@ export function LoanTermsForm({
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isInvoiceDiscountingLead, loanTemplate]); // form is stable from useForm, no need in deps
+  }, [autoPopulatePrincipalAmount, isInvoiceDiscountingLead, loanTemplate, tenantSettingsLoaded]); // form is stable from useForm, no need in deps
 
   // Sync firstRepaymentOn from the Loans tab whenever it changes
   useEffect(() => {
@@ -1481,7 +1535,7 @@ export function LoanTermsForm({
             if (
               loanTermsData.principal !== undefined &&
               (loanDetailsData?.facilityType === "INVOICE_DISCOUNTING" ||
-                !templateValuesSet.current)
+                !principalAutoPopulatedRef.current)
             ) {
               form.setValue("principal", loanTermsData.principal);
             } else if (loanTermsData.principal !== undefined) {
