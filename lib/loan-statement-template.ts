@@ -1,6 +1,10 @@
 import { format } from "date-fns";
 import type { InterestRateDisplayMode } from "@/shared/types/tenant";
 import { getLoanInterestRateDisplay } from "@/lib/interest-rate-display";
+import {
+  getDisplayedTransactionType,
+  type TransactionLike,
+} from "@/lib/format-transaction";
 
 export interface LoanStatementData {
   // Company info
@@ -49,6 +53,33 @@ export interface LoanTransaction {
   cumulativeBalance: number;
   isHighlighted?: boolean; // For disbursements and certain transactions
 }
+
+type StatementLoanLike = {
+  currency?: {
+    code?: string;
+    displaySymbol?: string;
+    name?: string;
+  };
+  summary?: {
+    interestCharged?: number;
+    principalDisbursed?: number;
+    totalPrincipalDisbursed?: number;
+  };
+  transactions?: TransactionLike[];
+  accountNo?: string;
+  principal?: number;
+  approvedPrincipal?: number;
+  proposedPrincipal?: number;
+  clientName?: string;
+  timeline?: {
+    actualDisbursementDate?: string | number[];
+    submittedOnDate?: string | number[];
+  };
+};
+
+type StatementClientLike = {
+  displayName?: string;
+};
 
 const formatCurrency = (amount: number, symbol: string = ""): string => {
   const formatted = Math.abs(amount).toLocaleString("en-US", {
@@ -547,6 +578,8 @@ export function generateLoanStatementHTML(data: LoanStatementData): string {
 export interface ConsolidatedStatementData {
   companyName: string;
   logoUrl?: string;
+  statementTitle?: string;
+  statementSubtitle?: string;
 
   clientName: string;
   printDate: string;
@@ -615,12 +648,14 @@ export function generateConsolidatedStatementHTML(data: ConsolidatedStatementDat
 
   const printDate = data.printDate;
 
+  const statementTitle = data.statementTitle || "Consolidated Account Statement";
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Consolidated Statement - ${data.clientName}</title>
+  <title>${statementTitle} - ${data.clientName}</title>
   <style>
     @page { margin: 0.4in; size: A4; }
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -642,7 +677,7 @@ export function generateConsolidatedStatementHTML(data: ConsolidatedStatementDat
     .transactions-table th.amount-header { text-align: right; }
     .transactions-table td { padding: 8px; border-bottom: 1px solid #ddd; font-size: 11px; }
     .transactions-table .date-cell { width: 100px; }
-    .transactions-table .loan-cell { width: 100px; font-family: 'Courier New', monospace; font-size: 10px; }
+    .transactions-table .loan-cell { width: 220px; font-family: 'Courier New', monospace; font-size: 10px; }
     .transactions-table .type-cell { width: auto; }
     .transactions-table .trxn-id-cell { width: 60px; text-align: center; }
     .transactions-table .amount-cell { width: 100px; text-align: right; font-family: 'Courier New', monospace; }
@@ -670,7 +705,8 @@ export function generateConsolidatedStatementHTML(data: ConsolidatedStatementDat
       </div>
       <div class="header-right">
         <table class="account-info-table">
-          <tr><td class="account-title">Consolidated Account Statement</td></tr>
+          <tr><td class="account-title">${statementTitle}</td></tr>
+          ${data.statementSubtitle ? `<tr><td class="account-info-label">${data.statementSubtitle}</td></tr>` : ""}
           <tr><td class="account-info-label">Client Name: ${data.clientName}</td></tr>
           <tr><td class="account-info-label">Loan Accounts: ${data.loanSummaries.length}</td></tr>
           <tr><td class="account-info-label">Print Date: ${data.printDate}</td></tr>
@@ -754,44 +790,12 @@ export function parseFineractDate(dateValue: string | number[] | undefined): str
   }
 }
 
-function formatChargeName(name: string): string {
-  return name
-    .trim()
-    .toLowerCase()
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, (char) => char.toUpperCase());
-}
-
-/**
- * Get the display label for a statement transaction, matching the loan details
- * transactions tab: repaymentAtDisbursement → "Admin Fee", single charge from
- * loanChargePaidByList → charge name, otherwise type.value.
- */
-function getStatementTransactionType(tx: any): string {
-  if (tx.type?.repaymentAtDisbursement) return "Admin Fee";
-
-  const paidCharges = tx.loanChargePaidByList;
-  if (Array.isArray(paidCharges) && paidCharges.length === 1) {
-    const charge = paidCharges[0];
-    const chargeName =
-      charge?.chargeName ||
-      charge?.name ||
-      charge?.loanChargeName ||
-      charge?.charge?.name;
-    if (typeof chargeName === "string" && chargeName.trim()) {
-      return formatChargeName(chargeName);
-    }
-  }
-
-  return tx.type?.value || "";
-}
-
 /**
  * Transform Fineract loan data to statement data
  */
 export function transformFineractLoanToStatement(
-  loan: any,
-  client: any,
+  loan: StatementLoanLike,
+  client: StatementClientLike | null,
   companyInfo: {
     name: string;
     logoUrl?: string;
@@ -808,7 +812,7 @@ export function transformFineractLoanToStatement(
   const accountNo = loan.accountNo || "";
 
   // Calculate totals
-  let openingBalance = 0;
+  const openingBalance = 0;
   let totalDebits = 0;
   let totalCredits = 0;
   let runningBalance = 0;
@@ -829,7 +833,7 @@ export function transformFineractLoanToStatement(
   });
 
   // Sort transactions by date
-  const sortedTransactions = [...transactions].sort((a: any, b: any) => {
+  const sortedTransactions = [...transactions].sort((a, b) => {
     const dateA = Array.isArray(a.date)
       ? new Date(a.date[0], a.date[1] - 1, a.date[2]).getTime()
       : new Date(a.date).getTime();
@@ -839,7 +843,7 @@ export function transformFineractLoanToStatement(
     return dateA - dateB;
   });
 
-  sortedTransactions.forEach((tx: any) => {
+  sortedTransactions.forEach((tx) => {
     const isDisbursement = tx.type?.disbursement;
     const isRepayment = tx.type?.repayment;
     const isRepaymentAtDisbursement = tx.type?.repaymentAtDisbursement;
@@ -884,7 +888,7 @@ export function transformFineractLoanToStatement(
     processedTransactions.push({
       id: tx.id,
       date: parseFineractDate(tx.date),
-      type: getStatementTransactionType(tx),
+      type: getDisplayedTransactionType(tx),
       trxnId: tx.id?.toString() || "",
       debit,
       credit,
