@@ -310,7 +310,6 @@ export default function CashierTransactionsPage({
     setReverseModalInitial({
       amount: String(tx.txnAmount ?? tx.amount ?? ""),
       transactionDate: transactionDateToIsoDate(tx),
-      notes: "",
       currencyCode: getTransactionCurrencyCode(tx, currencyCode),
       originalCashDirection: direction,
       sourceTxnTypeCode: sp.sourceTxnTypeCode,

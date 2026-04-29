@@ -15,6 +15,58 @@ import {
 type TellerRow = NonNullable<Awaited<ReturnType<typeof prisma.teller.findFirst>>>;
 type CashierRow = NonNullable<Awaited<ReturnType<typeof prisma.cashier.findFirst>>>;
 
+function isDuplicateFineractAllocationError(error: unknown) {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code?: string }).code === "P2002" &&
+    "meta" in error &&
+    Array.isArray((error as { meta?: { target?: unknown } }).meta?.target) &&
+    ((error as { meta?: { target?: unknown[] } }).meta?.target ?? []).includes(
+      "fineractAllocationId"
+    )
+  );
+}
+
+async function createCashAllocationWithDuplicateFallback(data: {
+  tenantId: string;
+  tellerId: string;
+  cashierId: string;
+  fineractAllocationId?: number | null;
+  amount: number;
+  currency: string;
+  allocatedBy: string;
+  notes: string;
+  status: string;
+}) {
+  try {
+    return await prisma.cashAllocation.create({
+      data: {
+        ...data,
+        fineractAllocationId: data.fineractAllocationId ?? null,
+      },
+    });
+  } catch (error) {
+    if (!isDuplicateFineractAllocationError(error)) {
+      throw error;
+    }
+
+    const fineractIdNote =
+      data.fineractAllocationId != null
+        ? ` [Fineract ID: ${data.fineractAllocationId} - duplicate handled]`
+        : "";
+
+    return prisma.cashAllocation.create({
+      data: {
+        ...data,
+        fineractAllocationId: null,
+        notes: `${data.notes}${fineractIdNote}`,
+      },
+    });
+  }
+}
+
 type ResolveResult =
   | {
       ok: true;
@@ -485,7 +537,6 @@ export async function POST(
         ? body.transactionDate
         : new Date().toISOString().split("T")[0];
 
-    const notes = typeof body.notes === "string" ? body.notes : undefined;
     const srcId =
       body.sourceFineractTransactionId != null
         ? String(body.sourceFineractTransactionId)
@@ -501,9 +552,7 @@ export async function POST(
         amount,
         currencyCode,
         transactionDate,
-        notes: notes?.trim()
-          ? `${notes.trim()}${noteSuffix}`
-          : `Cashier counter-entry (reverse cash-in)${noteSuffix}`,
+        notes: `Settlement return to vault - cashier counter-entry (reverse cash-in)${noteSuffix}`,
       });
 
       if (!result.success) {
@@ -513,24 +562,20 @@ export async function POST(
         );
       }
 
-      const settlementNotes =
-        notes?.trim() ||
-        (isReverseAllocation
-          ? "Allocation reversed — funds returned to teller"
-          : `Cashier counter-entry — settle (reverse cash-in)${noteSuffix}`);
+      const settlementNotes = isReverseAllocation
+        ? `Allocation reversed - returned to vault${noteSuffix}`
+        : `Settlement return to vault - cashier counter-entry (reverse cash-in)${noteSuffix}`;
 
-      const settlement = await prisma.cashAllocation.create({
-        data: {
-          tenantId: tenant.id,
-          tellerId: teller.id,
-          cashierId: cashier.id,
-          fineractAllocationId: result.fineractSettlementId ?? undefined,
-          amount: -Math.abs(amount),
-          currency: cashierTxnCurrencyCode,
-          allocatedBy: session.user.id,
-          notes: settlementNotes,
-          status: "ACTIVE",
-        },
+      const settlement = await createCashAllocationWithDuplicateFallback({
+        tenantId: tenant.id,
+        tellerId: teller.id,
+        cashierId: cashier.id,
+        fineractAllocationId: result.fineractSettlementId ?? null,
+        amount: -Math.abs(amount),
+        currency: cashierTxnCurrencyCode,
+        allocatedBy: session.user.id,
+        notes: settlementNotes,
+        status: "ACTIVE",
       });
 
       return NextResponse.json({
@@ -548,9 +593,7 @@ export async function POST(
       amount,
       currencyCode,
       transactionDate,
-      notes: notes?.trim()
-        ? `${notes.trim()}${noteSuffix}`
-        : `Cashier counter-entry (reverse cash-out)${noteSuffix}`,
+      notes: `Cashier allocation correction - reverse cash-out${noteSuffix}`,
     });
 
     if (!allocResult.success) {
@@ -560,22 +603,18 @@ export async function POST(
       );
     }
 
-    const allocNotes =
-      notes?.trim() ||
-      `Cashier counter-entry — allocate (reverse cash-out)${noteSuffix}`;
+    const allocNotes = `Cashier allocation correction - reverse cash-out${noteSuffix}`;
 
-    const allocation = await prisma.cashAllocation.create({
-      data: {
-        tenantId: tenant.id,
-        tellerId: teller.id,
-        cashierId: cashier.id,
-        fineractAllocationId: allocResult.fineractResourceId ?? undefined,
-        amount: Math.abs(amount),
-        currency: cashierTxnCurrencyCode,
-        allocatedBy: session.user.id,
-        notes: allocNotes,
-        status: "ACTIVE",
-      },
+    const allocation = await createCashAllocationWithDuplicateFallback({
+      tenantId: tenant.id,
+      tellerId: teller.id,
+      cashierId: cashier.id,
+      fineractAllocationId: allocResult.fineractResourceId ?? null,
+      amount: Math.abs(amount),
+      currency: cashierTxnCurrencyCode,
+      allocatedBy: session.user.id,
+      notes: allocNotes,
+      status: "ACTIVE",
     });
 
     return NextResponse.json({
