@@ -2473,13 +2473,27 @@ export function ClientRegistrationForm({
                       localData?.fullname,
                       lead.fullname
                     ),
-                    tradingName: lead.tradingName || "",
-                    registrationNumber: lead.registrationNumber || "",
-                    dateOfIncorporation: lead.dateOfIncorporation
-                      ? new Date(lead.dateOfIncorporation)
-                      : undefined,
-                    natureOfBusiness: lead.natureOfBusiness || "",
-                    businessAddress: lead.businessAddress || "",
+                    tradingName: getBestValue(
+                      localData?.tradingName,
+                      lead.tradingName
+                    ),
+                    registrationNumber: getBestValue(
+                      localData?.registrationNumber,
+                      lead.registrationNumber
+                    ),
+                    dateOfIncorporation: localData?.dateOfIncorporation
+                      ? new Date(localData.dateOfIncorporation)
+                      : lead.dateOfIncorporation
+                        ? new Date(lead.dateOfIncorporation)
+                        : undefined,
+                    natureOfBusiness: getBestValue(
+                      localData?.natureOfBusiness,
+                      lead.natureOfBusiness
+                    ),
+                    businessAddress: getBestValue(
+                      localData?.businessAddress,
+                      lead.businessAddress
+                    ),
                   };
 
                   // If we have Fineract data, client exists in Fineract
@@ -3407,13 +3421,13 @@ export function ClientRegistrationForm({
           ),
           lastname: getBestValue(fineractData?.lastname, localData?.lastname),
           fullname: getBestValue(fineractData?.fullname, localData?.fullname),
-          tradingName: localData?.tradingName || "",
-          registrationNumber: localData?.registrationNumber || "",
+          tradingName: getBestValue(localData?.tradingName, ""),
+          registrationNumber: getBestValue(localData?.registrationNumber, ""),
           dateOfIncorporation: localData?.dateOfIncorporation
             ? new Date(localData.dateOfIncorporation)
             : undefined,
-          natureOfBusiness: localData?.natureOfBusiness || "",
-          businessAddress: localData?.businessAddress || "",
+          natureOfBusiness: getBestValue(localData?.natureOfBusiness, ""),
+          businessAddress: getBestValue(localData?.businessAddress, ""),
           dateOfBirth: fineractData?.dateOfBirth
             ? new Date(fineractData.dateOfBirth)
             : localData?.dateOfBirth
