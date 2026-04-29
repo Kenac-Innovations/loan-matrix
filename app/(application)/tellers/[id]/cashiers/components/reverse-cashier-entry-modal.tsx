@@ -12,7 +12,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Loader2 } from "lucide-react";
@@ -21,7 +20,6 @@ import { toast } from "@/components/ui/use-toast";
 export type ReverseCashierEntryInitial = {
   amount?: string;
   transactionDate?: string;
-  notes?: string;
   currencyCode?: string;
   originalCashDirection: "cashIn" | "cashOut";
   sourceTxnTypeCode?: string;
@@ -52,7 +50,6 @@ export function ReverseCashierEntryModal({
   initial,
 }: ReverseCashierEntryModalProps) {
   const [amount, setAmount] = useState("");
-  const [notes, setNotes] = useState("");
   const [transactionDate, setTransactionDate] = useState(() =>
     new Date().toISOString().split("T")[0]
   );
@@ -75,7 +72,6 @@ export function ReverseCashierEntryModal({
     setError(null);
     if (initial) {
       setAmount(initial.amount ?? "");
-      setNotes(initial.notes ?? "");
       setTransactionDate(
         initial.transactionDate ?? new Date().toISOString().split("T")[0]
       );
@@ -89,7 +85,6 @@ export function ReverseCashierEntryModal({
       });
     } else {
       setAmount("");
-      setNotes("");
       setTransactionDate(new Date().toISOString().split("T")[0]);
       setOriginalCashDirection("cashIn");
       setLockDirection(false);
@@ -128,7 +123,6 @@ export function ReverseCashierEntryModal({
             amount: n,
             currencyCode: effectiveCurrencyCode,
             transactionDate,
-            notes: notes.trim() || undefined,
             ...sourcePayload,
           }),
         }
@@ -243,17 +237,6 @@ export function ReverseCashierEntryModal({
               value={transactionDate}
               onChange={(e) => setTransactionDate(e.target.value)}
               disabled={submitting}
-            />
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="rc-notes">Notes (optional)</Label>
-            <Textarea
-              id="rc-notes"
-              placeholder="Reason for this cashier-only correction…"
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              disabled={submitting}
-              rows={3}
             />
           </div>
         </div>
