@@ -7,33 +7,27 @@ import {
   type ConsolidatedStatementData,
   type ConsolidatedTransaction,
 } from "@/lib/loan-statement-template";
-
-function formatChargeName(name: string): string {
-  return name
-    .trim()
-    .toLowerCase()
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, (char) => char.toUpperCase());
-}
-
-function getConsolidatedTransactionType(tx: any): string {
-  if (tx.type?.repaymentAtDisbursement) return "Admin Fee";
-  const paidCharges = tx.loanChargePaidByList;
-  if (Array.isArray(paidCharges) && paidCharges.length === 1) {
-    const charge = paidCharges[0];
-    const chargeName =
-      charge?.chargeName ||
-      charge?.name ||
-      charge?.loanChargeName ||
-      charge?.charge?.name;
-    if (typeof chargeName === "string" && chargeName.trim()) {
-      return formatChargeName(chargeName);
-    }
-  }
-  return tx.type?.value || "";
-}
+import {
+  getDisplayedTransactionType,
+  type TransactionLike,
+} from "@/lib/format-transaction";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
 import { getSession, getCurrentUserDetails } from "@/lib/auth";
+
+type LoanAccountRef = {
+  id: string | number;
+};
+
+type LoanWithTransactions = {
+  accountNo?: string;
+  loanProductName?: string;
+  loanProductDescription?: string;
+  transactions?: TransactionLike[];
+};
+
+function getConsolidatedTransactionType(tx: TransactionLike): string {
+  return getDisplayedTransactionType(tx);
+}
 
 const baseUrl = process.env.FINERACT_BASE_URL || "http://10.10.0.143:8443";
 
@@ -94,7 +88,7 @@ export async function GET(
       );
     }
     const accountsData = await accountsRes.json();
-    const loanAccounts: any[] = accountsData.loanAccounts || [];
+    const loanAccounts: LoanAccountRef[] = accountsData.loanAccounts || [];
 
     if (loanAccounts.length === 0) {
       return NextResponse.json(
@@ -110,7 +104,9 @@ export async function GET(
         { headers }
       ).then((r) => (r.ok ? r.json() : null))
     );
-    const allLoans = (await Promise.all(loanFetches)).filter(Boolean);
+    const allLoans: LoanWithTransactions[] = (await Promise.all(loanFetches)).filter(
+      (loan): loan is LoanWithTransactions => Boolean(loan)
+    );
 
     // 4. Build per-loan charge-name lookups, flatten transactions
     const perLoanTotals: Map<
@@ -121,14 +117,14 @@ export async function GET(
     interface RawTx {
       sortDate: number;
       accountNo: string;
-      tx: any;
+      tx: TransactionLike;
     }
     const rawTxs: RawTx[] = [];
 
     for (const loan of allLoans) {
       const accountNo: string = loan.accountNo || "";
       const productName: string = loan.loanProductName || loan.loanProductDescription || "";
-      const transactions: any[] = loan.transactions || [];
+      const transactions: TransactionLike[] = loan.transactions || [];
 
       perLoanTotals.set(accountNo, {
         productName,

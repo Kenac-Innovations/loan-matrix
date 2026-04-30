@@ -267,8 +267,40 @@ interface LoanDetailsFormProps {
   leadId?: string;
   onSubmit: (data: LoanDetailsFormData) => void;
   onBack: () => void;
-  onNext: (templateData?: LoanTemplate) => void;
-  onComplete?: () => void;
+  onNext: (payload?: {
+    templateData?: LoanTemplate;
+    loanDetailsData?: {
+      facilityType: FacilityType;
+      productName: string;
+      productId: string;
+      loanPurpose: string;
+      loanPurposeName: string;
+      loanOfficer: string;
+      fund: string;
+      submittedOn: string;
+      disbursementOn: string;
+      firstRepaymentOn: string;
+      linkSavings: string;
+      createStandingInstructions: boolean;
+    };
+  }) => void;
+  onComplete?: (payload?: {
+    loanDetailsData?: {
+      facilityType: FacilityType;
+      productName: string;
+      productId: string;
+      loanPurpose: string;
+      loanPurposeName: string;
+      loanOfficer: string;
+      fund: string;
+      submittedOn: string;
+      disbursementOn: string;
+      firstRepaymentOn: string;
+      linkSavings: string;
+      createStandingInstructions: boolean;
+    };
+  }) => void;
+  currentTermsProductId?: number | null;
   sharedFirstRepaymentOn?: Date;
   onFirstRepaymentDateChange?: (date: Date) => void;
 }
@@ -280,6 +312,7 @@ export function LoanDetailsForm({
   onBack,
   onNext,
   onComplete,
+  currentTermsProductId,
   sharedFirstRepaymentOn,
   onFirstRepaymentDateChange,
 }: LoanDetailsFormProps) {
@@ -313,6 +346,17 @@ export function LoanDetailsForm({
     useState<FirstRepaymentDateConfig | null>(null);
   const [tenantConfigLoaded, setTenantConfigLoaded] = useState(false);
 
+  const normalizeProductId = (value: unknown): number | null => {
+    if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+      return value;
+    }
+    if (typeof value === "string") {
+      const parsed = parseInt(value, 10);
+      return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+    }
+    return null;
+  };
+
   const form = useForm<LoanDetailsFormData>({
     resolver: zodResolver(loanDetailsSchema),
     defaultValues: {
@@ -324,6 +368,17 @@ export function LoanDetailsForm({
       createStandingInstructions: false,
     },
   });
+
+  const watchedProductName = form.watch("productName");
+  const selectedProductForWarning = loanTemplate?.productOptions?.find(
+    (product) => product.name === watchedProductName,
+  );
+  const normalizedCurrentTermsProductId =
+    normalizeProductId(currentTermsProductId);
+  const showTermsRefreshWarning =
+    normalizedCurrentTermsProductId !== null &&
+    !!selectedProductForWarning &&
+    selectedProductForWarning.id !== normalizedCurrentTermsProductId;
 
   // Fetch tenant settings for first repayment date strategy
   useEffect(() => {
@@ -513,71 +568,11 @@ export function LoanDetailsForm({
           productData.loanOfficerOptions,
         );
 
-        // Set default values from template
-        if (
-          productData.productOptions &&
-          productData.productOptions.length > 0
-        ) {
-          const firstProduct = productData.productOptions[0];
-          form.setValue("productName", firstProduct.name);
-
-          // Fetch detailed template and invoice-discounting check in parallel.
-          // The template may legitimately fail for 0%-interest products in Fineract.
-          const [templateResponse, idCheckResponse] = await Promise.allSettled([
-            fetch(
-              `/api/fineract/loans/template?clientId=${clientId}&productId=${firstProduct.id}&activeOnly=true&staffInSelectedOfficeOnly=true&templateType=individual`,
-            ),
-            fetch(`/api/invoice-discounting-products?fineractProductId=${firstProduct.id}`),
-          ]);
-
-          // Invoice discounting check
-          if (idCheckResponse.status === "fulfilled" && idCheckResponse.value.ok) {
-            try {
-              const idData = await idCheckResponse.value.json();
-              setIsInvoiceDiscountingProduct(idData.isInvoiceDiscounting === true);
-            } catch { /* ignore */ }
-          }
-
-          // Template
-          if (templateResponse.status === "fulfilled" && templateResponse.value.ok) {
-            const templateData = await templateResponse.value.json();
-            console.log("Detailed loan template data:", templateData);
-            console.log("Loan officer options in detailed response:", templateData.loanOfficerOptions);
-
-            const mergedTemplate = {
-              ...templateData,
-              productOptions:
-                templateData.productOptions || productData.productOptions || [],
-              loanOfficerOptions:
-                templateData.loanOfficerOptions ||
-                productData.loanOfficerOptions ||
-                [],
-              loanPurposeOptions:
-                templateData.loanPurposeOptions ||
-                productData.loanPurposeOptions ||
-                [],
-              fundOptions:
-                templateData.fundOptions || productData.fundOptions || [],
-            };
-
-            console.log("Merged template loanOfficerOptions:", mergedTemplate.loanOfficerOptions);
-            console.log("Merged template loanOfficerOptions length:", mergedTemplate.loanOfficerOptions?.length);
-
-            setLoanTemplate(mergedTemplate);
-            console.log("Updated loanTemplate state, checking if it has loanOfficerOptions");
-
-            if (templateData.expectedDisbursementDate) {
-              const [year, month, day] = templateData.expectedDisbursementDate;
-              form.setValue("disbursementOn", new Date(year, month - 1, day));
-            }
-          } else {
-            // Template unavailable — use the base productData so the product list still renders.
-            console.warn(`Fineract template unavailable for product ${firstProduct.id} — falling back to base template.`);
-            setLoanTemplate(productData);
-          }
-
-          setHasCompleteTemplate(true);
-        }
+        // Keep product selection empty for new leads.
+        // Product-specific template details are fetched only when a saved product
+        // exists or the user actively chooses one.
+        setIsInvoiceDiscountingProduct(false);
+        setHasCompleteTemplate(true);
       } catch (err) {
         setError(
           err instanceof Error ? err.message : "Failed to fetch loan template",
@@ -1066,6 +1061,24 @@ export function LoanDetailsForm({
     const resolvedFacilityType: FacilityType = isInvoiceDiscountingProduct
       ? "INVOICE_DISCOUNTING"
       : "TERM_LOAN";
+    const productId =
+      selectedProduct?.id?.toString() ||
+      loanTemplate.productId?.toString() ||
+      "";
+    const loanDetailsData = {
+      facilityType: resolvedFacilityType,
+      productName: data.productName,
+      productId: productId,
+      loanPurpose: data.loanPurpose || "",
+      loanPurposeName: selectedPurpose?.name || "",
+      loanOfficer: data.loanOfficer || "",
+      fund: data.fund || "",
+      submittedOn: data.submittedOn.toISOString(),
+      disbursementOn: data.disbursementOn.toISOString(),
+      firstRepaymentOn: data.firstRepaymentOn.toISOString(),
+      linkSavings: data.linkSavings || "",
+      createStandingInstructions: data.createStandingInstructions || false,
+    };
 
     if (leadId) {
       setIsSaving(true);
@@ -1084,27 +1097,6 @@ export function LoanDetailsForm({
             return;
           }
         }
-
-        // Get productId - try from selectedProduct first, fallback to template productId or empty
-        const productId =
-          selectedProduct?.id?.toString() ||
-          loanTemplate.productId?.toString() ||
-          "";
-
-        const loanDetailsData = {
-          facilityType: resolvedFacilityType,
-          productName: data.productName,
-          productId: productId,
-          loanPurpose: data.loanPurpose || "",
-          loanPurposeName: selectedPurpose?.name || "",
-          loanOfficer: data.loanOfficer || "",
-          fund: data.fund || "",
-          submittedOn: data.submittedOn.toISOString(),
-          disbursementOn: data.disbursementOn.toISOString(),
-          firstRepaymentOn: data.firstRepaymentOn.toISOString(),
-          linkSavings: data.linkSavings || "",
-          createStandingInstructions: data.createStandingInstructions || false,
-        };
 
         console.log("=== SAVING LOAN DETAILS ===");
         console.log("Product ID being saved:", productId);
@@ -1130,7 +1122,9 @@ export function LoanDetailsForm({
 
         // Call onComplete callback if provided
         if (onComplete) {
-          onComplete();
+          onComplete({
+            loanDetailsData,
+          });
         }
       } catch (error) {
         console.error("Error saving loan details:", error);
@@ -1160,7 +1154,10 @@ export function LoanDetailsForm({
       productId: selectedProduct?.id,
     } as LoanTemplate;
 
-    onNext(templateWithProductId);
+    onNext({
+      templateData: templateWithProductId,
+      loanDetailsData,
+    });
   };
 
   // Handle adding new loan purpose
@@ -1343,6 +1340,12 @@ export function LoanDetailsForm({
                   <p className="text-sm text-red-500">
                     {form.formState.errors.productName.message}
                   </p>
+                )}
+                {showTermsRefreshWarning && (
+                  <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                    Changing the loan product will refresh the existing data in
+                    Terms & Charges.
+                  </div>
                 )}
               </div>
 

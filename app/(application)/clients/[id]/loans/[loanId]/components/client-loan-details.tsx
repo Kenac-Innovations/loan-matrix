@@ -832,7 +832,13 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                 break;
               case 'view-statement':
                 // Open loan statement in new tab
-                window.open(`/api/fineract/loans/${loanId}/statement?format=html`, '_blank');
+                const oldLoanId =
+                  loan?.topupDetails?.loanIdToClose ?? loan?.closureLoanId;
+                const statementUrl =
+                  loan?.isTopup && oldLoanId
+                    ? `/api/fineract/loans/${loanId}/old/${oldLoanId}/statement?format=html`
+                    : `/api/fineract/loans/${loanId}/statement?format=html`;
+                window.open(statementUrl, '_blank');
                 break;
               case 'view-guarantors':
                 setShowGuarantorsModal(true);

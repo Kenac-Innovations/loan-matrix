@@ -109,19 +109,37 @@ export default function ReportDetailPage() {
     options: ParameterOption[]
   ): ParameterOption[] => {
     if (param.selectAll !== "Y") return options;
-    const hasAllOption = options.some(
+
+    const allOptionIndex = options.findIndex(
       (option) =>
         option.id?.toString() === "-1" ||
         option.tc?.trim().toLowerCase() === "all"
     );
-    return hasAllOption ? options : [...options, { id: -1, tc: "All" }];
+
+    if (allOptionIndex === 0) return options;
+
+    if (allOptionIndex > 0) {
+      const allOption = options[allOptionIndex];
+      const remainingOptions = options.filter(
+        (_, index) => index !== allOptionIndex
+      );
+      return [allOption, ...remainingOptions];
+    }
+
+    return [{ id: -1, tc: "All" }, ...options];
   };
+
+  const findAllOption = (options: ParameterOption[]) =>
+    options.find(
+      (option) =>
+        option.id?.toString() === "-1" ||
+        option.tc?.trim().toLowerCase() === "all"
+    );
 
   const getInitialParameterValue = (param: ReportParameter): string => {
     if (param.parameter_displayType === "none" && param.parameter_default) {
       return param.parameter_default;
     }
-    if (param.selectAll === "Y") return "-1";
     if (param.parameter_default && param.parameter_default !== "0") {
       return param.parameter_default;
     }
@@ -232,14 +250,25 @@ export default function ReportDetailPage() {
         // Initialize parameters with default values
         const defaultParams: Record<string, string> = {};
         params.forEach((param) => {
-          if (param.parameter_default && param.parameter_default !== "0") {
-            defaultParams[param.parameter_variable] = param.parameter_default;
+          const initialValue = getInitialParameterValue(param);
+          if (initialValue) {
+            defaultParams[param.parameter_variable] = initialValue;
           }
         });
-        setParameters(defaultParams);
 
         // Load options for select parameters (pass defaultParams for cascading: e.g. loanOfficerIdSelectAll needs R_officeId)
-        await loadParameterOptions(params, defaultParams);
+        const loadedOptions = await loadParameterOptions(params, defaultParams);
+
+        params.forEach((param) => {
+          if (param.selectAll === "Y" && !defaultParams[param.parameter_variable]) {
+            const allOption = findAllOption(loadedOptions[param.parameter_name] || []);
+            if (allOption) {
+              defaultParams[param.parameter_variable] = allOption.id.toString();
+            }
+          }
+        });
+
+        setParameters(defaultParams);
       } else {
         setReportParameters([]);
       }
@@ -312,6 +341,7 @@ export default function ReportDetailPage() {
     }
 
     setParameterOptions(options);
+    return options;
   };
 
   const runReport = async () => {
@@ -452,10 +482,14 @@ export default function ReportDetailPage() {
                     tc: item.row[1],
                   }))
                 : [];
-            newOptions[param.parameter_name] = withSelectAllOption(
-              param,
-              fetchedOptions
-            );
+            newOptions[param.parameter_name] = withSelectAllOption(param, fetchedOptions);
+
+            if (param.selectAll === "Y" && !newParams[param.parameter_variable]) {
+              const allOption = findAllOption(newOptions[param.parameter_name]);
+              if (allOption) {
+                newParams[param.parameter_variable] = allOption.id.toString();
+              }
+            }
           }
         } catch (error) {
           console.error(
