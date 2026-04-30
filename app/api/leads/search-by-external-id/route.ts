@@ -29,6 +29,12 @@ export async function GET(request: Request) {
       select: {
         id: true,
         externalId: true,
+        fullname: true,
+        tradingName: true,
+        registrationNumber: true,
+        dateOfIncorporation: true,
+        natureOfBusiness: true,
+        businessAddress: true,
         firstname: true,
         middlename: true,
         lastname: true,

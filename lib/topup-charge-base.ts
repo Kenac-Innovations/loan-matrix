@@ -236,9 +236,17 @@ export function recomputeTopupAwareDisbursementChargeAmounts(
     }
 
     const next = roundMoney((rate / 100) * H, decimals);
-    if (next === charge.amount) {
+    const restoredPercentage =
+      toNumber(oc._takeHomePercentage) ?? toNumber(oc.percentage) ?? rate;
+    const nextOc =
+      restoredPercentage != null &&
+      Math.abs((toNumber(oc.percentage) ?? restoredPercentage) - restoredPercentage) > 1e-6
+        ? { ...oc, percentage: restoredPercentage }
+        : oc;
+
+    if (next === charge.amount && nextOc === oc) {
       return charge;
     }
-    return { ...charge, amount: next };
+    return { ...charge, amount: next, originalCharge: nextOc };
   });
 }

@@ -74,6 +74,7 @@ interface RepaymentSchedule {
 interface RepaymentScheduleFormProps {
   leadId?: string;
   clientId?: number;
+  refreshTrigger?: number;
   onBack: () => void;
   onNext?: () => void;
   onComplete?: (data?: {
@@ -87,15 +88,21 @@ interface RepaymentScheduleFormProps {
 export function RepaymentScheduleForm({
   leadId,
   clientId,
+  refreshTrigger = 0,
   onBack,
   onNext,
   onComplete,
 }: RepaymentScheduleFormProps) {
-  console.log("RepaymentScheduleForm props:", { leadId, clientId });
+  console.log("RepaymentScheduleForm props:", {
+    leadId,
+    clientId,
+    refreshTrigger,
+  });
 
   const { currencyCode: orgCurrency } = useCurrency();
   const [repaymentSchedule, setRepaymentSchedule] =
     useState<RepaymentSchedule | null>(null);
+  const [isLoadingData, setIsLoadingData] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loanTerms, setLoanTerms] = useState<any>(null);
@@ -103,10 +110,27 @@ export function RepaymentScheduleForm({
   const [loanTemplate, setLoanTemplate] = useState<any>(null);
   const [editableCharges, setEditableCharges] = useState<EditableLoanChargeRow[]>([]);
 
+  useEffect(() => {
+    if (refreshTrigger <= 0) return;
+
+    setRepaymentSchedule(null);
+    setError(null);
+    setLoanTerms(null);
+    setLoanDetails(null);
+    setLoanTemplate(null);
+    setEditableCharges([]);
+    setIsLoadingData(true);
+  }, [refreshTrigger]);
+
   // Load loan terms and loan details
   useEffect(() => {
     const loadData = async () => {
-      if (!leadId) return;
+      if (!leadId) {
+        setIsLoadingData(false);
+        return;
+      }
+
+      setIsLoadingData(true);
 
       try {
         // Load loan details first to get disbursement date
@@ -208,11 +232,13 @@ export function RepaymentScheduleForm({
         }
       } catch (err) {
         console.error("Error loading data:", err);
+      } finally {
+        setIsLoadingData(false);
       }
     };
 
     loadData();
-  }, [leadId, clientId]);
+  }, [leadId, clientId, refreshTrigger]);
 
   const handleGenerateSchedule = useCallback(async () => {
     if (!loanTerms || !loanDetails || !loanTemplate) {
@@ -634,7 +660,14 @@ export function RepaymentScheduleForm({
                 </div>
               )}
 
-              {!loanTerms || !loanDetails ? (
+              {isLoadingData ? (
+                <div className="text-center py-8">
+                  <div className="flex items-center justify-center gap-2 text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <p>Loading loan details and terms...</p>
+                  </div>
+                </div>
+              ) : !loanTerms || !loanDetails ? (
                 <div className="text-center py-8">
                   <p className="text-muted-foreground mb-4">
                     Please complete loan details and terms first before

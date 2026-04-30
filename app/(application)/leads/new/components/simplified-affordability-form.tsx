@@ -165,6 +165,7 @@ export function SimplifiedAffordabilityForm({
   }, [
     watchedValues.grossMonthlyIncome,
     watchedValues.netMonthlyIncome,
+    watchedValues.preferredPaymentMethod,
     watchedValues.mobileInOwnName,
     watchedValues.hasProofOfIncome,
     watchedValues.hasValidNationalId,

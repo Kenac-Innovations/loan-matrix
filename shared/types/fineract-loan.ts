@@ -262,6 +262,9 @@ export interface FineractLoan {
       accountNoToClose?: string;
       topupAmount?: number;
     };
+    closureLoanId?: number;
+    closureLoanAccountNo?: string;
+    topupAmount?: number;
     clientId?: number;
     closureDate: string | number[];
     inArrears: boolean;
