@@ -46,6 +46,11 @@ export interface FirstRepaymentDateConfig {
   cutoffDay?: number;
 }
 
+export interface TenantAutoPopulateFields {
+  /** Auto-populate the principal amount in the lead Terms tab unless explicitly disabled */
+  principalAmount?: boolean;
+}
+
 /**
  * Tenant settings stored in the database
  */
@@ -54,6 +59,8 @@ export interface TenantSettings {
   features: TenantFeatures;
   /** How loan interest rates should be displayed in the UI and documents */
   loanTermsInterestRateDisplay?: InterestRateDisplayMode;
+  /** Field-level auto-population controls for lead creation */
+  autoPopulateFields?: TenantAutoPopulateFields;
   /** Monthly lead target */
   monthlyTarget?: number;
   /** Conversion rate target (percentage) */

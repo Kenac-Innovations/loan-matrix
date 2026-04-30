@@ -1,6 +1,10 @@
 import { format } from "date-fns";
 import type { InterestRateDisplayMode } from "@/shared/types/tenant";
 import { getLoanInterestRateDisplay } from "@/lib/interest-rate-display";
+import {
+  getDisplayedTransactionType,
+  type TransactionLike,
+} from "@/lib/format-transaction";
 
 export interface LoanStatementData {
   // Company info
@@ -50,6 +54,33 @@ export interface LoanTransaction {
   isHighlighted?: boolean; // For disbursements and certain transactions
 }
 
+type StatementLoanLike = {
+  currency?: {
+    code?: string;
+    displaySymbol?: string;
+    name?: string;
+  };
+  summary?: {
+    interestCharged?: number;
+    principalDisbursed?: number;
+    totalPrincipalDisbursed?: number;
+  };
+  transactions?: TransactionLike[];
+  accountNo?: string;
+  principal?: number;
+  approvedPrincipal?: number;
+  proposedPrincipal?: number;
+  clientName?: string;
+  timeline?: {
+    actualDisbursementDate?: string | number[];
+    submittedOnDate?: string | number[];
+  };
+};
+
+type StatementClientLike = {
+  displayName?: string;
+};
+
 const formatCurrency = (amount: number, symbol: string = ""): string => {
   const formatted = Math.abs(amount).toLocaleString("en-US", {
     minimumFractionDigits: 2,
@@ -57,6 +88,283 @@ const formatCurrency = (amount: number, symbol: string = ""): string => {
   });
   return `${symbol}${formatted}`;
 };
+
+function getStatementToolbarStyles(): string {
+  return `
+    .statement-toolbar {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+      padding: 12px 20px;
+      margin: -20px -20px 20px -20px;
+      background: #f5f5f5;
+      border-bottom: 1px solid #ddd;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    }
+
+    .statement-toolbar-tip {
+      flex: 1 1 280px;
+      font-size: 12px;
+      color: #555;
+      line-height: 1.4;
+    }
+
+    .statement-toolbar-controls {
+      display: flex;
+      align-items: flex-end;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .statement-toolbar-field {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      min-width: 138px;
+    }
+
+    .statement-toolbar-field label {
+      font-size: 11px;
+      font-weight: bold;
+      color: #444;
+    }
+
+    .statement-toolbar-field input {
+      padding: 8px 10px;
+      font-size: 13px;
+      font-family: inherit;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      background: #fff;
+      color: #333;
+    }
+
+    .statement-toolbar-actions {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .statement-toolbar button,
+    .statement-toolbar a {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 16px;
+      font-size: 13px;
+      font-family: inherit;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      background: #fff;
+      color: #333;
+      cursor: pointer;
+      text-decoration: none;
+    }
+
+    .statement-toolbar button:hover,
+    .statement-toolbar a:hover {
+      background: #e8e8e8;
+      border-color: #999;
+    }
+
+    .statement-toolbar button:disabled {
+      opacity: 0.7;
+      cursor: wait;
+    }
+
+    .statement-toolbar-secondary {
+      background: #fafafa;
+    }
+
+    .statement-toolbar-error {
+      display: none;
+      width: 100%;
+      font-size: 12px;
+      color: #b42318;
+    }
+
+    .statement-toolbar-error.is-visible {
+      display: block;
+    }
+
+    @media (max-width: 900px) {
+      .statement-toolbar {
+        align-items: stretch;
+      }
+
+      .statement-toolbar-controls,
+      .statement-toolbar-actions {
+        width: 100%;
+      }
+    }
+  `;
+}
+
+function getStatementToolbarHTML(filename: string): string {
+  return `
+  <div class="statement-toolbar">
+    <span class="statement-toolbar-tip">To hide browser-added headers and footers (URL, date, page numbers), open "More settings" in the print dialog and turn off "Headers and footers".</span>
+    <div class="statement-toolbar-controls">
+      <div class="statement-toolbar-field">
+        <label for="statement-from-date">From</label>
+        <input type="date" id="statement-from-date" />
+      </div>
+      <div class="statement-toolbar-field">
+        <label for="statement-to-date">To</label>
+        <input type="date" id="statement-to-date" />
+      </div>
+      <div class="statement-toolbar-actions">
+        <button type="button" id="apply-date-filter-btn">Apply</button>
+        <button type="button" id="clear-date-filter-btn" class="statement-toolbar-secondary">Clear</button>
+        <button type="button" id="download-pdf-btn" data-filename="${filename}">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/>
+            <line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+          Download PDF
+        </button>
+        <button type="button" id="print-statement-btn">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="6 9 6 2 18 2 18 9"/>
+            <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
+          </svg>
+          Print
+        </button>
+      </div>
+    </div>
+    <div id="statement-toolbar-error" class="statement-toolbar-error" role="alert"></div>
+  </div>`;
+}
+
+function getStatementToolbarScript(defaultFilename: string): string {
+  return `
+    (function() {
+      var fromInput = document.getElementById('statement-from-date');
+      var toInput = document.getElementById('statement-to-date');
+      var applyBtn = document.getElementById('apply-date-filter-btn');
+      var clearBtn = document.getElementById('clear-date-filter-btn');
+      var printBtn = document.getElementById('print-statement-btn');
+      var pdfBtn = document.getElementById('download-pdf-btn');
+      var errorBox = document.getElementById('statement-toolbar-error');
+
+      if (!fromInput || !toInput || !applyBtn || !clearBtn || !printBtn || !errorBox) {
+        return;
+      }
+
+      function showError(message) {
+        errorBox.textContent = message || '';
+        errorBox.classList.toggle('is-visible', Boolean(message));
+      }
+
+      function normalizeDate(value) {
+        return typeof value === 'string' ? value.trim() : '';
+      }
+
+      function syncInputsFromUrl() {
+        var url = new URL(window.location.href);
+        fromInput.value = normalizeDate(url.searchParams.get('from'));
+        toInput.value = normalizeDate(url.searchParams.get('to'));
+      }
+
+      function updateRangeConstraints() {
+        fromInput.max = toInput.value || '';
+        toInput.min = fromInput.value || '';
+      }
+
+      function applyFilter() {
+        var fromValue = normalizeDate(fromInput.value);
+        var toValue = normalizeDate(toInput.value);
+
+        if (fromValue && toValue && fromValue > toValue) {
+          showError('The "From" date cannot be later than the "To" date.');
+          return;
+        }
+
+        showError('');
+        var url = new URL(window.location.href);
+
+        if (fromValue) {
+          url.searchParams.set('from', fromValue);
+        } else {
+          url.searchParams.delete('from');
+        }
+
+        if (toValue) {
+          url.searchParams.set('to', toValue);
+        } else {
+          url.searchParams.delete('to');
+        }
+
+        window.location.href = url.toString();
+      }
+
+      function clearFilter() {
+        showError('');
+        fromInput.value = '';
+        toInput.value = '';
+        updateRangeConstraints();
+        var url = new URL(window.location.href);
+        url.searchParams.delete('from');
+        url.searchParams.delete('to');
+        window.location.href = url.toString();
+      }
+
+      fromInput.addEventListener('input', function() {
+        updateRangeConstraints();
+        showError('');
+      });
+
+      toInput.addEventListener('input', function() {
+        updateRangeConstraints();
+        showError('');
+      });
+
+      applyBtn.addEventListener('click', applyFilter);
+      clearBtn.addEventListener('click', clearFilter);
+      printBtn.addEventListener('click', function() {
+        window.print();
+      });
+
+      syncInputsFromUrl();
+      updateRangeConstraints();
+
+      if (pdfBtn && window.html2pdf) {
+        var filename = pdfBtn.getAttribute('data-filename') || '${defaultFilename}';
+        var defaultLabel = pdfBtn.innerHTML;
+
+        pdfBtn.addEventListener('click', function() {
+          pdfBtn.disabled = true;
+          pdfBtn.textContent = 'Generating...';
+
+          var opt = {
+            margin: 10,
+            filename: filename,
+            image: { type: 'jpeg', quality: 0.98 },
+            html2canvas: { scale: 2, useCORS: true },
+            jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+            pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
+          };
+
+          window.html2pdf().set(opt).from(document.querySelector('.container') || document.body).save().then(function() {
+            pdfBtn.disabled = false;
+            pdfBtn.innerHTML = defaultLabel;
+          }).catch(function(error) {
+            console.error('PDF generation failed:', error);
+            pdfBtn.disabled = false;
+            pdfBtn.innerHTML = defaultLabel;
+            showError('Unable to generate the PDF right now. Please try again.');
+          });
+        });
+      }
+    })();
+  `;
+}
 
 
 export function generateLoanStatementHTML(data: LoanStatementData): string {
@@ -341,69 +649,11 @@ export function generateLoanStatementHTML(data: LoanStatementData): string {
       }
     }
     
-    /* Statement toolbar - hidden when printing */
-    .statement-toolbar {
-      position: sticky;
-      top: 0;
-      z-index: 100;
-      display: flex;
-      gap: 10px;
-      padding: 12px 20px;
-      margin: -20px -20px 20px -20px;
-      background: #f5f5f5;
-      border-bottom: 1px solid #ddd;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
-    }
-    
-    .statement-toolbar button,
-    .statement-toolbar a {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 8px 16px;
-      font-size: 13px;
-      font-family: inherit;
-      border: 1px solid #ccc;
-      border-radius: 6px;
-      background: #fff;
-      color: #333;
-      cursor: pointer;
-      text-decoration: none;
-    }
-    
-    .statement-toolbar button:hover,
-    .statement-toolbar a:hover {
-      background: #e8e8e8;
-      border-color: #999;
-    }
-    
-    .statement-toolbar-tip {
-      flex: 1;
-      font-size: 12px;
-      color: #555;
-      line-height: 1.4;
-    }
+    ${getStatementToolbarStyles()}
   </style>
 </head>
 <body>
-  <div class="statement-toolbar">
-    <span class="statement-toolbar-tip">To hide browser-added headers and footers (URL, date, page numbers), open "More settings" in the print dialog and turn off "Headers and footers".</span>
-    <button type="button" id="download-pdf-btn" data-filename="loan-statement-${data.accountNumber}.pdf">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-        <polyline points="7 10 12 15 17 10"/>
-        <line x1="12" y1="15" x2="12" y2="3"/>
-      </svg>
-      Download PDF
-    </button>
-    <button type="button" onclick="window.print()">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <polyline points="6 9 6 2 18 2 18 9"/>
-        <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
-      </svg>
-      Print
-    </button>
-  </div>
+  ${getStatementToolbarHTML(`loan-statement-${data.accountNumber}.pdf`)}
   <div class="container">
     <!-- Header Section -->
     <div class="header">
@@ -512,31 +762,7 @@ export function generateLoanStatementHTML(data: LoanStatementData): string {
   </div>
   <script src="/html2pdf.bundle.min.js"></script>
   <script>
-    (function() {
-      var btn = document.getElementById('download-pdf-btn');
-      if (!btn) return;
-      var filename = btn.getAttribute('data-filename') || 'loan-statement.pdf';
-      btn.onclick = function() {
-        btn.disabled = true;
-        btn.textContent = 'Generating…';
-        var opt = {
-          margin: 10,
-          filename: filename,
-          image: { type: 'jpeg', quality: 0.98 },
-          html2canvas: { scale: 2, useCORS: true },
-          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-          pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
-        };
-        var svgHtml = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Download PDF';
-        html2pdf().set(opt).from(document.querySelector('.container')).save().then(function() {
-          btn.disabled = false;
-          btn.innerHTML = svgHtml;
-        }).catch(function() {
-          btn.disabled = false;
-          btn.innerHTML = svgHtml;
-        });
-      };
-    })();
+    ${getStatementToolbarScript("loan-statement.pdf")}
   </script>
 </body>
 </html>`;
@@ -547,6 +773,8 @@ export function generateLoanStatementHTML(data: LoanStatementData): string {
 export interface ConsolidatedStatementData {
   companyName: string;
   logoUrl?: string;
+  statementTitle?: string;
+  statementSubtitle?: string;
 
   clientName: string;
   printDate: string;
@@ -615,12 +843,14 @@ export function generateConsolidatedStatementHTML(data: ConsolidatedStatementDat
 
   const printDate = data.printDate;
 
+  const statementTitle = data.statementTitle || "Consolidated Account Statement";
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Consolidated Statement - ${data.clientName}</title>
+  <title>${statementTitle} - ${data.clientName}</title>
   <style>
     @page { margin: 0.4in; size: A4; }
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -642,7 +872,7 @@ export function generateConsolidatedStatementHTML(data: ConsolidatedStatementDat
     .transactions-table th.amount-header { text-align: right; }
     .transactions-table td { padding: 8px; border-bottom: 1px solid #ddd; font-size: 11px; }
     .transactions-table .date-cell { width: 100px; }
-    .transactions-table .loan-cell { width: 100px; font-family: 'Courier New', monospace; font-size: 10px; }
+    .transactions-table .loan-cell { width: 220px; font-family: 'Courier New', monospace; font-size: 10px; }
     .transactions-table .type-cell { width: auto; }
     .transactions-table .trxn-id-cell { width: 60px; text-align: center; }
     .transactions-table .amount-cell { width: 100px; text-align: right; font-family: 'Courier New', monospace; }
@@ -658,10 +888,16 @@ export function generateConsolidatedStatementHTML(data: ConsolidatedStatementDat
     .summary-table td { padding: 6px 10px; border-bottom: 1px solid #ddd; font-size: 11px; }
     .summary-table .amount-cell { text-align: right; font-weight: bold; font-family: 'Courier New', monospace; }
     .summary-table .closing-row td { font-weight: bold; background: #f0f0f0; }
-    @media print { body { padding: 0; } .header, .footer { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+    @media print {
+      body { padding: 0; }
+      .header, .footer { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .statement-toolbar { display: none !important; }
+    }
+    ${getStatementToolbarStyles()}
   </style>
 </head>
 <body>
+  ${getStatementToolbarHTML(`${statementTitle.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${data.clientName}.pdf`)}
   <div class="container">
     <div class="header">
       <div class="header-left">
@@ -670,7 +906,8 @@ export function generateConsolidatedStatementHTML(data: ConsolidatedStatementDat
       </div>
       <div class="header-right">
         <table class="account-info-table">
-          <tr><td class="account-title">Consolidated Account Statement</td></tr>
+          <tr><td class="account-title">${statementTitle}</td></tr>
+          ${data.statementSubtitle ? `<tr><td class="account-info-label">${data.statementSubtitle}</td></tr>` : ""}
           <tr><td class="account-info-label">Client Name: ${data.clientName}</td></tr>
           <tr><td class="account-info-label">Loan Accounts: ${data.loanSummaries.length}</td></tr>
           <tr><td class="account-info-label">Print Date: ${data.printDate}</td></tr>
@@ -733,6 +970,10 @@ export function generateConsolidatedStatementHTML(data: ConsolidatedStatementDat
       </div>
     </div>
   </div>
+  <script src="/html2pdf.bundle.min.js"></script>
+  <script>
+    ${getStatementToolbarScript("consolidated-statement.pdf")}
+  </script>
 </body>
 </html>`;
 }
@@ -754,44 +995,12 @@ export function parseFineractDate(dateValue: string | number[] | undefined): str
   }
 }
 
-function formatChargeName(name: string): string {
-  return name
-    .trim()
-    .toLowerCase()
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, (char) => char.toUpperCase());
-}
-
-/**
- * Get the display label for a statement transaction, matching the loan details
- * transactions tab: repaymentAtDisbursement → "Admin Fee", single charge from
- * loanChargePaidByList → charge name, otherwise type.value.
- */
-function getStatementTransactionType(tx: any): string {
-  if (tx.type?.repaymentAtDisbursement) return "Admin Fee";
-
-  const paidCharges = tx.loanChargePaidByList;
-  if (Array.isArray(paidCharges) && paidCharges.length === 1) {
-    const charge = paidCharges[0];
-    const chargeName =
-      charge?.chargeName ||
-      charge?.name ||
-      charge?.loanChargeName ||
-      charge?.charge?.name;
-    if (typeof chargeName === "string" && chargeName.trim()) {
-      return formatChargeName(chargeName);
-    }
-  }
-
-  return tx.type?.value || "";
-}
-
 /**
  * Transform Fineract loan data to statement data
  */
 export function transformFineractLoanToStatement(
-  loan: any,
-  client: any,
+  loan: StatementLoanLike,
+  client: StatementClientLike | null,
   companyInfo: {
     name: string;
     logoUrl?: string;
@@ -808,7 +1017,7 @@ export function transformFineractLoanToStatement(
   const accountNo = loan.accountNo || "";
 
   // Calculate totals
-  let openingBalance = 0;
+  const openingBalance = 0;
   let totalDebits = 0;
   let totalCredits = 0;
   let runningBalance = 0;
@@ -829,7 +1038,7 @@ export function transformFineractLoanToStatement(
   });
 
   // Sort transactions by date
-  const sortedTransactions = [...transactions].sort((a: any, b: any) => {
+  const sortedTransactions = [...transactions].sort((a, b) => {
     const dateA = Array.isArray(a.date)
       ? new Date(a.date[0], a.date[1] - 1, a.date[2]).getTime()
       : new Date(a.date).getTime();
@@ -839,7 +1048,7 @@ export function transformFineractLoanToStatement(
     return dateA - dateB;
   });
 
-  sortedTransactions.forEach((tx: any) => {
+  sortedTransactions.forEach((tx) => {
     const isDisbursement = tx.type?.disbursement;
     const isRepayment = tx.type?.repayment;
     const isRepaymentAtDisbursement = tx.type?.repaymentAtDisbursement;
@@ -884,7 +1093,7 @@ export function transformFineractLoanToStatement(
     processedTransactions.push({
       id: tx.id,
       date: parseFineractDate(tx.date),
-      type: getStatementTransactionType(tx),
+      type: getDisplayedTransactionType(tx),
       trxnId: tx.id?.toString() || "",
       debit,
       credit,

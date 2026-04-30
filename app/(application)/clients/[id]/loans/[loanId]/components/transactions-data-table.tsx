@@ -13,7 +13,7 @@ import { MoreVertical } from "lucide-react";
 import { Transaction } from "@/shared/types/transaction";
 import { formatCurrency } from "@/lib/format-currency";
 import { formatDate } from "@/lib/format-date";
-import { getTransactionTypeDisplayLabel } from "@/lib/format-transaction";
+import { getDisplayedTransactionType } from "@/lib/format-transaction";
 import { GenericDataTable } from "@/components/tables/generic-data-table";
 import { DataTableColumn, DataTableFilter } from "@/shared/types/data-table";
 
@@ -40,36 +40,9 @@ export function TransactionsDataTable({
   clientId,
   loanId,
   currencyCode,
-  onExport,
   reversedPayout,
 }: TransactionsDataTableProps) {
   const router = useRouter();
-
-  const formatChargeName = (name: string): string =>
-    name
-      .trim()
-      .toLowerCase()
-      .replace(/_/g, " ")
-      .replace(/\b\w/g, (char) => char.toUpperCase());
-
-  const getDisplayedTransactionType = (transaction: Transaction): string => {
-    const paidCharges = transaction.loanChargePaidByList;
-
-    if (Array.isArray(paidCharges) && paidCharges.length === 1) {
-      const charge = paidCharges[0];
-      const chargeName =
-        charge?.chargeName ||
-        charge?.name ||
-        charge?.loanChargeName ||
-        charge?.charge?.name;
-
-      if (typeof chargeName === "string" && chargeName.trim()) {
-        return formatChargeName(chargeName);
-      }
-    }
-
-    return getTransactionTypeDisplayLabel(transaction.type);
-  };
 
   const displayTransactions = useMemo(() => {
     if (!reversedPayout?.voidedAt) return transactions;
@@ -100,7 +73,7 @@ export function TransactionsDataTable({
   // Get unique transaction types for filter options (show "Admin Fee" for repayment at disbursement)
   const transactionTypes = useMemo(() => {
     const types = Array.from(
-      new Set(displayTransactions.map((t) => getTransactionTypeDisplayLabel(t.type)).filter(Boolean))
+      new Set(displayTransactions.map((t) => getDisplayedTransactionType(t)).filter(Boolean))
     );
     return types.sort().map((displayLabel) => {
       // Use actual type.value for filtering; "Admin Fee" maps to "Repayment (at time of disbursement)"
