@@ -62,6 +62,23 @@ function parseFineractErrorResponse(responseText: string): string {
   return responseText || "Fineract request failed";
 }
 
+function isOverdueChargeLike(charge?: any): boolean {
+  const timeType = charge?.originalCharge?.chargeTimeType || charge?.chargeTimeType;
+  const code = String(timeType?.code || "").toLowerCase();
+  const value = String(timeType?.value || "").toLowerCase();
+
+  if (
+    code === "chargetimetype.overdueinstallment" ||
+    code === "overdueinstallment" ||
+    code.endsWith(".overdueinstallment") ||
+    value.includes("overdue")
+  ) {
+    return true;
+  }
+
+  return !timeType && Boolean(charge?.originalCharge?.penalty ?? charge?.penalty);
+}
+
 async function fineractFetch(
   url: string,
   options?: RequestInit,
@@ -138,7 +155,6 @@ export function LoanContracts({
     const parsed = Number(candidate);
     return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
   };
-
   const filledTenantContractHtml = useMemo(() => {
     if (!tenantContractHtml) return null;
     let html: string;
@@ -1982,7 +1998,7 @@ export function LoanContracts({
       });
 
       const requestedCharges = Array.isArray(loanTerms.charges)
-        ? loanTerms.charges
+        ? loanTerms.charges.filter((charge: any) => !isOverdueChargeLike(charge))
         : [];
 
       const loanPayload = {
@@ -2050,7 +2066,6 @@ export function LoanContracts({
               const chargeData: any = { chargeId: charge.chargeId };
 
               if (isPercentage) {
-                // Fineract POST /loans treats `amount` as the percentage value for % charges
                 chargeData.amount = charge.originalCharge.percentage;
               } else {
                 chargeData.amount = charge.amount;
@@ -2078,7 +2093,6 @@ export function LoanContracts({
       console.log("Creating loan with payload:", loanPayload);
       console.log("Loan charges being sent:", loanPayload.charges);
       console.log("Raw loanTerms.charges:", loanTerms.charges);
-
       const loanResponse = await fineractFetch("/api/fineract/loans", {
         method: "POST",
         headers: {

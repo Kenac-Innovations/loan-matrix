@@ -226,6 +226,23 @@ const leadFormSchema = z
 
 type LeadFormValues = z.infer<typeof leadFormSchema>;
 
+function isOverdueChargeLike(charge?: any) {
+  const timeType = charge?.originalCharge?.chargeTimeType || charge?.chargeTimeType;
+  const code = String(timeType?.code || "").toLowerCase();
+  const value = String(timeType?.value || "").toLowerCase();
+
+  if (
+    code === "chargetimetype.overdueinstallment" ||
+    code === "overdueinstallment" ||
+    code.endsWith(".overdueinstallment") ||
+    value.includes("overdue")
+  ) {
+    return true;
+  }
+
+  return !timeType && Boolean(charge?.originalCharge?.penalty ?? charge?.penalty);
+}
+
 export function NewLeadForm() {
   // ALL HOOKS MUST BE CALLED FIRST, BEFORE ANY CONDITIONAL RETURNS
   const router = useRouter();
@@ -540,13 +557,13 @@ export function NewLeadForm() {
                       )
                     : format(new Date(), "dd MMMM yyyy");
 
-                  const charges = (loadedLoanTerms.charges || []).map(
-                    (charge: any) => ({
+                  const charges = (loadedLoanTerms.charges || [])
+                    .filter((charge: any) => !isOverdueChargeLike(charge))
+                    .map((charge: any) => ({
                       chargeId: charge.chargeId,
                       amount: charge.amount,
                       dueDate: charge.dueDate,
-                    }),
-                  );
+                    }));
 
                   const payload = {
                     productId: loadedProductId,

@@ -487,6 +487,67 @@ function mergeInvoiceIncomeChargeIntoTemplate(
   };
 }
 
+function dedupeChargeOptionsById(
+  charges: LoanTemplateChargeOption[] | undefined
+): LoanTemplateChargeOption[] {
+  const byId = new Map<number, LoanTemplateChargeOption>();
+  (charges || []).forEach((charge) => {
+    if (!byId.has(charge.id)) {
+      byId.set(charge.id, charge);
+    }
+  });
+  return Array.from(byId.values());
+}
+
+function dedupeAppliedChargesById(charges: LoanTemplate["charges"]): NonNullable<LoanTemplate["charges"]> {
+  const byId = new Map<number, NonNullable<LoanTemplate["charges"]>[number]>();
+  (charges || []).forEach((charge) => {
+    const key = Number(charge.chargeId || charge.id);
+    if (!byId.has(key)) {
+      byId.set(key, charge);
+    }
+  });
+  return Array.from(byId.values());
+}
+
+function mergeProductChargeDataIntoTemplate(
+  template: LoanTemplate,
+  productData: Partial<LoanTemplate> & { charges?: LoanTemplate["charges"] }
+) {
+  const productCharges = productData.charges || [];
+  const productChargeOptions = productData.chargeOptions || [];
+  const productPenaltyOptions = productData.penaltyOptions || [];
+
+  const inferredRegularOptions = productCharges.filter(
+    (charge) => !isOverdueChargeLike(charge)
+  );
+  const inferredOverdueOptions = productCharges.filter((charge) =>
+    isOverdueChargeLike(charge)
+  );
+
+  return {
+    ...template,
+    chargeOptions: dedupeChargeOptionsById([
+      ...(template.chargeOptions || []),
+      ...productChargeOptions,
+      ...inferredRegularOptions,
+    ]),
+    penaltyOptions: dedupeChargeOptionsById([
+      ...(template.penaltyOptions || []),
+      ...productPenaltyOptions,
+      ...inferredOverdueOptions,
+    ]),
+    charges: dedupeAppliedChargesById([
+      ...(template.charges || []),
+      ...productCharges,
+    ]),
+    canUseForTopup:
+      typeof productData.canUseForTopup === "boolean"
+        ? productData.canUseForTopup
+        : template.canUseForTopup,
+  };
+}
+
 function getInvoiceIncomeCurrencyCode(
   template: LoanTemplate | null | undefined,
   fallbackTemplate?: LoanTemplate | null
@@ -533,6 +594,22 @@ function getDefaultChargeAmount(charge: {
     return charge.percentage;
   }
   return 0;
+}
+
+function selectValueIfPresent(
+  value: string | undefined | null,
+  options: Array<{ id: number }> | undefined
+): string {
+  if (!value || !options?.length) return "";
+  return options.some((option) => option.id.toString() === value) ? value : "";
+}
+
+function codeValueIfPresent(
+  value: string | undefined | null,
+  options: Array<{ code: string }> | undefined
+): string {
+  if (!value || !options?.length) return "";
+  return options.some((option) => option.code === value) ? value : "";
 }
 
 interface LoanTermsFormProps {
@@ -611,6 +688,7 @@ export function LoanTermsForm({
   const [tenantSettingsLoaded, setTenantSettingsLoaded] = useState(false);
   const [autoPopulatePrincipalAmount, setAutoPopulatePrincipalAmount] =
     useState(true);
+  const [savedLoanTermsData, setSavedLoanTermsData] = useState<any>(null);
 
   // Track if template values have been set
   const frequencyValuesSet = useRef(false);
@@ -923,6 +1001,7 @@ export function LoanTermsForm({
       interestSchedule: false,
       chargesCollateral: false,
     });
+    setSavedLoanTermsData(null);
 
     previousProductIdRef.current = productId;
   }, [form, productId, sharedFirstRepaymentOn]);
@@ -954,7 +1033,7 @@ export function LoanTermsForm({
           fetch(
             `/api/fineract/loans/template?clientId=${clientId}&productId=${productId}&activeOnly=true&staffInSelectedOfficeOnly=true&templateType=individual`
           ),
-          fetch(`/api/fineract/loans/product/${productId}`),
+          fetch(`/api/fineract/loanproducts/${productId}?template=true`),
           fetch(`/api/invoice-discounting-products?fineractProductId=${productId}`),
         ]);
 
@@ -962,7 +1041,7 @@ export function LoanTermsForm({
           throw new Error("Failed to fetch detailed loan template");
         }
 
-        const [detailedTemplate, invoiceDiscountingResult] = await Promise.all([
+        let [detailedTemplate, invoiceDiscountingResult] = await Promise.all([
           templateRes.json(),
           invoiceDiscountingRes.ok
             ? invoiceDiscountingRes.json()
@@ -975,6 +1054,10 @@ export function LoanTermsForm({
         // Merge product-level topup config into the template
         if (productRes.ok) {
           const productData = await productRes.json();
+          detailedTemplate = mergeProductChargeDataIntoTemplate(
+            detailedTemplate,
+            productData
+          );
           console.log("Product data - canUseForTopup:", productData.canUseForTopup);
           if (productData.canUseForTopup) {
             detailedTemplate.canUseForTopup = true;
@@ -1171,6 +1254,51 @@ export function LoanTermsForm({
           loanTemplate.interestCalculationPeriodTypeOptions?.[0]?.id?.toString() ||
           "";
 
+        const savedTermFrequencyValue = selectValueIfPresent(
+          ignoreSavedTermsOnLoad ? "" : savedLoanTermsData?.termFrequency,
+          loanTemplate.termFrequencyTypeOptions
+        );
+        const savedRepaymentFrequencyValue = selectValueIfPresent(
+          ignoreSavedTermsOnLoad ? "" : savedLoanTermsData?.repaymentFrequency,
+          loanTemplate.repaymentFrequencyTypeOptions
+        );
+        const savedInterestRateFrequencyValue = selectValueIfPresent(
+          ignoreSavedTermsOnLoad ? "" : savedLoanTermsData?.interestRateFrequency,
+          loanTemplate.interestRateFrequencyTypeOptions
+        );
+        const savedInterestMethodValue = selectValueIfPresent(
+          ignoreSavedTermsOnLoad ? "" : savedLoanTermsData?.interestMethod,
+          loanTemplate.interestTypeOptions
+        );
+        const savedAmortizationValue = selectValueIfPresent(
+          ignoreSavedTermsOnLoad ? "" : savedLoanTermsData?.amortization,
+          loanTemplate.amortizationTypeOptions
+        );
+        const savedRepaymentStrategyValue = codeValueIfPresent(
+          ignoreSavedTermsOnLoad ? "" : savedLoanTermsData?.repaymentStrategy,
+          loanTemplate.transactionProcessingStrategyOptions
+        );
+        const savedInterestCalculationPeriodValue = selectValueIfPresent(
+          ignoreSavedTermsOnLoad ? "" : savedLoanTermsData?.interestCalculationPeriod,
+          loanTemplate.interestCalculationPeriodTypeOptions
+        );
+
+        const resolvedTermFrequencyValue =
+          savedTermFrequencyValue || nextTermFrequencyValue;
+        const resolvedRepaymentFrequencyValue =
+          savedRepaymentFrequencyValue || nextRepaymentFrequencyValue;
+        const resolvedInterestRateFrequencyValue =
+          savedInterestRateFrequencyValue || nextInterestRateFrequencyValue;
+        const resolvedInterestMethodValue =
+          savedInterestMethodValue || nextInterestMethodValue;
+        const resolvedAmortizationValue =
+          savedAmortizationValue || nextAmortizationValue;
+        const resolvedRepaymentStrategyValue =
+          savedRepaymentStrategyValue || nextRepaymentStrategyValue;
+        const resolvedInterestCalculationPeriodValue =
+          savedInterestCalculationPeriodValue ||
+          nextInterestCalculationPeriodValue;
+
         if (shouldApplyTemplateDefaultsRef.current) {
           const shouldPopulatePrincipal =
             autoPopulatePrincipalAmount &&
@@ -1180,24 +1308,30 @@ export function LoanTermsForm({
           form.reset({
             principal: shouldPopulatePrincipal ? loanTemplate.principal : 0,
             loanTerm: loanTemplate.termFrequency ?? 0,
-            termFrequency: nextTermFrequencyValue,
+            termFrequency: resolvedTermFrequencyValue,
             numberOfRepayments: loanTemplate.numberOfRepayments ?? 0,
             firstRepaymentOn: sharedFirstRepaymentOn,
             interestChargedFrom: undefined,
             repaymentEvery: loanTemplate.repaymentEvery ?? 0,
-            repaymentFrequency: nextRepaymentFrequencyValue,
-            repaymentFrequencyNthDay: "",
-            repaymentFrequencyDayOfWeek: "",
+            repaymentFrequency: resolvedRepaymentFrequencyValue,
+            repaymentFrequencyNthDay:
+              !ignoreSavedTermsOnLoad
+                ? savedLoanTermsData?.repaymentFrequencyNthDay || ""
+                : "",
+            repaymentFrequencyDayOfWeek:
+              !ignoreSavedTermsOnLoad
+                ? savedLoanTermsData?.repaymentFrequencyDayOfWeek || ""
+                : "",
             nominalInterestRate: loanTemplate.interestRatePerPeriod ?? 0,
-            interestRateFrequency: nextInterestRateFrequencyValue,
-            interestMethod: nextInterestMethodValue,
-            amortization: nextAmortizationValue,
+            interestRateFrequency: resolvedInterestRateFrequencyValue,
+            interestMethod: resolvedInterestMethodValue,
+            amortization: resolvedAmortizationValue,
             isEqualAmortization: loanTemplate.isEqualAmortization ?? false,
             loanScheduleType:
               loanTemplate.loanScheduleTypeOptions?.[0]?.value || "",
-            repaymentStrategy: nextRepaymentStrategyValue,
+            repaymentStrategy: resolvedRepaymentStrategyValue,
             balloonRepaymentAmount: 0,
-            interestCalculationPeriod: nextInterestCalculationPeriodValue,
+            interestCalculationPeriod: resolvedInterestCalculationPeriodValue,
             calculateInterestForExactDays: false,
             arrearsTolerance: 0,
             interestFreePeriod: 0,
@@ -1245,8 +1379,8 @@ export function LoanTermsForm({
             loanTemplate.termFrequencyTypeOptions[0].id.toString();
           console.log("Set termFrequency fallback:", termFreqValue);
         }
-        if (termFreqValue) {
-          form.setValue("termFrequency", termFreqValue, {
+        if (resolvedTermFrequencyValue) {
+          form.setValue("termFrequency", resolvedTermFrequencyValue, {
             shouldDirty: true,
             shouldTouch: true,
             shouldValidate: false,
@@ -1278,8 +1412,8 @@ export function LoanTermsForm({
             loanTemplate.repaymentFrequencyTypeOptions[0].id.toString();
           console.log("Set repaymentFrequency fallback:", repaymentFreqValue);
         }
-        if (repaymentFreqValue) {
-          form.setValue("repaymentFrequency", repaymentFreqValue, {
+        if (resolvedRepaymentFrequencyValue) {
+          form.setValue("repaymentFrequency", resolvedRepaymentFrequencyValue, {
             shouldDirty: true,
             shouldTouch: true,
             shouldValidate: false,
@@ -1308,8 +1442,8 @@ export function LoanTermsForm({
             loanTemplate.interestRateFrequencyTypeOptions[0].id.toString();
           console.log("Set interestRateFrequency fallback:", interestFreqValue);
         }
-        if (interestFreqValue) {
-          form.setValue("interestRateFrequency", interestFreqValue, {
+        if (resolvedInterestRateFrequencyValue) {
+          form.setValue("interestRateFrequency", resolvedInterestRateFrequencyValue, {
             shouldDirty: true,
             shouldTouch: true,
             shouldValidate: false,
@@ -1320,16 +1454,19 @@ export function LoanTermsForm({
         if (termFreqValue || repaymentFreqValue || interestFreqValue) {
           frequencyValuesSet.current = true;
           console.log("Frequency values marked as SET:", {
-            termFreqValue,
-            repaymentFreqValue,
-            interestFreqValue,
+            termFreqValue: resolvedTermFrequencyValue,
+            repaymentFreqValue: resolvedRepaymentFrequencyValue,
+            interestFreqValue: resolvedInterestRateFrequencyValue,
           });
         }
 
         // Interest Method
         // Use interestType from template to find matching option
         let interestMethodValue = "";
-        if (
+        if (resolvedInterestMethodValue) {
+          interestMethodValue = resolvedInterestMethodValue;
+          form.setValue("interestMethod", interestMethodValue);
+        } else if (
           loanTemplate.interestType &&
           loanTemplate.interestTypeOptions?.length > 0
         ) {
@@ -1354,7 +1491,10 @@ export function LoanTermsForm({
         // Amortization
         // Use amortizationType from template to find matching option (e.g., "Equal installments")
         let amortizationValue = "";
-        if (
+        if (resolvedAmortizationValue) {
+          amortizationValue = resolvedAmortizationValue;
+          form.setValue("amortization", amortizationValue);
+        } else if (
           loanTemplate.amortizationType &&
           loanTemplate.amortizationTypeOptions?.length > 0
         ) {
@@ -1420,7 +1560,10 @@ export function LoanTermsForm({
         // Repayment Strategy
         // Use transactionProcessingStrategyCode from template if available, otherwise find from options
         let repaymentStrategyValue = "";
-        if (loanTemplate.transactionProcessingStrategyCode) {
+        if (resolvedRepaymentStrategyValue) {
+          repaymentStrategyValue = resolvedRepaymentStrategyValue;
+          form.setValue("repaymentStrategy", repaymentStrategyValue);
+        } else if (loanTemplate.transactionProcessingStrategyCode) {
           repaymentStrategyValue =
             loanTemplate.transactionProcessingStrategyCode;
           form.setValue("repaymentStrategy", repaymentStrategyValue);
@@ -1438,7 +1581,10 @@ export function LoanTermsForm({
         // Interest Calculation Period
         // Use interestCalculationPeriodType from template to find matching option
         let interestCalcPeriodValue = "";
-        if (
+        if (resolvedInterestCalculationPeriodValue) {
+          interestCalcPeriodValue = resolvedInterestCalculationPeriodValue;
+          form.setValue("interestCalculationPeriod", interestCalcPeriodValue);
+        } else if (
           loanTemplate.interestCalculationPeriodType &&
           loanTemplate.interestCalculationPeriodTypeOptions?.length > 0
         ) {
@@ -1470,9 +1616,9 @@ export function LoanTermsForm({
 
         // Use the helper function that updates both ref and state
         updateFrequencyValues({
-          termFrequency: termFreqValue,
-          repaymentFrequency: repaymentFreqValue,
-          interestRateFrequency: interestFreqValue,
+          termFrequency: resolvedTermFrequencyValue,
+          repaymentFrequency: resolvedRepaymentFrequencyValue,
+          interestRateFrequency: resolvedInterestRateFrequencyValue,
           interestMethod: interestMethodValue,
           amortization: amortizationValue,
           repaymentStrategy: repaymentStrategyValue,
@@ -1480,14 +1626,42 @@ export function LoanTermsForm({
         });
 
         console.log("All template values stored in state:", {
-          termFreqValue,
-          repaymentFreqValue,
-          interestFreqValue,
+          termFreqValue: resolvedTermFrequencyValue,
+          repaymentFreqValue: resolvedRepaymentFrequencyValue,
+          interestFreqValue: resolvedInterestRateFrequencyValue,
           interestMethodValue,
           amortizationValue,
           repaymentStrategyValue,
           interestCalcPeriodValue,
         });
+
+        const savedRepaymentNthDayValue = selectValueIfPresent(
+          ignoreSavedTermsOnLoad ? "" : savedLoanTermsData?.repaymentFrequencyNthDay,
+          loanTemplate.repaymentFrequencyNthDayTypeOptions
+        );
+        if (savedRepaymentNthDayValue) {
+          form.setValue("repaymentFrequencyNthDay", savedRepaymentNthDayValue, {
+            shouldDirty: true,
+            shouldTouch: true,
+            shouldValidate: false,
+          });
+        }
+
+        const savedRepaymentDayOfWeekValue = selectValueIfPresent(
+          ignoreSavedTermsOnLoad ? "" : savedLoanTermsData?.repaymentFrequencyDayOfWeek,
+          loanTemplate.repaymentFrequencyDaysOfWeekTypeOptions
+        );
+        if (savedRepaymentDayOfWeekValue) {
+          form.setValue(
+            "repaymentFrequencyDayOfWeek",
+            savedRepaymentDayOfWeekValue,
+            {
+              shouldDirty: true,
+              shouldTouch: true,
+              shouldValidate: false,
+            }
+          );
+        }
 
         // Set disbursement date for first repayment only as a fallback.
         // If sharedFirstRepaymentOn is already set (from the Loans tab), use that instead.
@@ -1541,7 +1715,14 @@ export function LoanTermsForm({
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoPopulatePrincipalAmount, isInvoiceDiscountingLead, loanTemplate, tenantSettingsLoaded]); // form is stable from useForm, no need in deps
+  }, [
+    autoPopulatePrincipalAmount,
+    ignoreSavedTermsOnLoad,
+    isInvoiceDiscountingLead,
+    loanTemplate,
+    savedLoanTermsData,
+    tenantSettingsLoaded,
+  ]); // form is stable from useForm, no need in deps
 
   // Sync firstRepaymentOn from the Loans tab whenever it changes
   useEffect(() => {
@@ -1606,6 +1787,7 @@ export function LoanTermsForm({
           if (result.success && result.data) {
             const loanTermsData = result.data;
             console.log("Loaded loan terms data:", loanTermsData);
+            setSavedLoanTermsData(loanTermsData);
 
             // Populate form fields - only if template values weren't already set
             if (
@@ -2494,7 +2676,8 @@ export function LoanTermsForm({
       };
       index: number;
     }>,
-    emptyText: string
+    emptyText: string,
+    readOnly = false
   ) => {
     if (entries.length === 0) {
       return (
@@ -2518,6 +2701,7 @@ export function LoanTermsForm({
         isSimplePrincipalPercentCalculation(
           charge.originalCharge?.chargeCalculationType
         );
+      const isReadOnlyCharge = readOnly;
 
       return (
         <div
@@ -2570,6 +2754,7 @@ export function LoanTermsForm({
             </div>
             {canEditLoan &&
               !isChargesStructureReadOnly &&
+              !isReadOnlyCharge &&
               !isLockedInvoiceIncomeCharge &&
               !isTopupLockedCharge && (
                 <Button
@@ -2609,6 +2794,7 @@ export function LoanTermsForm({
                     : charge.amount
                 }
                 disabled={
+                  isReadOnlyCharge ||
                   !canEditLoan || isLockedInvoiceIncomeCharge || isTopupLockedCharge
                 }
                 onChange={(e) => {
@@ -2636,11 +2822,15 @@ export function LoanTermsForm({
                     <Button
                       variant="outline"
                       disabled={
+                        isReadOnlyCharge ||
                         !canEditLoan || isChargesStructureReadOnly || isTopupLockedCharge
                       }
                       className={cn(
                         "w-full justify-start text-left font-normal",
-                        (!canEditLoan || isChargesStructureReadOnly || isTopupLockedCharge) &&
+                        (isReadOnlyCharge ||
+                          !canEditLoan ||
+                          isChargesStructureReadOnly ||
+                          isTopupLockedCharge) &&
                           "cursor-not-allowed opacity-70",
                         !charge.dueDate && "text-muted-foreground"
                       )}
@@ -3935,25 +4125,9 @@ export function LoanTermsForm({
                       Add Charge
                     </Button>
                   )}
-                  {overdueChargeOptions.length > 0 && (
-                    <Button
-                      type="button"
-                      variant={activeChargePicker === "overdue" ? "default" : "outline"}
-                      size="sm"
-                      onClick={() =>
-                        activeChargePicker === "overdue"
-                          ? closeChargePicker()
-                          : openChargePicker("overdue")
-                      }
-                    >
-                      <Plus className="h-4 w-4 mr-2" />
-                      Add Overdue Charge
-                    </Button>
-                  )}
                 </div>
               )}
 
-              {/* Add Charge Form */}
               {activeChargePicker && canEditLoan && (
                 <div className="border rounded-lg p-4 bg-muted space-y-4">
                   <div className="flex items-center justify-between">
@@ -4029,42 +4203,41 @@ export function LoanTermsForm({
                           </p>
                         )}
                     </div>
-                    {/* Only show Due Date for charges with "Specified Due Date" time type */}
                     {(() => {
                       const requiresDueDate = isSpecifiedDueDateCharge(
                         selectedChargeToAdd?.chargeTimeType
                       );
-                      
+
                       return requiresDueDate ? (
-                    <div className="space-y-2">
-                      <Label>Due Date</Label>
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <Button
-                            variant="outline"
-                            disabled={!canEditLoan}
-                            className={cn(
-                              "w-full justify-start text-left font-normal",
-                              !canEditLoan && "cursor-not-allowed opacity-70",
-                              !newChargeDueDate && "text-muted-foreground"
-                            )}
-                          >
-                            <CalendarIcon className="mr-2 h-4 w-4" />
-                            {newChargeDueDate
-                              ? format(newChargeDueDate, "PPP")
-                              : "Pick a date"}
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0">
-                          <Calendar
-                            mode="single"
-                            selected={newChargeDueDate}
-                            onSelect={setNewChargeDueDate}
-                            initialFocus
-                          />
-                        </PopoverContent>
-                      </Popover>
-                    </div>
+                        <div className="space-y-2">
+                          <Label>Due Date</Label>
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <Button
+                                variant="outline"
+                                disabled={!canEditLoan}
+                                className={cn(
+                                  "w-full justify-start text-left font-normal",
+                                  !canEditLoan && "cursor-not-allowed opacity-70",
+                                  !newChargeDueDate && "text-muted-foreground"
+                                )}
+                              >
+                                <CalendarIcon className="mr-2 h-4 w-4" />
+                                {newChargeDueDate
+                                  ? format(newChargeDueDate, "PPP")
+                                  : "Pick a date"}
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0">
+                              <Calendar
+                                mode="single"
+                                selected={newChargeDueDate}
+                                onSelect={setNewChargeDueDate}
+                                initialFocus
+                              />
+                            </PopoverContent>
+                          </Popover>
+                        </div>
                       ) : null;
                     })()}
                   </div>
@@ -4075,10 +4248,10 @@ export function LoanTermsForm({
                       const requiresDueDate = isSpecifiedDueDateCharge(
                         selectedChargeToAdd?.chargeTimeType
                       );
-                      
+
                       return !canEditLoan ||
-                      !selectedChargeOption ||
-                      !newChargeAmount ||
+                        !selectedChargeOption ||
+                        !newChargeAmount ||
                         (requiresDueDate && !newChargeDueDate);
                     })()}
                   >
@@ -4089,7 +4262,6 @@ export function LoanTermsForm({
                 </div>
               )}
 
-              {/* Editable Charges List */}
               <div className="space-y-4">
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
@@ -4114,7 +4286,7 @@ export function LoanTermsForm({
                     <div>
                       <h4 className="font-medium">Overdue Charges</h4>
                       <p className="text-sm text-muted-foreground">
-                        Overdue-installment charges displayed separately like Mifos.
+                        Overdue-installment charges shown for reference only.
                       </p>
                     </div>
                     {overdueEditableCharges.length > 0 && (
@@ -4123,7 +4295,8 @@ export function LoanTermsForm({
                   </div>
                   {renderChargeItems(
                     overdueEditableCharges,
-                    'No overdue charges added. Click "Add Overdue Charge" to add one.'
+                    "No overdue charges configured on this loan product.",
+                    true
                   )}
                 </div>
               </div>

@@ -114,6 +114,23 @@ function getFirstRepaymentFromSchedule(schedule: any): string | null {
   return normalizeDateValue(firstRepaymentPeriod?.dueDate);
 }
 
+function isOverdueChargeLike(charge?: any): boolean {
+  const timeType = charge?.originalCharge?.chargeTimeType || charge?.chargeTimeType;
+  const code = String(timeType?.code || "").toLowerCase();
+  const value = String(timeType?.value || "").toLowerCase();
+
+  if (
+    code === "chargetimetype.overdueinstallment" ||
+    code === "overdueinstallment" ||
+    code.endsWith(".overdueinstallment") ||
+    value.includes("overdue")
+  ) {
+    return true;
+  }
+
+  return !timeType && Boolean(charge?.originalCharge?.penalty ?? charge?.penalty);
+}
+
 function mapFineractLoanToLoanTerms(fineractLoan: FineractLoanLike) {
   return {
     principal:
@@ -773,11 +790,13 @@ export async function GET(
           ? format(new Date(loanDetails.disbursementOn), "dd MMMM yyyy")
           : format(new Date(), "dd MMMM yyyy");
 
-        const charges = (loanTerms.charges || []).map((charge: any) => ({
-          chargeId: charge.chargeId,
-          amount: charge.amount,
-          dueDate: charge.dueDate,
-        }));
+        const charges = (loanTerms.charges || [])
+          .filter((charge: any) => !isOverdueChargeLike(charge))
+          .map((charge: any) => ({
+            chargeId: charge.chargeId,
+            amount: charge.amount,
+            dueDate: charge.dueDate,
+          }));
 
         const payload = {
           productId: parseInt(resolvedProductId, 10),
