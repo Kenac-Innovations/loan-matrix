@@ -71,6 +71,23 @@ interface RepaymentSchedule {
   periods: RepaymentSchedulePeriod[];
 }
 
+function isOverdueChargeLike(charge?: any) {
+  const timeType = charge?.originalCharge?.chargeTimeType || charge?.chargeTimeType;
+  const code = String(timeType?.code || "").toLowerCase();
+  const value = String(timeType?.value || "").toLowerCase();
+
+  if (
+    code === "chargetimetype.overdueinstallment" ||
+    code === "overdueinstallment" ||
+    code.endsWith(".overdueinstallment") ||
+    value.includes("overdue")
+  ) {
+    return true;
+  }
+
+  return !timeType && Boolean(charge?.originalCharge?.penalty ?? charge?.penalty);
+}
+
 interface RepaymentScheduleFormProps {
   leadId?: string;
   clientId?: number;
@@ -298,7 +315,9 @@ export function RepaymentScheduleForm({
       // Fineract's calculateLoanSchedule treats `amount` as a percentage for % charges and
       // applies it to the full principal (not take-home). To get the correct take-home-based fee,
       // send the rebased percentage p = r×(H/P) so that p% × P = r% × H = desired fee.
-      const charges = editableCharges.map((charge) => {
+      const charges = editableCharges
+        .filter((charge) => !isOverdueChargeLike(charge))
+        .map((charge) => {
         const formattedDueDate =
           charge.dueDate instanceof Date
             ? format(charge.dueDate, "dd MMMM yyyy")

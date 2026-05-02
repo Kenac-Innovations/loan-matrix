@@ -7,6 +7,23 @@ import { callCDEAndStore } from "@/lib/cde-utils";
 import { sendLoanStatusSms } from "@/lib/notification-service";
 import { createLoanCharge } from "@/lib/fineract-loan-charge";
 
+function isOverdueChargeLike(charge?: any) {
+  const timeType = charge?.originalCharge?.chargeTimeType || charge?.chargeTimeType;
+  const code = String(timeType?.code || "").toLowerCase();
+  const value = String(timeType?.value || "").toLowerCase();
+
+  if (
+    code === "chargetimetype.overdueinstallment" ||
+    code === "overdueinstallment" ||
+    code.endsWith(".overdueinstallment") ||
+    value.includes("overdue")
+  ) {
+    return true;
+  }
+
+  return !timeType && Boolean(charge?.originalCharge?.penalty ?? charge?.penalty);
+}
+
 /**
  * POST /api/leads/[id]/create-loan
  * Creates a Fineract loan from a manual lead and returns the core response.
@@ -64,7 +81,7 @@ export async function POST(
     const isInvoiceDiscountingLead = lead.facilityType === "INVOICE_DISCOUNTING";
 
     const requestedCharges = Array.isArray(loanData.charges)
-      ? loanData.charges
+      ? loanData.charges.filter((charge: any) => !isOverdueChargeLike(charge))
       : [];
 
     // Build loan payload
@@ -107,7 +124,6 @@ export async function POST(
             const chargePayload: any = { chargeId: charge.chargeId };
 
             if (isPercentage) {
-              // Fineract POST /loans treats `amount` as the percentage value for % charges
               chargePayload.amount = charge.originalCharge.percentage;
             } else {
               chargePayload.amount = charge.amount;

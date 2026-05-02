@@ -57,6 +57,16 @@ function formatRepaymentStrategyName(name: string): string {
 
 type ChargeCalcTypeRef = { id?: number; code?: string; value?: string };
 type ChargeTimeTypeRef = { id?: number; code?: string; value?: string };
+type LoanTemplateChargeOption = {
+  id: number;
+  name: string;
+  amount?: number;
+  percentage?: number;
+  active: boolean;
+  penalty: boolean;
+  chargeCalculationType?: ChargeCalcTypeRef;
+  chargeTimeType?: ChargeTimeTypeRef;
+};
 
 function getChargeCalculationHighlight(calc?: ChargeCalcTypeRef) {
   const code = (calc?.code || "").toLowerCase();
@@ -107,6 +117,31 @@ function isSpecifiedDueDateCharge(timeType?: ChargeTimeTypeRef) {
     /specified due date/i.test(value) ||
     timeType?.id === 2
   );
+}
+
+function normalizeChargeTypeCode(value?: string) {
+  return (value || "").trim().toLowerCase();
+}
+
+function isOverdueChargeTimeType(timeType?: ChargeTimeTypeRef) {
+  const code = normalizeChargeTypeCode(timeType?.code);
+  const value = normalizeChargeTypeCode(timeType?.value);
+
+  return (
+    code === "chargetimetype.overdueinstallment" ||
+    code === "overdueinstallment" ||
+    code.endsWith(".overdueinstallment") ||
+    value.includes("overdue")
+  );
+}
+
+function isOverdueChargeLike(charge?: {
+  penalty?: boolean;
+  chargeTimeType?: ChargeTimeTypeRef;
+}) {
+  if (!charge) return false;
+  if (isOverdueChargeTimeType(charge.chargeTimeType)) return true;
+  return !charge.chargeTimeType && charge.penalty === true;
 }
 
 const INVOICE_INCOME_CHARGE_NAME = "INVOICE_INCOME";
@@ -343,16 +378,8 @@ interface LoanTemplate {
     active: boolean;
     penalty: boolean;
   }>;
-  chargeOptions?: Array<{
-    id: number;
-    name: string;
-    amount?: number;
-    percentage?: number;
-    active: boolean;
-    penalty: boolean;
-    chargeCalculationType?: ChargeCalcTypeRef;
-    chargeTimeType?: { id: number; code: string; value: string };
-  }>;
+  chargeOptions?: LoanTemplateChargeOption[];
+  penaltyOptions?: LoanTemplateChargeOption[];
   canUseForTopup?: boolean;
   clientActiveLoanOptions?: Array<{
     id: number;
@@ -460,6 +487,67 @@ function mergeInvoiceIncomeChargeIntoTemplate(
   };
 }
 
+function dedupeChargeOptionsById(
+  charges: LoanTemplateChargeOption[] | undefined
+): LoanTemplateChargeOption[] {
+  const byId = new Map<number, LoanTemplateChargeOption>();
+  (charges || []).forEach((charge) => {
+    if (!byId.has(charge.id)) {
+      byId.set(charge.id, charge);
+    }
+  });
+  return Array.from(byId.values());
+}
+
+function dedupeAppliedChargesById(charges: LoanTemplate["charges"]): NonNullable<LoanTemplate["charges"]> {
+  const byId = new Map<number, NonNullable<LoanTemplate["charges"]>[number]>();
+  (charges || []).forEach((charge) => {
+    const key = Number(charge.chargeId || charge.id);
+    if (!byId.has(key)) {
+      byId.set(key, charge);
+    }
+  });
+  return Array.from(byId.values());
+}
+
+function mergeProductChargeDataIntoTemplate(
+  template: LoanTemplate,
+  productData: Partial<LoanTemplate> & { charges?: LoanTemplate["charges"] }
+) {
+  const productCharges = productData.charges || [];
+  const productChargeOptions = productData.chargeOptions || [];
+  const productPenaltyOptions = productData.penaltyOptions || [];
+
+  const inferredRegularOptions = productCharges.filter(
+    (charge) => !isOverdueChargeLike(charge)
+  );
+  const inferredOverdueOptions = productCharges.filter((charge) =>
+    isOverdueChargeLike(charge)
+  );
+
+  return {
+    ...template,
+    chargeOptions: dedupeChargeOptionsById([
+      ...(template.chargeOptions || []),
+      ...productChargeOptions,
+      ...inferredRegularOptions,
+    ]),
+    penaltyOptions: dedupeChargeOptionsById([
+      ...(template.penaltyOptions || []),
+      ...productPenaltyOptions,
+      ...inferredOverdueOptions,
+    ]),
+    charges: dedupeAppliedChargesById([
+      ...(template.charges || []),
+      ...productCharges,
+    ]),
+    canUseForTopup:
+      typeof productData.canUseForTopup === "boolean"
+        ? productData.canUseForTopup
+        : template.canUseForTopup,
+  };
+}
+
 function getInvoiceIncomeCurrencyCode(
   template: LoanTemplate | null | undefined,
   fallbackTemplate?: LoanTemplate | null
@@ -506,6 +594,22 @@ function getDefaultChargeAmount(charge: {
     return charge.percentage;
   }
   return 0;
+}
+
+function selectValueIfPresent(
+  value: string | undefined | null,
+  options: Array<{ id: number }> | undefined
+): string {
+  if (!value || !options?.length) return "";
+  return options.some((option) => option.id.toString() === value) ? value : "";
+}
+
+function codeValueIfPresent(
+  value: string | undefined | null,
+  options: Array<{ code: string }> | undefined
+): string {
+  if (!value || !options?.length) return "";
+  return options.some((option) => option.code === value) ? value : "";
 }
 
 interface LoanTermsFormProps {
@@ -561,7 +665,9 @@ export function LoanTermsForm({
       originalCharge?: any;
     }>
   >([]);
-  const [showAddCharge, setShowAddCharge] = useState(false);
+  const [activeChargePicker, setActiveChargePicker] = useState<
+    "regular" | "overdue" | null
+  >(null);
   const [selectedChargeOption, setSelectedChargeOption] = useState<string>("");
   const [newChargeAmount, setNewChargeAmount] = useState<string>("");
   const [newChargeDueDate, setNewChargeDueDate] = useState<Date | undefined>(
@@ -582,6 +688,7 @@ export function LoanTermsForm({
   const [tenantSettingsLoaded, setTenantSettingsLoaded] = useState(false);
   const [autoPopulatePrincipalAmount, setAutoPopulatePrincipalAmount] =
     useState(true);
+  const [savedLoanTermsData, setSavedLoanTermsData] = useState<any>(null);
 
   // Track if template values have been set
   const frequencyValuesSet = useRef(false);
@@ -606,17 +713,64 @@ export function LoanTermsForm({
         : -1,
     [editableCharges, invoiceIncomeChargeFineractId]
   );
+  const allChargeOptions = useMemo(() => {
+    const byId = new Map<number, LoanTemplateChargeOption>();
+    [...(loanTemplate?.chargeOptions || []), ...(loanTemplate?.penaltyOptions || [])].forEach(
+      (option) => {
+        if (!byId.has(option.id)) {
+          byId.set(option.id, option);
+        }
+      }
+    );
+    return Array.from(byId.values());
+  }, [loanTemplate?.chargeOptions, loanTemplate?.penaltyOptions]);
+  const regularChargeOptions = useMemo(
+    () => allChargeOptions.filter((option) => !isOverdueChargeLike(option)),
+    [allChargeOptions]
+  );
+  const overdueChargeOptions = useMemo(
+    () => allChargeOptions.filter((option) => isOverdueChargeLike(option)),
+    [allChargeOptions]
+  );
+  const availableRegularChargeOptions = useMemo(
+    () =>
+      regularChargeOptions.filter(
+        (option) => !editableCharges.some((charge) => charge.chargeId === option.id)
+      ),
+    [editableCharges, regularChargeOptions]
+  );
+  const availableOverdueChargeOptions = useMemo(
+    () =>
+      overdueChargeOptions.filter(
+        (option) => !editableCharges.some((charge) => charge.chargeId === option.id)
+      ),
+    [editableCharges, overdueChargeOptions]
+  );
   const selectedChargeToAdd = useMemo(
     () =>
-      loanTemplate?.chargeOptions?.find(
+      allChargeOptions.find(
         (opt: any) => opt.id.toString() === selectedChargeOption
       ) || null,
-    [loanTemplate, selectedChargeOption]
+    [allChargeOptions, selectedChargeOption]
   );
   const isSelectedChargeInvoiceIncome =
     isInvoiceDiscountingLead &&
     Number.isFinite(invoiceIncomeChargeFineractId) &&
     Number(selectedChargeToAdd?.id) === invoiceIncomeChargeFineractId;
+  const regularEditableCharges = useMemo(
+    () =>
+      editableCharges
+        .map((charge, index) => ({ charge, index }))
+        .filter(({ charge }) => !isOverdueChargeLike(charge.originalCharge)),
+    [editableCharges]
+  );
+  const overdueEditableCharges = useMemo(
+    () =>
+      editableCharges
+        .map((charge, index) => ({ charge, index }))
+        .filter(({ charge }) => isOverdueChargeLike(charge.originalCharge)),
+    [editableCharges]
+  );
 
   // Compute display values directly from template - this survives remounts!
   const templateDerivedValues = useMemo(() => {
@@ -836,7 +990,7 @@ export function LoanTermsForm({
       collaterals: [],
     });
     setEditableCharges([]);
-    setShowAddCharge(false);
+    setActiveChargePicker(null);
     setSelectedChargeOption("");
     setNewChargeAmount("");
     setNewChargeDueDate(undefined);
@@ -847,6 +1001,7 @@ export function LoanTermsForm({
       interestSchedule: false,
       chargesCollateral: false,
     });
+    setSavedLoanTermsData(null);
 
     previousProductIdRef.current = productId;
   }, [form, productId, sharedFirstRepaymentOn]);
@@ -878,7 +1033,7 @@ export function LoanTermsForm({
           fetch(
             `/api/fineract/loans/template?clientId=${clientId}&productId=${productId}&activeOnly=true&staffInSelectedOfficeOnly=true&templateType=individual`
           ),
-          fetch(`/api/fineract/loans/product/${productId}`),
+          fetch(`/api/fineract/loanproducts/${productId}?template=true`),
           fetch(`/api/invoice-discounting-products?fineractProductId=${productId}`),
         ]);
 
@@ -886,7 +1041,7 @@ export function LoanTermsForm({
           throw new Error("Failed to fetch detailed loan template");
         }
 
-        const [detailedTemplate, invoiceDiscountingResult] = await Promise.all([
+        let [detailedTemplate, invoiceDiscountingResult] = await Promise.all([
           templateRes.json(),
           invoiceDiscountingRes.ok
             ? invoiceDiscountingRes.json()
@@ -899,6 +1054,10 @@ export function LoanTermsForm({
         // Merge product-level topup config into the template
         if (productRes.ok) {
           const productData = await productRes.json();
+          detailedTemplate = mergeProductChargeDataIntoTemplate(
+            detailedTemplate,
+            productData
+          );
           console.log("Product data - canUseForTopup:", productData.canUseForTopup);
           if (productData.canUseForTopup) {
             detailedTemplate.canUseForTopup = true;
@@ -1095,6 +1254,51 @@ export function LoanTermsForm({
           loanTemplate.interestCalculationPeriodTypeOptions?.[0]?.id?.toString() ||
           "";
 
+        const savedTermFrequencyValue = selectValueIfPresent(
+          ignoreSavedTermsOnLoad ? "" : savedLoanTermsData?.termFrequency,
+          loanTemplate.termFrequencyTypeOptions
+        );
+        const savedRepaymentFrequencyValue = selectValueIfPresent(
+          ignoreSavedTermsOnLoad ? "" : savedLoanTermsData?.repaymentFrequency,
+          loanTemplate.repaymentFrequencyTypeOptions
+        );
+        const savedInterestRateFrequencyValue = selectValueIfPresent(
+          ignoreSavedTermsOnLoad ? "" : savedLoanTermsData?.interestRateFrequency,
+          loanTemplate.interestRateFrequencyTypeOptions
+        );
+        const savedInterestMethodValue = selectValueIfPresent(
+          ignoreSavedTermsOnLoad ? "" : savedLoanTermsData?.interestMethod,
+          loanTemplate.interestTypeOptions
+        );
+        const savedAmortizationValue = selectValueIfPresent(
+          ignoreSavedTermsOnLoad ? "" : savedLoanTermsData?.amortization,
+          loanTemplate.amortizationTypeOptions
+        );
+        const savedRepaymentStrategyValue = codeValueIfPresent(
+          ignoreSavedTermsOnLoad ? "" : savedLoanTermsData?.repaymentStrategy,
+          loanTemplate.transactionProcessingStrategyOptions
+        );
+        const savedInterestCalculationPeriodValue = selectValueIfPresent(
+          ignoreSavedTermsOnLoad ? "" : savedLoanTermsData?.interestCalculationPeriod,
+          loanTemplate.interestCalculationPeriodTypeOptions
+        );
+
+        const resolvedTermFrequencyValue =
+          savedTermFrequencyValue || nextTermFrequencyValue;
+        const resolvedRepaymentFrequencyValue =
+          savedRepaymentFrequencyValue || nextRepaymentFrequencyValue;
+        const resolvedInterestRateFrequencyValue =
+          savedInterestRateFrequencyValue || nextInterestRateFrequencyValue;
+        const resolvedInterestMethodValue =
+          savedInterestMethodValue || nextInterestMethodValue;
+        const resolvedAmortizationValue =
+          savedAmortizationValue || nextAmortizationValue;
+        const resolvedRepaymentStrategyValue =
+          savedRepaymentStrategyValue || nextRepaymentStrategyValue;
+        const resolvedInterestCalculationPeriodValue =
+          savedInterestCalculationPeriodValue ||
+          nextInterestCalculationPeriodValue;
+
         if (shouldApplyTemplateDefaultsRef.current) {
           const shouldPopulatePrincipal =
             autoPopulatePrincipalAmount &&
@@ -1104,24 +1308,30 @@ export function LoanTermsForm({
           form.reset({
             principal: shouldPopulatePrincipal ? loanTemplate.principal : 0,
             loanTerm: loanTemplate.termFrequency ?? 0,
-            termFrequency: nextTermFrequencyValue,
+            termFrequency: resolvedTermFrequencyValue,
             numberOfRepayments: loanTemplate.numberOfRepayments ?? 0,
             firstRepaymentOn: sharedFirstRepaymentOn,
             interestChargedFrom: undefined,
             repaymentEvery: loanTemplate.repaymentEvery ?? 0,
-            repaymentFrequency: nextRepaymentFrequencyValue,
-            repaymentFrequencyNthDay: "",
-            repaymentFrequencyDayOfWeek: "",
+            repaymentFrequency: resolvedRepaymentFrequencyValue,
+            repaymentFrequencyNthDay:
+              !ignoreSavedTermsOnLoad
+                ? savedLoanTermsData?.repaymentFrequencyNthDay || ""
+                : "",
+            repaymentFrequencyDayOfWeek:
+              !ignoreSavedTermsOnLoad
+                ? savedLoanTermsData?.repaymentFrequencyDayOfWeek || ""
+                : "",
             nominalInterestRate: loanTemplate.interestRatePerPeriod ?? 0,
-            interestRateFrequency: nextInterestRateFrequencyValue,
-            interestMethod: nextInterestMethodValue,
-            amortization: nextAmortizationValue,
+            interestRateFrequency: resolvedInterestRateFrequencyValue,
+            interestMethod: resolvedInterestMethodValue,
+            amortization: resolvedAmortizationValue,
             isEqualAmortization: loanTemplate.isEqualAmortization ?? false,
             loanScheduleType:
               loanTemplate.loanScheduleTypeOptions?.[0]?.value || "",
-            repaymentStrategy: nextRepaymentStrategyValue,
+            repaymentStrategy: resolvedRepaymentStrategyValue,
             balloonRepaymentAmount: 0,
-            interestCalculationPeriod: nextInterestCalculationPeriodValue,
+            interestCalculationPeriod: resolvedInterestCalculationPeriodValue,
             calculateInterestForExactDays: false,
             arrearsTolerance: 0,
             interestFreePeriod: 0,
@@ -1169,8 +1379,8 @@ export function LoanTermsForm({
             loanTemplate.termFrequencyTypeOptions[0].id.toString();
           console.log("Set termFrequency fallback:", termFreqValue);
         }
-        if (termFreqValue) {
-          form.setValue("termFrequency", termFreqValue, {
+        if (resolvedTermFrequencyValue) {
+          form.setValue("termFrequency", resolvedTermFrequencyValue, {
             shouldDirty: true,
             shouldTouch: true,
             shouldValidate: false,
@@ -1202,8 +1412,8 @@ export function LoanTermsForm({
             loanTemplate.repaymentFrequencyTypeOptions[0].id.toString();
           console.log("Set repaymentFrequency fallback:", repaymentFreqValue);
         }
-        if (repaymentFreqValue) {
-          form.setValue("repaymentFrequency", repaymentFreqValue, {
+        if (resolvedRepaymentFrequencyValue) {
+          form.setValue("repaymentFrequency", resolvedRepaymentFrequencyValue, {
             shouldDirty: true,
             shouldTouch: true,
             shouldValidate: false,
@@ -1232,8 +1442,8 @@ export function LoanTermsForm({
             loanTemplate.interestRateFrequencyTypeOptions[0].id.toString();
           console.log("Set interestRateFrequency fallback:", interestFreqValue);
         }
-        if (interestFreqValue) {
-          form.setValue("interestRateFrequency", interestFreqValue, {
+        if (resolvedInterestRateFrequencyValue) {
+          form.setValue("interestRateFrequency", resolvedInterestRateFrequencyValue, {
             shouldDirty: true,
             shouldTouch: true,
             shouldValidate: false,
@@ -1244,16 +1454,19 @@ export function LoanTermsForm({
         if (termFreqValue || repaymentFreqValue || interestFreqValue) {
           frequencyValuesSet.current = true;
           console.log("Frequency values marked as SET:", {
-            termFreqValue,
-            repaymentFreqValue,
-            interestFreqValue,
+            termFreqValue: resolvedTermFrequencyValue,
+            repaymentFreqValue: resolvedRepaymentFrequencyValue,
+            interestFreqValue: resolvedInterestRateFrequencyValue,
           });
         }
 
         // Interest Method
         // Use interestType from template to find matching option
         let interestMethodValue = "";
-        if (
+        if (resolvedInterestMethodValue) {
+          interestMethodValue = resolvedInterestMethodValue;
+          form.setValue("interestMethod", interestMethodValue);
+        } else if (
           loanTemplate.interestType &&
           loanTemplate.interestTypeOptions?.length > 0
         ) {
@@ -1278,7 +1491,10 @@ export function LoanTermsForm({
         // Amortization
         // Use amortizationType from template to find matching option (e.g., "Equal installments")
         let amortizationValue = "";
-        if (
+        if (resolvedAmortizationValue) {
+          amortizationValue = resolvedAmortizationValue;
+          form.setValue("amortization", amortizationValue);
+        } else if (
           loanTemplate.amortizationType &&
           loanTemplate.amortizationTypeOptions?.length > 0
         ) {
@@ -1344,7 +1560,10 @@ export function LoanTermsForm({
         // Repayment Strategy
         // Use transactionProcessingStrategyCode from template if available, otherwise find from options
         let repaymentStrategyValue = "";
-        if (loanTemplate.transactionProcessingStrategyCode) {
+        if (resolvedRepaymentStrategyValue) {
+          repaymentStrategyValue = resolvedRepaymentStrategyValue;
+          form.setValue("repaymentStrategy", repaymentStrategyValue);
+        } else if (loanTemplate.transactionProcessingStrategyCode) {
           repaymentStrategyValue =
             loanTemplate.transactionProcessingStrategyCode;
           form.setValue("repaymentStrategy", repaymentStrategyValue);
@@ -1362,7 +1581,10 @@ export function LoanTermsForm({
         // Interest Calculation Period
         // Use interestCalculationPeriodType from template to find matching option
         let interestCalcPeriodValue = "";
-        if (
+        if (resolvedInterestCalculationPeriodValue) {
+          interestCalcPeriodValue = resolvedInterestCalculationPeriodValue;
+          form.setValue("interestCalculationPeriod", interestCalcPeriodValue);
+        } else if (
           loanTemplate.interestCalculationPeriodType &&
           loanTemplate.interestCalculationPeriodTypeOptions?.length > 0
         ) {
@@ -1394,9 +1616,9 @@ export function LoanTermsForm({
 
         // Use the helper function that updates both ref and state
         updateFrequencyValues({
-          termFrequency: termFreqValue,
-          repaymentFrequency: repaymentFreqValue,
-          interestRateFrequency: interestFreqValue,
+          termFrequency: resolvedTermFrequencyValue,
+          repaymentFrequency: resolvedRepaymentFrequencyValue,
+          interestRateFrequency: resolvedInterestRateFrequencyValue,
           interestMethod: interestMethodValue,
           amortization: amortizationValue,
           repaymentStrategy: repaymentStrategyValue,
@@ -1404,14 +1626,42 @@ export function LoanTermsForm({
         });
 
         console.log("All template values stored in state:", {
-          termFreqValue,
-          repaymentFreqValue,
-          interestFreqValue,
+          termFreqValue: resolvedTermFrequencyValue,
+          repaymentFreqValue: resolvedRepaymentFrequencyValue,
+          interestFreqValue: resolvedInterestRateFrequencyValue,
           interestMethodValue,
           amortizationValue,
           repaymentStrategyValue,
           interestCalcPeriodValue,
         });
+
+        const savedRepaymentNthDayValue = selectValueIfPresent(
+          ignoreSavedTermsOnLoad ? "" : savedLoanTermsData?.repaymentFrequencyNthDay,
+          loanTemplate.repaymentFrequencyNthDayTypeOptions
+        );
+        if (savedRepaymentNthDayValue) {
+          form.setValue("repaymentFrequencyNthDay", savedRepaymentNthDayValue, {
+            shouldDirty: true,
+            shouldTouch: true,
+            shouldValidate: false,
+          });
+        }
+
+        const savedRepaymentDayOfWeekValue = selectValueIfPresent(
+          ignoreSavedTermsOnLoad ? "" : savedLoanTermsData?.repaymentFrequencyDayOfWeek,
+          loanTemplate.repaymentFrequencyDaysOfWeekTypeOptions
+        );
+        if (savedRepaymentDayOfWeekValue) {
+          form.setValue(
+            "repaymentFrequencyDayOfWeek",
+            savedRepaymentDayOfWeekValue,
+            {
+              shouldDirty: true,
+              shouldTouch: true,
+              shouldValidate: false,
+            }
+          );
+        }
 
         // Set disbursement date for first repayment only as a fallback.
         // If sharedFirstRepaymentOn is already set (from the Loans tab), use that instead.
@@ -1465,7 +1715,14 @@ export function LoanTermsForm({
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoPopulatePrincipalAmount, isInvoiceDiscountingLead, loanTemplate, tenantSettingsLoaded]); // form is stable from useForm, no need in deps
+  }, [
+    autoPopulatePrincipalAmount,
+    ignoreSavedTermsOnLoad,
+    isInvoiceDiscountingLead,
+    loanTemplate,
+    savedLoanTermsData,
+    tenantSettingsLoaded,
+  ]); // form is stable from useForm, no need in deps
 
   // Sync firstRepaymentOn from the Loans tab whenever it changes
   useEffect(() => {
@@ -1530,6 +1787,7 @@ export function LoanTermsForm({
           if (result.success && result.data) {
             const loanTermsData = result.data;
             console.log("Loaded loan terms data:", loanTermsData);
+            setSavedLoanTermsData(loanTermsData);
 
             // Populate form fields - only if template values weren't already set
             if (
@@ -2021,8 +2279,22 @@ export function LoanTermsForm({
       setSelectedChargeOption("");
       setNewChargeAmount("");
       setNewChargeDueDate(undefined);
-      setShowAddCharge(false);
+      setActiveChargePicker(null);
     }
+  };
+
+  const openChargePicker = (type: "regular" | "overdue") => {
+    setActiveChargePicker(type);
+    setSelectedChargeOption("");
+    setNewChargeAmount("");
+    setNewChargeDueDate(undefined);
+  };
+
+  const closeChargePicker = () => {
+    setActiveChargePicker(null);
+    setSelectedChargeOption("");
+    setNewChargeAmount("");
+    setNewChargeDueDate(undefined);
   };
 
   const watchedTermFrequency = form.watch("termFrequency");
@@ -2380,6 +2652,210 @@ export function LoanTermsForm({
       "collaterals",
       currentCollaterals.filter((_, i) => i !== index)
     );
+  };
+
+  const activeChargeOptions =
+    activeChargePicker === "overdue"
+      ? availableOverdueChargeOptions
+      : availableRegularChargeOptions;
+  const activeChargePickerTitle =
+    activeChargePicker === "overdue" ? "Add Overdue Charge" : "Add Charge";
+  const activeChargePickerPlaceholder =
+    activeChargePicker === "overdue"
+      ? "Select overdue charge"
+      : "Select charge";
+
+  const renderChargeItems = (
+    entries: Array<{
+      charge: {
+        chargeId: number;
+        name: string;
+        amount: number;
+        dueDate: Date;
+        originalCharge?: any;
+      };
+      index: number;
+    }>,
+    emptyText: string,
+    readOnly = false
+  ) => {
+    if (entries.length === 0) {
+      return (
+        <p className="text-sm text-muted-foreground text-center py-4">
+          {emptyText}
+        </p>
+      );
+    }
+
+    return entries.map(({ charge, index }) => {
+      const calcHighlight = getChargeCalculationHighlight(
+        charge.originalCharge?.chargeCalculationType
+      );
+      const isLockedInvoiceIncomeCharge =
+        isInvoiceDiscountingLead &&
+        index === invoiceIncomeChargeIndex &&
+        invoiceDiscountingReserveAmount != null;
+      const isTopupLockedCharge =
+        isTopup &&
+        isLoanDisbursementChargeTime(charge.originalCharge?.chargeTimeType) &&
+        isSimplePrincipalPercentCalculation(
+          charge.originalCharge?.chargeCalculationType
+        );
+      const isReadOnlyCharge = readOnly;
+
+      return (
+        <div
+          key={`${charge.chargeId}-${index}`}
+          className="border rounded-lg p-4 space-y-4"
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex-1 flex flex-wrap items-center gap-2">
+              <h4 className="font-medium">{charge.name}</h4>
+              {charge.originalCharge?.chargeCalculationType && (
+                <Badge
+                  variant="outline"
+                  className={cn(
+                    "text-xs font-medium border",
+                    calcHighlight.badgeClassName
+                  )}
+                  title={
+                    calcHighlight.kind === "flat"
+                      ? "Flat fee: amount is a fixed currency value"
+                      : calcHighlight.kind === "percent"
+                        ? topupTakeHomePreview
+                          ? "Percentage: amount is applied to take-home (net after closing the selected loan)"
+                          : "Percentage: amount is a percent of principal or another base"
+                        : undefined
+                  }
+                >
+                  {calcHighlight.label}
+                </Badge>
+              )}
+              {charge.originalCharge?.chargeTimeType && (
+                <Badge
+                  variant="outline"
+                  className={cn(
+                    "text-xs font-medium border",
+                    isLoanDisbursementChargeTime(charge.originalCharge.chargeTimeType)
+                      ? "border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-700 dark:bg-blue-950 dark:text-blue-300"
+                      : "border-slate-300 bg-slate-50 text-slate-600 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-400"
+                  )}
+                >
+                  {charge.originalCharge.chargeTimeType.value ||
+                    charge.originalCharge.chargeTimeType.code ||
+                    `Time type ${charge.originalCharge.chargeTimeType.id}`}
+                </Badge>
+              )}
+              {charge.originalCharge?.penalty && (
+                <span className="inline-block px-2 py-1 text-xs bg-orange-100 text-orange-800 rounded dark:bg-orange-950 dark:text-orange-200">
+                  Penalty
+                </span>
+              )}
+            </div>
+            {canEditLoan &&
+              !isChargesStructureReadOnly &&
+              !isReadOnlyCharge &&
+              !isLockedInvoiceIncomeCharge &&
+              !isTopupLockedCharge && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handleRemoveCharge(index)}
+                >
+                  <Trash2 className="h-4 w-4 text-red-500" />
+                </Button>
+              )}
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div
+              className={cn(
+                "space-y-2 rounded-md border p-3 transition-colors",
+                calcHighlight.amountRingClassName
+              )}
+            >
+              <Label className="flex items-center gap-2">
+                {calcHighlight.kind === "percent" ? "Percentage" : "Amount"}
+                <span className="text-xs font-normal text-muted-foreground">
+                  {calcHighlight.kind === "flat" && "(fixed currency amount)"}
+                  {calcHighlight.kind === "percent" &&
+                    (topupTakeHomePreview
+                      ? "(% applied to principal, equals take-home fee)"
+                      : "(% of principal)")}
+                  {calcHighlight.kind === "other" && ""}
+                </span>
+              </Label>
+              <Input
+                type="number"
+                step="0.01"
+                value={
+                  calcHighlight.kind === "percent"
+                    ? (charge.originalCharge?.percentage ?? charge.amount)
+                    : charge.amount
+                }
+                disabled={
+                  isReadOnlyCharge ||
+                  !canEditLoan || isLockedInvoiceIncomeCharge || isTopupLockedCharge
+                }
+                onChange={(e) => {
+                  const val = parseFloat(e.target.value) || 0;
+                  if (calcHighlight.kind === "percent") {
+                    handleUpdateChargePercentage(index, val);
+                  } else {
+                    handleUpdateChargeAmount(index, val);
+                  }
+                }}
+              />
+              {isLockedInvoiceIncomeCharge && (
+                <p className="text-xs text-muted-foreground">
+                  Auto-filled from invoice income and locked.
+                </p>
+              )}
+            </div>
+            {(charge.originalCharge?.chargeTimeType?.code === "specifiedDueDate" ||
+              charge.originalCharge?.chargeTimeType?.value === "Specified Due Date" ||
+              charge.originalCharge?.chargeTimeType?.id === 2) && (
+              <div className="space-y-2">
+                <Label>Due Date</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      disabled={
+                        isReadOnlyCharge ||
+                        !canEditLoan || isChargesStructureReadOnly || isTopupLockedCharge
+                      }
+                      className={cn(
+                        "w-full justify-start text-left font-normal",
+                        (isReadOnlyCharge ||
+                          !canEditLoan ||
+                          isChargesStructureReadOnly ||
+                          isTopupLockedCharge) &&
+                          "cursor-not-allowed opacity-70",
+                        !charge.dueDate && "text-muted-foreground"
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {charge.dueDate ? format(charge.dueDate, "PPP") : "Pick a date"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0">
+                    <Calendar
+                      mode="single"
+                      selected={charge.dueDate}
+                      onSelect={(date) =>
+                        date && handleUpdateChargeDueDate(index, date)
+                      }
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    });
   };
 
   if (isLoading) {
@@ -3597,7 +4073,7 @@ export function LoanTermsForm({
         </div>
 
         {/* Charges */}
-        {(editableCharges.length > 0 || loanTemplate?.chargeOptions) && (
+        {(editableCharges.length > 0 || allChargeOptions.length > 0) && (
           <Card>
             <CardHeader>
               <div className="flex items-center justify-between">
@@ -3629,37 +4105,38 @@ export function LoanTermsForm({
                     </p>
                   )}
                 </div>
-                {loanTemplate?.chargeOptions &&
-                  canEditLoan &&
-                  !isChargesStructureReadOnly && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setShowAddCharge(!showAddCharge)}
-                  >
-                    <Plus className="h-4 w-4 mr-2" />
-                    Add Charge
-                  </Button>
-                )}
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
-              {/* Add Charge Form */}
-              {showAddCharge && canEditLoan && loanTemplate?.chargeOptions && (
+              {canEditLoan && !isChargesStructureReadOnly && (
+                <div className="flex flex-wrap gap-2">
+                  {regularChargeOptions.length > 0 && (
+                    <Button
+                      type="button"
+                      variant={activeChargePicker === "regular" ? "default" : "outline"}
+                      size="sm"
+                      onClick={() =>
+                        activeChargePicker === "regular"
+                          ? closeChargePicker()
+                          : openChargePicker("regular")
+                      }
+                    >
+                      <Plus className="h-4 w-4 mr-2" />
+                      Add Charge
+                    </Button>
+                  )}
+                </div>
+              )}
+
+              {activeChargePicker && canEditLoan && (
                 <div className="border rounded-lg p-4 bg-muted space-y-4">
                   <div className="flex items-center justify-between">
-                    <h4 className="font-medium">Add New Charge</h4>
+                    <h4 className="font-medium">{activeChargePickerTitle}</h4>
                     <Button
                       type="button"
                       variant="ghost"
                       size="sm"
-                      onClick={() => {
-                        setShowAddCharge(false);
-                        setSelectedChargeOption("");
-                        setNewChargeAmount("");
-                        setNewChargeDueDate(undefined);
-                      }}
+                      onClick={closeChargePicker}
                     >
                       <X className="h-4 w-4" />
                     </Button>
@@ -3672,7 +4149,7 @@ export function LoanTermsForm({
                         onValueChange={(value) => {
                           setSelectedChargeOption(value);
 
-                          const selectedCharge = loanTemplate.chargeOptions?.find(
+                          const selectedCharge = activeChargeOptions.find(
                             (opt: any) => opt.id.toString() === value
                           );
 
@@ -3691,24 +4168,17 @@ export function LoanTermsForm({
                         disabled={!canEditLoan}
                       >
                         <SelectTrigger>
-                          <SelectValue placeholder="Select charge" />
+                          <SelectValue placeholder={activeChargePickerPlaceholder} />
                         </SelectTrigger>
                         <SelectContent>
-                          {loanTemplate.chargeOptions
-                            .filter(
-                              (opt: any) =>
-                                !editableCharges.some(
-                                  (c) => c.chargeId === opt.id
-                                )
-                            )
-                            .map((option: any) => (
-                              <SelectItem
-                                key={option.id}
-                                value={option.id.toString()}
-                              >
-                                {getChargeDisplayName(option.name)}
-                              </SelectItem>
-                            ))}
+                          {activeChargeOptions.map((option: any) => (
+                            <SelectItem
+                              key={option.id}
+                              value={option.id.toString()}
+                            >
+                              {getChargeDisplayName(option.name)}
+                            </SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     </div>
@@ -3733,42 +4203,41 @@ export function LoanTermsForm({
                           </p>
                         )}
                     </div>
-                    {/* Only show Due Date for charges with "Specified Due Date" time type */}
                     {(() => {
                       const requiresDueDate = isSpecifiedDueDateCharge(
                         selectedChargeToAdd?.chargeTimeType
                       );
-                      
+
                       return requiresDueDate ? (
-                    <div className="space-y-2">
-                      <Label>Due Date</Label>
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <Button
-                            variant="outline"
-                            disabled={!canEditLoan}
-                            className={cn(
-                              "w-full justify-start text-left font-normal",
-                              !canEditLoan && "cursor-not-allowed opacity-70",
-                              !newChargeDueDate && "text-muted-foreground"
-                            )}
-                          >
-                            <CalendarIcon className="mr-2 h-4 w-4" />
-                            {newChargeDueDate
-                              ? format(newChargeDueDate, "PPP")
-                              : "Pick a date"}
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0">
-                          <Calendar
-                            mode="single"
-                            selected={newChargeDueDate}
-                            onSelect={setNewChargeDueDate}
-                            initialFocus
-                          />
-                        </PopoverContent>
-                      </Popover>
-                    </div>
+                        <div className="space-y-2">
+                          <Label>Due Date</Label>
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <Button
+                                variant="outline"
+                                disabled={!canEditLoan}
+                                className={cn(
+                                  "w-full justify-start text-left font-normal",
+                                  !canEditLoan && "cursor-not-allowed opacity-70",
+                                  !newChargeDueDate && "text-muted-foreground"
+                                )}
+                              >
+                                <CalendarIcon className="mr-2 h-4 w-4" />
+                                {newChargeDueDate
+                                  ? format(newChargeDueDate, "PPP")
+                                  : "Pick a date"}
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0">
+                              <Calendar
+                                mode="single"
+                                selected={newChargeDueDate}
+                                onSelect={setNewChargeDueDate}
+                                initialFocus
+                              />
+                            </PopoverContent>
+                          </Popover>
+                        </div>
                       ) : null;
                     })()}
                   </div>
@@ -3779,185 +4248,57 @@ export function LoanTermsForm({
                       const requiresDueDate = isSpecifiedDueDateCharge(
                         selectedChargeToAdd?.chargeTimeType
                       );
-                      
+
                       return !canEditLoan ||
-                      !selectedChargeOption ||
-                      !newChargeAmount ||
+                        !selectedChargeOption ||
+                        !newChargeAmount ||
                         (requiresDueDate && !newChargeDueDate);
                     })()}
                   >
-                    Add Charge
+                    {activeChargePicker === "overdue"
+                      ? "Add Overdue Charge"
+                      : "Add Charge"}
                   </Button>
                 </div>
               )}
 
-              {/* Editable Charges List */}
               <div className="space-y-4">
-                {editableCharges.length === 0 ? (
-                  <p className="text-sm text-muted-foreground text-center py-4">
-                    No charges added. Click "Add Charge" to add one.
-                  </p>
-                ) : (
-                  editableCharges.map((charge, index) => {
-                    const calcHighlight = getChargeCalculationHighlight(
-                      charge.originalCharge?.chargeCalculationType
-                    );
-                    const isLockedInvoiceIncomeCharge =
-                      isInvoiceDiscountingLead &&
-                      index === invoiceIncomeChargeIndex &&
-                      invoiceDiscountingReserveAmount != null;
-                    const isTopupLockedCharge =
-                      isTopup &&
-                      isLoanDisbursementChargeTime(charge.originalCharge?.chargeTimeType) &&
-                      isSimplePrincipalPercentCalculation(charge.originalCharge?.chargeCalculationType);
-                    return (
-                    <div
-                      key={`${charge.chargeId}-${index}`}
-                      className="border rounded-lg p-4 space-y-4"
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex-1 flex flex-wrap items-center gap-2">
-                          <h4 className="font-medium">{charge.name}</h4>
-                          {charge.originalCharge?.chargeCalculationType && (
-                            <Badge
-                              variant="outline"
-                              className={cn(
-                                "text-xs font-medium border",
-                                calcHighlight.badgeClassName
-                              )}
-                              title={
-                                calcHighlight.kind === "flat"
-                                  ? "Flat fee: amount is a fixed currency value"
-                                  : calcHighlight.kind === "percent"
-                                    ? topupTakeHomePreview
-                                      ? "Percentage: amount is applied to take-home (net after closing the selected loan)"
-                                      : "Percentage: amount is a percent of principal or another base"
-                                    : undefined
-                              }
-                            >
-                              {calcHighlight.label}
-                            </Badge>
-                          )}
-                          {charge.originalCharge?.chargeTimeType && (
-                            <Badge
-                              variant="outline"
-                              className={cn(
-                                "text-xs font-medium border",
-                                isLoanDisbursementChargeTime(charge.originalCharge.chargeTimeType)
-                                  ? "border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-700 dark:bg-blue-950 dark:text-blue-300"
-                                  : "border-slate-300 bg-slate-50 text-slate-600 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-400"
-                              )}
-                            >
-                              {charge.originalCharge.chargeTimeType.value ||
-                                charge.originalCharge.chargeTimeType.code ||
-                                `Time type ${charge.originalCharge.chargeTimeType.id}`}
-                            </Badge>
-                          )}
-                          {charge.originalCharge?.penalty && (
-                            <span className="inline-block px-2 py-1 text-xs bg-orange-100 text-orange-800 rounded dark:bg-orange-950 dark:text-orange-200">
-                              Penalty
-                            </span>
-                          )}
-                        </div>
-                        {canEditLoan &&
-                          !isChargesStructureReadOnly &&
-                          !isLockedInvoiceIncomeCharge &&
-                          !isTopupLockedCharge && (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleRemoveCharge(index)}
-                        >
-                          <Trash2 className="h-4 w-4 text-red-500" />
-                        </Button>
-                        )}
-                      </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div
-                          className={cn(
-                            "space-y-2 rounded-md border p-3 transition-colors",
-                            calcHighlight.amountRingClassName
-                          )}
-                        >
-                          <Label className="flex items-center gap-2">
-                            {calcHighlight.kind === "percent" ? "Percentage" : "Amount"}
-                            <span className="text-xs font-normal text-muted-foreground">
-                              {calcHighlight.kind === "flat" &&
-                                "(fixed currency amount)"}
-                              {calcHighlight.kind === "percent" &&
-                                (topupTakeHomePreview
-                                  ? "(% applied to principal, equals take-home fee)"
-                                  : "(% of principal)")}
-                              {calcHighlight.kind === "other" && ""}
-                            </span>
-                          </Label>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            value={
-                              calcHighlight.kind === "percent"
-                                ? (charge.originalCharge?.percentage ?? charge.amount)
-                                : charge.amount
-                            }
-                            disabled={!canEditLoan || isLockedInvoiceIncomeCharge || isTopupLockedCharge}
-                            onChange={(e) => {
-                              const val = parseFloat(e.target.value) || 0;
-                              if (calcHighlight.kind === "percent") {
-                                handleUpdateChargePercentage(index, val);
-                              } else {
-                                handleUpdateChargeAmount(index, val);
-                              }
-                            }}
-                          />
-                          {isLockedInvoiceIncomeCharge && (
-                            <p className="text-xs text-muted-foreground">
-                              Auto-filled from invoice income and locked.
-                            </p>
-                          )}
-                        </div>
-                        {/* Only show Due Date for charges with "Specified Due Date" time type */}
-                        {(charge.originalCharge?.chargeTimeType?.code === "specifiedDueDate" ||
-                          charge.originalCharge?.chargeTimeType?.value === "Specified Due Date" ||
-                          charge.originalCharge?.chargeTimeType?.id === 2) && (
-                        <div className="space-y-2">
-                          <Label>Due Date</Label>
-                          <Popover>
-                            <PopoverTrigger asChild>
-                              <Button
-                                variant="outline"
-                                disabled={!canEditLoan || isChargesStructureReadOnly || isTopupLockedCharge}
-                                className={cn(
-                                  "w-full justify-start text-left font-normal",
-                                  (!canEditLoan || isChargesStructureReadOnly || isTopupLockedCharge) &&
-                                    "cursor-not-allowed opacity-70",
-                                  !charge.dueDate && "text-muted-foreground"
-                                )}
-                              >
-                                <CalendarIcon className="mr-2 h-4 w-4" />
-                                {charge.dueDate
-                                  ? format(charge.dueDate, "PPP")
-                                  : "Pick a date"}
-                              </Button>
-                            </PopoverTrigger>
-                            <PopoverContent className="w-auto p-0">
-                              <Calendar
-                                mode="single"
-                                selected={charge.dueDate}
-                                onSelect={(date) =>
-                                  date && handleUpdateChargeDueDate(index, date)
-                                }
-                                initialFocus
-                              />
-                            </PopoverContent>
-                          </Popover>
-                        </div>
-                        )}
-                      </div>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="font-medium">Charges</h4>
+                      <p className="text-sm text-muted-foreground">
+                        Standard charges linked to this loan product.
+                      </p>
                     </div>
-                    );
-                  })
-                )}
+                    {regularEditableCharges.length > 0 && (
+                      <Badge variant="outline">{regularEditableCharges.length}</Badge>
+                    )}
+                  </div>
+                  {renderChargeItems(
+                    regularEditableCharges,
+                    'No charges added. Click "Add Charge" to add one.'
+                  )}
+                </div>
+
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="font-medium">Overdue Charges</h4>
+                      <p className="text-sm text-muted-foreground">
+                        Overdue-installment charges shown for reference only.
+                      </p>
+                    </div>
+                    {overdueEditableCharges.length > 0 && (
+                      <Badge variant="outline">{overdueEditableCharges.length}</Badge>
+                    )}
+                  </div>
+                  {renderChargeItems(
+                    overdueEditableCharges,
+                    "No overdue charges configured on this loan product.",
+                    true
+                  )}
+                </div>
               </div>
             </CardContent>
           </Card>
