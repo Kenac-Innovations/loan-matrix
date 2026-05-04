@@ -624,11 +624,22 @@ export function hasEmploymentDetailFields(headers: any[] | undefined | null): bo
   
   const hasEmploymentType = headers.some((h) => h?.columnName && isEmploymentTypeField(h.columnName));
   const hasAppointmentDate = headers.some((h) => h?.columnName && isAppointmentDateField(h.columnName));
+  const hasContractStartDate = headers.some((h) => h?.columnName && isContractStartDateField(h.columnName));
+  const hasContractEndDate = headers.some((h) => h?.columnName && isContractEndDateField(h.columnName));
+  const hasYearsOfService = headers.some((h) => h?.columnName && isYearsOfServiceField(h.columnName));
   const hasEmployer = headers.some((h) => h?.columnName && isEmployerField(h.columnName));
-  const hasOccupation = headers.some((h) => h?.columnName && isOccupationField(h.columnName));
-  
-  // Must have at least employment type, appointment date, employer, or occupation
-  return hasEmploymentType || hasAppointmentDate || hasEmployer || hasOccupation;
+
+  // Avoid hijacking unrelated datatables like Referees that may also contain
+  // an occupation field. We only switch to the custom employment renderer when
+  // the table has stronger employment signals beyond occupation alone.
+  return (
+    hasEmploymentType ||
+    hasAppointmentDate ||
+    hasContractStartDate ||
+    hasContractEndDate ||
+    hasYearsOfService ||
+    hasEmployer
+  );
 }
 
 /**
@@ -668,4 +679,3 @@ export function getEmploymentDetailColumnNames(headers: any[] | undefined | null
 
   return names;
 }
-
