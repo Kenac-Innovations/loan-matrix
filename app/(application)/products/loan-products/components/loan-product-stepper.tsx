@@ -25,7 +25,9 @@ import {
   buildFineractPayload,
   buildInitialPaymentAllocations,
   defaultLoanProductFormData,
-  ADVANCED_PAYMENT_ALLOCATION_STRATEGY,
+  getDefaultEnumOptionId,
+  getDefaultLoanScheduleType,
+  getDefaultTransactionProcessingStrategyCode,
 } from "@/shared/types/loan-product";
 
 interface Step {
@@ -53,7 +55,11 @@ interface LoanProductStepperProps {
 /** Build smart defaults from what the template provides as first/preferred options. */
 function buildTemplateDefaults(template: LoanProductTemplate): Partial<LoanProductFormData> {
   const first = <T extends { id: number }>(arr: T[] | undefined) => arr?.[0]?.id ?? "";
-  const firstCode = (arr: { code: string }[] | undefined) => arr?.[0]?.code ?? "";
+  const defaultLoanScheduleType = getDefaultLoanScheduleType(template.loanScheduleTypeOptions);
+  const defaultRepaymentStartDateType = getDefaultEnumOptionId(
+    template.repaymentStartDateTypeOptions,
+    { value: "Disbursement Date" }
+  );
 
   return {
     amortizationType:              first(template.amortizationTypeOptions),
@@ -66,9 +72,14 @@ function buildTemplateDefaults(template: LoanProductTemplate): Partial<LoanProdu
     daysInYearType:                first(template.daysInYearTypeOptions),
     daysInMonthType:               first(template.daysInMonthTypeOptions),
     repaymentFrequencyType:        first(template.repaymentFrequencyTypeOptions),
+    repaymentStartDateType:        defaultRepaymentStartDateType,
     interestRateFrequencyType:     first(template.interestRateFrequencyTypeOptions),
-    transactionProcessingStrategyCode: firstCode(template.transactionProcessingStrategyOptions),
+    transactionProcessingStrategyCode: getDefaultTransactionProcessingStrategyCode(
+      template.transactionProcessingStrategyOptions,
+      defaultLoanScheduleType
+    ),
     accountingRule:                first(template.accountingRuleOptions),
+    loanScheduleType:              defaultLoanScheduleType,
     currencyCode:                  template.currencyOptions?.[0]?.code ?? "",
     digitsAfterDecimal:            template.currencyOptions?.[0]?.decimalPlaces ?? 2,
     repaymentEvery:                1,
@@ -92,7 +103,6 @@ function StepHeader({ steps, currentStep, completedSteps, onStepClick }: StepHea
         {steps.map((step, index) => {
           const isCompleted = completedSteps.has(index);
           const isCurrent   = index === currentStep;
-          const isPending   = !isCompleted && !isCurrent;
           const isAccessible =
             index <= currentStep || completedSteps.has(index - 1) || index === 0;
 

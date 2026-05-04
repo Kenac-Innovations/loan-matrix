@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -11,6 +11,8 @@ import {
   Eye,
   Pencil,
   Package2,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
@@ -30,6 +32,13 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Table,
   TableBody,
   TableCell,
@@ -45,6 +54,8 @@ export default function LoanProductsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [pageIndex, setPageIndex] = useState(0);
+  const [pageSize, setPageSize] = useState(10);
 
   const loadProducts = async () => {
     try {
@@ -65,11 +76,34 @@ export default function LoanProductsPage() {
     loadProducts();
   }, []);
 
-  const filtered = products.filter(
-    (p) =>
-      p.name.toLowerCase().includes(search.toLowerCase()) ||
-      p.shortName.toLowerCase().includes(search.toLowerCase())
+  const filtered = useMemo(
+    () =>
+      products
+        .filter(
+          (p) =>
+            p.name.toLowerCase().includes(search.toLowerCase()) ||
+            p.shortName.toLowerCase().includes(search.toLowerCase())
+        )
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    [products, search]
   );
+
+  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const currentPage = Math.min(pageIndex, pageCount - 1);
+  const paginatedProducts = useMemo(() => {
+    const start = currentPage * pageSize;
+    return filtered.slice(start, start + pageSize);
+  }, [currentPage, filtered, pageSize]);
+
+  useEffect(() => {
+    setPageIndex(0);
+  }, [search, pageSize]);
+
+  useEffect(() => {
+    if (pageIndex > pageCount - 1) {
+      setPageIndex(Math.max(0, pageCount - 1));
+    }
+  }, [pageCount, pageIndex]);
 
   return (
     <div className="space-y-6">
@@ -188,7 +222,7 @@ export default function LoanProductsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filtered.map((product) => (
+                  {paginatedProducts.map((product) => (
                     <TableRow
                       key={product.id}
                       className="cursor-pointer"
@@ -272,6 +306,63 @@ export default function LoanProductsPage() {
                   ))}
                 </TableBody>
               </Table>
+
+              {filtered.length > 0 && (
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="text-sm text-muted-foreground">
+                    Showing {currentPage * pageSize + 1}-
+                    {Math.min((currentPage + 1) * pageSize, filtered.length)} of {filtered.length}
+                  </div>
+
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-6">
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-medium">Rows per page</p>
+                      <Select
+                        value={String(pageSize)}
+                        onValueChange={(value) => setPageSize(Number(value))}
+                      >
+                        <SelectTrigger className="h-8 w-[70px]">
+                          <SelectValue placeholder={String(pageSize)} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {[10, 20, 30, 40, 50].map((size) => (
+                            <SelectItem key={size} value={String(size)}>
+                              {size}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="flex items-center text-sm font-medium">
+                      Page {currentPage + 1} of {pageCount}
+                    </div>
+
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="outline"
+                        className="h-8 w-8 p-0"
+                        onClick={() => setPageIndex((prev) => Math.max(prev - 1, 0))}
+                        disabled={currentPage === 0}
+                      >
+                        <span className="sr-only">Go to previous page</span>
+                        <ChevronLeft className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        className="h-8 w-8 p-0"
+                        onClick={() =>
+                          setPageIndex((prev) => Math.min(prev + 1, pageCount - 1))
+                        }
+                        disabled={currentPage >= pageCount - 1}
+                      >
+                        <span className="sr-only">Go to next page</span>
+                        <ChevronRight className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {filtered.length === 0 && search && (
                 <p className="py-4 text-center text-sm text-muted-foreground">
