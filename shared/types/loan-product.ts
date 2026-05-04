@@ -427,6 +427,59 @@ export const defaultLoanProductFormData: LoanProductFormData = {
 
 export const ADVANCED_PAYMENT_ALLOCATION_STRATEGY = "advanced-payment-allocation-strategy";
 
+export function getDefaultLoanScheduleType(
+  options: FineractEnumOption[] | undefined
+): string {
+  if (!options?.length) return "";
+
+  return (
+    options.find((option) => option.code === "CUMULATIVE")?.code ??
+    options.find((option) => option.value.toLowerCase() === "cumulative")?.code ??
+    options[0]?.code ??
+    ""
+  );
+}
+
+export function getDefaultEnumOptionId(
+  options: FineractEnumOption[] | undefined,
+  preferred: { code?: string; value?: string }
+): number | "" {
+  if (!options?.length) return "";
+
+  const byCode = preferred.code
+    ? options.find((option) => option.code === preferred.code)
+    : undefined;
+  if (byCode) return byCode.id;
+
+  const byValue = preferred.value
+    ? options.find((option) => option.value.toLowerCase() === preferred.value?.toLowerCase())
+    : undefined;
+  if (byValue) return byValue.id;
+
+  return options[0]?.id ?? "";
+}
+
+export function getDefaultTransactionProcessingStrategyCode(
+  options: Array<{ code: string; name: string }> | undefined,
+  loanScheduleType: string
+): string {
+  if (!options?.length) return "";
+
+  if (loanScheduleType === "PROGRESSIVE") {
+    return (
+      options.find((option) => option.code === ADVANCED_PAYMENT_ALLOCATION_STRATEGY)?.code ??
+      options[0]?.code ??
+      ""
+    );
+  }
+
+  return (
+    options.find((option) => option.code !== ADVANCED_PAYMENT_ALLOCATION_STRATEGY)?.code ??
+    options[0]?.code ??
+    ""
+  );
+}
+
 /**
  * Builds initial paymentAllocations + creditAllocations from the Fineract template.
  * Mirrors what Mifos' AdvancedPaymentStrategy.buildAdvancedPaymentAllocationList() does.
@@ -510,10 +563,6 @@ export function buildInitialPaymentAllocations(template: LoanProductTemplate): {
  * Omits empty string / null / "" values for optional fields.
  */
 export function buildFineractPayload(form: LoanProductFormData): Record<string, unknown> {
-  const n = (v: number | "") => (v === "" ? undefined : v);
-  const s = (v: string) => (v === "" ? undefined : v);
-  const b = (v: boolean) => v || undefined;
-
   const payload: Record<string, unknown> = {
     name: form.name,
     shortName: form.shortName,

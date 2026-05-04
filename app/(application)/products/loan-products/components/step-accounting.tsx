@@ -4,14 +4,8 @@ import { useState } from "react";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
+import { SearchableSelect, type Option } from "@/components/searchable-select";
 import {
   Table,
   TableBody,
@@ -138,27 +132,25 @@ function GLAccountSelect({
   accounts: FineractGLAccount[];
   onChange: (v: number | "") => void;
 }) {
+  const accountOptions: Option[] = accounts.map((acc) => ({
+    value: String(acc.id),
+    label: `${acc.glCode} — ${acc.name}`,
+  }));
+
   return (
     <div className="space-y-2">
       <Label htmlFor={id}>
         {label} {required && <span className="text-destructive">*</span>}
       </Label>
-      <Select
-        value={value === "" ? "__none__" : String(value)}
-        onValueChange={(v) => onChange(v === "__none__" ? "" : Number(v))}
-      >
-        <SelectTrigger id={id}>
-          <SelectValue placeholder="Select GL account…" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="__none__">None</SelectItem>
-          {accounts.map((acc) => (
-            <SelectItem key={acc.id} value={String(acc.id)}>
-              {acc.glCode} — {acc.name}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      <div id={id}>
+        <SearchableSelect
+          options={accountOptions}
+          value={value === "" ? undefined : String(value)}
+          onValueChange={(v) => onChange(Number(v))}
+          placeholder="Select GL account..."
+          emptyMessage="No GL accounts found."
+        />
+      </div>
     </div>
   );
 }
@@ -210,6 +202,11 @@ function MappingTable<T>({
 
   const usedCol1 = items.map(getCol1);
   const availableForAdd = col1Options.filter((o) => !usedCol1.includes(o.id));
+  const toSelectOptions = (options: MappingOption[]): Option[] =>
+    options.map((option) => ({
+      value: String(option.id),
+      label: option.label,
+    }));
 
   function labelFor(options: MappingOption[], id: number) {
     return options.find((o) => o.id === id)?.label ?? String(id);
@@ -288,48 +285,34 @@ function MappingTable<T>({
               editingIndex === index ? (
                 <TableRow key={index}>
                   <TableCell>
-                    <Select
-                      value={draft.col1 === "" ? "__none__" : String(draft.col1)}
+                    <SearchableSelect
+                      options={toSelectOptions(
+                        col1Options.filter(
+                          (o) =>
+                            o.id === draft.col1 ||
+                            !items.some((it, i) => i !== index && getCol1(it) === o.id)
+                        )
+                      )}
+                      value={draft.col1 === "" ? undefined : String(draft.col1)}
                       onValueChange={(v) =>
-                        setDraft((d) => ({ ...d, col1: v === "__none__" ? "" : Number(v) }))
+                        setDraft((d) => ({ ...d, col1: Number(v) }))
                       }
-                    >
-                      <SelectTrigger className="h-8 text-xs">
-                        <SelectValue placeholder="Select…" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {col1Options
-                          .filter(
-                            (o) =>
-                              o.id === draft.col1 ||
-                              !items.some((it, i) => i !== index && getCol1(it) === o.id)
-                          )
-                          .map((o) => (
-                            <SelectItem key={o.id} value={String(o.id)}>
-                              {o.label}
-                            </SelectItem>
-                          ))}
-                      </SelectContent>
-                    </Select>
+                      placeholder="Select..."
+                      emptyMessage="No options found."
+                      className="h-8 text-xs"
+                    />
                   </TableCell>
                   <TableCell>
-                    <Select
-                      value={draft.col2 === "" ? "__none__" : String(draft.col2)}
+                    <SearchableSelect
+                      options={toSelectOptions(col2Options)}
+                      value={draft.col2 === "" ? undefined : String(draft.col2)}
                       onValueChange={(v) =>
-                        setDraft((d) => ({ ...d, col2: v === "__none__" ? "" : Number(v) }))
+                        setDraft((d) => ({ ...d, col2: Number(v) }))
                       }
-                    >
-                      <SelectTrigger className="h-8 text-xs">
-                        <SelectValue placeholder="Select…" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {col2Options.map((o) => (
-                          <SelectItem key={o.id} value={String(o.id)}>
-                            {o.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                      placeholder="Select..."
+                      emptyMessage="No options found."
+                      className="h-8 text-xs"
+                    />
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-1">
@@ -392,42 +375,28 @@ function MappingTable<T>({
             {adding && (
               <TableRow>
                 <TableCell>
-                  <Select
-                    value={draft.col1 === "" ? "__none__" : String(draft.col1)}
+                  <SearchableSelect
+                    options={toSelectOptions(availableForAdd)}
+                    value={draft.col1 === "" ? undefined : String(draft.col1)}
                     onValueChange={(v) =>
-                      setDraft((d) => ({ ...d, col1: v === "__none__" ? "" : Number(v) }))
+                      setDraft((d) => ({ ...d, col1: Number(v) }))
                     }
-                  >
-                    <SelectTrigger className="h-8 text-xs">
-                      <SelectValue placeholder="Select…" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {availableForAdd.map((o) => (
-                        <SelectItem key={o.id} value={String(o.id)}>
-                          {o.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    placeholder="Select..."
+                    emptyMessage="No options found."
+                    className="h-8 text-xs"
+                  />
                 </TableCell>
                 <TableCell>
-                  <Select
-                    value={draft.col2 === "" ? "__none__" : String(draft.col2)}
+                  <SearchableSelect
+                    options={toSelectOptions(col2Options)}
+                    value={draft.col2 === "" ? undefined : String(draft.col2)}
                     onValueChange={(v) =>
-                      setDraft((d) => ({ ...d, col2: v === "__none__" ? "" : Number(v) }))
+                      setDraft((d) => ({ ...d, col2: Number(v) }))
                     }
-                  >
-                    <SelectTrigger className="h-8 text-xs">
-                      <SelectValue placeholder="Select…" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {col2Options.map((o) => (
-                        <SelectItem key={o.id} value={String(o.id)}>
-                          {o.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    placeholder="Select..."
+                    emptyMessage="No options found."
+                    className="h-8 text-xs"
+                  />
                 </TableCell>
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-1">

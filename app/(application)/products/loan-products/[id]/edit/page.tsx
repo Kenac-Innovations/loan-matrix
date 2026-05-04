@@ -8,7 +8,13 @@ import { Button } from "@/components/ui/button";
 import { LoanProductStepper } from "../../components/loan-product-stepper";
 import { LoanProductFormSkeleton } from "../../components/loan-product-form-skeleton";
 import type { LoanProductTemplate, LoanProductFormData } from "@/shared/types/loan-product";
-import { buildInitialPaymentAllocations, defaultLoanProductFormData, ADVANCED_PAYMENT_ALLOCATION_STRATEGY } from "@/shared/types/loan-product";
+import {
+  buildInitialPaymentAllocations,
+  defaultLoanProductFormData,
+  getDefaultEnumOptionId,
+  getDefaultLoanScheduleType,
+  getDefaultTransactionProcessingStrategyCode,
+} from "@/shared/types/loan-product";
 
 function mapFineractProductToForm(product: Record<string, unknown>): LoanProductFormData {
   const n = (v: unknown) => (v == null ? "" : (v as number));
@@ -27,10 +33,19 @@ function mapFineractProductToForm(product: Record<string, unknown>): LoanProduct
     return obj?.code != null ? String(obj.code) : "";
   };
 
-  const loanScheduleTypeCode = getEnumCode(product.loanScheduleType);
+  const getEnumIdOrDefault = (
+    value: unknown,
+    options: LoanProductTemplate["repaymentStartDateTypeOptions"],
+    preferred: { code?: string; value?: string }
+  ): number | "" => getEnumId(value) || getDefaultEnumOptionId(options, preferred);
+
+  const templateLikeProduct = product as unknown as LoanProductTemplate;
+  const loanScheduleTypeCode =
+    getEnumCode(product.loanScheduleType) ||
+    getDefaultLoanScheduleType(templateLikeProduct.loanScheduleTypeOptions);
   const isProgressive = loanScheduleTypeCode === "PROGRESSIVE";
   const { paymentAllocations, creditAllocations } = isProgressive
-    ? buildInitialPaymentAllocations(product as unknown as LoanProductTemplate)
+    ? buildInitialPaymentAllocations(templateLikeProduct)
     : { paymentAllocations: [], creditAllocations: [] };
 
   return {
@@ -63,7 +78,11 @@ function mapFineractProductToForm(product: Record<string, unknown>): LoanProduct
     minimumDaysBetweenDisbursalAndFirstRepayment: n(
       product.minimumDaysBetweenDisbursalAndFirstRepayment
     ),
-    repaymentStartDateType: getEnumId(product.repaymentStartDateType),
+    repaymentStartDateType: getEnumIdOrDefault(
+      product.repaymentStartDateType,
+      templateLikeProduct.repaymentStartDateTypeOptions,
+      { value: "Disbursement Date" }
+    ),
     fixedLength: n(product.fixedLength),
     interestRecognitionOnDisbursementDate: b(product.interestRecognitionOnDisbursementDate),
     interestRatePerPeriod: n(product.interestRatePerPeriod),
@@ -90,7 +109,12 @@ function mapFineractProductToForm(product: Record<string, unknown>): LoanProduct
       product.allowPartialPeriodInterestCalculation ??
         product.allowPartialPeriodInterestCalcualtion
     ),
-    transactionProcessingStrategyCode: s(product.transactionProcessingStrategyCode),
+    transactionProcessingStrategyCode:
+      s(product.transactionProcessingStrategyCode) ||
+      getDefaultTransactionProcessingStrategyCode(
+        templateLikeProduct.transactionProcessingStrategyOptions,
+        loanScheduleTypeCode
+      ),
     daysInYearType: getEnumId(product.daysInYearType),
     daysInMonthType: getEnumId(product.daysInMonthType),
     graceOnPrincipalPayment: n(product.graceOnPrincipalPayment),
@@ -129,7 +153,7 @@ function mapFineractProductToForm(product: Record<string, unknown>): LoanProduct
     canDefineInstallmentAmount: b(product.canDefineInstallmentAmount),
     principalThresholdForLastInstallment: n(product.principalThresholdForLastInstallment),
     canUseForTopup: b(product.canUseForTopup),
-    loanScheduleType: getEnumCode(product.loanScheduleType),
+    loanScheduleType: loanScheduleTypeCode,
     loanScheduleProcessingType: getEnumCode(product.loanScheduleProcessingType),
     enableDownPayment: b(product.enableDownPayment),
     disbursedAmountPercentageForDownPayment: n(product.disbursedAmountPercentageForDownPayment),
