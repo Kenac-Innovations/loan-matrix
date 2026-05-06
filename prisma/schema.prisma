@@ -34,10 +34,26 @@ model Tenant {
   requiredDocuments      RequiredDocument[]
   invoiceDiscountingCases InvoiceDiscountingCase[]
   invoiceDiscountingInvoices InvoiceDiscountingInvoice[]
+  invoiceDiscountingCharges InvoiceDiscountingCharge[]
   chargeProducts         ChargeProduct[]
 
   @@index([slug])
   @@index([isActive])
+}
+
+model InvoiceDiscountingCharge {
+  id              String   @id @default(cuid())
+  tenantId        String
+  chargeName      String
+  fineractChargeId Int
+  currencyCode    String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, fineractChargeId])
+  @@unique([tenantId, currencyCode])
+  @@index([tenantId])
 }
 
 enum ChargeProductType {

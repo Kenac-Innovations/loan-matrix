@@ -59,7 +59,7 @@ export async function POST(
     const updatedLead = await prisma.lead.update({
       where: { id: leadId },
       data: {
-        facilityType: data.facilityType ?? null,
+        facilityType: data.facilityType ?? lead.facilityType,
         loanProductName: data.productName || null,
         loanProductId: productId,
         loanPurpose: data.loanPurposeName || null,
