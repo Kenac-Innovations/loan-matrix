@@ -105,6 +105,23 @@ interface LoanContractsProps {
   onBack?: () => void;
 }
 
+function resolveLoanScheduleTypeCode(
+  loanScheduleType: string | undefined,
+  options:
+    | Array<{ id?: number; code?: string; value?: string }>
+    | undefined
+) {
+  if (!loanScheduleType) return undefined;
+
+  const exactCodeMatch = options?.find((option) => option.code === loanScheduleType);
+  if (exactCodeMatch?.code) return exactCodeMatch.code;
+
+  const valueMatch = options?.find((option) => option.value === loanScheduleType);
+  if (valueMatch?.code) return valueMatch.code;
+
+  return loanScheduleType;
+}
+
 export function LoanContracts({
   leadId,
   clientId,
@@ -2000,6 +2017,10 @@ export function LoanContracts({
       const requestedCharges = Array.isArray(loanTerms.charges)
         ? loanTerms.charges.filter((charge: any) => !isOverdueChargeLike(charge))
         : [];
+      const resolvedLoanScheduleType = resolveLoanScheduleTypeCode(
+        loanTerms.loanScheduleType,
+        loanTemplate?.loanScheduleTypeOptions,
+      );
 
       const loanPayload = {
         productId: loanDetails.productId || loanDetails.product,
@@ -2053,6 +2074,19 @@ export function LoanContracts({
           ? parseInt(loanTerms.interestRateFrequency)
           : 2,
         interestRatePerPeriod: loanTerms.nominalInterestRate || 0,
+        ...(resolvedLoanScheduleType
+          ? { loanScheduleType: resolvedLoanScheduleType }
+          : {}),
+        balloonPaymentAmount: loanTerms.balloonRepaymentAmount ?? 0,
+        allowPartialPeriodInterestCalculation:
+          loanTerms.calculateInterestForExactDays ?? false,
+        allowPartialPeriodInterestCalcualtion:
+          loanTerms.calculateInterestForExactDays ?? false,
+        inArrearsTolerance: loanTerms.arrearsTolerance ?? 0,
+        graceOnInterestCharged: loanTerms.interestFreePeriod ?? 0,
+        graceOnPrincipalPayment: loanTerms.graceOnPrincipalPayment ?? 0,
+        graceOnInterestPayment: loanTerms.graceOnInterestPayment ?? 0,
+        graceOnArrearsAgeing: loanTerms.onArrearsAgeing ?? 0,
         charges: isInvoiceDiscountingLoan
           ? []
           : requestedCharges.map((charge: any) => {
@@ -2087,7 +2121,6 @@ export function LoanContracts({
         clientId: clientId,
         loanType: "individual",
         principal: loanTerms.principal || 0,
-        allowPartialPeriodInterestCalcualtion: false,
       };
 
       console.log("Creating loan with payload:", loanPayload);
