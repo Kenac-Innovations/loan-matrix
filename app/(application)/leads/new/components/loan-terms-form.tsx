@@ -1343,7 +1343,9 @@ export function LoanTermsForm({
             amortization: resolvedAmortizationValue,
             isEqualAmortization: loanTemplate.isEqualAmortization ?? false,
             loanScheduleType:
-              loanTemplate.loanScheduleTypeOptions?.[0]?.value || "",
+              loanTemplate.loanScheduleTypeOptions?.[0]?.code ||
+              loanTemplate.loanScheduleTypeOptions?.[0]?.value ||
+              "",
             repaymentStrategy: resolvedRepaymentStrategyValue,
             balloonRepaymentAmount: 0,
             interestCalculationPeriod: resolvedInterestCalculationPeriodValue,

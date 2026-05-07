@@ -564,6 +564,17 @@ export function NewLeadForm() {
                       amount: charge.amount,
                       dueDate: charge.dueDate,
                     }));
+                  const resolvedLoanScheduleType = !loadedLoanTerms.loanScheduleType
+                    ? undefined
+                    : templateData?.loanScheduleTypeOptions?.find(
+                        (option: any) =>
+                          option.code === loadedLoanTerms.loanScheduleType,
+                      )?.code ||
+                      templateData?.loanScheduleTypeOptions?.find(
+                        (option: any) =>
+                          option.value === loadedLoanTerms.loanScheduleType,
+                      )?.code ||
+                      loadedLoanTerms.loanScheduleType;
 
                   const payload = {
                     productId: loadedProductId,
@@ -627,6 +638,25 @@ export function NewLeadForm() {
                         : templateData?.interestRateFrequencyType?.id || 2,
                     interestRatePerPeriod:
                       loadedLoanTerms.nominalInterestRate || 0,
+                    ...(resolvedLoanScheduleType
+                      ? { loanScheduleType: resolvedLoanScheduleType }
+                      : {}),
+                    balloonPaymentAmount:
+                      loadedLoanTerms.balloonRepaymentAmount ?? 0,
+                    allowPartialPeriodInterestCalculation:
+                      loadedLoanTerms.calculateInterestForExactDays ?? false,
+                    allowPartialPeriodInterestCalcualtion:
+                      loadedLoanTerms.calculateInterestForExactDays ?? false,
+                    inArrearsTolerance:
+                      loadedLoanTerms.arrearsTolerance ?? 0,
+                    graceOnInterestCharged:
+                      loadedLoanTerms.interestFreePeriod ?? 0,
+                    graceOnPrincipalPayment:
+                      loadedLoanTerms.graceOnPrincipalPayment ?? 0,
+                    graceOnInterestPayment:
+                      loadedLoanTerms.graceOnInterestPayment ?? 0,
+                    graceOnArrearsAgeing:
+                      loadedLoanTerms.onArrearsAgeing ?? 0,
                     charges: charges,
                     collateral: [],
                     dateFormat: "dd MMMM yyyy",
@@ -634,7 +664,6 @@ export function NewLeadForm() {
                     clientId: loadedFineractClientId,
                     loanType: "individual",
                     principal: loadedLoanTerms.principal || 0,
-                    allowPartialPeriodInterestCalcualtion: false,
                   };
 
                   const scheduleResponse = await fetch(
