@@ -204,6 +204,8 @@ const clientFormSchema = z
 
     // Tracking
     currentStep: z.number().default(1),
+    fineractClientId: z.string().optional(),
+    fineractAccountNo: z.string().optional(),
   })
   .refine(
     (data) => {
@@ -1934,6 +1936,27 @@ export function ClientRegistrationForm({
   // Use external form if provided, otherwise use internal form
   const form = externalForm || internalForm;
 
+  useEffect(() => {
+    const effectiveLeadId = currentLeadId ?? leadId;
+    if (effectiveLeadId) {
+      return;
+    }
+
+    const currentCountryCode = form.getValues("countryCode");
+    const mobileNo = form.getValues("mobileNo");
+    const countryCodeDirty = !!form.formState.dirtyFields?.countryCode;
+
+    // Sync blank/new forms to the tenant locale once it loads,
+    // without overriding an existing lead or a user-made selection.
+    if (!mobileNo && !countryCodeDirty && currentCountryCode !== tenantLocale.countryCode) {
+      form.setValue("countryCode", tenantLocale.countryCode, {
+        shouldDirty: false,
+        shouldTouch: false,
+        shouldValidate: false,
+      });
+    }
+  }, [currentLeadId, leadId, form, tenantLocale.countryCode]);
+
   // Family member form
   const familyMemberForm = useForm<FamilyMemberValues>({
     resolver: zodResolver(familyMemberSchema) as any,
@@ -3590,6 +3613,19 @@ export function ClientRegistrationForm({
         setClientLookupStatus("found");
         setIsFormDisabled(false);
 
+        const resolvedLookupClientId = fineractData?.id
+          ? Number(fineractData.id)
+          : undefined;
+
+        if (resolvedLookupClientId) {
+          console.log(
+            "==========> Storing Fineract client ID before draft save:",
+            resolvedLookupClientId
+          );
+          (window as any).fineractClientId = resolvedLookupClientId;
+          setFineractClientId(resolvedLookupClientId);
+        }
+
         // Save the populated form data as a draft in the database
         try {
           const formValues = form.getValues();
@@ -3603,7 +3639,15 @@ export function ClientRegistrationForm({
           console.log("==========> Last name value:", formValues.lastname);
 
           // Save as draft which will create/update a lead in the database
-          const saveResult = await handleSaveDraft(formValues);
+          const saveResult = await handleSaveDraft({
+            ...formValues,
+            ...(resolvedLookupClientId && {
+              fineractClientId: String(resolvedLookupClientId),
+            }),
+            ...(fineractData?.accountNo && {
+              fineractAccountNo: fineractData.accountNo,
+            }),
+          } as ClientFormValues);
           console.log("==========> Save result:", saveResult);
 
           if (saveResult.success && saveResult.leadId) {
@@ -3636,15 +3680,15 @@ export function ClientRegistrationForm({
 
         // Store the Fineract client ID FIRST (before setting clientCreatedInFineract)
         // This ensures the useEffect has the client ID when it runs
-        if (fineractData?.id) {
+        if (resolvedLookupClientId) {
           console.log(
             "==========> Storing Fineract client ID:",
-            fineractData.id
+            resolvedLookupClientId
           );
           // Store in a way that can be accessed by the parent component
-          (window as any).fineractClientId = fineractData.id;
+          (window as any).fineractClientId = resolvedLookupClientId;
           // Immediately set the React state for fineractClientId
-          setFineractClientId(Number(fineractData.id));
+          setFineractClientId(resolvedLookupClientId);
           console.log(
             "==========> Stored fineractClientId in window:",
             (window as any).fineractClientId
@@ -3777,6 +3821,8 @@ export function ClientRegistrationForm({
     try {
       console.log("==========> handleSaveDraft called with data:", data);
       console.log("==========> Email address in data:", data.emailAddress);
+      const resolvedFineractClientId =
+        fineractClientId || (window as any).fineractClientId || undefined;
 
       // Convert data types to match the schema expectations
       const processedData = {
@@ -3799,6 +3845,9 @@ export function ClientRegistrationForm({
         savingsProductId: data.savingsProductId
           ? Number(data.savingsProductId)
           : undefined,
+        ...(resolvedFineractClientId && {
+          fineractClientId: Number(resolvedFineractClientId),
+        }),
       };
 
       console.log("==========> Processed data before save:", processedData);

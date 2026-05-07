@@ -105,11 +105,23 @@ export async function POST(
       ...(firstRepaymentDate && {
         repaymentsStartingFromDate: format(firstRepaymentDate, "yyyy-MM-dd"),
       }),
+      ...(loanData.loanScheduleType
+        ? { loanScheduleType: loanData.loanScheduleType }
+        : {}),
+      balloonPaymentAmount: loanData.balloonRepaymentAmount ?? 0,
+      allowPartialPeriodInterestCalculation:
+        loanData.calculateInterestForExactDays ?? false,
+      allowPartialPeriodInterestCalcualtion:
+        loanData.calculateInterestForExactDays ?? false,
+      inArrearsTolerance: loanData.arrearsTolerance ?? 0,
+      graceOnInterestCharged: loanData.interestFreePeriod ?? 0,
+      graceOnPrincipalPayment: loanData.graceOnPrincipalPayment ?? 0,
+      graceOnInterestPayment: loanData.graceOnInterestPayment ?? 0,
+      graceOnArrearsAgeing: loanData.onArrearsAgeing ?? 0,
       locale: "en",
       dateFormat: "yyyy-MM-dd",
       // Use lead ID as initial external ID, will be updated to loan ID after creation
       externalId: leadId,
-      allowPartialPeriodInterestCalcualtion: false,
       isEqualAmortization: false,
       charges: isInvoiceDiscountingLead
         ? []

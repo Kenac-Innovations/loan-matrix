@@ -1,13 +1,25 @@
 import { NextResponse } from "next/server";
 import { fetchFineractAPI } from "@/lib/api";
 
+function sanitizeCalculateSchedulePayload(payload: Record<string, unknown>) {
+  const sanitized = { ...payload };
+
+  // This Fineract build rejects these on calculateLoanSchedule even if
+  // related fields are supported elsewhere in loan create/update flows.
+  delete sanitized.balloonPaymentAmount;
+  delete sanitized.allowPartialPeriodInterestCalculation;
+
+  return sanitized;
+}
+
 /**
  * POST /api/fineract/loans/calculate-schedule
  * Calculates loan repayment schedule using Fineract calculateLoanSchedule command
  */
 export async function POST(request: Request) {
   try {
-    const payload = await request.json();
+    const rawPayload = await request.json();
+    const payload = sanitizeCalculateSchedulePayload(rawPayload);
 
     console.log("=== CALCULATE SCHEDULE REQUEST ===");
     console.log("Payload:", JSON.stringify(payload, null, 2));

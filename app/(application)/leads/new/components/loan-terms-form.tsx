@@ -1343,7 +1343,9 @@ export function LoanTermsForm({
             amortization: resolvedAmortizationValue,
             isEqualAmortization: loanTemplate.isEqualAmortization ?? false,
             loanScheduleType:
-              loanTemplate.loanScheduleTypeOptions?.[0]?.value || "",
+              loanTemplate.loanScheduleTypeOptions?.[0]?.code ||
+              loanTemplate.loanScheduleTypeOptions?.[0]?.value ||
+              "",
             repaymentStrategy: resolvedRepaymentStrategyValue,
             balloonRepaymentAmount: 0,
             interestCalculationPeriod: resolvedInterestCalculationPeriodValue,
@@ -3078,95 +3080,6 @@ export function LoanTermsForm({
           </CardContent>
         </Card>
 
-        {/* Term Options */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Term Options</CardTitle>
-            <CardDescription>
-              Configure the loan term and frequency
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-2">
-              <Label htmlFor="loanTerm" className="text-sm font-medium">
-                Loan Term <span className="text-red-500">*</span>
-              </Label>
-              <Input
-                id="loanTerm"
-                type="number"
-                className={cn("h-10", !canEditLoan && "cursor-not-allowed")}
-                disabled
-                {...form.register("loanTerm", { valueAsNumber: true })}
-              />
-              {form.formState.errors.loanTerm && (
-                <p className="text-sm text-red-500">
-                  {form.formState.errors.loanTerm.message}
-                </p>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="termFrequency" className="text-sm font-medium">
-                Frequency <span className="text-red-500">*</span>
-              </Label>
-              <Controller
-                control={form.control}
-                name="termFrequency"
-                render={({ field }) => (
-                  <Select
-                    onValueChange={(val) => {
-                      field.onChange(val);
-                      const repaymentId = repaymentFrequencyIdForTermFrequencySelection(
-                        val,
-                        loanTemplate.termFrequencyTypeOptions,
-                        loanTemplate.repaymentFrequencyTypeOptions
-                      );
-                      if (repaymentId) {
-                        form.setValue("repaymentFrequency", repaymentId, {
-                          shouldDirty: true,
-                          shouldValidate: true,
-                        });
-                        updateFrequencyValues({
-                          termFrequency: val,
-                          repaymentFrequency: repaymentId,
-                        });
-                      } else {
-                        updateFrequencyValues({ termFrequency: val });
-                      }
-                    }}
-                    value={field.value || ""}
-                    disabled={!canEditLoan}
-                  >
-                    <SelectTrigger
-                      className={cn(
-                        "h-10 w-full",
-                        !canEditLoan && "cursor-not-allowed opacity-70"
-                      )}
-                    >
-                      <SelectValue placeholder="Select frequency" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {loanTemplate.termFrequencyTypeOptions?.map((option) => (
-                        <SelectItem
-                          key={option.id}
-                          value={option.id.toString()}
-                        >
-                          {option.value}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-              />
-              {form.formState.errors.termFrequency && (
-                <p className="text-sm text-red-500">
-                  {form.formState.errors.termFrequency.message}
-                </p>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-
         {/* Repayments */}
         <Card>
           <CardHeader>
@@ -3282,6 +3195,95 @@ export function LoanTermsForm({
                   </Popover>
                 )}
               />
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Term Options */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Term Options</CardTitle>
+            <CardDescription>
+              Configure the loan term and frequency
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-2">
+              <Label htmlFor="loanTerm" className="text-sm font-medium">
+                Loan Term <span className="text-red-500">*</span>
+              </Label>
+              <Input
+                id="loanTerm"
+                type="number"
+                className={cn("h-10", !canEditLoan && "cursor-not-allowed")}
+                disabled
+                {...form.register("loanTerm", { valueAsNumber: true })}
+              />
+              {form.formState.errors.loanTerm && (
+                <p className="text-sm text-red-500">
+                  {form.formState.errors.loanTerm.message}
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="termFrequency" className="text-sm font-medium">
+                Frequency <span className="text-red-500">*</span>
+              </Label>
+              <Controller
+                control={form.control}
+                name="termFrequency"
+                render={({ field }) => (
+                  <Select
+                    onValueChange={(val) => {
+                      field.onChange(val);
+                      const repaymentId = repaymentFrequencyIdForTermFrequencySelection(
+                        val,
+                        loanTemplate.termFrequencyTypeOptions,
+                        loanTemplate.repaymentFrequencyTypeOptions
+                      );
+                      if (repaymentId) {
+                        form.setValue("repaymentFrequency", repaymentId, {
+                          shouldDirty: true,
+                          shouldValidate: true,
+                        });
+                        updateFrequencyValues({
+                          termFrequency: val,
+                          repaymentFrequency: repaymentId,
+                        });
+                      } else {
+                        updateFrequencyValues({ termFrequency: val });
+                      }
+                    }}
+                    value={field.value || ""}
+                    disabled={!canEditLoan}
+                  >
+                    <SelectTrigger
+                      className={cn(
+                        "h-10 w-full",
+                        !canEditLoan && "cursor-not-allowed opacity-70"
+                      )}
+                    >
+                      <SelectValue placeholder="Select frequency" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {loanTemplate.termFrequencyTypeOptions?.map((option) => (
+                        <SelectItem
+                          key={option.id}
+                          value={option.id.toString()}
+                        >
+                          {option.value}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+              {form.formState.errors.termFrequency && (
+                <p className="text-sm text-red-500">
+                  {form.formState.errors.termFrequency.message}
+                </p>
+              )}
             </div>
           </CardContent>
         </Card>

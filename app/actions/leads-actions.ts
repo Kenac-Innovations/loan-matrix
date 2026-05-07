@@ -388,6 +388,8 @@ export async function getLeadsData(
         id: lead.id,
         client:
           `${lead.firstname || ""} ${lead.lastname || ""}`.trim() ||
+          lead.fullname?.trim() ||
+          lead.tradingName?.trim() ||
           "Unknown Client",
         amount,
         type: loanType,
