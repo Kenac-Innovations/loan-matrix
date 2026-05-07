@@ -1,6 +1,8 @@
 import { prisma } from "./prisma";
 import { getFineractServiceWithSession } from "./fineract-api";
 import { applyTopupDisbursementCharges } from "./topup-disbursement-charge-service";
+import { isPaymentTypeCash } from "./cash-repayment-teller";
+import { resolveCurrentUserCashierContext } from "./current-user-cashier";
 import type { AssignmentStrategy, AssignmentConfig } from "@/shared/defaults/team-config";
 
 export interface FineractOverrides {
@@ -8,6 +10,7 @@ export interface FineractOverrides {
   disbursementDate?: string;
   approvedAmount?: number;
   note?: string;
+  payoutNote?: string;
   paymentTypeId?: number;
   accountNumber?: string;
   checkNumber?: string;
@@ -56,6 +59,78 @@ interface AssignmentResult {
 }
 
 export class TeamAwareStateMachineService {
+  private static async derivePayoutMethod(
+    paymentTypeId?: number
+  ): Promise<"CASH" | "MOBILE_MONEY" | "BANK_TRANSFER" | undefined> {
+    if (!paymentTypeId) return undefined;
+
+    const paymentTypeIsCash = await isPaymentTypeCash(paymentTypeId);
+    return paymentTypeIsCash ? "CASH" : "BANK_TRANSFER";
+  }
+
+  private static async validateCombinedDisbursementPayout(
+    lead: any,
+    overrides?: FineractOverrides,
+    triggeredBy?: string
+  ): Promise<FineractOverrides | undefined> {
+    if (!overrides?.payoutMethod && overrides?.paymentTypeId) {
+      overrides = {
+        ...overrides,
+        payoutMethod: await this.derivePayoutMethod(overrides.paymentTypeId),
+      };
+    }
+
+    if (!overrides?.payoutMethod) {
+      return overrides;
+    }
+
+    if (!overrides.paymentTypeId) {
+      throw new Error("Payment type is required when combining disbursement and payout");
+    }
+
+    const paymentTypeIsCash = await isPaymentTypeCash(overrides.paymentTypeId);
+
+    if (overrides.payoutMethod === "CASH") {
+      if (!paymentTypeIsCash) {
+        throw new Error("Cash payout requires a cash disbursement payment type");
+      }
+
+      // Resolve the logged-in cashier up front so we can block before disbursement.
+      if (!overrides.tellerId || !overrides.cashierId) {
+        const cashierContext = await resolveCurrentUserCashierContext(
+          lead.tenantId,
+          triggeredBy
+        );
+
+        if (!cashierContext.isCashier) {
+          throw new Error(
+            cashierContext.reason || "Only an active cashier can process a cash payout"
+          );
+        }
+
+        if (!cashierContext.hasActiveSession) {
+          throw new Error(
+            cashierContext.reason || "Cashier must have an active session to process a cash payout"
+          );
+        }
+
+        return {
+          ...overrides,
+          tellerId: cashierContext.fineractTellerId?.toString() || cashierContext.tellerId || undefined,
+          cashierId: cashierContext.cashierId || cashierContext.fineractCashierId?.toString(),
+        };
+      }
+
+      return overrides;
+    }
+
+    if (paymentTypeIsCash) {
+      throw new Error("Non-cash payout requires a non-cash disbursement payment type");
+    }
+
+    return overrides;
+  }
+
   /**
    * Execute a full state transition: validate -> move stage -> auto-assign -> audit trail
    */
@@ -224,11 +299,23 @@ export class TeamAwareStateMachineService {
       const targetStage = await prisma.pipelineStage.findUnique({
         where: { id: request.targetStageId },
       });
-
-      let fineractResult: string | null = null;
       const currentFineractAction = lead.currentStage?.fineractAction;
       const isBackward = targetStage && lead.currentStage
         && (targetStage.order ?? 999) < (lead.currentStage.order ?? 0);
+      const combinedPayoutWithDisbursement =
+        targetStage?.fineractAction === "disburse" &&
+        !isBackward &&
+        Boolean(request.fineractOverrides?.payoutMethod);
+
+      if (combinedPayoutWithDisbursement) {
+        request.fineractOverrides = await this.validateCombinedDisbursementPayout(
+          lead,
+          request.fineractOverrides,
+          request.triggeredBy
+        );
+      }
+
+      let fineractResult: string | null = null;
 
       if (isBackward && currentFineractAction && lead.fineractLoanId) {
         console.log(`[StateTransition] Backward move detected: undoing ${currentFineractAction} for loan ${lead.fineractLoanId}`);
@@ -282,6 +369,55 @@ export class TeamAwareStateMachineService {
           return {
             success: false,
             message: `Fineract ${targetStage.fineractAction} failed: ${errorDetail}`,
+          };
+        }
+      }
+
+      // 3aa. Combined disbursement + payout — process payout immediately after
+      // successful disbursement so the user completes both in one action.
+      if (
+        combinedPayoutWithDisbursement &&
+        lead.fineractLoanId &&
+        request.fineractOverrides?.payoutMethod
+      ) {
+        try {
+          const payoutResult = await this.processInternalPayout(
+            lead,
+            request.fineractOverrides,
+            request.triggeredBy
+          );
+          fineractResult = fineractResult
+            ? `${fineractResult}. ${payoutResult}`
+            : payoutResult;
+        } catch (payoutError: any) {
+          const errorDetail =
+            payoutError?.response?.data?.errors?.[0]?.defaultUserMessage
+            || payoutError?.response?.data?.defaultUserMessage
+            || (payoutError instanceof Error ? payoutError.message : "Unknown error");
+
+          let rollbackMessage = "";
+          try {
+            if (lead.fineractLoanId) {
+              await this.undoFineractAction(
+                "disburse",
+                lead.fineractLoanId,
+                lead,
+                "Combined disbursement+payout failed; disbursement rolled back"
+              );
+              rollbackMessage = " Disbursement was rolled back.";
+            }
+          } catch (rollbackError: any) {
+            const rollbackDetail =
+              rollbackError?.response?.data?.errors?.[0]?.defaultUserMessage
+              || rollbackError?.response?.data?.defaultUserMessage
+              || (rollbackError instanceof Error ? rollbackError.message : "Unknown error");
+            rollbackMessage = ` Disbursement rollback also failed: ${rollbackDetail}`;
+          }
+
+          console.error("[StateTransition] Combined payout failed — blocking transition:", errorDetail);
+          return {
+            success: false,
+            message: `Payout failed after disbursement: ${errorDetail}.${rollbackMessage}`.replace(/\.\s*\./g, "."),
           };
         }
       }
@@ -1011,11 +1147,34 @@ export class TeamAwareStateMachineService {
 
     if (overrides.payoutMethod === "CASH") {
       if (!overrides.tellerId || !overrides.cashierId) {
-        throw new Error("Teller and cashier are required for cash payout");
+        const cashierContext = await resolveCurrentUserCashierContext(
+          lead.tenantId,
+          triggeredBy
+        );
+
+        if (!cashierContext.isCashier) {
+          throw new Error(
+            cashierContext.reason || "Only an active cashier can process a cash payout"
+          );
+        }
+
+        if (!cashierContext.hasActiveSession) {
+          throw new Error(
+            cashierContext.reason || "Cashier must have an active session to process a cash payout"
+          );
+        }
+
+        overrides = {
+          ...overrides,
+          tellerId:
+            cashierContext.fineractTellerId?.toString() || cashierContext.tellerId || undefined,
+          cashierId:
+            cashierContext.cashierId || cashierContext.fineractCashierId?.toString(),
+        };
       }
 
       // Resolve teller — the UI sends Fineract teller IDs
-      const fineractTellerId = Number(overrides.tellerId);
+      const fineractTellerId = Number(overrides?.tellerId);
       const teller = await prisma.teller.findFirst({
         where: {
           tenantId: lead.tenantId,
@@ -1028,7 +1187,7 @@ export class TeamAwareStateMachineService {
       }
 
       // Resolve cashier — the UI sends DB cashier IDs (dbId) or Fineract IDs
-      const cashierIdStr = String(overrides.cashierId);
+      const cashierIdStr = String(overrides?.cashierId);
       let cashier = await prisma.cashier.findFirst({
         where: { id: cashierIdStr, tellerId: teller.id, tenantId: lead.tenantId },
       });
@@ -1076,16 +1235,20 @@ export class TeamAwareStateMachineService {
           currency: currencyCode,
           status: "PAID",
           paymentMethod: "CASH",
+          tellerId: teller.id,
+          cashierId: cashier?.id || null,
           paidAt: new Date(),
           paidBy: triggeredBy || "system",
-          notes: overrides.note || "Cash payout via teller",
+          notes: overrides.payoutNote || overrides.note || "Cash payout via teller",
         },
         update: {
           status: "PAID",
           paymentMethod: "CASH",
+          tellerId: teller.id,
+          cashierId: cashier?.id || null,
           paidAt: new Date(),
           paidBy: triggeredBy || "system",
-          notes: overrides.note || "Cash payout via teller",
+          notes: overrides.payoutNote || overrides.note || "Cash payout via teller",
         },
       });
 
@@ -1110,14 +1273,14 @@ export class TeamAwareStateMachineService {
           paymentMethod: overrides.payoutMethod,
           paidAt: new Date(),
           paidBy: triggeredBy || "system",
-          notes: overrides.note || `Payout via ${methodLabel}`,
+          notes: overrides.payoutNote || overrides.note || `Payout via ${methodLabel}`,
         },
         update: {
           status: "PAID",
           paymentMethod: overrides.payoutMethod,
           paidAt: new Date(),
           paidBy: triggeredBy || "system",
-          notes: overrides.note || `Payout via ${methodLabel}`,
+          notes: overrides.payoutNote || overrides.note || `Payout via ${methodLabel}`,
         },
       });
 
