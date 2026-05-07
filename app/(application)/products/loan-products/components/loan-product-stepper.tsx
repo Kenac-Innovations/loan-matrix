@@ -282,6 +282,7 @@ export function LoanProductStepper({
       if (!form.transactionProcessingStrategyCode) return "Repayment strategy is required.";
     }
     if (stepId === "terms") {
+      if (form.principal === "") return "Default principal is required.";
       if (!form.isLinkedToFloatingInterestRates && form.interestRatePerPeriod === "")
         return "Nominal interest rate is required.";
       if (form.repaymentFrequencyType === "") return "Repayment frequency is required.";

@@ -20,6 +20,28 @@ function mapFineractProductToForm(product: Record<string, unknown>): LoanProduct
   const n = (v: unknown) => (v == null ? "" : (v as number));
   const s = (v: unknown) => (v == null ? "" : String(v));
   const b = (v: unknown) => Boolean(v);
+  const d = (v: unknown): string => {
+    if (v == null) return "";
+
+    if (
+      Array.isArray(v) &&
+      v.length >= 3 &&
+      typeof v[0] === "number" &&
+      typeof v[1] === "number" &&
+      typeof v[2] === "number"
+    ) {
+      const [year, month, day] = v;
+      return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    }
+
+    if (typeof v === "string") {
+      const trimmed = v.trim();
+      const yyyyMmDdMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (yyyyMmDdMatch) return yyyyMmDdMatch[0];
+    }
+
+    return s(v);
+  };
 
   const getEnumId = (v: unknown): number | "" => {
     if (v == null) return "";
@@ -55,8 +77,8 @@ function mapFineractProductToForm(product: Record<string, unknown>): LoanProduct
     description: s(product.description),
     externalId: s(product.externalId),
     fundId: n(product.fundId),
-    startDate: s(product.startDate),
-    closeDate: s(product.closeDate),
+    startDate: d(product.startDate),
+    closeDate: d(product.closeDate),
     includeInBorrowerCycle: b(product.includeInBorrowerCycle),
 
     currencyCode: (product.currency as Record<string, unknown>)?.code

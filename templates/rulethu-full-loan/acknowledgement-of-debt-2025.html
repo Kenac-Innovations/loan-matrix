@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Rulethu Acknowledgement of Debt</title>
+    <style>
+      :root {
+        --ink: #111827;
+        --muted: #4b5563;
+        --line: #d1d5db;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        padding: 32px 24px 48px;
+        font-family: "Times New Roman", Georgia, serif;
+        color: var(--ink);
+        background: #ffffff;
+        line-height: 1.55;
+        font-size: 15px;
+      }
+
+      .page {
+        max-width: 840px;
+        margin: 0 auto;
+      }
+
+      h1 {
+        margin: 0 0 28px;
+        text-align: center;
+        font-size: 28px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      p {
+        margin: 0 0 16px;
+      }
+
+      .section-title {
+        margin: 28px 0 10px;
+        font-weight: 700;
+      }
+
+      .debt-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 16px 0 20px;
+      }
+
+      .debt-table th,
+      .debt-table td {
+        border: 1px solid var(--line);
+        padding: 10px 12px;
+        vertical-align: top;
+      }
+
+      .debt-table th {
+        text-align: left;
+        font-weight: 700;
+      }
+
+      .muted {
+        color: var(--muted);
+      }
+
+      .signature-block {
+        margin-top: 44px;
+      }
+
+      .signature-line {
+        margin-top: 56px;
+        padding-top: 10px;
+        border-top: 1px solid #111827;
+        max-width: 520px;
+      }
+
+      .signature-image {
+        display: block;
+        max-width: 220px;
+        max-height: 70px;
+        margin-bottom: 8px;
+      }
+
+      @media print {
+        body {
+          padding: 0.5in;
+        }
+
+        .page {
+          max-width: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <h1>ACKNOWLEDGEMENT OF DEBT</h1>
+
+      <p>I/we the undersigned (hereafter called "the Debtor")</p>
+      <p><strong>Name of Debtor:</strong> {{CLIENT_NAME}}</p>
+
+      <p>
+        do hereby acknowledge I/we am/are truly and lawfully indebted to
+        <strong>Rulethu Microfinance</strong> (hereafter called "RULETHU") in the
+        amounts more fully set out below and subject to the terms and conditions
+        appearing below and overleaf.
+      </p>
+
+      <p class="section-title">The Debt</p>
+      <p>
+        The amounts referred to in this acknowledgement are denominated in
+        {{CURRENCY_LABEL}} and represent the following:
+      </p>
+
+      <table class="debt-table">
+        <thead>
+          <tr>
+            <th>ITEM</th>
+            <th>AMOUNT IN FIGURES</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Capital Sum</td>
+            <td>{{CURRENCY_LABEL}} {{LOAN_AMOUNT}}</td>
+          </tr>
+          <tr>
+            <td>Aggregate interest payable</td>
+            <td>{{CURRENCY_LABEL}} {{INTEREST_AMOUNT}}</td>
+          </tr>
+          <tr>
+            <td><strong>TOTAL</strong></td>
+            <td><strong>{{CURRENCY_LABEL}} {{TOTAL_DEBT}}</strong></td>
+          </tr>
+          <tr>
+            <td>Applicable Interest rate</td>
+            <td>{{INTEREST_RATE}} % p.a.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p>
+        I agree to repay by {{NUMBER_OF_PAYMENTS}} monthly instalments of
+        {{CURRENCY_LABEL}} {{PAYMENT_PER_PERIOD}} commencing on
+        {{FIRST_PAYMENT_DATE}} and ending on {{LAST_PAYMENT_DATE}}.
+      </p>
+
+      <p>
+        I agree that all the aforesaid instalments and any other payments made
+        in terms hereof shall first be appropriated towards the payment of
+        interest and any costs owing by me in terms hereof, and the balance
+        thereafter shall be appropriated towards the reduction of capital.
+      </p>
+
+      <p>
+        In the event that I terminate or my contract is terminated I agree to
+        have my terminal benefits taken as repayment of the loan.
+      </p>
+
+      <p class="section-title">The Causa</p>
+      <p>
+        The capital indebtedness due in terms hereof arises from money lent and
+        advanced and to be readvanced and paid over to me/us by RULETHU.
+      </p>
+
+      <p class="section-title">Renunciation</p>
+      <p>
+        I/we renounce the exceptions <em>non numeratae pecuniae</em>,
+        <em>non causa debiti</em>, <em>errore calculi</em>, revision of
+        accounts, no value received and where applicable,
+        <em>de duobus vel pluribus reis debendi</em>, and all other exceptions
+        which could apply and with which I/we declare myself/ourselves to be
+        fully acquainted.
+      </p>
+
+      <p class="section-title">Usury Act</p>
+      <p>I/we hereby declare in terms of this instrument that:</p>
+      <p>1. this instrument is for money lent and advanced; and</p>
+      <p>
+        2. the sum actually paid to me/us is the above capital sum either in a
+        lump sum or in two or more instalments.
+      </p>
+
+      <p style="margin-top: 34px">
+        EXECUTED AT {{EXECUTION_PLACE}} on this {{EXECUTION_DAY}} day of
+        {{EXECUTION_MONTH}} {{EXECUTION_YEAR}}.
+      </p>
+
+      <section class="signature-block">
+        {{DEBTOR_SIGNATURE_BLOCK}}
+        <div class="signature-line">SIGNATURE OF DEBTOR</div>
+      </section>
+    </main>
+  </body>
+</html>
