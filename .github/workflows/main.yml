@@ -9,8 +9,6 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ghcr.io/kenac-innovations/loan-matrix
-  HARBOR_REGISTRY: harbor.kenac.co.zw
-  HARBOR_IMAGE: harbor.kenac.co.zw/kenac/loan-matrix
 
 jobs:
   build-and-deploy:
@@ -66,22 +64,12 @@ jobs:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Log in to Harbor Registry
-      if: steps.branch-context.outputs.should_publish == 'true'
-      uses: docker/login-action@v3
-      with:
-        registry: ${{ env.HARBOR_REGISTRY }}
-        username: ${{ secrets.HARBOR_USERNAME }}
-        password: ${{ secrets.HARBOR_PASSWORD }}
-
     - name: Extract metadata
       if: steps.branch-context.outputs.should_publish == 'true'
       id: meta
       uses: docker/metadata-action@v5
       with:
-        images: |
-          ${{ env.IMAGE_NAME }}
-          ${{ env.HARBOR_IMAGE }}
+        images: ${{ env.IMAGE_NAME }}
         tags: |
           type=ref,event=branch
           type=ref,event=pr
@@ -172,7 +160,7 @@ jobs:
           sudo chmod +x /usr/local/bin/yq
         fi
         
-        yq eval ".image.repository = \"harbor.kenac.co.zw/kenac/loan-matrix\"" -i "$VALUES_FILE"
+        yq eval ".image.repository = \"ghcr.io/kenac-innovations/loan-matrix\"" -i "$VALUES_FILE"
         yq eval ".image.tag = \"$NEW_TAG\"" -i "$VALUES_FILE"
         
         echo "Updated values file:"
@@ -210,8 +198,8 @@ jobs:
         echo "Deployment Summary:"
         echo "- Environment: ${{ steps.env.outputs.environment }}"
         echo "- Image Tag: ${{ steps.image-tag.outputs.tag }}"
-        echo "- Pushed to: GHCR + Harbor"
-        echo "- GitOps repo updated (pulling from Harbor)"
+        echo "- Pushed to: GHCR"
+        echo "- GitOps repo updated (pulling from GHCR)"
         echo "- ArgoCD will automatically sync the changes"
 
     - name: CI summary when publish is skipped
