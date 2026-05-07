@@ -6,6 +6,17 @@ import { getSearchHeaders } from "@/lib/fineract-search-auth";
 
 const baseUrl = process.env.FINERACT_BASE_URL || "http://10.10.0.143:8443";
 
+function sanitizeCreateLoanPayload(body: Record<string, unknown>) {
+  const sanitized = { ...body };
+
+  // This Fineract deployment rejects these on loan create even when callers
+  // include them to mirror broader Mifos payload shapes.
+  delete sanitized.balloonPaymentAmount;
+  delete sanitized.allowPartialPeriodInterestCalculation;
+
+  return sanitized;
+}
+
 /**
  * Get access token from either NextAuth session or custom JWT session
  * Used for operations that require user-specific auth (create, update, etc.)
@@ -241,7 +252,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const body = await request.json();
+    const rawBody = await request.json();
+    const body = sanitizeCreateLoanPayload(rawBody);
 
     console.log("Creating loan in Fineract with data:", body);
 
