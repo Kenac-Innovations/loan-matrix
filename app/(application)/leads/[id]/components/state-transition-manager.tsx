@@ -15,6 +15,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
+import { useReceiptValidation } from "@/hooks/use-receipt-validation";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -86,13 +87,45 @@ const strategyLabels: Record<string, { label: string; icon: React.ReactNode }> =
   specific_member: { label: "Specific Member", icon: <UserCheck className="h-3 w-3" /> },
 };
 
+interface CurrentCashierContext {
+  isCashier: boolean;
+  hasActiveSession: boolean;
+  staffId: number | null;
+  staffName: string | null;
+  cashierId: string | null;
+  fineractCashierId: number | null;
+  tellerId: string | null;
+  fineractTellerId: number | null;
+  tellerName: string | null;
+  tellerOfficeName: string | null;
+  reason?: string;
+}
+
+function inferPayoutMethodFromPaymentType(
+  paymentType?: { name?: string | null; isCashPayment?: boolean } | null
+): "CASH" | "MOBILE_MONEY" | "BANK_TRANSFER" | "" {
+  if (!paymentType) return "";
+  if (paymentType.isCashPayment) return "CASH";
+
+  const normalizedName = paymentType.name?.toLowerCase() || "";
+  if (
+    normalizedName.includes("mobile") ||
+    normalizedName.includes("airtel") ||
+    normalizedName.includes("mtn") ||
+    normalizedName.includes("wallet")
+  ) {
+    return "MOBILE_MONEY";
+  }
+
+  return "BANK_TRANSFER";
+}
+
 export default function StateTransitionManager({
   leadId,
   currentStage,
   currentStageColor,
   assignedToUserId,
   currentUserId,
-  isUserInStageTeam = false,
   onTransitionComplete,
 }: StateTransitionManagerProps) {
   const [open, setOpen] = useState(false);
@@ -110,6 +143,8 @@ export default function StateTransitionManager({
   const [routingCode, setRoutingCode] = useState("");
   const [receiptNumber, setReceiptNumber] = useState("");
   const [bankNumber, setBankNumber] = useState("");
+  const [currentCashierContext, setCurrentCashierContext] = useState<CurrentCashierContext | null>(null);
+  const [loadingCurrentCashier, setLoadingCurrentCashier] = useState(false);
 
   // Payout-specific state
   const [tellers, setTellers] = useState<{ id: string; fineractTellerId: number; name: string; officeName: string }[]>([]);
@@ -141,6 +176,15 @@ export default function StateTransitionManager({
 
   const { toast } = useToast();
   const router = useRouter();
+  const {
+    receiptRangesEnabled,
+    isValidating: isValidatingReceipt,
+    validationResult: receiptValidation,
+    validate: validateReceipt,
+    validateDebounced: validateReceiptDebounced,
+    markUsed: markReceiptUsed,
+    clearValidation: clearReceiptValidation,
+  } = useReceiptValidation();
 
   // Derived: when a stage will be skipped, the effective Fineract action is from the destination stage
   const effectiveAction = useMemo(() => {
@@ -149,6 +193,15 @@ export default function StateTransitionManager({
     }
     return selectedTransition?.fineractAction || null;
   }, [selectedTransition]);
+  const selectedPaymentType = useMemo(
+    () => paymentTypes.find((paymentType) => String(paymentType.id) === paymentTypeId) || null,
+    [paymentTypeId, paymentTypes]
+  );
+  const selectedPaymentTypeIsCash = Boolean(selectedPaymentType?.isCashPayment);
+  const derivedDisbursementPayoutMethod = useMemo(
+    () => inferPayoutMethodFromPaymentType(selectedPaymentType),
+    [selectedPaymentType]
+  );
 
   const fetchApprovalStatus = useCallback(async () => {
     try {
@@ -231,11 +284,13 @@ export default function StateTransitionManager({
       const failed: typeof failedValidations = [];
       for (const tv of data.tabs || []) {
         if (tv.tab === "validations") continue;
-        const failedChecks = (tv.checks || []).filter((c: any) => !c.passed);
+        const failedChecks = (tv.checks || []).filter(
+          (c: { passed?: boolean }) => !c.passed
+        );
         if (failedChecks.length > 0) {
           failed.push({
             tab: tv.tab,
-            checks: failedChecks.map((c: any) => ({
+            checks: failedChecks.map((c: { id: string; label: string; message: string; severity?: string }) => ({
               id: c.id,
               label: c.label,
               message: c.message,
@@ -269,6 +324,7 @@ export default function StateTransitionManager({
       setRoutingCode("");
       setReceiptNumber("");
       setBankNumber("");
+      setCurrentCashierContext(null);
       setSelectedTeller("");
       setSelectedCashier("");
       setPayoutMethod("");
@@ -277,8 +333,9 @@ export default function StateTransitionManager({
       setCashiers([]);
       setOverrideValidations(false);
       setOverrideReason("");
+      clearReceiptValidation();
     }
-  }, [open, fetchAvailableTransitions, checkValidations]);
+  }, [open, fetchAvailableTransitions, checkValidations, clearReceiptValidation, fetchApprovalStatus]);
 
   useEffect(() => {
     if (effectiveAction === "disburse" && paymentTypes.length === 0) {
@@ -287,13 +344,44 @@ export default function StateTransitionManager({
         .then((data) => {
           const list = Array.isArray(data) ? data : data?.pageItems ?? [];
           setPaymentTypes(list);
-          const firstCash = list.find((p: any) => p.isCashPayment);
-          if (firstCash) setPaymentTypeId(String(firstCash.id));
-          else if (list.length > 0) setPaymentTypeId(String(list[0].id));
+          const firstCash = list.find((p: { isCashPayment?: boolean }) => p.isCashPayment);
+          const firstNonCash = list.find((p: { isCashPayment?: boolean }) => !p.isCashPayment);
+          const defaultPaymentType = currentCashierContext?.isCashier
+            ? (firstCash || list[0])
+            : (firstNonCash || list[0]);
+          if (defaultPaymentType) {
+            setPaymentTypeId(String(defaultPaymentType.id));
+          }
         })
         .catch(() => {});
     }
-  }, [effectiveAction, paymentTypes.length]);
+  }, [currentCashierContext?.isCashier, effectiveAction, paymentTypes.length]);
+
+  useEffect(() => {
+    if (effectiveAction !== "disburse") return;
+
+    let cancelled = false;
+    setLoadingCurrentCashier(true);
+    fetch("/api/auth/current-cashier")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (cancelled) return;
+        setCurrentCashierContext(data);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setCurrentCashierContext(null);
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoadingCurrentCashier(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [effectiveAction]);
 
   // Fetch tellers when payout transition is selected
   useEffect(() => {
@@ -316,7 +404,7 @@ export default function StateTransitionManager({
         .then((res) => res.ok ? res.json() : [])
         .then((data) => {
           const active = (Array.isArray(data) ? data : []).filter(
-            (c: any) => c.sessionStatus === "ACTIVE"
+            (c: { sessionStatus?: string }) => c.sessionStatus === "ACTIVE"
           );
           setCashiers(active);
         })
@@ -326,7 +414,23 @@ export default function StateTransitionManager({
       setCashiers([]);
       setSelectedCashier("");
     }
-  }, [selectedTeller, selectedTransition]);
+  }, [effectiveAction, selectedTeller]);
+
+  useEffect(() => {
+    if (effectiveAction !== "disburse") return;
+
+    if (!currentCashierContext?.isCashier && selectedPaymentTypeIsCash) {
+      const firstNonCash = paymentTypes.find((paymentType) => !paymentType.isCashPayment);
+      if (firstNonCash) {
+        setPaymentTypeId(String(firstNonCash.id));
+      }
+    }
+  }, [
+    currentCashierContext?.isCashier,
+    effectiveAction,
+    paymentTypes,
+    selectedPaymentTypeIsCash,
+  ]);
 
   const isAssigned =
     currentUserId != null &&
@@ -338,9 +442,83 @@ export default function StateTransitionManager({
   const handleTransition = async () => {
     if (!selectedTransition) return;
 
+    if (effectiveAction === "disburse") {
+      if (!paymentTypeId) {
+        toast({
+          title: "Validation Error",
+          description: "Please select a disbursement payment type.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      if (!derivedDisbursementPayoutMethod) {
+        toast({
+          title: "Validation Error",
+          description: "Could not resolve payout method from the selected payment type.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      if (derivedDisbursementPayoutMethod === "CASH") {
+        if (!selectedPaymentTypeIsCash) {
+          toast({
+            title: "Validation Error",
+            description: "Cash payout requires a cash disbursement payment type.",
+            variant: "destructive",
+          });
+          return;
+        }
+
+        if (!currentCashierContext?.isCashier) {
+          toast({
+            title: "Cash Payout Not Allowed",
+            description:
+              currentCashierContext?.reason ||
+              "Only a logged-in cashier can choose cash for this disbursement.",
+            variant: "destructive",
+          });
+          return;
+        }
+
+        if (!currentCashierContext.hasActiveSession) {
+          toast({
+            title: "Cashier Session Required",
+            description:
+              currentCashierContext.reason ||
+              "Start an active cashier session before using cash.",
+            variant: "destructive",
+          });
+          return;
+        }
+      }
+
+      if (receiptRangesEnabled && selectedPaymentTypeIsCash) {
+        if (!receiptNumber.trim()) {
+          toast({
+            title: "Validation Error",
+            description: "Receipt number is required for cash disbursements.",
+            variant: "destructive",
+          });
+          return;
+        }
+
+        const validation = await validateReceipt(receiptNumber);
+        if (!validation.valid) {
+          toast({
+            title: "Validation Error",
+            description: validation.error || "Invalid receipt number.",
+            variant: "destructive",
+          });
+          return;
+        }
+      }
+    }
+
     setLoading(true);
     try {
-      let fineractOverrides: Record<string, any> | undefined;
+      let fineractOverrides: Record<string, unknown> | undefined;
       if (effectiveAction === "approve") {
         fineractOverrides = {
           approvalDate: fineractDate,
@@ -356,6 +534,8 @@ export default function StateTransitionManager({
           routingCode: routingCode || undefined,
           receiptNumber: receiptNumber || undefined,
           bankNumber: bankNumber || undefined,
+          payoutMethod: derivedDisbursementPayoutMethod || undefined,
+          payoutNote: payoutNotes || undefined,
         };
       } else if (effectiveAction === "reject") {
         fineractOverrides = {
@@ -386,6 +566,13 @@ export default function StateTransitionManager({
       const result = await response.json();
 
       if (result.success) {
+        if (effectiveAction === "disburse" && receiptRangesEnabled && selectedPaymentTypeIsCash && receiptNumber.trim()) {
+          await markReceiptUsed({
+            receiptNumber: receiptNumber.trim(),
+            transactionType: "DISBURSEMENT",
+          });
+        }
+
         toast({
           title: "Stage Updated",
           description: result.message,
@@ -861,12 +1048,132 @@ export default function StateTransitionManager({
                       </SelectTrigger>
                       <SelectContent>
                         {paymentTypes.map((p) => (
-                          <SelectItem key={p.id} value={String(p.id)}>
+                          <SelectItem
+                            key={p.id}
+                            value={String(p.id)}
+                            disabled={Boolean(p.isCashPayment && currentCashierContext && !currentCashierContext.isCashier)}
+                          >
                             {p.name}{p.isCashPayment ? " (Cash)" : ""}
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
+                    {currentCashierContext && !currentCashierContext.isCashier && (
+                      <p className="text-xs text-muted-foreground">
+                        Cash payment types are disabled because the logged in user is not an assigned cashier.
+                      </p>
+                    )}
+                  </div>
+
+                  {loadingCurrentCashier && selectedPaymentTypeIsCash && (
+                    <p className="text-xs text-muted-foreground flex items-center gap-1">
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                      Checking cashier access...
+                    </p>
+                  )}
+                  {currentCashierContext && !currentCashierContext.isCashier && selectedPaymentTypeIsCash && (
+                    <p className="text-xs text-muted-foreground">
+                      {currentCashierContext.reason || "Only cashiers can process cash payout."}
+                    </p>
+                  )}
+
+                  {selectedPaymentTypeIsCash && (
+                    <div className="rounded-lg border border-green-200 bg-green-50/60 dark:border-green-800 dark:bg-green-950/30 p-3 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <Banknote className="h-4 w-4 text-green-600" />
+                        <span className="text-sm font-medium text-green-800 dark:text-green-300">
+                          Cash payout will use the logged in cashier
+                        </span>
+                      </div>
+                      {currentCashierContext?.isCashier ? (
+                        <>
+                          <div className="flex justify-between gap-3 text-sm">
+                            <span className="text-muted-foreground">Cashier</span>
+                            <span className="font-medium">{currentCashierContext.staffName || "Unknown cashier"}</span>
+                          </div>
+                          <div className="flex justify-between gap-3 text-sm">
+                            <span className="text-muted-foreground">Teller</span>
+                            <span className="font-medium">
+                              {currentCashierContext.tellerName || "Unknown teller"}
+                              {currentCashierContext.tellerOfficeName ? ` - ${currentCashierContext.tellerOfficeName}` : ""}
+                            </span>
+                          </div>
+                          <div className="flex justify-between gap-3 text-sm">
+                            <span className="text-muted-foreground">Session</span>
+                            <span className={currentCashierContext.hasActiveSession ? "font-medium text-green-700 dark:text-green-400" : "font-medium text-red-600 dark:text-red-400"}>
+                              {currentCashierContext.hasActiveSession ? "Active" : "Not Active"}
+                            </span>
+                          </div>
+                        </>
+                      ) : (
+                        <p className="text-sm text-red-600 dark:text-red-400">
+                          {currentCashierContext?.reason || "Only a cashier with an active session can use cash payout."}
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {!selectedPaymentTypeIsCash && selectedPaymentType && (
+                    <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-blue-700 text-sm dark:bg-blue-950/30 dark:border-blue-800 dark:text-blue-300">
+                      <p className="font-medium">
+                        {derivedDisbursementPayoutMethod === "MOBILE_MONEY"
+                          ? "Mobile Money Payout"
+                          : `${selectedPaymentType.name || "Non-cash"} Payout`}
+                      </p>
+                      <p className="text-xs mt-1">
+                        The payout will be completed during disbursement without affecting cashier balances.
+                      </p>
+                    </div>
+                  )}
+
+                  {receiptRangesEnabled && selectedPaymentTypeIsCash && (
+                    <div className="space-y-2 p-4 border rounded-lg bg-muted/30">
+                      <Label>
+                        Receipt Number <span className="text-red-500">*</span>
+                      </Label>
+                      <div className="relative">
+                        <Input
+                          value={receiptNumber}
+                          onChange={(e) => {
+                            setReceiptNumber(e.target.value);
+                            clearReceiptValidation();
+                            if (e.target.value.trim()) {
+                              validateReceiptDebounced(e.target.value);
+                            }
+                          }}
+                          placeholder="Enter receipt number"
+                          className={
+                            receiptValidation
+                              ? receiptValidation.valid
+                                ? "border-green-500 pr-8"
+                                : "border-red-500 pr-8"
+                              : ""
+                          }
+                        />
+                        {isValidatingReceipt && (
+                          <Loader2 className="absolute right-2 top-2.5 h-4 w-4 animate-spin text-muted-foreground" />
+                        )}
+                        {!isValidatingReceipt && receiptValidation?.valid && (
+                          <CheckCircle className="absolute right-2 top-2.5 h-4 w-4 text-green-500" />
+                        )}
+                        {!isValidatingReceipt && receiptValidation && !receiptValidation.valid && (
+                          <AlertCircle className="absolute right-2 top-2.5 h-4 w-4 text-red-500" />
+                        )}
+                      </div>
+                      {receiptValidation && !receiptValidation.valid && (
+                        <p className="text-xs text-red-500">{receiptValidation.error}</p>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="space-y-2">
+                    <Label className="text-sm">Payout Notes (optional)</Label>
+                    <Textarea
+                      placeholder="Additional notes for the payout..."
+                      value={payoutNotes}
+                      onChange={(e) => setPayoutNotes(e.target.value)}
+                      rows={2}
+                    />
                   </div>
 
                   <div className="flex items-center gap-2">
@@ -894,10 +1201,12 @@ export default function StateTransitionManager({
                         <Label className="text-xs">Routing Code</Label>
                         <Input value={routingCode} onChange={(e) => setRoutingCode(e.target.value)} placeholder="Optional" />
                       </div>
-                      <div className="space-y-1">
-                        <Label className="text-xs">Receipt #</Label>
-                        <Input value={receiptNumber} onChange={(e) => setReceiptNumber(e.target.value)} placeholder="Optional" />
-                      </div>
+                      {!receiptRangesEnabled && (
+                        <div className="space-y-1">
+                          <Label className="text-xs">Receipt #</Label>
+                          <Input value={receiptNumber} onChange={(e) => setReceiptNumber(e.target.value)} placeholder="Optional" />
+                        </div>
+                      )}
                       <div className="space-y-1 col-span-2">
                         <Label className="text-xs">Bank #</Label>
                         <Input value={bankNumber} onChange={(e) => setBankNumber(e.target.value)} placeholder="Optional" />
@@ -922,7 +1231,12 @@ export default function StateTransitionManager({
               {/* Payment Method */}
               <div className="space-y-2">
                 <Label className="text-sm">Payment Method *</Label>
-                <Select value={payoutMethod} onValueChange={(v) => setPayoutMethod(v as any)}>
+                <Select
+                  value={payoutMethod}
+                  onValueChange={(value) =>
+                    setPayoutMethod(value as "CASH" | "MOBILE_MONEY" | "BANK_TRANSFER")
+                  }
+                >
                   <SelectTrigger>
                     <SelectValue placeholder="Select payment method..." />
                   </SelectTrigger>
@@ -1154,6 +1468,9 @@ export default function StateTransitionManager({
               (!!approvalBlocked && !selectedTransition?.isBackward) ||
               (hasBlockingValidations && !selectedTransition?.isBackward && !overrideValidations) ||
               (hasBlockingValidations && !selectedTransition?.isBackward && overrideValidations && !overrideReason?.trim()) ||
+              (!selectedTransition?.isBackward && effectiveAction === "disburse" && !paymentTypeId) ||
+              (!selectedTransition?.isBackward && effectiveAction === "disburse" && !derivedDisbursementPayoutMethod) ||
+              (!selectedTransition?.isBackward && effectiveAction === "disburse" && selectedPaymentTypeIsCash && loadingCurrentCashier) ||
               (!selectedTransition?.isBackward && effectiveAction === "payout" && !payoutMethod) ||
               (!selectedTransition?.isBackward && effectiveAction === "payout" && payoutMethod === "CASH" && (!selectedTeller || !selectedCashier)) ||
               (!selectedTransition?.isBackward && effectiveAction === "reject" && !reason?.trim())
@@ -1163,7 +1480,7 @@ export default function StateTransitionManager({
                 ? "bg-orange-600 hover:bg-orange-700"
                 : effectiveAction === "reject"
                 ? "bg-red-600 hover:bg-red-700"
-                : effectiveAction === "payout"
+                : effectiveAction === "payout" || effectiveAction === "disburse"
                 ? "bg-green-600 hover:bg-green-700"
                 : undefined
             }
@@ -1178,7 +1495,9 @@ export default function StateTransitionManager({
                   : effectiveAction === "approve"
                   ? "Approving..."
                   : effectiveAction === "disburse"
-                  ? "Disbursing..."
+                  ? derivedDisbursementPayoutMethod
+                    ? "Disbursing & Completing Payout..."
+                    : "Disbursing..."
                   : effectiveAction === "payout"
                   ? "Processing Payout..."
                   : effectiveAction === "reject"
@@ -1207,7 +1526,9 @@ export default function StateTransitionManager({
                   : effectiveAction === "approve"
                   ? "Approve & Move"
                   : effectiveAction === "disburse"
-                  ? "Disburse & Move"
+                  ? derivedDisbursementPayoutMethod
+                    ? "Disburse, Payout & Move"
+                    : "Disburse & Move"
                   : effectiveAction === "payout"
                   ? "Process Payout & Move"
                   : effectiveAction === "reject"

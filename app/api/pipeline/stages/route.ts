@@ -74,7 +74,7 @@ export async function PUT(request: NextRequest) {
       // Get existing stage IDs
       const existingStages = await tx.pipelineStage.findMany({
         where: { tenantId: tenant!.id },
-        select: { id: true },
+        select: { id: true, order: true },
       });
       const existingIds = existingStages.map((s) => s.id);
 
@@ -129,6 +129,20 @@ export async function PUT(request: NextRequest) {
         // Delete the stages
         await tx.pipelineStage.deleteMany({
           where: { id: { in: stagesToDelete } },
+        });
+      }
+
+      // Avoid temporary collisions on the unique (tenantId, order) constraint
+      // when stages are being reordered or swapped.
+      const remainingExistingStages = existingStages.filter(
+        (stage) => !stagesToDelete.includes(stage.id)
+      );
+      const orderOffset = stages.length + remainingExistingStages.length + 10;
+
+      for (const stage of remainingExistingStages) {
+        await tx.pipelineStage.update({
+          where: { id: stage.id },
+          data: { order: stage.order + orderOffset },
         });
       }
 
