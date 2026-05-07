@@ -5,7 +5,7 @@ import fs from "fs";
 import path from "path";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
 import { prisma } from "@/lib/prisma";
-import { isOmamaTenantSlug } from "@/lib/omama-tenant";
+import { isOmamaTenantSlug, normalizeTenantSlug } from "@/lib/omama-tenant";
 
 const MIME_BY_EXT: Record<string, string> = {
   ".png": "image/png",
@@ -91,9 +91,21 @@ const OMAMA_TEMPLATE = {
   name: "Omama Full Loan Contract",
 };
 
+const RULETHU_TEMPLATE = {
+  dir: path.join(process.cwd(), "templates", "rulethu-full-loan"),
+  file: "acknowledgement-of-debt-2025.html",
+  name: "Rulethu Acknowledgement of Debt 2025",
+};
+
 function getLocalTemplateConfig(tenantSlug: string) {
+  const normalizedSlug = normalizeTenantSlug(tenantSlug);
+
   if (isOmamaTenantSlug(tenantSlug)) {
     return OMAMA_TEMPLATE;
+  }
+
+  if (normalizedSlug === "rulethu" || normalizedSlug.startsWith("rulethu-")) {
+    return RULETHU_TEMPLATE;
   }
 
   return null;

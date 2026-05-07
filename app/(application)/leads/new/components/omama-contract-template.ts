@@ -632,6 +632,14 @@ export const fillOmamaContractTemplate = (
     ? scheduleDates[scheduleDates.length - 1]
     : "";
   const paymentByDate = lastScheduleDate || firstPaymentDateStr || "";
+  const currencyLabel = data.currency ? String(data.currency) : "USD$";
+  const interestAmountStr = formatCurrency(data.interest);
+  const numberOfPaymentsStr =
+    data.numberOfPayments !== undefined && data.numberOfPayments !== null
+      ? String(data.numberOfPayments)
+      : schedule.length > 0
+        ? String(schedule.length)
+        : "";
 
   // Fix typos in template for readability
   output = output.replace(/\bPENALLTY\b/gi, "PENALTY");
@@ -738,6 +746,16 @@ export const fillOmamaContractTemplate = (
     const replacement = imgSrc
       ? `<img src="${escapeHtml(imgSrc)}" style="height:60px; max-width:200px; object-fit:contain; vertical-align:middle;" />`
       : ` ${UNDERLINE(35)} `;
+    output = output.replace(
+      new RegExp(`\\{\\{\\s*${token}\\s*\\}\\}`, "g"),
+      replacement,
+    );
+  };
+
+  const replaceSignatureBlockToken = (token: string, imgSrc?: string | null) => {
+    const replacement = imgSrc
+      ? `<img src="${escapeHtml(imgSrc)}" alt="Signature" class="signature-image" />`
+      : "";
     output = output.replace(
       new RegExp(`\\{\\{\\s*${token}\\s*\\}\\}`, "g"),
       replacement,
@@ -900,6 +918,7 @@ export const fillOmamaContractTemplate = (
     50,
   );
   replaceToken("TOTAL_DEBT", totalDebtStr || null, 15);
+  replaceToken("CURRENCY_LABEL", currencyLabel, 8);
 
   // Voluntary Surrender items
   for (let i = 0; i < 8; i += 1) {
@@ -957,7 +976,10 @@ export const fillOmamaContractTemplate = (
   // Acknowledgement of Debt
   replaceToken("PAYMENT_PER_PERIOD", paymentPerPeriodStr || null, 15);
   replaceToken("FIRST_PAYMENT_DATE", firstPaymentDateStr || null, 25);
+  replaceToken("LAST_PAYMENT_DATE", paymentByDate || null, 25);
   replaceToken("INTEREST_RATE", interestRateStr || null, 8);
+  replaceToken("INTEREST_AMOUNT", interestAmountStr || null, 15);
+  replaceToken("NUMBER_OF_PAYMENTS", numberOfPaymentsStr || null, 8);
   replaceToken(
     "EXECUTION_DAY",
     currentDay || executionDay ? String(currentDay || executionDay) : null,
@@ -976,6 +998,7 @@ export const fillOmamaContractTemplate = (
     8,
   );
   replaceSignatureToken("DEBTOR_SIGNATURE", signatures?.borrower);
+  replaceSignatureBlockToken("DEBTOR_SIGNATURE_BLOCK", signatures?.borrower);
   replaceToken("AOD_WITNESS_1", null, 45);
   replaceToken("AOD_WITNESS_2", null, 45);
 
