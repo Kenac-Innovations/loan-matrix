@@ -441,8 +441,8 @@ export function generateLoanStatementHTML(data: LoanStatementData): string {
     }
     
     .logo {
-      max-width: 80px;
-      max-height: 80px;
+      max-width: 100px;
+      max-height: 100px;
       margin-bottom: 10px;
     }
     
@@ -859,7 +859,7 @@ export function generateConsolidatedStatementHTML(data: ConsolidatedStatementDat
     .header { display: table; width: 100%; border: 1px solid #000; margin-bottom: 0; }
     .header-left { display: table-cell; width: 50%; vertical-align: middle; text-align: center; padding: 15px; border-right: 1px solid #000; }
     .header-right { display: table-cell; width: 50%; vertical-align: top; padding: 0; }
-    .logo { max-width: 80px; max-height: 80px; margin-bottom: 10px; }
+    .logo { max-width: 100px; max-height: 100px; margin-bottom: 10px; }
     .company-name { font-size: 14px; font-weight: bold; color: #1a5276; margin-top: 10px; }
     .account-info-table { width: 100%; border-collapse: collapse; }
     .account-info-table td { padding: 6px 10px; border-bottom: 1px solid #000; }
