@@ -580,6 +580,12 @@ function buildEditableCharge(
   };
 }
 
+function startOfToday() {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return today;
+}
+
 function getDefaultChargeAmount(charge: {
   amount?: number;
   percentage?: number;
@@ -1299,6 +1305,13 @@ export function LoanTermsForm({
           savedInterestCalculationPeriodValue ||
           nextInterestCalculationPeriodValue;
 
+        const invoiceDiscountingPrincipal =
+          isInvoiceDiscountingLead &&
+          savedLoanTermsData?.principal !== undefined &&
+          savedLoanTermsData?.principal !== null
+            ? Number(savedLoanTermsData.principal)
+            : undefined;
+
         if (shouldApplyTemplateDefaultsRef.current) {
           const shouldPopulatePrincipal =
             autoPopulatePrincipalAmount &&
@@ -1306,7 +1319,9 @@ export function LoanTermsForm({
             !isInvoiceDiscountingLead;
 
           form.reset({
-            principal: shouldPopulatePrincipal ? loanTemplate.principal : 0,
+            principal:
+              invoiceDiscountingPrincipal ??
+              (shouldPopulatePrincipal ? loanTemplate.principal : 0),
             loanTerm: loanTemplate.termFrequency ?? 0,
             termFrequency: resolvedTermFrequencyValue,
             numberOfRepayments: loanTemplate.numberOfRepayments ?? 0,
@@ -2030,13 +2045,23 @@ export function LoanTermsForm({
                 : new Date();
 
               const initialCharges = loanTemplate.charges.map(
-                (charge: any) => ({
-                  chargeId: charge.chargeId || charge.id,
-                  name: getChargeDisplayName(charge.name),
-                  amount: charge.amount || 0,
-                  dueDate: disbursementDate,
-                  originalCharge: charge,
-                })
+                (charge: any) => {
+                  const chargeId = charge.chargeId || charge.id;
+                  const isInvoiceIncomeCharge =
+                    isInvoiceDiscountingLead &&
+                    Number.isFinite(invoiceIncomeChargeFineractId) &&
+                    Number(chargeId) === invoiceIncomeChargeFineractId;
+
+                  return {
+                    chargeId,
+                    name: getChargeDisplayName(charge.name),
+                    amount: charge.amount || 0,
+                    dueDate: isInvoiceIncomeCharge
+                      ? startOfToday()
+                      : disbursementDate,
+                    originalCharge: charge,
+                  };
+                }
               );
               setEditableCharges(initialCharges);
             }
@@ -2247,10 +2272,14 @@ export function LoanTermsForm({
     const selectedCharge = selectedChargeToAdd;
 
     if (selectedCharge) {
+      const isInvoiceIncomeCharge =
+        isInvoiceDiscountingLead &&
+        Number.isFinite(invoiceIncomeChargeFineractId) &&
+        Number(selectedCharge.id) === invoiceIncomeChargeFineractId;
       // Check if this charge requires a due date (Specified Due Date time type)
-      const requiresDueDate = isSpecifiedDueDateCharge(
-        selectedCharge.chargeTimeType
-      );
+      const requiresDueDate =
+        !isInvoiceIncomeCharge &&
+        isSpecifiedDueDateCharge(selectedCharge.chargeTimeType);
       const resolvedAmount =
         isInvoiceDiscountingLead &&
         Number.isFinite(invoiceIncomeChargeFineractId) &&
@@ -2270,7 +2299,9 @@ export function LoanTermsForm({
           chargeId: selectedCharge.id,
           name: getChargeDisplayName(selectedCharge.name),
           amount: resolvedAmount,
-          dueDate: newChargeDueDate || new Date(), // Use current date as fallback if not required
+          dueDate: isInvoiceIncomeCharge
+            ? startOfToday()
+            : newChargeDueDate || new Date(),
           originalCharge: selectedCharge,
         },
       ]);
@@ -2695,6 +2726,10 @@ export function LoanTermsForm({
         isInvoiceDiscountingLead &&
         index === invoiceIncomeChargeIndex &&
         invoiceDiscountingReserveAmount != null;
+      const isInvoiceIncomeCharge =
+        isInvoiceDiscountingLead &&
+        index === invoiceIncomeChargeIndex &&
+        Number.isFinite(invoiceIncomeChargeFineractId);
       const isTopupLockedCharge =
         isTopup &&
         isLoanDisbursementChargeTime(charge.originalCharge?.chargeTimeType) &&
@@ -2814,7 +2849,8 @@ export function LoanTermsForm({
             </div>
             {(charge.originalCharge?.chargeTimeType?.code === "specifiedDueDate" ||
               charge.originalCharge?.chargeTimeType?.value === "Specified Due Date" ||
-              charge.originalCharge?.chargeTimeType?.id === 2) && (
+              charge.originalCharge?.chargeTimeType?.id === 2) &&
+              !isInvoiceIncomeCharge && (
               <div className="space-y-2">
                 <Label>Due Date</Label>
                 <Popover>
@@ -4204,9 +4240,11 @@ export function LoanTermsForm({
                         )}
                     </div>
                     {(() => {
-                      const requiresDueDate = isSpecifiedDueDateCharge(
-                        selectedChargeToAdd?.chargeTimeType
-                      );
+                      const requiresDueDate =
+                        !isSelectedChargeInvoiceIncome &&
+                        isSpecifiedDueDateCharge(
+                          selectedChargeToAdd?.chargeTimeType
+                        );
 
                       return requiresDueDate ? (
                         <div className="space-y-2">
@@ -4245,9 +4283,11 @@ export function LoanTermsForm({
                     type="button"
                     onClick={handleAddCharge}
                     disabled={(() => {
-                      const requiresDueDate = isSpecifiedDueDateCharge(
-                        selectedChargeToAdd?.chargeTimeType
-                      );
+                      const requiresDueDate =
+                        !isSelectedChargeInvoiceIncome &&
+                        isSpecifiedDueDateCharge(
+                          selectedChargeToAdd?.chargeTimeType
+                        );
 
                       return !canEditLoan ||
                         !selectedChargeOption ||

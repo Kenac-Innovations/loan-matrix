@@ -273,17 +273,23 @@ export async function applyTopupDisbursementCharges(
     };
   }
 
-  const chargeProducts = await prisma.chargeProduct.findMany({
-    where: {
-      tenantId,
-      type: "LOAN",
-      chargeTimeType: "DISBURSEMENT",
-      active: true,
-      syncStatus: "SYNCED",
-      fineractChargeId: { not: null },
-    },
-    orderBy: { createdAt: "asc" },
-  });
+  // Decommissioned: Prisma-backed disbursement charge lookups are intentionally
+  // disabled while charge management moves to Fineract-first administration.
+  // Keep the original query below for easy restoration if top-up disbursement
+  // charges are needed again in future.
+  //
+  // const chargeProducts = await prisma.chargeProduct.findMany({
+  //   where: {
+  //     tenantId,
+  //     type: "LOAN",
+  //     chargeTimeType: "DISBURSEMENT",
+  //     active: true,
+  //     syncStatus: "SYNCED",
+  //     fineractChargeId: { not: null },
+  //   },
+  //   orderBy: { createdAt: "asc" },
+  // });
+  const chargeProducts: Array<{ amount: unknown; fineractChargeId: number | null }> = [];
 
   if (chargeProducts.length === 0) {
     return {

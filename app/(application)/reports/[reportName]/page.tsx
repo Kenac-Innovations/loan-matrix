@@ -625,26 +625,6 @@ export default function ReportDetailPage() {
             </p>
           </div>
         </div>
-        <div className="flex gap-2">
-          {reportData && (
-            <Button onClick={exportCSV} variant="outline" size="sm">
-              <Download className="h-4 w-4 mr-2" />
-              Export CSV
-            </Button>
-          )}
-          <Button
-            onClick={runReport}
-            disabled={loading || loadingParameters}
-            className="bg-blue-500 hover:bg-blue-600"
-          >
-            {loading ? (
-              <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <Play className="mr-2 h-4 w-4" />
-            )}
-            Generate Report
-          </Button>
-        </div>
       </div>
 
       {/* Stats Cards */}
@@ -749,6 +729,26 @@ export default function ReportDetailPage() {
               </p>
             </div>
           )}
+          <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-end">
+            {reportData && (
+              <Button onClick={exportCSV} variant="outline" size="sm">
+                <Download className="h-4 w-4 mr-2" />
+                Export CSV
+              </Button>
+            )}
+            <Button
+              onClick={runReport}
+              disabled={loading || loadingParameters}
+              className="bg-blue-500 hover:bg-blue-600"
+            >
+              {loading ? (
+                <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Play className="mr-2 h-4 w-4" />
+              )}
+              Generate Report
+            </Button>
+          </div>
         </CardContent>
       </Card>
 
