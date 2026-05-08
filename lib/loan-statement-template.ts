@@ -1123,6 +1123,7 @@ export function transformFineractLoanToStatement(
     parseFineractDate(timeline.actualDisbursementDate || timeline.submittedOnDate);
   const actualPeriodTo = periodTo || format(now, "dd MMMM yyyy");
   const printDate = format(now, "M/d/yyyy h:mm:ss a");
+  const closingBalance = openingBalance + totalDebits - totalCredits;
 
   // Create account name from client info
   const clientName = client?.displayName || loan.clientName || "N/A";
@@ -1156,12 +1157,7 @@ export function transformFineractLoanToStatement(
     openingBalance,
     totalDebits,
     totalCredits,
-    closingBalance: (() => {
-      const lastTx = sortedTransactions[sortedTransactions.length - 1];
-      return typeof lastTx?.outstandingLoanBalance === "number"
-        ? lastTx.outstandingLoanBalance
-        : Math.max(0, runningBalance);
-    })(),
+    closingBalance,
 
     preparedBy,
   };
