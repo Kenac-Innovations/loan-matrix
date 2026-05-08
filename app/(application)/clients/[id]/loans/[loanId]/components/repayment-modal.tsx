@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Calendar, Coins, DollarSign, Percent, AlertCircle, CheckCircle, Loader2 } from "lucide-react";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { toast } from "@/components/ui/use-toast";
 import { useReceiptValidation } from "@/hooks/use-receipt-validation";
 
 interface RepaymentTemplate {
@@ -343,23 +343,36 @@ export function RepaymentModal({ isOpen, onClose, loanId, onSuccess }: Repayment
           );
           if (!allocRes.ok) {
             const errData = await allocRes.json();
-            setError(
-              `Repayment recorded, but till balance was not updated: ${errData.error || allocRes.statusText}`
-            );
+            const message = `Repayment recorded, but till balance was not updated: ${errData.error || allocRes.statusText}`;
+            setError(message);
+            toast({
+              title: "Repayment partly completed",
+              description: message,
+              variant: "destructive",
+            });
             setSubmitting(false);
             return;
           }
         } catch (allocErr) {
           console.error("Allocate after repayment failed:", allocErr);
-          setError(
-            "Repayment recorded, but till balance was not updated. Please allocate manually."
-          );
+          const message =
+            "Repayment recorded, but till balance was not updated. Please allocate manually.";
+          setError(message);
+          toast({
+            title: "Repayment partly completed",
+            description: message,
+            variant: "destructive",
+          });
           setSubmitting(false);
           return;
         }
       }
 
       setSuccess(true);
+      toast({
+        title: "Repayment submitted",
+        description: "Repayment was recorded successfully.",
+      });
 
       // Close modal after a short delay
       setTimeout(() => {
@@ -371,7 +384,14 @@ export function RepaymentModal({ isOpen, onClose, loanId, onSuccess }: Repayment
       
     } catch (err) {
       console.error("Error submitting repayment:", err);
-      setError(err instanceof Error ? err.message : "Failed to submit repayment");
+      const message =
+        err instanceof Error ? err.message : "Failed to submit repayment";
+      setError(message);
+      toast({
+        title: "Repayment failed",
+        description: message,
+        variant: "destructive",
+      });
     } finally {
       setSubmitting(false);
     }
@@ -442,19 +462,21 @@ export function RepaymentModal({ isOpen, onClose, loanId, onSuccess }: Repayment
         </DialogHeader>
 
         {error && (
-          <Alert variant="destructive">
-            <AlertCircle className="h-4 w-4" />
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
+          <div className="rounded-md border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="h-4 w-4" />
+              <span>{error}</span>
+            </div>
+          </div>
         )}
 
         {success && (
-          <Alert className="border-green-200 bg-green-50">
-            <CheckCircle className="h-4 w-4 text-green-600" />
-            <AlertDescription className="text-green-800">
-              Repayment submitted successfully!
-            </AlertDescription>
-          </Alert>
+          <div className="rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
+            <div className="flex items-center gap-2">
+              <CheckCircle className="h-4 w-4 text-green-600" />
+              <span>Repayment submitted successfully!</span>
+            </div>
+          </div>
         )}
 
         {template && (
