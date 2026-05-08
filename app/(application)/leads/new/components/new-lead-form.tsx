@@ -68,6 +68,7 @@ import { LoanTermsForm } from "@/app/(application)/leads/new/components/loan-ter
 import { RepaymentScheduleForm } from "@/app/(application)/leads/new/components/repayment-schedule-form";
 import { LoanContracts } from "@/app/(application)/leads/new/components/loan-contracts";
 import { toast } from "@/components/ui/use-toast";
+import type { FineractBusinessCalendar } from "@/lib/fineract-business-calendar";
 
 
 // Define the type for the client form data
@@ -848,6 +849,14 @@ export function NewLeadForm() {
       notes: "",
     },
   });
+  const selectedOfficeId = form.watch("officeId");
+  const businessCalendarEndpoint = selectedOfficeId
+    ? `/api/fineract/business-calendar?officeId=${encodeURIComponent(selectedOfficeId)}`
+    : null;
+  const { data: businessCalendarData } = useSWR<FineractBusinessCalendar>(
+    businessCalendarEndpoint,
+    fetcher,
+  );
 
   useEffect(() => {
     const updateAffordabilityVisibility = (legalFormId: unknown) => {
@@ -1442,6 +1451,7 @@ export function NewLeadForm() {
                     leadId={currentLeadId || undefined}
                     formData={clientFormData}
                     externalForm={form}
+                    businessCalendar={businessCalendarData ?? null}
                     onFormSubmit={onSubmit}
                     clientCreatedInFineract={clientCreatedInFineract}
                     setFormCompletionStatus={setFormCompletionStatus}
@@ -1542,6 +1552,7 @@ export function NewLeadForm() {
                       clientId={fineractClientId}
                       leadId={currentLeadId || undefined}
                       currentTermsProductId={loanProductId}
+                      businessCalendar={businessCalendarData ?? null}
                       onSubmit={(data) => {
                         console.log("Loan details submitted:", data);
                         // Handle loan details submission
@@ -1687,6 +1698,7 @@ export function NewLeadForm() {
                       clientId={fineractClientId || undefined}
                       productId={loanProductId || undefined}
                       leadId={currentLeadId || undefined}
+                      businessCalendar={businessCalendarData ?? null}
                       ignoreSavedTermsOnLoad={ignoreSavedTermsForCurrentProduct}
                       onSubmit={(data) => {
                         console.log("Loan terms submitted:", data);

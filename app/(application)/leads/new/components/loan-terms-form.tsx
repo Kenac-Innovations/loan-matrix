@@ -36,6 +36,10 @@ import { CheckCircle2, AlertCircle } from "lucide-react";
 import { Calendar } from "@/components/ui/calender";
 import { cn } from "@/lib/utils";
 import { useFeatureFlags } from "@/hooks/use-feature-flags";
+import {
+  buildFineractBusinessCalendarRules,
+  type FineractBusinessCalendar,
+} from "@/lib/fineract-business-calendar";
 import { shouldAutoPopulatePrincipalAmount } from "@/lib/tenant-settings";
 import {
   recomputeTopupAwareDisbursementChargeAmounts,
@@ -623,6 +627,7 @@ interface LoanTermsFormProps {
   clientId?: number;
   productId?: number;
   leadId?: string;
+  businessCalendar?: FineractBusinessCalendar | null;
   ignoreSavedTermsOnLoad?: boolean;
   onSubmit: (data: LoanTermsFormData) => void;
   onBack: () => void;
@@ -637,6 +642,7 @@ export function LoanTermsForm({
   clientId,
   productId,
   leadId,
+  businessCalendar,
   ignoreSavedTermsOnLoad = false,
   onSubmit,
   onBack,
@@ -649,6 +655,10 @@ export function LoanTermsForm({
   /** Goodfellow: only charge amounts are editable; add/remove/due dates stay fixed. */
   const isChargesStructureReadOnly = tenantSlug === "goodfellow";
   const canEditLoan = !!features.canEditLoan;
+  const businessCalendarRules = useMemo(
+    () => buildFineractBusinessCalendarRules(businessCalendar),
+    [businessCalendar]
+  );
 
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -3143,7 +3153,10 @@ export function LoanTermsForm({
                           field.onChange(date);
                           if (date) onFirstRepaymentDateChange?.(date);
                         }}
-                        disabled={(date) => date < new Date("1900-01-01")}
+                        disabled={(date) =>
+                          date < new Date("1900-01-01") ||
+                          businessCalendarRules.isDisabled(date)
+                        }
                         initialFocus
                       />
                     </PopoverContent>
