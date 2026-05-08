@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback, ChangeEvent } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, ChangeEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm, Controller } from "react-hook-form";
@@ -111,6 +111,10 @@ import { SkeletonForm } from "./client-registration-form-skeleton";
 import { AddOfficeDialog } from "./add-office-dialogue";
 import { submitClientForm } from "@/app/actions/submit-client-form";
 import { DynamicDatatableContent } from "@/app/(application)/clients/[id]/components/DynamicDatatableContent";
+import {
+  buildFineractBusinessCalendarRules,
+  type FineractBusinessCalendar,
+} from "@/lib/fineract-business-calendar";
 import {
   getInputErrorStyling,
   getSelectErrorStyling,
@@ -434,6 +438,7 @@ interface ClientRegistrationFormProps {
   leadId?: string;
   formData?: ClientFormData;
   externalForm?: any;
+  businessCalendar?: FineractBusinessCalendar | null;
   clientCreatedInFineract?: boolean;
   onClientCreated?: () => void;
   onFormSubmit?: (
@@ -454,6 +459,7 @@ export function ClientRegistrationForm({
   leadId,
   formData,
   externalForm,
+  businessCalendar,
   clientCreatedInFineract = false,
   onClientCreated,
   onFormSubmit,
@@ -480,6 +486,10 @@ export function ClientRegistrationForm({
   const clientSelfieOptionalForPerson =
     !!tenantLocale.clientSelfieOptionalForPerson;
   const documentsOptional = !!tenantLocale.documentsOptional;
+  const businessCalendarRules = useMemo(
+    () => buildFineractBusinessCalendarRules(businessCalendar),
+    [businessCalendar]
+  );
 
   // State for multi-step form
   const [currentStep, setCurrentStep] = useState(1);
@@ -6242,7 +6252,8 @@ export function ClientRegistrationForm({
                                                 }
                                               }}
                                               disabled={(date) =>
-                                                date < new Date("1900-01-01")
+                                                date < new Date("1900-01-01") ||
+                                                businessCalendarRules.isDisabled(date)
                                               }
                                               initialFocus
                                             />
@@ -7378,16 +7389,17 @@ export function ClientRegistrationForm({
                                           className="w-auto p-0"
                                           align="start"
                                         >
-                                          <Calendar
-                                            mode="single"
-                                            selected={field.value}
-                                            onSelect={field.onChange}
-                                            disabled={(date) =>
-                                              date > new Date() ||
-                                              date < new Date("1900-01-01")
-                                            }
-                                            captionLayout="dropdown"
-                                            initialFocus
+                                            <Calendar
+                                              mode="single"
+                                              selected={field.value}
+                                              onSelect={field.onChange}
+                                              disabled={(date) =>
+                                                date > new Date() ||
+                                                date < new Date("1900-01-01") ||
+                                                businessCalendarRules.isDisabled(date)
+                                              }
+                                              captionLayout="dropdown"
+                                              initialFocus
                                           />
                                         </PopoverContent>
                                       </Popover>
