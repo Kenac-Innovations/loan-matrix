@@ -77,6 +77,11 @@ export default function TransactionDetailsPage() {
     fetchPaymentTypes();
   }, []);
 
+  const isRepaymentTransaction = !!(
+    transaction?.type?.repayment || transaction?.type?.recoveryRepayment
+  );
+  const isDisbursementTransaction = !!transaction?.type?.disbursement;
+
   const formatDate = (arr?: number[]) => {
     if (!arr || arr.length !== 3) return "";
     const [y, m, d] = arr;
@@ -117,19 +122,24 @@ export default function TransactionDetailsPage() {
           <ChevronLeft className="h-4 w-4" /> Back
         </Button>
         <div className="flex items-center gap-2">
+          {/*
           <Button variant="outline" disabled>
             Edit
           </Button>
+          */}
           <Button
             variant="destructive"
-            disabled={!(transaction?.type?.disbursement) || transaction?.manuallyReversed}
+            disabled={
+              !(isDisbursementTransaction || isRepaymentTransaction) ||
+              transaction?.manuallyReversed
+            }
             onClick={() => setShowUndo(true)}
           >
             Undo
           </Button>
           <Button
             variant="outline"
-            disabled={!(transaction?.type?.repayment)}
+            disabled={!(transaction?.type?.repayment) || transaction?.manuallyReversed}
             onClick={() => {
               setPaymentTypeId("");
               setAmount((transaction?.amount ?? 0).toFixed(2));
@@ -235,10 +245,16 @@ export default function TransactionDetailsPage() {
       <Dialog open={showUndo} onOpenChange={setShowUndo}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Undo Disbursement</DialogTitle>
+            <DialogTitle>
+              {isRepaymentTransaction ? "Undo Repayment" : "Undo Disbursement"}
+            </DialogTitle>
           </DialogHeader>
           <div className="space-y-3 text-sm">
-            <p>Are you sure you want to undo this disbursement transaction?</p>
+            <p>
+              {isRepaymentTransaction
+                ? "Are you sure you want to undo this repayment transaction?"
+                : "Are you sure you want to undo this disbursement transaction?"}
+            </p>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
                 <div className="text-muted-foreground">Transaction Date</div>
@@ -277,12 +293,15 @@ export default function TransactionDetailsPage() {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(body),
                   });
-                  if (!resp.ok) throw new Error('Undo failed');
+                  if (!resp.ok) {
+                    const err = await resp.json().catch(() => ({}));
+                    throw new Error(err.error || 'Undo failed');
+                  }
                   setShowUndo(false);
                   router.refresh();
                 } catch (e) {
                   console.error(e);
-                  alert('Undo failed');
+                  alert(e instanceof Error ? e.message : "Undo failed");
                 } finally {
                   setPostingUndo(false);
                 }
