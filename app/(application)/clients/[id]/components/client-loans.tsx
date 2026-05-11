@@ -1,15 +1,15 @@
 "use client";
 
 import useSWR from 'swr';
-import Link from "next/link";
 import {
   CreditCard,
   DollarSign,
   Calendar,
   AlertCircle,
   TrendingUp,
-  ExternalLink,
+  ChevronRight,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import {
   Card,
   CardContent,
@@ -110,10 +110,42 @@ interface RawClientLoan {
   };
 }
 
+interface ClientLoanSequenceItem {
+  id: number;
+  timeline?: {
+    submittedOnDate?: string;
+    approvedOnDate?: string;
+    actualDisbursementDate?: string;
+    expectedDisbursementDate?: string;
+  };
+}
+
+const getLoanSequenceSortTime = (loan: ClientLoanSequenceItem): number => {
+  const candidateDates = [
+    loan.timeline?.submittedOnDate,
+    loan.timeline?.approvedOnDate,
+    loan.timeline?.actualDisbursementDate,
+    loan.timeline?.expectedDisbursementDate,
+  ];
+
+  for (const value of candidateDates) {
+    if (typeof value === "string" && value) {
+      const parsed = new Date(value).getTime();
+      if (!Number.isNaN(parsed)) {
+        return parsed;
+      }
+    }
+  }
+
+  return Number.MAX_SAFE_INTEGER;
+};
+
 // Simple fetcher for SWR
 const fetcher = (url: string) => fetch(url).then(res => res.json());
 
 export function ClientLoans({ clientId }: ClientLoansProps) {
+  const router = useRouter();
+
   // Use accounts endpoint to get loanAccounts for accuracy
   const { data, error, isLoading } = useSWR(`/api/fineract/clients/${clientId}/accounts`, fetcher);
 
@@ -286,6 +318,22 @@ export function ClientLoans({ clientId }: ClientLoansProps) {
     const statusLower = loan.displayStatus.toLowerCase();
     return statusLower.includes("active") || statusLower.includes("overdue");
   }).length;
+  const loanSequenceNumbers = (() => {
+    const orderedLoans = [...loans].sort((left, right) => {
+      const timeDiff =
+        getLoanSequenceSortTime(left) - getLoanSequenceSortTime(right);
+
+      if (timeDiff !== 0) {
+        return timeDiff;
+      }
+
+      return left.id - right.id;
+    });
+
+    return new Map(
+      orderedLoans.map((loan, index) => [loan.id, index + 1])
+    );
+  })();
 
   // Get currency for display - use first loan's currency when all share same currency
   const summaryCurrency =
@@ -426,18 +474,39 @@ export function ClientLoans({ clientId }: ClientLoansProps) {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-[72px]"></TableHead>
                     <TableHead>Loan Product</TableHead>
                     <TableHead>Account No</TableHead>
                     <TableHead>Principal</TableHead>
                     <TableHead>Outstanding</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Maturity Date</TableHead>
-                    <TableHead>Actions</TableHead>
+                    <TableHead className="w-[48px] text-right">Open</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {loans.map((loan) => (
-                    <TableRow key={loan.id}>
+                    <TableRow
+                      key={loan.id}
+                      className="cursor-pointer transition-colors hover:bg-muted/50"
+                      onClick={() => router.push(`/clients/${clientId}/loans/${loan.id}`)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          router.push(`/clients/${clientId}/loans/${loan.id}`);
+                        }
+                      }}
+                      tabIndex={0}
+                      role="link"
+                      aria-label={`Open loan ${loan.accountNo || loan.id} details`}
+                    >
+                      <TableCell>
+                        <div className="flex justify-center">
+                          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-100 text-sm font-semibold text-blue-700 dark:bg-blue-900 dark:text-blue-300">
+                            {loanSequenceNumbers.get(loan.id) ?? "?"}
+                          </div>
+                        </div>
+                      </TableCell>
                       <TableCell>
                         <div>
                           <div className="flex items-center gap-2">
@@ -488,14 +557,8 @@ export function ClientLoans({ clientId }: ClientLoansProps) {
                             : "Not set"}
                         </div>
                       </TableCell>
-                      <TableCell>
-                        <Link
-                          href={`/clients/${clientId}/loans/${loan.id}`}
-                          className="inline-flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800"
-                        >
-                          <ExternalLink className="h-3 w-3" />
-                          View Details
-                        </Link>
+                      <TableCell className="text-right">
+                        <ChevronRight className="ml-auto h-4 w-4 text-muted-foreground" />
                       </TableCell>
                     </TableRow>
                   ))}
