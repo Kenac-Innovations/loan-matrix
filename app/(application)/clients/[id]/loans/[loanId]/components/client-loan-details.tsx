@@ -52,11 +52,68 @@ interface ClientLoanDetailsProps {
   loanId: number;
 }
 
+interface ClientLoanSequenceItem {
+  id: number;
+  timeline?: {
+    submittedOnDate?: string | number[];
+    approvedOnDate?: string | number[];
+    actualDisbursementDate?: string | number[];
+    expectedDisbursementDate?: string | number[];
+  };
+}
+
+const getLoanSequenceSortTime = (loan: ClientLoanSequenceItem): number => {
+  const candidateDates = [
+    loan.timeline?.submittedOnDate,
+    loan.timeline?.approvedOnDate,
+    loan.timeline?.actualDisbursementDate,
+    loan.timeline?.expectedDisbursementDate,
+  ];
+
+  for (const value of candidateDates) {
+    if (typeof value === "string" && value) {
+      const parsed = new Date(value).getTime();
+      if (!Number.isNaN(parsed)) {
+        return parsed;
+      }
+    }
+
+    if (Array.isArray(value) && value.length === 3) {
+      const [year, month, day] = value;
+      const parsed = new Date(year, month - 1, day).getTime();
+      if (!Number.isNaN(parsed)) {
+        return parsed;
+      }
+    }
+  }
+
+  return Number.MAX_SAFE_INTEGER;
+};
+
+const formatLoanSequenceLabel = (position: number): string => {
+  const mod100 = position % 100;
+  if (mod100 >= 11 && mod100 <= 13) {
+    return `${position}th loan`;
+  }
+
+  switch (position % 10) {
+    case 1:
+      return `${position}st loan`;
+    case 2:
+      return `${position}nd loan`;
+    case 3:
+      return `${position}rd loan`;
+    default:
+      return `${position}th loan`;
+  }
+};
+
 export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) {
   const router = useRouter();
   const { tenantSlug } = useFeatureFlags();
   const [client, setClient] = useState<FineractClient | null>(null);
   const [loan, setLoan] = useState<FineractLoan | null>(null);
+  const [loanSequenceLabel, setLoanSequenceLabel] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showAddCollateral, setShowAddCollateral] = useState(false);
@@ -902,20 +959,57 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
       setLoading(true);
       setError(null);
 
-      const clientResponse = await fetch(`/api/clients/${clientId}`);
+      const [clientResponse, loanResponse, clientLoansResponse] = await Promise.all([
+        fetch(`/api/clients/${clientId}`),
+        fetch(`/api/fineract/loans/${loanId}?associations=all&exclude=guarantors,futureSchedule`),
+        fetch(`/api/fineract/clients/${clientId}/accounts`),
+      ]);
+
       if (!clientResponse.ok) {
         throw new Error(`Failed to fetch client details: ${clientResponse.statusText}`);
       }
-      const clientData = await clientResponse.json();
-      setClient(clientData);
-
-      const loanResponse = await fetch(`/api/fineract/loans/${loanId}?associations=all&exclude=guarantors,futureSchedule`);
       if (!loanResponse.ok) {
         throw new Error(`Failed to fetch loan details: ${loanResponse.statusText}`);
       }
-      const loanData = await loanResponse.json();
 
+      const clientData = await clientResponse.json();
+      const loanData = await loanResponse.json();
+      setClient(clientData);
       setLoan(loanData);
+
+      if (clientLoansResponse.ok) {
+        const clientLoansData = await clientLoansResponse.json();
+        const rawClientLoans = Array.isArray(clientLoansData?.loanAccounts)
+          ? clientLoansData.loanAccounts
+          : Array.isArray(clientLoansData?.pageItems)
+            ? clientLoansData.pageItems
+            : Array.isArray(clientLoansData)
+              ? clientLoansData
+              : [];
+
+        const orderedLoans = [...rawClientLoans]
+          .filter((clientLoan: ClientLoanSequenceItem) => typeof clientLoan?.id === "number")
+          .sort((left: ClientLoanSequenceItem, right: ClientLoanSequenceItem) => {
+            const timeDiff =
+              getLoanSequenceSortTime(left) - getLoanSequenceSortTime(right);
+
+            if (timeDiff !== 0) {
+              return timeDiff;
+            }
+
+            return left.id - right.id;
+          });
+
+        const loanIndex = orderedLoans.findIndex(
+          (clientLoan: ClientLoanSequenceItem) => clientLoan.id === loanData.id
+        );
+
+        setLoanSequenceLabel(
+          loanIndex >= 0 ? formatLoanSequenceLabel(loanIndex + 1) : null
+        );
+      } else {
+        setLoanSequenceLabel(null);
+      }
 
       const payoutRes = await fetch(`/api/loans/${loanId}/payout`).catch(() => null);
       if (payoutRes?.ok) {
@@ -2839,6 +2933,14 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
             </div>
             <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
               <span>{loan.accountNo}</span>
+              {loanSequenceLabel && (
+                <>
+                  <span>&middot;</span>
+                  <Badge variant="secondary" className="text-[11px] uppercase tracking-wide">
+                    {loanSequenceLabel}
+                  </Badge>
+                </>
+              )}
               {loan.externalId && (
                 <>
                   <span>&middot;</span>
