@@ -2144,9 +2144,18 @@ export function LoanContracts({
         console.log("Applying invoice discounting charges via add-charge endpoint");
 
         for (const charge of requestedCharges) {
+          const calcCode: string =
+            charge.originalCharge?.chargeCalculationType?.code ?? "";
+          const isPercentage =
+            calcCode.toLowerCase().includes("percent") &&
+            typeof charge.originalCharge?.percentage === "number" &&
+            Number.isFinite(charge.originalCharge.percentage);
+
           const chargePayload: any = {
             chargeId: charge.chargeId,
-            amount: charge.amount,
+            amount: isPercentage
+              ? charge.originalCharge.percentage
+              : charge.amount,
             locale: "en",
           };
 
