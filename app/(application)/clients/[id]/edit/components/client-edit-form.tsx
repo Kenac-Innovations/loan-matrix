@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { AlertCircle, Loader2 } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -12,175 +13,254 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { AlertCircle, Loader2 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { EntityStructureEditor } from "@/components/entity-structure/entity-structure-editor";
 
-interface FineractClient {
+type Option = {
   id: number;
+  name?: string;
+  value?: string;
+  displayName?: string;
+};
+
+type ClientNonPersonDetails = {
+  constitution?: Option;
+  incorpValidityTillDate?: string | number[];
+  incorpNumber?: string;
+  incorporationDate?: string | number[];
+  mainBusinessLine?: Option;
+  remarks?: string;
+};
+
+type ClientTemplateData = {
+  id: number;
+  officeId: number;
+  officeName?: string;
+  officeOptions?: Option[];
+  staffId?: number;
+  staffName?: string;
+  staffOptions?: Option[];
+  legalForm?: {
+    id: number;
+    code?: string;
+    value: string;
+  };
+  clientLegalFormOptions?: Option[];
   accountNo: string;
   externalId?: string;
-  displayName?: string;
   fullname?: string;
   firstname?: string;
   middlename?: string;
   lastname?: string;
+  gender?: Option;
+  genderOptions?: Option[];
+  isStaff?: boolean;
   mobileNo?: string;
   emailAddress?: string;
   dateOfBirth?: string | number[];
-  gender?: {
-    id: number;
-    name: string;
-  };
-  clientType?: {
-    id: number;
-    name: string;
-  };
-  clientClassification?: {
-    id: number;
-    name: string;
-  };
-  officeId: number;
-  officeName: string;
-  staffId?: number;
-  staffName?: string;
-  activationDate?: string | number[];
-  submittedOnDate: string | number[];
-  legalForm?: {
-    id: number;
-    code: string;
-    value: string;
-  };
-  isStaff?: boolean;
+  clientType?: Option;
+  clientTypeOptions?: Option[];
+  clientClassification?: Option;
+  clientClassificationOptions?: Option[];
   timeline?: {
-    submittedOnDate: string | number[];
-    submittedByUsername?: string;
+    submittedOnDate?: string | number[];
     activatedOnDate?: string | number[];
-    activatedByUsername?: string;
-    activatedByFirstname?: string;
-    activatedByLastname?: string;
   };
-  clientNonPersonDetails?: {
-    incorporationDate?: string | number[];
-  };
-}
+  activationDate?: string | number[];
+  submittedOnDate?: string | number[];
+  clientNonPersonDetails?: ClientNonPersonDetails;
+  clientNonPersonConstitutionOptions?: Option[];
+  clientNonPersonMainBusinessLineOptions?: Option[];
+};
 
-interface Staff {
-  id: number;
-  displayName: string;
-}
+type EntityFormData = {
+  constitutionId: string;
+  incorpValidityTillDate: string;
+  incorpNumber: string;
+  mainBusinessLineId: string;
+  remarks: string;
+};
+
+type FormDataState = {
+  officeId: string;
+  staffId: string;
+  legalFormId: string;
+  accountNo: string;
+  externalId: string;
+  fullname: string;
+  firstname: string;
+  middlename: string;
+  lastname: string;
+  genderId: string;
+  isStaff: boolean;
+  mobileNo: string;
+  emailAddress: string;
+  dateOfBirth: string;
+  clientTypeId: string;
+  clientClassificationId: string;
+  submittedOnDate: string;
+  activationDate: string;
+  clientNonPersonDetails: EntityFormData;
+};
 
 interface ClientEditFormProps {
   clientId: number;
 }
 
+function ClientEditFormSkeleton() {
+  return (
+    <Card>
+      <CardHeader>
+        <Skeleton className="h-7 w-44" />
+        <Skeleton className="h-4 w-72 max-w-full" />
+      </CardHeader>
+      <CardContent className="space-y-6">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          {Array.from({ length: 12 }).map((_, index) => (
+            <div key={index} className="space-y-2">
+              <Skeleton className="h-4 w-28" />
+              <Skeleton className="h-10 w-full" />
+            </div>
+          ))}
+        </div>
+        <div className="flex justify-center gap-4 pt-6">
+          <Skeleton className="h-10 w-24" />
+          <Skeleton className="h-10 w-24" />
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function toDateInputValue(value?: string | number[] | null): string {
+  if (!value) return "";
+  if (Array.isArray(value) && value.length >= 3) {
+    const [year, month, day] = value;
+    return `${String(year).padStart(4, "0")}-${String(month).padStart(
+      2,
+      "0"
+    )}-${String(day).padStart(2, "0")}`;
+  }
+  if (typeof value === "string") {
+    const directMatch = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (directMatch) {
+      return `${directMatch[1]}-${directMatch[2]}-${directMatch[3]}`;
+    }
+
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.getTime())) {
+      return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(
+        2,
+        "0"
+      )}-${String(parsed.getDate()).padStart(2, "0")}`;
+    }
+  }
+  return "";
+}
+
+function buildInitialFormData(client: ClientTemplateData): FormDataState {
+  const legalFormId = String(client.legalForm?.id ?? 1);
+  const isEntity = legalFormId === "2";
+  const nonPerson = client.clientNonPersonDetails;
+
+  return {
+    officeId: String(client.officeId ?? ""),
+    staffId: client.staffId ? String(client.staffId) : "",
+    legalFormId,
+    accountNo: client.accountNo ?? "",
+    externalId: client.externalId ?? "",
+    fullname: isEntity ? (client.fullname ?? "").trim() : "",
+    firstname: isEntity ? "" : client.firstname ?? "",
+    middlename: isEntity ? "" : client.middlename ?? "",
+    lastname: isEntity ? "" : client.lastname ?? "",
+    genderId: isEntity ? "" : client.gender?.id ? String(client.gender.id) : "",
+    isStaff: Boolean(client.isStaff),
+    mobileNo: client.mobileNo ?? "",
+    emailAddress: client.emailAddress ?? "",
+    dateOfBirth: toDateInputValue(
+      isEntity
+        ? nonPerson?.incorporationDate ?? client.dateOfBirth
+        : client.dateOfBirth
+    ),
+    clientTypeId: client.clientType?.id ? String(client.clientType.id) : "",
+    clientClassificationId: client.clientClassification?.id
+      ? String(client.clientClassification.id)
+      : "",
+    submittedOnDate: toDateInputValue(
+      client.timeline?.submittedOnDate ?? client.submittedOnDate
+    ),
+    activationDate: toDateInputValue(
+      client.timeline?.activatedOnDate ?? client.activationDate
+    ),
+    clientNonPersonDetails: {
+      constitutionId: nonPerson?.constitution?.id
+        ? String(nonPerson.constitution.id)
+        : "",
+      incorpValidityTillDate: toDateInputValue(nonPerson?.incorpValidityTillDate),
+      incorpNumber: nonPerson?.incorpNumber ?? "",
+      mainBusinessLineId: nonPerson?.mainBusinessLine?.id
+        ? String(nonPerson.mainBusinessLine.id)
+        : "",
+      remarks: nonPerson?.remarks ?? "",
+    },
+  };
+}
+
+function isEmailInvalid(email: string) {
+  if (!email) return false;
+  return !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
 export function ClientEditForm({ clientId }: ClientEditFormProps) {
   const router = useRouter();
   const { success: showSuccessToast } = useToast();
-  const [client, setClient] = useState<FineractClient | null>(null);
-  const [staff, setStaff] = useState<Staff[]>([]);
+  const [client, setClient] = useState<ClientTemplateData | null>(null);
+  const [formData, setFormData] = useState<FormDataState | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [entityLeadId, setEntityLeadId] = useState<string | null>(null);
-  const [entityStakeholders, setEntityStakeholders] = useState<any[]>([]);
-  const [entityBankAccounts, setEntityBankAccounts] = useState<any[]>([]);
-
-  // Form state
-  const [formData, setFormData] = useState({
-    legalForm: "1", // Default to Person
-    accountNo: "",
-    externalId: "",
-    fullname: "",
-    firstname: "",
-    middlename: "",
-    lastname: "",
-    gender: "",
-    dateOfBirth: "",
-    isStaff: false,
-    staffId: "",
-    emailAddress: "",
-    mobileNo: "",
-    clientClassification: "1", // Default to REGULAR
-    clientType: "1", // Default to INDIVIDUAL
-    activationDate: "",
-    submittedOnDate: "",
-  });
+  const [entityStakeholders, setEntityStakeholders] = useState<unknown[]>([]);
+  const [entityBankAccounts, setEntityBankAccounts] = useState<unknown[]>([]);
 
   useEffect(() => {
     async function fetchData() {
       try {
         setLoading(true);
-        
-        // Fetch client details
-        const clientResponse = await fetch(`/api/clients/${clientId}`);
+        setError(null);
+
+        const clientResponse = await fetch(
+          `/api/clients/${clientId}?template=true&staffInSelectedOfficeOnly=true`
+        );
         if (!clientResponse.ok) {
           throw new Error("Failed to fetch client details");
         }
-        console.log("==========> clientDataResponse to edit ::", clientResponse);
-        const clientData = await clientResponse.json();
-        console.log("==========> clientData to edit ::", clientData);
-        console.log("==========> activationDate ::", clientData.activationDate);
-        console.log("==========> submittedOnDate ::", clientData.submittedOnDate);
-        console.log("==========> timeline ::", clientData.timeline);
+
+        const clientData = (await clientResponse.json()) as ClientTemplateData;
         setClient(clientData);
+        setFormData(buildInitialFormData(clientData));
 
-        // Helper function to convert date array to ISO string
-        const convertDateArray = (dateArray: number[] | string | undefined): string => {
-          if (!dateArray) return "";
-          if (typeof dateArray === "string") {
-            return new Date(dateArray).toISOString().split('T')[0];
-          }
-          if (Array.isArray(dateArray) && dateArray.length === 3) {
-            const [year, month, day] = dateArray;
-            // Note: month is 0-indexed in Date constructor, but Fineract uses 1-indexed
-            return new Date(year, month - 1, day).toISOString().split('T')[0];
-          }
-          return "";
-        };
-
-        // Set form data from client
-        const isEntityClient = clientData.legalForm?.id === 2;
-        setFormData({
-          legalForm: clientData.legalForm?.id?.toString() || "1",
-          accountNo: clientData.accountNo || "",
-          externalId: clientData.externalId || "",
-          fullname: isEntityClient
-            ? (clientData.fullname || clientData.displayName || "").trim()
-            : "",
-          firstname: isEntityClient ? "" : clientData.firstname || "",
-          middlename: isEntityClient ? "" : clientData.middlename || "",
-          lastname: isEntityClient ? "" : clientData.lastname || "",
-          gender: isEntityClient ? "" : clientData.gender?.id?.toString() || "",
-          dateOfBirth: convertDateArray(
-            isEntityClient
-              ? clientData.clientNonPersonDetails?.incorporationDate ??
-                  clientData.dateOfBirth
-              : clientData.dateOfBirth
-          ),
-          isStaff: clientData.isStaff || false,
-          staffId: clientData.staffId?.toString() || "",
-          emailAddress: clientData.emailAddress || "",
-          mobileNo: clientData.mobileNo || "",
-          clientClassification: clientData.clientClassification?.id?.toString() || "1",
-          clientType: clientData.clientType?.id?.toString() || "1",
-          activationDate: convertDateArray(clientData.activationDate || clientData.timeline?.activatedOnDate),
-          submittedOnDate: convertDateArray(clientData.submittedOnDate || clientData.timeline?.submittedOnDate),
-        });
-
-        if (isEntityClient) {
+        if (clientData.legalForm?.id === 2) {
           try {
-            const entRes = await fetch(
+            const entityResponse = await fetch(
               `/api/clients/${clientId}/entity-structure`
             );
-            if (entRes.ok) {
-              const ent = await entRes.json();
-              setEntityLeadId(ent.leadId ?? null);
-              setEntityStakeholders(ent.entityStakeholders || []);
-              setEntityBankAccounts(ent.entityBankAccounts || []);
+            if (entityResponse.ok) {
+              const entityData = await entityResponse.json();
+              setEntityLeadId(entityData.leadId ?? null);
+              setEntityStakeholders(entityData.entityStakeholders || []);
+              setEntityBankAccounts(entityData.entityBankAccounts || []);
             } else {
               setEntityLeadId(null);
               setEntityStakeholders([]);
@@ -196,35 +276,8 @@ export function ClientEditForm({ clientId }: ClientEditFormProps) {
           setEntityStakeholders([]);
           setEntityBankAccounts([]);
         }
-
-        // Fetch offices
-        const officesResponse = await fetch("/api/offices");
-        if (officesResponse.ok) {
-          const officesData = await officesResponse.json();
-          setOffices(Array.isArray(officesData) ? officesData : []);
-        } else {
-          // Mock data for development
-          setOffices([
-            { id: 1, name: "Head Office" },
-            { id: 2, name: "Branch Office" },
-          ]);
-        }
-
-        // Fetch staff
-        const staffResponse = await fetch("/api/staff");
-        if (staffResponse.ok) {
-          const staffData = await staffResponse.json();
-          setStaff(Array.isArray(staffData) ? staffData : []);
-        } else {
-          // Mock data for development
-          setStaff([
-            { id: 1, displayName: "Bazaya, Nashley" },
-            { id: 2, displayName: "Smith, John" },
-          ]);
-        }
-
       } catch (err) {
-        console.error("Error fetching data:", err);
+        console.error("Error fetching client edit data:", err);
         setError("Failed to load client details");
       } finally {
         setLoading(false);
@@ -234,76 +287,142 @@ export function ClientEditForm({ clientId }: ClientEditFormProps) {
     fetchData();
   }, [clientId]);
 
-  const isEntity = formData.legalForm === "2";
+  const isEntity = formData?.legalFormId === "2";
+  const officeOptions = client?.officeOptions ?? [];
+  const staffOptions = client?.staffOptions ?? [];
+  const legalFormOptions = client?.clientLegalFormOptions ?? [];
+  const genderOptions = client?.genderOptions ?? [];
+  const clientTypeOptions = client?.clientTypeOptions ?? [];
+  const clientClassificationOptions = client?.clientClassificationOptions ?? [];
+  const constitutionOptions = client?.clientNonPersonConstitutionOptions ?? [];
+  const businessLineOptions = client?.clientNonPersonMainBusinessLineOptions ?? [];
+
+  const submittedDateMin = "2000-01-01";
+  const maxDate = "2100-01-01";
+
+  const canSubmit = useMemo(() => {
+    if (!formData || saving) return false;
+    if (!formData.submittedOnDate) return false;
+    if (isEmailInvalid(formData.emailAddress)) return false;
+
+    if (isEntity) {
+      return Boolean(formData.fullname.trim());
+    }
+
+    return Boolean(formData.firstname.trim() && formData.lastname.trim());
+  }, [formData, isEntity, saving]);
 
   const refreshEntityStructure = async () => {
     if (!isEntity) return;
     try {
-      const entRes = await fetch(`/api/clients/${clientId}/entity-structure`);
-      if (entRes.ok) {
-        const ent = await entRes.json();
-        setEntityLeadId(ent.leadId ?? null);
-        setEntityStakeholders(ent.entityStakeholders || []);
-        setEntityBankAccounts(ent.entityBankAccounts || []);
-      }
+      const response = await fetch(`/api/clients/${clientId}/entity-structure`);
+      if (!response.ok) return;
+      const entityData = await response.json();
+      setEntityLeadId(entityData.leadId ?? null);
+      setEntityStakeholders(entityData.entityStakeholders || []);
+      setEntityBankAccounts(entityData.entityBankAccounts || []);
     } catch {
       /* ignore */
     }
   };
 
-  const handleInputChange = (field: string, value: string | boolean) => {
-    setFormData(prev => ({
-      ...prev,
-      [field]: value
-    }));
+  const handleInputChange = (
+    field: keyof FormDataState,
+    value: string | boolean
+  ) => {
+    setFormData((prev) => (prev ? { ...prev, [field]: value } : prev));
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (isEntity) {
-      if (!formData.fullname.trim()) {
-        setError("Entity name is required");
-        return;
-      }
-    } else {
-      if (!formData.firstname.trim() || !formData.lastname.trim()) {
-        setError("First name and last name are required");
-        return;
-      }
+  const handleEntityFieldChange = (
+    field: keyof EntityFormData,
+    value: string
+  ) => {
+    setFormData((prev) =>
+      prev
+        ? {
+            ...prev,
+            clientNonPersonDetails: {
+              ...prev.clientNonPersonDetails,
+              [field]: value,
+            },
+          }
+        : prev
+    );
+  };
+
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!formData) return;
+
+    if (isEntity && !formData.fullname.trim()) {
+      setError("Entity name is required");
+      return;
+    }
+
+    if (!isEntity && (!formData.firstname.trim() || !formData.lastname.trim())) {
+      setError("First name and last name are required");
+      return;
+    }
+
+    if (isEmailInvalid(formData.emailAddress)) {
+      setError("Enter a valid email address");
+      return;
     }
 
     setSaving(true);
     setError(null);
 
     try {
-      // Transform form data to match Fineract API format.
-      // locale + dateFormat are required so Fineract can parse date fields.
-      const updateData = {
-        locale: "en",
-        dateFormat: "yyyy-MM-dd",
-        legalFormId: parseInt(formData.legalForm) || undefined,
-        externalId: formData.externalId || undefined,
-        isStaff: formData.isStaff,
-        staffId: parseInt(formData.staffId) || undefined,
-        emailAddress: formData.emailAddress || undefined,
-        mobileNo: formData.mobileNo || undefined,
-        // clientClassificationId: parseInt(formData.clientClassification) || undefined,
-        clientTypeId: parseInt(formData.clientType) || undefined,
-        activationDate: formData.activationDate ? new Date(formData.activationDate).toISOString().split('T')[0] : undefined,
-        submittedOnDate: formData.submittedOnDate ? new Date(formData.submittedOnDate).toISOString().split('T')[0] : undefined,
-        ...(isEntity
-          ? { fullname: formData.fullname.trim() }
-          : {
-              firstname: formData.firstname,
-              middlename: formData.middlename || undefined,
-              lastname: formData.lastname,
-              genderId: parseInt(formData.gender) || undefined,
-              dateOfBirth: formData.dateOfBirth
-                ? new Date(formData.dateOfBirth).toISOString().split("T")[0]
-                : undefined,
-            }),
+      const rawValue = structuredClone(formData);
+      const locale = "en";
+      const dateFormat = "yyyy-MM-dd";
+
+      const updateData: Record<string, unknown> = {
+        ...rawValue,
+        dateOfBirth: rawValue.dateOfBirth || undefined,
+        submittedOnDate: rawValue.submittedOnDate || undefined,
+        activationDate: rawValue.activationDate || undefined,
+        dateFormat,
+        locale,
+        genderId: rawValue.genderId ? Number(rawValue.genderId) : undefined,
+        staffId: rawValue.staffId ? Number(rawValue.staffId) : undefined,
+        clientTypeId: rawValue.clientTypeId
+          ? Number(rawValue.clientTypeId)
+          : undefined,
+        clientClassificationId: rawValue.clientClassificationId
+          ? Number(rawValue.clientClassificationId)
+          : undefined,
+        legalFormId: rawValue.legalFormId ? Number(rawValue.legalFormId) : undefined,
       };
+
+      delete updateData.officeId;
+      delete updateData.accountNo;
+
+      updateData.clientNonPersonDetails = isEntity
+        ? {
+            constitutionId: rawValue.clientNonPersonDetails.constitutionId
+              ? Number(rawValue.clientNonPersonDetails.constitutionId)
+              : undefined,
+            incorpValidityTillDate:
+              rawValue.clientNonPersonDetails.incorpValidityTillDate || undefined,
+            incorpNumber:
+              rawValue.clientNonPersonDetails.incorpNumber || undefined,
+            mainBusinessLineId: rawValue.clientNonPersonDetails.mainBusinessLineId
+              ? Number(rawValue.clientNonPersonDetails.mainBusinessLineId)
+              : undefined,
+            remarks: rawValue.clientNonPersonDetails.remarks || undefined,
+            dateFormat,
+            locale,
+          }
+        : {};
+
+      if (isEntity) {
+        delete updateData.firstname;
+        delete updateData.middlename;
+        delete updateData.lastname;
+      } else {
+        delete updateData.fullname;
+      }
 
       const response = await fetch(`/api/clients/${clientId}`, {
         method: "PUT",
@@ -331,9 +450,7 @@ export function ClientEditForm({ clientId }: ClientEditFormProps) {
           formData.accountNo || "N/A"
         }`,
       });
-      setTimeout(() => {
-        router.push(`/clients/${clientId}`);
-      }, 1000);
+      router.push(`/clients/${clientId}`);
     } catch (err) {
       console.error("Error updating client:", err);
       setError(err instanceof Error ? err.message : "Failed to update client");
@@ -342,27 +459,8 @@ export function ClientEditForm({ clientId }: ClientEditFormProps) {
     }
   };
 
-  const formatDateForDisplay = (dateString: string) => {
-    if (!dateString) return "";
-    const date = new Date(dateString);
-    return date.toLocaleDateString("en-US", {
-      month: "numeric",
-      day: "numeric", 
-      year: "numeric"
-    });
-  };
-
   if (loading) {
-    return (
-      <Card>
-        <CardContent className="p-6">
-          <div className="flex items-center justify-center">
-            <Loader2 className="h-6 w-6 animate-spin" />
-            <span className="ml-2">Loading client details...</span>
-          </div>
-        </CardContent>
-      </Card>
-    );
+    return <ClientEditFormSkeleton />;
   }
 
   if (error && !client) {
@@ -370,6 +468,15 @@ export function ClientEditForm({ clientId }: ClientEditFormProps) {
       <Alert variant="destructive">
         <AlertCircle className="h-4 w-4" />
         <AlertDescription>{error}</AlertDescription>
+      </Alert>
+    );
+  }
+
+  if (!client || !formData) {
+    return (
+      <Alert variant="destructive">
+        <AlertCircle className="h-4 w-4" />
+        <AlertDescription>Client edit data is unavailable.</AlertDescription>
       </Alert>
     );
   }
@@ -392,32 +499,39 @@ export function ClientEditForm({ clientId }: ClientEditFormProps) {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Row 1 */}
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 xl:grid-cols-4">
               <div className="space-y-2">
-                <Label htmlFor="officeName">Office</Label>
-                <Input
-                  id="officeName"
-                  value={client?.officeName ?? ""}
-                  disabled
-                  className="bg-muted/50"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="legalForm">Legal Form</Label>
-                <Select value={formData.legalForm} disabled>
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select legal form" />
+                <Label htmlFor="officeId">Office</Label>
+                <Select value={formData.officeId} disabled>
+                  <SelectTrigger id="officeId">
+                    <SelectValue placeholder="Select office" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="1">Person</SelectItem>
-                    <SelectItem value="2">Entity</SelectItem>
+                    {officeOptions.map((option) => (
+                      <SelectItem key={option.id} value={String(option.id)}>
+                        {option.name ?? option.value ?? `Office ${option.id}`}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
 
-              {/* Row 2 */}
+              <div className="space-y-2">
+                <Label htmlFor="legalFormId">Legal Form</Label>
+                <Select value={formData.legalFormId} disabled>
+                  <SelectTrigger id="legalFormId">
+                    <SelectValue placeholder="Select legal form" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {legalFormOptions.map((option) => (
+                      <SelectItem key={option.id} value={String(option.id)}>
+                        {option.value ?? option.name ?? `Legal Form ${option.id}`}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
               <div className="space-y-2">
                 <Label htmlFor="accountNo">Account No.</Label>
                 <Input
@@ -433,20 +547,22 @@ export function ClientEditForm({ clientId }: ClientEditFormProps) {
                 <Input
                   id="externalId"
                   value={formData.externalId}
-                  onChange={(e) => handleInputChange("externalId", e.target.value)}
+                  onChange={(e) =>
+                    handleInputChange("externalId", e.target.value)
+                  }
                 />
               </div>
 
-              {/* Name: person vs entity */}
               {isEntity ? (
-                <div className="space-y-2 lg:col-span-2">
-                  <Label htmlFor="fullname">Entity name *</Label>
+                <div className="space-y-2 lg:col-span-2 xl:col-span-2">
+                  <Label htmlFor="fullname">Entity Name *</Label>
                   <Input
                     id="fullname"
                     value={formData.fullname}
-                    onChange={(e) => handleInputChange("fullname", e.target.value)}
+                    onChange={(e) =>
+                      handleInputChange("fullname", e.target.value)
+                    }
                     required
-                    autoComplete="organization"
                   />
                 </div>
               ) : (
@@ -456,7 +572,9 @@ export function ClientEditForm({ clientId }: ClientEditFormProps) {
                     <Input
                       id="firstname"
                       value={formData.firstname}
-                      onChange={(e) => handleInputChange("firstname", e.target.value)}
+                      onChange={(e) =>
+                        handleInputChange("firstname", e.target.value)
+                      }
                       required
                     />
                   </div>
@@ -466,7 +584,9 @@ export function ClientEditForm({ clientId }: ClientEditFormProps) {
                     <Input
                       id="middlename"
                       value={formData.middlename}
-                      onChange={(e) => handleInputChange("middlename", e.target.value)}
+                      onChange={(e) =>
+                        handleInputChange("middlename", e.target.value)
+                      }
                     />
                   </div>
 
@@ -475,67 +595,106 @@ export function ClientEditForm({ clientId }: ClientEditFormProps) {
                     <Input
                       id="lastname"
                       value={formData.lastname}
-                      onChange={(e) => handleInputChange("lastname", e.target.value)}
+                      onChange={(e) =>
+                        handleInputChange("lastname", e.target.value)
+                      }
                       required
                     />
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="gender">Gender</Label>
-                    <Select value={formData.gender} onValueChange={(value) => handleInputChange("gender", value)}>
-                      <SelectTrigger className="w-full">
+                    <Label htmlFor="genderId">Gender</Label>
+                    <Select
+                      value={formData.genderId || "__none__"}
+                      onValueChange={(value) =>
+                        handleInputChange(
+                          "genderId",
+                          value === "__none__" ? "" : value
+                        )
+                      }
+                    >
+                      <SelectTrigger id="genderId">
                         <SelectValue placeholder="Select gender" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="1">Male</SelectItem>
-                        <SelectItem value="2">Female</SelectItem>
+                        <SelectItem value="__none__">None</SelectItem>
+                        {genderOptions.map((option) => (
+                          <SelectItem key={option.id} value={String(option.id)}>
+                            {option.name ?? option.value ?? `Gender ${option.id}`}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
                 </>
               )}
 
-              {/* Row 5 */}
               <div className="space-y-2">
                 <Label htmlFor="dateOfBirth">
-                  {isEntity ? "Date of incorporation" : "Date of Birth"}
+                  {isEntity ? "Date of Incorporation" : "Date of Birth"}
                 </Label>
                 <Input
                   id="dateOfBirth"
                   type="date"
                   value={formData.dateOfBirth}
-                  onChange={(e) => handleInputChange("dateOfBirth", e.target.value)}
-                  readOnly={isEntity}
-                  className={isEntity ? "bg-muted/50" : undefined}
+                  onChange={(e) =>
+                    handleInputChange("dateOfBirth", e.target.value)
+                  }
+                  max={maxDate}
                 />
               </div>
 
-              <div className="space-y-2">
-                <div className="flex items-center space-x-2">
+              {!isEntity && (
+                <div className="flex items-center gap-3 pt-8">
                   <Checkbox
                     id="isStaff"
                     checked={formData.isStaff}
-                    onCheckedChange={(checked) => handleInputChange("isStaff", checked as boolean)}
+                    onCheckedChange={(checked) =>
+                      handleInputChange("isStaff", checked === true)
+                    }
                   />
                   <Label htmlFor="isStaff">Is staff?</Label>
                 </div>
-              </div>
+              )}
 
-              {/* Row 6 */}
               <div className="space-y-2">
                 <Label htmlFor="staffId">Staff</Label>
-                <Select value={formData.staffId} onValueChange={(value) => handleInputChange("staffId", value)}>
-                  <SelectTrigger className="w-full">
+                <Select
+                  value={formData.staffId || "__none__"}
+                  onValueChange={(value) =>
+                    handleInputChange(
+                      "staffId",
+                      value === "__none__" ? "" : value
+                    )
+                  }
+                >
+                  <SelectTrigger id="staffId">
                     <SelectValue placeholder="Select staff" />
                   </SelectTrigger>
                   <SelectContent>
-                    {staff.map((staffMember) => (
-                      <SelectItem key={staffMember.id} value={staffMember.id.toString()}>
-                        {staffMember.displayName}
+                    <SelectItem value="__none__">Unassigned</SelectItem>
+                    {staffOptions.map((option) => (
+                      <SelectItem key={option.id} value={String(option.id)}>
+                        {option.displayName ??
+                          option.name ??
+                          option.value ??
+                          `Staff ${option.id}`}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="mobileNo">Mobile No</Label>
+                <Input
+                  id="mobileNo"
+                  type="tel"
+                  value={formData.mobileNo}
+                  onChange={(e) =>
+                    handleInputChange("mobileNo", e.target.value)
+                  }
+                />
               </div>
 
               <div className="space-y-2">
@@ -544,47 +703,84 @@ export function ClientEditForm({ clientId }: ClientEditFormProps) {
                   id="emailAddress"
                   type="email"
                   value={formData.emailAddress}
-                  onChange={(e) => handleInputChange("emailAddress", e.target.value)}
+                  onChange={(e) =>
+                    handleInputChange("emailAddress", e.target.value)
+                  }
                 />
-              </div>
-
-              {/* Row 7 */}
-              <div className="space-y-2">
-                <Label htmlFor="mobileNo">Mobile No</Label>
-                <Input
-                  id="mobileNo"
-                  value={formData.mobileNo}
-                  onChange={(e) => handleInputChange("mobileNo", e.target.value)}
-                />
+                {isEmailInvalid(formData.emailAddress) && (
+                  <p className="text-sm text-destructive">
+                    Enter a valid email address.
+                  </p>
+                )}
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="clientClassification">Client Classification</Label>
-                <Select value={formData.clientClassification} onValueChange={(value) => handleInputChange("clientClassification", value)}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select classification" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="1">REGULAR</SelectItem>
-                    <SelectItem value="2">VIP</SelectItem>
-                    <SelectItem value="3">PREMIUM</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Row 8 */}
-              <div className="space-y-2">
-                <Label htmlFor="clientType">Client Type</Label>
-                <Select value={formData.clientType} onValueChange={(value) => handleInputChange("clientType", value)}>
-                  <SelectTrigger className="w-full">
+                <Label htmlFor="clientTypeId">Client Type</Label>
+                <Select
+                  value={formData.clientTypeId || "__none__"}
+                  onValueChange={(value) =>
+                    handleInputChange(
+                      "clientTypeId",
+                      value === "__none__" ? "" : value
+                    )
+                  }
+                >
+                  <SelectTrigger id="clientTypeId">
                     <SelectValue placeholder="Select client type" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="1">INDIVIDUAL</SelectItem>
-                    <SelectItem value="2">GROUP</SelectItem>
-                    <SelectItem value="3">CORPORATE</SelectItem>
+                    <SelectItem value="__none__">None</SelectItem>
+                    {clientTypeOptions.map((option) => (
+                      <SelectItem key={option.id} value={String(option.id)}>
+                        {option.name ?? option.value ?? `Type ${option.id}`}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="clientClassificationId">
+                  Client Classification
+                </Label>
+                <Select
+                  value={formData.clientClassificationId || "__none__"}
+                  onValueChange={(value) =>
+                    handleInputChange(
+                      "clientClassificationId",
+                      value === "__none__" ? "" : value
+                    )
+                  }
+                >
+                  <SelectTrigger id="clientClassificationId">
+                    <SelectValue placeholder="Select client classification" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">None</SelectItem>
+                    {clientClassificationOptions.map((option) => (
+                      <SelectItem key={option.id} value={String(option.id)}>
+                        {option.name ??
+                          option.value ??
+                          `Classification ${option.id}`}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="submittedOnDate">Submitted On *</Label>
+                <Input
+                  id="submittedOnDate"
+                  type="date"
+                  value={formData.submittedOnDate}
+                  onChange={(e) =>
+                    handleInputChange("submittedOnDate", e.target.value)
+                  }
+                  min={submittedDateMin}
+                  max={maxDate}
+                  required
+                />
               </div>
 
               <div className="space-y-2">
@@ -593,45 +789,141 @@ export function ClientEditForm({ clientId }: ClientEditFormProps) {
                   id="activationDate"
                   type="date"
                   value={formData.activationDate}
-                  onChange={(e) => handleInputChange("activationDate", e.target.value)}
-                />
-              </div>
-
-              {/* Row 9 */}
-              <div className="space-y-2">
-                <Label htmlFor="submittedOnDate">Submitted On *</Label>
-                <Input
-                  id="submittedOnDate"
-                  type="date"
-                  value={formData.submittedOnDate}
-                  onChange={(e) => handleInputChange("submittedOnDate", e.target.value)}
-                  required
+                  onChange={(e) =>
+                    handleInputChange("activationDate", e.target.value)
+                  }
+                  min={formData.submittedOnDate || submittedDateMin}
+                  max={maxDate}
                 />
               </div>
             </div>
 
             {isEntity && (
-              <Card className="mt-8 border-muted">
-                <CardHeader>
-                  <CardTitle>Directors, shareholders &amp; entity banking</CardTitle>
-                  <CardDescription>
-                    Data is stored in Loan Matrix (not Fineract). PEP and control
-                    structure options come from Fineract codes.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <EntityStructureEditor
-                    leadId={entityLeadId}
-                    fineractClientId={clientId}
-                    initialStakeholders={entityStakeholders}
-                    initialBankAccounts={entityBankAccounts}
-                    onRefresh={refreshEntityStructure}
-                  />
-                </CardContent>
-              </Card>
+              <>
+                <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="constitutionId">Constitution</Label>
+                    <Select
+                      value={
+                        formData.clientNonPersonDetails.constitutionId || "__none__"
+                      }
+                      onValueChange={(value) =>
+                        handleEntityFieldChange(
+                          "constitutionId",
+                          value === "__none__" ? "" : value
+                        )
+                      }
+                    >
+                      <SelectTrigger id="constitutionId">
+                        <SelectValue placeholder="Select constitution" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">None</SelectItem>
+                        {constitutionOptions.map((option) => (
+                          <SelectItem key={option.id} value={String(option.id)}>
+                            {option.name ??
+                              option.value ??
+                              `Constitution ${option.id}`}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="mainBusinessLineId">Main Business Line</Label>
+                    <Select
+                      value={
+                        formData.clientNonPersonDetails.mainBusinessLineId ||
+                        "__none__"
+                      }
+                      onValueChange={(value) =>
+                        handleEntityFieldChange(
+                          "mainBusinessLineId",
+                          value === "__none__" ? "" : value
+                        )
+                      }
+                    >
+                      <SelectTrigger id="mainBusinessLineId">
+                        <SelectValue placeholder="Select business line" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">None</SelectItem>
+                        {businessLineOptions.map((option) => (
+                          <SelectItem key={option.id} value={String(option.id)}>
+                            {option.name ??
+                              option.value ??
+                              `Business Line ${option.id}`}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="incorpValidityTillDate">
+                      Incorporation Valid Till
+                    </Label>
+                    <Input
+                      id="incorpValidityTillDate"
+                      type="date"
+                      value={formData.clientNonPersonDetails.incorpValidityTillDate}
+                      onChange={(e) =>
+                        handleEntityFieldChange(
+                          "incorpValidityTillDate",
+                          e.target.value
+                        )
+                      }
+                      min={submittedDateMin}
+                      max={maxDate}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="incorpNumber">Incorporation Number</Label>
+                    <Input
+                      id="incorpNumber"
+                      value={formData.clientNonPersonDetails.incorpNumber}
+                      onChange={(e) =>
+                        handleEntityFieldChange("incorpNumber", e.target.value)
+                      }
+                    />
+                  </div>
+
+                  <div className="space-y-2 lg:col-span-2">
+                    <Label htmlFor="remarks">Remarks</Label>
+                    <Textarea
+                      id="remarks"
+                      value={formData.clientNonPersonDetails.remarks}
+                      onChange={(e) =>
+                        handleEntityFieldChange("remarks", e.target.value)
+                      }
+                      rows={3}
+                    />
+                  </div>
+                </div>
+
+                <Card className="mt-2 border-muted">
+                  <CardHeader>
+                    <CardTitle>Directors, shareholders &amp; entity banking</CardTitle>
+                    <CardDescription>
+                      Data is stored in Loan Matrix. These records are managed
+                      separately from the core Fineract client update payload.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <EntityStructureEditor
+                      leadId={entityLeadId}
+                      fineractClientId={clientId}
+                      initialStakeholders={entityStakeholders}
+                      initialBankAccounts={entityBankAccounts}
+                      onRefresh={refreshEntityStructure}
+                    />
+                  </CardContent>
+                </Card>
+              </>
             )}
 
-            {/* Action Buttons */}
             <div className="flex justify-center gap-4 pt-6">
               <Button
                 type="button"
@@ -641,8 +933,8 @@ export function ClientEditForm({ clientId }: ClientEditFormProps) {
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={saving}>
-                {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              <Button type="submit" disabled={!canSubmit}>
+                {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Submit
               </Button>
             </div>
@@ -651,4 +943,4 @@ export function ClientEditForm({ clientId }: ClientEditFormProps) {
       </form>
     </div>
   );
-} 
+}

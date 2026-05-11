@@ -652,6 +652,9 @@ export function LoanTermsForm({
   onFirstRepaymentDateChange,
 }: LoanTermsFormProps) {
   const { tenantSlug, features } = useFeatureFlags();
+  // Ref so the template-fetch effect can read the latest features without re-running
+  const featuresRef = useRef(features);
+  useEffect(() => { featuresRef.current = features; }, [features]);
   /** Goodfellow: only charge amounts are editable; add/remove/due dates stay fixed. */
   const isChargesStructureReadOnly = tenantSlug === "goodfellow";
   const canEditLoan = !!features.canEditLoan;
@@ -691,6 +694,8 @@ export function LoanTermsForm({
   );
   const [isTopup, setIsTopup] = useState(false);
   const [loanIdToClose, setLoanIdToClose] = useState<string>("");
+  const [isLoadingTopupBalances, setIsLoadingTopupBalances] = useState(false);
+  const topupBalancesEnrichedRef = useRef(false);
   const [sectionCompletion, setSectionCompletion] = useState({
     basicTerms: false,
     interestSchedule: false,
@@ -1025,6 +1030,7 @@ export function LoanTermsForm({
   // Fetch detailed template and product topup config when clientId and productId are available
   useEffect(() => {
     detailedTemplateFetched.current = false;
+    topupBalancesEnrichedRef.current = false;
   }, [clientId, productId]);
 
   useEffect(() => {
@@ -1086,6 +1092,7 @@ export function LoanTermsForm({
                   const activeLoans = (accountsData.loanAccounts || []).filter(
                     (la: any) => la.status?.active
                   );
+
                   detailedTemplate.clientActiveLoanOptions = activeLoans.map((la: any) => ({
                     id: la.id,
                     accountNo: la.accountNo,
@@ -3035,9 +3042,55 @@ export function LoanTermsForm({
                   <div className="flex items-center gap-3 h-10">
                     <Switch
                       checked={isTopup}
-                      onCheckedChange={(checked) => {
+                      onCheckedChange={async (checked) => {
                         setIsTopup(checked);
-                        if (!checked) setLoanIdToClose("");
+                        if (!checked) {
+                          setLoanIdToClose("");
+                          return;
+                        }
+                        if (
+                          !featuresRef.current.topupLoanBalanceExcludeUnrealizedInterests ||
+                          topupBalancesEnrichedRef.current ||
+                          !loanTemplate?.clientActiveLoanOptions?.length
+                        ) return;
+
+                        setIsLoadingTopupBalances(true);
+                        try {
+                          const today = new Date();
+                          const transactionDate = today.toLocaleDateString("en-GB", {
+                            day: "2-digit",
+                            month: "long",
+                            year: "numeric",
+                          });
+                          const fcParams = new URLSearchParams({
+                            command: "foreclosure",
+                            locale: "en",
+                            dateFormat: "dd MMMM yyyy",
+                            transactionDate,
+                          });
+                          const enriched = await Promise.all(
+                            loanTemplate.clientActiveLoanOptions.map(async (loan) => {
+                              try {
+                                const res = await fetch(
+                                  `/api/fineract/loans/${loan.id}/transactions/template?${fcParams}`
+                                );
+                                if (res.ok) {
+                                  const data = await res.json();
+                                  if (data.amount != null) return { ...loan, loanBalance: data.amount };
+                                }
+                              } catch {
+                                // fall back to total outstanding
+                              }
+                              return loan;
+                            })
+                          );
+                          setLoanTemplate((prev) =>
+                            prev ? { ...prev, clientActiveLoanOptions: enriched } : prev
+                          );
+                          topupBalancesEnrichedRef.current = true;
+                        } finally {
+                          setIsLoadingTopupBalances(false);
+                        }
                       }}
                     />
                     <span className="text-sm text-muted-foreground">
@@ -3057,7 +3110,12 @@ export function LoanTermsForm({
                   The outstanding balance on the selected loan will be deducted from the new
                   disbursement. The remaining amount will be paid out to the client.
                 </p>
-                {loanTemplate.clientActiveLoanOptions &&
+                {isLoadingTopupBalances ? (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                    Loading settlement balances…
+                  </div>
+                ) : loanTemplate.clientActiveLoanOptions &&
                 loanTemplate.clientActiveLoanOptions.length > 0 ? (
                   <Select
                     value={loanIdToClose}
