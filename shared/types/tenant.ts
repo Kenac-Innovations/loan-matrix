@@ -26,6 +26,8 @@ export interface TenantFeatures {
   showAllLeadsByDefault: boolean;
   /** Omama-only office-scoped dashboard for Admin/Administrator users on the leads page */
   officeScopedAdminLeadsDashboard: boolean;
+  /** When showing client active loans for topup, use the foreclosure settlement amount instead of total outstanding (excludes unrealized/future interest) */
+  topupLoanBalanceExcludeUnrealizedInterests: boolean;
 }
 
 /**
@@ -87,6 +89,7 @@ export const DEFAULT_FEATURES: TenantFeatures = {
   hasInvoiceDiscounting: false,
   showAllLeadsByDefault: false,
   officeScopedAdminLeadsDashboard: false,
+  topupLoanBalanceExcludeUnrealizedInterests: false,
 };
 
 export interface TenantInfo {
