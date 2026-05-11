@@ -673,6 +673,8 @@ export function LoanTermsForm({
     useState(false);
   const [invoiceIncomeChargeProduct, setInvoiceIncomeChargeProduct] =
     useState<InvoiceDiscountIncomeChargeRecord | null>(null);
+  const [invoiceDiscountingPrincipalAmount, setInvoiceDiscountingPrincipalAmount] =
+    useState<number | null>(null);
   const [invoiceDiscountingReserveAmount, setInvoiceDiscountingReserveAmount] =
     useState<number | null>(null);
   const [editableCharges, setEditableCharges] = useState<
@@ -1323,10 +1325,12 @@ export function LoanTermsForm({
           nextInterestCalculationPeriodValue;
 
         const invoiceDiscountingPrincipal =
-          isInvoiceDiscountingLead &&
-          savedLoanTermsData?.principal !== undefined &&
-          savedLoanTermsData?.principal !== null
-            ? Number(savedLoanTermsData.principal)
+          isInvoiceDiscountingLead
+            ? invoiceDiscountingPrincipalAmount ??
+              (savedLoanTermsData?.principal !== undefined &&
+              savedLoanTermsData?.principal !== null
+                ? Number(savedLoanTermsData.principal)
+                : undefined)
             : undefined;
 
         if (shouldApplyTemplateDefaultsRef.current) {
@@ -1753,6 +1757,7 @@ export function LoanTermsForm({
     autoPopulatePrincipalAmount,
     ignoreSavedTermsOnLoad,
     isInvoiceDiscountingLead,
+    invoiceDiscountingPrincipalAmount,
     loanTemplate,
     savedLoanTermsData,
     tenantSettingsLoaded,
@@ -2118,6 +2123,7 @@ export function LoanTermsForm({
 
     const loadInvoiceDiscountingReserve = async () => {
       if (!leadId || !isInvoiceDiscountingLead) {
+        setInvoiceDiscountingPrincipalAmount(null);
         setInvoiceDiscountingReserveAmount(null);
         return;
       }
@@ -2129,8 +2135,12 @@ export function LoanTermsForm({
         }
 
         const result = await response.json();
+        const principalAmount = result?.data?.totalFinancedAmount;
         const reserveAmount = result?.data?.totalReserveAmount;
         if (!cancelled) {
+          setInvoiceDiscountingPrincipalAmount(
+            principalAmount != null ? Number(principalAmount) : null
+          );
           setInvoiceDiscountingReserveAmount(
             reserveAmount != null ? Number(reserveAmount) : null
           );
@@ -2138,6 +2148,7 @@ export function LoanTermsForm({
       } catch (error) {
         console.error("Error loading invoice discounting reserve amount:", error);
         if (!cancelled) {
+          setInvoiceDiscountingPrincipalAmount(null);
           setInvoiceDiscountingReserveAmount(null);
         }
       }
@@ -2149,6 +2160,23 @@ export function LoanTermsForm({
       cancelled = true;
     };
   }, [leadId, isInvoiceDiscountingLead]);
+
+  useEffect(() => {
+    if (!isInvoiceDiscountingLead || invoiceDiscountingPrincipalAmount == null) {
+      return;
+    }
+
+    const currentPrincipal = form.getValues("principal");
+    if (currentPrincipal === invoiceDiscountingPrincipalAmount) {
+      return;
+    }
+
+    form.setValue("principal", invoiceDiscountingPrincipalAmount, {
+      shouldDirty: false,
+      shouldTouch: false,
+      shouldValidate: true,
+    });
+  }, [form, invoiceDiscountingPrincipalAmount, isInvoiceDiscountingLead]);
 
   useEffect(() => {
     if (
