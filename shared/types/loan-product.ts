@@ -751,7 +751,8 @@ export function buildFineractPayload(form: LoanProductFormData): Record<string, 
     }
 
     if (form.advancedAccountingRules) {
-      payload.advancedAccountingRules = true;
+      // Fineract accepts the advanced-accounting mapping arrays, but not the
+      // UI-only toggle flag itself. Mifos UI strips this field before submit.
       if (form.paymentChannelToFundSourceMappings.length)
         payload.paymentChannelToFundSourceMappings = form.paymentChannelToFundSourceMappings;
       if (form.feeToIncomeAccountMappings.length)
