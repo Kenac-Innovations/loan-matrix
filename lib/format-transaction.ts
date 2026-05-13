@@ -33,6 +33,20 @@ export function formatTransactionChargeName(name: string): string {
     .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
+function getChargeDisplayName(charge: ChargeLike | undefined): string | null {
+  const chargeName =
+    charge?.chargeName ||
+    charge?.name ||
+    charge?.loanChargeName ||
+    charge?.charge?.name;
+
+  if (typeof chargeName !== "string" || !chargeName.trim()) {
+    return null;
+  }
+
+  return formatTransactionChargeName(chargeName);
+}
+
 /**
  * Get the display label for a loan transaction type.
  * "Repayment (at time of disbursement)" is shown as "Admin Fee" in the UI.
@@ -53,16 +67,21 @@ export function getDisplayedTransactionType(
   if (!transaction) return "";
 
   const paidCharges = transaction.loanChargePaidByList;
-  if (Array.isArray(paidCharges) && paidCharges.length === 1) {
-    const charge = paidCharges[0];
-    const chargeName =
-      charge?.chargeName ||
-      charge?.name ||
-      charge?.loanChargeName ||
-      charge?.charge?.name;
+  if (Array.isArray(paidCharges) && paidCharges.length > 0) {
+    const chargeNames = Array.from(
+      new Set(
+        paidCharges
+          .map((charge) => getChargeDisplayName(charge))
+          .filter((name): name is string => Boolean(name))
+      )
+    );
 
-    if (typeof chargeName === "string" && chargeName.trim()) {
-      return formatTransactionChargeName(chargeName);
+    if (chargeNames.length === 1) {
+      return chargeNames[0];
+    }
+
+    if (chargeNames.length > 1) {
+      return chargeNames.join(", ");
     }
   }
 

@@ -16,9 +16,11 @@ interface ChargeTemplatePayload {
   loanChargeTimeTypeOptions?: unknown;
   savingsChargeTimeTypeOptions?: unknown;
   clientChargeTimeTypeOptions?: unknown;
+  shareChargeTimeTypeOptions?: unknown;
   loanChargeCalculationTypeOptions?: unknown;
   savingsChargeCalculationTypeOptions?: unknown;
   clientChargeCalculationTypeOptions?: unknown;
+  shareChargeCalculationTypeOptions?: unknown;
 }
 
 function normalizeCode(value: string): string {
@@ -87,6 +89,11 @@ export function getChargeTimeOptionsForType(
       ? toOptions(template.clientChargeTimeTypeOptions)
       : toOptions(template.chargeTimeTypeOptions);
   }
+  if (type === "SHARES") {
+    return toOptions(template.shareChargeTimeTypeOptions).length > 0
+      ? toOptions(template.shareChargeTimeTypeOptions)
+      : toOptions(template.chargeTimeTypeOptions);
+  }
   return toOptions(template.chargeTimeTypeOptions);
 }
 
@@ -107,6 +114,11 @@ export function getChargeCalculationOptionsForType(
   if (type === "CLIENT") {
     return toOptions(template.clientChargeCalculationTypeOptions).length > 0
       ? toOptions(template.clientChargeCalculationTypeOptions)
+      : toOptions(template.chargeCalculationTypeOptions);
+  }
+  if (type === "SHARES") {
+    return toOptions(template.shareChargeCalculationTypeOptions).length > 0
+      ? toOptions(template.shareChargeCalculationTypeOptions)
       : toOptions(template.chargeCalculationTypeOptions);
   }
   return toOptions(template.chargeCalculationTypeOptions);

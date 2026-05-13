@@ -14,3 +14,24 @@ export async function GET() {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
+
+/**
+ * POST /api/fineract/paymenttypes
+ * Create a payment type in Fineract
+ */
+export async function POST(request: Request) {
+  try {
+    const body = await request.json();
+    const data = await fetchFineractAPI("/paymenttypes", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+    return NextResponse.json(data);
+  } catch (error: any) {
+    console.error("Error creating payment type:", error);
+    return NextResponse.json(
+      { error: error.message || "Failed to create payment type" },
+      { status: error.status || 500 }
+    );
+  }
+}

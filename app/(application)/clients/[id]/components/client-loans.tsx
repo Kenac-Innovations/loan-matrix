@@ -318,22 +318,19 @@ export function ClientLoans({ clientId }: ClientLoansProps) {
     const statusLower = loan.displayStatus.toLowerCase();
     return statusLower.includes("active") || statusLower.includes("overdue");
   }).length;
-  const loanSequenceNumbers = (() => {
-    const orderedLoans = [...loans].sort((left, right) => {
-      const timeDiff =
-        getLoanSequenceSortTime(left) - getLoanSequenceSortTime(right);
+  const orderedLoans = [...loans].sort((left, right) => {
+    const timeDiff =
+      getLoanSequenceSortTime(left) - getLoanSequenceSortTime(right);
 
-      if (timeDiff !== 0) {
-        return timeDiff;
-      }
+    if (timeDiff !== 0) {
+      return timeDiff;
+    }
 
-      return left.id - right.id;
-    });
-
-    return new Map(
-      orderedLoans.map((loan, index) => [loan.id, index + 1])
-    );
-  })();
+    return left.id - right.id;
+  });
+  const loanSequenceNumbers = new Map(
+    orderedLoans.map((loan, index) => [loan.id, index + 1])
+  );
 
   // Get currency for display - use first loan's currency when all share same currency
   const summaryCurrency =
@@ -485,7 +482,7 @@ export function ClientLoans({ clientId }: ClientLoansProps) {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {loans.map((loan) => (
+                  {orderedLoans.map((loan) => (
                     <TableRow
                       key={loan.id}
                       className="cursor-pointer transition-colors hover:bg-muted/50"
