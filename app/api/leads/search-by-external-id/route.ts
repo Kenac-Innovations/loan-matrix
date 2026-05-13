@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getTenantFromHeaders } from "@/lib/tenant-service";
 
 /**
  * GET /api/leads/search-by-external-id?externalId={externalId}
@@ -17,9 +18,18 @@ export async function GET(request: Request) {
       );
     }
 
+    const tenant = await getTenantFromHeaders();
+    if (!tenant) {
+      return NextResponse.json(
+        { error: "Tenant not found" },
+        { status: 404 }
+      );
+    }
+
     // Search for leads with the given external ID
     const leads = await prisma.lead.findMany({
       where: {
+        tenantId: tenant.id,
         externalId: externalId,
         // Only get leads that have been created in Fineract (have fineractClientId)
         fineractClientId: {
