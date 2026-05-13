@@ -112,7 +112,7 @@ async function buildFineractPayload(currencyCode: string) {
   );
   const chargeTimeTypeId = findOptionIdByCode(
     timeOptions,
-    CHARGE_PRODUCT_TIME_TO_FINERACT_CODE.SPECIFIED_DUE_DATE
+    CHARGE_PRODUCT_TIME_TO_FINERACT_CODE.DISBURSEMENT
   );
   const chargeCalculationTypeId = findOptionIdByCode(
     calculationOptions,

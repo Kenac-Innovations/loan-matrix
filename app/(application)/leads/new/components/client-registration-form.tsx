@@ -3619,10 +3619,6 @@ export function ClientRegistrationForm({
           });
         }, 100);
 
-        console.log("==========> Setting client lookup status to found");
-        setClientLookupStatus("found");
-        setIsFormDisabled(false);
-
         const resolvedLookupClientId = fineractData?.id
           ? Number(fineractData.id)
           : undefined;
@@ -3707,54 +3703,59 @@ export function ClientRegistrationForm({
           console.log("==========> No fineractData.id found to store");
         }
 
-        // Mark the client step as completed since we found an existing client
-        console.log("==========> Marking client step as completed");
-        if (setFormCompletionStatus) {
-          setFormCompletionStatus((prev) => ({ ...prev, client: true }));
-        }
-        if (setClientCreatedInFineract) {
-          console.log("==========> Setting clientCreatedInFineract to true");
-          setClientCreatedInFineract(true);
-        } else {
-          console.log(
-            "==========> setClientCreatedInFineract function not available"
-          );
-        }
-
-        // (fineractClientId already stored above)
-        if (!fineractData?.id) {
-          console.log(
-            "==========> No fineractData.id found, cannot store Fineract client ID"
-          );
-        }
-
-        // Determine success message based on data sources
-        const dataSources = [];
-        if (fineractData) dataSources.push("Fineract");
-        if (localData) dataSources.push("Local Database");
-
-        console.log("==========> Showing success message");
-        success({
-          title: "Client Found - Step 1 Complete",
-          description: `Found existing client: ${
-            interlacedData.firstname || ""
-          } ${interlacedData.lastname || ""} (Email: ${
-            interlacedData.emailAddress || "Not provided"
-          }). You can now update client details or proceed to Step 2: Affordability.`,
-        });
-
-        // Directly fetch additional details for the found client
         if (fineractData?.id) {
+          console.log("==========> Setting client lookup status to found");
+          setClientLookupStatus("found");
+          setIsFormDisabled(false);
+
+          // Mark the client step as completed since we found an existing client in Fineract
+          console.log("==========> Marking client step as completed");
+          if (setFormCompletionStatus) {
+            setFormCompletionStatus((prev) => ({ ...prev, client: true }));
+          }
+          if (setClientCreatedInFineract) {
+            console.log("==========> Setting clientCreatedInFineract to true");
+            setClientCreatedInFineract(true);
+          } else {
+            console.log(
+              "==========> setClientCreatedInFineract function not available"
+            );
+          }
+
+          console.log("==========> Showing success message");
+          success({
+            title: "Client Found - Step 1 Complete",
+            description: `Found existing client: ${
+              interlacedData.firstname || ""
+            } ${interlacedData.lastname || ""} (Email: ${
+              interlacedData.emailAddress || "Not provided"
+            }). You can now update client details or proceed to Step 2: Affordability.`,
+          });
+
           console.log(">>> Directly calling fetchAdditionalDetailsForClient after client lookup...");
           fetchAdditionalDetailsForClient(Number(fineractData.id)).catch((err) => {
             console.error("Error fetching additional details after client lookup:", err);
           });
+
+          console.log(
+            "==========> Client lookup completed successfully, returning"
+          );
+          return; // Exit early since we found the client in Fineract
         }
 
         console.log(
-          "==========> Client lookup completed successfully, returning"
+          "==========> Local draft data found without a Fineract client; treating this as new client flow"
         );
-        return; // Exit early since we found the client
+        setClientLookupStatus("not_found");
+        setIsFormDisabled(false);
+        form.setValue("externalId", nationalIdLookup);
+
+        success({
+          title: "Client Not Found In Fineract",
+          description:
+            "We found draft data for this ID in the current tenant, but no matching Fineract client. Review the prefilled details and continue with new client registration if needed.",
+        });
+        return;
       }
 
       // If no data found from either source

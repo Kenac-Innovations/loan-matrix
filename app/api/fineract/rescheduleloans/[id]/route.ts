@@ -7,29 +7,26 @@ type FineractRouteError = Error & {
 };
 
 /**
- * GET /api/fineract/rescheduleloans
- * Proxies to Fineract's reschedule loans endpoint for fetching loan reschedules
+ * GET /api/fineract/rescheduleloans/[id]
+ * Proxies to Fineract's single reschedule loan request endpoint
  */
-export async function GET(request: Request) {
+export async function GET(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
+    const { id } = await params;
     const { searchParams } = new URL(request.url);
     const query = searchParams.toString();
 
-    if (!searchParams.get('loanId')) {
-      return NextResponse.json(
-        { error: 'loanId parameter is required' },
-        { status: 400 }
-      );
-    }
-
     const data = await fetchFineractAPI(
-      `/rescheduleloans${query ? `?${query}` : ''}`
+      `/rescheduleloans/${id}${query ? `?${query}` : ''}`
     );
 
     return NextResponse.json(data);
   } catch (error: unknown) {
     const routeError = error as FineractRouteError;
-    console.error('Error fetching reschedule loans:', error);
+    console.error('Error fetching reschedule loan request:', error);
 
     if (routeError.status && routeError.errorData) {
       return NextResponse.json(
@@ -50,11 +47,15 @@ export async function GET(request: Request) {
 }
 
 /**
- * POST /api/fineract/rescheduleloans
- * Proxies to Fineract's reschedule loans endpoint
+ * POST /api/fineract/rescheduleloans/[id]
+ * Proxies approve/reject actions for a loan reschedule request
  */
-export async function POST(request: Request) {
+export async function POST(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
+    const { id } = await params;
     const { searchParams } = new URL(request.url);
     const command = searchParams.get('command');
 
@@ -66,7 +67,7 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const data = await fetchFineractAPI(`/rescheduleloans?command=${command}`, {
+    const data = await fetchFineractAPI(`/rescheduleloans/${id}?command=${command}`, {
       method: 'POST',
       body: JSON.stringify(body),
     });
@@ -74,20 +75,19 @@ export async function POST(request: Request) {
     return NextResponse.json(data);
   } catch (error: unknown) {
     const routeError = error as FineractRouteError;
-    console.error('Error submitting reschedule loan request:', error);
-    
-    // Check if it's an API error with status and errorData
+    console.error('Error submitting reschedule loan action:', error);
+
     if (routeError.status && routeError.errorData) {
       return NextResponse.json(
-        { 
+        {
           error: routeError.message,
           status: routeError.status,
-          details: routeError.errorData 
+          details: routeError.errorData,
         },
         { status: routeError.status }
       );
     }
-    
+
     return NextResponse.json(
       { error: routeError.message || 'Unknown error' },
       { status: 500 }

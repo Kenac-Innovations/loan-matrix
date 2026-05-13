@@ -5,7 +5,6 @@ import { format } from "date-fns";
 import { getSession } from "@/lib/auth";
 import { callCDEAndStore } from "@/lib/cde-utils";
 import { sendLoanStatusSms } from "@/lib/notification-service";
-import { createLoanCharge } from "@/lib/fineract-loan-charge";
 
 function isOverdueChargeLike(charge?: any) {
   const timeType = charge?.originalCharge?.chargeTimeType || charge?.chargeTimeType;
@@ -22,6 +21,19 @@ function isOverdueChargeLike(charge?: any) {
   }
 
   return !timeType && Boolean(charge?.originalCharge?.penalty ?? charge?.penalty);
+}
+
+function isSpecifiedDueDateCharge(charge?: any) {
+  const timeType = charge?.originalCharge?.chargeTimeType || charge?.chargeTimeType;
+  const code = String(timeType?.code || "").toLowerCase();
+  const value = String(timeType?.value || "").toLowerCase();
+
+  return (
+    code === "chargetimetype.specifiedduedate" ||
+    code === "specifiedduedate" ||
+    code.endsWith(".specifiedduedate") ||
+    value.includes("specified due date")
+  );
 }
 
 /**
@@ -78,8 +90,6 @@ export async function POST(
     const dateStr = format(submittedDate, "yyyy-MM-dd");
     const disbursementDateStr = format(disbursementDate, "yyyy-MM-dd");
 
-    const isInvoiceDiscountingLead = lead.facilityType === "INVOICE_DISCOUNTING";
-
     const requestedCharges = Array.isArray(loanData.charges)
       ? loanData.charges.filter((charge: any) => !isOverdueChargeLike(charge))
       : [];
@@ -123,9 +133,7 @@ export async function POST(
       // Use lead ID as initial external ID, will be updated to loan ID after creation
       externalId: leadId,
       isEqualAmortization: false,
-      charges: isInvoiceDiscountingLead
-        ? []
-        : requestedCharges.map((charge: any) => {
+      charges: requestedCharges.map((charge: any) => {
             const calcCode: string =
               charge.originalCharge?.chargeCalculationType?.code ?? "";
             const isPercentage =
@@ -141,7 +149,7 @@ export async function POST(
               chargePayload.amount = charge.amount;
             }
 
-            if (charge.dueDate) {
+            if (charge.dueDate && isSpecifiedDueDateCharge(charge)) {
               chargePayload.dueDate = charge.dueDate;
             }
 
@@ -177,26 +185,6 @@ export async function POST(
     // Set external ID to loan ID for future reference
     if (result && result.resourceId) {
       const loanId = result.resourceId;
-
-      if (isInvoiceDiscountingLead && requestedCharges.length > 0) {
-        for (const charge of requestedCharges) {
-          const chargePayload: any = {
-            chargeId: charge.chargeId,
-            amount: charge.amount,
-            locale: "en",
-            externalId: "",
-            note: "",
-            paymentTypeId: "",
-          };
-
-          if (charge.dueDate) {
-            chargePayload.dueDate = charge.dueDate;
-            chargePayload.dateFormat = "dd MMMM yyyy";
-          }
-
-          await createLoanCharge(Number(loanId), chargePayload);
-        }
-      }
 
       // Update the loan with the external ID set to the loan ID
       try {

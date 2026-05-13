@@ -35,6 +35,8 @@ interface TransactionsDataTableProps {
   reversedPayout?: ReversedPayoutInfo | null;
 }
 
+type DisplayTransaction = Transaction;
+
 export function TransactionsDataTable({
   transactions,
   clientId,
@@ -44,16 +46,37 @@ export function TransactionsDataTable({
 }: TransactionsDataTableProps) {
   const router = useRouter();
 
-  const isReversedTransaction = (transaction: Transaction) =>
+  const isReversedTransaction = (transaction: DisplayTransaction) =>
     !!transaction?.manuallyReversed;
 
-  const getReversedTextClass = (transaction: Transaction) =>
+  const getReversedTextClass = (transaction: DisplayTransaction) =>
     isReversedTransaction(transaction) ? "text-red-600 line-through" : "";
 
+  const getChargeName = (
+    charge: DisplayTransaction["loanChargePaidByList"] extends Array<infer T>
+      ? T
+      : never
+  ) => {
+    const rawName =
+      charge?.chargeName ||
+      charge?.name ||
+      charge?.loanChargeName ||
+      charge?.charge?.name ||
+      "Charge";
+
+    return rawName
+      .trim()
+      .toLowerCase()
+      .replace(/_/g, " ")
+      .replace(/\b\w/g, (char) => char.toUpperCase());
+  };
+
   const displayTransactions = useMemo(() => {
-    if (!reversedPayout?.voidedAt) return transactions;
+    const expandedTransactions = transactions as DisplayTransaction[];
+
+    if (!reversedPayout?.voidedAt) return expandedTransactions;
     const d = new Date(reversedPayout.voidedAt);
-    const reversalRow: Transaction = {
+    const reversalRow: DisplayTransaction = {
       id: -1,
       officeName: "",
       date: [d.getFullYear(), d.getMonth() + 1, d.getDate()],
@@ -65,7 +88,7 @@ export function TransactionsDataTable({
       penaltyChargesPortion: 0,
       outstandingLoanBalance: 0,
     };
-    return [reversalRow, ...transactions];
+    return [reversalRow, ...expandedTransactions];
   }, [transactions, reversedPayout]);
 
   const [customFilters, setCustomFilters] = useState<DataTableFilter[]>([
@@ -90,7 +113,7 @@ export function TransactionsDataTable({
     }).filter((t) => t.label !== "Admin Fee"); // Admin Fee is in hardcoded filterOptions
   }, [displayTransactions]);
 
-  const getTransactionRef = (transaction: Transaction): string | undefined => {
+  const getTransactionRef = (transaction: DisplayTransaction): string | undefined => {
     if (!transaction) return undefined;
     if (typeof transaction.transactionId === 'string' && /^L\d+$/.test(transaction.transactionId)) {
       return transaction.transactionId;
@@ -103,7 +126,7 @@ export function TransactionsDataTable({
   };
 
   // Define columns for the generic data table
-  const columns: DataTableColumn<Transaction>[] = [
+  const columns: DataTableColumn<DisplayTransaction>[] = [
     {
       id: "rowNumber",
       header: "#",
@@ -142,13 +165,47 @@ export function TransactionsDataTable({
       id: "type",
       header: "Transaction Type",
       accessorKey: "type",
-      cell: ({ row }) => (
-        <span className={getReversedTextClass(row.original)}>
-          {getDisplayedTransactionType(row.original)}
-          {isReversedTransaction(row.original) ? " (Reversed)" : ""}
-        </span>
-      ),
-      getExportValue: (row) => getDisplayedTransactionType(row),
+      cell: ({ row }) => {
+        const transaction = row.original;
+        const paidCharges = transaction.loanChargePaidByList;
+        const isMultiCharge =
+          transaction.type?.repaymentAtDisbursement &&
+          Array.isArray(paidCharges) &&
+          paidCharges.length > 1;
+
+        if (isMultiCharge) {
+          return (
+            <div className={`space-y-0.5 ${getReversedTextClass(transaction)}`}>
+              {paidCharges!.map((charge, i) => (
+                <div key={i} className="text-sm">
+                  {getChargeName(charge)}: {formatCurrency(Number(charge.amount ?? 0), currencyCode)}
+                </div>
+              ))}
+              {isReversedTransaction(transaction) && <div className="text-xs">(Reversed)</div>}
+            </div>
+          );
+        }
+
+        return (
+          <span className={getReversedTextClass(transaction)}>
+            {getDisplayedTransactionType(transaction)}
+            {isReversedTransaction(transaction) ? " (Reversed)" : ""}
+          </span>
+        );
+      },
+      getExportValue: (row) => {
+        const paidCharges = row.loanChargePaidByList;
+        const isMultiCharge =
+          row.type?.repaymentAtDisbursement &&
+          Array.isArray(paidCharges) &&
+          paidCharges.length > 1;
+        if (isMultiCharge) {
+          return paidCharges!
+            .map((c) => `${getChargeName(c)}: ${formatCurrency(Number(c.amount ?? 0), currencyCode)}`)
+            .join(", ");
+        }
+        return getDisplayedTransactionType(row);
+      },
       filterType: "select",
       filterOptions: [
         { label: "All Types", value: "all" },
@@ -225,6 +282,7 @@ export function TransactionsDataTable({
       cell: ({ row }) => {
         const transaction = row.original;
         if (transaction.id === -1) return <span className="text-muted-foreground text-xs">—</span>;
+        const actionTransactionId = transaction.id;
         return (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -235,7 +293,7 @@ export function TransactionsDataTable({
             <DropdownMenuContent align="end">
               <DropdownMenuItem
                 onClick={() => {
-                  const txId = transaction.id;
+                  const txId = actionTransactionId;
                   if (!txId) {
                     alert('No transaction id found for this row');
                     return;
@@ -256,7 +314,7 @@ export function TransactionsDataTable({
                       const month = new Date(y, m - 1, d).toLocaleString('en-US', { month: 'long' });
                       return `${d} ${month} ${y}`;
                     };
-                    fetch(`/api/fineract/loans/${loanId}/transactions/${transaction.id}?command=undo`, {
+                    fetch(`/api/fineract/loans/${loanId}/transactions/${actionTransactionId}?command=undo`, {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({
@@ -277,7 +335,7 @@ export function TransactionsDataTable({
               {(transaction?.type?.repaymentAtDisbursement || transaction?.type?.accrual) && (
                 <DropdownMenuItem
                   onClick={() => {
-                    const url = `/api/fineract/reports?name=Loan%20Transaction%20Receipt&output-type=PDF&R_transactionId=${encodeURIComponent(String(transaction.id))}`;
+                    const url = `/api/fineract/reports?name=Loan%20Transaction%20Receipt&output-type=PDF&R_transactionId=${encodeURIComponent(String(actionTransactionId))}`;
                     window.open(url, '_blank');
                   }}
                 >
@@ -306,7 +364,7 @@ export function TransactionsDataTable({
   ];
 
   return (
-    <GenericDataTable<Transaction>
+    <GenericDataTable<DisplayTransaction>
       data={displayTransactions}
       columns={columns}
       searchPlaceholder="Search Transaction ..."

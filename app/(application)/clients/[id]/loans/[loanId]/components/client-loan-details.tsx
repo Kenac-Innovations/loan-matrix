@@ -29,6 +29,7 @@ import { CreditBalanceRefundModal } from "@/app/(application)/leads/[id]/compone
 import { TransferFundsModal } from "@/app/(application)/leads/[id]/components/transfer-funds-modal";
 import { WaiveInterestModal } from "./waive-interest-modal";
 import { RescheduleModal } from "./reschedule-modal";
+import { RescheduleActionModal } from "./reschedule-action-modal";
 import { DisburseModal } from "./disburse-modal";
 import { LoanApprovalModal } from "./loan-approval-modal";
 import WriteOffModal from "@/components/WriteOffModal";
@@ -130,6 +131,10 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
   const [showReschedule, setShowReschedule] = useState(false);
   const [reschedules, setReschedules] = useState<any[]>([]);
   const [rescheduleReasons, setRescheduleReasons] = useState<any[]>([]);
+  const [rescheduleActionTarget, setRescheduleActionTarget] = useState<{
+    action: "approve" | "reject";
+    id: number;
+  } | null>(null);
   const [loadingReschedules, setLoadingReschedules] = useState(false);
   const [submittingReschedule, setSubmittingReschedule] = useState(false);
   const [documents, setDocuments] = useState<any[]>([]);
@@ -1345,6 +1350,11 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
       setLoadingReschedules(false);
     }
   };
+
+  const hasPendingRescheduleActions = reschedules.some(
+    (reschedule: any) =>
+      reschedule?.statusEnum?.pendingApproval || reschedule?.status?.pendingApproval
+  );
 
   // Fetch reschedule reasons template
   const fetchRescheduleTemplate = async () => {
@@ -3773,36 +3783,80 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                       <TableHead>From Date</TableHead>
                       <TableHead>Reason</TableHead>
                       <TableHead>Status</TableHead>
-                      <TableHead>Actions</TableHead>
+                      {hasPendingRescheduleActions && <TableHead>Actions</TableHead>}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {reschedules && reschedules.length > 0 ? (
-                      reschedules.map((reschedule: any, index: number) => (
-                        <TableRow key={reschedule.id || index}>
-                          <TableCell>{index + 1}</TableCell>
-                          <TableCell>{formatDate(reschedule.rescheduleFromDate || reschedule.fromDate)}</TableCell>
-                          <TableCell>{reschedule.rescheduleReason?.name || reschedule.reason || "N/A"}</TableCell>
-                          <TableCell>
-                            <Badge variant={reschedule.status?.value === "Approved" ? "default" : "secondary"}>
-                              {reschedule.status?.value || reschedule.status || "Pending"}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex space-x-1">
-                              <Button variant="outline" size="sm" className="h-8 w-8 p-0">
-                                <Edit className="h-4 w-4" />
-                              </Button>
-                              <Button variant="outline" size="sm" className="h-8 w-8 p-0">
-                                <MoreVertical className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))
+                      reschedules.map((reschedule: any, index: number) => {
+                        const isPendingApproval =
+                          reschedule?.statusEnum?.pendingApproval ||
+                          reschedule?.status?.pendingApproval;
+
+                        return (
+                          <TableRow key={reschedule.id || index}>
+                            <TableCell>{index + 1}</TableCell>
+                            <TableCell>{formatDate(reschedule.rescheduleFromDate || reschedule.fromDate)}</TableCell>
+                            <TableCell>
+                              {reschedule.rescheduleReasonCodeValue?.name ||
+                                reschedule.rescheduleReason?.name ||
+                                reschedule.reason ||
+                                "N/A"}
+                            </TableCell>
+                            <TableCell>
+                              <Badge
+                                variant={
+                                  (reschedule.statusEnum?.value || reschedule.status?.value) === "Approved"
+                                    ? "default"
+                                    : "secondary"
+                                }
+                              >
+                                {reschedule.statusEnum?.value ||
+                                  reschedule.status?.value ||
+                                  reschedule.status ||
+                                  "Pending"}
+                              </Badge>
+                            </TableCell>
+                            {hasPendingRescheduleActions && (
+                              <TableCell>
+                                {isPendingApproval ? (
+                                  <div className="flex gap-2">
+                                    <Button
+                                      size="sm"
+                                      onClick={() =>
+                                        setRescheduleActionTarget({
+                                          action: "approve",
+                                          id: reschedule.id,
+                                        })
+                                      }
+                                    >
+                                      Approve
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() =>
+                                        setRescheduleActionTarget({
+                                          action: "reject",
+                                          id: reschedule.id,
+                                        })
+                                      }
+                                    >
+                                      Reject
+                                    </Button>
+                                  </div>
+                                ) : null}
+                              </TableCell>
+                            )}
+                          </TableRow>
+                        );
+                      })
                     ) : (
                       <TableRow>
-                        <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                        <TableCell
+                          colSpan={hasPendingRescheduleActions ? 5 : 4}
+                          className="text-center py-8 text-muted-foreground"
+                        >
                           <Calendar className="h-12 w-12 mx-auto mb-4 opacity-50" />
                           <p>No reschedules found for this loan</p>
                           <p className="text-sm mt-2">Click "Reschedule" to create a reschedule request</p>
@@ -5799,6 +5853,17 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
           // Optionally refresh loan data
           // You can add a refetch function here if needed
         }}
+      />
+
+      <RescheduleActionModal
+        action={rescheduleActionTarget?.action ?? null}
+        isOpen={Boolean(rescheduleActionTarget)}
+        onClose={() => setRescheduleActionTarget(null)}
+        onSuccess={() => {
+          fetchReschedules();
+          setRescheduleActionTarget(null);
+        }}
+        rescheduleId={rescheduleActionTarget?.id ?? null}
       />
     </div>
   );

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, Pencil, Plus, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -74,6 +74,8 @@ interface ChargeTemplate {
   savingsChargeCalculationTypeOptions?: FineractOption[];
   clientChargeTimeTypeOptions?: FineractOption[];
   clientChargeCalculationTypeOptions?: FineractOption[];
+  shareChargeTimeTypeOptions?: FineractOption[];
+  shareChargeCalculationTypeOptions?: FineractOption[];
 }
 
 interface FineractChargeRecord {
@@ -97,6 +99,7 @@ interface FineractChargeRecord {
 }
 
 type FormState = {
+  chargeAppliesTo: string;
   name: string;
   amount: string;
   currencyCode: string;
@@ -117,6 +120,7 @@ const INVOICE_INCOME_CHARGE_NAME = "INVOICE_INCOME";
 const INVOICE_INCOME_CHARGE_DISPLAY_NAME = "Invoice Income";
 
 const emptyForm: FormState = {
+  chargeAppliesTo: "",
   name: "",
   amount: "",
   currencyCode: "",
@@ -130,8 +134,28 @@ const emptyForm: FormState = {
   feeFrequency: "",
   feeOnMonthDay: "",
   addFeeFrequency: false,
-  active: true,
+  active: false,
 };
+
+const LOAN_TIME_TYPE_TRANCHE_DISBURSEMENT =
+  "chargeTimeType.tranchedisbursement";
+const LOAN_CALC_PERCENT_OF_AMOUNT_AND_INTEREST =
+  "chargeCalculationType.percent.of.amount.and.interest";
+const LOAN_CALC_PERCENT_OF_INTEREST =
+  "chargeCalculationType.percent.of.interest";
+const LOAN_CALC_PERCENT_OF_DISBURSEMENT_AMOUNT =
+  "chargeCalculationType.percent.of.disbursement.amount";
+const CALC_PERCENT_OF_AMOUNT = "chargeCalculationType.percent.of.amount";
+const SAVINGS_TIME_TYPE_WITHDRAWAL_FEE = "chargeTimeType.withdrawalFee";
+const SAVINGS_TIME_TYPE_ANNUAL_FEE = "chargeTimeType.annualFee";
+const SAVINGS_TIME_TYPE_SAVINGS_NO_ACTIVITY_FEE =
+  "chargeTimeType.savingsNoActivityFee";
+const SHARES_TIME_TYPE_SHARE_PURCHASE = "chargeTimeType.sharespurchase";
+const SHARES_TIME_TYPE_SHARE_REDEEM = "chargeTimeType.sharesredeem";
+const TIME_TYPE_SPECIFIED_DUE_DATE = "chargeTimeType.specifiedDueDate";
+const TIME_TYPE_MONTHLY_FEE = "chargeTimeType.monthlyFee";
+const TIME_TYPE_WEEKLY_FEE = "chargeTimeType.weeklyFee";
+const TIME_TYPE_OVERDUE_INSTALLMENT = "chargeTimeType.overdueInstallment";
 
 function RequiredAsterisk() {
   return <span className="ml-1 text-destructive">*</span>;
@@ -235,6 +259,7 @@ export default function ChargeProductsPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
+  const previousChargeTimeTypeCodeRef = useRef<string | null>(null);
 
   const loadData = async () => {
     try {
@@ -285,14 +310,22 @@ export default function ChargeProductsPage() {
     return dedupeByValue(options);
   }, [template]);
 
+  const selectedAppliesToOption = useMemo(
+    () =>
+      appliesToOptions.find((option) => option.value === form.chargeAppliesTo) || null,
+    [appliesToOptions, form.chargeAppliesTo]
+  );
+
+  const selectedChargeType = useMemo(() => {
+    return selectedAppliesToOption
+      ? typeFromFineractCode(selectedAppliesToOption.code)
+      : null;
+  }, [selectedAppliesToOption]);
+
   const loanAppliesToOption = useMemo(
     () => appliesToOptions.find((option) => typeFromFineractCode(option.code) === "LOAN") || null,
     [appliesToOptions]
   );
-
-  const selectedChargeType = useMemo(() => {
-    return loanAppliesToOption ? typeFromFineractCode(loanAppliesToOption.code) : null;
-  }, [loanAppliesToOption]);
 
   const currencyOptions = useMemo(() => {
     const options = (template?.currencyOptions || [])
@@ -312,6 +345,7 @@ export default function ChargeProductsPage() {
       .map((option) => ({
         value: String(option.id),
         label: optionLabel(option),
+        code: option.code,
       }))
       .filter((item) => item.value);
   }, [selectedChargeType, template]);
@@ -319,13 +353,46 @@ export default function ChargeProductsPage() {
   const chargeCalculationOptions = useMemo(() => {
     if (!template || !selectedChargeType) return [];
 
+    const selectedChargeTimeOption =
+      chargeTimeOptions.find((option) => option.value === form.chargeTimeType) || null;
+
     return getChargeCalculationOptionsForType(template, selectedChargeType)
+      .filter((option) => {
+        if (selectedChargeType === "LOAN") {
+          const isTrancheDisbursementTime =
+            selectedChargeTimeOption?.code === LOAN_TIME_TYPE_TRANCHE_DISBURSEMENT;
+
+          if (isTrancheDisbursementTime) {
+            return ![
+              LOAN_CALC_PERCENT_OF_AMOUNT_AND_INTEREST,
+              LOAN_CALC_PERCENT_OF_INTEREST,
+            ].includes(option.code);
+          }
+
+          return option.code !== LOAN_CALC_PERCENT_OF_DISBURSEMENT_AMOUNT;
+        }
+
+        if (selectedChargeType === "SAVINGS") {
+          if (option.code !== CALC_PERCENT_OF_AMOUNT) {
+            return true;
+          }
+
+          return [
+            SAVINGS_TIME_TYPE_WITHDRAWAL_FEE,
+            SAVINGS_TIME_TYPE_ANNUAL_FEE,
+            SAVINGS_TIME_TYPE_SAVINGS_NO_ACTIVITY_FEE,
+          ].includes(selectedChargeTimeOption?.code || "");
+        }
+
+        return true;
+      })
       .map((option) => ({
         value: String(option.id),
         label: optionLabel(option),
+        code: option.code,
       }))
       .filter((item) => item.value);
-  }, [selectedChargeType, template]);
+  }, [chargeTimeOptions, form.chargeTimeType, selectedChargeType, template]);
 
   const chargePaymentModeOptions = useMemo(() => {
     if (!template) return [];
@@ -347,7 +414,10 @@ export default function ChargeProductsPage() {
       .filter((item) => item.value);
   }, [template]);
 
-  const selectedChargeTimeTypeId = useMemo(() => Number(form.chargeTimeType || 0), [form.chargeTimeType]);
+  const selectedChargeTimeOption = useMemo(
+    () => chargeTimeOptions.find((option) => option.value === form.chargeTimeType) || null,
+    [chargeTimeOptions, form.chargeTimeType]
+  );
   const selectedChargeCalculationOption = useMemo(
     () =>
       chargeCalculationOptions.find(
@@ -356,23 +426,92 @@ export default function ChargeProductsPage() {
     [chargeCalculationOptions, form.chargeCalculationType]
   );
 
-  const showChargePaymentMode = Boolean(loanAppliesToOption);
-  const showMinMaxCap =
-    !!selectedChargeCalculationOption &&
-    !selectedChargeCalculationOption.label.toLowerCase().includes("flat");
-  const showAddFeeFrequency = selectedChargeTimeTypeId === 9;
+  const showChargePaymentMode = selectedChargeType === "LOAN";
+  const showPenalty = selectedChargeType !== "SHARES";
+  const showMinMaxCap = useMemo(() => {
+    if (!selectedChargeCalculationOption || !selectedChargeTimeOption || !selectedChargeType) {
+      return false;
+    }
+
+    if (selectedChargeType === "LOAN") {
+      return [
+        CALC_PERCENT_OF_AMOUNT,
+        LOAN_CALC_PERCENT_OF_AMOUNT_AND_INTEREST,
+        LOAN_CALC_PERCENT_OF_INTEREST,
+        LOAN_CALC_PERCENT_OF_DISBURSEMENT_AMOUNT,
+      ].includes(selectedChargeCalculationOption.code || "");
+    }
+
+    if (selectedChargeType === "SAVINGS") {
+      return (
+        selectedChargeCalculationOption.code === CALC_PERCENT_OF_AMOUNT &&
+        [
+          SAVINGS_TIME_TYPE_WITHDRAWAL_FEE,
+          SAVINGS_TIME_TYPE_ANNUAL_FEE,
+        ].includes(selectedChargeTimeOption.code || "")
+      );
+    }
+
+    if (selectedChargeType === "SHARES") {
+      return (
+        selectedChargeCalculationOption.code === CALC_PERCENT_OF_AMOUNT &&
+        [
+          SHARES_TIME_TYPE_SHARE_PURCHASE,
+          SHARES_TIME_TYPE_SHARE_REDEEM,
+        ].includes(selectedChargeTimeOption.code || "")
+      );
+    }
+
+    return false;
+  }, [selectedChargeCalculationOption, selectedChargeTimeOption, selectedChargeType]);
+  const showAddFeeFrequency =
+    selectedChargeTimeOption?.code === TIME_TYPE_OVERDUE_INSTALLMENT;
   const showFeeFrequencyFields = showAddFeeFrequency && form.addFeeFrequency;
-  const showDueOnField = editingRecordId == null && (selectedChargeTimeTypeId === 6 || selectedChargeTimeTypeId === 7);
-  const showMonthlyRepeatField = editingRecordId == null && selectedChargeTimeTypeId === 7;
-  const showWeeklyRepeatField = editingRecordId == null && selectedChargeTimeTypeId === 11;
+  const showDueOnField =
+    editingRecordId == null &&
+    [
+      TIME_TYPE_SPECIFIED_DUE_DATE,
+      TIME_TYPE_MONTHLY_FEE,
+    ].includes(selectedChargeTimeOption?.code || "");
+  const showMonthlyRepeatField =
+    editingRecordId == null &&
+    selectedChargeTimeOption?.code === TIME_TYPE_MONTHLY_FEE;
+  const showWeeklyRepeatField =
+    editingRecordId == null &&
+    selectedChargeTimeOption?.code === TIME_TYPE_WEEKLY_FEE;
   const repeatEveryLabel = showMonthlyRepeatField ? "Months" : showWeeklyRepeatField ? "Weeks" : "";
-  const penaltyLocked = selectedChargeTimeTypeId === 9;
+  const penaltyLocked = selectedChargeTimeOption?.code === TIME_TYPE_OVERDUE_INSTALLMENT;
 
   useEffect(() => {
     if (penaltyLocked && !form.penalty) {
       setForm((prev) => ({ ...prev, penalty: true }));
     }
   }, [form.penalty, penaltyLocked]);
+
+  useEffect(() => {
+    const previousCode = previousChargeTimeTypeCodeRef.current;
+    const currentCode = selectedChargeTimeOption?.code || null;
+
+    if (
+      previousCode === TIME_TYPE_OVERDUE_INSTALLMENT &&
+      currentCode !== TIME_TYPE_OVERDUE_INSTALLMENT &&
+      form.penalty
+    ) {
+      setForm((prev) => ({ ...prev, penalty: false }));
+    }
+
+    previousChargeTimeTypeCodeRef.current = currentCode;
+  }, [form.penalty, selectedChargeTimeOption]);
+
+  useEffect(() => {
+    if (showPenalty || !form.penalty) return;
+    setForm((prev) => ({ ...prev, penalty: false }));
+  }, [form.penalty, showPenalty]);
+
+  useEffect(() => {
+    if (!loanAppliesToOption || form.chargeAppliesTo) return;
+    setForm((prev) => ({ ...prev, chargeAppliesTo: loanAppliesToOption.value }));
+  }, [form.chargeAppliesTo, loanAppliesToOption]);
 
   useEffect(() => {
     if (!form.chargeTimeType) return;
@@ -394,13 +533,17 @@ export default function ChargeProductsPage() {
 
   useEffect(() => {
     if (!form.chargePaymentMode) return;
+    if (!showChargePaymentMode) {
+      setForm((prev) => ({ ...prev, chargePaymentMode: "" }));
+      return;
+    }
     const exists = chargePaymentModeOptions.some(
       (option) => option.value === form.chargePaymentMode
     );
     if (!exists) {
       setForm((prev) => ({ ...prev, chargePaymentMode: "" }));
     }
-  }, [chargePaymentModeOptions, form.chargePaymentMode]);
+  }, [chargePaymentModeOptions, form.chargePaymentMode, showChargePaymentMode]);
 
   useEffect(() => {
     if (!showAddFeeFrequency && form.addFeeFrequency) {
@@ -434,10 +577,10 @@ export default function ChargeProductsPage() {
   }, [currencyOptions, form.currencyCode]);
 
   useEffect(() => {
-    if (!loanAppliesToOption) return;
+    if (!showChargePaymentMode) return;
     if (chargePaymentModeOptions.length !== 1 || form.chargePaymentMode) return;
     setForm((prev) => ({ ...prev, chargePaymentMode: chargePaymentModeOptions[0].value }));
-  }, [chargePaymentModeOptions, form.chargePaymentMode, loanAppliesToOption]);
+  }, [chargePaymentModeOptions, form.chargePaymentMode, showChargePaymentMode]);
 
   const handleCreateDialogOpenChange = (open: boolean) => {
     setIsCreateModalOpen(open);
@@ -461,6 +604,8 @@ export default function ChargeProductsPage() {
 
       setEditingRecordId(recordId);
       setForm({
+        chargeAppliesTo:
+          body?.chargeAppliesTo?.id != null ? String(body.chargeAppliesTo.id) : "",
         name: body?.name || "",
         amount: toAmountString(body?.amount),
         currencyCode: body?.currency?.code || "",
@@ -497,8 +642,8 @@ export default function ChargeProductsPage() {
     event.preventDefault();
     setFormError(null);
 
-    if (!loanAppliesToOption) {
-      setFormError("Loan charge options are not available in the Fineract template.");
+    if (!selectedAppliesToOption || !selectedChargeType) {
+      setFormError("Please select charge applies to.");
       return;
     }
 
@@ -571,7 +716,7 @@ export default function ChargeProductsPage() {
 
       const payload: Record<string, unknown> = {
         name: form.name.trim(),
-        chargeAppliesTo: Number(loanAppliesToOption.value),
+        chargeAppliesTo: Number(form.chargeAppliesTo),
         currencyCode: form.currencyCode,
         amount: Number(form.amount),
         chargeTimeType: Number(form.chargeTimeType),
@@ -822,7 +967,7 @@ export default function ChargeProductsPage() {
                   onValueChange={(value) =>
                     setForm((prev) => ({ ...prev, chargeTimeType: value }))
                   }
-                  disabled={!loanAppliesToOption}
+                  disabled={!selectedAppliesToOption}
                 >
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder="Select charge time type" />
@@ -847,7 +992,7 @@ export default function ChargeProductsPage() {
                   onValueChange={(value) =>
                     setForm((prev) => ({ ...prev, chargeCalculationType: value }))
                   }
-                  disabled={!loanAppliesToOption}
+                  disabled={!selectedAppliesToOption}
                 >
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder="Select charge calculation type" />
@@ -862,30 +1007,31 @@ export default function ChargeProductsPage() {
                 </Select>
               </div>
 
-              <div className="space-y-2">
-                <Label>
-                  Charge Payment Mode
-                  <RequiredAsterisk />
-                </Label>
-                <Select
-                  value={form.chargePaymentMode}
-                  onValueChange={(value) =>
-                    setForm((prev) => ({ ...prev, chargePaymentMode: value }))
-                  }
-                  disabled={!showChargePaymentMode}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select charge payment mode" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {chargePaymentModeOptions.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              {showChargePaymentMode && (
+                <div className="space-y-2">
+                  <Label>
+                    Charge Payment Mode
+                    <RequiredAsterisk />
+                  </Label>
+                  <Select
+                    value={form.chargePaymentMode}
+                    onValueChange={(value) =>
+                      setForm((prev) => ({ ...prev, chargePaymentMode: value }))
+                    }
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Select charge payment mode" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {chargePaymentModeOptions.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
 
               {showAddFeeFrequency && (
                 <div className="flex items-center gap-3 rounded-md border p-3">
@@ -1019,21 +1165,23 @@ export default function ChargeProductsPage() {
                 </>
               )}
 
-              <div
-                className="flex w-full items-center justify-between rounded-md border p-3 text-left transition-colors hover:bg-muted/40"
-              >
-                <Label htmlFor="penalty" className="text-sm font-medium">
-                  Is Penalty
-                </Label>
-                <Switch
-                  id="penalty"
-                  checked={form.penalty}
-                  disabled={penaltyLocked}
-                  onCheckedChange={(checked) =>
-                    setForm((prev) => ({ ...prev, penalty: checked }))
-                  }
-                />
-              </div>
+              {showPenalty && (
+                <div
+                  className="flex w-full items-center justify-between rounded-md border p-3 text-left transition-colors hover:bg-muted/40"
+                >
+                  <Label htmlFor="penalty" className="text-sm font-medium">
+                    Is Penalty
+                  </Label>
+                  <Switch
+                    id="penalty"
+                    checked={form.penalty}
+                    disabled={penaltyLocked}
+                    onCheckedChange={(checked) =>
+                      setForm((prev) => ({ ...prev, penalty: checked }))
+                    }
+                  />
+                </div>
+              )}
 
               {/*
               {editingRecordId != null && (
