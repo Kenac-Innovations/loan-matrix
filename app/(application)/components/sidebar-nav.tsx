@@ -4,6 +4,7 @@ import Link from "next/link";
 import {
   BarChart3,
   Bot,
+  Building2,
   CreditCard,
   FileText,
   Receipt,
@@ -135,6 +136,15 @@ export function SidebarNav() {
           ]}
         />
       )}
+
+      <MenuItemWithSubmenu
+        icon={<Building2 />}
+        label="Organization"
+        href="/organization/payment-types"
+        subMenuItems={[
+          { label: "Payment Types", href: "/organization/payment-types" },
+        ]}
+      />
 
       {isEnabled("reports") && (
         <Link

@@ -424,9 +424,9 @@ function buildInvoiceIncomeTemplateCharge(
         value: "Flat",
       },
       chargeTimeType: {
-        id: 2,
-        code: "chargeTimeType.specifiedDueDate",
-        value: "Specified Due Date",
+        id: 1,
+        code: "chargeTimeType.disbursement",
+        value: "Disbursement",
       },
     },
     charge: {
@@ -437,9 +437,9 @@ function buildInvoiceIncomeTemplateCharge(
         INVOICE_INCOME_CHARGE_DISPLAY_NAME
       ),
       chargeTimeType: {
-        id: 2,
-        code: "chargeTimeType.specifiedDueDate",
-        value: "Specified Due Date",
+        id: 1,
+        code: "chargeTimeType.disbursement",
+        value: "Disbursement",
       },
       chargeCalculationType: {
         id: 1,
