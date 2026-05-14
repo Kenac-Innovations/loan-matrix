@@ -29,22 +29,39 @@ export async function GET(request: Request) {
 
     if (query) {
       // Use Fineract's search API for server-side search
-      console.log("Searching clients with query:", query);
+      const trimmedQuery = query.trim();
+      console.log("Searching clients with query:", trimmedQuery);
 
-      // Use Fineract's search endpoint - uppercase query for case-sensitive Fineract
-      const uppercaseQuery = query.toUpperCase();
-      const searchUrl = `${baseUrl}/fineract-provider/api/v1/search?query=${encodeURIComponent(
-        uppercaseQuery
-      )}&resource=clients`;
+      // Use partial matching for names/accounts and retry with uppercase as fallback
+      const searchTerms = Array.from(
+        new Set([trimmedQuery, trimmedQuery.toUpperCase()])
+      );
 
-      const searchResponse = await fetch(searchUrl, {
-        method: "GET",
-        headers,
-        cache: "no-store",
-      });
+      let searchResults: any[] = [];
+      let searchResponseOk = false;
 
-      if (searchResponse.ok) {
-        const searchResults = await searchResponse.json();
+      for (const searchTerm of searchTerms) {
+        const searchUrl = `${baseUrl}/fineract-provider/api/v1/search?query=${encodeURIComponent(
+          searchTerm
+        )}&resource=clients&exactMatch=false`;
+
+        const searchResponse = await fetch(searchUrl, {
+          method: "GET",
+          headers,
+          cache: "no-store",
+        });
+
+        if (!searchResponse.ok) continue;
+
+        searchResponseOk = true;
+        const currentResults = await searchResponse.json();
+        if (Array.isArray(currentResults) && currentResults.length > 0) {
+          searchResults = currentResults;
+          break;
+        }
+      }
+
+      if (searchResponseOk) {
         console.log("Search results count:", searchResults?.length || 0);
 
         // Extract client IDs from search results
