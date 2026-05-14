@@ -14,6 +14,7 @@ const DEFAULT_LOCALE = {
   clientSelfieOptionalForPerson: false,
   createLeadSignaturesOnContractOptional: false,
   documentsOptional: false,
+  leadAffordabilityOptional: false,
 };
 
 /**
@@ -61,6 +62,10 @@ export async function GET(request: NextRequest) {
       settings?.features?.documentsOptional ??
       settings?.documentsOptional ??
       false;
+    const leadAffordabilityOptional =
+      settings?.features?.leadAffordabilityOptional ??
+      settings?.leadAffordabilityOptional ??
+      false;
     const locale = {
       ...DEFAULT_LOCALE,
       ...settings?.locale,
@@ -70,6 +75,7 @@ export async function GET(request: NextRequest) {
       createLeadSignaturesOnContractOptional:
         !!createLeadSignaturesOnContractOptional,
       documentsOptional: !!documentsOptional,
+      leadAffordabilityOptional: !!leadAffordabilityOptional,
     };
 
     return NextResponse.json({
