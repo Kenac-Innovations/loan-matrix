@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { getFineractServiceWithSession } from "@/lib/fineract-api";
 import { getFineractTenantId } from "@/lib/fineract-tenant-service";
-import { getSearchHeaders } from "@/lib/fineract-search-auth";
+import {
+  fetchFineractSearch,
+  getSearchHeaders,
+} from "@/lib/fineract-search-auth";
 
 const baseUrl = process.env.FINERACT_BASE_URL || "http://10.10.0.143:8443";
 
@@ -58,6 +61,41 @@ export async function GET(request: Request) {
         if (Array.isArray(currentResults) && currentResults.length > 0) {
           searchResults = currentResults;
           break;
+        }
+      }
+
+      // Fallback: some environments miss name matches in v1 /search.
+      // Use v2 /clients/search as a backup so names like "Mary" are discoverable.
+      if (searchResults.length === 0) {
+        try {
+          const v2Data: any = await fetchFineractSearch(
+            "/clients/search",
+            {
+              method: "POST",
+              body: JSON.stringify({
+                request: { text: trimmedQuery },
+                page: 0,
+                size: 50,
+              }),
+            },
+            "v2"
+          );
+
+          const v2Items = Array.isArray(v2Data?.content)
+            ? v2Data.content
+            : Array.isArray(v2Data?.pageItems)
+              ? v2Data.pageItems
+              : [];
+
+          if (v2Items.length > 0) {
+            searchResponseOk = true;
+            searchResults = v2Items.map((item: any) => ({
+              entityType: "CLIENT",
+              entityId: item.id,
+            }));
+          }
+        } catch (v2Error) {
+          console.error("V2 client search fallback failed:", v2Error);
         }
       }
 
