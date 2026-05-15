@@ -251,6 +251,7 @@ export function NewLeadForm() {
   const { currencyCode, currencySymbol, locale: tenantLocale } = useCurrency();
   const skipAffordabilityForCompanies =
     !!tenantLocale.skipAffordabilityForCompanies;
+  const isAffordabilityOptional = !!tenantLocale.leadAffordabilityOptional;
   const [hideAffordability, setHideAffordability] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [affordabilityResult, setAffordabilityResult] =
@@ -725,11 +726,16 @@ export function NewLeadForm() {
       return;
     }
 
+    if (isAffordabilityOptional) {
+      setFormCompletionStatus((prev) => ({ ...prev, affordability: true }));
+      return;
+    }
+
     if (affordabilityAutoSkipped) {
       setFormCompletionStatus((prev) => ({ ...prev, affordability: false }));
       setAffordabilityAutoSkipped(false);
     }
-  }, [hideAffordability, activeTab, affordabilityAutoSkipped]);
+  }, [hideAffordability, isAffordabilityOptional, activeTab, affordabilityAutoSkipped]);
 
   // Debug state changes
   useEffect(() => {

@@ -116,8 +116,8 @@ type FormState = {
   active: boolean;
 };
 
-const INVOICE_INCOME_CHARGE_NAME = "INVOICE_INCOME";
-const INVOICE_INCOME_CHARGE_DISPLAY_NAME = "Invoice Income";
+const INVOICE_INCOME_CHARGE_NAME = "DISCOUNT_FACTOR";
+const INVOICE_INCOME_CHARGE_DISPLAY_NAME = "Discount Factor";
 
 const emptyForm: FormState = {
   chargeAppliesTo: "",
