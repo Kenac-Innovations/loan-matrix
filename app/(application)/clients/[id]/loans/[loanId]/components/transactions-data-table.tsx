@@ -35,7 +35,27 @@ interface TransactionsDataTableProps {
   reversedPayout?: ReversedPayoutInfo | null;
 }
 
-type DisplayTransaction = Transaction;
+type ChargeItem = {
+  amount?: number;
+  chargeName?: string;
+  name?: string;
+  loanChargeName?: string;
+  charge?: { name?: string };
+};
+
+/** A transaction row with optional charge-split metadata */
+type DisplayRow = Transaction & {
+  /** 0-based charge index within the group; undefined = not a charge-split row */
+  _chargeIndex?: number;
+  /** Display name of this specific charge */
+  _chargeName?: string;
+  /** Amount for this specific charge */
+  _chargeAmount?: number;
+  /** Total number of charges in this group */
+  _groupSize?: number;
+  /** 1-based row number of the parent transaction (for display) */
+  _parentTxnNumber?: number;
+};
 
 export function TransactionsDataTable({
   transactions,
@@ -46,95 +66,122 @@ export function TransactionsDataTable({
 }: TransactionsDataTableProps) {
   const router = useRouter();
 
-  const isReversedTransaction = (transaction: DisplayTransaction) =>
-    !!transaction?.manuallyReversed;
+  const isReversedTransaction = (row: DisplayRow) => !!row?.manuallyReversed;
 
-  const getReversedTextClass = (transaction: DisplayTransaction) =>
-    isReversedTransaction(transaction) ? "text-red-600 line-through" : "";
+  const getReversedTextClass = (row: DisplayRow) =>
+    isReversedTransaction(row) ? "text-red-600 line-through" : "";
 
-  const getChargeName = (
-    charge: DisplayTransaction["loanChargePaidByList"] extends Array<infer T>
-      ? T
-      : never
-  ) => {
+  const getChargeName = (charge: ChargeItem) => {
     const rawName =
       charge?.chargeName ||
       charge?.name ||
       charge?.loanChargeName ||
       charge?.charge?.name ||
       "Charge";
-
     return rawName
       .trim()
       .toLowerCase()
       .replace(/_/g, " ")
-      .replace(/\b\w/g, (char) => char.toUpperCase());
+      .replace(/\b\w/g, (c: string) => c.toUpperCase());
   };
 
   const displayTransactions = useMemo(() => {
-    const expandedTransactions = transactions as DisplayTransaction[];
+    const source: Transaction[] = (() => {
+      if (!reversedPayout?.voidedAt) return transactions;
+      const d = new Date(reversedPayout.voidedAt);
+      const reversalRow: Transaction = {
+        id: -1,
+        officeName: "",
+        date: [d.getFullYear(), d.getMonth() + 1, d.getDate()],
+        type: { value: `Payout Reversed - ${reversedPayout.voidReason ?? "Cash returned to cashier"}` },
+        amount: 0,
+        principalPortion: 0,
+        interestPortion: 0,
+        feeChargesPortion: 0,
+        penaltyChargesPortion: 0,
+        outstandingLoanBalance: 0,
+      };
+      return [reversalRow, ...transactions];
+    })();
 
-    if (!reversedPayout?.voidedAt) return expandedTransactions;
-    const d = new Date(reversedPayout.voidedAt);
-    const reversalRow: DisplayTransaction = {
-      id: -1,
-      officeName: "",
-      date: [d.getFullYear(), d.getMonth() + 1, d.getDate()],
-      type: { value: `Payout Reversed - ${reversedPayout.voidReason ?? "Cash returned to cashier"}` },
-      amount: 0,
-      principalPortion: 0,
-      interestPortion: 0,
-      feeChargesPortion: 0,
-      penaltyChargesPortion: 0,
-      outstandingLoanBalance: 0,
-    };
-    return [reversalRow, ...expandedTransactions];
+    const rows: DisplayRow[] = [];
+    let txnNumber = 0;
+
+    for (const t of source) {
+      txnNumber++;
+      const paidCharges = t.loanChargePaidByList;
+      const isMultiCharge =
+        t.type?.repaymentAtDisbursement &&
+        Array.isArray(paidCharges) &&
+        paidCharges.length > 1;
+
+      if (!isMultiCharge) {
+        rows.push({ ...t, _parentTxnNumber: txnNumber });
+        continue;
+      }
+
+      paidCharges!.forEach((charge, i) => {
+        rows.push({
+          ...t,
+          _chargeIndex: i,
+          _chargeName: getChargeName(charge),
+          _chargeAmount: Number(charge.amount ?? 0),
+          _groupSize: paidCharges!.length,
+          _parentTxnNumber: txnNumber,
+        });
+      });
+    }
+
+    return rows;
   }, [transactions, reversedPayout]);
 
   const [customFilters, setCustomFilters] = useState<DataTableFilter[]>([
-    {
-      columnId: "type",
-      value: "all",
-      type: "select"
-    }
+    { columnId: "type", value: "all", type: "select" },
   ]);
 
-  // Get unique transaction types for filter options (show "Admin Fee" for repayment at disbursement)
+  // Derive unique transaction types for the filter dropdown from original transactions only
   const transactionTypes = useMemo(() => {
     const types = Array.from(
-      new Set(displayTransactions.map((t) => getDisplayedTransactionType(t)).filter(Boolean))
+      new Set(transactions.map((t) => getDisplayedTransactionType(t)).filter(Boolean))
     );
-    return types.sort().map((displayLabel) => {
-      // Use actual type.value for filtering; "Admin Fee" maps to "Repayment (at time of disbursement)"
-      const filterValue = displayLabel === "Admin Fee"
-        ? "Repayment (at time of disbursement)"
-        : displayLabel;
-      return { label: displayLabel, value: filterValue };
-    }).filter((t) => t.label !== "Admin Fee"); // Admin Fee is in hardcoded filterOptions
-  }, [displayTransactions]);
+    return types
+      .sort()
+      .map((displayLabel) => {
+        const filterValue =
+          displayLabel === "Admin Fee"
+            ? "Repayment (at time of disbursement)"
+            : displayLabel;
+        return { label: displayLabel, value: filterValue };
+      })
+      .filter((t) => t.label !== "Admin Fee");
+  }, [transactions]);
 
-  const getTransactionRef = (transaction: DisplayTransaction): string | undefined => {
-    if (!transaction) return undefined;
-    if (typeof transaction.transactionId === 'string' && /^L\d+$/.test(transaction.transactionId)) {
-      return transaction.transactionId;
-    }
-    if (typeof transaction.id === 'number') return `L${transaction.id}`;
-    if (typeof transaction.externalId === 'string' && /^L\d+$/.test(transaction.externalId)) {
-      return transaction.externalId;
-    }
+  const getTransactionRef = (row: DisplayRow): string | undefined => {
+    if (!row) return undefined;
+    if (typeof row.transactionId === "string" && /^L\d+$/.test(row.transactionId))
+      return row.transactionId;
+    if (typeof row.id === "number") return `L${row.id}`;
+    if (typeof row.externalId === "string" && /^L\d+$/.test(row.externalId))
+      return row.externalId;
     return undefined;
   };
 
-  // Define columns for the generic data table
-  const columns: DataTableColumn<DisplayTransaction>[] = [
+  const isSubCharge = (row: DisplayRow) =>
+    row._chargeIndex !== undefined && row._chargeIndex > 0;
+
+  const isChargeGroup = (row: DisplayRow) => row._groupSize !== undefined;
+
+  const columns: DataTableColumn<DisplayRow>[] = [
     {
       id: "rowNumber",
       header: "#",
       cell: ({ row }) => {
-        const index = displayTransactions.findIndex(t => t.id === row.original.id);
+        const tx = row.original;
+        // Sub-charge rows (2nd charge onward) don't show a row number
+        if (isSubCharge(tx)) return null;
         return (
-          <span className={`font-medium ${getReversedTextClass(row.original)}`}>
-            {index + 1}
+          <span className={`font-medium ${getReversedTextClass(tx)}`}>
+            {tx._parentTxnNumber}
           </span>
         );
       },
@@ -166,43 +213,20 @@ export function TransactionsDataTable({
       header: "Transaction Type",
       accessorKey: "type",
       cell: ({ row }) => {
-        const transaction = row.original;
-        const paidCharges = transaction.loanChargePaidByList;
-        const isMultiCharge =
-          transaction.type?.repaymentAtDisbursement &&
-          Array.isArray(paidCharges) &&
-          paidCharges.length > 1;
-
-        if (isMultiCharge) {
-          return (
-            <div className={`space-y-0.5 ${getReversedTextClass(transaction)}`}>
-              {paidCharges!.map((charge, i) => (
-                <div key={i} className="text-sm">
-                  {getChargeName(charge)}: {formatCurrency(Number(charge.amount ?? 0), currencyCode)}
-                </div>
-              ))}
-              {isReversedTransaction(transaction) && <div className="text-xs">(Reversed)</div>}
-            </div>
-          );
-        }
-
+        const tx = row.original;
+        const label = tx._chargeName ?? getDisplayedTransactionType(tx);
         return (
-          <span className={getReversedTextClass(transaction)}>
-            {getDisplayedTransactionType(transaction)}
-            {isReversedTransaction(transaction) ? " (Reversed)" : ""}
+          <span className={getReversedTextClass(tx)}>
+            {label}
+            {isReversedTransaction(tx) && tx._chargeIndex === undefined
+              ? " (Reversed)"
+              : ""}
           </span>
         );
       },
       getExportValue: (row) => {
-        const paidCharges = row.loanChargePaidByList;
-        const isMultiCharge =
-          row.type?.repaymentAtDisbursement &&
-          Array.isArray(paidCharges) &&
-          paidCharges.length > 1;
-        if (isMultiCharge) {
-          return paidCharges!
-            .map((c) => `${getChargeName(c)}: ${formatCurrency(Number(c.amount ?? 0), currencyCode)}`)
-            .join(", ");
+        if (row._chargeName) {
+          return `${row._chargeName}: ${formatCurrency(row._chargeAmount ?? 0, currencyCode)}`;
         }
         return getDisplayedTransactionType(row);
       },
@@ -220,69 +244,102 @@ export function TransactionsDataTable({
       id: "amount",
       header: "Amount",
       accessorKey: "amount",
-      cell: ({ row, getValue }) => (
-        <span className={getReversedTextClass(row.original)}>
-          {formatCurrency(getValue(), currencyCode)}
-        </span>
-      ),
+      cell: ({ row, getValue }) => {
+        const tx = row.original;
+        const value = tx._chargeAmount !== undefined ? tx._chargeAmount : getValue();
+        return (
+          <span className={getReversedTextClass(tx)}>
+            {formatCurrency(value, currencyCode)}
+          </span>
+        );
+      },
     },
     {
       id: "principalPortion",
       header: "Principal",
       accessorKey: "principalPortion",
-      cell: ({ row, getValue }) => (
-        <span className={getReversedTextClass(row.original)}>
-          {formatCurrency(getValue(), currencyCode)}
-        </span>
-      ),
+      cell: ({ row, getValue }) => {
+        const tx = row.original;
+        // Charges carry no principal
+        const value = isChargeGroup(tx) ? 0 : getValue();
+        return (
+          <span className={getReversedTextClass(tx)}>
+            {formatCurrency(value, currencyCode)}
+          </span>
+        );
+      },
     },
     {
       id: "interestPortion",
       header: "Interest",
       accessorKey: "interestPortion",
-      cell: ({ row, getValue }) => (
-        <span className={getReversedTextClass(row.original)}>
-          {formatCurrency(getValue(), currencyCode)}
-        </span>
-      ),
+      cell: ({ row, getValue }) => {
+        const tx = row.original;
+        const value = isChargeGroup(tx) ? 0 : getValue();
+        return (
+          <span className={getReversedTextClass(tx)}>
+            {formatCurrency(value, currencyCode)}
+          </span>
+        );
+      },
     },
     {
       id: "feeChargesPortion",
       header: "Fees",
       accessorKey: "feeChargesPortion",
-      cell: ({ row, getValue }) => (
-        <span className={getReversedTextClass(row.original)}>
-          {formatCurrency(getValue(), currencyCode)}
-        </span>
-      ),
+      cell: ({ row, getValue }) => {
+        const tx = row.original;
+        // Each charge row's fee = its own charge amount
+        const value = tx._chargeAmount !== undefined ? tx._chargeAmount : getValue();
+        return (
+          <span className={getReversedTextClass(tx)}>
+            {formatCurrency(value, currencyCode)}
+          </span>
+        );
+      },
     },
     {
       id: "penaltyChargesPortion",
       header: "Penalties",
       accessorKey: "penaltyChargesPortion",
-      cell: ({ row, getValue }) => (
-        <span className={getReversedTextClass(row.original)}>
-          {formatCurrency(getValue(), currencyCode)}
-        </span>
-      ),
+      cell: ({ row, getValue }) => {
+        const tx = row.original;
+        const value = isChargeGroup(tx) ? 0 : getValue();
+        return (
+          <span className={getReversedTextClass(tx)}>
+            {formatCurrency(value, currencyCode)}
+          </span>
+        );
+      },
     },
     {
       id: "outstandingLoanBalance",
       header: "Loan Balance",
       accessorKey: "outstandingLoanBalance",
-      cell: ({ row, getValue }) => (
-        <span className={getReversedTextClass(row.original)}>
-          {formatCurrency(getValue(), currencyCode)}
-        </span>
-      ),
+      cell: ({ row, getValue }) => {
+        const tx = row.original;
+        // Show balance only on the first row of a charge group (represents state after full transaction)
+        if (isSubCharge(tx)) {
+          return <span className={getReversedTextClass(tx)}>{formatCurrency(0, currencyCode)}</span>;
+        }
+        return (
+          <span className={getReversedTextClass(tx)}>
+            {formatCurrency(getValue(), currencyCode)}
+          </span>
+        );
+      },
     },
     {
       id: "actions",
       header: "Actions",
       cell: ({ row }) => {
-        const transaction = row.original;
-        if (transaction.id === -1) return <span className="text-muted-foreground text-xs">—</span>;
-        const actionTransactionId = transaction.id;
+        const tx = row.original;
+
+        // Sub-charge rows share the action of the first row — show nothing
+        if (isSubCharge(tx)) return null;
+        if (tx.id === -1) return <span className="text-muted-foreground text-xs">—</span>;
+
+        const actionTransactionId = tx.id;
         return (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -293,50 +350,56 @@ export function TransactionsDataTable({
             <DropdownMenuContent align="end">
               <DropdownMenuItem
                 onClick={() => {
-                  const txId = actionTransactionId;
-                  if (!txId) {
-                    alert('No transaction id found for this row');
+                  if (!actionTransactionId) {
+                    alert("No transaction id found for this row");
                     return;
                   }
-                  router.push(`/clients/${clientId}/loans/${loanId}/transactions/${encodeURIComponent(String(txId))}`);
+                  router.push(
+                    `/clients/${clientId}/loans/${loanId}/transactions/${encodeURIComponent(String(actionTransactionId))}`
+                  );
                 }}
               >
                 View Transaction
               </DropdownMenuItem>
-              {(transaction?.type?.repaymentAtDisbursement || transaction?.type?.accrual) && (
+              {(tx?.type?.repaymentAtDisbursement || tx?.type?.accrual) && (
                 <DropdownMenuItem
                   onClick={() => {
                     const df = "dd MMMM yyyy";
-                    const date = transaction?.date;
+                    const date = tx?.date;
                     const formatDateForAPI = (a?: number[]) => {
                       if (!a || a.length !== 3) return "";
                       const [y, m, d] = a;
-                      const month = new Date(y, m - 1, d).toLocaleString('en-US', { month: 'long' });
+                      const month = new Date(y, m - 1, d).toLocaleString("en-US", { month: "long" });
                       return `${d} ${month} ${y}`;
                     };
-                    fetch(`/api/fineract/loans/${loanId}/transactions/${actionTransactionId}?command=undo`, {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({
-                        dateFormat: df,
-                        locale: 'en',
-                        transactionAmount: 0,
-                        transactionDate: formatDateForAPI(date)
+                    fetch(
+                      `/api/fineract/loans/${loanId}/transactions/${actionTransactionId}?command=undo`,
+                      {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          dateFormat: df,
+                          locale: "en",
+                          transactionAmount: 0,
+                          transactionDate: formatDateForAPI(date),
+                        }),
+                      }
+                    )
+                      .then((res) => {
+                        if (!res.ok) throw new Error("Undo failed");
+                        router.refresh();
                       })
-                    }).then(res => {
-                      if (!res.ok) throw new Error('Undo failed');
-                      router.refresh();
-                    }).catch(() => alert('Undo failed'));
+                      .catch(() => alert("Undo failed"));
                   }}
                 >
                   Undo Transaction
                 </DropdownMenuItem>
               )}
-              {(transaction?.type?.repaymentAtDisbursement || transaction?.type?.accrual) && (
+              {(tx?.type?.repaymentAtDisbursement || tx?.type?.accrual) && (
                 <DropdownMenuItem
                   onClick={() => {
                     const url = `/api/fineract/reports?name=Loan%20Transaction%20Receipt&output-type=PDF&R_transactionId=${encodeURIComponent(String(actionTransactionId))}`;
-                    window.open(url, '_blank');
+                    window.open(url, "_blank");
                   }}
                 >
                   View Receipts
@@ -344,12 +407,14 @@ export function TransactionsDataTable({
               )}
               <DropdownMenuItem
                 onClick={() => {
-                  const ref = getTransactionRef(transaction);
+                  const ref = getTransactionRef(tx);
                   if (!ref) {
-                    alert('No valid transaction reference found for this row');
+                    alert("No valid transaction reference found for this row");
                     return;
                   }
-                  router.push(`/clients/${clientId}/loans/${loanId}/journal-entries?transactionId=${encodeURIComponent(ref)}`);
+                  router.push(
+                    `/clients/${clientId}/loans/${loanId}/journal-entries?transactionId=${encodeURIComponent(ref)}`
+                  );
                 }}
               >
                 View Journal Entry
@@ -364,7 +429,7 @@ export function TransactionsDataTable({
   ];
 
   return (
-    <GenericDataTable<DisplayTransaction>
+    <GenericDataTable<DisplayRow>
       data={displayTransactions}
       columns={columns}
       searchPlaceholder="Search Transaction ..."
@@ -379,6 +444,9 @@ export function TransactionsDataTable({
       customFilters={customFilters}
       onFilterChange={setCustomFilters}
       className="h-full"
+      getRowClassName={(row) =>
+        isChargeGroup(row) ? "bg-muted/20 hover:bg-muted/30" : ""
+      }
     />
   );
 }

@@ -117,6 +117,7 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
   const [loanSequenceLabel, setLoanSequenceLabel] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [loanProductCanTopup, setLoanProductCanTopup] = useState(false);
   const [showAddCollateral, setShowAddCollateral] = useState(false);
   const [collateralForm, setCollateralForm] = useState({
     collateralTypeId: "",
@@ -141,6 +142,7 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
   const [loadingDocuments, setLoadingDocuments] = useState(false);
   const [showUploadDocuments, setShowUploadDocuments] = useState(false);
   const [submittingDocument, setSubmittingDocument] = useState(false);
+  const [isCreatingRefinanceLead, setIsCreatingRefinanceLead] = useState(false);
   const [documentForm, setDocumentForm] = useState({
     fileName: "",
     description: "",
@@ -534,6 +536,17 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
               </svg>
               View Statement
             </button>
+            ${loanProductCanTopup ? `
+            <button class="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 text-sm" data-action="refinance">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
+                <path d="M21 3v5h-5"/>
+                <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/>
+                <path d="M3 21v-5h5"/>
+              </svg>
+              Refinance
+            </button>
+            ` : ''}
             <div class="border-t border-gray-200 dark:border-gray-700 my-2"></div>
             <div class="relative" id="payments-container">
               <button class="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center justify-between text-sm" data-action="payments" id="payments-trigger">
@@ -814,6 +827,31 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
               }
 
               switch(action) {
+              case 'refinance':
+                setIsCreatingRefinanceLead(true);
+                fetch('/api/leads/operations', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    operation: 'createLeadForExistingClient',
+                    data: { fineractClientId: clientId },
+                  }),
+                })
+                  .then((res) => res.json())
+                  .then((result) => {
+                    if (result.leadId) {
+                      router.push(
+                        `/leads/new?id=${result.leadId}&tab=loan&refinanceLoanId=${loanId}&fineractClientId=${clientId}`
+                      );
+                    } else {
+                      toast({ title: 'Error', description: result.error || 'Could not create lead', variant: 'destructive' });
+                    }
+                  })
+                  .catch(() => {
+                    toast({ title: 'Error', description: 'Failed to initiate refinance', variant: 'destructive' });
+                  })
+                  .finally(() => setIsCreatingRefinanceLead(false));
+                break;
               case 'approve-loan':
                 setShowLoanApprovalModal(true);
                 break;
@@ -957,7 +995,7 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
         container.innerHTML = '';
       }
     };
-  }, [loan, clientId, loanId, setShowRepaymentModal]);
+  }, [loan, clientId, loanId, loanProductCanTopup, setShowRepaymentModal]);
 
   const fetchLoanData = async () => {
     try {
@@ -981,6 +1019,18 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
       const loanData = await loanResponse.json();
       setClient(clientData);
       setLoan(loanData);
+
+      if (loanData.loanProductId) {
+        try {
+          const productRes = await fetch(`/api/fineract/loans/product/${loanData.loanProductId}`);
+          if (productRes.ok) {
+            const productData = await productRes.json();
+            setLoanProductCanTopup(productData.canUseForTopup === true);
+          }
+        } catch {
+          // non-critical — refinance button simply won't show
+        }
+      }
 
       if (clientLoansResponse.ok) {
         const clientLoansData = await clientLoansResponse.json();

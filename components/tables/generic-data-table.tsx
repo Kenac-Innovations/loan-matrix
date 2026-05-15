@@ -188,6 +188,8 @@ export function GenericDataTable<TData>({
   onSearchChange,
   isLoading = false,
   headerActions,
+  renderExpandedRows,
+  getRowClassName,
 }: DataTableProps<TData>) {
   // Use external search if provided, otherwise use internal state
   const isExternalSearch = externalSearch !== undefined && onSearchChange !== undefined;
@@ -648,30 +650,32 @@ export function GenericDataTable<TData>({
           <TableBody>
             {table.getRowModel().rows?.length ? (
               table.getRowModel().rows.map((row) => (
-                <TableRow
-                  key={row.id}
-                  data-state={row.getIsSelected() && "selected"}
-                  className={`${onRowClick ? "cursor-pointer hover:bg-muted/50" : ""} transition-colors`}
-                  onClick={() => onRowClick?.(row.original)}
-                >
-                  {row.getVisibleCells().map((cell) => (
-                    <TableCell
-                      key={cell.id}
-                      className="px-3 py-3 text-sm"
-                      onClick={(e) => {
-                        // Prevent row click when clicking on interactive elements
-                        if (cell.column.id === "select" || cell.column.id === "actions") {
-                          e.stopPropagation();
-                        }
-                      }}
-                    >
-                      {flexRender(
-                        cell.column.columnDef.cell,
-                        cell.getContext()
-                      )}
-                    </TableCell>
-                  ))}
-                </TableRow>
+                <React.Fragment key={row.id}>
+                  <TableRow
+                    data-state={row.getIsSelected() && "selected"}
+                    className={`${onRowClick ? "cursor-pointer hover:bg-muted/50" : ""} transition-colors ${getRowClassName?.(row.original) ?? ""}`}
+                    onClick={() => onRowClick?.(row.original)}
+                  >
+                    {row.getVisibleCells().map((cell) => (
+                      <TableCell
+                        key={cell.id}
+                        className="px-3 py-3 text-sm"
+                        onClick={(e) => {
+                          // Prevent row click when clicking on interactive elements
+                          if (cell.column.id === "select" || cell.column.id === "actions") {
+                            e.stopPropagation();
+                          }
+                        }}
+                      >
+                        {flexRender(
+                          cell.column.columnDef.cell,
+                          cell.getContext()
+                        )}
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                  {renderExpandedRows?.(row.original)}
+                </React.Fragment>
               ))
             ) : (
               <TableRow>
