@@ -316,13 +316,13 @@ export function LoanProductStepper({
         if (!chargeRes.ok) {
           throw new Error(
             chargeBody?.error ||
-              "Failed to ensure the INVOICE_INCOME charge before saving the product"
+              "Failed to ensure the DISCOUNT_FACTOR charge before saving the product"
           );
         }
 
         const invoiceIncomeChargeId = Number(chargeBody?.data?.fineractChargeId);
         if (!Number.isFinite(invoiceIncomeChargeId)) {
-          throw new Error("INVOICE_INCOME charge is missing a valid Fineract charge ID");
+          throw new Error("DISCOUNT_FACTOR charge is missing a valid Fineract charge ID");
         }
 
         const existingCharges = Array.isArray(payload.charges)

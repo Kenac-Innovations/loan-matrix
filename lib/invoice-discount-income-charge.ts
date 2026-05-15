@@ -15,7 +15,7 @@ import {
   getChargeTimeOptionsForType,
 } from "@/lib/charge-product-fineract";
 
-export const INVOICE_DISCOUNT_INCOME_CHARGE_NAME = "INVOICE_INCOME";
+export const INVOICE_DISCOUNT_INCOME_CHARGE_NAME = "DISCOUNT_FACTOR";
 
 type EnsureInvoiceDiscountIncomeChargeParams = {
   tenantId: string;
@@ -198,7 +198,7 @@ async function syncInvoiceDiscountIncomeChargeToFineract(params: {
 
     if (!Number.isFinite(fineractChargeId)) {
       throw new Error(
-        "INVOICE_INCOME already exists in Fineract but its charge ID could not be resolved"
+        "DISCOUNT_FACTOR already exists in Fineract but its charge ID could not be resolved"
       );
     }
 
@@ -266,7 +266,7 @@ export async function ensureInvoiceDiscountIncomeCharge({
 
   if (!existing && !normalizeCurrencyCode(currencyCode)) {
     throw new Error(
-      "A currency code is required to create the INVOICE_INCOME charge for this tenant"
+      "A currency code is required to create the DISCOUNT_FACTOR charge for this tenant"
     );
   }
 
@@ -275,7 +275,7 @@ export async function ensureInvoiceDiscountIncomeCharge({
     normalizeCurrencyCode(existing?.currencyCode);
 
   if (!resolvedCurrencyCode) {
-    throw new Error("Unable to resolve a currency code for INVOICE_INCOME");
+    throw new Error("Unable to resolve a currency code for DISCOUNT_FACTOR");
   }
 
   const fineractChargeId = await syncInvoiceDiscountIncomeChargeToFineract({

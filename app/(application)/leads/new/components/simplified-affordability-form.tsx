@@ -39,32 +39,45 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
 import { useCurrency } from "@/contexts/currency-context";
 
-// Form validation schema based on the provided JSON structure
-const affordabilitySchema = z
-  .object({
-    grossMonthlyIncome: z
-      .number()
-      .min(1, "Gross monthly income must be greater than 0"),
-    netMonthlyIncome: z
-      .number()
-      .min(1, "Net monthly income must be greater than 0"),
+const buildAffordabilitySchema = (isOptional: boolean) => {
+  const base = z.object({
+    grossMonthlyIncome: isOptional
+      ? z.number().min(0).optional()
+      : z.number().min(1, "Gross monthly income must be greater than 0"),
+    netMonthlyIncome: isOptional
+      ? z.number().min(0).optional()
+      : z.number().min(1, "Net monthly income must be greater than 0"),
     nationality: z.string().optional(),
-    preferredPaymentMethod: z.enum(["CASH", "MOBILE_MONEY", "BANK_TRANSFER"], {
-      required_error: "Preferred payment type is required",
-    }),
+    preferredPaymentMethod: isOptional
+      ? z.enum(["CASH", "MOBILE_MONEY", "BANK_TRANSFER"]).optional()
+      : z.enum(["CASH", "MOBILE_MONEY", "BANK_TRANSFER"], {
+          required_error: "Preferred payment type is required",
+        }),
     mobileInOwnName: z.boolean().default(false),
     hasProofOfIncome: z.boolean().default(false),
     hasValidNationalId: z.boolean().default(false),
     identityVerified: z.boolean().default(false),
     employmentVerified: z.boolean().default(false),
     incomeVerified: z.boolean().default(false),
-  })
-  .refine((data) => data.netMonthlyIncome <= data.grossMonthlyIncome, {
-    message: "Net monthly income cannot be greater than gross monthly income",
-    path: ["netMonthlyIncome"],
   });
 
-type AffordabilityFormValues = z.infer<typeof affordabilitySchema>;
+  if (isOptional) return base;
+
+  return base.refine(
+    (data) =>
+      !data.netMonthlyIncome ||
+      !data.grossMonthlyIncome ||
+      data.netMonthlyIncome <= data.grossMonthlyIncome,
+    {
+      message: "Net monthly income cannot be greater than gross monthly income",
+      path: ["netMonthlyIncome"],
+    }
+  );
+};
+
+// Derive type from the optional variant (widest shape) — the resolver enforces stricter rules at runtime
+const _optionalSchema = buildAffordabilitySchema(true);
+type AffordabilityFormValues = z.infer<typeof _optionalSchema>;
 
 interface SimplifiedAffordabilityFormProps {
   leadId?: string;
@@ -81,6 +94,7 @@ export function SimplifiedAffordabilityForm({
   const [isCompleted, setIsCompleted] = useState(false);
   const { toast } = useToast();
   const { currencyCode: orgCurrency, locale: tenantLocale } = useCurrency();
+  const isAffordabilityOptional = !!tenantLocale.leadAffordabilityOptional;
   const [grossInputValue, setGrossInputValue] = useState("");
   const [netInputValue, setNetInputValue] = useState("");
   const [sectionCompletion, setSectionCompletion] = useState({
@@ -128,7 +142,8 @@ export function SimplifiedAffordabilityForm({
   };
 
   const form = useForm<AffordabilityFormValues>({
-    resolver: zodResolver(affordabilitySchema),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    resolver: zodResolver(buildAffordabilitySchema(isAffordabilityOptional)) as any,
     defaultValues: {
       grossMonthlyIncome: 0,
       netMonthlyIncome: 0,
@@ -145,9 +160,13 @@ export function SimplifiedAffordabilityForm({
   // Check section completion
   const watchedValues = form.watch();
   useEffect(() => {
+    if (isAffordabilityOptional) {
+      setSectionCompletion({ income: true, verification: true });
+      return;
+    }
     const incomeComplete =
-      watchedValues.grossMonthlyIncome > 0 &&
-      watchedValues.netMonthlyIncome > 0;
+      (watchedValues.grossMonthlyIncome ?? 0) > 0 &&
+      (watchedValues.netMonthlyIncome ?? 0) > 0;
     const verificationComplete = tenantLocale.emailOptional
       ? !!watchedValues.preferredPaymentMethod
       : watchedValues.mobileInOwnName &&
@@ -163,6 +182,7 @@ export function SimplifiedAffordabilityForm({
       verification: verificationComplete,
     });
   }, [
+    isAffordabilityOptional,
     watchedValues.grossMonthlyIncome,
     watchedValues.netMonthlyIncome,
     watchedValues.preferredPaymentMethod,
@@ -178,11 +198,12 @@ export function SimplifiedAffordabilityForm({
   // Helper function to get section status
   const getSectionStatus = (
     sectionName: keyof typeof sectionCompletion
-  ): "incomplete" | "pending" | "saved" => {
+  ): "incomplete" | "optional" | "pending" | "saved" => {
     const isComplete = sectionCompletion[sectionName];
     const isSaved = sectionSaved[sectionName];
 
     if (!isComplete) return "incomplete";
+    if (isAffordabilityOptional && !isSaved) return "optional";
     if (isComplete && !isSaved) return "pending";
     return "saved";
   };
@@ -197,6 +218,8 @@ export function SimplifiedAffordabilityForm({
     switch (status) {
       case "incomplete":
         return `${baseClasses} bg-red-50 dark:bg-red-950 border-2 border-red-500 dark:border-red-600`;
+      case "optional":
+        return `${baseClasses} bg-gray-50 dark:bg-gray-900 border-2 border-gray-300 dark:border-gray-600`;
       case "pending":
         return `${baseClasses} bg-amber-50 dark:bg-amber-950 border-2 border-amber-500 dark:border-amber-600`;
       case "saved":
@@ -254,6 +277,7 @@ export function SimplifiedAffordabilityForm({
     loadAffordabilityData();
   }, [leadId, form]);
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const onSubmit = async (data: AffordabilityFormValues) => {
     if (!leadId) {
       toast({
@@ -262,6 +286,15 @@ export function SimplifiedAffordabilityForm({
           "Lead ID is missing. Please save the client information first.",
         variant: "destructive",
       });
+      return;
+    }
+
+    // When affordability is optional and no income data was entered, skip the API call
+    const hasIncomeData =
+      (data.grossMonthlyIncome ?? 0) > 0 || (data.netMonthlyIncome ?? 0) > 0;
+    if (isAffordabilityOptional && !hasIncomeData) {
+      setIsCompleted(true);
+      if (onComplete) onComplete();
       return;
     }
 
@@ -356,6 +389,8 @@ export function SimplifiedAffordabilityForm({
           <div className="flex items-center gap-2 mb-2">
             {getSectionStatus("income") === "saved" ? (
               <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400" />
+            ) : getSectionStatus("income") === "optional" ? (
+              <AlertCircle className="h-5 w-5 text-gray-400 dark:text-gray-500" />
             ) : getSectionStatus("income") === "pending" ? (
               <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400" />
             ) : (
@@ -366,6 +401,9 @@ export function SimplifiedAffordabilityForm({
             </CardTitle>
             {getSectionStatus("income") === "saved" && (
               <Badge className="ml-2 bg-green-500 text-white">Complete</Badge>
+            )}
+            {getSectionStatus("income") === "optional" && (
+              <Badge className="ml-2 bg-gray-400 text-white">Optional</Badge>
             )}
             {getSectionStatus("income") === "pending" && (
               <Badge className="ml-2 bg-amber-500 text-white">
@@ -380,7 +418,7 @@ export function SimplifiedAffordabilityForm({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="space-y-2">
             <Label htmlFor="grossMonthlyIncome">
-              Gross Monthly Income <span className="text-red-500">*</span>
+              Gross Monthly Income{!isAffordabilityOptional && <span className="text-red-500"> *</span>}
             </Label>
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">
@@ -404,17 +442,14 @@ export function SimplifiedAffordabilityForm({
                       field.onChange(numericValue);
                     }}
                     onBlur={() => {
-                      // Format with decimals on blur if there's a value
-                      if (field.value > 0) {
-                        setGrossInputValue(formatCurrency(field.value));
+                      if ((field.value ?? 0) > 0) {
+                        setGrossInputValue(formatCurrency(field.value ?? 0));
                       }
-                      // Trigger validation on blur
                       form.trigger("netMonthlyIncome");
                     }}
                     onFocus={() => {
-                      // Remove decimal formatting when focused for easier editing
-                      if (field.value > 0) {
-                        setGrossInputValue(field.value.toString());
+                      if ((field.value ?? 0) > 0) {
+                        setGrossInputValue((field.value ?? 0).toString());
                       }
                     }}
                   />
@@ -430,7 +465,7 @@ export function SimplifiedAffordabilityForm({
 
           <div className="space-y-2">
             <Label htmlFor="netMonthlyIncome">
-              Net Monthly Income <span className="text-red-500">*</span>
+              Net Monthly Income{!isAffordabilityOptional && <span className="text-red-500"> *</span>}
             </Label>
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">
@@ -454,17 +489,14 @@ export function SimplifiedAffordabilityForm({
                       field.onChange(numericValue);
                     }}
                     onBlur={() => {
-                      // Format with decimals on blur if there's a value
-                      if (field.value > 0) {
-                        setNetInputValue(formatCurrency(field.value));
+                      if ((field.value ?? 0) > 0) {
+                        setNetInputValue(formatCurrency(field.value ?? 0));
                       }
-                      // Trigger validation on blur
                       form.trigger("netMonthlyIncome");
                     }}
                     onFocus={() => {
-                      // Remove decimal formatting when focused for easier editing
-                      if (field.value > 0) {
-                        setNetInputValue(field.value.toString());
+                      if ((field.value ?? 0) > 0) {
+                        setNetInputValue((field.value ?? 0).toString());
                       }
                     }}
                   />
@@ -489,6 +521,8 @@ export function SimplifiedAffordabilityForm({
           <div className="flex items-center gap-2 mb-2">
             {getSectionStatus("verification") === "saved" ? (
               <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400" />
+            ) : getSectionStatus("verification") === "optional" ? (
+              <AlertCircle className="h-5 w-5 text-gray-400 dark:text-gray-500" />
             ) : getSectionStatus("verification") === "pending" ? (
               <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400" />
             ) : (
@@ -499,6 +533,9 @@ export function SimplifiedAffordabilityForm({
             </CardTitle>
             {getSectionStatus("verification") === "saved" && (
               <Badge className="ml-2 bg-green-500 text-white">Complete</Badge>
+            )}
+            {getSectionStatus("verification") === "optional" && (
+              <Badge className="ml-2 bg-gray-400 text-white">Optional</Badge>
             )}
             {getSectionStatus("verification") === "pending" && (
               <Badge className="ml-2 bg-amber-500 text-white">
@@ -535,7 +572,9 @@ export function SimplifiedAffordabilityForm({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="preferredPaymentMethod">Preferred Payment Type <span className="text-red-500">*</span></Label>
+            <Label htmlFor="preferredPaymentMethod">
+              Preferred Payment Type{!isAffordabilityOptional && <span className="text-red-500"> *</span>}
+            </Label>
             <p className="text-xs text-muted-foreground">
               How the client will receive funds (same options as payout modal).
             </p>
@@ -728,12 +767,14 @@ export function SimplifiedAffordabilityForm({
                 ? "bg-green-500 hover:bg-green-600"
                 : sectionCompletion.income && sectionCompletion.verification
                 ? "bg-blue-500 hover:bg-blue-600"
+                : isAffordabilityOptional
+                ? "bg-blue-500 hover:bg-blue-600"
                 : "bg-gray-400 cursor-not-allowed"
             }`}
             disabled={
               isSaving ||
-              !sectionCompletion.income ||
-              !sectionCompletion.verification
+              (!isAffordabilityOptional &&
+                (!sectionCompletion.income || !sectionCompletion.verification))
             }
           >
             {isSaving ? (
@@ -746,6 +787,10 @@ export function SimplifiedAffordabilityForm({
                 <CheckCircle2 className="mr-2 h-4 w-4" />
                 Next
               </>
+            ) : isAffordabilityOptional &&
+              !(watchedValues.grossMonthlyIncome ?? 0) &&
+              !(watchedValues.netMonthlyIncome ?? 0) ? (
+              "Skip & Next"
             ) : (
               "Save & Next"
             )}
