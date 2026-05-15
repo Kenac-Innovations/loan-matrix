@@ -148,8 +148,8 @@ function isOverdueChargeLike(charge?: {
   return !charge.chargeTimeType && charge.penalty === true;
 }
 
-const INVOICE_INCOME_CHARGE_NAME = "INVOICE_INCOME";
-const INVOICE_INCOME_CHARGE_DISPLAY_NAME = "Invoice Income";
+const INVOICE_INCOME_CHARGE_NAME = "DISCOUNT_FACTOR";
+const INVOICE_INCOME_CHARGE_DISPLAY_NAME = "Discount Factor";
 
 function getChargeDisplayName(name?: string | null, fallback = "Unknown Charge") {
   const normalizedName = name?.trim();
@@ -1134,7 +1134,7 @@ export function LoanTermsForm({
             if (!response.ok) {
               const body = await response.json().catch(() => ({}));
               throw new Error(
-                body.error || "Failed to ensure the INVOICE_INCOME charge"
+                body.error || "Failed to ensure the DISCOUNT_FACTOR charge"
               );
             }
 

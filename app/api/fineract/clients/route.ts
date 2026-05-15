@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { getFineractServiceWithSession } from "@/lib/fineract-api";
 import { getFineractTenantId } from "@/lib/fineract-tenant-service";
-import { getSearchHeaders } from "@/lib/fineract-search-auth";
+import {
+  fetchFineractSearch,
+  getSearchHeaders,
+} from "@/lib/fineract-search-auth";
 
 const baseUrl = process.env.FINERACT_BASE_URL || "http://10.10.0.143:8443";
 
@@ -29,22 +32,74 @@ export async function GET(request: Request) {
 
     if (query) {
       // Use Fineract's search API for server-side search
-      console.log("Searching clients with query:", query);
+      const trimmedQuery = query.trim();
+      console.log("Searching clients with query:", trimmedQuery);
 
-      // Use Fineract's search endpoint - uppercase query for case-sensitive Fineract
-      const uppercaseQuery = query.toUpperCase();
-      const searchUrl = `${baseUrl}/fineract-provider/api/v1/search?query=${encodeURIComponent(
-        uppercaseQuery
-      )}&resource=clients`;
+      // Use partial matching for names/accounts and retry with uppercase as fallback
+      const searchTerms = Array.from(
+        new Set([trimmedQuery, trimmedQuery.toUpperCase()])
+      );
 
-      const searchResponse = await fetch(searchUrl, {
-        method: "GET",
-        headers,
-        cache: "no-store",
-      });
+      let searchResults: any[] = [];
+      let searchResponseOk = false;
 
-      if (searchResponse.ok) {
-        const searchResults = await searchResponse.json();
+      for (const searchTerm of searchTerms) {
+        const searchUrl = `${baseUrl}/fineract-provider/api/v1/search?query=${encodeURIComponent(
+          searchTerm
+        )}&resource=clients&exactMatch=false`;
+
+        const searchResponse = await fetch(searchUrl, {
+          method: "GET",
+          headers,
+          cache: "no-store",
+        });
+
+        if (!searchResponse.ok) continue;
+
+        searchResponseOk = true;
+        const currentResults = await searchResponse.json();
+        if (Array.isArray(currentResults) && currentResults.length > 0) {
+          searchResults = currentResults;
+          break;
+        }
+      }
+
+      // Fallback: some environments miss name matches in v1 /search.
+      // Use v2 /clients/search as a backup so names like "Mary" are discoverable.
+      if (searchResults.length === 0) {
+        try {
+          const v2Data: any = await fetchFineractSearch(
+            "/clients/search",
+            {
+              method: "POST",
+              body: JSON.stringify({
+                request: { text: trimmedQuery },
+                page: 0,
+                size: 50,
+              }),
+            },
+            "v2"
+          );
+
+          const v2Items = Array.isArray(v2Data?.content)
+            ? v2Data.content
+            : Array.isArray(v2Data?.pageItems)
+              ? v2Data.pageItems
+              : [];
+
+          if (v2Items.length > 0) {
+            searchResponseOk = true;
+            searchResults = v2Items.map((item: any) => ({
+              entityType: "CLIENT",
+              entityId: item.id,
+            }));
+          }
+        } catch (v2Error) {
+          console.error("V2 client search fallback failed:", v2Error);
+        }
+      }
+
+      if (searchResponseOk) {
         console.log("Search results count:", searchResults?.length || 0);
 
         // Extract client IDs from search results
