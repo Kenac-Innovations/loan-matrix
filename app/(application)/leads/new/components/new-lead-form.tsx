@@ -277,6 +277,9 @@ export function NewLeadForm() {
   const [clientCreatedInFineract, setClientCreatedInFineract] = useState(false);
   const [fineractClientId, setFineractClientId] = useState<number | null>(null);
   const [loanProductId, setLoanProductId] = useState<number | null>(null);
+  const [refinanceLoanId, setRefinanceLoanId] = useState<string | null>(() =>
+    searchParams?.get("refinanceLoanId") || null
+  );
   const [allClientSectionsComplete, setAllClientSectionsComplete] =
     useState(false);
   const [repaymentSchedule, setRepaymentSchedule] = useState<any>(null);
@@ -393,6 +396,22 @@ export function NewLeadForm() {
       if (leadId) {
         console.log("Setting currentLeadId to:", leadId);
         setCurrentLeadId(leadId);
+
+        // If this is a refinance lead (created upfront), skip client/affordability steps
+        const refinanceLoanIdParam = searchParams?.get("refinanceLoanId");
+        const tabParam = searchParams?.get("tab");
+        if (refinanceLoanIdParam) {
+          setRefinanceLoanId(refinanceLoanIdParam);
+          setClientCreatedInFineract(true);
+          setFormCompletionStatus((prev) => ({
+            ...prev,
+            client: true,
+            affordability: true,
+          }));
+          if (tabParam === "loan") {
+            setActiveTab("loan");
+          }
+        }
 
         // Store fineractClientId locally for use in subsequent calls
         let loadedFineractClientId: number | null = null;
@@ -708,7 +727,28 @@ export function NewLeadForm() {
           }
         }
       } else {
-        console.log("No lead ID found, starting fresh lead");
+        const refinanceLoanIdParam = searchParams?.get("refinanceLoanId");
+        const fineractClientIdParam = searchParams?.get("fineractClientId");
+        const tabParam = searchParams?.get("tab");
+
+        if (refinanceLoanIdParam && fineractClientIdParam) {
+          const parsedClientId = parseInt(fineractClientIdParam, 10);
+          if (!isNaN(parsedClientId)) {
+            setRefinanceLoanId(refinanceLoanIdParam);
+            setFineractClientId(parsedClientId);
+            setClientCreatedInFineract(true);
+            setFormCompletionStatus((prev) => ({
+              ...prev,
+              client: true,
+              affordability: true,
+            }));
+            if (tabParam === "loan") {
+              setActiveTab("loan");
+            }
+          }
+        } else {
+          console.log("No lead ID found, starting fresh lead");
+        }
       }
       console.log("=== LOAD LEAD DATA END ===");
     };
@@ -1706,6 +1746,7 @@ export function NewLeadForm() {
                       leadId={currentLeadId || undefined}
                       businessCalendar={businessCalendarData ?? null}
                       ignoreSavedTermsOnLoad={ignoreSavedTermsForCurrentProduct}
+                      initialLoanIdToClose={refinanceLoanId ?? undefined}
                       onSubmit={(data) => {
                         console.log("Loan terms submitted:", data);
                         // Update loanTerms state with submitted data including charges

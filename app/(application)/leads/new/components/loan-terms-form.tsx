@@ -629,6 +629,7 @@ interface LoanTermsFormProps {
   leadId?: string;
   businessCalendar?: FineractBusinessCalendar | null;
   ignoreSavedTermsOnLoad?: boolean;
+  initialLoanIdToClose?: string;
   onSubmit: (data: LoanTermsFormData) => void;
   onBack: () => void;
   onNext: () => void;
@@ -644,6 +645,7 @@ export function LoanTermsForm({
   leadId,
   businessCalendar,
   ignoreSavedTermsOnLoad = false,
+  initialLoanIdToClose,
   onSubmit,
   onBack,
   onNext,
@@ -698,6 +700,7 @@ export function LoanTermsForm({
   const [loanIdToClose, setLoanIdToClose] = useState<string>("");
   const [isLoadingTopupBalances, setIsLoadingTopupBalances] = useState(false);
   const topupBalancesEnrichedRef = useRef(false);
+  const hasAppliedInitialTopup = useRef(false);
   const [sectionCompletion, setSectionCompletion] = useState({
     basicTerms: false,
     interestSchedule: false,
@@ -1034,6 +1037,62 @@ export function LoanTermsForm({
     detailedTemplateFetched.current = false;
     topupBalancesEnrichedRef.current = false;
   }, [clientId, productId]);
+
+  // Auto-enable topup when coming from the refinance shortcut
+  useEffect(() => {
+    if (
+      !initialLoanIdToClose ||
+      hasAppliedInitialTopup.current ||
+      !loanTemplate?.canUseForTopup ||
+      !loanTemplate?.clientActiveLoanOptions?.length
+    ) return;
+
+    hasAppliedInitialTopup.current = true;
+    setIsTopup(true);
+    setLoanIdToClose(initialLoanIdToClose);
+
+    if (
+      featuresRef.current.topupLoanBalanceExcludeUnrealizedInterests &&
+      !topupBalancesEnrichedRef.current
+    ) {
+      setIsLoadingTopupBalances(true);
+      const today = new Date();
+      const transactionDate = today.toLocaleDateString("en-GB", {
+        day: "2-digit",
+        month: "long",
+        year: "numeric",
+      });
+      const fcParams = new URLSearchParams({
+        command: "foreclosure",
+        locale: "en",
+        dateFormat: "dd MMMM yyyy",
+        transactionDate,
+      });
+      Promise.all(
+        loanTemplate.clientActiveLoanOptions.map(async (loan) => {
+          try {
+            const res = await fetch(
+              `/api/fineract/loans/${loan.id}/transactions/template?${fcParams}`
+            );
+            if (res.ok) {
+              const data = await res.json();
+              if (data.amount != null) return { ...loan, loanBalance: data.amount };
+            }
+          } catch {
+            // fall back to total outstanding
+          }
+          return loan;
+        })
+      ).then((enriched) => {
+        setLoanTemplate((prev) =>
+          prev ? { ...prev, clientActiveLoanOptions: enriched } : prev
+        );
+        topupBalancesEnrichedRef.current = true;
+      }).finally(() => {
+        setIsLoadingTopupBalances(false);
+      });
+    }
+  }, [initialLoanIdToClose, loanTemplate]);
 
   useEffect(() => {
     let cancelled = false;
