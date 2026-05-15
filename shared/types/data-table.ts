@@ -144,6 +144,12 @@ export interface DataTableProps<TData = any> {
 
   /** Custom actions to render in the table header */
   headerActions?: React.ReactNode;
+
+  /** Render additional rows after a given data row (e.g. charge sub-rows). Return null/undefined to skip. */
+  renderExpandedRows?: (row: TData) => React.ReactNode;
+
+  /** Return extra CSS classes for a given data row */
+  getRowClassName?: (row: TData) => string;
 }
 
 /**
