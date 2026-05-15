@@ -379,6 +379,8 @@ export async function POST(request: Request) {
         return await handleSaveDraft(data, leadId);
       case "createLeadWithClient":
         return await handleCreateLeadWithClient(data);
+      case "createLeadForExistingClient":
+        return await handleCreateLeadForExistingClient(data);
       case "updateClient":
         return await handleUpdateClient(data, data.leadId);
       case "createClientInFineract":
@@ -1436,6 +1438,84 @@ async function handleCreateClientInFineract(leadId: string) {
         error: error.message || "Failed to create client in Fineract",
         details: error.response?.data || null,
       },
+      { status: 500 }
+    );
+  }
+}
+
+// Create a local lead record for an existing Fineract client (e.g. refinance flow)
+async function handleCreateLeadForExistingClient(data: any) {
+  const { fineractClientId } = data;
+
+  if (!fineractClientId) {
+    return NextResponse.json(
+      { error: "fineractClientId is required" },
+      { status: 400 }
+    );
+  }
+
+  try {
+    const fineractService = await getFineractServiceWithSession();
+    const client = await fineractService.getClient(Number(fineractClientId));
+
+    const session = await getSession();
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+    }
+
+    const currentTenant = await resolveCurrentTenant(undefined, _currentRequest);
+    const initialStageId = await getInitialStageId(currentTenant.id);
+
+    // Parse activation date from Fineract's array format [yyyy, mm, dd]
+    const parseDate = (d: string | number[] | undefined): Date | undefined => {
+      if (!d) return undefined;
+      if (Array.isArray(d)) return new Date(d[0], d[1] - 1, d[2]);
+      return new Date(d);
+    };
+
+    const newLead = await prisma.lead.create({
+      data: {
+        userId: session.user.id,
+        tenantId: currentTenant.id,
+        currentStageId: initialStageId,
+        officeId: client.officeId,
+        officeName: client.officeName,
+        legalFormId: client.legalForm?.id ?? 1,
+        externalId: client.externalId,
+        firstname: client.firstname,
+        middlename: client.middlename,
+        lastname: client.lastname,
+        fullname: client.displayName,
+        dateOfBirth: parseDate(client.dateOfBirth),
+        genderId: client.gender?.id,
+        gender: client.gender?.name,
+        mobileNo: client.mobileNo ?? "",
+        emailAddress: client.emailAddress,
+        clientTypeId: client.clientType?.id,
+        clientTypeName: client.clientType?.name,
+        clientClassificationId: client.clientClassification?.id,
+        clientClassificationName: client.clientClassification?.name,
+        submittedOnDate: parseDate(client.timeline?.submittedOnDate) ?? new Date(),
+        active: client.active,
+        activationDate: parseDate(client.activationDate),
+        fineractClientId: client.id,
+        fineractAccountNo: client.accountNo ?? null,
+        clientCreatedInFineract: true,
+        clientCreationDate: new Date(),
+        status: "DRAFT",
+        currentStep: 2,
+      },
+    });
+
+    return NextResponse.json({
+      success: true,
+      leadId: newLead.id,
+      fineractClientId: client.id,
+    });
+  } catch (error: any) {
+    console.error("Error creating lead for existing client:", error);
+    return NextResponse.json(
+      { error: error.message || "Failed to create lead" },
       { status: 500 }
     );
   }
