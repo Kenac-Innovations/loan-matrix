@@ -3,6 +3,13 @@ import { getFineractServiceWithSession } from "./fineract-api";
 import { applyTopupDisbursementCharges } from "./topup-disbursement-charge-service";
 import { isPaymentTypeCash } from "./cash-repayment-teller";
 import { resolveCurrentUserCashierContext } from "./current-user-cashier";
+import {
+  createSavingsAccount,
+  approveSavingsAccount,
+  activateSavingsAccount,
+  depositToSavingsAccount,
+  formatFineractDate,
+} from "./fineract-savings-service";
 import type { AssignmentStrategy, AssignmentConfig } from "@/shared/defaults/team-config";
 
 export interface FineractOverrides {
@@ -369,6 +376,25 @@ export class TeamAwareStateMachineService {
           return {
             success: false,
             message: `Fineract ${targetStage.fineractAction} failed: ${errorDetail}`,
+          };
+        }
+      }
+
+      // 3a-r. Revolving credit activation — no loan ID required, uses savings account
+      if (targetStage?.fineractAction === "activate_revolving" && !isBackward) {
+        console.log(`[StateTransition] Activating revolving credit facility for lead ${lead.id}`);
+        try {
+          fineractResult = await this.activateRevolvingFacility(lead);
+          console.log(`[StateTransition] Revolving activation succeeded: ${fineractResult}`);
+        } catch (err: any) {
+          const errorDetail =
+            err?.response?.data?.errors?.[0]?.defaultUserMessage
+            || err?.response?.data?.defaultUserMessage
+            || (err instanceof Error ? err.message : "Unknown error");
+          console.error("[StateTransition] Revolving activation failed — blocking transition:", errorDetail);
+          return {
+            success: false,
+            message: `Revolving facility activation failed: ${errorDetail}`,
           };
         }
       }
@@ -934,10 +960,66 @@ export class TeamAwareStateMachineService {
         await fineract.rejectLoan(fineractLoanId, rejectDate, overrides?.note);
         return `Fineract loan #${fineractLoanId} rejected`;
       }
+      case "activate_revolving": {
+        // Handled by the dedicated activateRevolvingFacility path — no-op here
+        return `Revolving activation is handled separately`;
+      }
       default:
         console.warn(`Unknown fineractAction: ${action}`);
         return `Unknown Fineract action: ${action}`;
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Revolving credit facility activation
+  // ---------------------------------------------------------------------------
+
+  private static async activateRevolvingFacility(lead: any): Promise<string> {
+    if (!lead?.fineractClientId) {
+      throw new Error("Cannot activate revolving facility: lead has no Fineract client ID");
+    }
+    if (!lead?.savingsProductId) {
+      throw new Error("Cannot activate revolving facility: no savings product selected on lead");
+    }
+    const creditLimit: number = lead?.requestedAmount;
+    if (!creditLimit || creditLimit <= 0) {
+      throw new Error("Cannot activate revolving facility: credit limit (requestedAmount) must be greater than 0");
+    }
+
+    const today = formatFineractDate(new Date());
+
+    const { savingsId } = await createSavingsAccount({
+      clientId: lead.fineractClientId,
+      productId: lead.savingsProductId,
+      submittedOnDate: today,
+    });
+
+    await approveSavingsAccount(savingsId, today);
+    await activateSavingsAccount(savingsId, today);
+    await depositToSavingsAccount(
+      savingsId,
+      creditLimit,
+      today,
+      "Revolving credit facility opening balance"
+    );
+
+    await prisma.lead.update({
+      where: { id: lead.id },
+      data: { fineractSavingsAccountId: savingsId },
+    });
+
+    await prisma.revolvingCreditFacility.create({
+      data: {
+        leadId: lead.id,
+        tenantId: lead.tenantId,
+        creditLimit,
+        availableBalance: creditLimit,
+        fineractSavingsAccountId: savingsId,
+        savingsProductId: lead.savingsProductId,
+      },
+    });
+
+    return `Revolving facility activated, savings account #${savingsId} opened with credit limit ${creditLimit}`;
   }
 
   // ---------------------------------------------------------------------------
