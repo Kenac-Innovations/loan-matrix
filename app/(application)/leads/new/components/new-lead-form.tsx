@@ -253,6 +253,7 @@ export function NewLeadForm() {
     !!tenantLocale.skipAffordabilityForCompanies;
   const isAffordabilityOptional = !!tenantLocale.leadAffordabilityOptional;
   const [hideAffordability, setHideAffordability] = useState(false);
+  const [isRevolvingCredit, setIsRevolvingCredit] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [affordabilityResult, setAffordabilityResult] =
     useState<AffordabilityResult | null>(null);
@@ -343,10 +344,10 @@ export function NewLeadForm() {
     );
   };
 
-  const tabsCount = hideAffordability ? 5 : 6;
-  const tabsGridClass = hideAffordability
-    ? "grid-cols-5 lg:grid-cols-5"
-    : "grid-cols-6 lg:grid-cols-6";
+  const effectiveTabCount = hideAffordability
+    ? (isRevolvingCredit ? 4 : 5)
+    : (isRevolvingCredit ? 5 : 6);
+  const tabsGridClass = `grid-cols-${effectiveTabCount} lg:grid-cols-${effectiveTabCount}`;
 
   const handleWipeLead = () => {
     setCurrentLeadId(null);
@@ -428,6 +429,9 @@ export function NewLeadForm() {
                 "Loaded fineractClientId from lead:",
                 leadData.fineractClientId,
               );
+            }
+            if (leadData.facilityType === "REVOLVING_CREDIT") {
+              setIsRevolvingCredit(true);
             }
             // Also check window for fineractClientId (set by client registration form)
             if ((window as any).fineractClientId) {
@@ -1274,8 +1278,12 @@ export function NewLeadForm() {
   // Check if next button should be disabled
   const isNextButtonDisabled = (currentTab: string) => {
     const tabOrder = hideAffordability
-      ? ["client", "loan", "terms", "schedule", "contracts"]
-      : ["client", "affordability", "loan", "terms", "schedule", "contracts"];
+      ? (isRevolvingCredit
+          ? ["client", "loan", "terms", "contracts"]
+          : ["client", "loan", "terms", "schedule", "contracts"])
+      : (isRevolvingCredit
+          ? ["client", "affordability", "loan", "terms", "contracts"]
+          : ["client", "affordability", "loan", "terms", "schedule", "contracts"]);
     const currentIndex = tabOrder.indexOf(currentTab);
 
     // Disable if any previous tab is not completed
@@ -1445,6 +1453,7 @@ export function NewLeadForm() {
                   </Badge>
                 )}
               </TabsTrigger>
+              {!isRevolvingCredit && (
               <TabsTrigger
                 value="schedule"
                 disabled
@@ -1463,6 +1472,7 @@ export function NewLeadForm() {
                   </Badge>
                 )}
               </TabsTrigger>
+              )}
               <TabsTrigger
                 value="contracts"
                 disabled
@@ -1799,7 +1809,7 @@ export function NewLeadForm() {
             </TabsContent>
 
             {/* Repayment Schedule Tab */}
-            <TabsContent value="schedule" className="mt-0" forceMount>
+            {!isRevolvingCredit && <TabsContent value="schedule" className="mt-0" forceMount>
               <Card className="px-2 py-2 lg:px-6 lg:py-6">
                 <CardContent className="p-2 lg:p-6">
                   <RepaymentScheduleForm
@@ -1828,7 +1838,7 @@ export function NewLeadForm() {
                   />
                 </CardContent>
               </Card>
-            </TabsContent>
+            </TabsContent>}
 
             {/* Loan Contracts Tab */}
             <TabsContent value="contracts" className="mt-0" forceMount>
