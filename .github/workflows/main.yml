@@ -147,7 +147,7 @@ jobs:
           sudo chmod +x /usr/local/bin/yq
         fi
         
-        yq eval ".image.repository = \"harbor.kenac.co.zw/kenac/loan-matrix\"" -i "$VALUES_FILE"
+        yq eval ".image.repository = \"ghcr.io/kenac-innovations/loan-matrix\"" -i "$VALUES_FILE"
         yq eval ".image.tag = \"$NEW_TAG\"" -i "$VALUES_FILE"
         
         echo "Updated values file:"
@@ -177,7 +177,11 @@ jobs:
         - Branch: ${{ github.ref_name }}
         - Workflow: ${{ github.workflow }}"
         
-        git push origin master
+        if [[ "$ENV" == "prod" ]]; then
+          git push origin prod
+        else
+          git push origin master
+        fi
 
     - name: Deployment summary
       if: github.event_name == 'push'
