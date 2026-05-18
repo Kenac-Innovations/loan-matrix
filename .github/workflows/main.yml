@@ -126,30 +126,31 @@ jobs:
       if: github.event_name == 'push'
       run: |
         cd gitops-repo
-        
+
         ENV="${{ steps.env.outputs.environment }}"
-        VALUES_FILE="projects/loan-matrix/environments/${ENV}/values.yaml"
         NEW_TAG="${{ steps.image-tag.outputs.tag }}"
-        
+
+        # Checkout the correct branch before making changes
+        if [[ "$ENV" == "prod" ]]; then
+          git fetch origin prod
+          git checkout prod
+        fi
+
+        VALUES_FILE="projects/loan-matrix/environments/${ENV}/values.yaml"
+
         echo "Environment: $ENV"
-        echo "Values file path: $VALUES_FILE"
+        echo "Branch: $(git branch --show-current)"
+        echo "Values file: $VALUES_FILE"
         echo "New tag: $NEW_TAG"
-        echo "Current directory: $(pwd)"
-        echo "Files in projects directory:"
-        ls -la projects/ || echo "No projects directory found"
-        echo "Files in loan-matrix directory:"
-        ls -la projects/loan-matrix/ || echo "No loan-matrix directory found"
-        
-        echo "Updating $VALUES_FILE with tag: $NEW_TAG"
-        
+
         if ! command -v yq &> /dev/null; then
           sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
           sudo chmod +x /usr/local/bin/yq
         fi
-        
+
         yq eval ".image.repository = \"ghcr.io/kenac-innovations/loan-matrix\"" -i "$VALUES_FILE"
         yq eval ".image.tag = \"$NEW_TAG\"" -i "$VALUES_FILE"
-        
+
         echo "Updated values file:"
         cat "$VALUES_FILE"
 
@@ -177,11 +178,8 @@ jobs:
         - Branch: ${{ github.ref_name }}
         - Workflow: ${{ github.workflow }}"
         
-        if [[ "$ENV" == "prod" ]]; then
-          git push origin HEAD:prod
-        else
-          git push origin master
-        fi
+        BRANCH=$(git branch --show-current)
+        git push origin "$BRANCH"
 
     - name: Deployment summary
       if: github.event_name == 'push'
