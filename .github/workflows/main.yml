@@ -178,7 +178,7 @@ jobs:
         - Workflow: ${{ github.workflow }}"
         
         if [[ "$ENV" == "prod" ]]; then
-          git push origin prod
+          git push origin HEAD:prod
         else
           git push origin master
         fi
