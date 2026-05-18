@@ -2816,16 +2816,24 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
           </CardContent>
         </Card>
 
-        <Card className="border-0 shadow-sm bg-gradient-to-br from-green-50 to-green-100 dark:from-green-950 dark:to-green-900">
+        <Card className={`border-0 shadow-sm ${loan.totalOverpaid > 0 ? "bg-gradient-to-br from-amber-50 to-amber-100 dark:from-amber-950 dark:to-amber-900" : "bg-gradient-to-br from-green-50 to-green-100 dark:from-green-950 dark:to-green-900"}`}>
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-green-600 dark:text-green-400">Outstanding Balance</p>
-                <p className="text-2xl font-bold text-green-900 dark:text-green-100">
+                <p className={`text-sm font-medium ${loan.totalOverpaid > 0 ? "text-amber-600 dark:text-amber-400" : "text-green-600 dark:text-green-400"}`}>Outstanding Balance</p>
+                <p className={`text-2xl font-bold ${loan.totalOverpaid > 0 ? "text-amber-900 dark:text-amber-100" : "text-green-900 dark:text-green-100"}`}>
                   {formatCurrency(loan.summary?.totalOutstanding ?? 0)}
                 </p>
+                {loan.totalOverpaid > 0 && (
+                  <div className="flex items-center gap-1.5 mt-2">
+                    <AlertCircle className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+                    <p className="text-xs font-medium text-amber-700 dark:text-amber-300">
+                      Overpaid by {formatCurrency(loan.totalOverpaid)}
+                    </p>
+                  </div>
+                )}
               </div>
-              <div className="h-12 w-12 rounded-lg bg-green-500 flex items-center justify-center">
+              <div className={`h-12 w-12 rounded-lg flex items-center justify-center ${loan.totalOverpaid > 0 ? "bg-amber-500" : "bg-green-500"}`}>
                 <TrendingUp className="h-6 w-6 text-white" />
               </div>
             </div>
