@@ -48,15 +48,6 @@ export async function POST(
       );
     }
 
-    // Guard: can't repay more than has been utilized (available = creditLimit - utilized)
-    const utilizedAmount = facility.creditLimit - facility.availableBalance;
-    if (amount > utilizedAmount) {
-      return NextResponse.json(
-        { error: `Repayment amount exceeds utilized balance of ${utilizedAmount}` },
-        { status: 400 }
-      );
-    }
-
     const dateStr = transactionDate
       ? formatFineractDate(new Date(transactionDate))
       : formatFineractDate(new Date());

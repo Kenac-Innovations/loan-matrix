@@ -197,7 +197,6 @@ export function RcfFacilityTermsForm({
           {errors.savingsProductId && (
             <p className="text-xs text-red-500">{errors.savingsProductId.message}</p>
           )}
-          <p className="text-xs text-muted-foreground">Fineract savings product backing this facility</p>
         </div>
 
         {/* Credit Limit */}
