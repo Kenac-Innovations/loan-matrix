@@ -138,6 +138,7 @@ const clientFormSchema = z.object({
   propertyOwnership: z.string().optional(),
   businessOwnership: z.boolean().default(false),
   businessType: z.string().optional(),
+  facilityType: z.enum(["TERM_LOAN", "INVOICE_DISCOUNTING", "REVOLVING_CREDIT"]).optional(),
 });
 
 // Holds the current request so resolveCurrentTenant can read headers
@@ -530,6 +531,7 @@ async function handleSaveDraft(data: any, leadId?: string) {
           businessOwnership: validatedData.businessOwnership,
           businessType: validatedData.businessType,
           status: "DRAFT",
+          ...(validatedData.facilityType ? { facilityType: validatedData.facilityType } : {}),
         },
       });
 
@@ -585,6 +587,7 @@ async function handleSaveDraft(data: any, leadId?: string) {
           businessOwnership: validatedData.businessOwnership,
           businessType: validatedData.businessType,
           status: "DRAFT",
+          facilityType: validatedData.facilityType ?? "TERM_LOAN",
         },
       });
 

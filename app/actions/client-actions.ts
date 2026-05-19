@@ -43,6 +43,7 @@ const clientFormSchema = z.object({
   currentStep: z.number().default(1),
   fineractClientId: z.number().optional(),
   fineractAccountNo: z.string().optional(),
+  facilityType: z.enum(["TERM_LOAN", "INVOICE_DISCOUNTING", "REVOLVING_CREDIT"]).optional(),
 });
 
 // Family member schema
@@ -165,6 +166,9 @@ export async function saveDraft(
           ...(validatedData.fineractAccountNo !== undefined && {
             fineractAccountNo: validatedData.fineractAccountNo,
           }),
+          ...(validatedData.facilityType !== undefined && {
+            facilityType: validatedData.facilityType,
+          }),
           status: "DRAFT",
         },
       });
@@ -225,6 +229,7 @@ export async function saveDraft(
           ...(validatedData.fineractAccountNo !== undefined && {
             fineractAccountNo: validatedData.fineractAccountNo,
           }),
+          facilityType: validatedData.facilityType ?? "TERM_LOAN",
           status: "DRAFT",
         },
       });
