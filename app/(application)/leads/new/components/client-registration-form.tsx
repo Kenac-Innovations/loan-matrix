@@ -453,6 +453,7 @@ interface ClientRegistrationFormProps {
   isSubmitting?: boolean;
   onAllSectionsComplete?: (isComplete: boolean) => void;
   onLeadIdChange?: (leadId: string) => void;
+  facilityType?: "TERM_LOAN" | "INVOICE_DISCOUNTING" | "REVOLVING_CREDIT";
 }
 
 export function ClientRegistrationForm({
@@ -468,6 +469,7 @@ export function ClientRegistrationForm({
   setClientCreatedInFineract,
   isSubmitting = false,
   onAllSectionsComplete,
+  facilityType,
 }: ClientRegistrationFormProps) {
   const {
     success,
@@ -3868,7 +3870,7 @@ export function ClientRegistrationForm({
       );
       console.log("==========> Current leadId:", leadId);
 
-      const result = await saveDraft(processedData, leadId);
+      const result = await saveDraft({ ...processedData, ...(facilityType ? { facilityType } : {}) }, leadId);
 
       console.log("==========> Save draft result:", result);
 
@@ -7708,6 +7710,7 @@ export function ClientRegistrationForm({
                                           entityStakeholders,
                                         entityBankAccountsDraft:
                                           entityBankAccounts,
+                                        ...(facilityType ? { facilityType } : {}),
                                       };
 
                                       // Call API to create lead with client in Fineract

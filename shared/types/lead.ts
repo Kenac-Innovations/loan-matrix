@@ -33,8 +33,8 @@ export interface Lead {
   payoutStatus?: string | null; // PENDING, PAID, VOIDED
   /** Preferred payment type from affordability: CASH, MOBILE_MONEY, BANK_TRANSFER */
   preferredPaymentMethod?: string | null;
-  /** TERM_LOAN or INVOICE_DISCOUNTING */
-  facilityType?: "TERM_LOAN" | "INVOICE_DISCOUNTING";
+  /** TERM_LOAN, INVOICE_DISCOUNTING, or REVOLVING_CREDIT */
+  facilityType?: "TERM_LOAN" | "INVOICE_DISCOUNTING" | "REVOLVING_CREDIT";
   isTopup?: boolean;
 }
 
