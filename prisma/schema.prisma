@@ -1228,6 +1228,7 @@ model RevolvingCreditFacility {
   fineractSavingsAccountId Int
   fineractSavingsAccountNo String?
   savingsProductId         Int
+  maxDrawdowns             Int                       @default(10)
   activatedAt              DateTime                  @default(now())
   createdAt                DateTime                  @default(now())
   updatedAt                DateTime                  @updatedAt

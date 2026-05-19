@@ -7,7 +7,6 @@ import {
   createSavingsAccount,
   approveSavingsAccount,
   activateSavingsAccount,
-  depositToSavingsAccount,
   formatFineractDate,
 } from "./fineract-savings-service";
 import type { AssignmentStrategy, AssignmentConfig } from "@/shared/defaults/team-config";
@@ -380,7 +379,31 @@ export class TeamAwareStateMachineService {
         }
       }
 
-      // 3a-r. Revolving credit activation — no loan ID required, uses savings account
+      // 3a-r. RCF approve — approve+activate the savings account already created at submission
+      const isRcfApprove = targetStage?.fineractAction === "approve"
+        && (lead as any).facilityType === "REVOLVING_CREDIT"
+        && (lead as any).fineractSavingsAccountId
+        && !isBackward;
+
+      if (isRcfApprove) {
+        console.log(`[StateTransition] Approving revolving credit savings account for lead ${lead.id}`);
+        try {
+          fineractResult = await this.approveRevolvingFacility(lead);
+          console.log(`[StateTransition] RCF approval succeeded: ${fineractResult}`);
+        } catch (err: any) {
+          const errorDetail =
+            err?.response?.data?.errors?.[0]?.defaultUserMessage
+            || err?.response?.data?.defaultUserMessage
+            || (err instanceof Error ? err.message : "Unknown error");
+          console.error("[StateTransition] RCF approval failed — blocking transition:", errorDetail);
+          return {
+            success: false,
+            message: `RCF savings account approval failed: ${errorDetail}`,
+          };
+        }
+      }
+
+      // 3a-r2. Revolving credit activation — no loan ID required, uses savings account
       if (targetStage?.fineractAction === "activate_revolving" && !isBackward) {
         console.log(`[StateTransition] Activating revolving credit facility for lead ${lead.id}`);
         try {
@@ -971,7 +994,45 @@ export class TeamAwareStateMachineService {
   }
 
   // ---------------------------------------------------------------------------
-  // Revolving credit facility activation
+  // Revolving credit facility — approve savings account created at submission
+  // ---------------------------------------------------------------------------
+
+  private static async approveRevolvingFacility(lead: any): Promise<string> {
+    const savingsId: number = lead.fineractSavingsAccountId;
+    if (!savingsId) {
+      throw new Error("Cannot approve revolving facility: no savings account ID on lead");
+    }
+
+    const creditLimit: number = lead.requestedAmount;
+    if (!creditLimit || creditLimit <= 0) {
+      throw new Error("Cannot approve revolving facility: credit limit (requestedAmount) must be greater than 0");
+    }
+
+    const today = formatFineractDate(new Date());
+
+    await approveSavingsAccount(savingsId, today);
+    await activateSavingsAccount(savingsId, today);
+
+    const existing = await prisma.revolvingCreditFacility.findUnique({ where: { leadId: lead.id } });
+    if (!existing) {
+      await prisma.revolvingCreditFacility.create({
+        data: {
+          leadId: lead.id,
+          tenantId: lead.tenantId,
+          creditLimit,
+          availableBalance: creditLimit,
+          fineractSavingsAccountId: savingsId,
+          savingsProductId: lead.savingsProductId,
+          maxDrawdowns: (lead.stateMetadata as any)?.maxDrawdowns ?? 10,
+        },
+      });
+    }
+
+    return `RCF savings account #${savingsId} approved and activated with credit limit ${creditLimit}`;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Revolving credit facility activation (legacy path — no prior submission)
   // ---------------------------------------------------------------------------
 
   private static async activateRevolvingFacility(lead: any): Promise<string> {
@@ -986,22 +1047,25 @@ export class TeamAwareStateMachineService {
       throw new Error("Cannot activate revolving facility: credit limit (requestedAmount) must be greater than 0");
     }
 
+    // If the savings account was already created at wizard submission time, skip creation
+    if (lead.fineractSavingsAccountId) {
+      const existing = await prisma.revolvingCreditFacility.findUnique({ where: { leadId: lead.id } });
+      if (existing) {
+        return `Revolving facility already active, savings account #${lead.fineractSavingsAccountId}`;
+      }
+    }
+
     const today = formatFineractDate(new Date());
 
     const { savingsId } = await createSavingsAccount({
       clientId: lead.fineractClientId,
       productId: lead.savingsProductId,
       submittedOnDate: today,
+      fieldOfficerId: (lead.stateMetadata as any)?.fieldOfficerId ?? undefined,
     });
 
     await approveSavingsAccount(savingsId, today);
     await activateSavingsAccount(savingsId, today);
-    await depositToSavingsAccount(
-      savingsId,
-      creditLimit,
-      today,
-      "Revolving credit facility opening balance"
-    );
 
     await prisma.lead.update({
       where: { id: lead.id },
@@ -1016,6 +1080,7 @@ export class TeamAwareStateMachineService {
         availableBalance: creditLimit,
         fineractSavingsAccountId: savingsId,
         savingsProductId: lead.savingsProductId,
+        maxDrawdowns: (lead.stateMetadata as any)?.maxDrawdowns ?? 10,
       },
     });
 
