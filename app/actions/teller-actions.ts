@@ -5,6 +5,7 @@ import { getFineractServiceWithSession } from "@/lib/fineract-api";
 import { prisma } from "@/lib/prisma";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
 import { getOrgDefaultCurrencyCode, getOrgRawCurrencyCode } from "@/lib/currency-utils";
+import { getGlAccountBalance } from "@/lib/gl-balance";
 import { unstable_noStore as noStore } from "next/cache";
 
 const db = prisma as PrismaClient;
@@ -77,6 +78,16 @@ export async function getTellerFromFineract(id: string) {
     const orgCurrency = await getOrgDefaultCurrencyCode();
     let currency = orgCurrency;
     let recentSettlements: any[] = [];
+    let vaultBalanceSource: "fineract_gl" | "local" | "local_fallback" = "local";
+    let glAccountInfo: {
+      glAccountId: number | null;
+      glAccountName: string | null;
+      glAccountCode: string | null;
+    } = {
+      glAccountId: null,
+      glAccountName: null,
+      glAccountCode: null,
+    };
 
     try {
       const tenant = await getTenantFromHeaders();
@@ -104,11 +115,33 @@ export async function getTellerFromFineract(id: string) {
         });
 
         if (dbTeller) {
-          vaultBalance = dbTeller.cashAllocations.reduce(
+          glAccountInfo = {
+            glAccountId: dbTeller.glAccountId,
+            glAccountName: dbTeller.glAccountName,
+            glAccountCode: dbTeller.glAccountCode,
+          };
+
+          const localVaultBalance = dbTeller.cashAllocations.reduce(
             (sum: number, alloc: { amount: number }) => sum + alloc.amount,
             0
           );
+          vaultBalance = localVaultBalance;
           currency = dbTeller.cashAllocations[0]?.currency || orgCurrency;
+
+          // Prefer Fineract GL balance when a GL account is linked.
+          if (dbTeller.glAccountId) {
+            const glResult = await getGlAccountBalance(dbTeller.glAccountId);
+            if (
+              glResult.source === "fineract_calculated" ||
+              glResult.source === "fineract_empty"
+            ) {
+              vaultBalance = glResult.balance;
+              vaultBalanceSource = "fineract_gl";
+              currency = glResult.currency || currency;
+            } else {
+              vaultBalanceSource = "local_fallback";
+            }
+          }
 
           const cashierAllocations = await db.cashAllocation.findMany({
             where: {
@@ -162,8 +195,8 @@ export async function getTellerFromFineract(id: string) {
       console.error("Error fetching local database data:", dbError);
     }
 
-    return { 
-      success: true, 
+    return {
+      success: true,
       data: {
         id: teller.id,
         name: teller.name,
@@ -176,11 +209,13 @@ export async function getTellerFromFineract(id: string) {
         cashiers: cashiers || [],
         activeCashiers: (cashiers || []).filter((c: any) => c.isFullDay || c.startTime).length,
         summary: summary,
-        // Local database balance data
+        // Balance data (GL when configured, local fallback otherwise)
         vaultBalance,
+        vaultBalanceSource,
         availableBalance,
         allocatedToCashiers,
         currency,
+        ...glAccountInfo,
         currentAllocation: {
           amount: availableBalance,
           currency,

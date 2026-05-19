@@ -3,6 +3,7 @@ import { getFineractServiceWithSession } from "@/lib/fineract-api";
 import { prisma } from "@/lib/prisma";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
 import { getOrgDefaultCurrencyCode, getOrgRawCurrencyCode } from "@/lib/currency-utils";
+import { getGlAccountBalance } from "@/lib/gl-balance";
 
 /**
  * GET /api/tellers/[id]
@@ -134,12 +135,51 @@ export async function GET(
 
     // Calculate balances - available must DECREASE when loans are disbursed, and handle deposits
     // allocatedToCashiers = cash currently in cashier tills; use netCash (current balance), not sumCashAllocation (cumulative)
-    const currency = await getOrgDefaultCurrencyCode();
-    
-    const vaultBalance = dbTeller.cashAllocations.reduce(
+    const orgCurrency = await getOrgDefaultCurrencyCode();
+
+    const localVaultBalance = dbTeller.cashAllocations.reduce(
       (sum, alloc) => sum + alloc.amount,
       0
     );
+
+    // Prefer Fineract GL balance for the teller's vault when a GL account is linked.
+    // Falls back to the local CashAllocation ledger if GL is not configured or Fineract is unreachable.
+    let vaultBalance = localVaultBalance;
+    let vaultBalanceSource: "fineract_gl" | "local" | "local_fallback" = "local";
+    let glAccountBalance: {
+      balance: number;
+      currency: string;
+      source: string;
+      entryCount?: number;
+      error?: string;
+    } | null = null;
+    let currency = orgCurrency;
+
+    if (dbTeller.glAccountId) {
+      const glResult = await getGlAccountBalance(dbTeller.glAccountId);
+      if (
+        glResult.source === "fineract_calculated" ||
+        glResult.source === "fineract_empty"
+      ) {
+        vaultBalance = glResult.balance;
+        vaultBalanceSource = "fineract_gl";
+        currency = glResult.currency || orgCurrency;
+        glAccountBalance = {
+          balance: glResult.balance,
+          currency,
+          source: glResult.source,
+          entryCount: glResult.entryCount,
+        };
+      } else {
+        vaultBalanceSource = "local_fallback";
+        glAccountBalance = {
+          balance: localVaultBalance,
+          currency,
+          source: "local_fallback",
+          error: glResult.error,
+        };
+      }
+    }
     
     // Compute allocatedToCashiers: always include local DB allocations so we never undercount
     // (Fineract may return 0 due to currency/timing; local allocations are source of truth for our allocations)
@@ -200,11 +240,16 @@ export async function GET(
       status: dbTeller.status,
       startDate: dbTeller.startDate,
       endDate: dbTeller.endDate,
+      glAccountId: dbTeller.glAccountId,
+      glAccountName: dbTeller.glAccountName,
+      glAccountCode: dbTeller.glAccountCode,
       currentAllocation: {
         amount: availableBalance, // Show available balance, not vault balance
         currency: currency,
       },
       vaultBalance: vaultBalance,
+      vaultBalanceSource,
+      glAccountBalance,
       availableBalance: availableBalance,
       allocatedToCashiers: allocatedToCashiers,
       activeCashiers: dbTeller.cashiers.length,
@@ -307,6 +352,12 @@ export async function PUT(
         endDate: body.endDate ? new Date(body.endDate) : null,
         status: body.status,
         isActive: body.isActive !== undefined ? body.isActive : true,
+        ...(body.bankId !== undefined && { bankId: body.bankId || null }),
+        ...(body.glAccountId !== undefined && {
+          glAccountId: body.glAccountId ? parseInt(body.glAccountId) : null,
+          glAccountName: body.glAccountName || null,
+          glAccountCode: body.glAccountCode || null,
+        }),
       },
     });
 
