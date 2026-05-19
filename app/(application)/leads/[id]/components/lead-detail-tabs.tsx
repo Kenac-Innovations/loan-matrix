@@ -63,6 +63,7 @@ interface LeadDetailTabsProps {
   loanDocuments: any[];
   readOnly: boolean;
   canEditPendingLoanApplication: boolean;
+  facilityType?: string | null; // kept for API compatibility; used inside ComprehensiveLeadDetails via fetch
 }
 
 const TAB_ICON_MAP: Record<string, typeof FileText> = {
@@ -76,7 +77,7 @@ const TAB_ICON_MAP: Record<string, typeof FileText> = {
   appraisal: ClipboardCheck,
 };
 
-const TABS = [
+const BASE_TABS = [
   { value: "details", label: "Details", shortLabel: "Details" },
   { value: "additional-info", label: "Additional Info", shortLabel: "Info" },
   { value: "timeline", label: "Timeline", shortLabel: "Timeline" },
@@ -136,6 +137,7 @@ export function LeadDetailTabs({
   readOnly,
   canEditPendingLoanApplication,
 }: LeadDetailTabsProps) {
+  const TABS = BASE_TABS;
   const [tabValidations, setTabValidations] = useState<
     Record<string, TabValidation>
   >({});

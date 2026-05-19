@@ -150,6 +150,7 @@ export async function GET(request: NextRequest) {
               id: true,
               fineractLoanId: true,
               preferredPaymentMethod: true,
+              facilityType: true,
             },
           });
 
@@ -235,6 +236,7 @@ export async function GET(request: NextRequest) {
               ...row,
               lead_id: resolvedLeadId,
               payment_type: paymentTypeLabel,
+              facility_type: resolvedLead?.facilityType ?? null,
             };
 
             if (report === "disbursed") {
@@ -263,8 +265,8 @@ export async function GET(request: NextRequest) {
 
           console.log(`Enriched ${leads.length} rows with local lead IDs`);
         } else {
-          // No local leads found — still add payment_type column so it's visible
-          result = result.map((row: any) => ({ ...row, payment_type: null }));
+          // No local leads found — still add payment_type/facility_type columns so they're visible
+          result = result.map((row: any) => ({ ...row, payment_type: null, facility_type: null }));
           if (officeAdminOfficeName) {
             result = result.filter((row: any) =>
               matchesOfficeName(
@@ -425,6 +427,7 @@ async function getDraftsFromLocalDB({
         userId: true,
         createdByUserName: true,
         preferredPaymentMethod: true,
+        facilityType: true,
         officeName: true,
         currentStage: {
           select: {
@@ -480,6 +483,7 @@ async function getDraftsFromLocalDB({
         created_by: createdByName || "Unknown",
         branch: branch || "",
         payment_type: paymentType,
+        facility_type: draft.facilityType ?? null,
       };
     });
 

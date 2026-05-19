@@ -271,6 +271,32 @@ export function LeadsTable({ initialData }: LeadsTableProps) {
       filterOptions: LOAN_STATUS_OPTIONS,
     },
     {
+      id: "facilityType",
+      accessorKey: "facilityType",
+      header: "Facility Type",
+      cell: ({ row }) => {
+        const type = row.original.facilityType;
+        if (!type || type === "TERM_LOAN") {
+          return <span className="text-xs text-muted-foreground">Term Loan</span>;
+        }
+        if (type === "REVOLVING_CREDIT") {
+          return (
+            <Badge variant="outline" className="border-emerald-500 bg-emerald-500/10 text-emerald-700 text-xs">
+              RCF
+            </Badge>
+          );
+        }
+        if (type === "INVOICE_DISCOUNTING") {
+          return (
+            <Badge variant="outline" className="border-blue-500 bg-blue-500/10 text-blue-700 text-xs">
+              Invoice
+            </Badge>
+          );
+        }
+        return <span className="text-xs">{type}</span>;
+      },
+    },
+    {
       id: "preferredPaymentMethod",
       accessorKey: "preferredPaymentMethod",
       header: "Payment Type",
@@ -403,15 +429,13 @@ export function LeadsTable({ initialData }: LeadsTableProps) {
       header: "Actions",
       cell: ({ row }) => {
         const lead = row.original;
-        // Show detail view for submitted loans, create view for drafts
         const isSubmitted = lead.loanSubmittedToFineract || lead.fineractLoanId;
+        const draftHref = lead.facilityType === "REVOLVING_CREDIT"
+          ? `/leads/new/rcf?id=${lead.id}`
+          : `/leads/new?id=${lead.id}`;
         return (
           <Button variant="ghost" size="sm" asChild>
-            <Link
-              href={
-                isSubmitted ? `/leads/${lead.id}` : `/leads/new?id=${lead.id}`
-              }
-            >
+            <Link href={isSubmitted ? `/leads/${lead.id}` : draftHref}>
               {isSubmitted ? "View" : "Continue"}
             </Link>
           </Button>
@@ -423,13 +447,12 @@ export function LeadsTable({ initialData }: LeadsTableProps) {
 
   // Handle row click to navigate to lead details
   const handleRowClick = (lead: Lead) => {
-    // Set navigating state to show loader
     setNavigatingLeadId(lead.id);
-    // Show detail view for submitted loans, create view for drafts
     const isSubmitted = lead.loanSubmittedToFineract || lead.fineractLoanId;
-    window.location.href = isSubmitted
-      ? `/leads/${lead.id}`
+    const draftHref = lead.facilityType === "REVOLVING_CREDIT"
+      ? `/leads/new/rcf?id=${lead.id}`
       : `/leads/new?id=${lead.id}`;
+    window.location.href = isSubmitted ? `/leads/${lead.id}` : draftHref;
   };
 
   return (
