@@ -4,7 +4,7 @@ import { getTenantFromHeaders } from "@/lib/tenant-service";
 import { getSession } from "@/lib/auth";
 import { fetchFineractAPI } from "@/lib/api";
 import { getOrgDefaultCurrencyCode } from "@/lib/currency-utils";
-import { getGlAccountBalance } from "@/lib/gl-balance";
+import { getTellerVaultDisplay } from "@/lib/gl-balance";
 
 /**
  * GET /api/banks/[id]
@@ -63,33 +63,14 @@ export async function GET(
       return true;
     };
 
+    // Sum of bank → teller allocations is still tracked from the local ledger
+    // (it represents what the bank has shipped out, regardless of GL config).
+    // Per-teller `vaultBalance` is sourced *only* from Fineract GL — `null`
+    // when not configured or Fineract is unreachable.
     let allocatedToTellers = 0;
     const tellersWithBalances = await Promise.all(
       bank.tellers.map(async (teller) => {
-        // Local vault balance from CashAllocation ledger (used as fallback)
-        const localTellerVaultBalance = teller.cashAllocations.reduce(
-          (sum, alloc) => sum + alloc.amount,
-          0
-        );
-
-        // Prefer Fineract GL balance for the teller's vault when a GL account is linked.
-        let tellerVaultBalance = localTellerVaultBalance;
-        let tellerVaultBalanceSource:
-          | "fineract_gl"
-          | "local"
-          | "local_fallback" = "local";
-        if (teller.glAccountId) {
-          const glResult = await getGlAccountBalance(teller.glAccountId);
-          if (
-            glResult.source === "fineract_calculated" ||
-            glResult.source === "fineract_empty"
-          ) {
-            tellerVaultBalance = glResult.balance;
-            tellerVaultBalanceSource = "fineract_gl";
-          } else {
-            tellerVaultBalanceSource = "local_fallback";
-          }
-        }
+        const vaultDisplay = await getTellerVaultDisplay(teller);
 
         const bankAllocationsOnly = teller.cashAllocations
           .filter(isFromBank)
@@ -106,8 +87,8 @@ export async function GET(
           glAccountId: teller.glAccountId,
           glAccountName: teller.glAccountName,
           glAccountCode: teller.glAccountCode,
-          vaultBalance: tellerVaultBalance,
-          vaultBalanceSource: tellerVaultBalanceSource,
+          vaultBalance: vaultDisplay.vaultBalance,
+          vaultBalanceSource: vaultDisplay.vaultBalanceSource,
           activeCashiers: teller.cashiers.length,
         };
       })

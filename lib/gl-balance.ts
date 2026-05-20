@@ -69,3 +69,72 @@ export async function getGlAccountBalance(
     };
   }
 }
+
+/**
+ * The displayed vault balance for a teller is sourced *only* from Fineract.
+ * No local-ledger fallback, no subtraction of local allocations — when the GL
+ * value is unavailable, the consumer renders NaN ("—").
+ */
+export type TellerVaultDisplaySource = "fineract_gl" | "unavailable";
+
+export interface TellerVaultDisplay {
+  vaultBalance: number | null;
+  availableBalance: number | null;
+  vaultBalanceSource: TellerVaultDisplaySource;
+  currency: string | null;
+  glAccountId: number | null;
+  glAccountCode: string | null;
+  glAccountName: string | null;
+  glUnavailableReason?: "not_configured" | "fineract_unreachable";
+  glError?: string;
+}
+
+/**
+ * Resolve the teller vault balance for display purposes from the Fineract GL
+ * account *only*. Available = vault (no subtraction of cashier allocations).
+ * Returns `null` for both values when no GL is configured or Fineract is
+ * unreachable, so the caller can render NaN / "—".
+ */
+export async function getTellerVaultDisplay(teller: {
+  glAccountId: number | null;
+  glAccountCode: string | null;
+  glAccountName: string | null;
+}): Promise<TellerVaultDisplay> {
+  const baseGl = {
+    glAccountId: teller.glAccountId,
+    glAccountCode: teller.glAccountCode,
+    glAccountName: teller.glAccountName,
+  };
+
+  if (!teller.glAccountId) {
+    return {
+      vaultBalance: null,
+      availableBalance: null,
+      vaultBalanceSource: "unavailable",
+      currency: null,
+      glUnavailableReason: "not_configured",
+      ...baseGl,
+    };
+  }
+
+  const r = await getGlAccountBalance(teller.glAccountId);
+  if (r.source === "fineract_calculated" || r.source === "fineract_empty") {
+    return {
+      vaultBalance: r.balance,
+      availableBalance: r.balance,
+      vaultBalanceSource: "fineract_gl",
+      currency: r.currency,
+      ...baseGl,
+    };
+  }
+
+  return {
+    vaultBalance: null,
+    availableBalance: null,
+    vaultBalanceSource: "unavailable",
+    currency: null,
+    glUnavailableReason: "fineract_unreachable",
+    glError: r.error,
+    ...baseGl,
+  };
+}

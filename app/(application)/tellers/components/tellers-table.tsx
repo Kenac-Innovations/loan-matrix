@@ -153,10 +153,8 @@ export function TellersTable() {
       header: "Available Balance",
       cell: ({ row }) => {
         const allocation = row.original.currentAllocation;
-        if (!allocation || allocation.amount === 0) {
-          return (
-            <span className="text-muted-foreground text-sm">No balance</span>
-          );
+        if (!allocation) {
+          return <span className="text-muted-foreground text-sm">—</span>;
         }
         return (
           <span className="font-medium">
