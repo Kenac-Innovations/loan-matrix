@@ -47,6 +47,7 @@ const clientFormSchema = z.object({
   currentStep: z.number().default(1),
   fieldName: z.string().optional(), // The field that was just updated
   fineractClientId: z.number().optional(),
+  facilityType: z.enum(["TERM_LOAN", "INVOICE_DISCOUNTING", "REVOLVING_CREDIT"]).optional(),
   fineractAccountNo: z.string().optional(),
 });
 
@@ -214,6 +215,9 @@ export async function autoSaveField(
             clientCreatedInFineract: true,
             clientCreationDate: now,
           }),
+          ...(validatedData.facilityType !== undefined && {
+            facilityType: validatedData.facilityType,
+          }),
           ...(validatedData.fineractAccountNo !== undefined && {
             fineractAccountNo: validatedData.fineractAccountNo,
           }),
@@ -269,6 +273,7 @@ export async function autoSaveField(
             savingsProductId: validatedData.savingsProductId || null,
             savingsProductName: validatedData.savingsProductName || null,
             currentStep: validatedData.currentStep || 1,
+            facilityType: validatedData.facilityType ?? null,
             status: "PROSPECT",
             lastModified: now,
           },
