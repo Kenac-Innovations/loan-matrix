@@ -877,6 +877,9 @@ model Teller {
   officeName       String
   name             String
   description      String?
+  glAccountId      Int?             // Optional link to Fineract GL account (branch cash) for this teller's vault
+  glAccountName    String?          // Cached GL account name for display
+  glAccountCode    String?          // Cached GL account code
   status           String           @default("PENDING") // PENDING, ACTIVE, CLOSED
   startDate        DateTime
   endDate          DateTime?

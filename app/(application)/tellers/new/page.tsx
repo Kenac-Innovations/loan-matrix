@@ -28,18 +28,28 @@ interface Bank {
   code: string;
 }
 
+interface GLAccount {
+  id: number;
+  name: string;
+  glCode: string;
+  type: { value: string };
+}
+
 export default function NewTellerPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [offices, setOffices] = useState<Office[]>([]);
   const [banks, setBanks] = useState<Bank[]>([]);
+  const [glAccounts, setGlAccounts] = useState<GLAccount[]>([]);
   const [loadingOffices, setLoadingOffices] = useState(true);
   const [loadingBanks, setLoadingBanks] = useState(true);
+  const [loadingGlAccounts, setLoadingGlAccounts] = useState(true);
   const [formData, setFormData] = useState({
     name: "",
     description: "",
     officeId: "",
     bankId: "",
+    glAccountId: "",
     startDate: new Date().toISOString().split("T")[0],
     endDate: "",
   });
@@ -47,6 +57,7 @@ export default function NewTellerPage() {
   useEffect(() => {
     fetchOffices();
     fetchBanks();
+    fetchGlAccounts();
   }, []);
 
   const fetchOffices = async () => {
@@ -77,9 +88,29 @@ export default function NewTellerPage() {
     }
   };
 
+  const fetchGlAccounts = async () => {
+    try {
+      const response = await fetch(
+        "/api/fineract/glaccounts/detail?usage=1&disabled=false&manualEntriesAllowed=true"
+      );
+      if (response.ok) {
+        const data = await response.json();
+        setGlAccounts(data || []);
+      }
+    } catch (error) {
+      console.error("Error fetching GL accounts:", error);
+    } finally {
+      setLoadingGlAccounts(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+
+    const selectedGlAccount = formData.glAccountId
+      ? glAccounts.find((gl) => gl.id === parseInt(formData.glAccountId))
+      : null;
 
     try {
       const response = await fetch("/api/tellers", {
@@ -91,6 +122,9 @@ export default function NewTellerPage() {
           officeName: offices.find((o) => o.id === parseInt(formData.officeId))
             ?.name,
           bankId: formData.bankId || null,
+          glAccountId: selectedGlAccount?.id || null,
+          glAccountName: selectedGlAccount?.name || null,
+          glAccountCode: selectedGlAccount?.glCode || null,
         }),
       });
 
@@ -203,6 +237,34 @@ export default function NewTellerPage() {
               <p className="text-xs text-muted-foreground">
                 Link this teller to a bank to manage fund allocation hierarchy.
                 Teller allocations will be limited by the bank's available balance.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="glAccountId">
+                Branch Cash GL Account (Optional)
+              </Label>
+              <SearchableSelect
+                options={glAccounts.map((gl) => ({
+                  value: gl.id.toString(),
+                  label: `${gl.glCode} - ${gl.name}`,
+                }))}
+                value={formData.glAccountId}
+                onValueChange={(value) =>
+                  setFormData({ ...formData, glAccountId: value })
+                }
+                placeholder={
+                  loadingGlAccounts
+                    ? "Loading GL accounts..."
+                    : "Search and select GL account"
+                }
+                emptyMessage="No GL accounts found"
+                disabled={loadingGlAccounts}
+              />
+              <p className="text-xs text-muted-foreground">
+                Link this teller to a Fineract GL account (branch cash). When set,
+                the teller&apos;s vault balance is read from this account&apos;s
+                journal entries, and allocations are posted as journal entries.
               </p>
             </div>
 

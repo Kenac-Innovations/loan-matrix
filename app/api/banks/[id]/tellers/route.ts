@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
 import { getSession } from "@/lib/auth";
 import { getOrgDefaultCurrencyCode } from "@/lib/currency-utils";
+import { getGlAccountBalance } from "@/lib/gl-balance";
 
 /**
  * GET /api/banks/[id]/tellers
@@ -59,10 +60,28 @@ export async function GET(
     // Calculate balances for each teller
     const tellersWithBalances = await Promise.all(
       tellers.map(async (teller) => {
-        const vaultBalance = teller.cashAllocations.reduce(
+        const localVaultBalance = teller.cashAllocations.reduce(
           (sum, alloc) => sum + alloc.amount,
           0
         );
+
+        // Prefer Fineract GL balance for the teller's vault when a GL account is linked.
+        let vaultBalance = localVaultBalance;
+        let vaultBalanceSource: "fineract_gl" | "local" | "local_fallback" = "local";
+        let glCurrency: string | null = null;
+        if (teller.glAccountId) {
+          const glResult = await getGlAccountBalance(teller.glAccountId);
+          if (
+            glResult.source === "fineract_calculated" ||
+            glResult.source === "fineract_empty"
+          ) {
+            vaultBalance = glResult.balance;
+            vaultBalanceSource = "fineract_gl";
+            glCurrency = glResult.currency;
+          } else {
+            vaultBalanceSource = "local_fallback";
+          }
+        }
 
         // Get allocations to cashiers
         const cashierAllocations = await prisma.cashAllocation.findMany({
@@ -82,7 +101,8 @@ export async function GET(
         );
 
         const availableBalance = vaultBalance - allocatedToCashiers;
-        const currency = teller.cashAllocations[0]?.currency || orgCurrency;
+        const currency =
+          glCurrency || teller.cashAllocations[0]?.currency || orgCurrency;
 
         return {
           id: teller.id,
@@ -94,7 +114,11 @@ export async function GET(
           status: teller.status,
           startDate: teller.startDate,
           endDate: teller.endDate,
+          glAccountId: teller.glAccountId,
+          glAccountName: teller.glAccountName,
+          glAccountCode: teller.glAccountCode,
           vaultBalance,
+          vaultBalanceSource,
           availableBalance,
           allocatedToCashiers,
           currency,

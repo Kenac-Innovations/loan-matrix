@@ -18,6 +18,9 @@ interface TellerActionsProps {
     startDate: string | Date | number[];
     endDate?: string | Date | number[] | null;
     status: string;
+    glAccountId?: number | null;
+    glAccountName?: string | null;
+    glAccountCode?: string | null;
   };
 }
 

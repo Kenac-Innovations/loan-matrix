@@ -6,6 +6,7 @@ import useSWR from "swr";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { ClientRegistrationForm } from "../../components/client-registration-form";
 import { SimplifiedAffordabilityForm } from "../../components/simplified-affordability-form";
 import { RcfContracts } from "./rcf-contracts";
@@ -38,16 +39,8 @@ export function RcfLeadForm() {
   }, []);
 
   // Load template data (offices, legalForms, etc.) same as loan wizard
-  const { data: templateResult } = useSWR("/api/leads/template", fetcher);
-  const rawTemplate = templateResult?.data ?? {
-    offices: [],
-    legalForms: [],
-    genders: [],
-    clientTypes: [],
-    clientClassifications: [],
-    savingsProducts: [],
-    activationDate: null,
-  };
+  const { data: templateResult, error: templateError } = useSWR("/api/leads/template", fetcher);
+  const rawTemplate = templateResult?.data ?? {};
   const clientFormData = {
     ...rawTemplate,
     activationDate: rawTemplate.activationDate
@@ -81,6 +74,29 @@ export function RcfLeadForm() {
   const handleContractsComplete = () => {
     if (leadId) router.push(`/leads/${leadId}`);
   };
+
+  if (templateError) {
+    return (
+      <div className="p-6">
+        <p className="text-sm text-red-600 font-medium">Error loading form data: {templateError.message}</p>
+      </div>
+    );
+  }
+
+  if (!templateResult) {
+    return (
+      <div className="min-h-screen flex flex-col">
+        <div className="flex-shrink-0 px-2 py-2 lg:px-6 lg:py-6 border-b bg-background">
+          <Skeleton className="h-7 w-64 mb-1" />
+          <Skeleton className="h-4 w-80" />
+        </div>
+        <div className="flex-1 px-2 py-2 lg:px-6 lg:py-6 space-y-4">
+          <Skeleton className="h-10 w-full" />
+          <Skeleton className="h-96 w-full rounded-xl" />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -126,9 +142,9 @@ export function RcfLeadForm() {
                   isSubmitting={isSubmitting}
                   facilityType="REVOLVING_CREDIT"
                   onAllSectionsComplete={setAllClientSectionsComplete}
+                  draftUrlBase="/leads/new/rcf"
                   onLeadIdChange={(newLeadId) => {
                     setLeadId(newLeadId);
-                    window.history.replaceState(null, "", `/leads/new/rcf?id=${newLeadId}`);
                   }}
                   onClientCreated={() => {
                     setClientCreatedInFineract(true);

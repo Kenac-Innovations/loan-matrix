@@ -28,12 +28,22 @@ interface EditTellerModalProps {
     startDate: string | Date | number[];
     endDate?: string | Date | number[] | null;
     status: string;
+    glAccountId?: number | null;
+    glAccountName?: string | null;
+    glAccountCode?: string | null;
   };
 }
 
 interface Office {
   id: number;
   name: string;
+}
+
+interface GLAccount {
+  id: number;
+  name: string;
+  glCode: string;
+  type: { value: string };
 }
 
 export function EditTellerModal({
@@ -45,7 +55,9 @@ export function EditTellerModal({
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [offices, setOffices] = useState<Office[]>([]);
+  const [glAccounts, setGlAccounts] = useState<GLAccount[]>([]);
   const [loadingOffices, setLoadingOffices] = useState(false);
+  const [loadingGlAccounts, setLoadingGlAccounts] = useState(false);
   const [formData, setFormData] = useState({
     name: "",
     description: "",
@@ -53,11 +65,13 @@ export function EditTellerModal({
     startDate: "",
     endDate: "",
     status: "ACTIVE",
+    glAccountId: "",
   });
 
   useEffect(() => {
     if (open) {
       fetchOffices();
+      fetchGlAccounts();
       // Parse dates from teller
       const parseDate = (date: string | Date | number[] | null | undefined): string => {
         if (!date) return "";
@@ -77,6 +91,7 @@ export function EditTellerModal({
         startDate: parseDate(teller.startDate),
         endDate: parseDate(teller.endDate),
         status: teller.status || "ACTIVE",
+        glAccountId: teller.glAccountId?.toString() || "",
       });
     }
   }, [open, teller]);
@@ -96,9 +111,30 @@ export function EditTellerModal({
     }
   };
 
+  const fetchGlAccounts = async () => {
+    setLoadingGlAccounts(true);
+    try {
+      const response = await fetch(
+        "/api/fineract/glaccounts/detail?usage=1&disabled=false&manualEntriesAllowed=true"
+      );
+      if (response.ok) {
+        const data = await response.json();
+        setGlAccounts(data || []);
+      }
+    } catch (error) {
+      console.error("Error fetching GL accounts:", error);
+    } finally {
+      setLoadingGlAccounts(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+
+    const selectedGlAccount = formData.glAccountId
+      ? glAccounts.find((gl) => gl.id === parseInt(formData.glAccountId))
+      : null;
 
     try {
       const response = await fetch(`/api/tellers/${tellerId}`, {
@@ -109,6 +145,9 @@ export function EditTellerModal({
           description: formData.description,
           endDate: formData.endDate || null,
           status: formData.status,
+          glAccountId: selectedGlAccount?.id ?? null,
+          glAccountName: selectedGlAccount?.name ?? null,
+          glAccountCode: selectedGlAccount?.glCode ?? null,
         }),
       });
 
@@ -164,6 +203,34 @@ export function EditTellerModal({
                 placeholder="Teller description (optional)..."
                 rows={3}
               />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="glAccountId">Branch Cash GL Account</Label>
+              <SearchableSelect
+                options={[
+                  { value: "", label: "None" },
+                  ...glAccounts.map((gl) => ({
+                    value: gl.id.toString(),
+                    label: `${gl.glCode} - ${gl.name}`,
+                  })),
+                ]}
+                value={formData.glAccountId}
+                onValueChange={(value) =>
+                  setFormData({ ...formData, glAccountId: value })
+                }
+                placeholder={
+                  loadingGlAccounts
+                    ? "Loading GL accounts..."
+                    : "Select GL account"
+                }
+                emptyMessage="No GL accounts found"
+                disabled={loadingGlAccounts}
+              />
+              <p className="text-xs text-muted-foreground">
+                When set, the teller&apos;s vault balance is read from this Fineract
+                GL account and allocations create journal entries.
+              </p>
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">

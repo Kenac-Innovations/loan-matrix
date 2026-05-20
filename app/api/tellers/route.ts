@@ -3,6 +3,7 @@ import { getFineractServiceWithSession } from "@/lib/fineract-api";
 import { prisma } from "@/lib/prisma";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
 import { getOrgDefaultCurrencyCode, getOrgRawCurrencyCode } from "@/lib/currency-utils";
+import { getGlAccountBalance } from "@/lib/gl-balance";
 
 /**
  * GET /api/tellers
@@ -144,10 +145,26 @@ export async function GET(request: NextRequest) {
     // Calculate balances - use max(Fineract, local) for allocatedToCashiers so we never undercount
     const dbTellerBalances = await Promise.all(
       dbTellers.map(async (dbTeller) => {
-        const vaultBalance = dbTeller.cashAllocations.reduce(
+        const localVaultBalance = dbTeller.cashAllocations.reduce(
           (sum, alloc) => sum + alloc.amount,
           0
         );
+
+        // Prefer Fineract GL balance for the teller's vault when a GL account is linked.
+        // Falls back to the local CashAllocation ledger if GL is not configured or Fineract is unreachable.
+        let vaultBalance = localVaultBalance;
+        let vaultBalanceSource: "fineract_gl" | "local" | "local_fallback" = "local";
+        let vaultCurrency: string | null = null;
+        if (dbTeller.glAccountId) {
+          const glResult = await getGlAccountBalance(dbTeller.glAccountId);
+          if (glResult.source === "fineract_calculated" || glResult.source === "fineract_empty") {
+            vaultBalance = glResult.balance;
+            vaultBalanceSource = "fineract_gl";
+            vaultCurrency = glResult.currency;
+          } else {
+            vaultBalanceSource = "local_fallback";
+          }
+        }
 
         const cashierAllocations = await prisma.cashAllocation.findMany({
           where: {
@@ -190,14 +207,18 @@ export async function GET(request: NextRequest) {
         }
 
         const availableBalance = vaultBalance - allocatedToCashiers;
-        const currency = orgCurrency;
+        const currency = vaultCurrency || orgCurrency;
 
         return {
           fineractTellerId: dbTeller.fineractTellerId,
           dbId: dbTeller.id,
           bankId: dbTeller.bankId,
           bank: dbTeller.bank,
+          glAccountId: dbTeller.glAccountId,
+          glAccountName: dbTeller.glAccountName,
+          glAccountCode: dbTeller.glAccountCode,
           vaultBalance,
+          vaultBalanceSource,
           availableBalance,
           allocatedToCashiers,
           currentAllocation: { amount: availableBalance, currency },
@@ -227,8 +248,12 @@ export async function GET(request: NextRequest) {
         ...(dbData && {
           bankId: dbData.bankId,
           bank: dbData.bank,
+          glAccountId: dbData.glAccountId,
+          glAccountName: dbData.glAccountName,
+          glAccountCode: dbData.glAccountCode,
           currentAllocation: dbData.currentAllocation,
           vaultBalance: dbData.vaultBalance,
+          vaultBalanceSource: dbData.vaultBalanceSource,
           availableBalance: dbData.availableBalance,
           allocatedToCashiers: dbData.allocatedToCashiers,
           settlementCount: dbData.settlementCount,
@@ -263,7 +288,17 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { officeId, name, description, startDate, endDate, bankId } = body;
+    const {
+      officeId,
+      name,
+      description,
+      startDate,
+      endDate,
+      bankId,
+      glAccountId,
+      glAccountName,
+      glAccountCode,
+    } = body;
 
     if (!officeId || !name || !startDate) {
       return NextResponse.json(
@@ -322,6 +357,9 @@ export async function POST(request: NextRequest) {
         endDate: endDate ? new Date(endDate) : null,
         status: "PENDING",
         bankId: bankId || null, // Link to parent bank if provided
+        glAccountId: glAccountId ? parseInt(glAccountId) : null,
+        glAccountName: glAccountName || null,
+        glAccountCode: glAccountCode || null,
       },
     });
 

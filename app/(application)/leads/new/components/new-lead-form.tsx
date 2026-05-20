@@ -375,7 +375,7 @@ export function NewLeadForm() {
 
     form.reset();
 
-    window.history.replaceState(null, "", "/leads/new");
+    window.history.replaceState(null, "", "/leads/new/loan");
 
     setShowWipeConfirm(false);
 
@@ -1175,7 +1175,7 @@ export function NewLeadForm() {
         console.log("==========> Updating URL with leadId:", result.leadId);
         setCurrentLeadId(result.leadId);
         // Update URL with the new lead ID using replace to avoid history clutter
-        window.history.replaceState(null, "", `/leads/new?id=${result.leadId}`);
+        window.history.replaceState(null, "", `/leads/new/loan?id=${result.leadId}`);
       } else {
         console.log("==========> Keeping existing leadId:", currentLeadId);
       }
@@ -1514,17 +1514,13 @@ export function NewLeadForm() {
                     setClientCreatedInFineract={setClientCreatedInFineract}
                     isSubmitting={isSubmitting}
                     onAllSectionsComplete={setAllClientSectionsComplete}
+                    draftUrlBase="/leads/new/loan"
                     onLeadIdChange={(newLeadId) => {
                       console.log(
                         "==========> Lead ID propagated from ClientRegistrationForm:",
                         newLeadId,
                       );
                       setCurrentLeadId(newLeadId);
-                      window.history.replaceState(
-                        null,
-                        "",
-                        `/leads/new?id=${newLeadId}`,
-                      );
                     }}
                     onClientCreated={() => {
                       setClientCreatedInFineract(true);
