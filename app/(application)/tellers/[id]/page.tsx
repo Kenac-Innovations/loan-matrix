@@ -92,6 +92,17 @@ export default async function TellerDetailPage({
                 )}
               </div>
             )}
+            {teller.vaultBalanceSource === "fineract_gl" && teller.glAccountCode && (
+              <div className="text-xs text-green-700 dark:text-green-400 mt-1">
+                Sourced from GL {teller.glAccountCode}
+                {teller.glAccountName ? ` (${teller.glAccountName})` : ""}
+              </div>
+            )}
+            {teller.vaultBalanceSource === "local_fallback" && (
+              <div className="text-xs text-amber-600 mt-1">
+                Could not reach Fineract GL — showing local ledger as fallback.
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -174,6 +185,23 @@ export default async function TellerDetailPage({
               <div>
                 <div className="text-sm text-muted-foreground">Status</div>
                 <div>{getStatusBadge(teller.status)}</div>
+              </div>
+              <div>
+                <div className="text-sm text-muted-foreground">
+                  Branch Cash GL Account
+                </div>
+                <div className="font-medium">
+                  {teller.glAccountId && teller.glAccountCode ? (
+                    <span>
+                      {teller.glAccountCode}
+                      {teller.glAccountName ? ` — ${teller.glAccountName}` : ""}
+                    </span>
+                  ) : (
+                    <span className="text-amber-600 text-sm">
+                      Not configured — vault balance falls back to local ledger
+                    </span>
+                  )}
+                </div>
               </div>
               {teller.endDate && (
                 <div>

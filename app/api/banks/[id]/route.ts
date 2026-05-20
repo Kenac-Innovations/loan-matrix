@@ -4,6 +4,7 @@ import { getTenantFromHeaders } from "@/lib/tenant-service";
 import { getSession } from "@/lib/auth";
 import { fetchFineractAPI } from "@/lib/api";
 import { getOrgDefaultCurrencyCode } from "@/lib/currency-utils";
+import { getGlAccountBalance } from "@/lib/gl-balance";
 
 /**
  * GET /api/banks/[id]
@@ -63,29 +64,54 @@ export async function GET(
     };
 
     let allocatedToTellers = 0;
-    const tellersWithBalances = bank.tellers.map((teller) => {
-      // Total vault balance includes all allocations (for teller display)
-      const tellerVaultBalance = teller.cashAllocations.reduce(
-        (sum, alloc) => sum + alloc.amount,
-        0
-      );
+    const tellersWithBalances = await Promise.all(
+      bank.tellers.map(async (teller) => {
+        // Local vault balance from CashAllocation ledger (used as fallback)
+        const localTellerVaultBalance = teller.cashAllocations.reduce(
+          (sum, alloc) => sum + alloc.amount,
+          0
+        );
 
-      const bankAllocationsOnly = teller.cashAllocations
-        .filter(isFromBank)
-        .reduce((sum, alloc) => sum + alloc.amount, 0);
+        // Prefer Fineract GL balance for the teller's vault when a GL account is linked.
+        let tellerVaultBalance = localTellerVaultBalance;
+        let tellerVaultBalanceSource:
+          | "fineract_gl"
+          | "local"
+          | "local_fallback" = "local";
+        if (teller.glAccountId) {
+          const glResult = await getGlAccountBalance(teller.glAccountId);
+          if (
+            glResult.source === "fineract_calculated" ||
+            glResult.source === "fineract_empty"
+          ) {
+            tellerVaultBalance = glResult.balance;
+            tellerVaultBalanceSource = "fineract_gl";
+          } else {
+            tellerVaultBalanceSource = "local_fallback";
+          }
+        }
 
-      allocatedToTellers += bankAllocationsOnly;
+        const bankAllocationsOnly = teller.cashAllocations
+          .filter(isFromBank)
+          .reduce((sum, alloc) => sum + alloc.amount, 0);
 
-      return {
-        id: teller.id,
-        name: teller.name,
-        fineractTellerId: teller.fineractTellerId,
-        officeName: teller.officeName,
-        status: teller.status,
-        vaultBalance: tellerVaultBalance,
-        activeCashiers: teller.cashiers.length,
-      };
-    });
+        allocatedToTellers += bankAllocationsOnly;
+
+        return {
+          id: teller.id,
+          name: teller.name,
+          fineractTellerId: teller.fineractTellerId,
+          officeName: teller.officeName,
+          status: teller.status,
+          glAccountId: teller.glAccountId,
+          glAccountName: teller.glAccountName,
+          glAccountCode: teller.glAccountCode,
+          vaultBalance: tellerVaultBalance,
+          vaultBalanceSource: tellerVaultBalanceSource,
+          activeCashiers: teller.cashiers.length,
+        };
+      })
+    );
 
     // Get bank balance from Fineract GL account if configured, otherwise use local allocations
     let totalAllocated = 0;

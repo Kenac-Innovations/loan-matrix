@@ -454,6 +454,7 @@ interface ClientRegistrationFormProps {
   onAllSectionsComplete?: (isComplete: boolean) => void;
   onLeadIdChange?: (leadId: string) => void;
   facilityType?: "TERM_LOAN" | "INVOICE_DISCOUNTING" | "REVOLVING_CREDIT";
+  draftUrlBase?: string;
 }
 
 export function ClientRegistrationForm({
@@ -470,6 +471,7 @@ export function ClientRegistrationForm({
   isSubmitting = false,
   onAllSectionsComplete,
   facilityType,
+  draftUrlBase = "/leads/new",
 }: ClientRegistrationFormProps) {
   const {
     success,
@@ -2677,6 +2679,7 @@ export function ClientRegistrationForm({
           ...formData,
           [fieldName]: value,
           fieldName: fieldName,
+          ...(facilityType ? { facilityType } : {}),
         },
         currentLeadId
       );
@@ -3884,7 +3887,7 @@ export function ClientRegistrationForm({
           window.history.replaceState(
             null,
             "",
-            `/leads/new?id=${result.leadId}`
+            `${draftUrlBase}?id=${result.leadId}`
           );
         }
 
@@ -7564,6 +7567,7 @@ export function ClientRegistrationForm({
                                             fineractClientId:
                                               Number(resolvedClientId),
                                           }),
+                                          ...(facilityType ? { facilityType } : {}),
                                         },
                                         currentLeadId
                                       );
@@ -7788,7 +7792,7 @@ export function ClientRegistrationForm({
                                         window.history.replaceState(
                                           null,
                                           "",
-                                          `/leads/new?id=${result.leadId}`
+                                          `${draftUrlBase}?id=${result.leadId}`
                                         );
                                       }
 
