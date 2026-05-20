@@ -62,7 +62,9 @@ interface Teller {
   fineractTellerId?: number;
   officeName: string;
   status: string;
-  vaultBalance: number;
+  vaultBalance: number | null;
+  vaultBalanceSource?: "fineract_gl" | "unavailable";
+  glAccountCode?: string | null;
   activeCashiers: number;
 }
 
@@ -308,10 +310,16 @@ export default function BankDetailsPage({
                   <div className="flex items-center gap-6">
                     <div className="text-right">
                       <div className="font-medium">
-                        {formatCurrency(teller.vaultBalance, bank.currency)}
+                        {teller.vaultBalanceSource === "fineract_gl" &&
+                        teller.vaultBalance != null
+                          ? formatCurrency(teller.vaultBalance, bank.currency)
+                          : "—"}
                       </div>
                       <div className="text-xs text-muted-foreground">
-                        Vault balance
+                        {teller.vaultBalanceSource === "fineract_gl" &&
+                        teller.glAccountCode
+                          ? `Vault • GL ${teller.glAccountCode}`
+                          : "Vault balance unavailable"}
                       </div>
                     </div>
                     {getStatusBadge(teller.status)}

@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
 import { getSession } from "@/lib/auth";
 import { getOrgDefaultCurrencyCode } from "@/lib/currency-utils";
-import { getGlAccountBalance } from "@/lib/gl-balance";
+import { getTellerVaultDisplay } from "@/lib/gl-balance";
 
 /**
  * GET /api/banks/[id]/tellers
@@ -57,52 +57,13 @@ export async function GET(
       },
     });
 
-    // Calculate balances for each teller
+    // Balances come *only* from the Fineract GL account. When no GL is
+    // configured or Fineract is unreachable, vaultBalance/availableBalance
+    // are null and the UI renders "—" / NaN.
     const tellersWithBalances = await Promise.all(
       tellers.map(async (teller) => {
-        const localVaultBalance = teller.cashAllocations.reduce(
-          (sum, alloc) => sum + alloc.amount,
-          0
-        );
-
-        // Prefer Fineract GL balance for the teller's vault when a GL account is linked.
-        let vaultBalance = localVaultBalance;
-        let vaultBalanceSource: "fineract_gl" | "local" | "local_fallback" = "local";
-        let glCurrency: string | null = null;
-        if (teller.glAccountId) {
-          const glResult = await getGlAccountBalance(teller.glAccountId);
-          if (
-            glResult.source === "fineract_calculated" ||
-            glResult.source === "fineract_empty"
-          ) {
-            vaultBalance = glResult.balance;
-            vaultBalanceSource = "fineract_gl";
-            glCurrency = glResult.currency;
-          } else {
-            vaultBalanceSource = "local_fallback";
-          }
-        }
-
-        // Get allocations to cashiers
-        const cashierAllocations = await prisma.cashAllocation.findMany({
-          where: {
-            tellerId: teller.id,
-            tenantId: tenant.id,
-            cashierId: { not: null },
-            status: "ACTIVE",
-            notes: { not: { contains: "Variance" } },
-          },
-        });
-
-        // Only sum positive allocations - disbursements reduce till but not "allocated"
-        const allocatedToCashiers = cashierAllocations.reduce(
-          (sum, alloc) => sum + (alloc.amount > 0 ? alloc.amount : 0),
-          0
-        );
-
-        const availableBalance = vaultBalance - allocatedToCashiers;
-        const currency =
-          glCurrency || teller.cashAllocations[0]?.currency || orgCurrency;
+        const vaultDisplay = await getTellerVaultDisplay(teller);
+        const currency = vaultDisplay.currency || orgCurrency;
 
         return {
           id: teller.id,
@@ -117,10 +78,9 @@ export async function GET(
           glAccountId: teller.glAccountId,
           glAccountName: teller.glAccountName,
           glAccountCode: teller.glAccountCode,
-          vaultBalance,
-          vaultBalanceSource,
-          availableBalance,
-          allocatedToCashiers,
+          vaultBalance: vaultDisplay.vaultBalance,
+          vaultBalanceSource: vaultDisplay.vaultBalanceSource,
+          availableBalance: vaultDisplay.availableBalance,
           currency,
           activeCashiers: teller.cashiers.length,
           settlementCount: teller._count.settlements,
