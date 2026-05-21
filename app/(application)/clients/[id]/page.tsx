@@ -4,6 +4,7 @@ import {
   CreditCard,
   Database,
   FileSpreadsheet,
+  Landmark,
   Receipt,
   Wallet,
 } from "lucide-react";
@@ -19,6 +20,7 @@ import { ClientAdditionalInfo } from "./components/client-additional-info";
 import { ClientHeader } from "./components/client-header";
 import { ClientEntityKyc } from "./components/client-entity-kyc";
 import { ClientSavings } from "./components/client-savings";
+import { ClientFacility } from "./components/client-facility";
 
 const FINERACT_BASE_URL =
   process.env.FINERACT_BASE_URL || "http://10.10.0.143:8443";
@@ -453,6 +455,13 @@ export default async function ClientDetailPage({ params }: PageProps) {
             <Database className="h-4 w-4" />
             <span className="hidden sm:inline">Additional Info</span>
           </TabsTrigger>
+          <TabsTrigger
+            value="facility"
+            className="flex items-center gap-2 px-2 md:px-3"
+          >
+            <Landmark className="h-4 w-4" />
+            <span className="hidden sm:inline">Facility</span>
+          </TabsTrigger>
           {isEntityClient && (
             <TabsTrigger
               value="entity-kyc"
@@ -487,6 +496,10 @@ export default async function ClientDetailPage({ params }: PageProps) {
             datatables={datatables || []}
             datatableData={datatableData}
           />
+        </TabsContent>
+
+        <TabsContent value="facility" className="space-y-4">
+          <ClientFacility clientId={clientId} />
         </TabsContent>
 
         {isEntityClient && (

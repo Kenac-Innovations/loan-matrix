@@ -4,8 +4,8 @@ import { PrismaClient } from "@/app/generated/prisma";
 import { getFineractServiceWithSession } from "@/lib/fineract-api";
 import { prisma } from "@/lib/prisma";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
-import { getOrgDefaultCurrencyCode, getOrgRawCurrencyCode } from "@/lib/currency-utils";
-import { getGlAccountBalance } from "@/lib/gl-balance";
+import { getOrgDefaultCurrencyCode } from "@/lib/currency-utils";
+import { getTellerVaultDisplay } from "@/lib/gl-balance";
 import { unstable_noStore as noStore } from "next/cache";
 
 const db = prisma as PrismaClient;
@@ -71,14 +71,17 @@ export async function getTellerFromFineract(id: string) {
       console.error("Error fetching teller summary:", summaryError);
     }
 
-    // Fetch local database data for balance information
-    let vaultBalance = 0;
-    let availableBalance = 0;
-    let allocatedToCashiers = 0;
+    // Vault & available balance come *only* from the Fineract GL account.
+    // When the GL is missing or Fineract is unreachable, both values are
+    // `null` so the UI renders NaN ("—").
     const orgCurrency = await getOrgDefaultCurrencyCode();
+    let vaultBalance: number | null = null;
+    let availableBalance: number | null = null;
     let currency = orgCurrency;
     let recentSettlements: any[] = [];
-    let vaultBalanceSource: "fineract_gl" | "local" | "local_fallback" = "local";
+    let vaultBalanceSource: "fineract_gl" | "unavailable" = "unavailable";
+    let glUnavailableReason: "not_configured" | "fineract_unreachable" | undefined =
+      "not_configured";
     let glAccountInfo: {
       glAccountId: number | null;
       glAccountName: string | null;
@@ -88,24 +91,35 @@ export async function getTellerFromFineract(id: string) {
       glAccountName: null,
       glAccountCode: null,
     };
+    let bankInfo: {
+      bankId: string | null;
+      bankName: string | null;
+      bankGlAccountId: number | null;
+      bankGlAccountCode: string | null;
+    } = {
+      bankId: null,
+      bankName: null,
+      bankGlAccountId: null,
+      bankGlAccountCode: null,
+    };
 
     try {
       const tenant = await getTenantFromHeaders();
-      
+
       if (tenant) {
-        // Find the local database teller by Fineract ID
         const dbTeller = await db.teller.findFirst({
           where: {
             fineractTellerId: tellerId,
             tenantId: tenant.id,
           },
           include: {
-            cashAllocations: {
-              where: {
-                status: "ACTIVE",
-                cashierId: null, // Only teller vault allocations
+            bank: {
+              select: {
+                id: true,
+                name: true,
+                glAccountId: true,
+                glAccountCode: true,
               },
-              orderBy: { allocatedDate: "desc" },
             },
             settlements: {
               orderBy: { settlementDate: "desc" },
@@ -121,73 +135,19 @@ export async function getTellerFromFineract(id: string) {
             glAccountCode: dbTeller.glAccountCode,
           };
 
-          const localVaultBalance = dbTeller.cashAllocations.reduce(
-            (sum: number, alloc: { amount: number }) => sum + alloc.amount,
-            0
-          );
-          vaultBalance = localVaultBalance;
-          currency = dbTeller.cashAllocations[0]?.currency || orgCurrency;
+          bankInfo = {
+            bankId: dbTeller.bank?.id ?? null,
+            bankName: dbTeller.bank?.name ?? null,
+            bankGlAccountId: dbTeller.bank?.glAccountId ?? null,
+            bankGlAccountCode: dbTeller.bank?.glAccountCode ?? null,
+          };
 
-          // Prefer Fineract GL balance when a GL account is linked.
-          if (dbTeller.glAccountId) {
-            const glResult = await getGlAccountBalance(dbTeller.glAccountId);
-            if (
-              glResult.source === "fineract_calculated" ||
-              glResult.source === "fineract_empty"
-            ) {
-              vaultBalance = glResult.balance;
-              vaultBalanceSource = "fineract_gl";
-              currency = glResult.currency || currency;
-            } else {
-              vaultBalanceSource = "local_fallback";
-            }
-          }
-
-          const cashierAllocations = await db.cashAllocation.findMany({
-            where: {
-              tellerId: dbTeller.id,
-              tenantId: tenant.id,
-              cashierId: { not: null },
-              status: "ACTIVE",
-              notes: { not: { contains: "Variance" } },
-            },
-          });
-          const localAllocated = (() => {
-            const positiveSum = cashierAllocations.reduce(
-              (sum: number, alloc: { amount: number }) => sum + (alloc.amount > 0 ? alloc.amount : 0),
-              0
-            );
-            const netSum = cashierAllocations.reduce(
-              (sum: number, alloc: { amount: number }) => sum + alloc.amount,
-              0
-            );
-            return Math.max(positiveSum, netSum);
-          })();
-
-          allocatedToCashiers = localAllocated;
-          try {
-            const fineractService = await getFineractServiceWithSession();
-            const fineractCashiers = await fineractService.getCashiers(tellerId);
-            let fineractAllocated = 0;
-            for (const fc of fineractCashiers || []) {
-              try {
-                const rawCurrency = await getOrgRawCurrencyCode();
-                const summary = await fineractService.getCashierSummaryAndTransactions(
-                  tellerId,
-                  fc.id,
-                  rawCurrency
-                );
-                fineractAllocated += summary.netCash ?? summary.sumCashAllocation ?? 0;
-              } catch (err) {
-                console.error(`Error getting Fineract summary for cashier ${fc.id}:`, err);
-              }
-            }
-            allocatedToCashiers = Math.max(localAllocated, fineractAllocated);
-          } catch (err) {
-            console.error("Error fetching Fineract cashier balances, using local DB:", err);
-          }
-
-          availableBalance = vaultBalance - allocatedToCashiers;
+          const vaultDisplay = await getTellerVaultDisplay(dbTeller);
+          vaultBalance = vaultDisplay.vaultBalance;
+          availableBalance = vaultDisplay.availableBalance;
+          vaultBalanceSource = vaultDisplay.vaultBalanceSource;
+          glUnavailableReason = vaultDisplay.glUnavailableReason;
+          currency = vaultDisplay.currency || orgCurrency;
           recentSettlements = dbTeller.settlements;
         }
       }
@@ -209,17 +169,18 @@ export async function getTellerFromFineract(id: string) {
         cashiers: cashiers || [],
         activeCashiers: (cashiers || []).filter((c: any) => c.isFullDay || c.startTime).length,
         summary: summary,
-        // Balance data (GL when configured, local fallback otherwise)
+        // Balance data — Fineract GL only; null when unavailable.
         vaultBalance,
         vaultBalanceSource,
+        glUnavailableReason,
         availableBalance,
-        allocatedToCashiers,
         currency,
         ...glAccountInfo,
-        currentAllocation: {
-          amount: availableBalance,
-          currency,
-        },
+        ...bankInfo,
+        currentAllocation:
+          availableBalance != null
+            ? { amount: availableBalance, currency }
+            : null,
         recentSettlements,
       }
     };

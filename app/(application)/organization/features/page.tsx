@@ -12,7 +12,12 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Loader2, AlertCircle, CheckCircle2 } from "lucide-react";
+import {
+  setupCreditFacilityDatatables,
+  setupCreditFacilityReports,
+} from "@/app/actions/credit-facility-actions";
 import type { TenantFeatures } from "@/shared/types/tenant";
 
 interface FeatureConfig {
@@ -96,6 +101,13 @@ const FEATURE_CONFIGS: FeatureConfig[] = [
     description:
       "Use the foreclosure settlement amount for active loan balances during top-up (excludes future/unrealized interest).",
   },
+  {
+    key: "hasCreditFacility",
+    label: "Credit Facility",
+    description:
+      "Enable credit facility tracking on loans. Shows facility toggle on loan creation, facility details card on loan and lead pages, and a Credit Facilities menu item.",
+    tag: "New",
+  },
 ];
 
 export default function FeaturesSettingsPage() {
@@ -104,6 +116,10 @@ export default function FeaturesSettingsPage() {
   const [saving, setSaving] = useState<keyof TenantFeatures | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [savedKey, setSavedKey] = useState<keyof TenantFeatures | null>(null);
+  const [setupStatus, setSetupStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
+  const [setupError, setSetupError] = useState<string | null>(null);
+  const [reportsStatus, setReportsStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
+  const [reportsError, setReportsError] = useState<string | null>(null);
 
   const fetchFeatures = useCallback(async () => {
     try {
@@ -152,6 +168,32 @@ export default function FeaturesSettingsPage() {
     }
   };
 
+  const handleSetupDatatables = async () => {
+    setSetupStatus("loading");
+    setSetupError(null);
+    const result = await setupCreditFacilityDatatables();
+    if (result.success) {
+      setSetupStatus("success");
+      setTimeout(() => setSetupStatus("idle"), 3000);
+    } else {
+      setSetupStatus("error");
+      setSetupError(result.error ?? "Setup failed");
+    }
+  };
+
+  const handleSetupReports = async () => {
+    setReportsStatus("loading");
+    setReportsError(null);
+    const result = await setupCreditFacilityReports();
+    if (result.success) {
+      setReportsStatus("success");
+      setTimeout(() => setReportsStatus("idle"), 3000);
+    } else {
+      setReportsStatus("error");
+      setReportsError(result.error ?? "Setup failed");
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16">
@@ -175,6 +217,61 @@ export default function FeaturesSettingsPage() {
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm font-medium">Maintenance</CardTitle>
+          <CardDescription className="text-xs">
+            One-time setup tasks for optional features.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-start justify-between gap-4 py-2 border-b">
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium">Credit Facility Datatables</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Register the Fineract datatables required for the Credit Facility feature. Safe to run multiple times.
+              </p>
+              {setupStatus === "error" && setupError && (
+                <p className="text-xs text-destructive mt-1">{setupError}</p>
+              )}
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleSetupDatatables}
+              disabled={setupStatus === "loading"}
+              className="shrink-0"
+            >
+              {setupStatus === "loading" && <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />}
+              {setupStatus === "success" && <CheckCircle2 className="h-3.5 w-3.5 text-green-500 mr-1.5" />}
+              {setupStatus === "success" ? "Done" : "Run Setup"}
+            </Button>
+          </div>
+          <div className="flex items-start justify-between gap-4 py-2">
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium">Credit Facility Stretchy Reports</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Register the Fineract stretchy reports required for the Credit Facilities list page. Safe to run multiple times.
+              </p>
+              {reportsStatus === "error" && reportsError && (
+                <p className="text-xs text-destructive mt-1">{reportsError}</p>
+              )}
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleSetupReports}
+              disabled={reportsStatus === "loading"}
+              className="shrink-0"
+            >
+              {reportsStatus === "loading" && <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />}
+              {reportsStatus === "success" && <CheckCircle2 className="h-3.5 w-3.5 text-green-500 mr-1.5" />}
+              {reportsStatus === "success" ? "Done" : "Run Setup"}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

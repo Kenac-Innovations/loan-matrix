@@ -9,6 +9,12 @@ import {
   activateSavingsAccount,
   formatFineractDate,
 } from "./fineract-savings-service";
+import {
+  getPendingFacilityForClient,
+  getActiveFacilityForClient,
+  getFacilityLoanLink,
+  updateFacility,
+} from "./fineract-credit-facility";
 import type { AssignmentStrategy, AssignmentConfig } from "@/shared/defaults/team-config";
 
 export interface FineractOverrides {
@@ -944,6 +950,20 @@ export class TeamAwareStateMachineService {
           ? formatDateForFineract(overrides.approvalDate)
           : formatFineractDateArr(loanDetails?.timeline?.submittedOnDate);
         await fineract.approveLoan(fineractLoanId, approveDate);
+
+        // Activate PENDING credit facility on loan approval (non-blocking)
+        if (lead?.fineractClientId) {
+          try {
+            const pendingFacility = await getPendingFacilityForClient(lead.fineractClientId);
+            if (pendingFacility) {
+              await updateFacility(lead.fineractClientId, pendingFacility.id, { status: "ACTIVE" });
+              console.log(`[StateTransition] Credit facility ${pendingFacility.facility_ref} activated`);
+            }
+          } catch (facilityErr) {
+            console.error("[StateTransition] Failed to activate credit facility:", facilityErr);
+          }
+        }
+
         return `Fineract loan #${fineractLoanId} approved`;
       }
       case "disburse": {
@@ -971,6 +991,27 @@ export class TeamAwareStateMachineService {
             });
           } catch (error) {
             console.error("[StateTransition] Failed to apply topup disbursement charges:", error);
+          }
+        }
+
+        // Update credit facility utilization counters (non-blocking)
+        if (lead?.fineractClientId) {
+          try {
+            const facility = await getActiveFacilityForClient(lead.fineractClientId);
+            if (facility) {
+              const disbursedAmount = loanDetails?.approvedPrincipal ?? loanDetails?.principal ?? 0;
+              const newUtilized = facility.utilized_amount + disbursedAmount;
+              const newTranches = facility.disbursed_tranches + 1;
+              const shouldClose = newUtilized >= facility.credit_limit || newTranches >= facility.drawdown_tranches;
+              await updateFacility(lead.fineractClientId, facility.id, {
+                utilized_amount: newUtilized,
+                disbursed_tranches: newTranches,
+                ...(shouldClose ? { status: "CLOSED" } : {}),
+              });
+              console.log(`[StateTransition] Credit facility ${facility.facility_ref} utilization updated${shouldClose ? " — facility CLOSED (fully utilized)" : ""}`);
+            }
+          } catch (facilityErr) {
+            console.error("[StateTransition] Failed to update credit facility utilization:", facilityErr);
           }
         }
 
@@ -1112,6 +1153,28 @@ export class TeamAwareStateMachineService {
           method: "POST",
           body: JSON.stringify({ note: reason || "Disbursement undone — lead moved back" }),
         });
+
+        // Deduct from credit facility if loan was linked to one (non-blocking)
+        if (lead?.fineractClientId) {
+          try {
+            const [link, facility] = await Promise.all([
+              getFacilityLoanLink(fineractLoanId),
+              getActiveFacilityForClient(lead.fineractClientId),
+            ]);
+            if (link && facility) {
+              const loanDetails = await fetchFineractAPI(`/loans/${fineractLoanId}`);
+              const disbursedAmount = loanDetails?.approvedPrincipal ?? loanDetails?.principal ?? 0;
+              await updateFacility(lead.fineractClientId, facility.id, {
+                utilized_amount: Math.max(0, facility.utilized_amount - disbursedAmount),
+                disbursed_tranches: Math.max(0, facility.disbursed_tranches - 1),
+              });
+              console.log(`[StateTransition] Credit facility ${facility.facility_ref} utilization decremented`);
+            }
+          } catch (facilityErr) {
+            console.error("[StateTransition] Failed to decrement credit facility on undo:", facilityErr);
+          }
+        }
+
         return `Fineract loan #${fineractLoanId} disbursement undone`;
       }
       case "payout": {

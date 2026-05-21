@@ -69,6 +69,7 @@ import { RepaymentScheduleForm } from "@/app/(application)/leads/new/components/
 import { LoanContracts } from "@/app/(application)/leads/new/components/loan-contracts";
 import { toast } from "@/components/ui/use-toast";
 import type { FineractBusinessCalendar } from "@/lib/fineract-business-calendar";
+import type { FacilityIntent } from "@/components/credit-facility/facility-toggle";
 
 
 // Define the type for the client form data
@@ -283,6 +284,7 @@ export function NewLeadForm() {
   );
   const [allClientSectionsComplete, setAllClientSectionsComplete] =
     useState(false);
+  const [facilityIntent, setFacilityIntent] = useState<FacilityIntent>(null);
   const [repaymentSchedule, setRepaymentSchedule] = useState<any>(null);
   const [loanDetails, setLoanDetails] = useState<any>(null);
   const [loanTerms, setLoanTerms] = useState<any>(null);
@@ -1782,6 +1784,8 @@ export function NewLeadForm() {
                       }}
                       sharedFirstRepaymentOn={sharedFirstRepaymentOn}
                       onFirstRepaymentDateChange={setSharedFirstRepaymentOn}
+                      fineractClientId={fineractClientId}
+                      onFacilityChange={setFacilityIntent}
                     />
                   ) : (
                     <div className="text-center py-8">
@@ -1854,6 +1858,7 @@ export function NewLeadForm() {
                       loanDetails={loanDetails}
                       loanTerms={loanTerms}
                       loanTemplate={loanTemplateData}
+                      facilityIntent={facilityIntent}
                       onBack={() => setActiveTab("schedule")}
                       onComplete={() => {
                         setFormCompletionStatus((prev) => ({

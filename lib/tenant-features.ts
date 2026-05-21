@@ -16,3 +16,7 @@ export function isRevolvingCreditEnabled(settings: unknown): boolean {
   return getTenantFeatures(settings).hasRevolvingCredit === true;
 }
 
+export function isCreditFacilityEnabled(settings: unknown): boolean {
+  return getTenantFeatures(settings).hasCreditFacility === true;
+}
+
