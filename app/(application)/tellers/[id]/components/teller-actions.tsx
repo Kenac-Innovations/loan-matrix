@@ -48,18 +48,17 @@ export function TellerActions({
   const [showReturnModal, setShowReturnModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
 
+  // The destination bank is now picked inside the modal, so we only require
+  // the teller side here (GL + readable vault with funds). The modal/API will
+  // surface clearer errors if the chosen bank is missing a GL.
   const canReturnToBank =
     !!teller.glAccountId &&
-    !!teller.bankId &&
-    !!teller.bankGlAccountId &&
     teller.vaultBalanceSource === "fineract_gl" &&
     typeof teller.vaultBalance === "number" &&
     teller.vaultBalance > 0;
 
   const returnDisabledReason = (() => {
     if (!teller.glAccountId) return "Teller has no GL account configured.";
-    if (!teller.bankId) return "Teller is not linked to a parent bank.";
-    if (!teller.bankGlAccountId) return "Parent bank has no GL account configured.";
     if (teller.vaultBalanceSource !== "fineract_gl")
       return "Vault balance is unavailable.";
     if (!teller.vaultBalance || teller.vaultBalance <= 0)
@@ -116,7 +115,8 @@ export function TellerActions({
       <ReturnToBankModal
         tellerId={tellerId}
         tellerName={tellerName}
-        bankName={teller.bankName}
+        defaultBankId={teller.bankId ?? null}
+        defaultBankName={teller.bankName ?? null}
         vaultBalance={teller.vaultBalance ?? null}
         currency={teller.currency ?? null}
         open={showReturnModal}
