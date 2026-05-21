@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getFineractServiceWithSession } from "@/lib/fineract-api";
 import { prisma } from "@/lib/prisma";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
-import { getOrgDefaultCurrencyCode, getOrgRawCurrencyCode } from "@/lib/currency-utils";
-import { getGlAccountBalance } from "@/lib/gl-balance";
+import { getOrgDefaultCurrencyCode } from "@/lib/currency-utils";
+import { getTellerVaultDisplay } from "@/lib/gl-balance";
 
 /**
  * GET /api/tellers
@@ -142,72 +142,15 @@ export async function GET(request: NextRequest) {
       })
     );
 
-    // Calculate balances - use max(Fineract, local) for allocatedToCashiers so we never undercount
+    // Balances come *only* from the Fineract GL account. When no GL is
+    // configured or Fineract is unreachable, vaultBalance/availableBalance
+    // are null and the UI renders "—".
     const dbTellerBalances = await Promise.all(
       dbTellers.map(async (dbTeller) => {
-        const localVaultBalance = dbTeller.cashAllocations.reduce(
-          (sum, alloc) => sum + alloc.amount,
-          0
-        );
-
-        // Prefer Fineract GL balance for the teller's vault when a GL account is linked.
-        // Falls back to the local CashAllocation ledger if GL is not configured or Fineract is unreachable.
-        let vaultBalance = localVaultBalance;
-        let vaultBalanceSource: "fineract_gl" | "local" | "local_fallback" = "local";
-        let vaultCurrency: string | null = null;
-        if (dbTeller.glAccountId) {
-          const glResult = await getGlAccountBalance(dbTeller.glAccountId);
-          if (glResult.source === "fineract_calculated" || glResult.source === "fineract_empty") {
-            vaultBalance = glResult.balance;
-            vaultBalanceSource = "fineract_gl";
-            vaultCurrency = glResult.currency;
-          } else {
-            vaultBalanceSource = "local_fallback";
-          }
-        }
-
-        const cashierAllocations = await prisma.cashAllocation.findMany({
-          where: {
-            tellerId: dbTeller.id,
-            tenantId: tenant.id,
-            cashierId: { not: null },
-            status: "ACTIVE",
-            notes: { not: { contains: "Variance" } },
-          },
-        });
-        const localAllocated = (() => {
-          const positiveSum = cashierAllocations.reduce(
-            (sum, alloc) => sum + (alloc.amount > 0 ? alloc.amount : 0),
-            0
-          );
-          const netSum = cashierAllocations.reduce((sum, alloc) => sum + alloc.amount, 0);
-          return Math.max(positiveSum, netSum);
-        })();
-
-        let allocatedToCashiers = localAllocated;
-        const fineractCashiers = tellerCashiersMap.get(dbTeller.fineractTellerId!) || [];
-        if (fineractCashiers.length > 0) {
-          const summaries = await Promise.all(
-            fineractCashiers.map(async (fc: any) => {
-              try {
-                const rawCurrency = await getOrgRawCurrencyCode();
-                const summary = await fineractService.getCashierSummaryAndTransactions(
-                  dbTeller.fineractTellerId!,
-                  fc.id,
-                  rawCurrency
-                );
-                return summary.netCash ?? summary.sumCashAllocation ?? 0;
-              } catch (err) {
-                return 0;
-              }
-            })
-          );
-          const fineractAllocated = summaries.reduce((sum, val) => sum + val, 0);
-          allocatedToCashiers = Math.max(localAllocated, fineractAllocated);
-        }
-
-        const availableBalance = vaultBalance - allocatedToCashiers;
-        const currency = vaultCurrency || orgCurrency;
+        const vaultDisplay = await getTellerVaultDisplay(dbTeller);
+        const fineractCashiers =
+          tellerCashiersMap.get(dbTeller.fineractTellerId!) || [];
+        const currency = vaultDisplay.currency || orgCurrency;
 
         return {
           fineractTellerId: dbTeller.fineractTellerId,
@@ -217,11 +160,13 @@ export async function GET(request: NextRequest) {
           glAccountId: dbTeller.glAccountId,
           glAccountName: dbTeller.glAccountName,
           glAccountCode: dbTeller.glAccountCode,
-          vaultBalance,
-          vaultBalanceSource,
-          availableBalance,
-          allocatedToCashiers,
-          currentAllocation: { amount: availableBalance, currency },
+          vaultBalance: vaultDisplay.vaultBalance,
+          vaultBalanceSource: vaultDisplay.vaultBalanceSource,
+          availableBalance: vaultDisplay.availableBalance,
+          currentAllocation:
+            vaultDisplay.availableBalance != null
+              ? { amount: vaultDisplay.availableBalance, currency }
+              : null,
           activeCashiers: fineractCashiers.length,
           settlementCount: dbTeller._count.settlements,
         };
@@ -255,7 +200,6 @@ export async function GET(request: NextRequest) {
           vaultBalance: dbData.vaultBalance,
           vaultBalanceSource: dbData.vaultBalanceSource,
           availableBalance: dbData.availableBalance,
-          allocatedToCashiers: dbData.allocatedToCashiers,
           settlementCount: dbData.settlementCount,
         }),
         // Use Fineract cashier count (already set above)

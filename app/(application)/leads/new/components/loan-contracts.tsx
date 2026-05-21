@@ -40,6 +40,11 @@ import {
   generateKeyFactsStatementHTML,
   KeyFactsData,
 } from "./key-facts-statement-template";
+import type { FacilityIntent } from "@/components/credit-facility/facility-toggle";
+import {
+  createCreditFacilityForLead,
+  linkLoanToExistingFacility,
+} from "@/app/actions/credit-facility-actions";
 
 function parseFineractErrorResponse(responseText: string): string {
   try {
@@ -101,6 +106,7 @@ interface LoanContractsProps {
   loanTerms?: any;
   loanTemplate?: any;
   contractData?: ContractData;
+  facilityIntent?: FacilityIntent;
   onComplete?: () => void;
   onBack?: () => void;
 }
@@ -130,6 +136,7 @@ export function LoanContracts({
   loanTerms,
   loanTemplate,
   contractData: initialContractData,
+  facilityIntent,
   onComplete,
   onBack,
 }: LoanContractsProps) {
@@ -2206,6 +2213,30 @@ export function LoanContracts({
         } catch (err) {
           console.error("Error saving loan ID to lead:", err);
           // Don't block the flow
+        }
+
+        // Attach credit facility if officer chose to link one
+        if (facilityIntent && leadId) {
+          try {
+            if (facilityIntent.mode === "create") {
+              const facilityResult = await createCreditFacilityForLead(
+                leadId,
+                facilityIntent.facility
+              );
+              if (!facilityResult.success) {
+                console.error("Credit facility creation failed:", facilityResult.error);
+                toast({ title: "Warning", description: `Loan created, but facility setup failed: ${facilityResult.error}`, variant: "destructive" });
+              }
+            } else if (facilityIntent.mode === "link") {
+              const linkResult = await linkLoanToExistingFacility(leadId, loanPayload.principal);
+              if (!linkResult.success) {
+                console.error("Facility link failed:", linkResult.error);
+                toast({ title: "Warning", description: `Loan created, but facility link failed: ${linkResult.error}`, variant: "destructive" });
+              }
+            }
+          } catch (facilityErr) {
+            console.error("Facility operation error:", facilityErr);
+          }
         }
       }
 
