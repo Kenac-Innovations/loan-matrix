@@ -39,7 +39,7 @@ export async function POST(
     }
 
     const body = await request.json();
-    const { amount, currency, notes } = body;
+    const { amount, currency, notes, bankId: requestedBankId } = body;
 
     if (!amount || amount <= 0) {
       return NextResponse.json(
@@ -74,22 +74,41 @@ export async function POST(
         { status: 400 }
       );
     }
-    if (!teller.bankId || !teller.bank) {
+
+    // Resolve destination bank: explicit bankId overrides teller's parent bank.
+    // When no override is provided we fall back to the teller's parent bank.
+    let destinationBank = teller.bank;
+    if (requestedBankId && requestedBankId !== teller.bankId) {
+      destinationBank = await prisma.bank.findFirst({
+        where: { id: requestedBankId, tenantId: tenant.id },
+      });
+      if (!destinationBank) {
+        return NextResponse.json(
+          {
+            error: "Destination bank not found",
+            details: "The selected bank does not exist for this tenant.",
+          },
+          { status: 404 }
+        );
+      }
+    }
+
+    if (!destinationBank) {
       return NextResponse.json(
         {
-          error: "Teller is not linked to a parent bank",
+          error: "No destination bank available",
           details:
-            "Link this teller to a bank (Edit Teller) before returning cash.",
+            "Select a bank to return cash to, or link this teller to a parent bank.",
         },
         { status: 400 }
       );
     }
-    if (!teller.bank.glAccountId) {
+
+    if (!destinationBank.glAccountId) {
       return NextResponse.json(
         {
-          error: "Parent bank has no GL account configured",
-          details:
-            "Assign a GL account to the parent bank before returning cash from a teller.",
+          error: "Destination bank has no GL account configured",
+          details: `Bank "${destinationBank.name}" needs a GL account before cash can be returned to it.`,
         },
         { status: 400 }
       );
@@ -158,17 +177,17 @@ export async function POST(
       const journalResult = await fetchFineractAPI("/journalentries", {
         method: "POST",
         body: JSON.stringify({
-          officeId: teller.officeId,
+          officeId: destinationBank.officeId ?? teller.officeId,
           transactionDate: fineractDate,
           currencyCode: returnCurrency,
           debits: [
-            { glAccountId: teller.bank.glAccountId, amount: requestedAmount },
+            { glAccountId: destinationBank.glAccountId, amount: requestedAmount },
           ],
           credits: [
             { glAccountId: teller.glAccountId, amount: requestedAmount },
           ],
           comments: `Return from teller ${teller.name} to bank ${
-            teller.bank.name
+            destinationBank.name
           }${notes ? ` - ${notes}` : ""}`.trim(),
           referenceNumber: `TELLER-RETURN-${teller.id}-${Date.now()}`,
           locale: "en",
@@ -206,7 +225,7 @@ export async function POST(
         amount: -requestedAmount,
         currency: returnCurrency,
         allocatedBy: session.user.id,
-        notes: `Return to bank ${teller.bank.name}${
+        notes: `Return to bank ${destinationBank.name}${
           notes ? ` - ${notes}` : ""
         }${noteTag}`.trim(),
         status: "ACTIVE",
@@ -216,7 +235,7 @@ export async function POST(
     const bankAllocation = await prisma.bankAllocation.create({
       data: {
         tenantId: tenant.id,
-        bankId: teller.bank.id,
+        bankId: destinationBank.id,
         amount: requestedAmount,
         currency: returnCurrency,
         allocatedBy: session.user.id,

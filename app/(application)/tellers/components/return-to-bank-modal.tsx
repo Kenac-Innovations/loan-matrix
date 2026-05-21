@@ -23,7 +23,8 @@ interface ReturnToBankModalProps {
   onOpenChange: (open: boolean) => void;
   tellerId: string;
   tellerName?: string;
-  bankName?: string | null;
+  defaultBankId?: string | null;
+  defaultBankName?: string | null;
   vaultBalance?: number | null;
   currency?: string | null;
   onSuccess?: () => void;
@@ -34,20 +35,33 @@ interface Currency {
   name: string;
 }
 
+interface BankOption {
+  id: string;
+  name: string;
+  code: string;
+  glAccountId: number | null;
+  glAccountCode: string | null;
+  status: string;
+  isActive: boolean;
+}
+
 export function ReturnToBankModal({
   open,
   onOpenChange,
   tellerId,
   tellerName,
-  bankName,
+  defaultBankId,
+  defaultBankName,
   vaultBalance,
   currency: tellerCurrency,
   onSuccess,
-}: ReturnToBankModalProps) {
+}: Readonly<ReturnToBankModalProps>) {
   const { currencyCode: orgCurrency } = useCurrency();
   const [loading, setLoading] = useState(false);
   const [currencies, setCurrencies] = useState<Currency[]>([]);
   const [loadingCurrencies, setLoadingCurrencies] = useState(false);
+  const [banks, setBanks] = useState<BankOption[]>([]);
+  const [loadingBanks, setLoadingBanks] = useState(false);
   const [result, setResult] = useState<{
     success: boolean;
     message: string;
@@ -57,6 +71,7 @@ export function ReturnToBankModal({
     amount: "",
     currency: tellerCurrency || orgCurrency,
     notes: "",
+    bankId: defaultBankId || "",
   });
 
   useEffect(() => {
@@ -66,10 +81,12 @@ export function ReturnToBankModal({
         amount: "",
         currency: tellerCurrency || orgCurrency,
         notes: "",
+        bankId: defaultBankId || "",
       });
       fetchCurrencies();
+      fetchBanks();
     }
-  }, [open, tellerCurrency, orgCurrency]);
+  }, [open, tellerCurrency, orgCurrency, defaultBankId]);
 
   const fetchCurrencies = async () => {
     setLoadingCurrencies(true);
@@ -93,22 +110,43 @@ export function ReturnToBankModal({
     }
   };
 
+  const fetchBanks = async () => {
+    setLoadingBanks(true);
+    try {
+      const response = await fetch("/api/banks?status=ACTIVE");
+      if (response.ok) {
+        const data = await response.json();
+        const list: BankOption[] = Array.isArray(data) ? data : [];
+        // Only banks that have a GL account can receive a return.
+        setBanks(list.filter((b) => b.glAccountId && b.isActive !== false));
+      }
+    } catch (e) {
+      console.error("Error fetching banks:", e);
+    } finally {
+      setLoadingBanks(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setResult(null);
 
-    const amountNum = parseFloat(formData.amount);
+    const amountNum = Number.parseFloat(formData.amount);
     if (!amountNum || amountNum <= 0) {
       setResult({ success: false, message: "Enter an amount greater than 0." });
       return;
     }
-    if (
-      typeof vaultBalance === "number" &&
-      amountNum > vaultBalance
-    ) {
+    if (!formData.bankId) {
       setResult({
         success: false,
-        message: `Amount exceeds the teller's vault balance (${vaultBalance.toLocaleString(
+        message: "Select a destination bank.",
+      });
+      return;
+    }
+    if (typeof vaultBalance === "number" && amountNum > vaultBalance) {
+      setResult({
+        success: false,
+        message: `Amount exceeds the teller vault balance (${vaultBalance.toLocaleString(
           undefined,
           { minimumFractionDigits: 2, maximumFractionDigits: 2 }
         )} ${formData.currency}).`,
@@ -125,6 +163,7 @@ export function ReturnToBankModal({
           amount: amountNum,
           currency: formData.currency,
           notes: formData.notes,
+          bankId: formData.bankId,
         }),
       });
 
@@ -138,12 +177,17 @@ export function ReturnToBankModal({
         return;
       }
 
+      const selectedBank = banks.find((b) => b.id === formData.bankId);
+      const destinationName =
+        selectedBank?.name ||
+        (formData.bankId === defaultBankId ? defaultBankName : null) ||
+        "bank";
       setResult({
         success: true,
         message: `Returned ${amountNum.toLocaleString(undefined, {
           minimumFractionDigits: 2,
           maximumFractionDigits: 2,
-        })} ${formData.currency} to ${bankName || "bank"}.`,
+        })} ${formData.currency} to ${destinationName}.`,
         transactionId: data.journalTransactionId,
       });
       setTimeout(() => {
@@ -170,10 +214,11 @@ export function ReturnToBankModal({
             Return Cash to Bank
           </DialogTitle>
           <DialogDescription>
-            Move cash from {tellerName || "this teller"} back to{" "}
-            <span className="font-medium">{bankName || "its parent bank"}</span>
-            . A Fineract journal entry will be posted (DEBIT bank GL, CREDIT
-            teller GL).
+            Move cash from {tellerName || "this teller"} back to a bank. Defaults
+            to the teller&apos;s parent bank
+            {defaultBankName ? ` (${defaultBankName})` : ""} but you can pick
+            any other configured bank. A Fineract journal entry will be posted
+            (DEBIT destination bank GL, CREDIT teller GL).
           </DialogDescription>
         </DialogHeader>
 
@@ -212,6 +257,34 @@ export function ReturnToBankModal({
 
         <form onSubmit={handleSubmit}>
           <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="bank">Destination Bank *</Label>
+              <SearchableSelect
+                options={banks.map((b) => {
+                  const label = `${b.name}${b.code ? ` (${b.code})` : ""}${
+                    b.id === defaultBankId ? " — default" : ""
+                  }`;
+                  return { value: b.id, label };
+                })}
+                value={formData.bankId}
+                onValueChange={(value) =>
+                  setFormData({ ...formData, bankId: value })
+                }
+                placeholder={
+                  loadingBanks ? "Loading banks..." : "Select destination bank"
+                }
+                emptyMessage="No banks with GL accounts found"
+                disabled={loadingBanks || loading}
+              />
+              {formData.bankId &&
+                defaultBankId &&
+                formData.bankId !== defaultBankId && (
+                  <p className="text-xs text-amber-600">
+                    Not the teller&apos;s parent bank — cash will be returned to
+                    a different bank.
+                  </p>
+                )}
+            </div>
             <div className="space-y-2">
               <Label htmlFor="amount">Amount *</Label>
               <Input
