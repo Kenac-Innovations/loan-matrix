@@ -8,6 +8,7 @@ import { LeadMoreActions } from "./components/lead-more-actions";
 import { LeadDetailTabs } from "./components/lead-detail-tabs";
 import {
   ArrowLeft,
+  Landmark,
   UserCheck,
   UserX,
   CheckCircle2,
@@ -24,6 +25,8 @@ import {
   isPendingLoanApplicationEditTenant,
 } from "@/lib/pending-loan-application-edit";
 import { canPrintLoanContract } from "@/lib/loan-contract-print";
+import { getFacilityLoanLink } from "@/lib/fineract-credit-facility";
+import { isCreditFacilityEnabled } from "@/lib/tenant-features";
 
 const FINERACT_BASE_URL = process.env.FINERACT_BASE_URL || "http://10.10.0.143";
 
@@ -316,11 +319,15 @@ async function getLeadData(leadId: string) {
       },
     });
 
-    // Fetch pipeline stages for the tenant
-    const stages = await prisma.pipelineStage.findMany({
-      where: { tenantId, isActive: true },
-      orderBy: { order: "asc" },
-    });
+    // Fetch pipeline stages and tenant settings in parallel
+    const [stages, tenant] = await Promise.all([
+      prisma.pipelineStage.findMany({
+        where: { tenantId, isActive: true },
+        orderBy: { order: "asc" },
+      }),
+      prisma.tenant.findFirst({ where: { id: tenantId }, select: { settings: true } }),
+    ]);
+    const hasCreditFacility = isCreditFacilityEnabled(tenant?.settings);
 
     // Fetch Fineract loan info directly from Fineract API
     // No need for internal HTTP calls - we call Fineract directly from this Server Component
@@ -362,6 +369,7 @@ async function getLeadData(leadId: string) {
       loanDocuments: fineractDocs.loanDocuments,
       datatableData,
       tenantSlug,
+      hasCreditFacility,
     };
   } catch (error) {
     console.error("Error fetching lead data:", error);
@@ -379,6 +387,7 @@ async function getLeadData(leadId: string) {
       clientDocuments: [],
       loanDocuments: [],
       tenantSlug: null,
+      hasCreditFacility: false,
     };
   }
 }
@@ -403,10 +412,15 @@ export default async function LeadDetailPage({
     clientDocuments,
     loanDocuments,
     tenantSlug,
+    hasCreditFacility,
   } = await getLeadData(id);
-  
+
   const session = await getSession();
   const currentUserId = session?.user?.id;
+
+  const facilityLink = hasCreditFacility && fineractLoanId
+    ? await getFacilityLoanLink(fineractLoanId).catch(() => null)
+    : null;
   const isAssignedUser =
     currentUserId != null &&
     lead?.assignedToUserId != null &&
@@ -587,6 +601,12 @@ export default async function LeadDetailPage({
                   Loan: <span className="font-mono font-medium text-foreground">#{fineractLoanId}</span>
                 </span>
               )}
+              {facilityLink && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 dark:bg-blue-900/40 px-2 py-0.5 text-xs font-medium text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-700">
+                  <Landmark className="h-3 w-3" />
+                  Credit Facility
+                </span>
+              )}
               {lead.clientTypeName && (
                 <span>{lead.clientTypeName}</span>
               )}
@@ -721,6 +741,7 @@ export default async function LeadDetailPage({
             readOnly={isReadOnly}
             canEditPendingLoanApplication={canEditPendingLoanTerms}
             facilityType={lead.facilityType}
+            hasCreditFacility={hasCreditFacility}
           />
         </div>
         <div className="mt-0 lg:mt-10">

@@ -49,6 +49,7 @@ import {
   type EditableLoanChargeRow,
 } from "@/lib/topup-charge-base";
 import type { TenantSettings } from "@/shared/types/tenant";
+import { FacilityToggle } from "@/components/credit-facility/facility-toggle";
 
 // Helper function to format repayment strategy name
 // Replaces "Penalties" with "Interest on Unpaid Balance" for display
@@ -636,6 +637,8 @@ interface LoanTermsFormProps {
   onComplete?: () => void;
   sharedFirstRepaymentOn?: Date;
   onFirstRepaymentDateChange?: (date: Date) => void;
+  fineractClientId?: number | null;
+  onFacilityChange?: (data: import("@/components/credit-facility/facility-toggle").FacilityIntent) => void;
 }
 
 export function LoanTermsForm({
@@ -652,6 +655,8 @@ export function LoanTermsForm({
   onComplete,
   sharedFirstRepaymentOn,
   onFirstRepaymentDateChange,
+  fineractClientId,
+  onFacilityChange,
 }: LoanTermsFormProps) {
   const { tenantSlug, features } = useFeatureFlags();
   // Ref so the template-fetch effect can read the latest features without re-running
@@ -660,6 +665,7 @@ export function LoanTermsForm({
   /** Goodfellow: only charge amounts are editable; add/remove/due dates stay fixed. */
   const isChargesStructureReadOnly = tenantSlug === "goodfellow";
   const canEditLoan = !!features.canEditLoan;
+  const hasCreditFacility = !!features.hasCreditFacility;
   const businessCalendarRules = useMemo(
     () => buildFineractBusinessCalendarRules(businessCalendar),
     [businessCalendar]
@@ -668,6 +674,7 @@ export function LoanTermsForm({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [facilityValid, setFacilityValid] = useState(true);
   const [loanTemplate, setLoanTemplate] = useState<LoanTemplate | null>(
     initialLoanTemplate
   );
@@ -4629,6 +4636,19 @@ export function LoanTermsForm({
         </Card>
       </div>
 
+      {/* Credit Facility */}
+      {hasCreditFacility && onFacilityChange && (
+        <div className="pt-2">
+          <FacilityToggle
+            fineractClientId={fineractClientId}
+            loanAmount={Number(form.watch("principal") ?? 0)}
+            currencyCode={(initialLoanTemplate as any)?.currency?.code ?? "USD"}
+            onChange={onFacilityChange}
+            onValidityChange={setFacilityValid}
+          />
+        </div>
+      )}
+
       {/* Navigation Buttons */}
       <Card>
         <CardFooter className="flex justify-between border-t border-gray-200 dark:border-gray-800 pt-4">
@@ -4645,7 +4665,7 @@ export function LoanTermsForm({
           <Button
             type="submit"
             className="px-6 transition-all duration-300"
-            disabled={isLoading || isSaving}
+            disabled={isLoading || isSaving || !facilityValid}
           >
             {isSaving ? (
               <>

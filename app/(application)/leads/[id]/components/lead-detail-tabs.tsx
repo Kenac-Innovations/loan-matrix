@@ -36,6 +36,7 @@ import { LeadCommunications } from "./lead-communications";
 import { LeadCDE } from "./lead-cde";
 import { LeadNotes } from "./lead-notes";
 import { LeadAppraisals } from "./lead-appraisals";
+import { FacilityBanner } from "@/components/credit-facility/facility-banner";
 
 interface TabCheck {
   id: string;
@@ -64,6 +65,7 @@ interface LeadDetailTabsProps {
   readOnly: boolean;
   canEditPendingLoanApplication: boolean;
   facilityType?: string | null; // kept for API compatibility; used inside ComprehensiveLeadDetails via fetch
+  hasCreditFacility?: boolean;
 }
 
 const TAB_ICON_MAP: Record<string, typeof FileText> = {
@@ -136,6 +138,7 @@ export function LeadDetailTabs({
   loanDocuments,
   readOnly,
   canEditPendingLoanApplication,
+  hasCreditFacility = false,
 }: LeadDetailTabsProps) {
   const TABS = BASE_TABS;
   const [tabValidations, setTabValidations] = useState<
@@ -249,6 +252,9 @@ export function LeadDetailTabs({
 
       <TabsContent value="details" className="mt-4">
         <ValidationBanner validation={tabValidations["details"]} />
+        {hasCreditFacility && fineractLoanId && fineractClientId && (
+          <FacilityBanner fineractLoanId={fineractLoanId} fineractClientId={fineractClientId} />
+        )}
         <ComprehensiveLeadDetails
           leadId={leadId}
           canEditPendingLoanApplication={canEditPendingLoanApplication}

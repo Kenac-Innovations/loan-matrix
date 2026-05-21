@@ -47,6 +47,7 @@ import {
   getLoanInterestRateDisplay,
   resolveInterestRateDisplayMode,
 } from "@/lib/interest-rate-display";
+import { FacilityBanner } from "@/components/credit-facility/facility-banner";
 
 interface ClientLoanDetailsProps {
   clientId: number;
@@ -111,7 +112,8 @@ const formatLoanSequenceLabel = (position: number): string => {
 
 export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) {
   const router = useRouter();
-  const { tenantSlug } = useFeatureFlags();
+  const { tenantSlug, features } = useFeatureFlags();
+  const hasCreditFacility = !!features.hasCreditFacility;
   const [client, setClient] = useState<FineractClient | null>(null);
   const [loan, setLoan] = useState<FineractLoan | null>(null);
   const [loanSequenceLabel, setLoanSequenceLabel] = useState<string | null>(null);
@@ -2454,7 +2456,8 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
     setIsSubmittingUndoDisbursal(true);
     try {
       const payload = {
-        note: undoDisbursalNote.trim()
+        note: undoDisbursalNote.trim(),
+        fineractClientId: clientId,
       };
 
       const response = await fetch(`/api/fineract/loans/${loanId}/undodisbursal`, {
@@ -3025,6 +3028,9 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
           )}
         </div>
       </div>
+
+      {/* Credit Facility Banner */}
+      {hasCreditFacility && <FacilityBanner fineractLoanId={loanId} fineractClientId={clientId} />}
 
       {/* Quick Stats Cards */}
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
