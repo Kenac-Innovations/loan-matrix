@@ -390,11 +390,14 @@ export default function ReportDetailPage() {
   const exportCSV = () => {
     if (!reportData || !reportData.columnHeaders || !reportData.data) return;
 
-    const headers = reportData.columnHeaders.map((h) => h.columnName).join(",");
+    const visibleIndices = reportData.columnHeaders
+      .map((h, i) => (h.columnName === "row_type" ? -1 : i))
+      .filter((i) => i >= 0);
+    const headers = visibleIndices.map((i) => reportData.columnHeaders[i].columnName).join(",");
     const rows = reportData.data
       .map((item) =>
-        item.row
-          .map((cell: any) => {
+        visibleIndices.map((i) => {
+            const cell = item.row[i];
             if (cell === null || cell === undefined) return "";
             if (
               Array.isArray(cell) &&
@@ -423,6 +426,47 @@ export default function ReportDetailPage() {
     link.download = `${reportName}-report-${
       new Date().toISOString().split("T")[0]
     }.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const exportExcel = async () => {
+    if (!reportData || !reportData.columnHeaders || !reportData.data) return;
+
+    const rowTypeIndex = reportData.columnHeaders.findIndex((h) => h.columnName === "row_type");
+    const visibleIndices = reportData.columnHeaders
+      .map((h, i) => (h.columnName === "row_type" ? -1 : i))
+      .filter((i) => i >= 0);
+    const headers = visibleIndices.map((i) => reportData.columnHeaders[i].columnName);
+    const rows = reportData.data.map((item) => ({
+      row_type: rowTypeIndex >= 0 ? (item.row[rowTypeIndex] as string | null) : null,
+      cells: visibleIndices.map((i) => {
+        const cell = item.row[i];
+        if (cell === null || cell === undefined) return null;
+        if (Array.isArray(cell) && cell.length === 3 && typeof cell[0] === "number") {
+          const [year, month, day] = cell;
+          return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+        }
+        return cell;
+      }),
+    }));
+
+    const res = await fetch("/api/export/excel", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        filename: `${reportName}-${new Date().toISOString().split("T")[0]}`,
+        headers,
+        rows,
+      }),
+    });
+
+    if (!res.ok) return;
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${reportName}-${new Date().toISOString().split("T")[0]}.xlsx`;
     link.click();
     URL.revokeObjectURL(url);
   };
@@ -731,10 +775,16 @@ export default function ReportDetailPage() {
           )}
           <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-end">
             {reportData && (
-              <Button onClick={exportCSV} variant="outline" size="sm">
-                <Download className="h-4 w-4 mr-2" />
-                Export CSV
-              </Button>
+              <>
+                <Button onClick={exportCSV} variant="outline" size="sm">
+                  <Download className="h-4 w-4 mr-2" />
+                  Export CSV
+                </Button>
+                <Button onClick={exportExcel} variant="outline" size="sm">
+                  <Download className="h-4 w-4 mr-2" />
+                  Export Excel
+                </Button>
+              </>
             )}
             <Button
               onClick={runReport}
@@ -787,29 +837,40 @@ export default function ReportDetailPage() {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        {reportData.columnHeaders.map((header, index) => (
-                          <TableHead
-                            key={index}
-                            className="font-medium border-r border-border last:border-r-0"
-                          >
-                            {header.columnName}
-                          </TableHead>
-                        ))}
+                        {reportData.columnHeaders.map((header, index) => {
+                          if (header.columnName === "row_type") return null;
+                          return (
+                            <TableHead
+                              key={index}
+                              className="font-medium border-r border-border last:border-r-0"
+                            >
+                              {header.columnName}
+                            </TableHead>
+                          );
+                        })}
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {reportData.data.slice(0, 100).map((item, rowIndex) => (
-                        <TableRow key={rowIndex}>
-                          {item.row.map((cell, cellIndex) => (
-                            <TableCell
-                              key={cellIndex}
-                              className="border-r border-border last:border-r-0"
-                            >
-                              {formatCellValue(cell)}
-                            </TableCell>
-                          ))}
-                        </TableRow>
-                      ))}
+                      {reportData.data.slice(0, 100).map((item, rowIndex) => {
+                        const rowTypeIndex = reportData.columnHeaders.findIndex(h => h.columnName === "row_type");
+                        const rowType = rowTypeIndex >= 0 ? item.row[rowTypeIndex] : null;
+                        const isBold = rowType === "HEADER" || rowType === "SUBTOTAL" || rowType === "TOTAL";
+                        return (
+                          <TableRow key={rowIndex}>
+                            {item.row.map((cell, cellIndex) => {
+                              if (reportData.columnHeaders[cellIndex]?.columnName === "row_type") return null;
+                              return (
+                                <TableCell
+                                  key={cellIndex}
+                                  className={`border-r border-border last:border-r-0${isBold ? " font-bold" : ""}`}
+                                >
+                                  {formatCellValue(cell)}
+                                </TableCell>
+                              );
+                            })}
+                          </TableRow>
+                        );
+                      })}
                     </TableBody>
                   </Table>
                 </div>
