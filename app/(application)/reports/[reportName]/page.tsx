@@ -788,7 +788,10 @@ export default function ReportDetailPage() {
                     <TableHeader>
                       <TableRow>
                         {reportData.columnHeaders.map((header, index) => (
-                          <TableHead key={index} className="font-medium">
+                          <TableHead
+                            key={index}
+                            className="font-medium border-r border-border last:border-r-0"
+                          >
                             {header.columnName}
                           </TableHead>
                         ))}
@@ -798,7 +801,10 @@ export default function ReportDetailPage() {
                       {reportData.data.slice(0, 100).map((item, rowIndex) => (
                         <TableRow key={rowIndex}>
                           {item.row.map((cell, cellIndex) => (
-                            <TableCell key={cellIndex}>
+                            <TableCell
+                              key={cellIndex}
+                              className="border-r border-border last:border-r-0"
+                            >
                               {formatCellValue(cell)}
                             </TableCell>
                           ))}
