@@ -74,6 +74,7 @@ export function SidebarNav() {
         subMenuItems={[
           { label: "Expected Payments", href: "/collections" },
           { label: "Bulk Receipting", href: "/collections/bulk-receipting" },
+          { label: "Loan Product Eligibility", href: "/collections/loan-product-eligibility" },
         ]}
       />
 
