@@ -4,6 +4,10 @@ import { getTenantFromHeaders } from "@/lib/tenant-service";
 import { getSession } from "@/lib/auth";
 import { fetchFineractAPI } from "@/lib/api";
 import { getOrgDefaultCurrencyCode } from "@/lib/currency-utils";
+import {
+  buildOfficeWhere,
+  getOfficeVisibilityScope,
+} from "@/lib/office-access";
 
 /**
  * GET /api/banks
@@ -21,18 +25,13 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get("status");
     const officeId = searchParams.get("officeId");
 
-    // Build where clause
-    const whereClause: any = {
-      tenantId: tenant.id,
-    };
+    // Always scope to the current user's branch. Admin / Authoriser see all.
+    const scope = await getOfficeVisibilityScope();
+    const extra: Record<string, unknown> = {};
+    if (status) extra.status = status;
+    if (officeId) extra.officeId = parseInt(officeId);
 
-    if (status) {
-      whereClause.status = status;
-    }
-
-    if (officeId) {
-      whereClause.officeId = parseInt(officeId);
-    }
+    const whereClause = buildOfficeWhere(scope, tenant.id, extra);
 
     // Get all banks with allocations and teller counts
     const banks = await prisma.bank.findMany({

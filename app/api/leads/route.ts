@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getTenantBySlug, extractTenantSlugFromRequest } from "@/lib/tenant-service";
 import { getOrgDefaultCurrencyCode } from "@/lib/currency-utils";
+import {
+  buildLeadWhere,
+  getLeadVisibilityScope,
+} from "@/lib/lead-access";
 
 export async function GET(request: NextRequest) {
   try {
@@ -24,18 +28,14 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get("limit") || "50");
     const offset = parseInt(searchParams.get("offset") || "0");
 
-    // Build where clause
-    const where: any = {
-      tenantId: tenant.id,
-    };
+    // Build extra filters; visibility scope is applied via buildLeadWhere so it
+    // cannot be widened by callers.
+    const extra: Record<string, unknown> = {};
+    if (stage) extra.currentStageId = stage;
+    if (status) extra.status = status;
 
-    if (stage) {
-      where.currentStageId = stage;
-    }
-
-    if (status) {
-      where.status = status;
-    }
+    const scope = await getLeadVisibilityScope(tenant.id);
+    const where = buildLeadWhere(scope, tenant.id, extra) as Record<string, unknown>;
 
     // Get leads with related data
     const leads = await prisma.lead.findMany({

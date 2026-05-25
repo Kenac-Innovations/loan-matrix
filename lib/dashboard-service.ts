@@ -1,6 +1,14 @@
 import { fetchFineractAPI } from "@/lib/api";
 import { prisma } from "@/lib/prisma";
 import { DashboardData } from "@/shared/types/dashboard";
+import {
+  getOrCreateDefaultTenant,
+  getTenantFromHeaders,
+} from "@/lib/tenant-service";
+import {
+  buildLeadWhere,
+  getLeadVisibilityScope,
+} from "@/lib/lead-access";
 
 export async function fetchDashboardData(): Promise<DashboardData> {
   try {
@@ -165,33 +173,38 @@ export async function fetchDashboardData(): Promise<DashboardData> {
       });
     }
 
-    // Fetch recent leads from database
+    // Fetch recent leads from database — tenant-scoped and visibility-scoped
+    // (loan officer only sees their own / assigned, branch manager only their
+    // branch, admin sees all).
     let recentLeads: any[] = [];
     try {
-      const draftMaxAge = new Date(Date.now() - 48 * 60 * 60 * 1000);
-      recentLeads = await prisma.lead.findMany({
-        where: {
+      const tenant = (await getTenantFromHeaders()) ?? (await getOrCreateDefaultTenant());
+      if (tenant) {
+        const draftMaxAge = new Date(Date.now() - 48 * 60 * 60 * 1000);
+        const scope = await getLeadVisibilityScope(tenant.id);
+        const where = buildLeadWhere(scope, tenant.id, {
           OR: [
             { status: "SUBMITTED" },
             { status: "DRAFT", createdAt: { gte: draftMaxAge } },
           ],
-        },
-        orderBy: {
-          createdAt: "desc",
-        },
-        take: 10,
-        select: {
-          id: true,
-          firstname: true,
-          lastname: true,
-          requestedAmount: true,
-          loanPurpose: true,
-          status: true,
-          createdAt: true,
-          submittedOnDate: true,
-        },
-      });
-      console.log("Fetched leads from database:", recentLeads.length);
+        });
+        recentLeads = await prisma.lead.findMany({
+          where: where as any,
+          orderBy: { createdAt: "desc" },
+          take: 10,
+          select: {
+            id: true,
+            firstname: true,
+            lastname: true,
+            requestedAmount: true,
+            loanPurpose: true,
+            status: true,
+            createdAt: true,
+            submittedOnDate: true,
+          },
+        });
+        console.log("Fetched leads from database:", recentLeads.length);
+      }
     } catch (error) {
       console.error("Error fetching leads:", error);
       recentLeads = [];

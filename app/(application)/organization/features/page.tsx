@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Card,
   CardContent,
@@ -13,12 +13,19 @@ import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Loader2, AlertCircle, CheckCircle2 } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Loader2, AlertCircle, CheckCircle2, Users } from "lucide-react";
 import {
   setupCreditFacilityDatatables,
   setupCreditFacilityReports,
 } from "@/app/actions/credit-facility-actions";
-import type { TenantFeatures } from "@/shared/types/tenant";
+import type { RoleFeatureOverrides, TenantFeatures } from "@/shared/types/tenant";
 
 interface FeatureConfig {
   key: keyof TenantFeatures;
@@ -110,15 +117,47 @@ const FEATURE_CONFIGS: FeatureConfig[] = [
   },
 ];
 
+interface FineractRole {
+  id: number;
+  name: string;
+  disabled?: boolean;
+}
+
+// Mirror lib/feature-flags.normalizeRoleName so the UI keys match what the API stores.
+function normalizeRoleName(name: string): string {
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ");
+}
+
 export default function FeaturesSettingsPage() {
-  const [features, setFeatures] = useState<TenantFeatures | null>(null);
+  // Global tenant defaults (raw, before any role override is applied).
+  const [globalFeatures, setGlobalFeatures] = useState<TenantFeatures | null>(
+    null
+  );
+  // Per-role overrides keyed by normalized role name.
+  const [roleOverrides, setRoleOverrides] = useState<RoleFeatureOverrides>({});
+  // Available Fineract roles for the per-role dropdown.
+  const [roles, setRoles] = useState<FineractRole[]>([]);
+  const [selectedRoleName, setSelectedRoleName] = useState<string | null>(null);
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<keyof TenantFeatures | null>(null);
+  const [savingOverrideKey, setSavingOverrideKey] = useState<string | null>(
+    null
+  );
   const [error, setError] = useState<string | null>(null);
   const [savedKey, setSavedKey] = useState<keyof TenantFeatures | null>(null);
-  const [setupStatus, setSetupStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
+
+  const [setupStatus, setSetupStatus] = useState<
+    "idle" | "loading" | "success" | "error"
+  >("idle");
   const [setupError, setSetupError] = useState<string | null>(null);
-  const [reportsStatus, setReportsStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
+  const [reportsStatus, setReportsStatus] = useState<
+    "idle" | "loading" | "success" | "error"
+  >("idle");
   const [reportsError, setReportsError] = useState<string | null>(null);
 
   const fetchFeatures = useCallback(async () => {
@@ -126,7 +165,8 @@ export default function FeaturesSettingsPage() {
       const res = await fetch("/api/tenant/features");
       if (!res.ok) throw new Error("Failed to load features");
       const data = await res.json();
-      setFeatures(data.features);
+      setGlobalFeatures(data.global ?? data.features);
+      setRoleOverrides(data.roleFeatureOverrides ?? {});
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");
     } finally {
@@ -134,18 +174,36 @@ export default function FeaturesSettingsPage() {
     }
   }, []);
 
+  const fetchRoles = useCallback(async () => {
+    try {
+      const res = await fetch("/api/tenant/roles");
+      if (!res.ok) return;
+      const data = await res.json();
+      const list: FineractRole[] = Array.isArray(data?.roles) ? data.roles : [];
+      setRoles(list);
+      if (!selectedRoleName && list.length > 0) {
+        setSelectedRoleName(normalizeRoleName(list[0].name));
+      }
+    } catch (err) {
+      console.error("Error loading roles:", err);
+    }
+  }, [selectedRoleName]);
+
   useEffect(() => {
     fetchFeatures();
-  }, [fetchFeatures]);
+    fetchRoles();
+  }, [fetchFeatures, fetchRoles]);
 
-  const handleToggle = async (key: keyof TenantFeatures, value: boolean) => {
-    if (!features) return;
+  // ----- Global toggle handler -----------------------------------------------
+  const handleToggleGlobal = async (
+    key: keyof TenantFeatures,
+    value: boolean
+  ) => {
+    if (!globalFeatures) return;
     setSaving(key);
     setError(null);
-
-    const optimistic = { ...features, [key]: value };
-    setFeatures(optimistic);
-
+    const optimistic = { ...globalFeatures, [key]: value };
+    setGlobalFeatures(optimistic);
     try {
       const res = await fetch("/api/tenant/features", {
         method: "PUT",
@@ -157,17 +215,81 @@ export default function FeaturesSettingsPage() {
         throw new Error(data.error || "Failed to save");
       }
       const data = await res.json();
-      setFeatures(data.features);
+      setGlobalFeatures(data.global ?? data.features);
+      setRoleOverrides(data.roleFeatureOverrides ?? {});
       setSavedKey(key);
       setTimeout(() => setSavedKey(null), 2000);
     } catch (err) {
-      setFeatures({ ...features });
-      setError(err instanceof Error ? err.message : "Failed to save feature flag");
+      setGlobalFeatures({ ...globalFeatures });
+      setError(
+        err instanceof Error ? err.message : "Failed to save feature flag"
+      );
     } finally {
       setSaving(null);
     }
   };
 
+  // ----- Per-role override handler -------------------------------------------
+  /**
+   * `next` semantics:
+   *   - true  -> force-enable this feature for the role
+   *   - false -> force-disable this feature for the role
+   *   - undefined -> inherit (clear the override for this key)
+   */
+  const handleSetOverride = async (
+    roleName: string,
+    key: keyof TenantFeatures,
+    next: boolean | undefined
+  ) => {
+    const normalized = normalizeRoleName(roleName);
+    if (!normalized) return;
+    const overrideKey = `${normalized}:${key}`;
+    setSavingOverrideKey(overrideKey);
+    setError(null);
+
+    // Optimistic local update.
+    const previousOverrides = roleOverrides;
+    const nextOverrides: RoleFeatureOverrides = { ...previousOverrides };
+    const currentForRole = { ...(nextOverrides[normalized] ?? {}) };
+    if (next === undefined) {
+      delete (currentForRole as Record<string, unknown>)[key];
+    } else {
+      (currentForRole as Record<string, boolean>)[key] = next;
+    }
+    if (Object.keys(currentForRole).length === 0) {
+      delete nextOverrides[normalized];
+    } else {
+      nextOverrides[normalized] = currentForRole;
+    }
+    setRoleOverrides(nextOverrides);
+
+    try {
+      // The server normalizes undefined -> "clear" within a Partial<TenantFeatures>.
+      const payloadValue: Record<string, boolean | undefined> = {
+        [key]: next,
+      };
+      const res = await fetch("/api/tenant/features", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          roleFeatureOverrides: { [normalized]: payloadValue },
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to save override");
+      }
+      const data = await res.json();
+      setRoleOverrides(data.roleFeatureOverrides ?? {});
+    } catch (err) {
+      setRoleOverrides(previousOverrides);
+      setError(err instanceof Error ? err.message : "Failed to save override");
+    } finally {
+      setSavingOverrideKey(null);
+    }
+  };
+
+  // ----- Setup actions (unchanged) -------------------------------------------
   const handleSetupDatatables = async () => {
     setSetupStatus("loading");
     setSetupError(null);
@@ -194,6 +316,20 @@ export default function FeaturesSettingsPage() {
     }
   };
 
+  // ----- Derived values for the per-role section -----------------------------
+  const overridesForSelectedRole = useMemo<Partial<TenantFeatures>>(() => {
+    if (!selectedRoleName) return {};
+    return roleOverrides[selectedRoleName] ?? {};
+  }, [roleOverrides, selectedRoleName]);
+
+  const overrideCounts = useMemo(() => {
+    const out: Record<string, number> = {};
+    for (const [role, overrides] of Object.entries(roleOverrides)) {
+      out[role] = Object.keys(overrides).length;
+    }
+    return out;
+  }, [roleOverrides]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16">
@@ -203,11 +339,12 @@ export default function FeaturesSettingsPage() {
   }
 
   return (
-    <div className="max-w-2xl space-y-6">
+    <div className="max-w-3xl space-y-6">
       <div>
         <h1 className="text-xl font-semibold">Feature Flags</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Enable or disable product features for this tenant.
+          Enable or disable product features globally and, optionally, override
+          them per role.
         </p>
       </div>
 
@@ -243,8 +380,12 @@ export default function FeaturesSettingsPage() {
               disabled={setupStatus === "loading"}
               className="shrink-0"
             >
-              {setupStatus === "loading" && <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />}
-              {setupStatus === "success" && <CheckCircle2 className="h-3.5 w-3.5 text-green-500 mr-1.5" />}
+              {setupStatus === "loading" && (
+                <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
+              )}
+              {setupStatus === "success" && (
+                <CheckCircle2 className="h-3.5 w-3.5 text-green-500 mr-1.5" />
+              )}
               {setupStatus === "success" ? "Done" : "Run Setup"}
             </Button>
           </div>
@@ -265,8 +406,12 @@ export default function FeaturesSettingsPage() {
               disabled={reportsStatus === "loading"}
               className="shrink-0"
             >
-              {reportsStatus === "loading" && <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />}
-              {reportsStatus === "success" && <CheckCircle2 className="h-3.5 w-3.5 text-green-500 mr-1.5" />}
+              {reportsStatus === "loading" && (
+                <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
+              )}
+              {reportsStatus === "success" && (
+                <CheckCircle2 className="h-3.5 w-3.5 text-green-500 mr-1.5" />
+              )}
               {reportsStatus === "success" ? "Done" : "Run Setup"}
             </Button>
           </div>
@@ -275,14 +420,15 @@ export default function FeaturesSettingsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-sm font-medium">Products &amp; Modules</CardTitle>
+          <CardTitle className="text-sm font-medium">Products &amp; Modules (Global)</CardTitle>
           <CardDescription className="text-xs">
-            Changes take effect immediately for all users.
+            These flags apply to everyone in the tenant. Use the section below
+            to override individual features for specific roles.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {FEATURE_CONFIGS.map((config) => {
-            const value = features?.[config.key] ?? false;
+            const value = globalFeatures?.[config.key] ?? false;
             const isSaving = saving === config.key;
             const isSaved = savedKey === config.key;
 
@@ -293,7 +439,10 @@ export default function FeaturesSettingsPage() {
               >
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
-                    <Label htmlFor={`feature-${config.key}`} className="text-sm font-medium cursor-pointer">
+                    <Label
+                      htmlFor={`feature-${config.key}`}
+                      className="text-sm font-medium cursor-pointer"
+                    >
                       {config.label}
                     </Label>
                     {config.tag && (
@@ -305,14 +454,20 @@ export default function FeaturesSettingsPage() {
                       <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
                     )}
                   </div>
-                  <p className="text-xs text-muted-foreground mt-0.5">{config.description}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {config.description}
+                  </p>
                 </div>
                 <div className="flex items-center gap-2 shrink-0 pt-0.5">
-                  {isSaving && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
+                  {isSaving && (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                  )}
                   <Switch
                     id={`feature-${config.key}`}
                     checked={value}
-                    onCheckedChange={(checked) => handleToggle(config.key, checked)}
+                    onCheckedChange={(checked) =>
+                      handleToggleGlobal(config.key, checked)
+                    }
                     disabled={isSaving}
                   />
                 </div>
@@ -321,6 +476,199 @@ export default function FeaturesSettingsPage() {
           })}
         </CardContent>
       </Card>
+
+      <RoleOverridesCard
+        roles={roles}
+        selectedRoleName={selectedRoleName}
+        setSelectedRoleName={setSelectedRoleName}
+        overridesForSelectedRole={overridesForSelectedRole}
+        overrideCounts={overrideCounts}
+        globalFeatures={globalFeatures}
+        savingOverrideKey={savingOverrideKey}
+        onSetOverride={handleSetOverride}
+      />
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Per-role override card
+// ---------------------------------------------------------------------------
+
+interface RoleOverridesCardProps {
+  roles: FineractRole[];
+  selectedRoleName: string | null;
+  setSelectedRoleName: (name: string | null) => void;
+  overridesForSelectedRole: Partial<TenantFeatures>;
+  overrideCounts: Record<string, number>;
+  globalFeatures: TenantFeatures | null;
+  savingOverrideKey: string | null;
+  onSetOverride: (
+    roleName: string,
+    key: keyof TenantFeatures,
+    next: boolean | undefined
+  ) => void | Promise<void>;
+}
+
+function RoleOverridesCard(props: RoleOverridesCardProps) {
+  const {
+    roles,
+    selectedRoleName,
+    setSelectedRoleName,
+    overridesForSelectedRole,
+    overrideCounts,
+    globalFeatures,
+    savingOverrideKey,
+    onSetOverride,
+  } = props;
+
+  const selectedRole = roles.find(
+    (r) => normalizeRoleName(r.name) === selectedRoleName
+  );
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <Users className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium">
+              Per-Role Overrides
+            </CardTitle>
+          </div>
+          <div className="flex items-center gap-2">
+            <Select
+              value={selectedRoleName ?? undefined}
+              onValueChange={(v) => setSelectedRoleName(v)}
+            >
+              <SelectTrigger className="w-[220px]">
+                <SelectValue placeholder="Select a role…" />
+              </SelectTrigger>
+              <SelectContent>
+                {roles.map((r) => {
+                  const normalized = normalizeRoleName(r.name);
+                  const count = overrideCounts[normalized] ?? 0;
+                  return (
+                    <SelectItem key={r.id} value={normalized}>
+                      <span className="flex items-center gap-2">
+                        <span>{r.name}</span>
+                        {count > 0 && (
+                          <Badge variant="secondary" className="text-[10px]">
+                            {count} override{count === 1 ? "" : "s"}
+                          </Badge>
+                        )}
+                      </span>
+                    </SelectItem>
+                  );
+                })}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        <CardDescription className="text-xs">
+          Overrides apply on top of the global flags. <strong>Inherit</strong>{" "}
+          uses the global value. <strong>On</strong> force-enables for this
+          role; <strong>Off</strong> force-disables. When a user holds multiple
+          roles the most-permissive value wins.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {!selectedRole && (
+          <p className="text-sm text-muted-foreground">
+            No role selected. {roles.length === 0
+              ? "Roles failed to load — make sure the current user can READ Fineract roles."
+              : "Pick a role from the dropdown to configure overrides."}
+          </p>
+        )}
+
+        {selectedRole &&
+          FEATURE_CONFIGS.map((config) => {
+            const override = overridesForSelectedRole[config.key];
+            const globalValue = globalFeatures?.[config.key] ?? false;
+            const isSaving =
+              savingOverrideKey ===
+              `${normalizeRoleName(selectedRole.name)}:${config.key}`;
+
+            const buttonClasses = (active: boolean) =>
+              active
+                ? "h-7 px-2 text-xs"
+                : "h-7 px-2 text-xs text-muted-foreground";
+
+            return (
+              <div
+                key={config.key}
+                className="flex items-start justify-between gap-4 py-2 border-b last:border-0"
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium">{config.label}</span>
+                    {override === undefined && (
+                      <span className="text-[10px] text-muted-foreground uppercase tracking-wide">
+                        Inheriting {globalValue ? "ON" : "OFF"}
+                      </span>
+                    )}
+                    {override === true && (
+                      <Badge
+                        variant="default"
+                        className="text-[10px] bg-emerald-500 text-white"
+                      >
+                        Force ON
+                      </Badge>
+                    )}
+                    {override === false && (
+                      <Badge variant="destructive" className="text-[10px]">
+                        Force OFF
+                      </Badge>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {config.description}
+                  </p>
+                </div>
+                <div className="flex items-center gap-1 shrink-0 pt-0.5">
+                  {isSaving && (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                  )}
+                  <div className="inline-flex rounded-md border bg-background">
+                    <Button
+                      size="sm"
+                      variant={override === undefined ? "secondary" : "ghost"}
+                      className={buttonClasses(override === undefined)}
+                      onClick={() =>
+                        onSetOverride(selectedRole.name, config.key, undefined)
+                      }
+                      disabled={isSaving}
+                    >
+                      Inherit
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant={override === true ? "secondary" : "ghost"}
+                      className={buttonClasses(override === true)}
+                      onClick={() =>
+                        onSetOverride(selectedRole.name, config.key, true)
+                      }
+                      disabled={isSaving}
+                    >
+                      On
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant={override === false ? "secondary" : "ghost"}
+                      className={buttonClasses(override === false)}
+                      onClick={() =>
+                        onSetOverride(selectedRole.name, config.key, false)
+                      }
+                      disabled={isSaving}
+                    >
+                      Off
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+      </CardContent>
+    </Card>
   );
 }

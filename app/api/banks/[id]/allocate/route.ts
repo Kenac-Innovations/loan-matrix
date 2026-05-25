@@ -3,6 +3,10 @@ import { prisma } from "@/lib/prisma";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
 import { getSession } from "@/lib/auth";
 import { getOrgDefaultCurrencyCode } from "@/lib/currency-utils";
+import {
+  canAccessOffice,
+  getOfficeVisibilityScope,
+} from "@/lib/office-access";
 
 /**
  * POST /api/banks/[id]/allocate
@@ -43,6 +47,12 @@ export async function POST(
     });
 
     if (!bank) {
+      return NextResponse.json({ error: "Bank not found" }, { status: 404 });
+    }
+
+    // Branch users cannot allocate funds to banks from other branches.
+    const scope = await getOfficeVisibilityScope();
+    if (!canAccessOffice(scope, { officeId: bank.officeId })) {
       return NextResponse.json({ error: "Bank not found" }, { status: 404 });
     }
 

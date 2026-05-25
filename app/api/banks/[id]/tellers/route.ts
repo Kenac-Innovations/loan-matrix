@@ -4,6 +4,10 @@ import { getTenantFromHeaders } from "@/lib/tenant-service";
 import { getSession } from "@/lib/auth";
 import { getOrgDefaultCurrencyCode } from "@/lib/currency-utils";
 import { getTellerVaultDisplay } from "@/lib/gl-balance";
+import {
+  canAccessOffice,
+  getOfficeVisibilityScope,
+} from "@/lib/office-access";
 
 /**
  * GET /api/banks/[id]/tellers
@@ -31,6 +35,13 @@ export async function GET(
     });
 
     if (!bank) {
+      return NextResponse.json({ error: "Bank not found" }, { status: 404 });
+    }
+
+    // Branch-scope check: a non-admin user cannot list tellers belonging to
+    // a bank from another branch.
+    const scope = await getOfficeVisibilityScope();
+    if (!canAccessOffice(scope, { officeId: bank.officeId })) {
       return NextResponse.json({ error: "Bank not found" }, { status: 404 });
     }
 

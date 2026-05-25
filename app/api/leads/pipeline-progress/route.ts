@@ -5,6 +5,10 @@ import {
   getOrCreateDefaultTenant,
   extractTenantSlugFromRequest,
 } from "@/lib/tenant-service";
+import {
+  buildLeadWhere,
+  getLeadVisibilityScope,
+} from "@/lib/lead-access";
 
 export async function GET(request: NextRequest) {
   try {
@@ -35,8 +39,13 @@ export async function GET(request: NextRequest) {
     const stageMap = new Map(stages.map((s) => [s.id, s]));
     const stagePositionMap = new Map(nonFinalStages.map((s, i) => [s.id, i]));
 
+    // Apply visibility scope so loan officers don't get progress info on
+    // leads they don't own (otherwise they could probe IDs from the list URL).
+    const scope = await getLeadVisibilityScope(tenant.id);
+    const where = buildLeadWhere(scope, tenant.id, { id: { in: ids } });
+
     const leads = await prisma.lead.findMany({
-      where: { id: { in: ids } },
+      where: where as any,
       select: {
         id: true,
         currentStageId: true,

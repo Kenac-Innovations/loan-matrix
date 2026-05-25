@@ -48,6 +48,8 @@ export async function POST(
     // Resolve current user for required Lead.userId
     const session = await getSession();
     const currentUserId = session?.user?.id || 'system';
+    const currentUserDisplayName =
+      session?.user?.name || session?.user?.email || currentUserId;
 
     const initialStage = await prisma.pipelineStage.findFirst({
       where: { tenantId: app.tenantId, isInitialState: true, isActive: true },
@@ -58,6 +60,7 @@ export async function POST(
       data: {
         tenantId: app.tenantId,
         userId: currentUserId,
+        createdByUserName: currentUserDisplayName,
         currentStageId: initialStage?.id ?? null,
         status: 'DRAFT',
         externalId: app.referenceNumber || app.messageId,

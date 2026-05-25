@@ -4,6 +4,10 @@ import { prisma } from "@/lib/prisma";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
 import { getOrgDefaultCurrencyCode } from "@/lib/currency-utils";
 import { getTellerVaultDisplay } from "@/lib/gl-balance";
+import {
+  buildOfficeWhere,
+  getOfficeVisibilityScope,
+} from "@/lib/office-access";
 
 /**
  * GET /api/tellers
@@ -17,14 +21,32 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url);
-    const officeId = searchParams.get("officeId");
+    const officeIdParam = searchParams.get("officeId");
 
     const orgCurrency = await getOrgDefaultCurrencyCode();
+
+    // Resolve the user's branch scope. Loan officers / branch managers see
+    // only their own office; admins/authorisers see everything.
+    const scope = await getOfficeVisibilityScope();
+
+    // Determine which officeId to pass to Fineract.
+    //   - "all" scope: respect the query-string officeId if provided.
+    //   - "office" scope: always restrict to the user's own office, ignoring
+    //     any officeId the client sent (defence in depth — branch users
+    //     can't peek into other offices by tweaking the URL).
+    let fineractOfficeFilter: number | undefined;
+    if (scope.kind === "office") {
+      fineractOfficeFilter = scope.officeId;
+    } else if (scope.kind === "all" && officeIdParam) {
+      fineractOfficeFilter = parseInt(officeIdParam);
+    } else if (scope.kind === "none") {
+      return NextResponse.json([]);
+    }
 
     // Get tellers from Fineract - this is the source of truth
     const fineractService = await getFineractServiceWithSession();
     const fineractTellers = await fineractService.getTellers(
-      officeId ? parseInt(officeId) : undefined
+      fineractOfficeFilter
     );
 
     console.log("Fineract tellers count:", fineractTellers.length);
@@ -94,12 +116,10 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Now get all database tellers with enrichment data
+    // Now get all database tellers with enrichment data — scoped to the
+    // current user's branch (admins/authorisers see all).
     const dbTellers = await prisma.teller.findMany({
-      where: {
-        tenantId: tenant.id,
-        isActive: true,
-      },
+      where: buildOfficeWhere(scope, tenant.id, { isActive: true }),
       include: {
         bank: {
           select: {

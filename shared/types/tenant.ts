@@ -58,11 +58,31 @@ export interface TenantAutoPopulateFields {
 }
 
 /**
+ * Per-role overrides for feature flags.
+ *
+ * Keyed by normalized role name (lowercase, single-spaced). Each role can
+ * override any subset of `TenantFeatures` — unspecified features inherit
+ * the global tenant value. When a user has multiple roles, the most-
+ * permissive override wins (i.e. a feature is enabled if ANY of the user's
+ * roles enables it, or if the global flag is enabled and no role disables
+ * it).
+ *
+ * Example:
+ *   {
+ *     "loan officer": { ussdLeads: false },
+ *     "branch manager": { aiAssistant: false, reports: true }
+ *   }
+ */
+export type RoleFeatureOverrides = Record<string, Partial<TenantFeatures>>;
+
+/**
  * Tenant settings stored in the database
  */
 export interface TenantSettings {
   theme: string;
   features: TenantFeatures;
+  /** Per-role overrides applied on top of the global `features` map */
+  roleFeatureOverrides?: RoleFeatureOverrides;
   /** How loan interest rates should be displayed in the UI and documents */
   loanTermsInterestRateDisplay?: InterestRateDisplayMode;
   /** Field-level auto-population controls for lead creation */
