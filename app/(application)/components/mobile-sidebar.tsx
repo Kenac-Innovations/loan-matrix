@@ -272,6 +272,16 @@ export function MobileSidebar({ userProfileData, tenantLogoUrl }: MobileSidebarP
                   >
                     Bulk Receipting
                   </Link>
+                  <Link
+                    href="/collections/loan-product-eligibility"
+                    className={`flex items-center gap-3 rounded-md px-3 py-2 text-xs font-medium ${
+                      pathname === "/collections/loan-product-eligibility"
+                        ? iconColorActive
+                        : `${iconColor} hover:${textColor}`
+                    }`}
+                  >
+                    Loan Product Eligibility
+                  </Link>
                 </div>
               )}
             </div>

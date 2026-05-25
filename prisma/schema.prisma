@@ -910,6 +910,45 @@ model BulkRepaymentItem {
   @@index([loanId])
 }
 
+model LoanEligibilityUpload {
+  id                String                    @id @default(cuid())
+  tenantId          String
+  fileName          String
+  productExternalId String
+  productName       String
+  uploadedBy        String
+  status            String                    @default("STAGING") // STAGING, SYNCING, SYNCED, FAILED
+  totalRows         Int                       @default(0)
+  syncedRows        Int                       @default(0)
+  failedRows        Int                       @default(0)
+  syncError         String?
+  createdAt         DateTime                  @default(now())
+  updatedAt         DateTime                  @updatedAt
+  items             LoanEligibilityUploadItem[]
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, productExternalId])
+  @@index([tenantId, status])
+}
+
+model LoanEligibilityUploadItem {
+  id              String              @id @default(cuid())
+  uploadId        String
+  upload          LoanEligibilityUpload @relation(fields: [uploadId], references: [id], onDelete: Cascade)
+  rowNumber       Int
+  name            String
+  nrc             String
+  phone           String
+  normalizedPhone String
+  status          String              @default("PENDING") // PENDING, SYNCED, FAILED
+  errorMessage    String?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  @@index([uploadId, status])
+  @@index([uploadId, normalizedPhone])
+}
+
 model ReceiptRange {
   id         String   @id @default(cuid())
   tenantId   String
