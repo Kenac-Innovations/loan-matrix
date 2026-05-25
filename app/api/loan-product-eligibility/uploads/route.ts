@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
-import { Prisma } from "@prisma/client";
+import { Prisma } from "@/app/generated/prisma";
 import { z } from "zod";
 import prisma from "@/lib/prisma";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
