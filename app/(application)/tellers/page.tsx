@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import { Plus, Download } from "lucide-react";
+import { Plus, Download, Building2 } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -7,11 +7,17 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { TellersTable } from "./components/tellers-table";
+import { getOfficeVisibilityScope } from "@/lib/office-access";
 
-export default function TellersPage() {
+export default async function TellersPage() {
+  const scope = await getOfficeVisibilityScope();
+  const scopedToBranch = scope.kind === "office";
+  const titleSuffix = scopedToBranch ? ` — ${scope.officeName}` : "";
+
   return (
     <div className="space-y-8">
       {/* Header */}
@@ -41,10 +47,19 @@ export default function TellersPage() {
       {/* Tellers Table */}
       <Card>
         <CardHeader>
-          <CardTitle>All Tellers</CardTitle>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <CardTitle>All Tellers{titleSuffix}</CardTitle>
+            {scopedToBranch && (
+              <Badge variant="outline" className="gap-1 text-xs font-normal">
+                <Building2 className="h-3 w-3" />
+                Branch view: {scope.officeName}
+              </Badge>
+            )}
+          </div>
           <CardDescription>
-            Manage tellers, assign cashiers, allocate cash, and process
-            settlements
+            {scopedToBranch
+              ? `Showing tellers assigned to ${scope.officeName}. Other branches are not visible to your role.`
+              : "Manage tellers, assign cashiers, allocate cash, and process settlements"}
           </CardDescription>
         </CardHeader>
         <CardContent>

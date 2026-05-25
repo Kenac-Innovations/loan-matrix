@@ -586,22 +586,11 @@ export function LeadsStatusTabs() {
     return { type: "all" as const, label: "All Leads" };
   }, [session, useOmamaOfficeAdminDashboard, isAdminUser, hasRole, userOfficeName, userName]);
 
-  // Filter data based on user's role scope
-  const getRoleScopedData = useCallback((data: any[]): any[] => {
-    if (!data || userFilterScope.type === "all") return data;
-    
-    return data.filter((row) => {
-      if (userFilterScope.type === "branch") {
-        const branch = row.branch || row.Branch || row.office || row.Office || "";
-        return String(branch).trim().toLowerCase() === String(userFilterScope.value).trim().toLowerCase();
-      }
-      if (userFilterScope.type === "user") {
-        const submittedBy = row.submitted_by || row.created_by || row["Submitted By"] || row["Created By"] || row.loan_officer || "";
-        return String(submittedBy).toLowerCase().includes(String(userFilterScope.value).toLowerCase());
-      }
-      return true;
-    });
-  }, [userFilterScope]);
+  // Server-side enforcement (lib/lead-access.ts) is the source of truth for
+  // which rows the user is allowed to see. `userFilterScope` is now only used
+  // for the visible "My Leads" / "Branch" label; we no longer client-filter
+  // the data so this is effectively an identity function.
+  const getRoleScopedData = useCallback((data: any[]): any[] => data ?? [], []);
 
   // Debug: Log role detection
   useEffect(() => {

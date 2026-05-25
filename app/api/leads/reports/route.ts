@@ -9,6 +9,13 @@ import {
   matchesOfficeName,
   shouldUseOmamaOfficeAdminDashboard,
 } from "@/lib/omama-office-admin";
+import {
+  buildLeadWhere,
+  getLeadVisibilityScope,
+  isReportRowVisible,
+  type LeadAccessFields,
+  type LeadVisibilityScope,
+} from "@/lib/lead-access";
 
 /**
  * GET /api/leads/reports
@@ -79,6 +86,11 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // Resolve the current user's lead-visibility scope once (cached per request).
+    const visibilityScope: LeadVisibilityScope | null = tenant?.id
+      ? await getLeadVisibilityScope(tenant.id)
+      : null;
+
     // Handle drafts from local database
     if (report === "drafts") {
       return await getDraftsFromLocalDB({
@@ -88,6 +100,7 @@ export async function GET(request: NextRequest) {
         tenantSlug,
         allowOpenDateRange,
         officeNameFilter: officeAdminOfficeName,
+        visibilityScope,
       });
     }
 
@@ -138,6 +151,8 @@ export async function GET(request: NextRequest) {
 
         if (loanIds.length > 0 || externalIds.length > 0) {
           // Look up local leads by fineractLoanId OR by lead ID (external_id from Fineract report)
+          // Include userId / assignedToUserId / officeName so we can apply
+          // visibility scope filtering to the rows we ultimately return.
           const leads = await prisma.lead.findMany({
             where: {
               tenantId: tenant.id,
@@ -151,6 +166,9 @@ export async function GET(request: NextRequest) {
               fineractLoanId: true,
               preferredPaymentMethod: true,
               facilityType: true,
+              userId: true,
+              assignedToUserId: true,
+              officeName: true,
             },
           });
 
@@ -254,6 +272,28 @@ export async function GET(request: NextRequest) {
             return enrichedRow;
           });
 
+          // Apply lead-visibility scope (loan officer / branch manager / admin).
+          // Done after enrichment so we can use the resolved local lead's
+          // userId / assignedToUserId / officeName to make the decision.
+          if (visibilityScope && visibilityScope.kind !== "all") {
+            result = result.filter((row: any) => {
+              const rowLoanId = row.loan_id != null ? Number(row.loan_id) : null;
+              const rowExternalId =
+                row.external_id || row.client_external_id || row.lead_id || null;
+              let resolvedLead = rowLoanId
+                ? leadByFineractLoanId.get(rowLoanId) ?? null
+                : null;
+              if (!resolvedLead && rowExternalId) {
+                resolvedLead = leadByIdMap.get(String(rowExternalId)) || null;
+              }
+              return isReportRowVisible(
+                visibilityScope,
+                (resolvedLead as LeadAccessFields | null) ?? null,
+                row
+              );
+            });
+          }
+
           if (officeAdminOfficeName) {
             result = result.filter((row: any) =>
               matchesOfficeName(
@@ -267,6 +307,16 @@ export async function GET(request: NextRequest) {
         } else {
           // No local leads found — still add payment_type/facility_type columns so they're visible
           result = result.map((row: any) => ({ ...row, payment_type: null, facility_type: null }));
+
+          // Apply visibility scope when no local leads were resolvable.
+          // For "creator" scope this drops everything; for "branch" scope we
+          // fall back to the report's branch column.
+          if (visibilityScope && visibilityScope.kind !== "all") {
+            result = result.filter((row: any) =>
+              isReportRowVisible(visibilityScope, null, row)
+            );
+          }
+
           if (officeAdminOfficeName) {
             result = result.filter((row: any) =>
               matchesOfficeName(
@@ -282,6 +332,21 @@ export async function GET(request: NextRequest) {
     // Ensure payment_type column is always present even if enrichment was skipped
     if (result.length > 0 && !("payment_type" in result[0])) {
       result = result.map((row: any) => ({ ...row, payment_type: null }));
+    }
+
+    // Final defense-in-depth: if enrichment was skipped entirely (no loanIds /
+    // externalIds extracted) loan officers should not see any rows since we
+    // can't prove ownership. For branch scope we fall back to the report's
+    // branch column.
+    if (
+      result.length > 0 &&
+      visibilityScope &&
+      visibilityScope.kind !== "all" &&
+      !("lead_id" in result[0])
+    ) {
+      result = result.filter((row: any) =>
+        isReportRowVisible(visibilityScope, null, row)
+      );
     }
 
     if (officeAdminOfficeName && report !== "drafts") {
@@ -326,6 +391,7 @@ async function getDraftsFromLocalDB({
   tenantSlug,
   allowOpenDateRange,
   officeNameFilter,
+  visibilityScope,
 }: {
   startDate: string | null;
   endDate: string | null;
@@ -333,6 +399,7 @@ async function getDraftsFromLocalDB({
   tenantSlug: string;
   allowOpenDateRange: boolean;
   officeNameFilter?: string | null;
+  visibilityScope?: LeadVisibilityScope | null;
 }) {
   try {
     if (!tenantId) {
@@ -401,16 +468,26 @@ async function getDraftsFromLocalDB({
       };
     }
 
+    const draftsExtra: Record<string, unknown> = {
+      loanSubmittedToFineract: false,
+      status: "DRAFT",
+    };
+    if (officeNameFilter) {
+      draftsExtra.officeName = { equals: officeNameFilter, mode: "insensitive" };
+    }
+    if (createdAtFilter) {
+      draftsExtra.createdAt = createdAtFilter;
+    }
+
+    // Layer the user's visibility scope on top (loan officers only see their
+    // own / assigned drafts; branch managers only their branch). If we have
+    // no scope (caller didn't pass one), default to tenant-only filtering.
+    const draftsWhere = visibilityScope
+      ? (buildLeadWhere(visibilityScope, tenantId, draftsExtra) as Record<string, unknown>)
+      : { tenantId, ...draftsExtra };
+
     const drafts = await prisma.lead.findMany({
-      where: {
-        tenantId,
-        loanSubmittedToFineract: false,
-        status: "DRAFT",
-        ...(officeNameFilter
-          ? { officeName: { equals: officeNameFilter, mode: "insensitive" } }
-          : {}),
-        ...(createdAtFilter ? { createdAt: createdAtFilter } : {}),
-      },
+      where: draftsWhere as any,
       orderBy: { createdAt: "desc" },
       select: {
         id: true,

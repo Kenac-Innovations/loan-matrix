@@ -5,6 +5,10 @@ import { getSession } from "@/lib/auth";
 import { fetchFineractAPI } from "@/lib/api";
 import { getOrgDefaultCurrencyCode } from "@/lib/currency-utils";
 import { getTellerVaultDisplay } from "@/lib/gl-balance";
+import {
+  canAccessOffice,
+  getOfficeVisibilityScope,
+} from "@/lib/office-access";
 
 /**
  * GET /api/banks/[id]
@@ -51,6 +55,14 @@ export async function GET(
     });
 
     if (!bank) {
+      return NextResponse.json({ error: "Bank not found" }, { status: 404 });
+    }
+
+    // Enforce branch scoping: a non-admin viewing a bank that belongs to
+    // another branch gets a 404 — mirroring "not found" rather than leaking
+    // the bank's existence.
+    const scope = await getOfficeVisibilityScope();
+    if (!canAccessOffice(scope, { officeId: bank.officeId })) {
       return NextResponse.json({ error: "Bank not found" }, { status: 404 });
     }
 
@@ -225,6 +237,12 @@ export async function PUT(
       return NextResponse.json({ error: "Bank not found" }, { status: 404 });
     }
 
+    // Branch users can't edit banks belonging to a different branch.
+    const scope = await getOfficeVisibilityScope();
+    if (!canAccessOffice(scope, { officeId: existingBank.officeId })) {
+      return NextResponse.json({ error: "Bank not found" }, { status: 404 });
+    }
+
     // Check if code is being changed to an existing code
     if (code && code.toUpperCase() !== existingBank.code) {
       const codeExists = await prisma.bank.findFirst({
@@ -295,6 +313,18 @@ export async function DELETE(
 
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    // Block cross-branch deletes.
+    const existingBank = await prisma.bank.findFirst({
+      where: { id, tenantId: tenant.id },
+    });
+    if (!existingBank) {
+      return NextResponse.json({ error: "Bank not found" }, { status: 404 });
+    }
+    const scope = await getOfficeVisibilityScope();
+    if (!canAccessOffice(scope, { officeId: existingBank.officeId })) {
+      return NextResponse.json({ error: "Bank not found" }, { status: 404 });
     }
 
     // Check if bank has active tellers

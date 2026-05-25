@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import {
+  decideLeadAccess,
+  getLeadVisibilityScope,
+} from "@/lib/lead-access";
 
 export async function GET(
   request: NextRequest,
@@ -44,6 +48,16 @@ export async function GET(
       return NextResponse.json({ error: "Lead not found" }, { status: 404 });
     }
 
+    // Determine the current user's access level for this lead. Out-of-scope
+    // users still get the lead back (read-only fallback per product spec) but
+    // can use the `access` block to render a banner / hide edit controls.
+    const accessScope = lead.tenantId
+      ? await getLeadVisibilityScope(lead.tenantId)
+      : null;
+    const accessDecision = accessScope
+      ? decideLeadAccess(accessScope, lead)
+      : { level: "full" as const };
+
     // Fetch tenant settings for email-optional check
     const tenant = lead.tenantId
       ? await prisma.tenant.findUnique({
@@ -65,6 +79,7 @@ export async function GET(
     // Format the response with additional computed fields
     const response = {
       ...lead,
+      access: accessDecision,
       computed: {
         timeInCurrentStage: Math.floor(
           timeInCurrentStage / (1000 * 60 * 60 * 24)
@@ -106,6 +121,31 @@ export async function PUT(
     const { id } = await params;
 
     const body = await request.json();
+
+    // Access check: block out-of-scope users from mutating the lead, even
+    // though they can fetch it read-only via GET.
+    const existing = await prisma.lead.findUnique({
+      where: { id },
+      select: {
+        tenantId: true,
+        userId: true,
+        assignedToUserId: true,
+        officeName: true,
+      },
+    });
+    if (!existing) {
+      return NextResponse.json({ error: "Lead not found" }, { status: 404 });
+    }
+    if (existing.tenantId) {
+      const scope = await getLeadVisibilityScope(existing.tenantId);
+      const decision = decideLeadAccess(scope, existing);
+      if (decision.level !== "full") {
+        return NextResponse.json(
+          { error: "You do not have permission to edit this lead." },
+          { status: 403 }
+        );
+      }
+    }
 
     // Update lead by ID (without tenant filter to support cross-tenant client-side fetches)
     const updatedLead = await prisma.lead.update({
@@ -154,12 +194,30 @@ export async function PATCH(
     // Find the lead first (without tenant filter to avoid issues)
     const lead = await prisma.lead.findUnique({
       where: { id: leadId },
-      select: { id: true, tenantId: true },
+      select: {
+        id: true,
+        tenantId: true,
+        userId: true,
+        assignedToUserId: true,
+        officeName: true,
+      },
     });
 
     if (!lead) {
       console.error("Lead not found:", leadId);
       return NextResponse.json({ error: "Lead not found" }, { status: 404 });
+    }
+
+    // Access check: block out-of-scope users from mutating the lead.
+    if (lead.tenantId) {
+      const scope = await getLeadVisibilityScope(lead.tenantId);
+      const decision = decideLeadAccess(scope, lead);
+      if (decision.level !== "full") {
+        return NextResponse.json(
+          { error: "You do not have permission to edit this lead." },
+          { status: 403 }
+        );
+      }
     }
 
     console.log("Lead found, updating...");

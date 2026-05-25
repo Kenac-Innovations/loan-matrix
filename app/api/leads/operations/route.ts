@@ -541,6 +541,8 @@ async function handleSaveDraft(data: any, leadId?: string) {
       const newLead = await prisma.lead.create({
         data: {
           userId,
+          createdByUserName:
+            session.user.name || session.user.email || userId,
           tenantId,
           currentStageId: initialStageId,
           officeId: validatedData.officeId,
@@ -1479,6 +1481,8 @@ async function handleCreateLeadForExistingClient(data: any) {
     const newLead = await prisma.lead.create({
       data: {
         userId: session.user.id,
+        createdByUserName:
+          session.user.name || session.user.email || session.user.id,
         tenantId: currentTenant.id,
         currentStageId: initialStageId,
         officeId: client.officeId,

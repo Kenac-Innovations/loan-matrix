@@ -11,6 +11,10 @@ import { UssdLeadsMetrics, UssdLoanApplication } from "./ussd-leads-actions";
 import { Lead, PipelineStage } from "@/shared/types/lead";
 import { getSession } from "@/lib/auth";
 import { getFineractTenantId } from "@/lib/fineract-tenant-service";
+import {
+  buildLeadWhere,
+  getLeadVisibilityScope,
+} from "@/lib/lead-access";
 
 const FINERACT_BASE_URL = process.env.FINERACT_BASE_URL || "http://10.10.0.143";
 
@@ -90,14 +94,13 @@ export async function getLeadsMetricsOnly(
       throw new Error("Tenant not found");
     }
 
-    // Build where clause
-    const where: any = {
-      tenantId: tenant.id,
-    };
-
+    // Build where clause — always scope to current user's role.
+    const scope = await getLeadVisibilityScope(tenant.id);
+    const extra: Record<string, unknown> = {};
     if (assignedToUserId) {
-      where.assignedToUserId = assignedToUserId;
+      extra.assignedToUserId = assignedToUserId;
     }
+    const where = buildLeadWhere(scope, tenant.id, extra);
 
     // Get total count
     const totalLeads = await prisma.lead.count({ where });
@@ -172,15 +175,14 @@ export async function getLeadsData(
     status?: string;
     limit?: number;
     offset?: number;
-    assignedToUserId?: number; // Filter by assigned user ID (for Loan Officers)
-    loanOfficerFilter?: { oderId: number; userIdString: string }; // Filter for loan officers (created OR assigned)
+    assignedToUserId?: number; // Filter by assigned user ID (legacy single-filter)
     skipFineractStatus?: boolean; // Skip slow Fineract status lookups for faster loading
     search?: string; // Text search for client name
     leadStatus?: string; // Filter by Fineract loan status
   } = {}
 ): Promise<LeadsData> {
   try {
-    const { stage, status, limit = 50, offset = 0, assignedToUserId, loanOfficerFilter, skipFineractStatus = false, search, leadStatus } = options;
+    const { stage, status, limit = 50, offset = 0, assignedToUserId, skipFineractStatus = false, search, leadStatus } = options;
 
     // Get tenant - prefer headers for consistency with API routes
     let tenant = await getTenantFromHeaders();
@@ -195,54 +197,27 @@ export async function getLeadsData(
       throw new Error("Tenant not found");
     }
 
-    // Build where clause
-    const where: any = {
-      tenantId: tenant.id,
-    };
+    // Build extra filters first; visibility scope is layered on by buildLeadWhere
+    // so it cannot be widened by callers.
+    const extra: Record<string, unknown> = {};
+    if (stage) extra.currentStageId = stage;
+    if (status) extra.status = status;
+    if (assignedToUserId) extra.assignedToUserId = assignedToUserId;
 
-    if (stage) {
-      where.currentStageId = stage;
-    }
-
-    if (status) {
-      where.status = status;
-    }
-
-    // Filter by assigned user ID if provided (legacy single filter)
-    if (assignedToUserId) {
-      where.assignedToUserId = assignedToUserId;
-    }
-
-    // Loan officer filter: see leads they created OR leads assigned to them
-    if (loanOfficerFilter) {
-      const { oderId, userIdString } = loanOfficerFilter;
-      where.OR = [
-        { userId: userIdString }, // Leads they created
-        { assignedToUserId: oderId }, // Leads assigned to them
-      ];
-    }
-
-    // Text search for client name, ID, or phone
+    // Text search for client name, ID, or phone — must be OR-combined with the
+    // visibility scope's OR via AND. We add it to `extra.OR` and let
+    // buildLeadWhere() do the AND-combination.
     if (search && search.length >= 2) {
-      // If we already have an OR clause (from loanOfficerFilter), we need to use AND
-      const searchConditions = [
+      extra.OR = [
         { firstname: { contains: search, mode: "insensitive" } },
         { lastname: { contains: search, mode: "insensitive" } },
         { externalId: { contains: search, mode: "insensitive" } },
         { mobileNo: { contains: search, mode: "insensitive" } },
       ];
-
-      if (where.OR) {
-        // Combine loan officer filter with search using AND
-        where.AND = [
-          { OR: where.OR },
-          { OR: searchConditions },
-        ];
-        delete where.OR;
-      } else {
-        where.OR = searchConditions;
-      }
     }
+
+    const scope = await getLeadVisibilityScope(tenant.id);
+    const where = buildLeadWhere(scope, tenant.id, extra) as Record<string, unknown>;
 
     // Get leads with related data
     const leads = await prisma.lead.findMany({

@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
+import {
+  buildLeadWhere,
+  getLeadVisibilityScope,
+} from "@/lib/lead-access";
 
 /**
  * GET /api/leads/search-by-external-id?externalId={externalId}
@@ -26,16 +30,18 @@ export async function GET(request: Request) {
       );
     }
 
+    // Apply visibility scope so loan officers don't discover colleagues' leads
+    // via this search endpoint.
+    const scope = await getLeadVisibilityScope(tenant.id);
+    const where = buildLeadWhere(scope, tenant.id, {
+      externalId,
+      // Only get leads that have been created in Fineract (have fineractClientId)
+      fineractClientId: { not: null },
+    });
+
     // Search for leads with the given external ID
     const leads = await prisma.lead.findMany({
-      where: {
-        tenantId: tenant.id,
-        externalId: externalId,
-        // Only get leads that have been created in Fineract (have fineractClientId)
-        fineractClientId: {
-          not: null,
-        },
-      },
+      where: where as any,
       select: {
         id: true,
         externalId: true,

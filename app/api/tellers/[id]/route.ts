@@ -4,6 +4,10 @@ import { prisma } from "@/lib/prisma";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
 import { getOrgDefaultCurrencyCode } from "@/lib/currency-utils";
 import { getTellerVaultDisplay } from "@/lib/gl-balance";
+import {
+  canAccessOffice,
+  getOfficeVisibilityScope,
+} from "@/lib/office-access";
 
 /**
  * GET /api/tellers/[id]
@@ -133,6 +137,13 @@ export async function GET(
       return NextResponse.json({ error: "Teller not found" }, { status: 404 });
     }
 
+    // Enforce branch scoping: branch users cannot view a teller belonging to
+    // another office. Return 404 (not 403) so we don't leak existence.
+    const scope = await getOfficeVisibilityScope();
+    if (!canAccessOffice(scope, { officeId: dbTeller.officeId })) {
+      return NextResponse.json({ error: "Teller not found" }, { status: 404 });
+    }
+
     // Vault & available balance come *only* from the Fineract GL account.
     // When the GL is missing or Fineract is unreachable we return nulls so the
     // UI can render NaN ("—") rather than a blended/local value.
@@ -251,6 +262,12 @@ export async function PUT(
       return NextResponse.json({ error: "Teller not found" }, { status: 404 });
     }
 
+    // Branch users cannot edit tellers belonging to another office.
+    const scope = await getOfficeVisibilityScope();
+    if (!canAccessOffice(scope, { officeId: dbTeller.officeId })) {
+      return NextResponse.json({ error: "Teller not found" }, { status: 404 });
+    }
+
     // Update in Fineract if we have the ID
     if (dbTeller.fineractTellerId) {
       const fineractService = await getFineractServiceWithSession();
@@ -318,6 +335,12 @@ export async function DELETE(
     }
 
     if (!dbTeller) {
+      return NextResponse.json({ error: "Teller not found" }, { status: 404 });
+    }
+
+    // Branch users cannot delete tellers belonging to another office.
+    const scope = await getOfficeVisibilityScope();
+    if (!canAccessOffice(scope, { officeId: dbTeller.officeId })) {
       return NextResponse.json({ error: "Teller not found" }, { status: 404 });
     }
 

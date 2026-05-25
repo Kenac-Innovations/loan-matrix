@@ -13,6 +13,7 @@ import {
   UserX,
   CheckCircle2,
   XCircle,
+  Lock,
 } from "lucide-react";
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
@@ -27,6 +28,11 @@ import {
 import { canPrintLoanContract } from "@/lib/loan-contract-print";
 import { getFacilityLoanLink } from "@/lib/fineract-credit-facility";
 import { isCreditFacilityEnabled } from "@/lib/tenant-features";
+import {
+  decideLeadAccess,
+  describeLeadAccess,
+  getLeadVisibilityScope,
+} from "@/lib/lead-access";
 
 const FINERACT_BASE_URL = process.env.FINERACT_BASE_URL || "http://10.10.0.143";
 
@@ -425,7 +431,23 @@ export default async function LeadDetailPage({
     currentUserId != null &&
     lead?.assignedToUserId != null &&
     String(lead.assignedToUserId) === currentUserId;
-  const isReadOnly = !isAssignedUser;
+
+  // Role-based visibility check (loan officer / branch manager / admin). If the
+  // user has read-only access we still render the page but show a banner.
+  let accessBannerMessage: string | null = null;
+  let isReadOnlyFromAccess = false;
+  if (lead?.tenantId) {
+    const scope = await getLeadVisibilityScope(lead.tenantId);
+    const accessDecision = decideLeadAccess(scope, lead);
+    if (accessDecision.level !== "full") {
+      isReadOnlyFromAccess = true;
+      accessBannerMessage = describeLeadAccess(accessDecision);
+    }
+  }
+
+  // Existing rule: only the assignee can edit. Combine with role-based access
+  // so out-of-scope viewers also land in read-only mode.
+  const isReadOnly = !isAssignedUser || isReadOnlyFromAccess;
   const canEditPendingLoanTerms =
     isPendingLoanApplicationEditTenant(tenantSlug) &&
     canEditPendingLoanApplication(session, fineractLoanStatus);
@@ -486,6 +508,17 @@ export default async function LeadDetailPage({
           <span className="text-muted-foreground/50">/</span>
           <span className="text-foreground font-medium">Lead #{id}</span>
         </nav>
+
+        {/* Read-only access banner (e.g. loan officer viewing a colleague's lead) */}
+        {accessBannerMessage && (
+          <div
+            role="status"
+            className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-200 sm:text-sm"
+          >
+            <Lock className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>{accessBannerMessage}</span>
+          </div>
+        )}
 
         {/* Header */}
         <div className="flex items-start gap-3">

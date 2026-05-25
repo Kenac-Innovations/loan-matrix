@@ -87,6 +87,8 @@ export async function autoSaveField(
       throw new Error("User not authenticated");
     }
     const userId = session.user.id;
+    const createdByUserName =
+      session.user.name || session.user.email || userId;
 
     let tenantId: string;
     const tenant = await getTenantFromHeaders();
@@ -238,6 +240,7 @@ export async function autoSaveField(
         const lead = await prisma.lead.create({
           data: {
             userId,
+            createdByUserName,
             tenantId,
             currentStageId: initialStage?.id ?? null,
             officeId: validatedData.officeId || null,
@@ -294,6 +297,7 @@ export async function autoSaveField(
           // Use type assertion to bypass TypeScript's type checking
           const leadData = {
             userId,
+            createdByUserName,
             tenantId,
             currentStageId: initialStage?.id ?? null,
             officeId: validatedData.officeId || null,
