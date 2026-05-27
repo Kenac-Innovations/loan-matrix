@@ -16,6 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { AlertCircle, Loader2 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { ClientEditFormSkeleton } from "./client-edit-form-skeleton";
 
 interface FineractClient {
   id: number;
@@ -73,9 +74,13 @@ interface Staff {
 
 interface ClientEditFormProps {
   clientId: number;
+  canEditClient: boolean;
 }
 
-export function ClientEditForm({ clientId }: ClientEditFormProps) {
+export function ClientEditForm({
+  clientId,
+  canEditClient,
+}: ClientEditFormProps) {
   const router = useRouter();
   const [client, setClient] = useState<FineractClient | null>(null);
   const [offices, setOffices] = useState<Office[]>([]);
@@ -205,6 +210,11 @@ export function ClientEditForm({ clientId }: ClientEditFormProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!canEditClient) {
+      setError("You do not have permission to update this client");
+      return;
+    }
     
     // Basic validation
     if (!formData.firstname.trim() || !formData.lastname.trim()) {
@@ -262,27 +272,8 @@ export function ClientEditForm({ clientId }: ClientEditFormProps) {
     }
   };
 
-  const formatDateForDisplay = (dateString: string) => {
-    if (!dateString) return "";
-    const date = new Date(dateString);
-    return date.toLocaleDateString("en-US", {
-      month: "numeric",
-      day: "numeric", 
-      year: "numeric"
-    });
-  };
-
   if (loading) {
-    return (
-      <Card>
-        <CardContent className="p-6">
-          <div className="flex items-center justify-center">
-            <Loader2 className="h-6 w-6 animate-spin" />
-            <span className="ml-2">Loading client details...</span>
-          </div>
-        </CardContent>
-      </Card>
-    );
+    return <ClientEditFormSkeleton />;
   }
 
   if (error && !client) {
@@ -323,7 +314,7 @@ export function ClientEditForm({ clientId }: ClientEditFormProps) {
               <div className="space-y-2">
                 <Label htmlFor="office">Office</Label>
                 <Select value={formData.officeId} onValueChange={(value) => handleInputChange("officeId", value)}>
-                  <SelectTrigger>
+                  <SelectTrigger className="w-full">
                     <SelectValue placeholder="Select office" />
                   </SelectTrigger>
                   <SelectContent>
@@ -339,7 +330,7 @@ export function ClientEditForm({ clientId }: ClientEditFormProps) {
               <div className="space-y-2">
                 <Label htmlFor="legalForm">Legal Form</Label>
                 <Select value={formData.legalForm} onValueChange={(value) => handleInputChange("legalForm", value)}>
-                  <SelectTrigger>
+                  <SelectTrigger className="w-full">
                     <SelectValue placeholder="Select legal form" />
                   </SelectTrigger>
                   <SelectContent>
@@ -403,7 +394,7 @@ export function ClientEditForm({ clientId }: ClientEditFormProps) {
               <div className="space-y-2">
                 <Label htmlFor="gender">Gender</Label>
                 <Select value={formData.gender} onValueChange={(value) => handleInputChange("gender", value)}>
-                  <SelectTrigger>
+                  <SelectTrigger className="w-full">
                     <SelectValue placeholder="Select gender" />
                   </SelectTrigger>
                   <SelectContent>
@@ -439,7 +430,7 @@ export function ClientEditForm({ clientId }: ClientEditFormProps) {
               <div className="space-y-2">
                 <Label htmlFor="staffId">Staff</Label>
                 <Select value={formData.staffId} onValueChange={(value) => handleInputChange("staffId", value)}>
-                  <SelectTrigger>
+                  <SelectTrigger className="w-full">
                     <SelectValue placeholder="Select staff" />
                   </SelectTrigger>
                   <SelectContent>
@@ -475,7 +466,7 @@ export function ClientEditForm({ clientId }: ClientEditFormProps) {
               <div className="space-y-2">
                 <Label htmlFor="clientClassification">Client Classification</Label>
                 <Select value={formData.clientClassification} onValueChange={(value) => handleInputChange("clientClassification", value)}>
-                  <SelectTrigger>
+                  <SelectTrigger className="w-full">
                     <SelectValue placeholder="Select classification" />
                   </SelectTrigger>
                   <SelectContent>
@@ -490,7 +481,7 @@ export function ClientEditForm({ clientId }: ClientEditFormProps) {
               <div className="space-y-2">
                 <Label htmlFor="clientType">Client Type</Label>
                 <Select value={formData.clientType} onValueChange={(value) => handleInputChange("clientType", value)}>
-                  <SelectTrigger>
+                  <SelectTrigger className="w-full">
                     <SelectValue placeholder="Select client type" />
                   </SelectTrigger>
                   <SelectContent>
@@ -534,10 +525,12 @@ export function ClientEditForm({ clientId }: ClientEditFormProps) {
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={saving}>
-                {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                Submit
-              </Button>
+              {canEditClient && (
+                <Button type="submit" disabled={saving}>
+                  {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                  Submit
+                </Button>
+              )}
             </div>
           </CardContent>
         </Card>
