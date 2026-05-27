@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchFineractAPI } from "@/lib/api";
+import { hasSuperAdminServer } from "@/lib/authorization";
 
 export async function GET(
   request: NextRequest,
@@ -15,7 +16,7 @@ export async function GET(
 
     const data = await fetchFineractAPI(`/clients/${clientId}`);
     return NextResponse.json(data);
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Failed to get client:", error);
     return NextResponse.json(
       { error: "Failed to get client" },
@@ -29,6 +30,10 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    if (!(await hasSuperAdminServer())) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     const { id } = await params;
     const clientId = parseInt(id);
 
@@ -44,7 +49,7 @@ export async function PUT(
     });
 
     return NextResponse.json(data);
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Failed to update client:", error);
     return NextResponse.json(
       { error: "Failed to update client" },

@@ -30,12 +30,14 @@ interface ClientHeaderProps {
   clientId: number;
   client: FineractClient | null;
   clientImage: string | null;
+  canEditClient: boolean;
 }
 
 export function ClientHeader({
   clientId,
   client,
   clientImage,
+  canEditClient,
 }: ClientHeaderProps) {
   const getStatusBadgeColor = (status: string | null, active: boolean) => {
     if (active) return "bg-green-500";
@@ -188,12 +190,14 @@ export function ClientHeader({
                   </Button>
                 </Link>
               )}
-              <Link href={`/clients/${clientId}/edit`}>
-                <Button size="sm" variant="outline">
-                  <Edit className="h-4 w-4 mr-2" />
-                  Edit Client
-                </Button>
-              </Link>
+              {canEditClient && (
+                <Link href={`/clients/${clientId}/edit`}>
+                  <Button size="sm" variant="outline">
+                    <Edit className="h-4 w-4 mr-2" />
+                    Edit Client
+                  </Button>
+                </Link>
+              )}
             </div>
           </div>
         </div>

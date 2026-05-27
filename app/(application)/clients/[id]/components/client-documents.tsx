@@ -1,14 +1,15 @@
 "use client";
 
+import { useRef, useState, type FormEvent } from "react";
 import useSWR from 'swr';
 import {
   FileText,
   Download,
-  Eye,
-  Calendar,
   AlertCircle,
+  Loader2,
   Upload,
 } from "lucide-react";
+import { toast } from "sonner";
 import {
   Card,
   CardContent,
@@ -19,6 +20,17 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
   Table,
   TableBody,
   TableCell,
@@ -26,6 +38,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { downloadClientDocumentAttachment } from "@/app/actions/client-document-actions";
 
 interface FineractDocument {
   id: number;
@@ -39,6 +52,8 @@ interface FineractDocument {
   location?: string;
   storageType: number;
   createdDate: string;
+  uploadedBy?: string;
+  uploadedAt?: string;
 }
 
 interface ClientDocumentsProps {
@@ -49,7 +64,19 @@ interface ClientDocumentsProps {
 const fetcher = (url: string) => fetch(url).then(res => res.json());
 
 export function ClientDocuments({ clientId }: ClientDocumentsProps) {
-  const { data, error, isLoading } = useSWR(`/api/fineract/clients/${clientId}/documents`, fetcher);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isUploadDialogOpen, setIsUploadDialogOpen] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadFileName, setUploadFileName] = useState("");
+  const [uploadDescription, setUploadDescription] = useState("");
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [downloadingDocumentId, setDownloadingDocumentId] = useState<number | null>(null);
+  const canSubmitUpload = uploadFileName.trim().length > 0 && uploadFile !== null;
+  const { data, error, isLoading, mutate } = useSWR(
+    `/api/fineract/clients/${clientId}/documents`,
+    fetcher
+  );
 
   // Handle different response formats
   const documents: FineractDocument[] = (() => {
@@ -87,14 +114,6 @@ export function ClientDocuments({ clientId }: ClientDocumentsProps) {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
   };
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    });
-  };
-
   const getFileTypeIcon = (type: string) => {
     if (type.includes("pdf")) {
       return <FileText className="h-4 w-4 text-red-500" />;
@@ -127,6 +146,129 @@ export function ClientDocuments({ clientId }: ClientDocumentsProps) {
     );
   };
 
+  const resetUploadForm = () => {
+    setUploadFileName("");
+    setUploadDescription("");
+    setUploadFile(null);
+    setUploadError(null);
+
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
+  const handleUploadDialogOpenChange = (open: boolean) => {
+    setIsUploadDialogOpen(open);
+
+    if (!open) {
+      resetUploadForm();
+      setIsUploading(false);
+    } else {
+      setUploadError(null);
+    }
+  };
+
+  const handleDownloadDocument = async (doc: FineractDocument) => {
+    setDownloadingDocumentId(doc.id);
+
+    try {
+      const result = await downloadClientDocumentAttachment(clientId, doc.id);
+
+      if (!result.success || !result.fileBuffer) {
+        throw new Error(result.error || "Failed to download document");
+      }
+
+      const blob = new Blob([result.fileBuffer], {
+        type: result.contentType || "application/octet-stream",
+      });
+      const url = window.URL.createObjectURL(blob);
+      const link = window.document.createElement("a");
+      link.href = url;
+      link.download =
+        result.fileName || doc.fileName || doc.name || `document-${doc.id}`;
+      window.document.body.appendChild(link);
+      link.click();
+      window.document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+
+      toast.success("Document downloaded successfully");
+    } catch (error) {
+      console.error("Error downloading client document:", error);
+      toast.error(
+        error instanceof Error ? error.message : "Failed to download document"
+      );
+    } finally {
+      setDownloadingDocumentId((currentId) =>
+        currentId === doc.id ? null : currentId
+      );
+    }
+  };
+
+  const handleUploadDocument = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (!canSubmitUpload) {
+      setUploadError("File name and file are required. Description is optional.");
+      return;
+    }
+
+    setIsUploading(true);
+    setUploadError(null);
+
+    try {
+      const formData = new FormData();
+      formData.append("name", uploadFileName.trim());
+      formData.append("file", uploadFile);
+
+      if (uploadDescription.trim()) {
+        formData.append("description", uploadDescription.trim());
+      }
+
+      const response = await fetch(`/api/fineract/clients/${clientId}/documents`, {
+        method: "POST",
+        body: formData,
+      });
+
+      const contentType = response.headers.get("content-type") || "";
+
+      if (!response.ok) {
+        let errorMessage = "Failed to upload document";
+
+        try {
+          if (contentType.includes("application/json")) {
+            const errorData = await response.json();
+            errorMessage =
+              errorData.error ||
+              errorData.defaultUserMessage ||
+              errorData.developerMessage ||
+              errorMessage;
+          } else {
+            const responseText = await response.text();
+            if (responseText.trim()) {
+              errorMessage = responseText;
+            }
+          }
+        } catch {
+          // Keep the default error message when the body is not parseable.
+        }
+
+        throw new Error(errorMessage);
+      }
+
+      await response.json().catch(() => ({}));
+      await mutate();
+      handleUploadDialogOpenChange(false);
+      toast.success("Document uploaded successfully");
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Failed to upload document";
+      setUploadError(errorMessage);
+      toast.error(errorMessage);
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
   if (isLoading) {
     return (
       <Card>
@@ -157,12 +299,16 @@ export function ClientDocuments({ clientId }: ClientDocumentsProps) {
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-center justify-between">
-          <div>
-            <CardTitle>Documents</CardTitle>
-            <CardDescription>Client documents and attachments</CardDescription>
-          </div>
-          <Button size="sm">
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Documents</CardTitle>
+              <CardDescription>Client documents and attachments</CardDescription>
+            </div>
+          <Button
+            type="button"
+            size="sm"
+            onClick={() => handleUploadDialogOpenChange(true)}
+          >
             <Upload className="h-4 w-4 mr-2" />
             Upload Document
           </Button>
@@ -184,7 +330,7 @@ export function ClientDocuments({ clientId }: ClientDocumentsProps) {
                   <TableHead>Document</TableHead>
                   <TableHead>Type</TableHead>
                   <TableHead>Size</TableHead>
-                  <TableHead>Uploaded</TableHead>
+                  <TableHead>Uploaded By</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -214,18 +360,41 @@ export function ClientDocuments({ clientId }: ClientDocumentsProps) {
                       </span>
                     </TableCell>
                     <TableCell>
-                      <div className="flex items-center gap-1 text-sm">
-                        <Calendar className="h-3 w-3" />
-                        {formatDate(document.createdDate)}
-                      </div>
+                      <span className="text-sm">
+                        {document.uploadedBy?.trim() || "---"}
+                      </span>
                     </TableCell>
                     <TableCell className="text-right">
-                      <div className="flex items-center gap-2 justify-end">
-                        <Button variant="ghost" size="sm">
-                          <Eye className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="sm">
-                          <Download className="h-4 w-4" />
+                      <div className="flex items-center justify-end">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="gap-2"
+                          onClick={() => handleDownloadDocument(document)}
+                          disabled={downloadingDocumentId === document.id}
+                          title={
+                            downloadingDocumentId === document.id
+                              ? "Downloading document"
+                              : "Download document"
+                          }
+                          aria-label={
+                            downloadingDocumentId === document.id
+                              ? `Downloading ${document.name}`
+                              : `Download ${document.name}`
+                          }
+                        >
+                          {downloadingDocumentId === document.id ? (
+                            <>
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                              <span>Downloading...</span>
+                            </>
+                          ) : (
+                            <>
+                              <Download className="h-4 w-4" />
+                              <span>Download</span>
+                            </>
+                          )}
                         </Button>
                       </div>
                     </TableCell>
@@ -236,6 +405,103 @@ export function ClientDocuments({ clientId }: ClientDocumentsProps) {
           </div>
         )}
       </CardContent>
+
+      <Dialog open={isUploadDialogOpen} onOpenChange={handleUploadDialogOpenChange}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Upload Document</DialogTitle>
+          <DialogDescription>
+            Add a file name, optional description, and choose the file to upload to Fineract.
+          </DialogDescription>
+          <p className="text-xs text-muted-foreground">
+            File name and file are required. Description is optional.
+          </p>
+          </DialogHeader>
+
+          <form className="space-y-4" onSubmit={handleUploadDocument}>
+            {uploadError && (
+              <p className="text-sm text-destructive">{uploadError}</p>
+            )}
+
+            <div className="space-y-2">
+              <Label htmlFor="document-file-name">
+                File name <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                id="document-file-name"
+                value={uploadFileName}
+                onChange={(e) => {
+                  setUploadFileName(e.target.value);
+                  if (uploadError) setUploadError(null);
+                }}
+                placeholder="e.g. National ID"
+                disabled={isUploading}
+                autoComplete="off"
+                required
+                aria-required="true"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="document-description">
+                Description <span className="text-muted-foreground">(optional)</span>
+              </Label>
+              <Textarea
+                id="document-description"
+                value={uploadDescription}
+                onChange={(e) => {
+                  setUploadDescription(e.target.value);
+                  if (uploadError) setUploadError(null);
+                }}
+                placeholder="Optional description"
+                disabled={isUploading}
+                rows={4}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="document-file">
+                File <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                ref={fileInputRef}
+                id="document-file"
+                type="file"
+                onChange={(e) => {
+                  const file = e.target.files?.[0] ?? null;
+                  setUploadFile(file);
+                  if (uploadError) setUploadError(null);
+                }}
+                disabled={isUploading}
+                required
+                aria-required="true"
+              />
+              {uploadFile && (
+                <p className="text-xs text-muted-foreground">
+                  Selected file: {uploadFile.name}
+                </p>
+              )}
+            </div>
+
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => handleUploadDialogOpenChange(false)}
+                disabled={isUploading}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={isUploading || !canSubmitUpload}>
+                {isUploading && (
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                )}
+                {isUploading ? "Uploading..." : "Upload"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }

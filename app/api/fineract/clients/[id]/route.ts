@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getFineractServiceWithSession } from "@/lib/fineract-api";
+import { hasSuperAdminServer } from "@/lib/authorization";
 
 /**
  * GET /api/fineract/clients/[id]
@@ -24,13 +25,20 @@ export async function GET(
     });
 
     return NextResponse.json(data);
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error fetching client details:", error);
 
     // Better error handling for different error types
+    const errorObj = error as {
+      message?: string;
+      errorData?: { defaultUserMessage?: string };
+      status?: number;
+    };
     const errorMessage =
-      error?.message || error?.errorData?.defaultUserMessage || "Unknown error";
-    const statusCode = error?.status || 500;
+      errorObj?.message ||
+      errorObj?.errorData?.defaultUserMessage ||
+      "Unknown error";
+    const statusCode = errorObj?.status || 500;
 
     return NextResponse.json(
       {
@@ -51,6 +59,10 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    if (!(await hasSuperAdminServer())) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     const { id } = await params;
     const payload = await request.json();
 
@@ -58,13 +70,20 @@ export async function PUT(
     const data = await fineractService.updateClient(parseInt(id), payload);
 
     return NextResponse.json(data);
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error updating client:", error);
 
     // Better error handling for different error types
+    const errorObj = error as {
+      message?: string;
+      errorData?: { defaultUserMessage?: string };
+      status?: number;
+    };
     const errorMessage =
-      error?.message || error?.errorData?.defaultUserMessage || "Unknown error";
-    const statusCode = error?.status || 500;
+      errorObj?.message ||
+      errorObj?.errorData?.defaultUserMessage ||
+      "Unknown error";
+    const statusCode = errorObj?.status || 500;
 
     return NextResponse.json(
       {
@@ -85,19 +104,30 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    if (!(await hasSuperAdminServer())) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     const { id } = await params;
 
     const fineractService = await getFineractServiceWithSession();
     await fineractService.deleteClient(parseInt(id));
 
     return NextResponse.json({ success: true });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error deleting client:", error);
 
     // Better error handling for different error types
+    const errorObj = error as {
+      message?: string;
+      errorData?: { defaultUserMessage?: string };
+      status?: number;
+    };
     const errorMessage =
-      error?.message || error?.errorData?.defaultUserMessage || "Unknown error";
-    const statusCode = error?.status || 500;
+      errorObj?.message ||
+      errorObj?.errorData?.defaultUserMessage ||
+      "Unknown error";
+    const statusCode = errorObj?.status || 500;
 
     return NextResponse.json(
       {
