@@ -17,7 +17,7 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { toast } from "@/components/ui/use-toast";
-import { AlertCircle, Download, MoreVertical, X, ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight, Edit, Flag, Plus, Heart, Coins, RotateCcw, Calendar, ChevronRight as ChevronRightIcon, User, Building, Phone, Mail, CreditCard, TrendingUp, Clock, FileText, Shield, DollarSign, Percent, CalendarDays, Settings, Trash2, StickyNote } from "lucide-react";
+import { AlertCircle, Download, Loader2, MoreVertical, X, ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight, Edit, Flag, Plus, Heart, Coins, RotateCcw, Calendar, ChevronRight as ChevronRightIcon, User, Building, Phone, Mail, CreditCard, TrendingUp, Clock, FileText, Shield, DollarSign, Percent, CalendarDays, Settings, Trash2, StickyNote } from "lucide-react";
 import { ClientTransactions } from "../../../components/client-transactions";
 import { RepaymentModal } from "./repayment-modal";
 import { PaymentModal } from "./payment-modal";
@@ -39,12 +39,20 @@ import CreateGuarantorModal from "@/components/CreateGuarantorModal";
 import RecoverFromGuarantorModal from "@/components/RecoverFromGuarantorModal";
 import SellLoanModal from "@/components/SellLoanModal";
 import { TransactionsDataTable } from "./transactions-data-table";
+import { downloadLoanDocumentAttachment } from "@/app/actions/loan-document-actions";
+import { formatDateDdMmYyyy } from "@/lib/date-format";
 import { FineractClient, FineractLoan } from "@/shared/types";
 
 interface ClientLoanDetailsProps {
   clientId: number;
   loanId: number;
 }
+
+type LoanDocumentDownloadItem = {
+  id: number | string;
+  fileName?: string;
+  name?: string;
+};
 
 export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) {
   const router = useRouter();
@@ -70,6 +78,7 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
   const [submittingReschedule, setSubmittingReschedule] = useState(false);
   const [documents, setDocuments] = useState<any[]>([]);
   const [loadingDocuments, setLoadingDocuments] = useState(false);
+  const [downloadingDocumentId, setDownloadingDocumentId] = useState<number | string | null>(null);
   const [showUploadDocuments, setShowUploadDocuments] = useState(false);
   const [submittingDocument, setSubmittingDocument] = useState(false);
   const [documentForm, setDocumentForm] = useState({
@@ -1370,7 +1379,17 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
       const response = await fetch(`/api/fineract/loans/${loanId}/documents`);
       if (response.ok) {
         const data = await response.json();
-        setDocuments(Array.isArray(data) ? data : []);
+        if (Array.isArray(data)) {
+          setDocuments(data);
+        } else if (data?.pageItems && Array.isArray(data.pageItems)) {
+          setDocuments(data.pageItems);
+        } else if (data?.content && Array.isArray(data.content)) {
+          setDocuments(data.content);
+        } else if (data?.documents && Array.isArray(data.documents)) {
+          setDocuments(data.documents);
+        } else {
+          setDocuments([]);
+        }
       } else {
         let errorData;
         try {
@@ -1405,69 +1424,52 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
     }
   };
 
-  // Download document
-  const handleDownloadDocument = async (documentId: string, fileName: string) => {
+  // Download document through a server action so the browser only handles the file blob.
+  const handleDownloadDocument = async (doc: LoanDocumentDownloadItem) => {
+    setDownloadingDocumentId(doc.id);
+
     try {
-      const response = await fetch(`/api/fineract/loans/${loanId}/documents/${documentId}/attachment`);
-      
-      if (response.ok) {
-        const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = fileName;
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
-        
-        toast({
-          title: "Success",
-          description: "Document downloaded successfully!",
-          variant: "success",
-        });
-      } else {
-        // Try to parse as JSON, but handle cases where it's not JSON
-        let errorData: any = {};
-        let errorMessage = "Failed to download document";
-        
-        try {
-          const contentType = response.headers.get('content-type') || '';
-          if (contentType.includes('application/json')) {
-            errorData = await response.json();
-            console.error("Failed to download document:", errorData);
-            
-            if (errorData.defaultUserMessage) {
-              errorMessage = errorData.defaultUserMessage;
-            } else if (errorData.errors && errorData.errors.length > 0 && errorData.errors[0].defaultUserMessage) {
-              errorMessage = errorData.errors[0].defaultUserMessage;
-            } else if (errorData.error) {
-              errorMessage = errorData.error;
-            }
-          } else {
-            // Not JSON response, use status text
-            const responseText = await response.text();
-            console.error("Failed to download document (non-JSON):", response.status, response.statusText, responseText);
-            errorMessage = `Download failed: ${response.status} ${response.statusText}`;
-          }
-        } catch (parseError) {
-          console.error("Error parsing download response:", parseError);
-          errorMessage = `Download failed: ${response.status} ${response.statusText}`;
-        }
-        
-        toast({
-          title: "Error",
-          description: errorMessage,
-          variant: "destructive",
-        });
+      const result = await downloadLoanDocumentAttachment(loanId, doc.id);
+
+      if (!result.success || !result.fileBuffer) {
+        throw new Error(result.error || "Failed to download document");
       }
+
+      const blob = new Blob([result.fileBuffer], {
+        type: result.contentType || "application/octet-stream",
+      });
+      const url = window.URL.createObjectURL(blob);
+      const link = window.document.createElement("a");
+      link.href = url;
+      link.download =
+        result.fileName ||
+        doc.fileName ||
+        doc.name ||
+        `document-${doc.id}`;
+      window.document.body.appendChild(link);
+      link.click();
+      window.document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+
+      toast({
+        title: "Success",
+        description: "Document downloaded successfully!",
+        variant: "success",
+      });
     } catch (error) {
       console.error("Error downloading document:", error);
       toast({
         title: "Error",
-        description: "An unexpected error occurred while downloading the document",
+        description:
+          error instanceof Error
+            ? error.message
+            : "An unexpected error occurred while downloading the document",
         variant: "destructive",
       });
+    } finally {
+      setDownloadingDocumentId((currentId) =>
+        currentId === doc.id ? null : currentId
+      );
     }
   };
 
@@ -3690,6 +3692,8 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                       <TableHead>File Name</TableHead>
                         <TableHead>Size</TableHead>
                         <TableHead>Type</TableHead>
+                      <TableHead>Uploaded By</TableHead>
+                      <TableHead>Uploaded On</TableHead>
                       <TableHead>Actions</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -3699,28 +3703,70 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                           <TableRow key={document.id || index}>
                           <TableCell className="font-medium">{document.name}</TableCell>
                             <TableCell>{document.description || "N/A"}</TableCell>
-                          <TableCell>{document.fileName}</TableCell>
+                            <TableCell>{document.fileName}</TableCell>
                             <TableCell>{document.size ? `${(document.size / 1024).toFixed(1)} KB` : "N/A"}</TableCell>
                             <TableCell>{document.type || "N/A"}</TableCell>
-                          <TableCell>
-                            <div className="flex space-x-1">
-                                <Button 
-                                  variant="outline" 
-                                  size="sm" 
-                                  className="h-8 w-8 p-0 bg-blue-500 text-white hover:bg-blue-600"
-                                  onClick={() => handleDownloadDocument(document.id, document.fileName)}
-                                  title="Download"
-                                >
-                                <Download className="h-4 w-4" />
+                            <TableCell>
+                              <span className="text-sm">
+                                {document.uploadedBy?.trim() || "---"}
+                              </span>
+                            </TableCell>
+                            <TableCell>
+                              <span className="text-sm">
+                                {formatDateDdMmYyyy(
+                                  document.uploadedAt || document.createdDate
+                                )}
+                              </span>
+                            </TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="gap-2"
+                                onClick={() => handleDownloadDocument(document)}
+                                disabled={downloadingDocumentId === document.id}
+                                title={
+                                  downloadingDocumentId === document.id
+                                    ? "Downloading document"
+                                    : "Download document"
+                                }
+                                aria-label={
+                                  downloadingDocumentId === document.id
+                                    ? `Downloading ${
+                                        document.name ||
+                                        document.fileName ||
+                                        `document ${document.id}`
+                                      }`
+                                    : `Download ${
+                                        document.name ||
+                                        document.fileName ||
+                                        `document ${document.id}`
+                                      }`
+                                }
+                              >
+                                {downloadingDocumentId === document.id ? (
+                                  <>
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                    <span>Downloading...</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Download className="h-4 w-4" />
+                                    <span>Download</span>
+                                  </>
+                                )}
                               </Button>
-                                <Button 
-                                  variant="outline" 
-                                  size="sm" 
-                                  className="h-8 w-8 p-0 bg-red-500 text-white hover:bg-red-600"
-                                  onClick={() => handleDeleteDocument(document.id, document.fileName)}
-                                  title="Delete"
-                                >
-                                  <Trash2 className="h-4 w-4" />
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="h-8 w-8 p-0 bg-red-500 text-white hover:bg-red-600"
+                                onClick={() => handleDeleteDocument(document.id, document.fileName)}
+                                title="Delete"
+                              >
+                                <Trash2 className="h-4 w-4" />
                               </Button>
                             </div>
                           </TableCell>
@@ -3728,7 +3774,7 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                       ))
                     ) : (
                       <TableRow>
-                          <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                          <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                             <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
                             <p>No documents found for this loan</p>
                             <p className="text-sm mt-2">Click "+ Add" to upload documents</p>
