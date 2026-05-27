@@ -24,6 +24,7 @@ model Tenant {
   leads                  Lead[]
   leadCommunications     LeadCommunication[]
   leadDocuments          LeadDocument[]
+  fineractDocumentUploads FineractDocumentUpload[]
   pipelineStages         PipelineStage[]
   slaConfigs             SLAConfig[]
   teams                  Team[]
@@ -457,6 +458,23 @@ model FineractDocument {
   @@unique([fineractId, documentType])
   @@index([documentType])
   @@index([fineractId])
+}
+
+model FineractDocumentUpload {
+  id               String   @id @default(cuid())
+  tenantId         String
+  entityType       String
+  entityId         Int
+  documentId       Int
+  fineractUserId   Int
+  username         String
+  documentSavedAt  DateTime @default(now())
+  tenant           Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, documentId])
+  @@index([tenantId, entityType, entityId])
+  @@index([tenantId, fineractUserId])
+  @@index([tenantId, documentSavedAt])
 }
 
 model FineractDataCache {
