@@ -39,6 +39,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { downloadClientDocumentAttachment } from "@/app/actions/client-document-actions";
+import { formatDateDdMmYyyy } from "@/lib/date-format";
 
 interface FineractDocument {
   id: number;
@@ -331,6 +332,7 @@ export function ClientDocuments({ clientId }: ClientDocumentsProps) {
                   <TableHead>Type</TableHead>
                   <TableHead>Size</TableHead>
                   <TableHead>Uploaded By</TableHead>
+                  <TableHead>Uploaded On</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -362,6 +364,11 @@ export function ClientDocuments({ clientId }: ClientDocumentsProps) {
                     <TableCell>
                       <span className="text-sm">
                         {document.uploadedBy?.trim() || "---"}
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      <span className="text-sm">
+                        {formatDateDdMmYyyy(document.uploadedAt || document.createdDate)}
                       </span>
                     </TableCell>
                     <TableCell className="text-right">
