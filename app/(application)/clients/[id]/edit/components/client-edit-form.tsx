@@ -313,8 +313,12 @@ export function ClientEditForm({
               {/* Row 1 */}
               <div className="space-y-2">
                 <Label htmlFor="office">Office</Label>
-                <Select value={formData.officeId} onValueChange={(value) => handleInputChange("officeId", value)}>
-                  <SelectTrigger className="w-full">
+                <Select
+                  value={formData.officeId}
+                  onValueChange={(value) => handleInputChange("officeId", value)}
+                  disabled
+                >
+                  <SelectTrigger className="w-full" disabled>
                     <SelectValue placeholder="Select office" />
                   </SelectTrigger>
                   <SelectContent>
@@ -329,8 +333,12 @@ export function ClientEditForm({
 
               <div className="space-y-2">
                 <Label htmlFor="legalForm">Legal Form</Label>
-                <Select value={formData.legalForm} onValueChange={(value) => handleInputChange("legalForm", value)}>
-                  <SelectTrigger className="w-full">
+                <Select
+                  value={formData.legalForm}
+                  onValueChange={(value) => handleInputChange("legalForm", value)}
+                  disabled
+                >
+                  <SelectTrigger className="w-full" disabled>
                     <SelectValue placeholder="Select legal form" />
                   </SelectTrigger>
                   <SelectContent>
@@ -347,7 +355,7 @@ export function ClientEditForm({
                   id="accountNo"
                   value={formData.accountNo}
                   onChange={(e) => handleInputChange("accountNo", e.target.value)}
-                  readOnly
+                  disabled
                 />
               </div>
 
@@ -357,6 +365,7 @@ export function ClientEditForm({
                   id="externalId"
                   value={formData.externalId}
                   onChange={(e) => handleInputChange("externalId", e.target.value)}
+                  disabled
                 />
               </div>
 
@@ -460,6 +469,7 @@ export function ClientEditForm({
                   id="mobileNo"
                   value={formData.mobileNo}
                   onChange={(e) => handleInputChange("mobileNo", e.target.value)}
+                  disabled
                 />
               </div>
 
