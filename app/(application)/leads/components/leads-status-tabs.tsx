@@ -732,7 +732,7 @@ export function LeadsStatusTabs() {
   };
 
   // Generate columns for the data table
-  const generateColumns = useCallback((data: any[]): DataTableColumn<any>[] => {
+  const generateColumns = useCallback((data: any[], tabReport?: string): DataTableColumn<any>[] => {
     if (!data || data.length === 0) return [];
     
     // Filter out hidden columns and internal columns
@@ -949,7 +949,7 @@ export function LeadsStatusTabs() {
     const columns: Record<string, DataTableColumn<any>[]> = {};
     for (const tab of TABS) {
       const data = tabData[tab.report];
-      columns[tab.report] = data?.data ? generateColumns(data.data) : [];
+      columns[tab.report] = data?.data ? generateColumns(data.data, tab.report) : [];
     }
     return columns;
   }, [tabData, generateColumns]);

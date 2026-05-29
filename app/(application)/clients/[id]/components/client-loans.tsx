@@ -200,7 +200,7 @@ export function ClientLoans({ clientId }: ClientLoansProps) {
   })();
 
   const getStatusBadge = (loan: FineractLoan) => {
-    const status = loan.displayStatus;
+    const status = loan.displayStatus ?? loan.status?.value ?? "";
     const statusLower = status.toLowerCase();
 
     if (statusLower.includes("written off") || statusLower.includes("closed")) {

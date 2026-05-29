@@ -1452,6 +1452,65 @@ export class FineractAPIService {
     }
   }
 
+  async approveLoan(loanId: number, approvalDate?: string): Promise<any> {
+    try {
+      const today = new Date();
+      const formattedDate = approvalDate ||
+        `${today.getDate()} ${today.toLocaleString("en", { month: "long" })} ${today.getFullYear()}`;
+      const response: AxiosResponse<any> = await this.client.post(
+        `/loans/${loanId}?command=approve`,
+        { approvedOnDate: formattedDate, dateFormat: "dd MMMM yyyy", locale: "en" }
+      );
+      return response.data;
+    } catch (error: any) {
+      console.error("Error approving loan:", { message: error.message, status: error.response?.status, data: error.response?.data });
+      throw error;
+    }
+  }
+
+  async disburseLoan(loanId: number, disbursementDate?: string, paymentDetails?: { paymentTypeId?: number; accountNumber?: string; checkNumber?: string; routingCode?: string; receiptNumber?: string; bankNumber?: string; note?: string }): Promise<any> {
+    try {
+      const today = new Date();
+      const formattedDate = disbursementDate ||
+        `${today.getDate()} ${today.toLocaleString("en", { month: "long" })} ${today.getFullYear()}`;
+      const response: AxiosResponse<any> = await this.client.post(
+        `/loans/${loanId}?command=disburse`,
+        {
+          actualDisbursementDate: formattedDate,
+          dateFormat: "dd MMMM yyyy",
+          locale: "en",
+          ...(paymentDetails?.paymentTypeId && { paymentTypeId: paymentDetails.paymentTypeId }),
+          ...(paymentDetails?.accountNumber && { accountNumber: paymentDetails.accountNumber }),
+          ...(paymentDetails?.checkNumber && { checkNumber: paymentDetails.checkNumber }),
+          ...(paymentDetails?.routingCode && { routingCode: paymentDetails.routingCode }),
+          ...(paymentDetails?.receiptNumber && { receiptNumber: paymentDetails.receiptNumber }),
+          ...(paymentDetails?.bankNumber && { bankNumber: paymentDetails.bankNumber }),
+          ...(paymentDetails?.note && { note: paymentDetails.note }),
+        }
+      );
+      return response.data;
+    } catch (error: any) {
+      console.error("Error disbursing loan:", { message: error.message, status: error.response?.status, data: error.response?.data });
+      throw error;
+    }
+  }
+
+  async rejectLoan(loanId: number, rejectionDate?: string, note?: string): Promise<any> {
+    try {
+      const today = new Date();
+      const formattedDate = rejectionDate ||
+        `${today.getDate()} ${today.toLocaleString("en", { month: "long" })} ${today.getFullYear()}`;
+      const response: AxiosResponse<any> = await this.client.post(
+        `/loans/${loanId}?command=reject`,
+        { rejectedOnDate: formattedDate, dateFormat: "dd MMMM yyyy", locale: "en", ...(note && { note }) }
+      );
+      return response.data;
+    } catch (error: any) {
+      console.error("Error rejecting loan:", { message: error.message, status: error.response?.status, data: error.response?.data });
+      throw error;
+    }
+  }
+
   // Get staff member by user ID
   async getStaffByUserId(userId: number): Promise<any | null> {
     try {

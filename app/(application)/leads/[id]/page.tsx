@@ -17,6 +17,9 @@ import { LeadValidations } from "./components/lead-validations";
 import { LeadCDE } from "./components/lead-cde";
 import { LeadCommunications } from "./components/lead-communications";
 import { LeadSidebar } from "./components/lead-sidebar";
+import StateTransitionManager from "./components/state-transition-manager";
+import { LeadDetailTabs } from "./components/lead-detail-tabs";
+import { LeadMoreActions } from "./components/lead-more-actions";
 import { LeadAdditionalInfo } from "./components/lead-additional-info";
 import {
   ArrowLeft,
@@ -30,6 +33,7 @@ import {
   Users,
   UserCheck,
   UserX,
+  CheckCircle2,
 } from "lucide-react";
 import Link from "next/link";
 import {

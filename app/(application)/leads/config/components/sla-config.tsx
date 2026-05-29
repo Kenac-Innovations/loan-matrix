@@ -7,13 +7,14 @@ import { Label } from "@/components/ui/label";
 import {
   Trash2,
   Plus,
-  Edit2,
+  Pencil,
   Clock,
   AlertTriangle,
   Loader2,
   Save,
 } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
+
+
 import {
   Select,
   SelectContent,
@@ -24,6 +25,14 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   defaultTimeUnits,
   type SLALevel,
@@ -43,7 +52,15 @@ export function SLAConfig() {
   const [isSaving, setIsSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
 
+  const [modalOpen, setModalOpen] = useState(false);
   const [editingSLA, setEditingSLA] = useState<StageSLA | null>(null);
+
+  const [newLevelName, setNewLevelName] = useState("");
+  const [newLevelTimeframe, setNewLevelTimeframe] = useState(4);
+  const [newLevelTimeUnit, setNewLevelTimeUnit] = useState<"minutes" | "hours" | "days">("hours");
+  const [newLevelEscalation, setNewLevelEscalation] = useState(true);
+  const [newLevelNotifyTeam, setNewLevelNotifyTeam] = useState(true);
+  const [newLevelNotifyManager, setNewLevelNotifyManager] = useState(false);
 
   useEffect(() => {
     fetchSLAConfigs();
@@ -55,13 +72,9 @@ export function SLAConfig() {
       const response = await fetch("/api/pipeline/sla");
       if (response.ok) {
         const data = await response.json();
-        // Show whatever is in the database (even if empty)
         setStageSLAs(data.stageSLAs || []);
-        if (data.stages) {
-          setPipelineStages(data.stages);
-        }
+        if (data.stages) setPipelineStages(data.stages);
       } else {
-        console.error("Failed to fetch SLA configs");
         setStageSLAs([]);
       }
     } catch (error) {
@@ -97,110 +110,30 @@ export function SLAConfig() {
     }
   };
 
-  const markChanged = () => {
-    setHasChanges(true);
-  };
-  const [editingSLALevel, setEditingSLALevel] = useState<SLALevel | null>(null);
-  const [newSLALevel, setNewSLALevel] = useState<Partial<SLALevel>>({
-    name: "",
-    timeframe: 4,
-    timeUnit: "hours",
-    escalation: true,
-    notifyTeam: true,
-    notifyManager: false,
-    color: "#3b82f6",
-  });
-
-  const handleEditSLA = (sla: StageSLA) => {
-    setEditingSLA(sla);
+  const openEditModal = (sla: StageSLA) => {
+    setEditingSLA(structuredClone(sla));
+    resetNewLevelForm();
+    setModalOpen(true);
   };
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
-
-  const handleEditSLALevel = (level: SLALevel) => {
-    setEditingSLALevel(level);
-  };
-
-  const handleAddSLALevel = () => {
-    if (!editingSLA || !newSLALevel.name) return;
-
-    const slaLevel: SLALevel = {
-      id: `new-${Date.now()}`,
-      name: newSLALevel.name,
-      timeframe: newSLALevel.timeframe || 4,
-      timeUnit: newSLALevel.timeUnit || "hours",
-      escalation: newSLALevel.escalation || false,
-      notifyTeam: newSLALevel.notifyTeam || false,
-      notifyManager: newSLALevel.notifyManager || false,
-      color: newSLALevel.color || "#3b82f6",
-    };
-
-    setEditingSLA({
-      ...editingSLA,
-      slaLevels: [...editingSLA.slaLevels, slaLevel],
-    });
-
-    setNewSLALevel({
-      name: "",
-      timeframe: 4,
-      timeUnit: "hours",
-      escalation: true,
-      notifyTeam: true,
-      notifyManager: false,
-      color: "#3b82f6",
-    });
-    markChanged();
-  };
-
-  const handleUpdateSLALevel = () => {
-    if (!editingSLA || !editingSLALevel) return;
-
-    setEditingSLA({
-      ...editingSLA,
-      slaLevels: editingSLA.slaLevels.map((level) =>
-        level.id === editingSLALevel.id ? editingSLALevel : level
-      ),
-    });
-
-    setEditingSLALevel(null);
-    markChanged();
-  };
-
-  const handleDeleteSLALevel = (levelId: string) => {
-    if (!editingSLA) return;
-
-    setEditingSLA({
-      ...editingSLA,
-      slaLevels: editingSLA.slaLevels.filter((level) => level.id !== levelId),
-    });
-    markChanged();
-  };
-
-  const handleUpdateSLA = () => {
-    if (!editingSLA) return;
-
-    setStageSLAs(
-      stageSLAs.map((sla) => (sla.id === editingSLA.id ? editingSLA : sla))
-    );
-
-    setEditingSLA(null);
-    markChanged();
+  const resetNewLevelForm = () => {
+    setNewLevelName("");
+    setNewLevelTimeframe(4);
+    setNewLevelTimeUnit("hours");
+    setNewLevelEscalation(true);
+    setNewLevelNotifyTeam(true);
+    setNewLevelNotifyManager(false);
   };
 
   const handleAddStageSLA = () => {
-    // Find a stage that doesn't have an SLA yet
-    const stagesWithSLA = stageSLAs.map((sla) => sla.stageName);
+    const stagesWithSLA = new Set(stageSLAs.map((sla) => sla.stageName));
     const availableStages = pipelineStages.filter(
-      (stage) => !stagesWithSLA.includes(stage.name)
+      (stage) => !stagesWithSLA.has(stage.name)
     );
-
-    if (availableStages.length === 0) return;
+    if (availableStages.length === 0) {
+      toast.info("All stages already have SLA configurations");
+      return;
+    }
 
     const newStageSLA: StageSLA = {
       id: `new-${Date.now()}`,
@@ -211,12 +144,69 @@ export function SLAConfig() {
 
     setStageSLAs([...stageSLAs, newStageSLA]);
     setEditingSLA(newStageSLA);
-    markChanged();
+    resetNewLevelForm();
+    setModalOpen(true);
+    setHasChanges(true);
   };
 
   const handleDeleteStageSLA = (slaId: string) => {
     setStageSLAs(stageSLAs.filter((sla) => sla.id !== slaId));
-    markChanged();
+    setHasChanges(true);
+  };
+
+  const handleSaveModal = () => {
+    if (!editingSLA) return;
+    setStageSLAs(
+      stageSLAs.map((sla) => (sla.id === editingSLA.id ? editingSLA : sla))
+    );
+    setHasChanges(true);
+    setModalOpen(false);
+    toast.info("SLA updated — click Save Changes to persist");
+  };
+
+  const handleAddLevel = () => {
+    if (!editingSLA || !newLevelName.trim()) return;
+
+    const level: SLALevel = {
+      id: `new-${Date.now()}`,
+      name: newLevelName,
+      timeframe: newLevelTimeframe,
+      timeUnit: newLevelTimeUnit,
+      escalation: newLevelEscalation,
+      notifyTeam: newLevelNotifyTeam,
+      notifyManager: newLevelNotifyManager,
+      color: "#3b82f6",
+    };
+
+    setEditingSLA({
+      ...editingSLA,
+      slaLevels: [...editingSLA.slaLevels, level],
+    });
+    resetNewLevelForm();
+  };
+
+  const handleDeleteLevel = (levelId: string) => {
+    if (!editingSLA) return;
+    setEditingSLA({
+      ...editingSLA,
+      slaLevels: editingSLA.slaLevels.filter((l) => l.id !== levelId),
+    });
+  };
+
+  const handleUpdateLevelField = (levelId: string, field: string, value: any) => {
+    if (!editingSLA) return;
+    setEditingSLA({
+      ...editingSLA,
+      slaLevels: editingSLA.slaLevels.map((l) =>
+        l.id === levelId ? { ...l, [field]: value } : l
+      ),
+    });
+  };
+
+  const getSliderMax = (unit: string) => {
+    if (unit === "minutes") return 60;
+    if (unit === "hours") return 72;
+    return 30;
   };
 
   const getTimeUnitLabel = (unit: string, value: number) => {
@@ -226,562 +216,307 @@ export function SLAConfig() {
     return unit;
   };
 
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-6">
-      <div className="flex items-start justify-between">
-        <div className="space-y-1">
-        <h3 className="text-lg font-medium">SLA Configuration</h3>
-        <p className="text-sm text-muted-foreground">
-          Configure Service Level Agreements for each stage in your pipeline
-        </p>
-        </div>
-        {hasChanges && (
-          <Button
-            onClick={saveSLAConfigs}
-            disabled={isSaving}
-            className="bg-green-500 hover:bg-green-600"
-          >
-            {isSaving ? (
-              <Loader2 className="h-4 w-4 animate-spin mr-2" />
-            ) : (
-              <Save className="h-4 w-4 mr-2" />
-            )}
-            Save Changes
+    <>
+      <div className="space-y-6">
+        <div className="flex items-center justify-end gap-2">
+          <Button onClick={handleAddStageSLA} size="sm" variant="outline">
+            <Plus className="h-4 w-4 mr-1" />
+            Add Stage SLA
           </Button>
+          {hasChanges && (
+            <Button
+              onClick={saveSLAConfigs}
+              disabled={isSaving}
+              className="bg-green-500 hover:bg-green-600"
+              size="sm"
+            >
+              {isSaving ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-1" />
+              ) : (
+                <Save className="h-4 w-4 mr-1" />
+              )}
+              Save Changes
+            </Button>
+          )}
+        </div>
+
+        {stageSLAs.length === 0 ? (
+          <div className="text-center py-8 text-muted-foreground border rounded-lg">
+            <Clock className="h-10 w-10 mx-auto mb-3 opacity-40" />
+            <p>No SLA configurations yet.</p>
+            <p className="text-sm mt-1">Add SLA rules for your pipeline stages.</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {stageSLAs.map((sla) => (
+              <div
+                key={sla.id}
+                className="flex items-start gap-3 p-4 rounded-lg border bg-card transition-colors hover:bg-muted/30"
+              >
+                <Clock className="h-5 w-5 text-blue-400 mt-0.5 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-medium text-sm">{sla.stageName}</span>
+                    <Badge variant="secondary" className="text-xs">
+                      {sla.slaLevels.length} level{sla.slaLevels.length === 1 ? "" : "s"}
+                    </Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-0.5">{sla.description}</p>
+
+                  {sla.slaLevels.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mt-2">
+                      {sla.slaLevels.map((level) => (
+                        <Badge key={level.id} variant="outline" className="text-xs">
+                          {level.name}: {level.timeframe} {getTimeUnitLabel(level.timeUnit, level.timeframe)}
+                          {level.escalation && (
+                            <AlertTriangle className="h-3 w-3 ml-1 text-amber-500" />
+                          )}
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={() => openEditModal(sla)}
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-red-500 hover:text-red-700"
+                    onClick={() => handleDeleteStageSLA(sla.id)}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
         )}
       </div>
 
-      <div className="grid gap-4">
-        {stageSLAs.map((sla) => (
-          <Card key={sla.id}>
-            <div className="bg-muted/50 p-4 flex justify-between items-start">
-              <div>
-                <h4 className="font-medium flex items-center">
-                  <Clock className="h-4 w-4 mr-2 text-blue-400" />
-                  {sla.stageName}
-                </h4>
-                <p className="text-sm text-muted-foreground mt-1">
-                  {sla.description}
-                </p>
+      {/* Edit SLA Dialog */}
+      <Dialog open={modalOpen} onOpenChange={setModalOpen}>
+        <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              Edit SLA — {editingSLA?.stageName}
+            </DialogTitle>
+            <DialogDescription>
+              Configure SLA levels and escalation rules for this stage.
+            </DialogDescription>
+          </DialogHeader>
+
+          {editingSLA && (
+            <div className="space-y-4 py-2">
+              <div className="space-y-2">
+                <Label>Description</Label>
+                <Input
+                  value={editingSLA.description}
+                  onChange={(e) =>
+                    setEditingSLA({ ...editingSLA, description: e.target.value })
+                  }
+                  placeholder="SLA description"
+                />
               </div>
-              <div className="flex space-x-2">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => handleEditSLA(sla)}
-                  className="text-muted-foreground hover:text-foreground"
-                >
-                  <Edit2 className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => handleDeleteStageSLA(sla.id)}
-                  className="text-muted-foreground hover:text-foreground"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-            <CardContent className="p-4">
-              <div className="space-y-4">
-                <h5 className="text-sm font-medium">SLA Levels:</h5>
-                {sla.slaLevels.length > 0 ? (
-                  <div className="space-y-2">
-                    {sla.slaLevels.map((level) => (
-                      <div
-                        key={level.id}
-                        className="flex items-center justify-between bg-muted/50 p-3 rounded-md"
-                      >
-                        <div className="flex items-center space-x-3">
-                          <div
-                            className="w-3 h-3 rounded-full"
-                            style={{ backgroundColor: level.color }}
+
+              {/* Existing SLA Levels */}
+              <div className="border-t pt-4">
+                <h4 className="text-sm font-medium mb-3">SLA Levels</h4>
+
+                {editingSLA.slaLevels.length > 0 ? (
+                  <div className="space-y-3">
+                    {editingSLA.slaLevels.map((level) => (
+                      <div key={level.id} className="p-3 border rounded-lg bg-muted/30 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <Input
+                            className="font-medium text-sm w-48"
+                            value={level.name}
+                            onChange={(e) =>
+                              handleUpdateLevelField(level.id, "name", e.target.value)
+                            }
                           />
-                          <div>
-                            <div className="font-medium text-sm">
-                              {level.name}
-                            </div>
-                            <div className="text-xs text-muted-foreground">
-                              {level.timeframe}{" "}
-                              {getTimeUnitLabel(
-                                level.timeUnit,
-                                level.timeframe
-                              )}
-                              {level.escalation && (
-                                <Badge
-                                  variant="outline"
-                                  className="ml-2 text-xs"
-                                >
-                                  <AlertTriangle className="h-3 w-3 mr-1 text-amber-500" />
-                                  Escalation
-                                </Badge>
-                              )}
-                            </div>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-red-500 hover:text-red-700"
+                            onClick={() => handleDeleteLevel(level.id)}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+
+                        <div className="flex items-center gap-3">
+                          <div className="flex-1">
+                            <Slider
+                              value={[level.timeframe]}
+                              min={1}
+                              max={getSliderMax(level.timeUnit)}
+                              step={1}
+                              onValueChange={(v) =>
+                                handleUpdateLevelField(level.id, "timeframe", v[0])
+                              }
+                            />
+                          </div>
+                          <Input
+                            type="number"
+                            className="w-16"
+                            value={level.timeframe}
+                            min={1}
+                            onChange={(e) =>
+                              handleUpdateLevelField(level.id, "timeframe", Number.parseInt(e.target.value) || 1)
+                            }
+                          />
+                          <Select
+                            value={level.timeUnit}
+                            onValueChange={(v) =>
+                              handleUpdateLevelField(level.id, "timeUnit", v)
+                            }
+                          >
+                            <SelectTrigger className="w-24">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {defaultTimeUnits.map((u) => (
+                                <SelectItem key={u.value} value={u.value}>{u.label}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className="flex items-center gap-6">
+                          <div className="flex items-center gap-2">
+                            <Switch
+                              checked={level.escalation}
+                              onCheckedChange={(v) =>
+                                handleUpdateLevelField(level.id, "escalation", v)
+                              }
+                            />
+                            <Label className="text-xs">Escalate</Label>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Switch
+                              checked={level.notifyTeam}
+                              onCheckedChange={(v) =>
+                                handleUpdateLevelField(level.id, "notifyTeam", v)
+                              }
+                            />
+                            <Label className="text-xs">Notify Team</Label>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Switch
+                              checked={level.notifyManager}
+                              onCheckedChange={(v) =>
+                                handleUpdateLevelField(level.id, "notifyManager", v)
+                              }
+                            />
+                            <Label className="text-xs">Notify Manager</Label>
                           </div>
                         </div>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <div className="text-sm text-muted-foreground">
-                    No SLA levels configured for this stage
-                  </div>
+                  <p className="text-sm text-muted-foreground mb-3">
+                    No SLA levels configured for this stage.
+                  </p>
                 )}
               </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
 
-      <div className="flex justify-end">
-        <Button
-          onClick={handleAddStageSLA}
-          className="bg-blue-600 hover:bg-blue-700 text-white"
-        >
-          Add Stage SLA
-          <Plus className="ml-2 h-4 w-4" />
-        </Button>
-      </div>
-
-      {editingSLA && (
-        <Card>
-          <CardContent className="pt-6">
-            <div className="space-y-4">
-              <h3 className="text-lg font-medium">
-                Edit SLA for {editingSLA.stageName}
-              </h3>
-
-              <div className="space-y-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="stage-description">Stage Description</Label>
+              {/* Add New Level */}
+              <div className="border-t pt-4">
+                <h4 className="text-sm font-medium mb-3">Add New Level</h4>
+                <div className="space-y-3 p-3 border rounded-lg bg-muted/20">
                   <Input
-                    id="stage-description"
-                    value={editingSLA.description}
-                    onChange={(e) =>
-                      setEditingSLA({
-                        ...editingSLA,
-                        description: e.target.value,
-                      })
-                    }
-                    placeholder="Enter stage description"
+                    placeholder="Level name (e.g. First Response, Escalation)"
+                    value={newLevelName}
+                    onChange={(e) => setNewLevelName(e.target.value)}
                   />
-                </div>
 
-                <div className="border-t pt-4">
-                  <h4 className="text-sm font-medium mb-4">SLA Levels</h4>
-
-                  {editingSLA.slaLevels.map((level) => (
-                    <div
-                      key={level.id}
-                      className="mb-4 p-4 border rounded-md bg-muted/50"
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1">
+                      <Slider
+                        value={[newLevelTimeframe]}
+                        min={1}
+                        max={getSliderMax(newLevelTimeUnit)}
+                        step={1}
+                        onValueChange={(v) => setNewLevelTimeframe(v[0])}
+                      />
+                    </div>
+                    <Input
+                      type="number"
+                      className="w-16"
+                      value={newLevelTimeframe}
+                      min={1}
+                      onChange={(e) => setNewLevelTimeframe(Number.parseInt(e.target.value) || 1)}
+                    />
+                    <Select
+                      value={newLevelTimeUnit}
+                      onValueChange={(v) => setNewLevelTimeUnit(v as "minutes" | "hours" | "days")}
                     >
-                      <div className="flex justify-between items-start mb-4">
-                        <h5 className="font-medium">{level.name}</h5>
-                        <div className="flex space-x-2">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleEditSLALevel(level)}
-                            className="text-muted-foreground hover:text-foreground"
-                          >
-                            <Edit2 className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleDeleteSLALevel(level.id)}
-                            className="text-muted-foreground hover:text-foreground"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </div>
+                      <SelectTrigger className="w-24">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {defaultTimeUnits.map((u) => (
+                          <SelectItem key={u.value} value={u.value}>{u.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
 
-                      <div className="grid gap-2">
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm text-muted-foreground">
-                            Timeframe:
-                          </span>
-                          <span className="font-medium">
-                            {level.timeframe}{" "}
-                            {getTimeUnitLabel(level.timeUnit, level.timeframe)}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm text-muted-foreground">
-                            Escalation:
-                          </span>
-                          <Badge
-                            variant={level.escalation ? "default" : "outline"}
-                          >
-                            {level.escalation ? "Enabled" : "Disabled"}
-                          </Badge>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm text-muted-foreground">
-                            Notify Team:
-                          </span>
-                          <Badge
-                            variant={level.notifyTeam ? "default" : "outline"}
-                          >
-                            {level.notifyTeam ? "Yes" : "No"}
-                          </Badge>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm text-muted-foreground">
-                            Notify Manager:
-                          </span>
-                          <Badge
-                            variant={
-                              level.notifyManager ? "default" : "outline"
-                            }
-                          >
-                            {level.notifyManager ? "Yes" : "No"}
-                          </Badge>
-                        </div>
-                      </div>
+                  <div className="flex items-center gap-6">
+                    <div className="flex items-center gap-2">
+                      <Switch checked={newLevelEscalation} onCheckedChange={setNewLevelEscalation} />
+                      <Label className="text-xs">Escalate</Label>
                     </div>
-                  ))}
-
-                  {editingSLALevel ? (
-                    <div className="border p-4 rounded-md mt-4 bg-muted/50">
-                      <h5 className="font-medium mb-4">Edit SLA Level</h5>
-                      <div className="space-y-4">
-                        <div className="grid gap-2">
-                          <Label htmlFor="level-name">Level Name</Label>
-                          <Input
-                            id="level-name"
-                            value={editingSLALevel.name}
-                            onChange={(e) =>
-                              setEditingSLALevel({
-                                ...editingSLALevel,
-                                name: e.target.value,
-                              })
-                            }
-                            placeholder="Enter level name"
-                          />
-                        </div>
-
-                        <div className="grid gap-2">
-                          <Label>Timeframe</Label>
-                          <div className="flex items-center space-x-4">
-                            <div className="flex-1">
-                              <Slider
-                                value={[editingSLALevel.timeframe]}
-                                min={1}
-                                max={
-                                  editingSLALevel.timeUnit === "minutes"
-                                    ? 60
-                                    : editingSLALevel.timeUnit === "hours"
-                                    ? 24
-                                    : 30
-                                }
-                                step={1}
-                                onValueChange={(value) =>
-                                  setEditingSLALevel({
-                                    ...editingSLALevel,
-                                    timeframe: value[0],
-                                  })
-                                }
-                              />
-                            </div>
-                            <div className="w-16">
-                              <Input
-                                type="number"
-                                value={editingSLALevel.timeframe}
-                                onChange={(e) =>
-                                  setEditingSLALevel({
-                                    ...editingSLALevel,
-                                    timeframe:
-                                      Number.parseInt(e.target.value) || 1,
-                                  })
-                                }
-                                min={1}
-                              />
-                            </div>
-                            <Select
-                              value={editingSLALevel.timeUnit}
-                              onValueChange={(value) =>
-                                setEditingSLALevel({
-                                  ...editingSLALevel,
-                                  timeUnit: value as
-                                    | "minutes"
-                                    | "hours"
-                                    | "days",
-                                })
-                              }
-                            >
-                              <SelectTrigger className="w-24">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {defaultTimeUnits.map((unit) => (
-                                  <SelectItem
-                                    key={unit.value}
-                                    value={unit.value}
-                                  >
-                                    {unit.label}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                        </div>
-
-                        <div className="grid gap-4">
-                          <div className="flex items-center justify-between">
-                            <Label
-                              htmlFor="escalation"
-                              className="cursor-pointer"
-                            >
-                              Enable Escalation
-                            </Label>
-                            <Switch
-                              id="escalation"
-                              checked={editingSLALevel.escalation}
-                              onCheckedChange={(checked) =>
-                                setEditingSLALevel({
-                                  ...editingSLALevel,
-                                  escalation: checked,
-                                })
-                              }
-                            />
-                          </div>
-
-                          <div className="flex items-center justify-between">
-                            <Label
-                              htmlFor="notify-team"
-                              className="cursor-pointer"
-                            >
-                              Notify Team
-                            </Label>
-                            <Switch
-                              id="notify-team"
-                              checked={editingSLALevel.notifyTeam}
-                              onCheckedChange={(checked) =>
-                                setEditingSLALevel({
-                                  ...editingSLALevel,
-                                  notifyTeam: checked,
-                                })
-                              }
-                            />
-                          </div>
-
-                          <div className="flex items-center justify-between">
-                            <Label
-                              htmlFor="notify-manager"
-                              className="cursor-pointer"
-                            >
-                              Notify Manager
-                            </Label>
-                            <Switch
-                              id="notify-manager"
-                              checked={editingSLALevel.notifyManager}
-                              onCheckedChange={(checked) =>
-                                setEditingSLALevel({
-                                  ...editingSLALevel,
-                                  notifyManager: checked,
-                                })
-                              }
-                            />
-                          </div>
-                        </div>
-
-                        <div className="flex space-x-2">
-                          <Button
-                            onClick={handleUpdateSLALevel}
-                            className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
-                          >
-                            Update SLA Level
-                          </Button>
-                          <Button
-                            variant="outline"
-                            onClick={() => setEditingSLALevel(null)}
-                          >
-                            Cancel
-                          </Button>
-                        </div>
-                      </div>
+                    <div className="flex items-center gap-2">
+                      <Switch checked={newLevelNotifyTeam} onCheckedChange={setNewLevelNotifyTeam} />
+                      <Label className="text-xs">Notify Team</Label>
                     </div>
-                  ) : (
-                    <div className="border p-4 rounded-md mt-4 bg-muted/50">
-                      <h5 className="font-medium mb-4">Add New SLA Level</h5>
-                      <div className="space-y-4">
-                        <div className="grid gap-2">
-                          <Label htmlFor="new-level-name">Level Name</Label>
-                          <Input
-                            id="new-level-name"
-                            value={newSLALevel.name}
-                            onChange={(e) =>
-                              setNewSLALevel({
-                                ...newSLALevel,
-                                name: e.target.value,
-                              })
-                            }
-                            placeholder="Enter level name"
-                          />
-                        </div>
-
-                        <div className="grid gap-2">
-                          <Label>Timeframe</Label>
-                          <div className="flex items-center space-x-4">
-                            <div className="flex-1">
-                              <Slider
-                                value={[newSLALevel.timeframe || 4]}
-                                min={1}
-                                max={
-                                  newSLALevel.timeUnit === "minutes"
-                                    ? 60
-                                    : newSLALevel.timeUnit === "hours"
-                                    ? 24
-                                    : 30
-                                }
-                                step={1}
-                                onValueChange={(value) =>
-                                  setNewSLALevel({
-                                    ...newSLALevel,
-                                    timeframe: value[0],
-                                  })
-                                }
-                              />
-                            </div>
-                            <div className="w-16">
-                              <Input
-                                type="number"
-                                value={newSLALevel.timeframe}
-                                onChange={(e) =>
-                                  setNewSLALevel({
-                                    ...newSLALevel,
-                                    timeframe:
-                                      Number.parseInt(e.target.value) || 1,
-                                  })
-                                }
-                                min={1}
-                              />
-                            </div>
-                            <Select
-                              value={newSLALevel.timeUnit || "hours"}
-                              onValueChange={(value) =>
-                                setNewSLALevel({
-                                  ...newSLALevel,
-                                  timeUnit: value as
-                                    | "minutes"
-                                    | "hours"
-                                    | "days",
-                                })
-                              }
-                            >
-                              <SelectTrigger className="w-24">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {defaultTimeUnits.map((unit) => (
-                                  <SelectItem
-                                    key={unit.value}
-                                    value={unit.value}
-                                  >
-                                    {unit.label}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                        </div>
-
-                        <div className="grid gap-4">
-                          <div className="flex items-center justify-between">
-                            <Label
-                              htmlFor="new-escalation"
-                              className="cursor-pointer"
-                            >
-                              Enable Escalation
-                            </Label>
-                            <Switch
-                              id="new-escalation"
-                              checked={newSLALevel.escalation || false}
-                              onCheckedChange={(checked) =>
-                                setNewSLALevel({
-                                  ...newSLALevel,
-                                  escalation: checked,
-                                })
-                              }
-                            />
-                          </div>
-
-                          <div className="flex items-center justify-between">
-                            <Label
-                              htmlFor="new-notify-team"
-                              className="cursor-pointer"
-                            >
-                              Notify Team
-                            </Label>
-                            <Switch
-                              id="new-notify-team"
-                              checked={newSLALevel.notifyTeam || false}
-                              onCheckedChange={(checked) =>
-                                setNewSLALevel({
-                                  ...newSLALevel,
-                                  notifyTeam: checked,
-                                })
-                              }
-                            />
-                          </div>
-
-                          <div className="flex items-center justify-between">
-                            <Label
-                              htmlFor="new-notify-manager"
-                              className="cursor-pointer"
-                            >
-                              Notify Manager
-                            </Label>
-                            <Switch
-                              id="new-notify-manager"
-                              checked={newSLALevel.notifyManager || false}
-                              onCheckedChange={(checked) =>
-                                setNewSLALevel({
-                                  ...newSLALevel,
-                                  notifyManager: checked,
-                                })
-                              }
-                            />
-                          </div>
-                        </div>
-
-                        <Button
-                          onClick={handleAddSLALevel}
-                          className="w-full bg-blue-600 hover:bg-blue-700 text-white"
-                        >
-                          Add SLA Level
-                          <Plus className="ml-2 h-4 w-4" />
-                        </Button>
-                      </div>
+                    <div className="flex items-center gap-2">
+                      <Switch checked={newLevelNotifyManager} onCheckedChange={setNewLevelNotifyManager} />
+                      <Label className="text-xs">Notify Manager</Label>
                     </div>
-                  )}
-                </div>
+                  </div>
 
-                <div className="flex space-x-2 pt-4">
                   <Button
-                    onClick={handleUpdateSLA}
-                    className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
-                  >
-                    Update Stage SLA
-                  </Button>
-                  <Button
+                    onClick={handleAddLevel}
                     variant="outline"
-                    onClick={() => {
-                      setEditingSLA(null);
-                      setEditingSLALevel(null);
-                    }}
+                    size="sm"
+                    disabled={!newLevelName.trim()}
+                    className="w-full"
                   >
-                    Cancel
+                    <Plus className="h-3.5 w-3.5 mr-1" />
+                    Add Level
                   </Button>
                 </div>
               </div>
             </div>
-          </CardContent>
-        </Card>
-      )}
-    </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setModalOpen(false)}>Cancel</Button>
+            <Button onClick={handleSaveModal} className="bg-blue-500 hover:bg-blue-600">
+              Done
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

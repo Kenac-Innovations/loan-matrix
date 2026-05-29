@@ -1,11 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Trash2, Plus, Edit2, GripVertical } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
+import { Trash2, Plus, Pencil, Loader2 } from "lucide-react";
+
 import {
   Select,
   SelectContent,
@@ -14,745 +14,647 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
-  defaultValidationRules,
-  defaultPipelineStages,
-  defaultFields,
-  defaultOperators,
-  defaultActionTypes,
-  defaultTeams,
-  defaultSeverityOptions,
-  type ValidationCondition,
-  type ValidationAction,
-  type ValidationRule,
-  type PipelineStage,
-  type Field
-} from "@/shared/defaults/validation-config";
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { useToast } from "@/hooks/use-toast";
+
+interface ConditionRule {
+  field: string;
+  operator: string;
+  value?: any;
+}
+
+interface DbValidationRule {
+  id?: string;
+  name: string;
+  description: string | null;
+  tab: string | null;
+  severity: string;
+  enabled: boolean;
+  order: number;
+  pipelineStageId: string | null;
+  conditions: { type: "AND" | "OR"; rules: ConditionRule[] };
+  actions: {
+    onPass: { message: string };
+    onFail: { message: string; suggestedAction?: string; actionUrl?: string };
+  };
+}
+
+const TABS = [
+  { value: "details", label: "Details" },
+  { value: "documents", label: "Documents" },
+  { value: "communication", label: "Communication" },
+  { value: "appraisal", label: "Appraisal" },
+  { value: "notes", label: "Notes" },
+];
+
+const SEVERITY_OPTIONS = [
+  { value: "info", label: "Info" },
+  { value: "warning", label: "Warning" },
+  { value: "error", label: "Error (Blocking)" },
+];
+
+const FIELD_OPTIONS = [
+  { value: "firstname", label: "First Name", group: "lead" },
+  { value: "lastname", label: "Last Name", group: "lead" },
+  { value: "mobileNo", label: "Phone Number", group: "lead" },
+  { value: "emailAddress", label: "Email Address", group: "lead" },
+  { value: "externalId", label: "NRC / External ID", group: "lead" },
+  { value: "dateOfBirth", label: "Date of Birth", group: "lead" },
+  { value: "requestedAmount", label: "Requested Amount", group: "lead" },
+  { value: "loanProductId", label: "Loan Product ID", group: "lead" },
+  { value: "loanProductName", label: "Loan Product Name", group: "lead" },
+  { value: "monthlyIncome", label: "Monthly Income", group: "lead" },
+  { value: "totalDebt", label: "Total Debt", group: "lead" },
+  { value: "collateralValue", label: "Collateral Value", group: "lead" },
+  { value: "employerName", label: "Employer Name", group: "lead" },
+  { value: "nationality", label: "Nationality", group: "lead" },
+  { value: "requiredDocuments", label: "Required Documents", group: "special" },
+  { value: "communications", label: "Communications", group: "special" },
+  { value: "appraisal", label: "Appraisal Items", group: "special" },
+  { value: "debtToIncomeRatio", label: "Debt-to-Income Ratio", group: "computed" },
+  { value: "collateralRatio", label: "Collateral Ratio", group: "computed" },
+];
+
+const OPERATOR_MAP: Record<string, { value: string; label: string; needsValue: boolean }[]> = {
+  lead: [
+    { value: "isNotEmpty", label: "Is not empty", needsValue: false },
+    { value: "isEmpty", label: "Is empty", needsValue: false },
+    { value: "equals", label: "Equals", needsValue: true },
+    { value: "notEquals", label: "Not equals", needsValue: true },
+    { value: "greaterThan", label: "Greater than", needsValue: true },
+    { value: "greaterThanOrEqual", label: "≥ (greater or equal)", needsValue: true },
+    { value: "lessThan", label: "Less than", needsValue: true },
+    { value: "lessThanOrEqual", label: "≤ (less or equal)", needsValue: true },
+    { value: "contains", label: "Contains", needsValue: true },
+    { value: "isValidEmail", label: "Is valid email", needsValue: false },
+    { value: "isValidPhone", label: "Is valid phone", needsValue: false },
+  ],
+  requiredDocuments: [
+    { value: "allUploaded", label: "All required uploaded", needsValue: false },
+    { value: "anyUploaded", label: "Any uploaded", needsValue: false },
+  ],
+  communications: [
+    { value: "hasContactPerson", label: "Has contact person", needsValue: true },
+    { value: "hasMinimumCount", label: "Has minimum count", needsValue: true },
+    { value: "hasAnyComms", label: "Has any communications", needsValue: false },
+  ],
+  appraisal: [
+    { value: "hasMinimumCount", label: "Has minimum items", needsValue: true },
+    { value: "hasAnyItems", label: "Has any items", needsValue: false },
+    { value: "coverageAbove", label: "Coverage % above", needsValue: true },
+  ],
+  computed: [
+    { value: "lessThan", label: "Less than", needsValue: true },
+    { value: "lessThanOrEqual", label: "≤ (less or equal)", needsValue: true },
+    { value: "greaterThan", label: "Greater than", needsValue: true },
+    { value: "greaterThanOrEqual", label: "≥ (greater or equal)", needsValue: true },
+  ],
+};
+
+function getFieldGroup(field: string): string {
+  return FIELD_OPTIONS.find((f) => f.value === field)?.group || "lead";
+}
+
+function getOperatorsForField(field: string) {
+  const group = getFieldGroup(field);
+  return OPERATOR_MAP[group] || OPERATOR_MAP.lead;
+}
+
+function emptyRule(): DbValidationRule {
+  return {
+    name: "",
+    description: null,
+    tab: "details",
+    severity: "error",
+    enabled: true,
+    order: 0,
+    pipelineStageId: null,
+    conditions: { type: "AND", rules: [] },
+    actions: {
+      onPass: { message: "" },
+      onFail: { message: "" },
+    },
+  };
+}
+
+function getSeverityColor(severity: string) {
+  switch (severity) {
+    case "info": return "bg-blue-100 text-blue-700 border-blue-200";
+    case "warning": return "bg-yellow-100 text-yellow-700 border-yellow-200";
+    case "error": return "bg-red-100 text-red-700 border-red-200";
+    default: return "bg-gray-100 text-gray-700 border-gray-200";
+  }
+}
+
+function getOperatorLabel(field: string, operator: string): string {
+  const ops = getOperatorsForField(field);
+  return ops.find((o) => o.value === operator)?.label || operator;
+}
+
+function getFieldLabel(field: string): string {
+  return FIELD_OPTIONS.find((f) => f.value === field)?.label || field;
+}
 
 export function ValidationConfig() {
-  const [rules, setRules] = useState<ValidationRule[]>(defaultValidationRules);
+  const [rules, setRules] = useState<DbValidationRule[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editingRule, setEditingRule] = useState<DbValidationRule | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const { toast } = useToast();
 
-  const [editingRule, setEditingRule] = useState<ValidationRule | null>(null);
-  const [newRule, setNewRule] = useState<Partial<ValidationRule>>({
-    name: "",
-    description: "",
-    enabled: true,
-    appliesTo: [],
-    conditions: [],
-    actions: [],
-    severity: "warning",
-  });
+  const [newCondField, setNewCondField] = useState("");
+  const [newCondOp, setNewCondOp] = useState("");
+  const [newCondValue, setNewCondValue] = useState("");
 
-  const [newCondition, setNewCondition] = useState<
-    Partial<ValidationCondition>
-  >({
-    field: "",
-    operator: "equals",
-    value: "",
-  });
+  const fetchRules = useCallback(async () => {
+    try {
+      const res = await fetch("/api/validation-rules");
+      if (res.ok) {
+        const data = await res.json();
+        setRules(data.rules || []);
+      }
+    } catch (e) {
+      console.error("Error fetching validation rules:", e);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-  const [newAction, setNewAction] = useState<Partial<ValidationAction>>({
-    type: "block_progression",
-    message: "",
-  });
+  useEffect(() => {
+    fetchRules();
+  }, [fetchRules]);
 
-  const pipelineStages = defaultPipelineStages;
-  const fields = defaultFields;
-  const operators = defaultOperators;
-  const actionTypes = defaultActionTypes;
-  const teams = defaultTeams;
-  const severityOptions = defaultSeverityOptions;
-
-  const handleDragEnd = (result: any) => {
-    if (!result.destination) return;
-
-    const items = Array.from(rules);
-    const [reorderedItem] = items.splice(result.source.index, 1);
-    items.splice(result.destination.index, 0, reorderedItem);
-
-    setRules(items);
+  const openCreateModal = () => {
+    setEditingRule({ ...emptyRule(), order: rules.length });
+    setIsEditing(false);
+    setNewCondField("");
+    setNewCondOp("");
+    setNewCondValue("");
+    setModalOpen(true);
   };
 
-  const handleAddRule = () => {
-    if (!newRule.name) return;
+  const openEditModal = (rule: DbValidationRule) => {
+    setEditingRule(structuredClone(rule));
+    setIsEditing(true);
+    setNewCondField("");
+    setNewCondOp("");
+    setNewCondValue("");
+    setModalOpen(true);
+  };
 
-    const rule: ValidationRule = {
-      id: Date.now().toString(),
-      name: newRule.name,
-      description: newRule.description || "",
-      enabled: newRule.enabled !== undefined ? newRule.enabled : true,
-      appliesTo: newRule.appliesTo || [],
-      conditions: newRule.conditions || [],
-      actions: newRule.actions || [],
-      severity: (newRule.severity as "info" | "warning" | "error") || "warning",
+  const handleSave = async () => {
+    if (!editingRule || !editingRule.name.trim()) return;
+    if (editingRule.conditions.rules.length === 0) {
+      toast({ title: "Error", description: "Add at least one condition", variant: "destructive" });
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const method = isEditing ? "PUT" : "POST";
+      const url = isEditing
+        ? `/api/validation-rules/${editingRule.id}`
+        : "/api/validation-rules";
+
+      const res = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: editingRule.name,
+          description: editingRule.description || null,
+          tab: editingRule.tab || null,
+          severity: editingRule.severity,
+          enabled: editingRule.enabled,
+          order: editingRule.order,
+          pipelineStageId: editingRule.pipelineStageId || null,
+          conditions: editingRule.conditions,
+          actions: editingRule.actions,
+        }),
+      });
+
+      if (res.ok) {
+        toast({
+          title: isEditing ? "Rule Updated" : "Rule Created",
+          description: `"${editingRule.name}" has been saved.`,
+        });
+        await fetchRules();
+        setModalOpen(false);
+      } else {
+        const err = await res.json();
+        toast({ title: "Error", description: err.error || "Failed to save", variant: "destructive" });
+      }
+    } catch (e) {
+      toast({ title: "Error", description: "Failed to save validation rule", variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async (rule: DbValidationRule) => {
+    if (!rule.id) return;
+    try {
+      const res = await fetch(`/api/validation-rules/${rule.id}`, { method: "DELETE" });
+      if (res.ok) {
+        toast({ title: "Deleted", description: `"${rule.name}" removed.` });
+        await fetchRules();
+      }
+    } catch (e) {
+      toast({ title: "Error", description: "Failed to delete", variant: "destructive" });
+    }
+  };
+
+  const handleToggleEnabled = async (rule: DbValidationRule) => {
+    if (!rule.id) return;
+    try {
+      const res = await fetch(`/api/validation-rules/${rule.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: !rule.enabled }),
+      });
+      if (res.ok) {
+        await fetchRules();
+      }
+    } catch (e) {
+      toast({ title: "Error", description: "Failed to toggle rule", variant: "destructive" });
+    }
+  };
+
+  const addCondition = () => {
+    if (!editingRule || !newCondField || !newCondOp) return;
+    const ops = getOperatorsForField(newCondField);
+    const needsValue = ops.find((o) => o.value === newCondOp)?.needsValue;
+    if (needsValue && !newCondValue) return;
+
+    const condition: ConditionRule = {
+      field: newCondField,
+      operator: newCondOp,
+      ...(needsValue && { value: newCondValue }),
     };
-
-    setRules([...rules, rule]);
-    setNewRule({
-      name: "",
-      description: "",
-      enabled: true,
-      appliesTo: [],
-      conditions: [],
-      actions: [],
-      severity: "warning",
+    setEditingRule({
+      ...editingRule,
+      conditions: {
+        ...editingRule.conditions,
+        rules: [...editingRule.conditions.rules, condition],
+      },
     });
+    setNewCondField("");
+    setNewCondOp("");
+    setNewCondValue("");
   };
 
-  const handleDeleteRule = (id: string) => {
-    setRules(rules.filter((rule) => rule.id !== id));
-  };
-
-  const handleEditRule = (rule: ValidationRule) => {
-    setEditingRule(rule);
-  };
-
-  const handleUpdateRule = () => {
+  const removeCondition = (index: number) => {
     if (!editingRule) return;
+    const updated = [...editingRule.conditions.rules];
+    updated.splice(index, 1);
+    setEditingRule({
+      ...editingRule,
+      conditions: { ...editingRule.conditions, rules: updated },
+    });
+  };
 
-    setRules(
-      rules.map((rule) => (rule.id === editingRule.id ? editingRule : rule))
+  const currentOperators = newCondField ? getOperatorsForField(newCondField) : [];
+  const needsValue = currentOperators.find((o) => o.value === newCondOp)?.needsValue ?? false;
+
+  const rulesByTab = rules.reduce<Record<string, DbValidationRule[]>>((acc, rule) => {
+    const tab = rule.tab || "general";
+    if (!acc[tab]) acc[tab] = [];
+    acc[tab].push(rule);
+    return acc;
+  }, {});
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="h-6 w-6 animate-spin mr-2" />
+        Loading validation rules...
+      </div>
     );
-    setEditingRule(null);
-  };
-
-  const handleAddCondition = () => {
-    if (!newCondition.field || !newCondition.operator) return;
-
-    const condition: ValidationCondition = {
-      field: newCondition.field,
-      operator: newCondition.operator as any,
-      value: newCondition.value,
-    };
-
-    if (editingRule) {
-      setEditingRule({
-        ...editingRule,
-        conditions: [...editingRule.conditions, condition],
-      });
-    } else {
-      setNewRule({
-        ...newRule,
-        conditions: [...(newRule.conditions || []), condition],
-      });
-    }
-
-    setNewCondition({
-      field: "",
-      operator: "equals",
-      value: "",
-    });
-  };
-
-  const handleDeleteCondition = (index: number) => {
-    if (editingRule) {
-      const updatedConditions = [...editingRule.conditions];
-      updatedConditions.splice(index, 1);
-      setEditingRule({
-        ...editingRule,
-        conditions: updatedConditions,
-      });
-    } else if (newRule.conditions) {
-      const updatedConditions = [...newRule.conditions];
-      updatedConditions.splice(index, 1);
-      setNewRule({
-        ...newRule,
-        conditions: updatedConditions,
-      });
-    }
-  };
-
-  const handleAddAction = () => {
-    if (!newAction.type) return;
-
-    const action: ValidationAction = {
-      type: newAction.type as any,
-      message: newAction.message,
-      assignTo: newAction.assignTo,
-      field: newAction.field,
-      value: newAction.value,
-    };
-
-    if (editingRule) {
-      setEditingRule({
-        ...editingRule,
-        actions: [...editingRule.actions, action],
-      });
-    } else {
-      setNewRule({
-        ...newRule,
-        actions: [...(newRule.actions || []), action],
-      });
-    }
-
-    setNewAction({
-      type: "block_progression",
-      message: "",
-    });
-  };
-
-  const handleDeleteAction = (index: number) => {
-    if (editingRule) {
-      const updatedActions = [...editingRule.actions];
-      updatedActions.splice(index, 1);
-      setEditingRule({
-        ...editingRule,
-        actions: updatedActions,
-      });
-    } else if (newRule.actions) {
-      const updatedActions = [...newRule.actions];
-      updatedActions.splice(index, 1);
-      setNewRule({
-        ...newRule,
-        actions: updatedActions,
-      });
-    }
-  };
-
-  const handleStageToggle = (stageId: string) => {
-    if (editingRule) {
-      const appliesTo = editingRule.appliesTo.includes(stageId)
-        ? editingRule.appliesTo.filter((id) => id !== stageId)
-        : [...editingRule.appliesTo, stageId];
-
-      setEditingRule({
-        ...editingRule,
-        appliesTo,
-      });
-    } else {
-      const appliesTo = newRule.appliesTo?.includes(stageId)
-        ? newRule.appliesTo.filter((id) => id !== stageId)
-        : [...(newRule.appliesTo || []), stageId];
-
-      setNewRule({
-        ...newRule,
-        appliesTo,
-      });
-    }
-  };
-
-  const getSeverityColor = (severity: string) => {
-    switch (severity) {
-      case "info":
-        return "bg-blue-500";
-      case "warning":
-        return "bg-yellow-500";
-      case "error":
-        return "bg-red-500";
-      default:
-        return "bg-gray-500";
-    }
-  };
-
-  const getActionLabel = (action: ValidationAction) => {
-    switch (action.type) {
-      case "block_progression":
-        return "Block progression";
-      case "notify":
-        return "Show notification";
-      case "auto_assign":
-        return `Assign to ${action.assignTo}`;
-      case "set_field_value":
-        return `Set ${action.field} to ${action.value}`;
-      default:
-        return "Unknown action";
-    }
-  };
-
-  const getConditionLabel = (condition: ValidationCondition) => {
-    const fieldName =
-      fields.find((f) => f.id === condition.field)?.name || condition.field;
-    const operatorLabel =
-      operators.find((o) => o.value === condition.operator)?.label ||
-      condition.operator;
-
-    if (
-      condition.operator === "is_empty" ||
-      condition.operator === "is_not_empty"
-    ) {
-      return `${fieldName} ${operatorLabel}`;
-    }
-
-    return `${fieldName} ${operatorLabel} ${condition.value}`;
-  };
+  }
 
   return (
-    <div className="space-y-6">
-      <div className="space-y-4">
-        <h3 className="text-lg font-medium">Validation Rules</h3>
-        <p className="text-sm text-muted-foreground">
-          Configure validation rules that automatically check conditions and
-          perform actions at different pipeline stages
-        </p>
+    <>
+      <div className="space-y-6">
+        <div className="flex items-center justify-end">
+          <Button onClick={openCreateModal} size="sm">
+            <Plus className="h-4 w-4 mr-1" />
+            Add Rule
+          </Button>
+        </div>
+
+        {rules.length === 0 ? (
+          <div className="text-center py-8 text-muted-foreground border rounded-lg">
+            <p>No validation rules configured yet.</p>
+            <p className="text-sm mt-1">Add rules to validate lead data on each tab.</p>
+          </div>
+        ) : (
+          Object.entries(rulesByTab)
+            .sort(([a], [b]) => {
+              const tabOrder = TABS.map((t) => t.value);
+              return (tabOrder.indexOf(a) === -1 ? 99 : tabOrder.indexOf(a)) -
+                     (tabOrder.indexOf(b) === -1 ? 99 : tabOrder.indexOf(b));
+            })
+            .map(([tab, tabRules]) => (
+              <div key={tab} className="space-y-2">
+                <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+                  {TABS.find((t) => t.value === tab)?.label || tab}
+                </h4>
+                <div className="space-y-2">
+                  {tabRules
+                    .sort((a, b) => a.order - b.order)
+                    .map((rule) => (
+                      <div
+                        key={rule.id}
+                        className={`flex items-center gap-3 p-3 rounded-lg border transition-colors ${
+                          rule.enabled ? "bg-background" : "bg-muted/40 opacity-60"
+                        }`}
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-medium text-sm">{rule.name}</span>
+                            <Badge className={`text-xs ${getSeverityColor(rule.severity)}`}>
+                              {rule.severity}
+                            </Badge>
+                            {!rule.enabled && (
+                              <Badge variant="secondary" className="text-xs">Disabled</Badge>
+                            )}
+                          </div>
+                          {rule.description && (
+                            <p className="text-xs text-muted-foreground mt-0.5">{rule.description}</p>
+                          )}
+                          <div className="mt-1.5 flex flex-wrap gap-1">
+                            {rule.conditions?.rules?.map((cond, i) => (
+                              <Badge key={i} variant="outline" className="text-xs font-mono">
+                                {getFieldLabel(cond.field)} {getOperatorLabel(cond.field, cond.operator)}
+                                {cond.value !== undefined ? ` ${cond.value}` : ""}
+                              </Badge>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <Switch
+                            checked={rule.enabled}
+                            onCheckedChange={() => handleToggleEnabled(rule)}
+                            className="mr-1"
+                          />
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={() => openEditModal(rule)}
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-red-500 hover:text-red-700"
+                            onClick={() => handleDelete(rule)}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            ))
+        )}
       </div>
 
-      <DragDropContext onDragEnd={handleDragEnd}>
-        <Droppable droppableId="rules">
-          {(provided) => (
-            <div
-              {...provided.droppableProps}
-              ref={provided.innerRef}
-              className="space-y-2"
-            >
-              {rules.map((rule, index) => (
-                <Draggable key={rule.id} draggableId={rule.id} index={index}>
-                  {(provided) => (
-                    <div
-                      ref={provided.innerRef}
-                      {...provided.draggableProps}
-                      className="flex items-center space-x-2 bg-card rounded-md border p-3"
-                    >
-                      <div
-                        {...provided.dragHandleProps}
-                        className="cursor-grab"
-                      >
-                        <GripVertical className="h-5 w-5 text-muted-foreground" />
-                      </div>
-                      <div
-                        className={`w-2 h-full rounded-full ${getSeverityColor(
-                          rule.severity
-                        )}`}
-                      />
-                      <div className="flex-1">
-                        <div className="flex items-center">
-                          <div className="font-medium">{rule.name}</div>
-                          {!rule.enabled && (
-                            <Badge className="ml-2 bg-gray-500 text-white">
-                              Disabled
-                            </Badge>
-                          )}
-                        </div>
-                        <div className="text-sm text-muted-foreground">
-                          {rule.description}
-                        </div>
-                        <div className="mt-2 flex flex-wrap gap-1">
-                          {rule.appliesTo.map((stageId) => {
-                            const stage = pipelineStages.find(
-                              (s) => s.id === stageId
-                            );
-                            return (
-                              <Badge key={stageId} variant="outline">
-                                {stage?.name || stageId}
-                              </Badge>
-                            );
-                          })}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleEditRule(rule)}
-                          className="text-muted-foreground hover:text-foreground"
-                        >
-                          <Edit2 className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleDeleteRule(rule.id)}
-                          className="text-muted-foreground hover:text-foreground"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-                </Draggable>
-              ))}
-              {provided.placeholder}
-            </div>
-          )}
-        </Droppable>
-      </DragDropContext>
+      <Dialog open={modalOpen} onOpenChange={setModalOpen}>
+        <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{isEditing ? "Edit Validation Rule" : "Add Validation Rule"}</DialogTitle>
+            <DialogDescription>
+              Configure a validation check for lead data.
+            </DialogDescription>
+          </DialogHeader>
 
-      <Card>
-        <CardContent className="pt-6">
-          <div className="space-y-4">
-            <h3 className="text-lg font-medium">
-              {editingRule ? "Edit Validation Rule" : "Add New Validation Rule"}
-            </h3>
-            <div className="grid gap-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="name">Rule Name</Label>
+          {editingRule && (
+            <div className="space-y-4 py-2">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Rule Name *</Label>
                   <Input
-                    id="name"
-                    value={editingRule ? editingRule.name : newRule.name}
-                    onChange={(e) =>
-                      editingRule
-                        ? setEditingRule({
-                            ...editingRule,
-                            name: e.target.value,
-                          })
-                        : setNewRule({ ...newRule, name: e.target.value })
-                    }
-                    placeholder="Enter rule name"
+                    placeholder="e.g. Client name required"
+                    value={editingRule.name}
+                    onChange={(e) => setEditingRule({ ...editingRule, name: e.target.value })}
                   />
                 </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="severity">Severity</Label>
+                <div className="space-y-2">
+                  <Label>Tab *</Label>
                   <Select
-                    value={
-                      editingRule ? editingRule.severity : newRule.severity
-                    }
-                    onValueChange={(value) =>
-                      editingRule
-                        ? setEditingRule({
-                            ...editingRule,
-                            severity: value as any,
-                          })
-                        : setNewRule({ ...newRule, severity: value as any })
-                    }
+                    value={editingRule.tab || "details"}
+                    onValueChange={(v) => setEditingRule({ ...editingRule, tab: v })}
                   >
-                    <SelectTrigger id="severity">
-                      <SelectValue placeholder="Select severity" />
-                    </SelectTrigger>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      {severityOptions.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          {option.label}
-                        </SelectItem>
+                      {TABS.map((t) => (
+                        <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
               </div>
 
-              <div className="grid gap-2">
-                <Label htmlFor="description">Description</Label>
+              <div className="space-y-2">
+                <Label>Description</Label>
                 <Textarea
-                  id="description"
-                  value={
-                    editingRule
-                      ? editingRule.description
-                      : newRule.description || ""
-                  }
-                  onChange={(e) =>
-                    editingRule
-                      ? setEditingRule({
-                          ...editingRule,
-                          description: e.target.value,
-                        })
-                      : setNewRule({ ...newRule, description: e.target.value })
-                  }
-                  placeholder="Enter rule description"
+                  placeholder="What does this rule check?"
+                  value={editingRule.description || ""}
+                  onChange={(e) => setEditingRule({ ...editingRule, description: e.target.value })}
                   rows={2}
                 />
               </div>
 
-              <div className="flex items-center space-x-2">
-                <Switch
-                  id="enabled"
-                  checked={
-                    editingRule ? editingRule.enabled : newRule.enabled || false
-                  }
-                  onCheckedChange={(checked) =>
-                    editingRule
-                      ? setEditingRule({ ...editingRule, enabled: checked })
-                      : setNewRule({ ...newRule, enabled: checked })
-                  }
-                />
-                <Label htmlFor="enabled">Rule Enabled</Label>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Severity</Label>
+                  <Select
+                    value={editingRule.severity}
+                    onValueChange={(v) => setEditingRule({ ...editingRule, severity: v })}
+                  >
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {SEVERITY_OPTIONS.map((s) => (
+                        <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Condition Logic</Label>
+                  <Select
+                    value={editingRule.conditions.type}
+                    onValueChange={(v) =>
+                      setEditingRule({
+                        ...editingRule,
+                        conditions: { ...editingRule.conditions, type: v as "AND" | "OR" },
+                      })
+                    }
+                  >
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="AND">ALL conditions must pass (AND)</SelectItem>
+                      <SelectItem value="OR">ANY condition must pass (OR)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
 
-              {/* Applies To (Stages) */}
-              <div className="border-t pt-4 mt-2">
-                <h4 className="text-sm font-medium mb-4">Applies To Stages</h4>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                  {pipelineStages.map((stage) => (
-                    <div key={stage.id} className="flex items-center space-x-2">
-                      <Checkbox
-                        id={`stage-${stage.id}`}
-                        checked={
-                          editingRule
-                            ? editingRule.appliesTo.includes(stage.id)
-                            : newRule.appliesTo?.includes(stage.id) || false
-                        }
-                        onCheckedChange={() => handleStageToggle(stage.id)}
-                      />
-                      <Label htmlFor={`stage-${stage.id}`} className="text-sm">
-                        {stage.name}
-                      </Label>
-                    </div>
-                  ))}
+              <div className="flex items-center justify-between rounded-lg border p-3">
+                <div>
+                  <Label className="font-medium">Enabled</Label>
+                  <p className="text-xs text-muted-foreground">Disabled rules are skipped</p>
                 </div>
+                <Switch
+                  checked={editingRule.enabled}
+                  onCheckedChange={(checked) => setEditingRule({ ...editingRule, enabled: checked })}
+                />
               </div>
 
               {/* Conditions */}
-              <div className="border-t pt-4 mt-2">
-                <h4 className="text-sm font-medium mb-4">Conditions</h4>
-                <div className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div>
-                      <Label htmlFor="condition-field">Field</Label>
-                      <Select
-                        value={newCondition.field}
-                        onValueChange={(value) =>
-                          setNewCondition({ ...newCondition, field: value })
-                        }
+              <div className="border-t pt-4">
+                <h4 className="text-sm font-medium mb-3">Conditions</h4>
+
+                {editingRule.conditions.rules.length > 0 && (
+                  <div className="space-y-1.5 mb-3">
+                    {editingRule.conditions.rules.map((cond, i) => (
+                      <div
+                        key={i}
+                        className="flex items-center justify-between bg-muted/50 p-2 rounded-md"
                       >
-                        <SelectTrigger id="condition-field">
-                          <SelectValue placeholder="Select field" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {fields.map((field) => (
-                            <SelectItem key={field.id} value={field.id}>
-                              {field.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div>
-                      <Label htmlFor="condition-operator">Operator</Label>
-                      <Select
-                        value={newCondition.operator}
-                        onValueChange={(value) =>
-                          setNewCondition({
-                            ...newCondition,
-                            operator: value as any,
-                          })
-                        }
-                      >
-                        <SelectTrigger id="condition-operator">
-                          <SelectValue placeholder="Select operator" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {operators.map((operator) => (
-                            <SelectItem
-                              key={operator.value}
-                              value={operator.value}
-                            >
-                              {operator.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    {newCondition.operator !== "is_empty" &&
-                      newCondition.operator !== "is_not_empty" && (
-                        <div>
-                          <Label htmlFor="condition-value">Value</Label>
-                          <Input
-                            id="condition-value"
-                            value={newCondition.value || ""}
-                            onChange={(e) =>
-                              setNewCondition({
-                                ...newCondition,
-                                value: e.target.value,
-                              })
-                            }
-                            placeholder="Enter value"
-                          />
-                        </div>
-                      )}
+                        <span className="text-sm">
+                          <span className="font-medium">{getFieldLabel(cond.field)}</span>{" "}
+                          <span className="text-muted-foreground">{getOperatorLabel(cond.field, cond.operator)}</span>
+                          {cond.value !== undefined && (
+                            <span className="font-mono ml-1">{String(cond.value)}</span>
+                          )}
+                        </span>
+                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => removeCondition(i)}>
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    ))}
                   </div>
-                  <Button
-                    onClick={handleAddCondition}
-                    variant="outline"
-                    className="w-full"
+                )}
+
+                <div className="grid grid-cols-3 gap-2">
+                  <Select
+                    value={newCondField}
+                    onValueChange={(v) => { setNewCondField(v); setNewCondOp(""); setNewCondValue(""); }}
                   >
-                    Add Condition
-                    <Plus className="ml-2 h-4 w-4" />
-                  </Button>
-                </div>
+                    <SelectTrigger><SelectValue placeholder="Field" /></SelectTrigger>
+                    <SelectContent>
+                      {FIELD_OPTIONS.map((f) => (
+                        <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
 
-                <div className="mt-4 space-y-2">
-                  {(editingRule
-                    ? editingRule.conditions
-                    : newRule.conditions || []
-                  ).map((condition, index) => (
-                    <div
-                      key={index}
-                      className="flex items-center justify-between bg-muted/50 p-2 rounded-md"
-                    >
-                      <div className="text-sm">
-                        {getConditionLabel(condition)}
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleDeleteCondition(index)}
-                        className="text-muted-foreground hover:text-foreground"
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Actions */}
-              <div className="border-t pt-4 mt-2">
-                <h4 className="text-sm font-medium mb-4">Actions</h4>
-                <div className="space-y-4">
-                  <div className="grid gap-4">
-                    <div>
-                      <Label htmlFor="action-type">Action Type</Label>
-                      <Select
-                        value={newAction.type}
-                        onValueChange={(value) =>
-                          setNewAction({ ...newAction, type: value as any })
-                        }
-                      >
-                        <SelectTrigger id="action-type">
-                          <SelectValue placeholder="Select action type" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {actionTypes.map((actionType) => (
-                            <SelectItem
-                              key={actionType.value}
-                              value={actionType.value}
-                            >
-                              {actionType.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    {(newAction.type === "block_progression" ||
-                      newAction.type === "notify") && (
-                      <div>
-                        <Label htmlFor="action-message">Message</Label>
-                        <Textarea
-                          id="action-message"
-                          value={newAction.message || ""}
-                          onChange={(e) =>
-                            setNewAction({
-                              ...newAction,
-                              message: e.target.value,
-                            })
-                          }
-                          placeholder="Enter message"
-                          rows={2}
-                        />
-                      </div>
-                    )}
-
-                    {newAction.type === "auto_assign" && (
-                      <div>
-                        <Label htmlFor="action-assign-to">Assign To</Label>
-                        <Select
-                          value={newAction.assignTo}
-                          onValueChange={(value) =>
-                            setNewAction({ ...newAction, assignTo: value })
-                          }
-                        >
-                          <SelectTrigger id="action-assign-to">
-                            <SelectValue placeholder="Select team" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {teams.map((team) => (
-                              <SelectItem key={team} value={team}>
-                                {team}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    )}
-
-                    {newAction.type === "set_field_value" && (
-                      <>
-                        <div>
-                          <Label htmlFor="action-field">Field</Label>
-                          <Select
-                            value={newAction.field}
-                            onValueChange={(value) =>
-                              setNewAction({ ...newAction, field: value })
-                            }
-                          >
-                            <SelectTrigger id="action-field">
-                              <SelectValue placeholder="Select field" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {fields.map((field) => (
-                                <SelectItem key={field.id} value={field.id}>
-                                  {field.name}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <div>
-                          <Label htmlFor="action-value">Value</Label>
-                          <Input
-                            id="action-value"
-                            value={newAction.value || ""}
-                            onChange={(e) =>
-                              setNewAction({
-                                ...newAction,
-                                value: e.target.value,
-                              })
-                            }
-                            placeholder="Enter value"
-                          />
-                        </div>
-                      </>
-                    )}
-                  </div>
-                  <Button
-                    onClick={handleAddAction}
-                    variant="outline"
-                    className="w-full"
+                  <Select
+                    value={newCondOp}
+                    onValueChange={(v) => setNewCondOp(v)}
+                    disabled={!newCondField}
                   >
-                    Add Action
-                    <Plus className="ml-2 h-4 w-4" />
-                  </Button>
+                    <SelectTrigger><SelectValue placeholder="Operator" /></SelectTrigger>
+                    <SelectContent>
+                      {currentOperators.map((o) => (
+                        <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  {needsValue ? (
+                    <Input
+                      placeholder="Value"
+                      value={newCondValue}
+                      onChange={(e) => setNewCondValue(e.target.value)}
+                    />
+                  ) : (
+                    <div />
+                  )}
                 </div>
 
-                <div className="mt-4 space-y-2">
-                  {(editingRule
-                    ? editingRule.actions
-                    : newRule.actions || []
-                  ).map((action, index) => (
-                    <div
-                      key={index}
-                      className="flex items-center justify-between bg-muted/50 p-2 rounded-md"
-                    >
-                      <div className="text-sm">
-                        {getActionLabel(action)}
-                        {action.message && (
-                          <div className="text-xs text-muted-foreground mt-1">
-                            {action.message}
-                          </div>
-                        )}
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleDeleteAction(index)}
-                        className="text-muted-foreground hover:text-foreground"
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <Button
-                onClick={editingRule ? handleUpdateRule : handleAddRule}
-                className="w-full mt-4 bg-blue-600 hover:bg-blue-700 text-white"
-              >
-                {editingRule ? "Update Rule" : "Add Rule"}
-                {!editingRule && <Plus className="ml-2 h-4 w-4" />}
-              </Button>
-              {editingRule && (
-                <Button variant="outline" onClick={() => setEditingRule(null)}>
-                  Cancel
+                <Button
+                  onClick={addCondition}
+                  variant="outline"
+                  size="sm"
+                  className="mt-2"
+                  disabled={!newCondField || !newCondOp || (needsValue && !newCondValue)}
+                >
+                  <Plus className="h-3.5 w-3.5 mr-1" />
+                  Add Condition
                 </Button>
-              )}
+              </div>
+
+              {/* Actions (pass/fail messages) */}
+              <div className="border-t pt-4">
+                <h4 className="text-sm font-medium mb-3">Messages</h4>
+                <div className="space-y-3">
+                  <div className="space-y-2">
+                    <Label className="text-xs text-green-700">On Pass</Label>
+                    <Input
+                      placeholder="e.g. Name provided"
+                      value={editingRule.actions?.onPass?.message || ""}
+                      onChange={(e) =>
+                        setEditingRule({
+                          ...editingRule,
+                          actions: {
+                            ...editingRule.actions,
+                            onPass: { message: e.target.value },
+                          },
+                        })
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-xs text-red-700">On Fail</Label>
+                    <Input
+                      placeholder="e.g. First name and last name required"
+                      value={editingRule.actions?.onFail?.message || ""}
+                      onChange={(e) =>
+                        setEditingRule({
+                          ...editingRule,
+                          actions: {
+                            ...editingRule.actions,
+                            onFail: { ...editingRule.actions.onFail, message: e.target.value },
+                          },
+                        })
+                      }
+                    />
+                  </div>
+                </div>
+              </div>
             </div>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setModalOpen(false)}>Cancel</Button>
+            <Button
+              onClick={handleSave}
+              disabled={saving || !editingRule?.name.trim() || (editingRule?.conditions.rules.length ?? 0) === 0}
+            >
+              {saving ? (
+                <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Saving...</>
+              ) : (
+                <>{isEditing ? "Update" : "Add"} Rule</>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

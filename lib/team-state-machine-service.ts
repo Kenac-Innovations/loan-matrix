@@ -1116,35 +1116,28 @@ export class TeamAwareStateMachineService {
         },
         create: {
           tenantId: lead.tenantId,
-          fromStageId: lead.currentStageId,
-          toStageId: request.targetStageId,
-          event: request.event || "MANUAL_TRANSITION",
-          context: request.context,
-          triggeredBy: request.triggeredBy,
-          metadata: {
-            teamInfo: validation.teamInfo,
-            timestamp: new Date(),
-          },
+          fineractLoanId,
+          fineractClientId: lead.fineractClientId,
+          clientName,
+          loanAccountNo: accountNo,
+          amount,
+          currency: currencyCode,
+          status: "PAID",
+          paymentMethod: overrides.payoutMethod,
+          paidAt: new Date(),
+          paidBy: triggeredBy || "system",
+          notes: overrides.payoutNote || overrides.note || `Payout via ${methodLabel}`,
         },
-        include: {
-          fromStage: true,
-          toStage: true,
+        update: {
+          status: "PAID",
+          paymentMethod: overrides.payoutMethod,
+          paidAt: new Date(),
+          paidBy: triggeredBy || "system",
+          notes: overrides.payoutNote || overrides.note || `Payout via ${methodLabel}`,
         },
       });
 
-      return {
-        success: true,
-        message: "Transition executed successfully",
-        lead: updatedLead,
-        transition,
-        assignedTeam: validation.teamInfo,
-      };
-    } catch (error) {
-      console.error("Error executing transition:", error);
-      return {
-        success: false,
-        message: error instanceof Error ? error.message : "Unknown error",
-      };
+      return `Payout of ${currencyCode} ${amount.toLocaleString()} marked as paid via ${methodLabel}`;
     }
   }
 
@@ -1266,17 +1259,9 @@ export class TeamAwareStateMachineService {
       const results = [];
 
       for (const targetStageId of lead.currentStage.allowedTransitions) {
-        const validation = await this.validateTransitionWithTeams(
-          lead.currentStageId,
-          targetStageId,
-          lead.tenantId,
-          userId
-        );
-
-        if (validation.isValid) {
-          const targetStage = await prisma.pipelineStage.findUnique({
-            where: { id: targetStageId },
-          });
+        const targetStage = await prisma.pipelineStage.findUnique({
+          where: { id: targetStageId },
+        });
 
         if (!targetStage || !targetStage.isActive) continue;
 
@@ -1355,7 +1340,7 @@ export class TeamAwareStateMachineService {
         });
       }
 
-      return availableTransitions;
+      return results;
     } catch (error) {
       console.error("Error getting available transitions:", error);
       return [];

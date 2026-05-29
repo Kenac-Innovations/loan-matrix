@@ -1,6 +1,5 @@
 "use client";
 
-import { useState, useEffect } from "react";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -479,16 +478,14 @@ export function LeadCommunications({ leadId }: LeadCommunicationsProps) {
                         </a>
                       </Button>
                     )}
-                    {!readOnly && (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => handleQuickLogCommunication(contact)}
-                      >
-                        <MessageSquare className="h-3.5 w-3.5 mr-1.5" />
-                        Log
-                      </Button>
-                    )}
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => handleQuickLogCommunication(contact)}
+                    >
+                      <MessageSquare className="h-3.5 w-3.5 mr-1.5" />
+                      Log
+                    </Button>
                   </div>
                 </div>
               ))}

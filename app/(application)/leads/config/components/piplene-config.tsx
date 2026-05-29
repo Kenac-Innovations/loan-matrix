@@ -11,7 +11,7 @@ import {
   Trash2,
   GripVertical,
   Plus,
-  Edit2,
+  Pencil,
   ArrowRight,
   Settings,
   Loader2,
@@ -27,8 +27,22 @@ import {
 import { ColourPicker } from "./colour-picker";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   defaultStages,
-  defaultStageColors,
   type Stage,
 } from "@/shared/defaults/pipeline-config";
 import { toast } from "sonner";
@@ -39,7 +53,10 @@ export function PipelineConfig() {
   const [isSaving, setIsSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
 
-  // Fetch stages from database on mount
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editingStage, setEditingStage] = useState<Stage | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
+
   useEffect(() => {
     fetchStages();
   }, []);
@@ -68,7 +85,6 @@ export function PipelineConfig() {
             }))
           );
         } else {
-          // Use defaults if no stages in database
           setStages(defaultStages);
         }
       } else {
@@ -83,19 +99,19 @@ export function PipelineConfig() {
     }
   };
 
-  const saveStages = async () => {
+  const saveStages = async (updatedStages?: Stage[]) => {
+    const toSave = updatedStages || stages;
     try {
       setIsSaving(true);
       const response = await fetch("/api/pipeline/stages", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ stages }),
+        body: JSON.stringify({ stages: toSave }),
       });
 
       if (response.ok) {
         toast.success("Pipeline stages saved successfully");
         setHasChanges(false);
-        // Refresh to get updated IDs
         await fetchStages();
       } else {
         const error = await response.json();
@@ -109,17 +125,6 @@ export function PipelineConfig() {
     }
   };
 
-  const markChanged = () => {
-    setHasChanges(true);
-  };
-
-  const [editingStage, setEditingStage] = useState<Stage | null>(null);
-  const [newStage, setNewStage] = useState<Partial<Stage>>({
-    name: "",
-    description: "",
-    color: "#3b82f6",
-  });
-
   const handleDragEnd = (result: any) => {
     if (!result.destination) return;
 
@@ -127,20 +132,17 @@ export function PipelineConfig() {
     const [reorderedItem] = items.splice(result.source.index, 1);
     items.splice(result.destination.index, 0, reorderedItem);
 
-    // Update order property
     const reorderedItems = items.map((item, index) => ({
       ...item,
       order: index + 1,
     }));
 
     setStages(reorderedItems);
-    markChanged();
+    setHasChanges(true);
   };
 
-  const handleAddStage = () => {
-    if (!newStage.name) return;
-
-    const stage: Stage = {
+  const openCreateModal = () => {
+    setEditingStage({
       id: `new-${Date.now()}`,
       name: "",
       description: "",
@@ -182,25 +184,10 @@ export function PipelineConfig() {
   };
 
   const handleDeleteStage = (id: string) => {
-    setStages(stages.filter((stage) => stage.id !== id));
-    markChanged();
-  };
-
-  const handleEditStage = (stage: Stage) => {
-    setEditingStage(stage);
-  };
-
-  const handleUpdateStage = () => {
-    if (!editingStage) return;
-
-    setStages(
-      stages.map((stage) =>
-        stage.id === editingStage.id ? editingStage : stage
-      )
-    );
-
-    setEditingStage(null);
-    markChanged();
+    const updated = stages.filter((stage) => stage.id !== id);
+    const reordered = updated.map((item, index) => ({ ...item, order: index + 1 }));
+    setStages(reordered);
+    setHasChanges(true);
   };
 
   const handleToggleTransition = (fromStageId: string, toStageId: string) => {
@@ -209,7 +196,6 @@ export function PipelineConfig() {
         if (stage.id === fromStageId) {
           const currentTransitions = stage.allowedTransitions || [];
           const hasTransition = currentTransitions.includes(toStageId);
-
           return {
             ...stage,
             allowedTransitions: hasTransition
@@ -220,7 +206,7 @@ export function PipelineConfig() {
         return stage;
       })
     );
-    markChanged();
+    setHasChanges(true);
   };
 
   if (isLoading) {
@@ -232,44 +218,41 @@ export function PipelineConfig() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-start justify-between">
-        <div className="space-y-1">
-          <h3 className="text-lg font-medium">
-            Pipeline State Machine Configuration
-          </h3>
-          <p className="text-sm text-muted-foreground">
-            Configure your pipeline stages and state transitions. This creates a
-            state machine that controls how leads move through your pipeline.
-          </p>
-        </div>
-        {hasChanges && (
-          <Button
-            onClick={saveStages}
-            disabled={isSaving}
-            className="bg-green-500 hover:bg-green-600"
-          >
-            {isSaving ? (
-              <Loader2 className="h-4 w-4 animate-spin mr-2" />
-            ) : (
-              <Save className="h-4 w-4 mr-2" />
-            )}
-            Save Changes
+    <>
+      <div className="space-y-6">
+        <div className="flex items-center justify-end gap-2">
+          <Button onClick={openCreateModal} size="sm" variant="outline">
+            <Plus className="h-4 w-4 mr-1" />
+            Add Stage
           </Button>
-        )}
-      </div>
+          {hasChanges && (
+            <Button
+              onClick={() => saveStages()}
+              disabled={isSaving}
+              className="bg-green-500 hover:bg-green-600"
+              size="sm"
+            >
+              {isSaving ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-1" />
+              ) : (
+                <Save className="h-4 w-4 mr-1" />
+              )}
+              Save Changes
+            </Button>
+          )}
+        </div>
 
-      <Tabs defaultValue="stages" className="space-y-6">
-        <TabsList>
-          <TabsTrigger value="stages">
-            <Settings className="mr-2 h-4 w-4" />
-            Stages
-          </TabsTrigger>
-          <TabsTrigger value="transitions">
-            <ArrowRight className="mr-2 h-4 w-4" />
-            Transitions
-          </TabsTrigger>
-        </TabsList>
+        <Tabs defaultValue="stages" className="space-y-6">
+          <TabsList>
+            <TabsTrigger value="stages">
+              <Settings className="mr-2 h-4 w-4" />
+              Stages
+            </TabsTrigger>
+            <TabsTrigger value="transitions">
+              <ArrowRight className="mr-2 h-4 w-4" />
+              Transitions
+            </TabsTrigger>
+          </TabsList>
 
           <TabsContent value="stages" className="space-y-6">
             {stages.length === 0 ? (

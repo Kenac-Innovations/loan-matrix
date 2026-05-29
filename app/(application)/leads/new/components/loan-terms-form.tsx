@@ -4048,7 +4048,7 @@ export function LoanTermsForm({
                 <div>
                   <CardTitle>Charges</CardTitle>
                   <CardDescription>
-                    {isChargesReadOnly
+                    {isChargesStructureReadOnly
                       ? "View loan charges and fees. Charges cannot be modified."
                       : "Manage loan charges and fees. Add, remove, or edit charges and their due dates."}
                   </CardDescription>

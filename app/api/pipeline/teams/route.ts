@@ -54,8 +54,11 @@ export async function GET(request: NextRequest) {
         (id) => stageMap.get(id) || id
       ),
       pipelineStageIds: team.pipelineStageIds || [],
+      assignmentStrategy: team.assignmentStrategy || "round_robin",
+      assignmentConfig: team.assignmentConfig || {},
       members: team.members.map((member) => ({
         id: member.id,
+        userId: member.userId,
         name: member.name,
         email: member.email,
         role: member.role,
@@ -158,6 +161,8 @@ export async function PUT(request: NextRequest) {
               name: team.name,
               description: team.description || "",
               pipelineStageIds,
+              assignmentStrategy: team.assignmentStrategy || "round_robin",
+              assignmentConfig: team.assignmentConfig || {},
             },
           });
 
@@ -166,6 +171,7 @@ export async function PUT(request: NextRequest) {
             await tx.teamMember.create({
               data: {
                 teamId: newTeam.id,
+                userId: member.userId,
                 name: member.name,
                 email: member.email,
                 role: member.role || "Team Member",
@@ -181,6 +187,8 @@ export async function PUT(request: NextRequest) {
               name: team.name,
               description: team.description || "",
               pipelineStageIds,
+              assignmentStrategy: team.assignmentStrategy || "round_robin",
+              assignmentConfig: team.assignmentConfig || {},
             },
           });
 
@@ -216,6 +224,7 @@ export async function PUT(request: NextRequest) {
               await tx.teamMember.create({
                 data: {
                   teamId: team.id,
+                  userId: member.userId,
                   name: member.name,
                   email: member.email,
                   role: member.role || "Team Member",
@@ -226,6 +235,7 @@ export async function PUT(request: NextRequest) {
               await tx.teamMember.update({
                 where: { id: member.id },
                 data: {
+                  userId: member.userId,
                   name: member.name,
                   email: member.email,
                   role: member.role || "Team Member",
