@@ -649,13 +649,19 @@ export async function POST(
       });
 
       // Send SMS: payout completed (best-effort)
-      try {
+      void (async () => {
         const lead = await prisma.lead.findFirst({
           where: {
             tenantId: tenant.id,
             fineractLoanId: updatedPayout.fineractLoanId,
           },
-          select: { mobileNo: true, firstname: true, middlename: true, lastname: true },
+          select: {
+            mobileNo: true,
+            countryCode: true,
+            firstname: true,
+            middlename: true,
+            lastname: true,
+          },
         });
         const phone = lead?.mobileNo ?? null;
         if (phone) {
@@ -668,14 +674,15 @@ export async function POST(
             type: "paid",
             clientName: clientName || "Customer",
             phone,
+            countryCode: lead?.countryCode ?? undefined,
             amount: updatedPayout.amount,
             currency: updatedPayout.currency || "ZMW",
             tenantId: tenant.slug,
           });
         }
-      } catch (smsError) {
+      })().catch((smsError) => {
         console.error("Failed to send paid SMS:", smsError);
-      }
+      });
     }
 
     // Update the cashier session status to SETTLED (only for end-of-day settlements)

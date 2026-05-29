@@ -131,7 +131,7 @@ export async function POST(
 
     // Send SMS to applicant for approve / reject / disburse (Loan Matrix loans only)
     if (["approve", "reject", "disburse"].includes(action)) {
-      try {
+      void (async () => {
         const tenant = await getTenantBySlug(tenantSlug);
         if (tenant) {
           const lead = await prisma.lead.findFirst({
@@ -144,6 +144,7 @@ export async function POST(
               middlename: true,
               lastname: true,
               mobileNo: true,
+              countryCode: true,
               requestedAmount: true,
             },
           });
@@ -162,15 +163,16 @@ export async function POST(
               type: smsType,
               clientName: clientName || "Customer",
               phone: lead.mobileNo,
+              countryCode: lead.countryCode,
               amount,
               reason: action === "reject" ? (note || "No reason provided") : undefined,
               tenantId: tenant.slug,
             });
           }
         }
-      } catch (smsError) {
+      })().catch((smsError) => {
         console.error("Failed to send loan status SMS:", smsError);
-      }
+      });
     }
 
     return NextResponse.json({
