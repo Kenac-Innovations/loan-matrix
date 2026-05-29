@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { fineractFetch } from "@/lib/fineract-fetch";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -75,14 +74,19 @@ export default function WriteOffModal({ isOpen, onClose, loanId, onSuccess }: Wr
   const fetchWriteOffTemplate = async () => {
     try {
       setLoading(true);
-      const response = await fineractFetch(`/api/fineract/loans/${loanId}/transactions/template?command=writeoff`);
+      const response = await fetch(`/api/fineract/loans/${loanId}/transactions/template?command=writeoff`);
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch write-off template: ${response.statusText}`);
+      }
+
       const data = await response.json();
       setTemplate(data);
     } catch (error) {
       console.error("Error fetching write-off template:", error);
       toast({
         title: "Error",
-        description: error instanceof Error ? error.message : "Failed to load write-off template. Please try again.",
+        description: "Failed to load write-off template. Please try again.",
         variant: "destructive",
       });
     } finally {
@@ -119,13 +123,20 @@ export default function WriteOffModal({ isOpen, onClose, loanId, onSuccess }: Wr
         ...(writeOffReason && { writeOffReasonId: parseInt(writeOffReason) })
       };
 
-      await fineractFetch(`/api/fineract/loans/${loanId}/transactions?command=writeoff`, {
+      const response = await fetch(`/api/fineract/loans/${loanId}/transactions?command=writeoff`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(payload),
       });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `Failed to submit write-off: ${response.statusText}`);
+      }
+
+      const result = await response.json();
       
       toast({
         title: "Success",

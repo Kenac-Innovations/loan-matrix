@@ -1,8 +1,16 @@
 "use client";
 
 import { useCurrency } from "@/contexts/currency-context";
-import { useState, useEffect, useMemo } from "react";
-import { ArrowLeft, RefreshCw } from "lucide-react";
+import { useState, useEffect, useMemo, useCallback } from "react";
+import { ArrowLeft, RefreshCw, Undo2 } from "lucide-react";
+import {
+  ReverseCashierEntryModal,
+  type ReverseCashierEntryInitial,
+} from "../../components/reverse-cashier-entry-modal";
+import {
+  getOriginalCashDirectionForCounterEntry,
+  isCashierCounterEntryBlockedByLoanContext,
+} from "@/lib/cashier-txn-reversal-eligibility";
 import {
   Card,
   CardContent,
@@ -19,7 +27,7 @@ import { GenericDataTable } from "@/components/tables/generic-data-table";
 import { DataTableColumn } from "@/shared/types/data-table";
 
 interface Transaction {
-  id: number;
+  id: number | string;
   cashierId?: number;
   txnType?: string | { id: number; value: string };
   txnAmount?: number;
@@ -39,6 +47,7 @@ interface Transaction {
     code: string;
     name: string;
   };
+  currencyCode?: string;
   notes?: string;
 }
 
@@ -46,6 +55,47 @@ interface Currency {
   code: string;
   name: string;
   displaySymbol?: string;
+}
+
+function transactionDateToIsoDate(tx: Transaction): string {
+  const d = tx.txnDate || tx.transactionDate || tx.createdDate;
+  if (Array.isArray(d) && d.length >= 3) {
+    const [y, m, day] = d;
+    return `${y}-${String(m).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  }
+  if (typeof d === "string" && /^\d{4}-\d{2}-\d{2}/.test(d)) {
+    return d.slice(0, 10);
+  }
+  return new Date().toISOString().split("T")[0];
+}
+
+function buildSourcePayload(tx: Transaction) {
+  const tt = tx.transactionType;
+  const txnObj =
+    typeof tx.txnType === "object" && tx.txnType
+      ? (tx.txnType as { code?: string; value?: string })
+      : null;
+  const codeFromTxnType = txnObj?.code;
+  const valueFromTxnType =
+    typeof tx.txnType === "string"
+      ? tx.txnType
+      : txnObj?.value;
+  return {
+    sourceTxnTypeCode:
+      typeof tt === "object" && tt ? tt.code : codeFromTxnType,
+    sourceTxnTypeValue:
+      typeof tt === "object" && tt ? tt.value : valueFromTxnType,
+    sourceNotes: tx.txnNote || tx.notes || undefined,
+    sourceFineractTransactionId:
+      typeof tx.id === "number" ? tx.id : undefined,
+  };
+}
+
+function getTransactionCurrencyCode(
+  tx: Transaction,
+  fallbackCurrencyCode?: string
+): string | undefined {
+  return tx.currency?.code || tx.currencyCode || fallbackCurrencyCode;
 }
 
 interface Summary {
@@ -75,6 +125,9 @@ export default function CashierTransactionsPage({
   const [currencyCode, setCurrencyCode] = useState("");
   const [currencies, setCurrencies] = useState<Currency[]>([]);
   const [loadingCurrencies, setLoadingCurrencies] = useState(false);
+  const [reverseModalOpen, setReverseModalOpen] = useState(false);
+  const [reverseModalInitial, setReverseModalInitial] =
+    useState<ReverseCashierEntryInitial | null>(null);
 
   useEffect(() => {
     async function loadParams() {
@@ -131,14 +184,14 @@ export default function CashierTransactionsPage({
           data?.cashierTransactions?.pageItems &&
           Array.isArray(data.cashierTransactions.pageItems)
         ) {
-          setTransactions(data.cashierTransactions.pageItems);
+          setTransactions(sortByDateDesc(data.cashierTransactions.pageItems));
         } else if (
           data?.cashierTransactions &&
           Array.isArray(data.cashierTransactions)
         ) {
-          setTransactions(data.cashierTransactions);
+          setTransactions(sortByDateDesc(data.cashierTransactions));
         } else if (Array.isArray(data)) {
-          setTransactions(data);
+          setTransactions(sortByDateDesc(data));
         } else {
           setTransactions([]);
         }
@@ -156,20 +209,39 @@ export default function CashierTransactionsPage({
     }
   };
 
+  const toTimestamp = (date: string | number[] | undefined): number => {
+    if (!date) return 0;
+    if (Array.isArray(date) && date.length >= 3) {
+      return new Date(date[0], date[1] - 1, date[2]).getTime();
+    }
+    if (typeof date === "string") {
+      const d = new Date(date);
+      if (!isNaN(d.getTime())) return d.getTime();
+    }
+    return 0;
+  };
+
+  const sortByDateDesc = (txns: Transaction[]) =>
+    [...txns].sort((a, b) => {
+      const dateA = a.txnDate || a.transactionDate || a.createdDate;
+      const dateB = b.txnDate || b.transactionDate || b.createdDate;
+      return toTimestamp(dateB) - toTimestamp(dateA);
+    });
+
   const formatTransactionDate = (date: string | number[] | undefined) => {
     if (!date) return "—";
     if (Array.isArray(date) && date.length === 3) {
       return formatDate(date);
     }
     if (typeof date === "string") {
-      const d = new Date(date);
+      const isDateOnly = /^\d{4}-\d{2}-\d{2}$/.test(date.trim());
+      const d = isDateOnly ? new Date(date + "T00:00:00") : new Date(date);
       if (!isNaN(d.getTime())) {
         return d.toLocaleDateString("en-US", {
           year: "numeric",
           month: "short",
           day: "numeric",
-          hour: "2-digit",
-          minute: "2-digit",
+          ...(isDateOnly ? {} : { hour: "2-digit", minute: "2-digit" }),
         });
       }
     }
@@ -204,7 +276,8 @@ export default function CashierTransactionsPage({
     const isSettle =
       txnTypeLower.includes("settle") ||
       txnTypeLower.includes("debit") ||
-      txnTypeLower.includes("withdrawal");
+      txnTypeLower.includes("withdrawal") ||
+      txnTypeLower.includes("expense");
 
     if (isReversal) return "Reversal (Cash In)";
     if (isAllocate) return "Cash In";
@@ -226,24 +299,34 @@ export default function CashierTransactionsPage({
     return <Badge variant="outline">{label}</Badge>;
   };
 
-  const getTransactionAmount = (tx: Transaction) => {
-    return tx.txnAmount || tx.amount || 0;
-  };
-
-  const getTransactionDate = (tx: Transaction) => {
-    return tx.txnDate || tx.transactionDate;
-  };
-
   const getTransactionNotes = (tx: Transaction) => {
     return tx.txnNote || tx.notes || "—";
   };
+
+  const openReverseForRow = useCallback((tx: Transaction) => {
+    const direction = getOriginalCashDirectionForCounterEntry(tx);
+    if (!direction) return;
+    const sp = buildSourcePayload(tx);
+    setReverseModalInitial({
+      amount: String(tx.txnAmount ?? tx.amount ?? ""),
+      transactionDate: transactionDateToIsoDate(tx),
+      currencyCode: getTransactionCurrencyCode(tx, currencyCode),
+      originalCashDirection: direction,
+      sourceTxnTypeCode: sp.sourceTxnTypeCode,
+      sourceTxnTypeValue: sp.sourceTxnTypeValue,
+      sourceNotes: sp.sourceNotes,
+      sourceFineractTransactionId: sp.sourceFineractTransactionId,
+      lockDirection: true,
+    });
+    setReverseModalOpen(true);
+  }, [currencyCode]);
 
   const columns: DataTableColumn<Transaction>[] = useMemo(
     () => [
       {
         id: "date",
         header: "Date",
-        accessorKey: "createdDate" as keyof Transaction,
+        accessorKey: "txnDate" as keyof Transaction,
         enableSorting: true,
         cell: ({ row }) => {
           const tx = row.original;
@@ -273,7 +356,7 @@ export default function CashierTransactionsPage({
           <span className="text-sm font-medium text-right block">
             {formatAmount(
               row.original.txnAmount || row.original.amount || 0,
-              currencyCode
+              getTransactionCurrencyCode(row.original, currencyCode)
             )}
           </span>
         ),
@@ -289,8 +372,44 @@ export default function CashierTransactionsPage({
           </span>
         ),
       },
+      {
+        id: "actions",
+        header: "",
+        enableSorting: false,
+        cell: ({ row }) => {
+          const tx = row.original;
+          const direction = getOriginalCashDirectionForCounterEntry(tx);
+          const sp = buildSourcePayload(tx);
+          const blocked = isCashierCounterEntryBlockedByLoanContext({
+            sourceTxnTypeCode: sp.sourceTxnTypeCode,
+            sourceTxnTypeValue: sp.sourceTxnTypeValue,
+            sourceNotes: sp.sourceNotes,
+          });
+          const canReverse = direction != null && !blocked;
+          return (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="whitespace-nowrap"
+              disabled={!canReverse}
+              title={
+                blocked
+                  ? "Repayment/disbursement: reverse from the loan"
+                  : direction == null
+                    ? "Unrecognized transaction type for cashier-only reverse"
+                    : "Post opposing entry on cashier only"
+              }
+              onClick={() => openReverseForRow(tx)}
+            >
+              <Undo2 className="h-3 w-3 mr-1" />
+              Reverse
+            </Button>
+          );
+        },
+      },
     ],
-    [currencyCode]
+    [currencyCode, openReverseForRow]
   );
 
   return (
@@ -312,15 +431,43 @@ export default function CashierTransactionsPage({
             )}
           </div>
         </div>
-        <Button
-          onClick={fetchTransactions}
-          disabled={loading}
-          variant="outline"
-        >
-          <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
-          Refresh
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => {
+              setReverseModalInitial(null);
+              setReverseModalOpen(true);
+            }}
+            disabled={!tellerId || !cashierId || !currencyCode}
+            title="Post opposing cashier entry (choose cash in vs cash out)"
+          >
+            <Undo2 className="h-4 w-4 mr-2" />
+            Reverse cashier movement
+          </Button>
+          <Button
+            onClick={fetchTransactions}
+            disabled={loading}
+            variant="outline"
+          >
+            <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
+            Refresh
+          </Button>
+        </div>
       </div>
+
+      <ReverseCashierEntryModal
+        open={reverseModalOpen}
+        onOpenChange={(o) => {
+          setReverseModalOpen(o);
+          if (!o) setReverseModalInitial(null);
+        }}
+        tellerId={tellerId}
+        cashierId={cashierId}
+        currencyCode={currencyCode}
+        initial={reverseModalInitial}
+        onSuccess={fetchTransactions}
+      />
 
       {/* Currency Selector */}
       <Card>
@@ -433,4 +580,3 @@ export default function CashierTransactionsPage({
     </div>
   );
 }
-

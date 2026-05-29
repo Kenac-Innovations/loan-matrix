@@ -1,8 +1,7 @@
 "use client";
 
 import { useCurrency } from "@/contexts/currency-context";
-import { fineractFetch } from "@/lib/fineract-fetch";
-import { useCallback, useEffect, useState } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   Dialog,
   DialogContent,
@@ -14,6 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -21,7 +21,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Calendar,
   Coins,
@@ -30,6 +29,7 @@ import {
   CheckCircle,
 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { useReceiptValidation } from "@/hooks/use-receipt-validation";
 
 interface RefundTemplate {
   loanId: number;
@@ -48,13 +48,12 @@ interface RefundTemplate {
   };
   amount: number;
   numberOfRepayments: number;
-}
-
-interface CreditBalanceRefundModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  loanId: number;
-  onSuccess: () => void;
+  paymentTypeOptions?: Array<{
+    id: number;
+    name: string;
+    description?: string;
+    isCashPayment?: boolean;
+  }>;
 }
 
 interface PaymentType {
@@ -78,22 +77,41 @@ interface Cashier {
   sessionStatus?: string;
 }
 
+interface CreditBalanceRefundModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  loanId: number;
+  onSuccess: () => void;
+}
+
 export function CreditBalanceRefundModal({
   isOpen,
   onClose,
   loanId,
   onSuccess,
 }: CreditBalanceRefundModalProps) {
+  const { currencyCode: orgCurrency } = useCurrency();
   const [template, setTemplate] = useState<RefundTemplate | null>(null);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [paymentTypes, setPaymentTypes] = useState<PaymentType[]>([]);
+
+  const {
+    receiptRangesEnabled,
+    isValidating: isValidatingReceipt,
+    validationResult: receiptValidation,
+    validate: validateReceipt,
+    validateDebounced: validateReceiptDebounced,
+    markUsed: markReceiptUsed,
+    clearValidation: clearReceiptValidation,
+  } = useReceiptValidation();
+
   const [tellers, setTellers] = useState<Teller[]>([]);
   const [cashiers, setCashiers] = useState<Cashier[]>([]);
-  const [selectedTeller, setSelectedTeller] = useState("");
-  const [selectedCashier, setSelectedCashier] = useState("");
+  const [selectedTeller, setSelectedTeller] = useState<string>("");
+  const [selectedCashier, setSelectedCashier] = useState<string>("");
   const [loadingTellers, setLoadingTellers] = useState(false);
   const [loadingCashiers, setLoadingCashiers] = useState(false);
 
@@ -102,16 +120,93 @@ export function CreditBalanceRefundModal({
     transactionAmount: "",
     paymentTypeId: "",
     note: "",
+    receiptNumber: "",
   });
 
-  const fetchTemplate = useCallback(async () => {
+  useEffect(() => {
+    if (isOpen && loanId) {
+      fetchTemplate();
+    }
+  }, [isOpen, loanId]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const fetchPaymentTypes = async () => {
+      try {
+        const res = await fetch("/api/fineract/paymenttypes");
+        if (!res.ok) throw new Error("Failed to load payment types");
+        const data = await res.json();
+        const list: PaymentType[] = Array.isArray(data)
+          ? data
+          : Array.isArray(data?.pageItems)
+            ? data.pageItems
+            : [];
+        setPaymentTypes(list);
+      } catch (err) {
+        console.error("Error fetching payment types:", err);
+      }
+    };
+    fetchPaymentTypes();
+  }, [isOpen]);
+
+  const fetchTellers = async () => {
+    setLoadingTellers(true);
+    try {
+      const response = await fetch("/api/tellers");
+      if (response.ok) {
+        const data = await response.json();
+        setTellers(data || []);
+      }
+    } catch (e) {
+      console.error("Error fetching tellers:", e);
+    } finally {
+      setLoadingTellers(false);
+    }
+  };
+
+  const fetchCashiers = async (tellerId: string) => {
+    setLoadingCashiers(true);
+    try {
+      const response = await fetch(`/api/tellers/${tellerId}/cashiers`);
+      if (response.ok) {
+        const data = await response.json();
+        const activeCashiers = (Array.isArray(data) ? data : []).filter(
+          (c: Cashier) => c.sessionStatus === "ACTIVE"
+        );
+        setCashiers(activeCashiers);
+      }
+    } catch (e) {
+      console.error("Error fetching cashiers:", e);
+    } finally {
+      setLoadingCashiers(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isOpen) fetchTellers();
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (selectedTeller) {
+      fetchCashiers(selectedTeller);
+    } else {
+      setCashiers([]);
+      setSelectedCashier("");
+    }
+  }, [selectedTeller]);
+
+  const fetchTemplate = async () => {
     try {
       setLoading(true);
       setError(null);
 
-      const response = await fineractFetch(
+      const response = await fetch(
         `/api/fineract/loans/${loanId}/transactions/credit-balance-refund-template`
       );
+      if (!response.ok) {
+        throw new Error(`Failed to fetch template: ${response.statusText}`);
+      }
+
       const data: RefundTemplate = await response.json();
       setTemplate(data);
 
@@ -133,81 +228,28 @@ export function CreditBalanceRefundModal({
     } finally {
       setLoading(false);
     }
-  }, [loanId]);
-
-  useEffect(() => {
-    if (isOpen && loanId) {
-      void fetchTemplate();
-      void fetchPaymentTypes();
-      void fetchTellers();
-    }
-  }, [fetchTemplate, isOpen, loanId]);
-
-  useEffect(() => {
-    if (selectedTeller) {
-      void fetchCashiers(selectedTeller);
-    } else {
-      setCashiers([]);
-      setSelectedCashier("");
-    }
-  }, [selectedTeller]);
-
-  const fetchPaymentTypes = async () => {
-    try {
-      const response = await fetch("/api/fineract/paymenttypes");
-      if (!response.ok) {
-        throw new Error("Failed to load payment types");
-      }
-
-      const data = await response.json();
-      const list: PaymentType[] = Array.isArray(data)
-        ? data
-        : Array.isArray(data?.pageItems)
-        ? data.pageItems
-        : [];
-      setPaymentTypes(list);
-    } catch (err) {
-      console.error("Error fetching payment types:", err);
-    }
   };
 
-  const fetchTellers = async () => {
-    setLoadingTellers(true);
-    try {
-      const response = await fetch("/api/tellers");
-      if (response.ok) {
-        const data = await response.json();
-        setTellers(data || []);
-      }
-    } catch (err) {
-      console.error("Error fetching tellers:", err);
-    } finally {
-      setLoadingTellers(false);
-    }
-  };
+  const mergedPaymentTypeOptions = useMemo(() => {
+    const templateOptions = template?.paymentTypeOptions ?? [];
+    if (templateOptions.length === 0) return paymentTypes;
+    const paymentTypeMap = new Map(paymentTypes.map((pt) => [pt.id, pt]));
+    return templateOptions.map((option) => {
+      const mapped = paymentTypeMap.get(option.id);
+      return {
+        ...option,
+        isCashPayment: option.isCashPayment ?? mapped?.isCashPayment ?? false,
+      };
+    });
+  }, [template, paymentTypes]);
 
-  const fetchCashiers = async (tellerId: string) => {
-    setLoadingCashiers(true);
-    try {
-      const response = await fetch(`/api/tellers/${tellerId}/cashiers`);
-      if (response.ok) {
-        const data = await response.json();
-        const activeCashiers = (Array.isArray(data) ? data : []).filter(
-          (cashier: Cashier) => cashier.sessionStatus === "ACTIVE"
-        );
-        setCashiers(activeCashiers);
-      }
-    } catch (err) {
-      console.error("Error fetching cashiers:", err);
-    } finally {
-      setLoadingCashiers(false);
-    }
-  };
-
-  const selectedPaymentType = paymentTypes.find(
-    (paymentType) => paymentType.id.toString() === formData.paymentTypeId
-  );
-  const selectedPaymentTypeIsCash = !!selectedPaymentType?.isCashPayment;
+  const selectedPaymentTypeIsCash = useMemo(() => {
+    if (!formData.paymentTypeId) return false;
+    const option = mergedPaymentTypeOptions.find(
+      (o) => o.id.toString() === formData.paymentTypeId
+    );
+    return !!option?.isCashPayment;
+  }, [formData.paymentTypeId, mergedPaymentTypeOptions]);
 
   const handleSubmit = async () => {
     try {
@@ -218,44 +260,53 @@ export function CreditBalanceRefundModal({
         setError("Transaction Date and Transaction Amount are required");
         return;
       }
-
       if (!formData.paymentTypeId) {
-        setError("Payment type is required for the refund.");
+        setError("Payment type is required.");
         return;
       }
 
-      if (selectedPaymentTypeIsCash && !selectedTeller) {
-        setError("Please select a teller for cash refunds.");
-        return;
+      if (selectedPaymentTypeIsCash) {
+        if (!selectedTeller) {
+          setError("Please select a teller for cash refunds.");
+          return;
+        }
+        if (!selectedCashier) {
+          setError(
+            "Please select a cashier with an active session for cash refunds."
+          );
+          return;
+        }
+        if (receiptRangesEnabled) {
+          if (!formData.receiptNumber.trim()) {
+            setError("Receipt number is required for cash transactions.");
+            return;
+          }
+          const result = await validateReceipt(formData.receiptNumber);
+          if (!result.valid) {
+            setError(result.error || "Invalid receipt number");
+            return;
+          }
+        }
       }
 
-      if (selectedPaymentTypeIsCash && !selectedCashier) {
-        setError(
-          "Please select a cashier with an active session for cash refunds."
-        );
-        return;
-      }
+      const dateObj = new Date(formData.transactionDate);
+      const formattedDate = dateObj.toLocaleDateString("en-GB", {
+        day: "2-digit",
+        month: "long",
+        year: "numeric",
+      });
 
-      const payload: {
-        transactionDate: string;
-        transactionAmount: number;
-        dateFormat: string;
-        locale: string;
-        paymentTypeId: number;
-        note?: string;
-      } = {
-        transactionDate: formData.transactionDate,
+      const payload: Record<string, unknown> = {
+        transactionDate: formattedDate,
         transactionAmount: parseFloat(formData.transactionAmount),
-        dateFormat: "yyyy-MM-dd",
+        dateFormat: "dd MMMM yyyy",
         locale: "en",
         paymentTypeId: parseInt(formData.paymentTypeId, 10),
       };
 
-      if (formData.note) {
-        payload.note = formData.note;
-      }
+      if (formData.note) payload.note = formData.note;
 
-      await fineractFetch(
+      const response = await fetch(
         `/api/fineract/loans/${loanId}/transactions/credit-balance-refund`,
         {
           method: "POST",
@@ -264,29 +315,54 @@ export function CreditBalanceRefundModal({
         }
       );
 
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(
+          errorData.defaultUserMessage ||
+            errorData.error ||
+            `Failed to submit credit balance refund: ${response.statusText}`
+        );
+      }
+
+      const result = (await response.json()) as { resourceId?: number };
+
+      if (receiptRangesEnabled && formData.receiptNumber.trim()) {
+        await markReceiptUsed({
+          receiptNumber: formData.receiptNumber.trim(),
+          transactionType: "CREDIT_BALANCE_REFUND",
+          fineractTxnId: result.resourceId?.toString(),
+          loanId,
+        });
+      }
+
       if (selectedPaymentTypeIsCash && selectedTeller && selectedCashier) {
-        const settleResponse = await fetch(
+        const amount = parseFloat(formData.transactionAmount);
+        const currency =
+          template?.currency?.code ?? orgCurrency;
+        const date = formData.transactionDate;
+
+        const settleRes = await fetch(
           `/api/tellers/${selectedTeller}/cashiers/${selectedCashier}/settle`,
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              amount: parseFloat(formData.transactionAmount),
-              currency: template?.currency?.code ?? orgCurrency,
-              date: formData.transactionDate,
-              notes: formData.note || "Credit balance refund",
+              amount,
+              currency,
+              date,
+              notes: formData.note || undefined,
               transactionType: "CREDIT_BALANCE_REFUND",
+              fineractLoanId: loanId,
             }),
           }
         );
 
-        if (!settleResponse.ok) {
-          const settleError = await settleResponse.json().catch(() => null);
+        if (!settleRes.ok) {
+          const errData = await settleRes.json();
           setError(
-            `Refund recorded, but cashier balance was not updated: ${
-              settleError?.error || settleResponse.statusText
-            }`
+            `Refund recorded in Fineract, but the cashier till was not updated: ${errData.error || errData.details || settleRes.statusText}`
           );
+          setSubmitting(false);
           return;
         }
       }
@@ -317,6 +393,7 @@ export function CreditBalanceRefundModal({
       transactionAmount: "",
       paymentTypeId: "",
       note: "",
+      receiptNumber: "",
     });
     setSelectedTeller("");
     setSelectedCashier("");
@@ -324,14 +401,16 @@ export function CreditBalanceRefundModal({
     setSuccess(false);
   };
 
-  const { currencyCode: orgCurrency } = useCurrency();
   const normalizeCurrencyCode = (code: string | undefined | null): string => {
     if (!code) return orgCurrency;
     if (code.toUpperCase() === "ZMK") return "ZMW";
     return code;
   };
 
-  const formatCurrency = (amount: number, currencyCode?: string): string => {
+  const formatCurrency = (
+    amount: number,
+    currencyCode?: string
+  ): string => {
     return new Intl.NumberFormat("en-US", {
       style: "currency",
       currency: normalizeCurrencyCode(currencyCode),
@@ -443,13 +522,13 @@ export function CreditBalanceRefundModal({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="cbr-payment-type">Payment Type *</Label>
+              <Label htmlFor="cbr-payment-type">Payment type *</Label>
               <Select
                 value={formData.paymentTypeId}
                 onValueChange={(value) => {
                   setFormData((prev) => ({ ...prev, paymentTypeId: value }));
-                  const option = paymentTypes.find(
-                    (paymentType) => paymentType.id.toString() === value
+                  const option = mergedPaymentTypeOptions.find(
+                    (o) => o.id.toString() === value
                   );
                   if (!option?.isCashPayment) {
                     setSelectedTeller("");
@@ -461,13 +540,16 @@ export function CreditBalanceRefundModal({
                   <SelectValue placeholder="Select payment type" />
                 </SelectTrigger>
                 <SelectContent>
-                  {paymentTypes.length === 0 ? (
+                  {mergedPaymentTypeOptions.length === 0 ? (
                     <div className="py-4 px-2 text-center text-sm text-muted-foreground">
                       No payment types available
                     </div>
                   ) : (
-                    paymentTypes.map((option) => (
-                      <SelectItem key={option.id} value={option.id.toString()}>
+                    mergedPaymentTypeOptions.map((option) => (
+                      <SelectItem
+                        key={option.id}
+                        value={option.id.toString()}
+                      >
                         {option.name}
                         {option.isCashPayment ? " (Cash)" : ""}
                       </SelectItem>
@@ -476,24 +558,28 @@ export function CreditBalanceRefundModal({
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
-                Select a cash payment type when the refund is handed back from a
-                cashier till.
+                For cash, choose the till that pays the customer; the cashier
+                balance will be reduced after the Fineract refund is posted.
               </p>
             </div>
 
             {selectedPaymentTypeIsCash && (
               <div className="space-y-4 p-4 border rounded-lg bg-muted/30">
                 <Label className="text-sm font-medium">
-                  Cash till location (required for cashier balance)
+                  Cash till (pays customer — required for till balance)
                 </Label>
-
                 <div className="space-y-2">
                   <Label>Teller *</Label>
-                  <Select value={selectedTeller} onValueChange={setSelectedTeller}>
+                  <Select
+                    value={selectedTeller}
+                    onValueChange={setSelectedTeller}
+                  >
                     <SelectTrigger>
                       <SelectValue
                         placeholder={
-                          loadingTellers ? "Loading tellers..." : "Select a teller"
+                          loadingTellers
+                            ? "Loading tellers..."
+                            : "Select a teller"
                         }
                       />
                     </SelectTrigger>
@@ -501,7 +587,10 @@ export function CreditBalanceRefundModal({
                       {tellers.map((teller) => (
                         <SelectItem
                           key={teller.id}
-                          value={teller.fineractTellerId?.toString() || teller.id}
+                          value={
+                            teller.fineractTellerId?.toString() ||
+                            teller.id
+                          }
                         >
                           {teller.name}
                           {teller.officeName ? ` - ${teller.officeName}` : ""}
@@ -510,7 +599,6 @@ export function CreditBalanceRefundModal({
                     </SelectContent>
                   </Select>
                 </div>
-
                 <div className="space-y-2">
                   <Label>Cashier *</Label>
                   <Select
@@ -524,10 +612,10 @@ export function CreditBalanceRefundModal({
                           !selectedTeller
                             ? "Select a teller first"
                             : loadingCashiers
-                            ? "Loading cashiers..."
-                            : cashiers.length === 0
-                            ? "No cashiers with active sessions"
-                            : "Select a cashier"
+                              ? "Loading cashiers..."
+                              : cashiers.length === 0
+                                ? "No cashiers with active sessions"
+                                : "Select a cashier"
                         }
                       />
                     </SelectTrigger>
@@ -538,15 +626,57 @@ export function CreditBalanceRefundModal({
                           value={String(cashier.id)}
                         >
                           {cashier.staffName}
+                          {cashier.sessionStatus === "ACTIVE" && (
+                            <span className="ml-2 text-xs text-muted-foreground">
+                              (Active)
+                            </span>
+                          )}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
-
                 {selectedTeller && cashiers.length === 0 && !loadingCashiers && (
                   <p className="text-sm text-amber-600">
                     No cashiers have active sessions. Start a session first.
+                  </p>
+                )}
+              </div>
+            )}
+
+            {receiptRangesEnabled && selectedPaymentTypeIsCash && (
+              <div className="space-y-2 p-4 border rounded-lg bg-muted/30">
+                <Label htmlFor="cbr-receipt-number">
+                  Receipt number <span className="text-red-500">*</span>
+                </Label>
+                <Input
+                  id="cbr-receipt-number"
+                  value={formData.receiptNumber}
+                  onChange={(e) => {
+                    setFormData((prev) => ({
+                      ...prev,
+                      receiptNumber: e.target.value,
+                    }));
+                    clearReceiptValidation();
+                    if (e.target.value.trim()) {
+                      validateReceiptDebounced(e.target.value);
+                    }
+                  }}
+                  placeholder="Enter receipt number"
+                  className={
+                    receiptValidation
+                      ? receiptValidation.valid
+                        ? "border-green-500"
+                        : "border-red-500"
+                      : ""
+                  }
+                />
+                {isValidatingReceipt && (
+                  <p className="text-xs text-muted-foreground">Validating…</p>
+                )}
+                {receiptValidation && !receiptValidation.valid && (
+                  <p className="text-xs text-red-600">
+                    {receiptValidation.error}
                   </p>
                 )}
               </div>

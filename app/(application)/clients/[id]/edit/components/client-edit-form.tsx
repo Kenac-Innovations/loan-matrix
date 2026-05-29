@@ -16,6 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { AlertCircle, Loader2 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { ClientEditFormSkeleton } from "./client-edit-form-skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { EntityStructureEditor } from "@/components/entity-structure/entity-structure-editor";
 
@@ -75,9 +76,13 @@ interface Staff {
 
 interface ClientEditFormProps {
   clientId: number;
+  canEditClient: boolean;
 }
 
-export function ClientEditForm({ clientId }: ClientEditFormProps) {
+export function ClientEditForm({
+  clientId,
+  canEditClient,
+}: ClientEditFormProps) {
   const router = useRouter();
   const { success: showSuccessToast } = useToast();
   const [client, setClient] = useState<FineractClient | null>(null);
@@ -260,6 +265,23 @@ export function ClientEditForm({ clientId }: ClientEditFormProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!canEditClient) {
+      setError("You do not have permission to update this client");
+      return;
+    }
+    
+    if (isEntity) {
+      if (!formData.fullname.trim()) {
+        setError("Entity name is required");
+        return;
+      }
+    } else {
+      if (!formData.firstname.trim() || !formData.lastname.trim()) {
+        setError("First name and last name are required");
+        return;
+      }
+    }
     
     if (isEntity) {
       if (!formData.fullname.trim()) {
@@ -342,27 +364,8 @@ export function ClientEditForm({ clientId }: ClientEditFormProps) {
     }
   };
 
-  const formatDateForDisplay = (dateString: string) => {
-    if (!dateString) return "";
-    const date = new Date(dateString);
-    return date.toLocaleDateString("en-US", {
-      month: "numeric",
-      day: "numeric", 
-      year: "numeric"
-    });
-  };
-
   if (loading) {
-    return (
-      <Card>
-        <CardContent className="p-6">
-          <div className="flex items-center justify-center">
-            <Loader2 className="h-6 w-6 animate-spin" />
-            <span className="ml-2">Loading client details...</span>
-          </div>
-        </CardContent>
-      </Card>
-    );
+    return <ClientEditFormSkeleton />;
   }
 
   if (error && !client) {
@@ -423,6 +426,7 @@ export function ClientEditForm({ clientId }: ClientEditFormProps) {
                 <Input
                   id="accountNo"
                   value={formData.accountNo}
+                  onChange={(e) => handleInputChange("accountNo", e.target.value)}
                   disabled
                   className="bg-muted/50"
                 />
@@ -434,6 +438,7 @@ export function ClientEditForm({ clientId }: ClientEditFormProps) {
                   id="externalId"
                   value={formData.externalId}
                   onChange={(e) => handleInputChange("externalId", e.target.value)}
+                  disabled
                 />
               </div>
 
@@ -555,6 +560,7 @@ export function ClientEditForm({ clientId }: ClientEditFormProps) {
                   id="mobileNo"
                   value={formData.mobileNo}
                   onChange={(e) => handleInputChange("mobileNo", e.target.value)}
+                  disabled
                 />
               </div>
 
@@ -641,10 +647,12 @@ export function ClientEditForm({ clientId }: ClientEditFormProps) {
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={saving}>
-                {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                Submit
-              </Button>
+              {canEditClient && (
+                <Button type="submit" disabled={saving}>
+                  {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                  Submit
+                </Button>
+              )}
             </div>
           </CardContent>
         </Card>

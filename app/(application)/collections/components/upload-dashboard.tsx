@@ -13,6 +13,7 @@ import {
   XCircle,
   Clock,
   Loader2,
+  RefreshCw,
   Upload,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -25,6 +26,7 @@ interface UploadStats {
   queuedCount: number;
   successCount: number;
   failedCount: number;
+  reversedCount: number;
   totalAmount: string;
   stagedCount: number;
   processingCount: number;
@@ -112,7 +114,7 @@ export function UploadDashboard({ uploadId }: UploadDashboardProps) {
         </div>
       )}
 
-      <div className="grid gap-3 grid-cols-2 md:grid-cols-5">
+      <div className="grid gap-3 grid-cols-2 md:grid-cols-6">
         <Card className="bg-muted/30">
           <CardHeader className="pb-1 pt-3 px-3">
             <CardTitle className="text-xs font-medium text-muted-foreground flex items-center gap-1">
@@ -160,6 +162,19 @@ export function UploadDashboard({ uploadId }: UploadDashboardProps) {
           <CardContent className="px-3 pb-3">
             <div className={cn("text-lg font-bold", stats.successCount > 0 && "text-green-600")}>
               {stats.successCount}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-muted/30">
+          <CardHeader className="pb-1 pt-3 px-3">
+            <CardTitle className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+              <RefreshCw className="h-3 w-3" /> Reversed
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="px-3 pb-3">
+            <div className={cn("text-lg font-bold", stats.reversedCount > 0 && "text-blue-600")}>
+              {stats.reversedCount}
             </div>
           </CardContent>
         </Card>

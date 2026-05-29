@@ -15,7 +15,6 @@ export async function POST(
     // Get current session for "assigned by" info
     const session = await getSession();
     const assignedByName = session?.user?.name || "System";
-    const currentUserId = session?.user?.id;
 
     if (!mifosUserId || !mifosUserName) {
       return NextResponse.json(
@@ -31,7 +30,6 @@ export async function POST(
         id: true,
         tenantId: true,
         status: true,
-        currentStageId: true,
         loanSubmittedToFineract: true,
         assignedToUserId: true,
         assignedToUserName: true,
@@ -52,31 +50,6 @@ export async function POST(
         { error: "Only submitted leads can be assigned" },
         { status: 400 }
       );
-    }
-
-    // Check that the requesting user belongs to the team owning the current stage
-    if (lead.currentStageId && currentUserId) {
-      const stageTeam = await prisma.team.findFirst({
-        where: {
-          tenantId: lead.tenantId,
-          pipelineStageIds: { has: lead.currentStageId },
-        },
-        include: { members: true },
-      });
-
-      if (stageTeam) {
-        const isMember = stageTeam.members.some(
-          (m: { userId: string }) => String(m.userId) === currentUserId
-        );
-        if (!isMember) {
-          return NextResponse.json(
-            {
-              error: `You must be a member of the "${stageTeam.name}" team to assign leads at this stage`,
-            },
-            { status: 403 }
-          );
-        }
-      }
     }
 
     // Check if this is a reassignment (different user)
@@ -146,41 +119,13 @@ export async function DELETE(
   try {
     const { id } = await params;
 
-    const session = await getSession();
-    const currentUserId = session?.user?.id;
-
     const lead = await prisma.lead.findUnique({
       where: { id },
-      select: { id: true, tenantId: true, currentStageId: true },
+      select: { id: true },
     });
 
     if (!lead) {
       return NextResponse.json({ error: "Lead not found" }, { status: 404 });
-    }
-
-    // Check that the requesting user belongs to the team owning the current stage
-    if (lead.currentStageId && currentUserId) {
-      const stageTeam = await prisma.team.findFirst({
-        where: {
-          tenantId: lead.tenantId,
-          pipelineStageIds: { has: lead.currentStageId },
-        },
-        include: { members: true },
-      });
-
-      if (stageTeam) {
-        const isMember = stageTeam.members.some(
-          (m: { userId: string }) => String(m.userId) === currentUserId
-        );
-        if (!isMember) {
-          return NextResponse.json(
-            {
-              error: `You must be a member of the "${stageTeam.name}" team to manage assignments at this stage`,
-            },
-            { status: 403 }
-          );
-        }
-      }
     }
 
     const updatedLead = await prisma.lead.update({

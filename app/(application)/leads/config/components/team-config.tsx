@@ -14,14 +14,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -29,48 +21,8 @@ import {
   defaultRoles,
   type TeamMember,
   type Team,
-  type AssignmentStrategy,
 } from "@/shared/defaults/team-config";
 import { toast } from "sonner";
-
-const ASSIGNMENT_STRATEGIES: {
-  value: AssignmentStrategy;
-  label: string;
-  description: string;
-}[] = [
-  {
-    value: "round_robin",
-    label: "Round Robin",
-    description: "Rotate evenly through team members",
-  },
-  {
-    value: "least_loaded",
-    label: "Least Loaded",
-    description: "Assign to member with fewest active leads",
-  },
-  {
-    value: "manual",
-    label: "Manual",
-    description: "No auto-assignment; team lead picks up leads",
-  },
-  {
-    value: "specific_member",
-    label: "Specific Member",
-    description: "Always assign to one person",
-  },
-];
-
-interface FineractUser {
-  id: number;
-  username: string;
-  firstname: string;
-  lastname: string;
-  displayName: string;
-  email: string;
-  officeId: number;
-  officeName: string;
-  roles: string[];
-}
 
 interface PipelineStage {
   id: string;
@@ -313,26 +265,26 @@ function TeamFormFields({
 export function TeamConfig() {
   const [teams, setTeams] = useState<Team[]>([]);
   const [pipelineStages, setPipelineStages] = useState<string[]>([]);
-  const [systemUsers, setSystemUsers] = useState<FineractUser[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [hasChanges, setHasChanges] = useState(false);
 
   const [editingTeam, setEditingTeam] = useState<Team | null>(null);
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-
-  const emptyTeam: Partial<Team> = {
+  const [newTeam, setNewTeam] = useState<Partial<Team>>({
     name: "",
     description: "",
     members: [],
     pipelineStages: [],
-    assignmentStrategy: "round_robin",
-  };
-  const [newTeam, setNewTeam] = useState<Partial<Team>>(emptyTeam);
+  });
+
+  const [newMember, setNewMember] = useState<Partial<TeamMember>>({
+    name: "",
+    email: "",
+    role: "",
+  });
 
   useEffect(() => {
     fetchTeams();
-    fetchUsers();
   }, []);
 
   const fetchTeams = async () => {
@@ -341,6 +293,7 @@ export function TeamConfig() {
       const response = await fetch("/api/pipeline/teams");
       if (response.ok) {
         const data = await response.json();
+        // Show whatever is in the database (even if empty)
         setTeams(data.teams || []);
         if (data.stages) {
           setPipelineStages(data.stages.map((s: PipelineStage) => s.name));
@@ -357,46 +310,36 @@ export function TeamConfig() {
     }
   };
 
-  const fetchUsers = async () => {
-    try {
-      const response = await fetch("/api/fineract/users");
-      if (response.ok) {
-        const data = await response.json();
-        setSystemUsers(data.users || []);
-      }
-    } catch (error) {
-      console.error("Error fetching system users:", error);
-    }
-  };
-
-  const persistTeams = async (teamsToSave: Team[]) => {
+  const saveTeams = async () => {
     try {
       setIsSaving(true);
       const response = await fetch("/api/pipeline/teams", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ teams: teamsToSave }),
+        body: JSON.stringify({ teams }),
       });
 
       if (response.ok) {
         toast.success("Teams saved successfully");
+        setHasChanges(false);
         await fetchTeams();
-        return true;
       } else {
         const error = await response.json();
         toast.error(error.error || "Failed to save teams");
-        return false;
       }
     } catch (error) {
       console.error("Error saving teams:", error);
       toast.error("Error saving teams");
-      return false;
     } finally {
       setIsSaving(false);
     }
   };
 
-  const handleAddTeam = async () => {
+  const markChanged = () => {
+    setHasChanges(true);
+  };
+
+  const handleAddTeam = () => {
     if (!newTeam.name) return;
 
     const team: Team = {
@@ -405,45 +348,79 @@ export function TeamConfig() {
       description: newTeam.description || "",
       members: newTeam.members || [],
       pipelineStages: newTeam.pipelineStages || [],
-      assignmentStrategy: newTeam.assignmentStrategy || "round_robin",
     };
 
-    const updated = [...teams, team];
-    setTeams(updated);
-    const ok = await persistTeams(updated);
-    if (ok) {
-      setNewTeam({ ...emptyTeam });
-      setIsCreateModalOpen(false);
-    }
+    setTeams([...teams, team]);
+    setNewTeam({ name: "", description: "", members: [], pipelineStages: [] });
+    markChanged();
   };
 
-  const handleDeleteTeam = async (id: string) => {
-    const updated = teams.filter((team) => team.id !== id);
-    setTeams(updated);
-    await persistTeams(updated);
+  const handleDeleteTeam = (id: string) => {
+    setTeams(teams.filter((team) => team.id !== id));
+    markChanged();
   };
 
-  const openEditModal = (team: Team) => {
-    setEditingTeam({ ...team, members: team.members.map((m) => ({ ...m })) });
-    setIsEditModalOpen(true);
+  const handleEditTeam = (team: Team) => {
+    setEditingTeam({ ...team }); // Create a copy to avoid direct mutation
   };
 
-  const handleSaveEdit = async () => {
+  const handleUpdateTeam = () => {
     if (!editingTeam) return;
-    const updated = teams.map((t) =>
-      t.id === editingTeam.id ? editingTeam : t
+
+    setTeams(
+      teams.map((team) => (team.id === editingTeam.id ? editingTeam : team))
     );
-    setTeams(updated);
-    const ok = await persistTeams(updated);
-    if (ok) {
-      setIsEditModalOpen(false);
-      setEditingTeam(null);
-    }
+
+    setEditingTeam(null);
+    markChanged();
   };
 
-  const handleCancelEdit = () => {
-    setIsEditModalOpen(false);
-    setEditingTeam(null);
+  const handleAddMember = () => {
+    if (!newMember.name || !newMember.email) return;
+
+    const member: TeamMember = {
+      id: `new-${Date.now()}`,
+      name: newMember.name,
+      email: newMember.email,
+      role: newMember.role || "Team Member",
+    };
+
+    if (editingTeam) {
+      setEditingTeam({
+        ...editingTeam,
+        members: [...editingTeam.members, member],
+      });
+    } else {
+      setNewTeam({
+        ...newTeam,
+        members: [...(newTeam.members || []), member],
+      });
+    }
+
+    setNewMember({ name: "", email: "", role: "" });
+    markChanged();
+  };
+
+  const handleDeleteMember = (teamId: string, memberId: string) => {
+    if (editingTeam && editingTeam.id === teamId) {
+      setEditingTeam({
+        ...editingTeam,
+        members: editingTeam.members.filter((m) => m.id !== memberId),
+      });
+    } else {
+      setTeams(
+        teams.map((team) => {
+          if (team.id === teamId) {
+            return {
+              ...team,
+              members: team.members.filter((m) => m.id !== memberId),
+            };
+          }
+          return team;
+        })
+      );
+    }
+    markChanged();
   };
 
   if (isLoading) {
@@ -458,32 +435,27 @@ export function TeamConfig() {
     <div className="space-y-6">
       <div className="flex items-start justify-between">
         <div className="space-y-1">
-          <h3 className="text-lg font-medium">Teams Configuration</h3>
-          <p className="text-sm text-muted-foreground">
-            Configure teams and assign them to pipeline stages
-          </p>
+        <h3 className="text-lg font-medium">Teams Configuration</h3>
+        <p className="text-sm text-muted-foreground">
+          Configure teams and assign them to pipeline stages
+        </p>
         </div>
-        <div className="flex items-center gap-3">
-          {isSaving && (
-            <div className="flex items-center text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin mr-2" />
-              Saving...
-            </div>
-          )}
+        {hasChanges && (
           <Button
-            onClick={() => {
-              setNewTeam({ ...emptyTeam });
-              setIsCreateModalOpen(true);
-            }}
-            className="bg-blue-600 hover:bg-blue-700 text-white"
+            onClick={saveTeams}
+            disabled={isSaving}
+            className="bg-green-500 hover:bg-green-600"
           >
-            <Plus className="h-4 w-4 mr-2" />
-            Create Team
+            {isSaving ? (
+              <Loader2 className="h-4 w-4 animate-spin mr-2" />
+            ) : (
+              <Save className="h-4 w-4 mr-2" />
+            )}
+            Save Changes
           </Button>
-        </div>
+        )}
       </div>
 
-      {/* Team cards */}
       <div className="grid gap-4 md:grid-cols-2">
         {teams.map((team) => (
           <Card key={team.id} className="overflow-hidden">
@@ -497,11 +469,11 @@ export function TeamConfig() {
                   {team.description}
                 </p>
               </div>
-              <div className="flex space-x-1">
+              <div className="flex space-x-2">
                 <Button
                   variant="ghost"
                   size="icon"
-                  onClick={() => openEditModal(team)}
+                  onClick={() => handleEditTeam(team)}
                   className="text-muted-foreground hover:text-foreground"
                 >
                   <Edit2 className="h-4 w-4" />
@@ -510,7 +482,7 @@ export function TeamConfig() {
                   variant="ghost"
                   size="icon"
                   onClick={() => handleDeleteTeam(team.id)}
-                  className="text-muted-foreground hover:text-destructive"
+                  className="text-muted-foreground hover:text-foreground"
                 >
                   <Trash2 className="h-4 w-4" />
                 </Button>
@@ -519,8 +491,8 @@ export function TeamConfig() {
             <CardContent className="p-4">
               <div className="space-y-4">
                 <div>
-                  <h5 className="text-sm font-medium mb-2">Pipeline Stages</h5>
-                  <div className="flex flex-wrap gap-1.5">
+                  <h5 className="text-sm font-medium mb-2">Pipeline Stages:</h5>
+                  <div className="flex flex-wrap gap-2">
                     {team.pipelineStages.map((stage) => (
                       <Badge key={stage} variant="secondary">
                         {stage}
@@ -534,24 +506,12 @@ export function TeamConfig() {
                   </div>
                 </div>
                 <div>
-                  <h5 className="text-sm font-medium mb-1">
-                    Assignment Strategy
-                  </h5>
-                  <Badge variant="outline" className="text-xs">
-                    {ASSIGNMENT_STRATEGIES.find(
-                      (s) => s.value === team.assignmentStrategy
-                    )?.label || "Round Robin"}
-                  </Badge>
-                </div>
-                <div>
-                  <h5 className="text-sm font-medium mb-2">
-                    Members ({team.members.length})
-                  </h5>
+                  <h5 className="text-sm font-medium mb-2">Team Members:</h5>
                   <div className="space-y-2">
                     {team.members.map((member) => (
                       <div
                         key={member.id}
-                        className="flex items-center space-x-2 bg-muted/50 p-2 rounded-md"
+                        className="flex items-center justify-between bg-muted/50 p-2 rounded-md"
                       >
                         <Avatar className="h-7 w-7">
                           <AvatarImage
@@ -587,130 +547,242 @@ export function TeamConfig() {
         ))}
       </div>
 
-      {/* Create Team Modal */}
-      <Dialog
-        open={isCreateModalOpen}
-        onOpenChange={() => {
-          setIsCreateModalOpen(false);
-          setNewTeam({ ...emptyTeam });
-        }}
-      >
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Plus className="h-5 w-5" />
-              Create New Team
-            </DialogTitle>
-            <DialogDescription>
-              Set up a new team with members and pipeline stage assignments.
-            </DialogDescription>
-          </DialogHeader>
+      <Card>
+        <CardContent className="pt-6">
+          <div className="space-y-4">
+            <h3 className="text-lg font-medium">
+              {editingTeam ? `Edit Team: ${editingTeam.name}` : "Add New Team"}
+            </h3>
+            <div className="grid gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="team-name">Team Name</Label>
+                <Input
+                  id="team-name"
+                  value={editingTeam ? editingTeam.name : newTeam.name}
+                  onChange={(e) =>
+                    editingTeam
+                      ? setEditingTeam({ ...editingTeam, name: e.target.value })
+                      : setNewTeam({ ...newTeam, name: e.target.value })
+                  }
+                  placeholder="Enter team name"
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="team-description">Description</Label>
+                <Textarea
+                  id="team-description"
+                  value={
+                    editingTeam
+                      ? editingTeam.description
+                      : newTeam.description || ""
+                  }
+                  onChange={(e) =>
+                    editingTeam
+                      ? setEditingTeam({
+                          ...editingTeam,
+                          description: e.target.value,
+                        })
+                      : setNewTeam({ ...newTeam, description: e.target.value })
+                  }
+                  placeholder="Enter team description"
+                  rows={3}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label>Pipeline Stages</Label>
+                <div className="border rounded-md p-3 space-y-2 max-h-48 overflow-y-auto">
+                  {pipelineStages.map((stage) => {
+                    const currentStages = editingTeam
+                      ? editingTeam.pipelineStages
+                      : newTeam.pipelineStages || [];
+                    const isChecked = currentStages.includes(stage);
 
-          <TeamFormFields
-            team={newTeam}
-            onUpdate={(updates) => setNewTeam({ ...newTeam, ...updates })}
-            pipelineStages={pipelineStages}
-            systemUsers={systemUsers}
-            onAddMember={(member) =>
-              setNewTeam({
-                ...newTeam,
-                members: [...(newTeam.members || []), member],
-              })
-            }
-            onRemoveMember={(memberId) =>
-              setNewTeam({
-                ...newTeam,
-                members: (newTeam.members || []).filter(
-                  (m) => m.id !== memberId
-                ),
-              })
-            }
-          />
+                    return (
+                      <div key={stage} className="flex items-center space-x-2">
+                        <Checkbox
+                          id={`stage-${stage}`}
+                          checked={isChecked}
+                          onCheckedChange={(checked) => {
+                            const updatedStages = checked
+                              ? [...currentStages, stage]
+                              : currentStages.filter((s) => s !== stage);
 
-          <DialogFooter className="gap-2 sm:gap-0">
-            <Button
-              variant="outline"
-              onClick={() => {
-                setIsCreateModalOpen(false);
-                setNewTeam({ ...emptyTeam });
-              }}
-              disabled={isSaving}
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={handleAddTeam}
-              disabled={isSaving || !newTeam.name}
-              className="bg-blue-600 hover:bg-blue-700 text-white"
-            >
-              {isSaving ? (
-                <Loader2 className="h-4 w-4 animate-spin mr-2" />
-              ) : (
-                <Plus className="h-4 w-4 mr-2" />
+                            if (editingTeam) {
+                              setEditingTeam({
+                                ...editingTeam,
+                                pipelineStages: updatedStages,
+                              });
+                            } else {
+                              setNewTeam({
+                                ...newTeam,
+                                pipelineStages: updatedStages,
+                              });
+                            }
+                          }}
+                        />
+                        <Label
+                          htmlFor={`stage-${stage}`}
+                          className="text-sm font-normal cursor-pointer"
+                        >
+                          {stage}
+                        </Label>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {(editingTeam
+                    ? editingTeam.pipelineStages
+                    : newTeam.pipelineStages || []
+                  ).map((stage) => (
+                    <Badge
+                      key={stage}
+                      variant="secondary"
+                      className="flex items-center gap-1"
+                    >
+                      {stage}
+                      <X
+                        className="h-3 w-3 cursor-pointer hover:text-destructive"
+                        onClick={() => {
+                          const currentStages = editingTeam
+                            ? editingTeam.pipelineStages
+                            : newTeam.pipelineStages || [];
+                          const updatedStages = currentStages.filter(
+                            (s) => s !== stage
+                          );
+
+                          if (editingTeam) {
+                            setEditingTeam({
+                              ...editingTeam,
+                              pipelineStages: updatedStages,
+                            });
+                          } else {
+                            setNewTeam({
+                              ...newTeam,
+                              pipelineStages: updatedStages,
+                            });
+                          }
+                        }}
+                      />
+                    </Badge>
+                  ))}
+                  {(editingTeam
+                    ? editingTeam.pipelineStages
+                    : newTeam.pipelineStages || []
+                  ).length === 0 && (
+                    <span className="text-sm text-muted-foreground">
+                      No stages selected
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <div className="border-t pt-4 mt-2">
+                <h4 className="text-sm font-medium mb-4">Team Members</h4>
+                <div className="space-y-4">
+                  <div className="grid gap-4 md:grid-cols-3">
+                    <div>
+                      <Label htmlFor="member-name">Name</Label>
+                      <Input
+                        id="member-name"
+                        value={newMember.name}
+                        onChange={(e) =>
+                          setNewMember({ ...newMember, name: e.target.value })
+                        }
+                        placeholder="Member name"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="member-email">Email</Label>
+                      <Input
+                        id="member-email"
+                        type="email"
+                        value={newMember.email}
+                        onChange={(e) =>
+                          setNewMember({ ...newMember, email: e.target.value })
+                        }
+                        placeholder="Member email"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="member-role">Role</Label>
+                      <Input
+                        id="member-role"
+                        value={newMember.role}
+                        onChange={(e) =>
+                          setNewMember({ ...newMember, role: e.target.value })
+                        }
+                        placeholder="Member role"
+                      />
+                    </div>
+                  </div>
+                  <Button
+                    onClick={handleAddMember}
+                    variant="outline"
+                    className="w-full"
+                  >
+                    Add Team Member
+                    <Plus className="ml-2 h-4 w-4" />
+                  </Button>
+                </div>
+
+                <div className="mt-4 space-y-2">
+                  {(editingTeam
+                    ? editingTeam.members
+                    : newTeam.members || []
+                  ).map((member) => (
+                    <div
+                      key={member.id}
+                      className="flex items-center justify-between bg-muted/50 p-2 rounded-md"
+                    >
+                      <div className="flex items-center space-x-2">
+                        <Avatar className="h-8 w-8">
+                          <AvatarFallback>
+                            {member.name.charAt(0)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div>
+                          <div className="font-medium text-sm">
+                            {member.name}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            {member.email} • {member.role}
+                          </div>
+                        </div>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() =>
+                          handleDeleteMember(
+                            editingTeam ? editingTeam.id : "new",
+                            member.id
+                          )
+                        }
+                        className="text-muted-foreground hover:text-foreground"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <Button
+                onClick={editingTeam ? handleUpdateTeam : handleAddTeam}
+                className="w-full mt-4 bg-blue-600 hover:bg-blue-700 text-white"
+              >
+                {editingTeam ? "Update Team" : "Add Team"}
+              </Button>
+              {editingTeam && (
+                <Button variant="outline" onClick={() => setEditingTeam(null)}>
+                  Cancel
+                </Button>
               )}
-              {isSaving ? "Creating..." : "Create Team"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Edit Team Modal */}
-      <Dialog open={isEditModalOpen} onOpenChange={handleCancelEdit}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Edit2 className="h-5 w-5" />
-              Edit Team: {editingTeam?.name}
-            </DialogTitle>
-            <DialogDescription>
-              Update team details, pipeline stages, and members.
-            </DialogDescription>
-          </DialogHeader>
-
-          {editingTeam && (
-            <TeamFormFields
-              team={editingTeam}
-              onUpdate={(updates) =>
-                setEditingTeam({ ...editingTeam, ...updates })
-              }
-              pipelineStages={pipelineStages}
-              systemUsers={systemUsers}
-              onAddMember={(member) =>
-                setEditingTeam({
-                  ...editingTeam,
-                  members: [...editingTeam.members, member],
-                })
-              }
-              onRemoveMember={(memberId) =>
-                setEditingTeam({
-                  ...editingTeam,
-                  members: editingTeam.members.filter(
-                    (m) => m.id !== memberId
-                  ),
-                })
-              }
-            />
-          )}
-
-          <DialogFooter className="gap-2 sm:gap-0">
-            <Button variant="outline" onClick={handleCancelEdit} disabled={isSaving}>
-              Cancel
-            </Button>
-            <Button
-              onClick={handleSaveEdit}
-              disabled={isSaving}
-              className="bg-blue-600 hover:bg-blue-700 text-white"
-            >
-              {isSaving ? (
-                <Loader2 className="h-4 w-4 animate-spin mr-2" />
-              ) : (
-                <Save className="h-4 w-4 mr-2" />
-              )}
-              {isSaving ? "Saving..." : "Save Team"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

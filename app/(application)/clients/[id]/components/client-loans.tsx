@@ -1,5 +1,7 @@
 "use client";
 
+import { useCurrency } from "@/contexts/currency-context";
+
 import useSWR from 'swr';
 import Link from "next/link";
 import {
@@ -9,6 +11,7 @@ import {
   AlertCircle,
   TrendingUp,
   ExternalLink,
+  FileText,
 } from "lucide-react";
 import {
   Card,
@@ -26,6 +29,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Button } from "@/components/ui/button";
 import { getDisplayLoanStatus } from "@/lib/loan-status";
 
 interface FineractLoan {
@@ -36,19 +40,19 @@ interface FineractLoan {
   approvedPrincipal: number;
   interestRatePerPeriod: number;
   numberOfRepayments: number;
-  currency?: {
-    code: string;
-  };
   status: {
     id: number;
     code: string;
     value: string;
     active: boolean;
     closed: boolean;
+    overpaid?: boolean;
+    pendingApproval?: boolean;
+    waitingForDisbursal?: boolean;
+    closedObligationsMet?: boolean;
+    closedWrittenOff?: boolean;
+    closedRescheduled?: boolean;
   };
-  displayStatus: string;
-  chargedOff?: boolean;
-  inArrears?: boolean;
   timeline: {
     submittedOnDate: string;
     approvedOnDate?: string;
@@ -144,54 +148,55 @@ export function ClientLoans({ clientId }: ClientLoansProps) {
       rawLoans = data.loanAccounts;
     }
     
-    // Transform the loan data to match the expected interface
-    return rawLoans.map((loan) => ({
-      id: loan.id,
-      accountNo: loan.accountNo,
-      loanProductName: loan.productName || loan.loanProductName,
-      principal:
-        loan.originalLoan ||
-        loan.principal ||
-        loan.approvedPrincipal ||
-        0,
-      approvedPrincipal:
-        loan.originalLoan ||
-        loan.approvedPrincipal ||
-        loan.principal ||
-        0,
-      interestRatePerPeriod: loan.interestRatePerPeriod || 0,
-      numberOfRepayments: loan.numberOfRepayments || 0,
-      currency: loan.currency ? { code: loan.currency.code } : undefined,
-      status: {
-        id: loan.status?.id || 0,
-        code: loan.status?.code || "",
-        value: loan.status?.value || "",
-        active: loan.status?.active || false,
-        closed: loan.status?.closed || false,
-      },
-      displayStatus: getDisplayLoanStatus(loan),
-      chargedOff: loan.chargedOff || false,
-      inArrears: loan.inArrears || false,
-      timeline: {
-        submittedOnDate: loan.timeline?.submittedOnDate || "",
-        approvedOnDate: loan.timeline?.approvedOnDate || "",
-        actualDisbursementDate: loan.timeline?.actualDisbursementDate || "",
-        expectedMaturityDate: loan.timeline?.expectedMaturityDate || "",
-      },
-      summary: {
-        principalOutstanding:
-          loan.summary?.principalOutstanding ||
-          loan.loanBalance ||
-          0,
-        totalOutstanding:
-          loan.summary?.totalOutstanding ||
-          loan.loanBalance ||
-          0,
-        totalOverdue:
-          loan.summary?.totalOverdue ||
-          (loan.inArrears ? (loan.loanBalance || 0) : 0),
-      },
-    }));
+    const CUTOFF = new Date("2026-01-01T00:00:00Z");
+
+    const parseFineractDate = (d: any): Date | null => {
+      if (!d) return null;
+      if (Array.isArray(d) && d.length >= 3) return new Date(d[0], d[1] - 1, d[2]);
+      if (typeof d === "string") return new Date(d);
+      return null;
+    };
+
+    // Filter by disbursement date, falling back to submission date for undisbursed loans
+    return rawLoans
+      .filter((loan: any) => {
+        const date = parseFineractDate(loan.timeline?.actualDisbursementDate)
+          ?? parseFineractDate(loan.timeline?.submittedOnDate);
+        return !date || date >= CUTOFF;
+      })
+      .map((loan: any) => ({
+        id: loan.id,
+        accountNo: loan.accountNo,
+        loanProductName: loan.productName || loan.loanProductName,
+        principal: loan.originalLoan || loan.principal,
+        approvedPrincipal: loan.originalLoan || loan.approvedPrincipal || loan.principal,
+        interestRatePerPeriod: loan.interestRatePerPeriod || 0,
+        numberOfRepayments: loan.numberOfRepayments || 0,
+        status: {
+          id: loan.status?.id || 0,
+          code: loan.status?.code || "",
+          value: loan.status?.value || "",
+          active: loan.status?.active || false,
+          closed: loan.status?.closed || false,
+          overpaid: loan.status?.overpaid || false,
+          pendingApproval: loan.status?.pendingApproval || false,
+          waitingForDisbursal: loan.status?.waitingForDisbursal || false,
+          closedObligationsMet: loan.status?.closedObligationsMet || false,
+          closedWrittenOff: loan.status?.closedWrittenOff || false,
+          closedRescheduled: loan.status?.closedRescheduled || false,
+        },
+        timeline: {
+          submittedOnDate: loan.timeline?.submittedOnDate || "",
+          approvedOnDate: loan.timeline?.approvedOnDate || "",
+          actualDisbursementDate: loan.timeline?.actualDisbursementDate || "",
+          expectedMaturityDate: loan.timeline?.expectedMaturityDate || "",
+        },
+        summary: {
+          principalOutstanding: loan.loanBalance || 0,
+          totalOutstanding: loan.loanBalance || 0,
+          totalOverdue: loan.inArrears ? (loan.loanBalance || 0) : 0,
+        },
+      }));
   })();
 
   const getStatusBadge = (loan: FineractLoan) => {
@@ -240,14 +245,15 @@ export function ClientLoans({ clientId }: ClientLoansProps) {
     );
   };
 
-  // Normalize currency code - converts deprecated ZMK to ZMW
+  // Normalize currency code - converts deprecated ZMK to current code
+  const { currencyCode: orgCurrency } = useCurrency();
   const normalizeCurrencyCode = (code: string | undefined | null): string => {
-    if (!code) return "ZMW";
+    if (!code) return orgCurrency;
     if (code.toUpperCase() === "ZMK") return "ZMW";
     return code;
   };
 
-  const formatCurrency = (amount: number, currencyCode: string = "ZMW") => {
+  const formatCurrency = (amount: number, currencyCode: string = orgCurrency) => {
     // Return empty string if amount is undefined, null, NaN, or 0
     if (amount === undefined || amount === null || isNaN(amount) || amount === 0) {
       return "";
@@ -282,10 +288,7 @@ export function ClientLoans({ clientId }: ClientLoansProps) {
     (sum, loan) => sum + loan.summary.totalOverdue,
     0
   );
-  const activeLoans = loans.filter((loan) => {
-    const statusLower = loan.displayStatus.toLowerCase();
-    return statusLower.includes("active") || statusLower.includes("overdue");
-  }).length;
+  const activeLoans = loans.filter((loan) => loan.status.active).length;
 
   // Get currency for display - use first loan's currency when all share same currency
   const summaryCurrency =
@@ -362,7 +365,7 @@ export function ClientLoans({ clientId }: ClientLoansProps) {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {formatCurrency(totalPrincipal, summaryCurrency)}
+              {formatCurrency(totalPrincipal)}
             </div>
             <p className="text-xs text-muted-foreground">Approved amount</p>
           </CardContent>
@@ -375,7 +378,7 @@ export function ClientLoans({ clientId }: ClientLoansProps) {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {formatCurrency(totalOutstanding, summaryCurrency)}
+              {formatCurrency(totalOutstanding)}
             </div>
             <p className="text-xs text-muted-foreground">Current balance</p>
           </CardContent>
@@ -392,7 +395,7 @@ export function ClientLoans({ clientId }: ClientLoansProps) {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {formatCurrency(totalOverdue, summaryCurrency)}
+              {formatCurrency(totalOverdue)}
             </div>
             <p
               className={`text-xs ${
@@ -407,11 +410,28 @@ export function ClientLoans({ clientId }: ClientLoansProps) {
 
       {/* Loans Table */}
       <Card>
-        <CardHeader>
-          <CardTitle>Loan Details</CardTitle>
-          <CardDescription>
-            Complete list of loans for this client
-          </CardDescription>
+        <CardHeader className="flex flex-row items-start justify-between">
+          <div className="space-y-1">
+            <CardTitle>Loan Details</CardTitle>
+            <CardDescription>
+              Complete list of loans for this client
+            </CardDescription>
+          </div>
+          {loans.length > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() =>
+                window.open(
+                  `/api/fineract/clients/${clientId}/statement?format=html`,
+                  "_blank"
+                )
+              }
+            >
+              <FileText className="h-4 w-4 mr-2" />
+              Consolidated Statement
+            </Button>
+          )}
         </CardHeader>
         <CardContent>
           {loans.length === 0 ? (
@@ -463,17 +483,17 @@ export function ClientLoans({ clientId }: ClientLoansProps) {
                       </TableCell>
                       <TableCell>
                         <div className="font-medium">
-                          {formatCurrency(loan.principal, loan.currency?.code)}
+                          {formatCurrency(loan.principal)}
                         </div>
                       </TableCell>
                       <TableCell>
                         <div>
                           <div className="font-medium">
-                            {formatCurrency(loan.summary.totalOutstanding, loan.currency?.code)}
+                            {formatCurrency(loan.summary.totalOutstanding)}
                           </div>
                           {loan.summary.totalOverdue > 0 && (
                             <div className="text-sm text-red-500">
-                              {formatCurrency(loan.summary.totalOverdue, loan.currency?.code)}{" "}
+                              {formatCurrency(loan.summary.totalOverdue)}{" "}
                               overdue
                             </div>
                           )}

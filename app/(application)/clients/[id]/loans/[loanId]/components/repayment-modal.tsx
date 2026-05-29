@@ -1,7 +1,6 @@
 "use client";
 
 import { useCurrency } from "@/contexts/currency-context";
-import { fineractFetch } from "@/lib/fineract-fetch";
 
 import { useState, useEffect, useMemo } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -189,7 +188,11 @@ export function RepaymentModal({ isOpen, onClose, loanId, onSuccess }: Repayment
       setLoading(true);
       setError(null);
       
-      const response = await fineractFetch(`/api/fineract/loans/${loanId}/transactions/template?command=repayment`);
+      const response = await fetch(`/api/fineract/loans/${loanId}/transactions/template?command=repayment`);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch repayment template: ${response.statusText}`);
+      }
+      
       const data = await response.json();
       setTemplate(data);
       
@@ -286,6 +289,8 @@ export function RepaymentModal({ isOpen, onClose, loanId, onSuccess }: Repayment
       if (formData.externalId) payload.externalId = formData.externalId;
       payload.paymentTypeId = parseInt(formData.paymentTypeId, 10);
       if (formData.note) payload.note = formData.note;
+      if (selectedTeller) payload.dbTellerId = selectedTeller;
+      if (selectedCashier) payload.dbCashierId = selectedCashier;
 
       // Do NOT send tellerId/cashierId in repayment - Fineract returns 400. Store only; use for allocate after 200.
 
@@ -298,13 +303,18 @@ export function RepaymentModal({ isOpen, onClose, loanId, onSuccess }: Repayment
         if (formData.bankNumber) payload.bankNumber = formData.bankNumber;
       }
 
-      const response = await fineractFetch(`/api/fineract/loans/${loanId}/transactions?command=repayment`, {
+      const response = await fetch(`/api/fineract/loans/${loanId}/transactions?command=repayment`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(payload),
       });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `Failed to submit repayment: ${response.statusText}`);
+      }
 
       const result = await response.json();
       console.log("Repayment submitted successfully:", result);
@@ -323,7 +333,7 @@ export function RepaymentModal({ isOpen, onClose, loanId, onSuccess }: Repayment
       if (selectedPaymentTypeIsCash && selectedTeller && selectedCashier) {
         const amount = parseFloat(formData.transactionAmount);
         const currency = template?.currency?.code ?? orgCurrency;
-        const normalizedCurrency = currency?.toUpperCase() === "ZMK" ? "ZMW" : currency ?? orgCurrency;
+        const normalizedCurrency = currency ?? orgCurrency;
         const date = formData.transactionDate || new Date().toISOString().split("T")[0];
 
         try {
@@ -334,10 +344,14 @@ export function RepaymentModal({ isOpen, onClose, loanId, onSuccess }: Repayment
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 amount,
-                currency,
+                currency: normalizedCurrency,
                 date,
                 notes: "Loan repayment",
                 source: "repayment",
+                fineractTransactionId: result.resourceId,
+                loanId: Number(loanId),
+                transactionType: "REPAYMENT",
+                isCash: true,
               }),
             }
           );
@@ -596,7 +610,7 @@ export function RepaymentModal({ isOpen, onClose, loanId, onSuccess }: Repayment
                       {tellers.map((teller) => (
                         <SelectItem
                           key={teller.id}
-                          value={teller.fineractTellerId?.toString() || teller.id}
+                          value={teller.id}
                         >
                           {teller.name}
                           {teller.officeName ? ` - ${teller.officeName}` : ""}
@@ -629,7 +643,7 @@ export function RepaymentModal({ isOpen, onClose, loanId, onSuccess }: Repayment
                       {cashiers.map((cashier) => (
                         <SelectItem
                           key={cashier.dbId || cashier.id}
-                          value={String(cashier.id)}
+                          value={String(cashier.dbId || cashier.id)}
                         >
                           {cashier.staffName}
                           {cashier.sessionStatus === "ACTIVE" && (

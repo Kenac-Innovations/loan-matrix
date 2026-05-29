@@ -138,6 +138,7 @@ export async function PUT(request: NextRequest) {
         const isNew = stage.id.startsWith("new-");
 
         if (isNew) {
+          // Create new stage
           await tx.pipelineStage.create({
             data: {
               tenantId: tenant!.id,
@@ -156,6 +157,7 @@ export async function PUT(request: NextRequest) {
             },
           });
         } else {
+          // Update existing stage
           await tx.pipelineStage.update({
             where: { id: stage.id },
             data: {

@@ -1,7 +1,6 @@
 "use client";
 
 import { useCurrency } from "@/contexts/currency-context";
-import { fineractFetch } from "@/lib/fineract-fetch";
 import { useState, useEffect } from "react";
 import {
   Dialog,
@@ -201,11 +200,20 @@ export function TransferFundsModal({
         locale: "en",
       };
 
-      await fineractFetch("/api/fineract/accounttransfers", {
+      const response = await fetch("/api/fineract/accounttransfers", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(
+          errorData.defaultUserMessage ||
+            errorData.error ||
+            `Failed to transfer funds: ${response.statusText}`
+        );
+      }
 
       setSuccess(true);
 

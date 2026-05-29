@@ -11,12 +11,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
-import { useToast } from "@/hooks/use-toast";
-import { Input } from "@/components/ui/input";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -24,24 +18,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import { useToast } from "@/hooks/use-toast";
 import {
-  ArrowRightLeft,
+  GitBranch,
   Loader2,
   CheckCircle,
-  ArrowRight,
-  ArrowLeft,
-  Users,
-  UserCircle,
-  RotateCcw,
-  BarChart3,
-  Hand,
-  UserCheck,
-  Banknote,
-  ShieldCheck,
-  Smartphone,
-  Building2,
   AlertCircle,
-  Undo2,
+  ArrowRight,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 
@@ -72,34 +58,18 @@ interface AvailableTransition {
 interface StateTransitionManagerProps {
   leadId: string;
   currentStage: string;
-  currentStageColor?: string;
-  assignedToUserId?: number | null;
-  currentUserId?: string;
-  isUserInStageTeam?: boolean;
   onTransitionComplete?: () => void;
 }
-
-const strategyLabels: Record<string, { label: string; icon: React.ReactNode }> = {
-  round_robin: { label: "Round Robin", icon: <RotateCcw className="h-3 w-3" /> },
-  least_loaded: { label: "Least Loaded", icon: <BarChart3 className="h-3 w-3" /> },
-  manual: { label: "Manual Assignment", icon: <Hand className="h-3 w-3" /> },
-  specific_member: { label: "Specific Member", icon: <UserCheck className="h-3 w-3" /> },
-};
 
 export default function StateTransitionManager({
   leadId,
   currentStage,
-  currentStageColor,
-  assignedToUserId,
-  currentUserId,
-  isUserInStageTeam = false,
   onTransitionComplete,
 }: StateTransitionManagerProps) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [fetchingTransitions, setFetchingTransitions] = useState(false);
-  const [transitions, setTransitions] = useState<AvailableTransition[]>([]);
-  const [selectedTransition, setSelectedTransition] = useState<AvailableTransition | null>(null);
+  const [availableStages, setAvailableStages] = useState<AvailableStage[]>([]);
+  const [selectedStage, setSelectedStage] = useState("");
   const [reason, setReason] = useState("");
   const [fineractDate, setFineractDate] = useState(new Date().toISOString().split("T")[0]);
   const [paymentTypes, setPaymentTypes] = useState<{ id: number; name: string; isCashPayment?: boolean }[]>([]);
@@ -209,12 +179,11 @@ export default function StateTransitionManager({
   };
 
   const fetchAvailableTransitions = useCallback(async () => {
-    setFetchingTransitions(true);
     try {
       const response = await fetch(`/api/leads/${leadId}/transition`);
       if (response.ok) {
         const data = await response.json();
-        setTransitions(data.transitions || []);
+        setAvailableStages(data.stages || []);
       }
     } catch (error) {
       console.error("Error fetching available transitions:", error);
@@ -336,9 +305,17 @@ export default function StateTransitionManager({
   const canSeeButton = isAssigned;
 
   const handleTransition = async () => {
-    if (!selectedTransition) return;
+    if (!selectedStage) {
+      toast({
+        title: "Error",
+        description: "Please select a target stage",
+        variant: "destructive",
+      });
+      return;
+    }
 
     setLoading(true);
+
     try {
       let fineractOverrides: Record<string, any> | undefined;
       if (effectiveAction === "approve") {
@@ -373,13 +350,12 @@ export default function StateTransitionManager({
 
       const response = await fetch(`/api/leads/${leadId}/transition`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({
-          targetStageId: selectedTransition.stageId,
+          targetStageName: selectedStage,
           reason: reason || undefined,
-          fineractOverrides,
-          overrideValidations: overrideValidations && hasBlockingValidations ? true : undefined,
-          overrideReason: overrideValidations && hasBlockingValidations ? overrideReason : undefined,
         }),
       });
 
@@ -387,21 +363,19 @@ export default function StateTransitionManager({
 
       if (result.success) {
         toast({
-          title: "Stage Updated",
+          title: "Success",
           description: result.message,
         });
         setOpen(false);
-        router.refresh();
-        window.dispatchEvent(
-          new CustomEvent("stage-transition-complete", {
-            detail: { leadId, targetStageId: selectedTransition.stageId },
-          })
-        );
-        onTransitionComplete?.();
+        setSelectedStage("");
+        setReason("");
+        if (onTransitionComplete) {
+          onTransitionComplete();
+        }
       } else {
         toast({
-          title: "Transition Failed",
-          description: result.message || "Failed to move lead",
+          title: "Error",
+          description: result.message || "Failed to transition lead",
           variant: "destructive",
         });
       }
@@ -409,7 +383,7 @@ export default function StateTransitionManager({
       console.error("Error transitioning lead:", error);
       toast({
         title: "Error",
-        description: "Failed to move lead to next stage",
+        description: "Failed to transition lead",
         variant: "destructive",
       });
     } finally {
@@ -441,9 +415,9 @@ export default function StateTransitionManager({
       </DialogTrigger>
       <DialogContent className="sm:max-w-[640px] max-h-[90vh] flex flex-col">
         <DialogHeader>
-          <DialogTitle>Move Lead to Next Stage</DialogTitle>
+          <DialogTitle>Transition Lead Stage</DialogTitle>
           <DialogDescription>
-            Select a stage to move this lead to. The lead will be automatically assigned to the receiving team.
+            Move this lead to a different stage in the workflow
           </DialogDescription>
         </DialogHeader>
 

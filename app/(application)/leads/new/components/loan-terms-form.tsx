@@ -3080,23 +3080,7 @@ export function LoanTermsForm({
                   <Select
                     onValueChange={(val) => {
                       field.onChange(val);
-                      const repaymentId = repaymentFrequencyIdForTermFrequencySelection(
-                        val,
-                        loanTemplate.termFrequencyTypeOptions,
-                        loanTemplate.repaymentFrequencyTypeOptions
-                      );
-                      if (repaymentId) {
-                        form.setValue("repaymentFrequency", repaymentId, {
-                          shouldDirty: true,
-                          shouldValidate: true,
-                        });
-                        updateFrequencyValues({
-                          termFrequency: val,
-                          repaymentFrequency: repaymentId,
-                        });
-                      } else {
-                        updateFrequencyValues({ termFrequency: val });
-                      }
+                      updateFrequencyValues({ termFrequency: val });
                     }}
                     value={field.value || ""}
                     disabled={!canEditLoan}
@@ -3169,8 +3153,6 @@ export function LoanTermsForm({
                 control={form.control}
                 name="firstRepaymentOn"
                 render={({ field }) => (
-                  <Popover>
-                    <PopoverTrigger asChild>
                       <Button
                         variant="outline"
                         disabled={!canEditLoan}
@@ -3183,26 +3165,12 @@ export function LoanTermsForm({
                         <CalendarIcon className="mr-2 h-4 w-4" />
                         {field.value
                           ? format(field.value, "PPP")
-                          : "Pick a date"}
+                      : "Set on Loan tab"}
                       </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0">
-                      <Calendar
-                        mode="single"
-                        selected={field.value}
-                        onSelect={(date) => {
-                          field.onChange(date);
-                          if (date) onFirstRepaymentDateChange?.(date);
-                        }}
-                        disabled={(date) => date < new Date("1900-01-01")}
-                        initialFocus
-                      />
-                    </PopoverContent>
-                  </Popover>
                 )}
               />
               <p className="text-xs text-muted-foreground">
-                Also stays in sync when set on the Loan tab
+                Set on the Loan tab - syncs automatically
               </p>
             </div>
 
@@ -4080,8 +4048,8 @@ export function LoanTermsForm({
                 <div>
                   <CardTitle>Charges</CardTitle>
                   <CardDescription>
-                    {isChargesStructureReadOnly
-                      ? "Edit charge amounts only. Adding or removing charges and due dates is fixed for this product."
+                    {isChargesReadOnly
+                      ? "View loan charges and fees. Charges cannot be modified."
                       : "Manage loan charges and fees. Add, remove, or edit charges and their due dates."}
                   </CardDescription>
                   {!isInvoiceDiscountingLead && topupTakeHomePreview && (

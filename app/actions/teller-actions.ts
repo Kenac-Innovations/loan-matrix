@@ -5,6 +5,10 @@ import { getFineractServiceWithSession } from "@/lib/fineract-api";
 import { prisma } from "@/lib/prisma";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
 import { getOrgDefaultCurrencyCode, getOrgRawCurrencyCode } from "@/lib/currency-utils";
+import {
+  buildTellerVaultTransactions,
+  summarizeTellerVaultTransactions,
+} from "@/lib/teller-vault-transactions";
 import { unstable_noStore as noStore } from "next/cache";
 
 const db = prisma as PrismaClient;
@@ -92,9 +96,8 @@ export async function getTellerFromFineract(id: string) {
             cashAllocations: {
               where: {
                 status: "ACTIVE",
-                cashierId: null, // Only teller vault allocations
               },
-              orderBy: { allocatedDate: "desc" },
+              orderBy: { allocatedDate: "asc" },
             },
             settlements: {
               orderBy: { settlementDate: "desc" },
@@ -104,10 +107,13 @@ export async function getTellerFromFineract(id: string) {
         });
 
         if (dbTeller) {
-          vaultBalance = dbTeller.cashAllocations.reduce(
-            (sum: number, alloc: { amount: number }) => sum + alloc.amount,
-            0
-          );
+          const vaultTransactions = buildTellerVaultTransactions(dbTeller.cashAllocations);
+          const vaultSummary = summarizeTellerVaultTransactions(vaultTransactions);
+
+          vaultBalance =
+            vaultSummary.openingBalance +
+            vaultSummary.allocationsFromBank +
+            vaultSummary.settlementReturns;
           currency = dbTeller.cashAllocations[0]?.currency || orgCurrency;
 
           const cashierAllocations = await db.cashAllocation.findMany({
@@ -131,7 +137,7 @@ export async function getTellerFromFineract(id: string) {
             return Math.max(positiveSum, netSum);
           })();
 
-          allocatedToCashiers = localAllocated;
+          allocatedToCashiers = vaultSummary.tellerToCashierAllocations;
           try {
             const fineractService = await getFineractServiceWithSession();
             const fineractCashiers = await fineractService.getCashiers(tellerId);
@@ -149,12 +155,13 @@ export async function getTellerFromFineract(id: string) {
                 console.error(`Error getting Fineract summary for cashier ${fc.id}:`, err);
               }
             }
-            allocatedToCashiers = Math.max(localAllocated, fineractAllocated);
+            // Keep aligned with vault transaction aggregation per product decision.
+            void fineractAllocated;
           } catch (err) {
             console.error("Error fetching Fineract cashier balances, using local DB:", err);
           }
 
-          availableBalance = vaultBalance - allocatedToCashiers;
+          availableBalance = vaultSummary.currentBalance;
           recentSettlements = dbTeller.settlements;
         }
       }

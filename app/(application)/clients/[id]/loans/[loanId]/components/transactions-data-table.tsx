@@ -44,6 +44,12 @@ export function TransactionsDataTable({
 }: TransactionsDataTableProps) {
   const router = useRouter();
 
+  const isReversedTransaction = (transaction: Transaction) =>
+    !!transaction?.manuallyReversed;
+
+  const getReversedTextClass = (transaction: Transaction) =>
+    isReversedTransaction(transaction) ? "text-red-600 line-through" : "";
+
   const displayTransactions = useMemo(() => {
     if (!reversedPayout?.voidedAt) return transactions;
     const d = new Date(reversedPayout.voidedAt);
@@ -70,18 +76,12 @@ export function TransactionsDataTable({
     }
   ]);
 
-  // Get unique transaction types for filter options (show "Admin Fee" for repayment at disbursement)
+  // Get unique transaction types for filter options
   const transactionTypes = useMemo(() => {
     const types = Array.from(
       new Set(displayTransactions.map((t) => getDisplayedTransactionType(t)).filter(Boolean))
     );
-    return types.sort().map((displayLabel) => {
-      // Use actual type.value for filtering; "Admin Fee" maps to "Repayment (at time of disbursement)"
-      const filterValue = displayLabel === "Admin Fee"
-        ? "Repayment (at time of disbursement)"
-        : displayLabel;
-      return { label: displayLabel, value: filterValue };
-    }).filter((t) => t.label !== "Admin Fee"); // Admin Fee is in hardcoded filterOptions
+    return types.sort().map(type => ({ label: type || '', value: type || '' }));
   }, [displayTransactions]);
 
   const getTransactionRef = (transaction: Transaction): string | undefined => {
@@ -103,7 +103,11 @@ export function TransactionsDataTable({
       header: "#",
       cell: ({ row }) => {
         const index = displayTransactions.findIndex(t => t.id === row.original.id);
-        return <span className="font-medium">{index + 1}</span>;
+        return (
+          <span className={`font-medium ${getReversedTextClass(row.original)}`}>
+            {index + 1}
+          </span>
+        );
       },
       enableSorting: false,
       enableHiding: false,
@@ -112,12 +116,21 @@ export function TransactionsDataTable({
       id: "officeName",
       header: "Office",
       accessorKey: "officeName",
+      cell: ({ row, getValue }) => (
+        <span className={getReversedTextClass(row.original)}>
+          {String(getValue() || "")}
+        </span>
+      ),
     },
     {
       id: "date",
       header: "Transaction Date",
       accessorKey: "date",
-      cell: ({ getValue }) => formatDate(getValue()),
+      cell: ({ row, getValue }) => (
+        <span className={getReversedTextClass(row.original)}>
+          {formatDate(getValue())}
+        </span>
+      ),
     },
     {
       id: "type",
@@ -130,7 +143,7 @@ export function TransactionsDataTable({
         { label: "All Types", value: "all" },
         { label: "Disbursement", value: "disbursement" },
         { label: "Repayment", value: "repayment" },
-        { label: "Admin Fee", value: "Repayment (at time of disbursement)" },
+        { label: "Repayment (at disbursement)", value: "repaymentAtDisbursement" },
         { label: "Accrual", value: "accrual" },
         ...transactionTypes,
       ],
@@ -139,37 +152,61 @@ export function TransactionsDataTable({
       id: "amount",
       header: "Amount",
       accessorKey: "amount",
-      cell: ({ getValue }) => formatCurrency(getValue(), currencyCode),
+      cell: ({ row, getValue }) => (
+        <span className={getReversedTextClass(row.original)}>
+          {formatCurrency(getValue(), currencyCode)}
+        </span>
+      ),
     },
     {
       id: "principalPortion",
       header: "Principal",
       accessorKey: "principalPortion",
-      cell: ({ getValue }) => formatCurrency(getValue(), currencyCode),
+      cell: ({ row, getValue }) => (
+        <span className={getReversedTextClass(row.original)}>
+          {formatCurrency(getValue(), currencyCode)}
+        </span>
+      ),
     },
     {
       id: "interestPortion",
       header: "Interest",
       accessorKey: "interestPortion",
-      cell: ({ getValue }) => formatCurrency(getValue(), currencyCode),
+      cell: ({ row, getValue }) => (
+        <span className={getReversedTextClass(row.original)}>
+          {formatCurrency(getValue(), currencyCode)}
+        </span>
+      ),
     },
     {
       id: "feeChargesPortion",
       header: "Fees",
       accessorKey: "feeChargesPortion",
-      cell: ({ getValue }) => formatCurrency(getValue(), currencyCode),
+      cell: ({ row, getValue }) => (
+        <span className={getReversedTextClass(row.original)}>
+          {formatCurrency(getValue(), currencyCode)}
+        </span>
+      ),
     },
     {
       id: "penaltyChargesPortion",
       header: "Penalties",
       accessorKey: "penaltyChargesPortion",
-      cell: ({ getValue }) => formatCurrency(getValue(), currencyCode),
+      cell: ({ row, getValue }) => (
+        <span className={getReversedTextClass(row.original)}>
+          {formatCurrency(getValue(), currencyCode)}
+        </span>
+      ),
     },
     {
       id: "outstandingLoanBalance",
       header: "Loan Balance",
       accessorKey: "outstandingLoanBalance",
-      cell: ({ getValue }) => formatCurrency(getValue(), currencyCode),
+      cell: ({ row, getValue }) => (
+        <span className={getReversedTextClass(row.original)}>
+          {formatCurrency(getValue(), currencyCode)}
+        </span>
+      ),
     },
     {
       id: "actions",

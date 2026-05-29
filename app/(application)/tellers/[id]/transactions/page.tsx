@@ -1,7 +1,7 @@
 "use client";
 
 import { useCurrency } from "@/contexts/currency-context";
-import { useState, useEffect, use } from "react";
+import { useState, useEffect, use, useMemo } from "react";
 import Link from "next/link";
 import {
   Card,
@@ -21,9 +21,21 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   ArrowLeft,
   ArrowDownRight,
   ArrowUpRight,
+  ChevronFirst,
+  ChevronLast,
+  ChevronLeft,
+  ChevronRight,
+  Download,
   RefreshCw,
   Wallet,
   AlertCircle,
@@ -31,6 +43,7 @@ import {
   TrendingUp,
 } from "lucide-react";
 import { formatCurrency } from "@/lib/format-currency";
+import { TellerVaultTransactionsSkeleton } from "@/components/skeletons/tellers-skeleton";
 
 interface Transaction {
   id: string;
@@ -49,7 +62,7 @@ interface Summary {
   openingBalance: number;
   allocationsFromBank: number;
   settlementReturns: number;
-  varianceAdjustments: number;
+  tellerToCashierAllocations: number;
   currentBalance: number;
   transactionCount: number;
 }
@@ -72,6 +85,9 @@ export default function TellerTransactionsPage({
   const [summary, setSummary] = useState<Summary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [pageIndex, setPageIndex] = useState(0);
+  const [pageSize, setPageSize] = useState(25);
+  const [exporting, setExporting] = useState(false);
 
   const fetchTransactions = async () => {
     setLoading(true);
@@ -99,6 +115,10 @@ export default function TellerTransactionsPage({
     fetchTransactions();
   }, [tellerId]);
 
+  useEffect(() => {
+    setPageIndex(0);
+  }, [transactions.length]);
+
   const getTransactionTypeInfo = (type: string) => {
     switch (type) {
       case "OPENING_BALANCE":
@@ -113,11 +133,17 @@ export default function TellerTransactionsPage({
           color: "bg-green-500",
           icon: ArrowDownRight,
         };
+      case "CASHIER_ALLOCATION":
+        return {
+          label: "Cashier Allocation",
+          color: "bg-rose-600",
+          icon: ArrowUpRight,
+        };
       case "SETTLEMENT_RETURN":
         return {
           label: "Settlement Return",
-          color: "bg-orange-500",
-          icon: ArrowUpRight,
+          color: "bg-cyan-600",
+          icon: ArrowDownRight,
         };
       case "VARIANCE_ADJUSTMENT":
         return {
@@ -145,28 +171,50 @@ export default function TellerTransactionsPage({
     });
   };
 
+  const exportToExcel = async () => {
+    try {
+      setExporting(true);
+      const XLSX = await import("xlsx");
+
+      const exportRows = transactions.map((tx) => ({
+        Date: formatDate(tx.date),
+        Type: getTransactionTypeInfo(tx.type).label,
+        Notes: tx.notes || "",
+        By: tx.allocatedByName || "",
+        Amount: tx.amount,
+        Currency: tx.currency,
+        Balance: tx.runningBalance,
+        Status: tx.status,
+      }));
+
+      const worksheet = XLSX.utils.json_to_sheet(exportRows);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Transactions");
+
+      const fileDate = new Date().toISOString().split("T")[0];
+      XLSX.writeFile(
+        workbook,
+        `teller-${tellerId}-transactions-${fileDate}.xlsx`
+      );
+    } catch (exportError) {
+      console.error("Error exporting teller transactions:", exportError);
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const currency = transactions[0]?.currency || orgCurrency;
+  const pageCount = Math.max(1, Math.ceil(transactions.length / pageSize));
+  const safePageIndex = Math.min(pageIndex, pageCount - 1);
+  const paginatedTransactions = useMemo(() => {
+    const start = safePageIndex * pageSize;
+    return transactions.slice(start, start + pageSize);
+  }, [transactions, safePageIndex, pageSize]);
+  const paginationStart = transactions.length === 0 ? 0 : safePageIndex * pageSize + 1;
+  const paginationEnd = Math.min((safePageIndex + 1) * pageSize, transactions.length);
 
   if (loading) {
-    return (
-      <div className="space-y-6">
-        <div className="flex items-center gap-4">
-          <Link href={`/tellers/${tellerId}`}>
-            <Button variant="ghost" size="sm">
-              <ArrowLeft className="h-4 w-4 mr-2" />
-            </Button>
-          </Link>
-          <div>
-            <h1 className="text-3xl font-bold">Vault Transactions</h1>
-            <p className="text-muted-foreground mt-1">Loading...</p>
-          </div>
-        </div>
-        <div className="flex items-center justify-center py-16 text-muted-foreground">
-          <RefreshCw className="h-6 w-6 animate-spin mr-2" />
-          Loading transactions...
-        </div>
-      </div>
-    );
+    return <TellerVaultTransactionsSkeleton />;
   }
 
   if (error) {
@@ -215,10 +263,20 @@ export default function TellerTransactionsPage({
             </p>
           </div>
         </div>
-        <Button variant="outline" onClick={fetchTransactions}>
-          <RefreshCw className="h-4 w-4 mr-2" />
-          Refresh
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={exportToExcel}
+            disabled={transactions.length === 0 || exporting}
+          >
+            <Download className="h-4 w-4 mr-2" />
+            {exporting ? "Exporting..." : "Export Excel"}
+          </Button>
+          <Button variant="outline" onClick={fetchTransactions}>
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Refresh
+          </Button>
+        </div>
       </div>
 
       {/* Summary Cards */}
@@ -253,10 +311,10 @@ export default function TellerTransactionsPage({
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Settlement Returns</CardTitle>
-              <ArrowUpRight className="h-4 w-4 text-orange-500" />
+              <ArrowDownRight className="h-4 w-4 text-cyan-600" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-orange-600">
+              <div className="text-2xl font-bold text-cyan-700">
                 {summary.settlementReturns >= 0 ? "+" : ""}
                 {formatCurrency(summary.settlementReturns, currency)}
               </div>
@@ -266,15 +324,14 @@ export default function TellerTransactionsPage({
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Adjustments</CardTitle>
-              <AlertCircle className="h-4 w-4 text-purple-500" />
+              <CardTitle className="text-sm font-medium">Teller to Cashier</CardTitle>
+              <ArrowUpRight className="h-4 w-4 text-rose-600" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-purple-600">
-                {summary.varianceAdjustments >= 0 ? "+" : ""}
-                {formatCurrency(summary.varianceAdjustments, currency)}
+              <div className="text-2xl font-bold text-rose-700">
+                {formatCurrency(summary.tellerToCashierAllocations, currency)}
               </div>
-              <p className="text-xs text-muted-foreground">Variance corrections</p>
+              <p className="text-xs text-muted-foreground">Cash allocated from teller to cashiers</p>
             </CardContent>
           </Card>
 
@@ -310,7 +367,8 @@ export default function TellerTransactionsPage({
               <p>No transactions found for this teller vault.</p>
             </div>
           ) : (
-            <div className="border rounded-lg overflow-hidden">
+            <div className="space-y-4">
+              <div className="border rounded-lg overflow-hidden">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -323,7 +381,7 @@ export default function TellerTransactionsPage({
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {transactions.map((tx) => {
+                  {paginatedTransactions.map((tx) => {
                     const typeInfo = getTransactionTypeInfo(tx.type);
                     const Icon = typeInfo.icon;
                     return (
@@ -363,6 +421,82 @@ export default function TellerTransactionsPage({
                   })}
                 </TableBody>
               </Table>
+              </div>
+
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="text-sm text-muted-foreground">
+                  Showing {paginationStart}-{paginationEnd} of {transactions.length} transactions
+                </div>
+
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-6">
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-medium">Rows per page</p>
+                    <Select
+                      value={`${pageSize}`}
+                      onValueChange={(value) => {
+                        setPageSize(Number(value));
+                        setPageIndex(0);
+                      }}
+                    >
+                      <SelectTrigger className="h-8 w-[70px]">
+                        <SelectValue placeholder={pageSize} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {[10, 25, 50, 100].map((size) => (
+                          <SelectItem key={size} value={`${size}`}>
+                            {size}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="flex items-center text-sm font-medium">
+                    Page {safePageIndex + 1} of {pageCount}
+                  </div>
+
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="outline"
+                      className="h-8 w-8 p-0"
+                      onClick={() => setPageIndex(0)}
+                      disabled={safePageIndex === 0}
+                    >
+                      <span className="sr-only">Go to first page</span>
+                      <ChevronFirst className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="h-8 w-8 p-0"
+                      onClick={() => setPageIndex((prev) => Math.max(prev - 1, 0))}
+                      disabled={safePageIndex === 0}
+                    >
+                      <span className="sr-only">Go to previous page</span>
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="h-8 w-8 p-0"
+                      onClick={() =>
+                        setPageIndex((prev) => Math.min(prev + 1, pageCount - 1))
+                      }
+                      disabled={safePageIndex >= pageCount - 1}
+                    >
+                      <span className="sr-only">Go to next page</span>
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="h-8 w-8 p-0"
+                      onClick={() => setPageIndex(pageCount - 1)}
+                      disabled={safePageIndex >= pageCount - 1}
+                    >
+                      <span className="sr-only">Go to last page</span>
+                      <ChevronLast className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
         </CardContent>

@@ -627,7 +627,7 @@ export function LeadAffordability({ leadId }: LeadAffordabilityProps) {
                   <p className="text-sm font-medium mb-3 text-foreground">
                     Detailed Assessment
                   </p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     {affordabilityData.dtiModel.result.factors.map(
                       (factor, index) => (
                         <div key={index} className="bg-muted p-3 rounded-md">
@@ -795,7 +795,7 @@ export function LeadAffordability({ leadId }: LeadAffordabilityProps) {
                   <p className="text-sm font-medium mb-3 text-foreground">
                     Expense Breakdown
                   </p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     {affordabilityData.disposableIncomeModel.result.factors.map(
                       (factor, index) => (
                         <div key={index} className="bg-muted p-3 rounded-md">
@@ -913,7 +913,7 @@ export function LeadAffordability({ leadId }: LeadAffordabilityProps) {
                   <p className="text-sm font-medium mb-3 text-foreground">
                     Assessment Factors
                   </p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     {affordabilityData.employerBasedModel.result.factors.map(
                       (factor, index) => (
                         <div key={index} className="bg-muted p-3 rounded-md">
@@ -1042,7 +1042,7 @@ export function LeadAffordability({ leadId }: LeadAffordabilityProps) {
                   <p className="text-sm font-medium mb-3 text-foreground">
                     Assessment Factors
                   </p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     {affordabilityData.expenditureEstimationModel.result.factors.map(
                       (factor, index) => (
                         <div key={index} className="bg-muted p-3 rounded-md">

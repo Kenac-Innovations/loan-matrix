@@ -118,12 +118,21 @@ const TABS: TabConfig[] = [
   },
   {
     id: "disbursed",
-    label: "Payout",
+    label: "Disbursed",
     report: "disbursed",
     bgColor: "bg-green-500 dark:bg-green-600",
     activeBg: "data-[state=active]:bg-green-500 dark:data-[state=active]:bg-green-600",
     inactiveText: "text-green-700 dark:text-green-400",
     icon: <CheckCircle2 className="h-4 w-4" />,
+  },
+  {
+    id: "payout",
+    label: "Paid Out",
+    report: "payout",
+    bgColor: "bg-emerald-600 dark:bg-emerald-700",
+    activeBg: "data-[state=active]:bg-emerald-600 dark:data-[state=active]:bg-emerald-700",
+    inactiveText: "text-emerald-700 dark:text-emerald-400",
+    icon: <Wallet className="h-4 w-4" />,
   },
   {
     id: "rejected",
@@ -259,6 +268,7 @@ export function LeadsStatusTabs() {
     pending: null,
     approved: null,
     disbursed: null,
+    payout: null,
     rejected: null,
   });
   const [tabCounts, setTabCounts] = useState<Record<string, number>>({
@@ -266,6 +276,7 @@ export function LeadsStatusTabs() {
     pending: 0,
     approved: 0,
     disbursed: 0,
+    payout: 0,
     rejected: 0,
   });
   const [loading, setLoading] = useState<Record<string, boolean>>({
@@ -273,6 +284,7 @@ export function LeadsStatusTabs() {
     pending: false,
     approved: false,
     disbursed: false,
+    payout: false,
     rejected: false,
   });
   const [errors, setErrors] = useState<Record<string, string | null>>({
@@ -280,6 +292,7 @@ export function LeadsStatusTabs() {
     pending: null,
     approved: null,
     disbursed: null,
+    payout: null,
     rejected: null,
   });
   const [navigatingRowId, setNavigatingRowId] = useState<string | null>(null);
@@ -292,12 +305,13 @@ export function LeadsStatusTabs() {
   const [pipelineProgress, setPipelineProgress] = useState<Record<string, any>>({});
 
   // Filter states for each tab
-  const [filters, setFilters] = useState<Record<string, { branch: string; loanProduct: string; submittedBy: string; stage: string }>>({
-    drafts: { branch: "all", loanProduct: "all", submittedBy: "all", stage: "all" },
-    pending: { branch: "all", loanProduct: "all", submittedBy: "all", stage: "all" },
-    approved: { branch: "all", loanProduct: "all", submittedBy: "all", stage: "all" },
-    disbursed: { branch: "all", loanProduct: "all", submittedBy: "all", stage: "all" },
-    rejected: { branch: "all", loanProduct: "all", submittedBy: "all", stage: "all" },
+  const [filters, setFilters] = useState<Record<string, { branch: string; loanProduct: string; submittedBy: string }>>({
+    drafts: { branch: "all", loanProduct: "all", submittedBy: "all" },
+    pending: { branch: "all", loanProduct: "all", submittedBy: "all" },
+    approved: { branch: "all", loanProduct: "all", submittedBy: "all" },
+    disbursed: { branch: "all", loanProduct: "all", submittedBy: "all" },
+    payout: { branch: "all", loanProduct: "all", submittedBy: "all" },
+    rejected: { branch: "all", loanProduct: "all", submittedBy: "all" },
   });
 
   // Extract unique filter options from data
@@ -316,25 +330,17 @@ export function LeadsStatusTabs() {
 
   // Get filter options for each tab
   const tabFilterOptions = useMemo(() => {
-    const options: Record<string, { branches: string[]; loanProducts: string[]; submittedBy: string[]; stages: string[] }> = {};
+    const options: Record<string, { branches: string[]; loanProducts: string[]; submittedBy: string[] }> = {};
     for (const tab of TABS) {
       const rawData = tabData[tab.report]?.data || [];
-      // Collect unique stage names from pipeline progress for rows in this tab
-      const stageSet = new Set<string>();
-      for (const row of rawData) {
-        const leadId = row.lead_id || row.external_id || row.client_external_id;
-        const prog = leadId ? pipelineProgress[leadId] : null;
-        if (prog?.stageName) stageSet.add(prog.stageName);
-      }
       options[tab.report] = {
         branches: getFilterOptions(rawData, "branch"),
         loanProducts: getFilterOptions(rawData, "loan_product"),
         submittedBy: getFilterOptions(rawData, "submitted_by") || getFilterOptions(rawData, "created_by"),
-        stages: Array.from(stageSet).sort(),
       };
     }
     return options;
-  }, [tabData, getFilterOptions, pipelineProgress]);
+  }, [tabData, getFilterOptions]);
 
   // Filter data based on selected filters
   const getFilteredData = useCallback((report: string, data: any[]): any[] => {
@@ -359,18 +365,10 @@ export function LeadsStatusTabs() {
         const submitter = row.submitted_by || row.created_by || row["Submitted By"] || row["Created By"] || "";
         if (String(submitter).toLowerCase() !== tabFilters.submittedBy.toLowerCase()) return false;
       }
-
-      // Pipeline stage filter
-      if (tabFilters.stage !== "all") {
-        const leadId = row.lead_id || row.external_id || row.client_external_id;
-        const prog = leadId ? pipelineProgress[leadId] : null;
-        const stageName = prog?.stageName || "";
-        if (stageName !== tabFilters.stage) return false;
-      }
       
       return true;
     });
-  }, [filters, pipelineProgress]);
+  }, [filters]);
 
   // Update filter for a specific tab
   const updateFilter = useCallback((report: string, filterKey: string, value: string) => {
@@ -445,16 +443,6 @@ export function LeadsStatusTabs() {
         setTabData((prev) => ({ ...prev, [report]: data }));
         setTabCounts((prev) => ({ ...prev, [report]: data.count }));
         setLastUpdated(new Date());
-
-        // Enrich with pipeline progress
-        if (data.data && data.data.length > 0) {
-          const ids = data.data
-            .map((row: any) => row.lead_id || row.external_id || row.client_external_id)
-            .filter(Boolean) as string[];
-          if (ids.length > 0) {
-            fetchPipelineProgress(ids);
-          }
-        }
       } catch (error) {
         console.error(`Error fetching ${report} report:`, error);
         setErrors((prev) => ({ 
@@ -661,6 +649,7 @@ export function LeadsStatusTabs() {
     const pendingData = getRoleScopedData(tabData.pending?.data || []);
     const approvedData = getRoleScopedData(tabData.approved?.data || []);
     const disbursedData = getRoleScopedData(tabData.disbursed?.data || []);
+    const payoutData = getRoleScopedData(tabData.payout?.data || []);
     const rejectedData = getRoleScopedData(tabData.rejected?.data || []);
     
     // Debug log
@@ -670,11 +659,13 @@ export function LeadsStatusTabs() {
       rawPending: tabData.pending?.data?.length || 0,
       rawApproved: tabData.approved?.data?.length || 0,
       rawDisbursed: tabData.disbursed?.data?.length || 0,
+      rawPayout: tabData.payout?.data?.length || 0,
       rawRejected: tabData.rejected?.data?.length || 0,
       scopedDrafts: draftsData.length,
       scopedPending: pendingData.length,
       scopedApproved: approvedData.length,
       scopedDisbursed: disbursedData.length,
+      scopedPayout: payoutData.length,
       scopedRejected: rejectedData.length,
     });
     
@@ -683,6 +674,7 @@ export function LeadsStatusTabs() {
     const filteredPending = getFilteredData("pending", pendingData);
     const filteredApproved = getFilteredData("approved", approvedData);
     const filteredDisbursed = getFilteredData("disbursed", disbursedData);
+    const filteredPayout = getFilteredData("payout", payoutData);
     const filteredRejected = getFilteredData("rejected", rejectedData);
     
     // Total leads (all statuses)
@@ -712,6 +704,7 @@ export function LeadsStatusTabs() {
       pending: filteredPending.length,
       approved: filteredApproved.length,
       disbursed: filteredDisbursed.length,
+      payout: filteredPayout.length,
       rejected: filteredRejected.length,
       conversionRate,
       submissionRate,
@@ -739,7 +732,7 @@ export function LeadsStatusTabs() {
   };
 
   // Generate columns for the data table
-  const generateColumns = useCallback((data: any[], tabReport?: string): DataTableColumn<any>[] => {
+  const generateColumns = useCallback((data: any[]): DataTableColumn<any>[] => {
     if (!data || data.length === 0) return [];
     
     // Filter out hidden columns and internal columns
@@ -949,14 +942,14 @@ export function LeadsStatusTabs() {
     }
 
     return columns;
-  }, [orgCurrency, tenantLocale.countryCode, pipelineProgress]);
+  }, [orgCurrency, tenantLocale.countryCode]);
 
   // Memoize columns for each tab
   const tabColumns = useMemo(() => {
     const columns: Record<string, DataTableColumn<any>[]> = {};
     for (const tab of TABS) {
       const data = tabData[tab.report];
-      columns[tab.report] = data?.data ? generateColumns(data.data, tab.report) : [];
+      columns[tab.report] = data?.data ? generateColumns(data.data) : [];
     }
     return columns;
   }, [tabData, generateColumns]);
@@ -1094,29 +1087,7 @@ export function LeadsStatusTabs() {
             </div>
           )}
 
-          {filterOpts.stages.length > 0 && report !== "drafts" && (
-            <div className="flex items-center gap-2">
-              <span className="text-xs sm:text-sm font-medium text-muted-foreground whitespace-nowrap">Stage:</span>
-              <Select
-                value={tabFilters.stage}
-                onValueChange={(value) => updateFilter(report, "stage", value)}
-              >
-                <SelectTrigger className="w-full sm:w-[160px] h-8 text-xs sm:text-sm">
-                  <SelectValue placeholder="All Stages" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Stages</SelectItem>
-                  {filterOpts.stages.map((stage) => (
-                    <SelectItem key={stage} value={stage}>
-                      {stage}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-
-          {(tabFilters.branch !== "all" || tabFilters.loanProduct !== "all" || tabFilters.submittedBy !== "all" || tabFilters.stage !== "all") && (
+          {(tabFilters.branch !== "all" || tabFilters.loanProduct !== "all" || tabFilters.submittedBy !== "all") && (
             <div className="flex items-center gap-2 sm:ml-auto">
               <Badge variant="secondary" className="text-xs">
                 {filteredData.length} of {roleScopedData.length} records
@@ -1127,7 +1098,7 @@ export function LeadsStatusTabs() {
                 className="h-8 px-2 text-xs"
                 onClick={() => setFilters((prev) => ({
                   ...prev,
-                  [report]: { branch: "all", loanProduct: "all", submittedBy: "all", stage: "all" },
+                  [report]: { branch: "all", loanProduct: "all", submittedBy: "all" },
                 }))}
               >
                 Clear filters
@@ -1350,10 +1321,10 @@ export function LeadsStatusTabs() {
             <div>
               <CardTitle className="text-base sm:text-lg">Loan Applications</CardTitle>
               <CardDescription className="text-xs sm:text-sm">
-                View loan applications by stage for the selected period
+                View loan applications by status for the selected period
               </CardDescription>
             </div>
-            <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-2">
               <Popover>
                 <PopoverTrigger asChild>
                   <Button
@@ -1508,6 +1479,10 @@ export function LeadsStatusTabs() {
 
 // Helper to format column headers (snake_case to Title Case)
 function formatColumnHeader(col: string): string {
+  if (col === "created_by") {
+    return "Submitted By";
+  }
+
   return col
     .replaceAll("_", " ")
     .replaceAll(/\b\w/g, (l) => l.toUpperCase());
@@ -1545,7 +1520,7 @@ const CURRENCY_PATTERNS = [
   "overdue",
 ];
 const PERCENTAGE_PATTERNS = ["interest_rate", "rate_", "_rate", "percent", "%"];
-const SKIP_NUMBER_FORMAT_PATTERNS = ["id", "account", "phone", "mobile", "nrc", "external"];
+const SKIP_NUMBER_FORMAT_PATTERNS = ["id", "account", "phone", "mobile"];
 const PHONE_PATTERNS = ["phone", "mobile", "cell", "tel"];
 
 function isCurrencyColumn(colLower: string): boolean {

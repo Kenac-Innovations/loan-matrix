@@ -17,7 +17,7 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { toast } from "@/components/ui/use-toast";
-import { AlertCircle, Download, MoreVertical, X, ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight, Edit, Flag, Plus, Heart, Coins, RotateCcw, Calendar, ChevronRight as ChevronRightIcon, User, Building, Phone, Mail, CreditCard, TrendingUp, Clock, FileText, Shield, DollarSign, Percent, CalendarDays, Settings, Trash2, StickyNote } from "lucide-react";
+import { AlertCircle, Download, Loader2, MoreVertical, X, ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight, Edit, Flag, Plus, Heart, Coins, RotateCcw, Calendar, ChevronRight as ChevronRightIcon, User, Building, Phone, Mail, CreditCard, TrendingUp, Clock, FileText, Shield, DollarSign, Percent, CalendarDays, Settings, Trash2, StickyNote } from "lucide-react";
 import { ClientTransactions } from "../../../components/client-transactions";
 import { RepaymentModal } from "./repayment-modal";
 import { PaymentModal } from "./payment-modal";
@@ -39,6 +39,8 @@ import CreateGuarantorModal from "@/components/CreateGuarantorModal";
 import RecoverFromGuarantorModal from "@/components/RecoverFromGuarantorModal";
 import SellLoanModal from "@/components/SellLoanModal";
 import { TransactionsDataTable } from "./transactions-data-table";
+import { downloadLoanDocumentAttachment } from "@/app/actions/loan-document-actions";
+import { formatDateDdMmYyyy } from "@/lib/date-format";
 import { FineractClient, FineractLoan } from "@/shared/types";
 import { getTransactionTypeDisplayLabel } from "@/lib/format-transaction";
 import { useFeatureFlags } from "@/hooks/use-feature-flags";
@@ -51,6 +53,12 @@ interface ClientLoanDetailsProps {
   clientId: number;
   loanId: number;
 }
+
+type LoanDocumentDownloadItem = {
+  id: number | string;
+  fileName?: string;
+  name?: string;
+};
 
 export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) {
   const router = useRouter();
@@ -77,6 +85,7 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
   const [submittingReschedule, setSubmittingReschedule] = useState(false);
   const [documents, setDocuments] = useState<any[]>([]);
   const [loadingDocuments, setLoadingDocuments] = useState(false);
+  const [downloadingDocumentId, setDownloadingDocumentId] = useState<number | string | null>(null);
   const [showUploadDocuments, setShowUploadDocuments] = useState(false);
   const [submittingDocument, setSubmittingDocument] = useState(false);
   const [documentForm, setDocumentForm] = useState({
@@ -84,8 +93,6 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
     description: "",
     file: null as File | null,
   });
-  const [requiredDocs, setRequiredDocs] = useState<{ id: string; name: string; isRequired: boolean; isActive: boolean }[]>([]);
-  const [selectedDocType, setSelectedDocType] = useState<string>("");
   const [notes, setNotes] = useState<any[]>([]);
   const [loadingNotes, setLoadingNotes] = useState(false);
   const [submittingNote, setSubmittingNote] = useState(false);
@@ -308,13 +315,6 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
     }
   }, [activeTab, loan]);
 
-  useEffect(() => {
-    fetch("/api/pipeline/required-documents")
-      .then((r) => (r.ok ? r.json() : []))
-      .then((data) => setRequiredDocs(data.filter((d: any) => d.isActive)))
-      .catch(() => {});
-  }, []);
-
   // Fetch notes data when notes tab is active
   useEffect(() => {
     if (activeTab === "notes" && loan) {
@@ -326,41 +326,6 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
   useEffect(() => {
     const container = document.getElementById('loan-actions-container');
     if (container && loan) {
-      const isClosed = loan?.status?.closed === true;
-
-      // When loan is closed, only show: Goodwill credit, Interest payment waiver, Payout refund, Merchant issued refund
-      const closedActionsOnly = `
-        <div class="py-2">
-          <button class="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 text-sm" data-action="goodwill-credit">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M12 2v20m9-2-3-3m-6 3-3-3"/>
-            </svg>
-            Goodwill Credit
-          </button>
-          <button class="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 text-sm" data-action="interest-payment-waiver">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M18 6L6 18M6 6l12 12"/>
-            </svg>
-            Interest Payment Waiver
-          </button>
-          <button class="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 text-sm" data-action="payout-refund">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M3 7v6h6"/>
-              <path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/>
-            </svg>
-            Payout Refund
-          </button>
-          <button class="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 text-sm" data-action="merchant-issued-refund">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
-              <line x1="8" y1="21" x2="16" y2="21"/>
-              <line x1="12" y1="17" x2="12" y2="21"/>
-            </svg>
-            Merchant Issued Refund
-          </button>
-        </div>
-      `;
-
       // Create the loan actions element with dropdown
       const actionsDiv = document.createElement('div');
       actionsDiv.className = 'relative';
@@ -373,7 +338,6 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
           <span>Loan Actions</span>
         </button>
         <div class="absolute top-full right-0 mt-2 w-56 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 hidden" id="loan-actions-dropdown">
-          ${isClosed ? closedActionsOnly : `
           <div class="py-2">
             <button class="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed" data-action="approve-loan" id="approve-loan-btn">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -622,7 +586,6 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
               </div>
             </div>
           </div>
-          `}
         </div>
       `;
       
@@ -1433,7 +1396,17 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
       const response = await fetch(`/api/fineract/loans/${loanId}/documents`);
       if (response.ok) {
         const data = await response.json();
-        setDocuments(Array.isArray(data) ? data : []);
+        if (Array.isArray(data)) {
+          setDocuments(data);
+        } else if (data?.pageItems && Array.isArray(data.pageItems)) {
+          setDocuments(data.pageItems);
+        } else if (data?.content && Array.isArray(data.content)) {
+          setDocuments(data.content);
+        } else if (data?.documents && Array.isArray(data.documents)) {
+          setDocuments(data.documents);
+        } else {
+          setDocuments([]);
+        }
       } else {
         let errorData;
         try {
@@ -1468,69 +1441,52 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
     }
   };
 
-  // Download document
-  const handleDownloadDocument = async (documentId: string, fileName: string) => {
+  // Download document through a server action so the browser only handles the file blob.
+  const handleDownloadDocument = async (doc: LoanDocumentDownloadItem) => {
+    setDownloadingDocumentId(doc.id);
+
     try {
-      const response = await fetch(`/api/fineract/loans/${loanId}/documents/${documentId}/attachment`);
-      
-      if (response.ok) {
-        const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = fileName;
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
-        
-        toast({
-          title: "Success",
-          description: "Document downloaded successfully!",
-          variant: "success",
-        });
-      } else {
-        // Try to parse as JSON, but handle cases where it's not JSON
-        let errorData: any = {};
-        let errorMessage = "Failed to download document";
-        
-        try {
-          const contentType = response.headers.get('content-type') || '';
-          if (contentType.includes('application/json')) {
-            errorData = await response.json();
-            console.error("Failed to download document:", errorData);
-            
-            if (errorData.defaultUserMessage) {
-              errorMessage = errorData.defaultUserMessage;
-            } else if (errorData.errors && errorData.errors.length > 0 && errorData.errors[0].defaultUserMessage) {
-              errorMessage = errorData.errors[0].defaultUserMessage;
-            } else if (errorData.error) {
-              errorMessage = errorData.error;
-            }
-          } else {
-            // Not JSON response, use status text
-            const responseText = await response.text();
-            console.error("Failed to download document (non-JSON):", response.status, response.statusText, responseText);
-            errorMessage = `Download failed: ${response.status} ${response.statusText}`;
-          }
-        } catch (parseError) {
-          console.error("Error parsing download response:", parseError);
-          errorMessage = `Download failed: ${response.status} ${response.statusText}`;
-        }
-        
-        toast({
-          title: "Error",
-          description: errorMessage,
-          variant: "destructive",
-        });
+      const result = await downloadLoanDocumentAttachment(loanId, doc.id);
+
+      if (!result.success || !result.fileBuffer) {
+        throw new Error(result.error || "Failed to download document");
       }
+
+      const blob = new Blob([result.fileBuffer], {
+        type: result.contentType || "application/octet-stream",
+      });
+      const url = window.URL.createObjectURL(blob);
+      const link = window.document.createElement("a");
+      link.href = url;
+      link.download =
+        result.fileName ||
+        doc.fileName ||
+        doc.name ||
+        `document-${doc.id}`;
+      window.document.body.appendChild(link);
+      link.click();
+      window.document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+
+      toast({
+        title: "Success",
+        description: "Document downloaded successfully!",
+        variant: "success",
+      });
     } catch (error) {
       console.error("Error downloading document:", error);
       toast({
         title: "Error",
-        description: "An unexpected error occurred while downloading the document",
+        description:
+          error instanceof Error
+            ? error.message
+            : "An unexpected error occurred while downloading the document",
         variant: "destructive",
       });
+    } finally {
+      setDownloadingDocumentId((currentId) =>
+        currentId === doc.id ? null : currentId
+      );
     }
   };
 
@@ -1596,11 +1552,8 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
 
     setSubmittingDocument(true);
     try {
-      const docName = selectedDocType && selectedDocType !== "__other__"
-        ? `${selectedDocType} - ${documentForm.fileName}`
-        : documentForm.fileName;
       const formData = new FormData();
-      formData.append('name', docName);
+      formData.append('name', documentForm.fileName);
       formData.append('file', documentForm.file);
       if (documentForm.description) {
         formData.append('description', documentForm.description);
@@ -1618,7 +1571,7 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
           description: "", 
           file: null 
         });
-        setSelectedDocType("");
+        // Refresh documents list
         fetchDocuments();
         // Show success notification
         toast({
@@ -2025,7 +1978,7 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
           transaction.officeName || '',
           transaction.externalId || '',
           transaction.date ? formatDate(transaction.date) : '',
-          getTransactionTypeDisplayLabel(transaction.type) || '',
+          transaction.type?.value || '',
           formatCurrency(transaction.amount, currencyCode),
           formatCurrency(transaction.principalPortion, currencyCode),
           formatCurrency(transaction.interestPortion, currencyCode),
@@ -2882,16 +2835,24 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
           </CardContent>
         </Card>
 
-        <Card className="border-0 shadow-sm bg-gradient-to-br from-green-50 to-green-100 dark:from-green-950 dark:to-green-900">
+        <Card className={`border-0 shadow-sm ${loan.totalOverpaid > 0 ? "bg-gradient-to-br from-amber-50 to-amber-100 dark:from-amber-950 dark:to-amber-900" : "bg-gradient-to-br from-green-50 to-green-100 dark:from-green-950 dark:to-green-900"}`}>
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-green-600 dark:text-green-400">Outstanding Balance</p>
-                <p className="text-2xl font-bold text-green-900 dark:text-green-100">
+                <p className={`text-sm font-medium ${loan.totalOverpaid > 0 ? "text-amber-600 dark:text-amber-400" : "text-green-600 dark:text-green-400"}`}>Outstanding Balance</p>
+                <p className={`text-2xl font-bold ${loan.totalOverpaid > 0 ? "text-amber-900 dark:text-amber-100" : "text-green-900 dark:text-green-100"}`}>
                   {formatCurrency(loan.summary?.totalOutstanding ?? 0)}
                 </p>
+                {loan.totalOverpaid > 0 && (
+                  <div className="flex items-center gap-1.5 mt-2">
+                    <AlertCircle className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+                    <p className="text-xs font-medium text-amber-700 dark:text-amber-300">
+                      Overpaid by {formatCurrency(loan.totalOverpaid)}
+                    </p>
+                  </div>
+                )}
               </div>
-              <div className="h-12 w-12 rounded-lg bg-green-500 flex items-center justify-center">
+              <div className={`h-12 w-12 rounded-lg flex items-center justify-center ${loan.totalOverpaid > 0 ? "bg-amber-500" : "bg-green-500"}`}>
                 <TrendingUp className="h-6 w-6 text-white" />
               </div>
             </div>
@@ -3750,6 +3711,8 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                       <TableHead>File Name</TableHead>
                         <TableHead>Size</TableHead>
                         <TableHead>Type</TableHead>
+                      <TableHead>Uploaded By</TableHead>
+                      <TableHead>Uploaded On</TableHead>
                       <TableHead>Actions</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -3759,28 +3722,70 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                           <TableRow key={document.id || index}>
                           <TableCell className="font-medium">{document.name}</TableCell>
                             <TableCell>{document.description || "N/A"}</TableCell>
-                          <TableCell>{document.fileName}</TableCell>
+                            <TableCell>{document.fileName}</TableCell>
                             <TableCell>{document.size ? `${(document.size / 1024).toFixed(1)} KB` : "N/A"}</TableCell>
                             <TableCell>{document.type || "N/A"}</TableCell>
-                          <TableCell>
-                            <div className="flex space-x-1">
-                                <Button 
-                                  variant="outline" 
-                                  size="sm" 
-                                  className="h-8 w-8 p-0 bg-blue-500 text-white hover:bg-blue-600"
-                                  onClick={() => handleDownloadDocument(document.id, document.fileName)}
-                                  title="Download"
-                                >
-                                <Download className="h-4 w-4" />
+                            <TableCell>
+                              <span className="text-sm">
+                                {document.uploadedBy?.trim() || "---"}
+                              </span>
+                            </TableCell>
+                            <TableCell>
+                              <span className="text-sm">
+                                {formatDateDdMmYyyy(
+                                  document.uploadedAt || document.createdDate
+                                )}
+                              </span>
+                            </TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="gap-2"
+                                onClick={() => handleDownloadDocument(document)}
+                                disabled={downloadingDocumentId === document.id}
+                                title={
+                                  downloadingDocumentId === document.id
+                                    ? "Downloading document"
+                                    : "Download document"
+                                }
+                                aria-label={
+                                  downloadingDocumentId === document.id
+                                    ? `Downloading ${
+                                        document.name ||
+                                        document.fileName ||
+                                        `document ${document.id}`
+                                      }`
+                                    : `Download ${
+                                        document.name ||
+                                        document.fileName ||
+                                        `document ${document.id}`
+                                      }`
+                                }
+                              >
+                                {downloadingDocumentId === document.id ? (
+                                  <>
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                    <span>Downloading...</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Download className="h-4 w-4" />
+                                    <span>Download</span>
+                                  </>
+                                )}
                               </Button>
-                                <Button 
-                                  variant="outline" 
-                                  size="sm" 
-                                  className="h-8 w-8 p-0 bg-red-500 text-white hover:bg-red-600"
-                                  onClick={() => handleDeleteDocument(document.id, document.fileName)}
-                                  title="Delete"
-                                >
-                                  <Trash2 className="h-4 w-4" />
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="h-8 w-8 p-0 bg-red-500 text-white hover:bg-red-600"
+                                onClick={() => handleDeleteDocument(document.id, document.fileName)}
+                                title="Delete"
+                              >
+                                <Trash2 className="h-4 w-4" />
                               </Button>
                             </div>
                           </TableCell>
@@ -3788,7 +3793,7 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                       ))
                     ) : (
                       <TableRow>
-                          <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                          <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                             <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
                             <p>No documents found for this loan</p>
                             <p className="text-sm mt-2">Click "+ Add" to upload documents</p>
@@ -4523,77 +4528,43 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
             </div>
 
             <div className="space-y-4">
-              {/* Document Type Selector */}
-              {requiredDocs.length > 0 && (
-                <div>
-                  <Label className="text-sm font-medium">
-                    Document Type <span className="text-red-500">*</span>
-                  </Label>
-                  <Select
-                    value={selectedDocType}
-                    onValueChange={(value) => {
-                      setSelectedDocType(value);
-                      if (value && value !== "__other__" && !documentForm.fileName) {
-                        setDocumentForm({ ...documentForm, fileName: value });
-                      }
-                    }}
-                  >
-                    <SelectTrigger className="w-full mt-1">
-                      <SelectValue placeholder="Select document type..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {requiredDocs.map((doc) => {
-                        const uploaded = documents.some((d: any) =>
-                          (d.name || d.fileName || "").toLowerCase().includes(doc.name.toLowerCase())
-                        );
-                        return (
-                          <SelectItem key={doc.id} value={doc.name} disabled={uploaded}>
-                            {doc.name}
-                            {doc.isRequired && !uploaded ? " (Required)" : ""}
-                            {uploaded ? " ✓" : ""}
-                          </SelectItem>
-                        );
-                      })}
-                      <SelectItem value="__other__">Other Document</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-
               {/* File Name */}
               <div>
-                <Label htmlFor="document-file-name" className="text-sm font-medium">
-                  File Name <span className="text-red-500">*</span>
-                </Label>
-                <Input
+                <label htmlFor="document-file-name" className="block text-sm font-medium text-foreground mb-1">
+                  File Name *
+                </label>
+                <input
+                  type="text"
                   id="document-file-name"
                   value={documentForm.fileName}
                   onChange={(e) => setDocumentForm({...documentForm, fileName: e.target.value})}
+                  className="w-full px-3 py-2 border border-input bg-background rounded-md focus:outline-none focus:ring-2 focus:ring-ring focus:border-ring"
                   placeholder="Enter file name"
-                  className="mt-1"
+                  required
                 />
               </div>
 
               {/* Description */}
               <div>
-                <Label htmlFor="document-description" className="text-sm font-medium">
+                <label htmlFor="document-description" className="block text-sm font-medium text-foreground mb-1">
                   Description
-                </Label>
-                <Input
+                </label>
+                <input
+                  type="text"
                   id="document-description"
                   value={documentForm.description}
                   onChange={(e) => setDocumentForm({...documentForm, description: e.target.value})}
-                  placeholder="Optional description"
-                  className="mt-1"
+                  className="w-full px-3 py-2 border border-input bg-background rounded-md focus:outline-none focus:ring-2 focus:ring-ring focus:border-ring"
+                  placeholder="Enter description"
                 />
               </div>
 
               {/* File Selection */}
               <div>
-                <Label className="text-sm font-medium">
-                  File <span className="text-red-500">*</span>
-                </Label>
-                <div className="flex items-center justify-between p-3 mt-1 border border-input bg-background rounded-md">
+                <label className="block text-sm font-medium text-foreground mb-1">
+                  File
+                </label>
+                <div className="flex items-center justify-between p-3 border border-input bg-background rounded-md">
                   <span className="text-sm text-muted-foreground">
                     {documentForm.file ? documentForm.file.name : "No file selected"}
                   </span>
@@ -4629,20 +4600,14 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                     description: "", 
                     file: null 
                   });
-                  setSelectedDocType("");
                 }}
               >
                 Cancel
               </Button>
               <Button
                 onClick={handleSubmitDocument}
-                disabled={
-                  !documentForm.fileName ||
-                  !documentForm.file ||
-                  submittingDocument ||
-                  (requiredDocs.length > 0 && !selectedDocType)
-                }
-                className="bg-blue-500 text-white hover:bg-blue-600"
+                disabled={!documentForm.fileName || !documentForm.file || submittingDocument}
+                className="bg-gray-400 text-white hover:bg-gray-500"
               >
                 {submittingDocument ? "Uploading..." : "Upload"}
               </Button>

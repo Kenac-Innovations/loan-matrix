@@ -143,13 +143,39 @@ export async function POST(
       }
     }
 
-    // NOTE: Stage transitions are handled by TeamAwareStateMachineService.executeTransition()
-    // which fires Fineract actions as part of the transition. The legacy transitionLeadStage
-    // was removed because it bypassed validation and could move leads backwards.
+    if (action === "disburse") {
+      // Non-blocking: manual disbursement remains successful even if charge add fails.
+      try {
+        const tenant = await getTenantBySlug(tenantSlug);
+        if (tenant) {
+          await applyTopupDisbursementCharges({
+            loanId: Number(loanId),
+            tenantId: tenant.id,
+            source: "loan-action-route",
+          });
+        } else {
+          console.warn("[TopupDisbursementCharges] Tenant not found in loan action route", {
+            loanId,
+            tenantSlug,
+          });
+        }
+      } catch (chargeError) {
+        console.error("[TopupDisbursementCharges] Failed in loan action route:", chargeError);
+      }
+    }
+
+    // Transition lead stage based on action
+    try {
+      await transitionLeadStage(loanId, action, tenantSlug);
+    } catch (transitionError) {
+      console.error("Error transitioning lead stage:", transitionError);
+      // Don't fail the request if stage transition fails
+    }
+    
 
     // Send SMS to applicant for approve / reject / disburse (Loan Matrix loans only)
     if (["approve", "reject", "disburse"].includes(action)) {
-      try {
+      void (async () => {
         const tenant = await getTenantBySlug(tenantSlug);
         if (tenant) {
           const lead = await prisma.lead.findFirst({
@@ -162,6 +188,7 @@ export async function POST(
               middlename: true,
               lastname: true,
               mobileNo: true,
+              countryCode: true,
               requestedAmount: true,
             },
           });
@@ -180,15 +207,16 @@ export async function POST(
               type: smsType,
               clientName: clientName || "Customer",
               phone: lead.mobileNo,
+              countryCode: lead.countryCode,
               amount,
               reason: action === "reject" ? (note || "No reason provided") : undefined,
               tenantId: tenant.slug,
             });
           }
         }
-      } catch (smsError) {
+      })().catch((smsError) => {
         console.error("Failed to send loan status SMS:", smsError);
-      }
+      });
     }
 
     return NextResponse.json({
@@ -223,4 +251,100 @@ function formatDate(date: Date | string): string {
     "December",
   ];
   return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
+}
+
+/**
+ * Transition lead pipeline stage based on loan action
+ */
+async function transitionLeadStage(
+  loanId: string,
+  action: string,
+  tenantSlug: string
+) {
+  // Map loan actions to target stage names
+  const actionToStageMap: Record<string, string> = {
+    approve: "Approval",
+    reject: "Rejected",
+    disburse: "Disbursement",
+  };
+
+  const targetStageName = actionToStageMap[action];
+  if (!targetStageName) {
+    console.log(`No stage transition needed for action: ${action}`);
+    return;
+  }
+
+  // Get tenant
+  const tenant = await getTenantBySlug(tenantSlug);
+  if (!tenant) {
+    console.error(`Tenant not found: ${tenantSlug}`);
+    return;
+  }
+
+  // Find lead by fineractLoanId
+  const lead = await prisma.lead.findFirst({
+    where: {
+      tenantId: tenant.id,
+      fineractLoanId: parseInt(loanId),
+    },
+    include: {
+      currentStage: true,
+    },
+  });
+
+  if (!lead) {
+    console.log(`No lead found with fineractLoanId: ${loanId}`);
+    return;
+  }
+
+  // Find target stage
+  const targetStage = await prisma.pipelineStage.findFirst({
+    where: {
+      tenantId: tenant.id,
+      name: targetStageName,
+      isActive: true,
+    },
+  });
+
+  if (!targetStage) {
+    console.error(`Target stage not found: ${targetStageName}`);
+    return;
+  }
+
+  // Check if lead is already in the target stage
+  if (lead.currentStageId === targetStage.id) {
+    console.log(`Lead ${lead.id} is already in stage: ${targetStageName}`);
+    return;
+  }
+
+  // Create state transition record
+  await prisma.stateTransition.create({
+    data: {
+      leadId: lead.id,
+      tenantId: tenant.id,
+      fromStageId: lead.currentStageId || targetStage.id,
+      toStageId: targetStage.id,
+      event: `loan_${action}`,
+      triggeredBy: "system",
+      triggeredAt: new Date(),
+      metadata: {
+        loanId: loanId,
+        action: action,
+        automated: true,
+      },
+    },
+  });
+
+  // Update lead's current stage
+  await prisma.lead.update({
+    where: { id: lead.id },
+    data: {
+      currentStageId: targetStage.id,
+      updatedAt: new Date(),
+    },
+  });
+
+  console.log(
+    `Lead ${lead.id} transitioned from "${lead.currentStage?.name}" to "${targetStageName}"`
+  );
 }

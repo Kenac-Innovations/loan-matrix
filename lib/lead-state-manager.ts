@@ -2,9 +2,9 @@ import { prisma } from "./prisma";
 import { stateMachineService } from "./state-machine-service";
 
 /**
- * @deprecated Use TeamAwareStateMachineService from lib/team-state-machine-service.ts instead.
- * This service does not handle team-based auto-assignment.
- * Kept temporarily for backward compatibility.
+ * Lead State Manager
+ * Handles manual state transitions for leads
+ * CDE results are stored as recommendations only - all decisions require human approval
  */
 
 export interface CDEResult {

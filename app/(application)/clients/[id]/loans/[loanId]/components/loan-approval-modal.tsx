@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { fineractFetch } from "@/lib/fineract-fetch";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, VisuallyHidden } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -276,12 +275,14 @@ export function LoanApprovalModal({ isOpen, onClose, loanId, onApprovalSuccess }
     setLoading(true);
     try {
       // Fetch approval template
-      const templateResponse = await fineractFetch(`/api/fineract/loans/${loanId}/approve?templateType=approval`);
+      const templateResponse = await fetch(`/api/fineract/loans/${loanId}/approve?templateType=approval`);
+      if (!templateResponse.ok) throw new Error('Failed to fetch approval template');
       const templateData = await templateResponse.json();
       setApprovalTemplate(templateData);
 
       // Fetch multi-disburse details
-      const multiDisburseResponse = await fineractFetch(`/api/fineract/loans/${loanId}?associations=multiDisburseDetails`);
+      const multiDisburseResponse = await fetch(`/api/fineract/loans/${loanId}?associations=multiDisburseDetails`);
+      if (!multiDisburseResponse.ok) throw new Error('Failed to fetch multi-disburse details');
       const multiDisburseData = await multiDisburseResponse.json();
       setMultiDisburseDetails(multiDisburseData);
 
@@ -315,7 +316,7 @@ export function LoanApprovalModal({ isOpen, onClose, loanId, onApprovalSuccess }
       console.error('Error fetching approval data:', error);
       toast({
         title: "Error",
-        description: error instanceof Error ? error.message : "Failed to load approval data. Please try again.",
+        description: "Failed to load approval data. Please try again.",
         variant: "destructive",
       });
     } finally {
@@ -354,13 +355,36 @@ export function LoanApprovalModal({ isOpen, onClose, loanId, onApprovalSuccess }
         note: note || "",
       };
 
-      const response = await fineractFetch(`/api/fineract/loans/${loanId}/approve`, {
+      const response = await fetch(`/api/fineract/loans/${loanId}/approve`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(payload),
       });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        
+        // Extract the specific error message from the backend
+        let errorMessage = 'Failed to approve loan';
+        
+        // Prioritize user-friendly error messages
+        if (errorData.error) {
+          errorMessage = errorData.error;
+        } else if (errorData.errorData?.defaultUserMessage) {
+          errorMessage = errorData.errorData.defaultUserMessage;
+        } else if (errorData.errorData?.developerMessage) {
+          errorMessage = errorData.errorData.developerMessage;
+        }
+        
+        // Create error object with additional context
+        const error = new Error(errorMessage);
+        (error as any).status = response.status;
+        (error as any).errorData = errorData;
+        
+        throw error;
+      }
 
       toast({
         title: "Success",
