@@ -52,19 +52,5 @@ export function getDisplayedTransactionType(
 ): string {
   if (!transaction) return "";
 
-  const paidCharges = transaction.loanChargePaidByList;
-  if (Array.isArray(paidCharges) && paidCharges.length === 1) {
-    const charge = paidCharges[0];
-    const chargeName =
-      charge?.chargeName ||
-      charge?.name ||
-      charge?.loanChargeName ||
-      charge?.charge?.name;
-
-    if (typeof chargeName === "string" && chargeName.trim()) {
-      return formatTransactionChargeName(chargeName);
-    }
-  }
-
   return getTransactionTypeDisplayLabel(transaction.type);
 }
