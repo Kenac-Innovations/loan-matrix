@@ -5,6 +5,8 @@ import { isPaymentTypeCash } from '@/lib/cash-repayment-teller';
 import { upsertRepaymentCashLink } from '@/lib/repayment-cash-link';
 import { getTenantFromHeaders } from '@/lib/tenant-service';
 import { getOrgRawCurrencyCode } from '@/lib/currency-utils';
+import { fetchLoanNotificationDetails, resolveLoanNotificationTarget } from '@/lib/loan-notification-target';
+import { sendLoanRepaymentSms } from '@/lib/notification-service';
 
 /** Ensure date is yyyy-MM-dd for Fineract allocate */
 function formatDateForAllocate(isoDate: string): string {
@@ -59,13 +61,11 @@ export async function POST(
     }
 
     // Build repayment body for Fineract WITHOUT local teller/cashier metadata
-    const {
-      tellerId: _t,
-      cashierId: _c,
-      dbTellerId: _dbT,
-      dbCashierId: _dbC,
-      ...repaymentBody
-    } = body;
+    const repaymentBody = { ...body } as Record<string, unknown>;
+    delete repaymentBody.tellerId;
+    delete repaymentBody.cashierId;
+    delete repaymentBody.dbTellerId;
+    delete repaymentBody.dbCashierId;
 
     const data = await fetchFineractAPI(`/loans/${id}/transactions?command=${command}`, {
       method: 'POST',
@@ -145,21 +145,32 @@ export async function POST(
             console.log(
               `[CashRepayment] Allocated ${body.transactionAmount} ${currency} for loan ${loanId} to teller ${tellerId}/cashier ${cashierId}`
             );
-          } catch (err: any) {
-            const fineractError = err?.response?.data;
+          } catch (err: unknown) {
+            type AllocationError = {
+              response?: {
+                data?: {
+                  defaultUserMessage?: string;
+                  errors?: Array<{ defaultUserMessage?: string }>;
+                };
+                status?: number;
+              };
+              message?: string;
+            };
+            const allocationError = err as AllocationError;
+            const fineractError = allocationError.response?.data;
             cashierAllocateResult = {
               success: false,
               error:
                 fineractError?.defaultUserMessage ||
                 fineractError?.errors?.[0]?.defaultUserMessage ||
-                err?.message ||
+                allocationError.message ||
                 'Allocate failed',
-              details: fineractError || { message: err?.message },
+              details: fineractError || { message: allocationError.message },
             };
             console.error('[CashRepayment] Allocate failed:', {
-              message: err?.message,
-              status: err?.response?.status,
-              data: err?.response?.data,
+              message: allocationError.message,
+              status: allocationError.response?.status,
+              data: allocationError.response?.data,
             });
           }
         } else {
@@ -175,6 +186,54 @@ export async function POST(
       }
     }
 
+    if (
+      command === "repayment" &&
+      tenant &&
+      Number.isFinite(loanId) &&
+      loanId > 0 &&
+      body.transactionAmount != null &&
+      Number(body.transactionAmount) > 0
+    ) {
+      void (async () => {
+        const loanDetails = await fetchLoanNotificationDetails(
+          loanId,
+          tenant.slug
+        );
+        const borrower = await resolveLoanNotificationTarget({
+          tenantId: tenant.id,
+          tenantSlug: tenant.slug,
+          loanId,
+          clientId: loanDetails?.clientId ?? null,
+        });
+
+        if (borrower) {
+          const rawCurrency =
+            loanDetails?.currencyCode ??
+            body.currencyCode ??
+            body.currency?.code ??
+            (await getOrgRawCurrencyCode());
+          const currency = String(rawCurrency || "ZMW").toUpperCase();
+
+          console.log("NOW SENDING REPAYMENT SMS...")
+          const smsSent = await sendLoanRepaymentSms({
+            clientName: borrower.clientName,
+            phone: borrower.phone,
+            countryCode: borrower.countryCode ?? undefined,
+            amount: Number(body.transactionAmount),
+            currency,
+            tenantId: tenant.slug,
+          });
+          if (smsSent) {
+            console.log("REPAYMENT SMS SEND!...")
+          } else {
+            console.warn("REPAYMENT SMS NOT SENT...")
+          }
+        }
+      })().catch((smsError) => {
+        console.error("Failed to send repayment SMS:", smsError);
+      });
+    }
+
     // Include allocate result in response so it's visible in network tab when debugging
     const responseData =
       cashierAllocateResult != null
@@ -182,23 +241,32 @@ export async function POST(
         : data;
 
     return NextResponse.json(responseData);
-  } catch (error: any) {
-    console.error('Error submitting loan transaction:', error);
+  } catch (error: unknown) {
+    type LoanTransactionError = {
+      status?: number;
+      errorData?: {
+        defaultUserMessage?: string;
+        errors?: Array<{ defaultUserMessage?: string }>;
+      };
+      message?: string;
+    };
+    const loanTransactionError = error as LoanTransactionError;
+    console.error('Error submitting loan transaction:', loanTransactionError);
     
     // Check if it's an API error with status and errorData
-    if (error.status && error.errorData) {
+    if (loanTransactionError.status && loanTransactionError.errorData) {
       return NextResponse.json(
         { 
-          error: error.message,
-          status: error.status,
-          details: error.errorData 
+          error: loanTransactionError.message,
+          status: loanTransactionError.status,
+          details: loanTransactionError.errorData 
         },
-        { status: error.status }
+        { status: loanTransactionError.status }
       );
     }
     
     return NextResponse.json(
-      { error: error.message || 'Unknown error' },
+      { error: loanTransactionError.message || 'Unknown error' },
       { status: 500 }
     );
   }

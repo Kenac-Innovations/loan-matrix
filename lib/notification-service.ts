@@ -4,12 +4,61 @@
  */
 
 const CONTACT_LINE = "Contact us on +2609558985 /774 or visit our offices.";
+const DEFAULT_SMS_COUNTRY_CODE =
+  process.env.SMS_DEFAULT_COUNTRY_CODE || "+260";
 
 function formatAmount(amount: number): string {
   return amount.toLocaleString("en-US", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
+}
+
+function normalizeCountryCode(countryCode?: string | null): string | null {
+  if (!countryCode) return null;
+  const digits = String(countryCode).replace(/\D/g, "");
+  return digits || null;
+}
+
+export function normalizeSmsPhoneNumber(
+  phone: string,
+  countryCode?: string | null
+): string | null {
+  const raw = String(phone || "").trim();
+  if (!raw) return null;
+
+  const digits = raw.replace(/\D/g, "");
+  if (!digits) return null;
+
+  if (raw.startsWith("+")) {
+    return `+${digits}`;
+  }
+
+  if (raw.startsWith("00")) {
+    const internationalDigits = digits.slice(2);
+    return internationalDigits ? `+${internationalDigits}` : null;
+  }
+
+  const normalizedCountryCode =
+    normalizeCountryCode(countryCode) ||
+    normalizeCountryCode(DEFAULT_SMS_COUNTRY_CODE);
+
+  if (normalizedCountryCode) {
+    if (digits.startsWith(normalizedCountryCode)) {
+      return `+${digits}`;
+    }
+
+    const localDigits = digits.startsWith("0") ? digits.slice(1) : digits;
+    if (localDigits) {
+      return `+${normalizedCountryCode}${localDigits}`;
+    }
+  }
+
+  if (digits.length >= 11) {
+    return `+${digits}`;
+  }
+
+  return digits;
 }
 
 /**
@@ -19,22 +68,24 @@ function formatAmount(amount: number): string {
 export async function sendSms(
   phoneNumbers: string[],
   message: string,
-  options?: { tenantId?: string }
-): Promise<void> {
+  options?: { tenantId?: string; countryCode?: string | null }
+): Promise<boolean> {
   const serviceBaseUrl = process.env.NOTIFICATION_SERVICE_URL;
-  const tenantId = options?.tenantId ?? process.env.TENANT_ID ?? "goodfellow";
+  const tenantId = options?.tenantId ?? process.env.TENANT_ID ?? "no-tenant";
 
   if (!serviceBaseUrl) {
     console.warn(
       "NOTIFICATION_SERVICE_URL is not set; skipping SMS notification"
     );
-    return;
+    return false;
   }
 
-  const validPhones = phoneNumbers.filter((p) => p && String(p).trim());
+  const validPhones = phoneNumbers
+    .map((phone) => normalizeSmsPhoneNumber(phone, options?.countryCode))
+    .filter((phone): phone is string => Boolean(phone));
   if (validPhones.length === 0) {
     console.warn("No valid phone numbers; skipping SMS");
-    return;
+    return false;
   }
 
   try {
@@ -49,6 +100,7 @@ export async function sendSms(
       configId: 0,
     };
 
+    console.log("SENDING SMS TO NOTIFICATION SERVICE...");
     const url = `${serviceBaseUrl.replace(/\/$/, "")}/api/v1/notifications/sms`;
     const res = await fetch(url, {
       method: "POST",
@@ -62,9 +114,14 @@ export async function sendSms(
         res.status,
         await res.text().catch(() => "")
       );
+      return false;
     }
+
+    console.log("SMS NOTIFICATION SENT SUCCESSFULLY...");
+    return true;
   } catch (err) {
     console.error("Failed to send SMS notification:", err);
+    return false;
   }
 }
 
@@ -79,6 +136,7 @@ export interface LoanStatusSmsParams {
   type: LoanStatusSmsType;
   clientName: string;
   phone: string;
+  countryCode?: string | null;
   amount: number;
   /** For rejected: reason text */
   reason?: string;
@@ -93,11 +151,12 @@ export interface LoanStatusSmsParams {
  */
 export async function sendLoanStatusSms(
   params: LoanStatusSmsParams
-): Promise<void> {
+): Promise<boolean> {
   const {
     type,
     clientName,
     phone,
+    countryCode,
     amount,
     reason,
     currency = "ZMW",
@@ -126,8 +185,41 @@ export async function sendLoanStatusSms(
       message = `Dear ${name}, your loan payout of ${prefix} has been completed. Thank you for banking with us. ${CONTACT_LINE}`;
       break;
     default:
-      return;
+      return false;
   }
 
-  await sendSms([phone], message, { tenantId });
+  return sendSms([phone], message, { tenantId, countryCode });
+}
+
+export interface LoanRepaymentSmsParams {
+  clientName: string;
+  phone: string;
+  countryCode?: string | null;
+  amount: number;
+  currency?: string;
+  tenantId?: string;
+}
+
+/**
+ * Send a repayment receipt SMS after a successful loan repayment.
+ */
+export async function sendLoanRepaymentSms(
+  params: LoanRepaymentSmsParams
+): Promise<boolean> {
+  const {
+    clientName,
+    phone,
+    countryCode,
+    amount,
+    currency = "ZMW",
+    tenantId,
+  } = params;
+
+  const name = clientName?.trim() || "Customer";
+  const amountStr = formatAmount(amount);
+  const prefix = `${currency} ${amountStr}`;
+
+  const message = `Dear ${name}, we have received your loan repayment of ${prefix}. Thank you for keeping your account up to date. ${CONTACT_LINE}`;
+
+  return sendSms([phone], message, { tenantId, countryCode });
 }

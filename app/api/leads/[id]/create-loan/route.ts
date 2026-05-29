@@ -161,7 +161,7 @@ export async function POST(
 
     // Send SMS: loan submitted, pending approval (best-effort)
     if (result?.resourceId && lead?.mobileNo) {
-      try {
+      void (async () => {
         const tenant = await prisma.tenant.findUnique({
           where: { id: lead.tenantId },
           select: { slug: true },
@@ -173,12 +173,13 @@ export async function POST(
           type: "pending_approval",
           clientName: clientName || "Customer",
           phone: lead.mobileNo,
+          countryCode: lead.countryCode,
           amount: Number(loanData.principal) || 0,
           tenantId: tenant?.slug,
         });
-      } catch (smsError) {
+      })().catch((smsError) => {
         console.error("Failed to send pending-approval SMS:", smsError);
-      }
+      });
     }
 
     // Call CDE to evaluate the loan application after loan creation
