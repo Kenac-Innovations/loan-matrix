@@ -15,12 +15,18 @@ import {
   Loader2,
   AlertCircle,
   CheckCircle2,
+  PenLine,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  getMySignature,
+  saveMySignature,
+  deleteMySignature,
+} from "@/app/actions/user-signature-actions";
 
 interface SystemRole {
   id: string;
@@ -60,6 +66,13 @@ export default function ProfilePage() {
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [passwordSuccess, setPasswordSuccess] = useState(false);
 
+  // Signature state
+  const [signatureData, setSignatureData] = useState<string | null>(null);
+  const [signatureLoading, setSignatureLoading] = useState(true);
+  const [signatureSaving, setSignatureSaving] = useState(false);
+  const [signatureError, setSignatureError] = useState<string | null>(null);
+  const [signatureSuccess, setSignatureSuccess] = useState(false);
+
   // Fetch local roles
   useEffect(() => {
     async function fetchLocalRoles() {
@@ -91,6 +104,16 @@ export default function ProfilePage() {
     if (status === "authenticated") {
       fetchLocalRoles();
     }
+  }, [status]);
+
+  // Load saved signature
+  useEffect(() => {
+    if (status !== "authenticated") return;
+    setSignatureLoading(true);
+    getMySignature()
+      .then(({ signatureData }) => setSignatureData(signatureData))
+      .catch(() => setSignatureError("Failed to load signature"))
+      .finally(() => setSignatureLoading(false));
   }, [status]);
 
   // Handle password change
@@ -140,6 +163,63 @@ export default function ProfilePage() {
       setPasswordError("Failed to change password. Please try again.");
     } finally {
       setPasswordLoading(false);
+    }
+  };
+
+  const handleSignatureUpload = async (file: File) => {
+    const validTypes = ["image/jpeg", "image/jpg", "image/png", "image/gif"];
+    if (!validTypes.includes(file.type)) {
+      setSignatureError("Please upload a JPG, PNG, or GIF image");
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      setSignatureError("Please upload an image smaller than 2MB");
+      return;
+    }
+
+    setSignatureSaving(true);
+    setSignatureError(null);
+    setSignatureSuccess(false);
+
+    const reader = new FileReader();
+    reader.onloadend = async () => {
+      try {
+        const base64 = reader.result as string;
+        const result = await saveMySignature(base64);
+        if (result.success) {
+          setSignatureData(base64);
+          setSignatureSuccess(true);
+          setTimeout(() => setSignatureSuccess(false), 4000);
+        } else {
+          setSignatureError(result.error ?? "Failed to save signature");
+        }
+      } catch {
+        setSignatureError("Failed to save signature. Please try again.");
+      } finally {
+        setSignatureSaving(false);
+      }
+    };
+    reader.onerror = () => {
+      setSignatureError("Failed to read file");
+      setSignatureSaving(false);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSignatureDelete = async () => {
+    setSignatureSaving(true);
+    setSignatureError(null);
+    try {
+      const result = await deleteMySignature();
+      if (result.success) {
+        setSignatureData(null);
+      } else {
+        setSignatureError("Failed to delete signature");
+      }
+    } catch {
+      setSignatureError("Failed to delete signature. Please try again.");
+    } finally {
+      setSignatureSaving(false);
     }
   };
 
@@ -446,6 +526,106 @@ export default function ProfilePage() {
               )}
             </Button>
           </form>
+        </Card>
+
+        {/* Signature Card */}
+        <Card className="p-6 md:col-span-2">
+          <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+            <PenLine className="h-5 w-5" />
+            My Signature
+          </h2>
+          <p className="text-sm text-muted-foreground mb-4">
+            Your signature will be automatically used as the loan officer signature when creating contracts.
+          </p>
+
+          {signatureLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="border-2 border-dashed rounded-lg p-6 text-center">
+                {signatureData ? (
+                  <div className="space-y-3">
+                    <img
+                      src={signatureData}
+                      alt="Your signature"
+                      className="max-h-32 mx-auto border rounded bg-white p-2"
+                    />
+                    <div className="flex items-center justify-center gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={signatureSaving}
+                        onClick={handleSignatureDelete}
+                      >
+                        {signatureSaving ? (
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        ) : null}
+                        Remove Signature
+                      </Button>
+                      <Label
+                        htmlFor="profile-signature-replace"
+                        className="cursor-pointer inline-flex items-center gap-1 text-sm text-blue-600 hover:underline"
+                      >
+                        Replace
+                      </Label>
+                      <Input
+                        id="profile-signature-replace"
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        disabled={signatureSaving}
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) handleSignatureUpload(file);
+                          e.target.value = "";
+                        }}
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <PenLine className="h-10 w-10 mx-auto mb-2 text-muted-foreground" />
+                    <p className="text-sm text-muted-foreground mb-2">No signature saved yet</p>
+                    <Label
+                      htmlFor="profile-signature-upload"
+                      className="cursor-pointer text-sm text-blue-600 hover:underline"
+                    >
+                      {signatureSaving ? "Saving..." : "Upload Signature"}
+                    </Label>
+                    <Input
+                      id="profile-signature-upload"
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      disabled={signatureSaving}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) handleSignatureUpload(file);
+                        e.target.value = "";
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
+
+              {signatureError && (
+                <div className="flex items-center gap-2 p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-600 dark:text-red-400">
+                  <AlertCircle className="h-4 w-4 flex-shrink-0" />
+                  <p className="text-sm">{signatureError}</p>
+                </div>
+              )}
+
+              {signatureSuccess && (
+                <div className="flex items-center gap-2 p-3 bg-green-500/10 border border-green-500/20 rounded-lg text-green-600 dark:text-green-400">
+                  <CheckCircle2 className="h-4 w-4 flex-shrink-0" />
+                  <p className="text-sm">Signature saved successfully!</p>
+                </div>
+              )}
+            </div>
+          )}
         </Card>
       </div>
     </div>
