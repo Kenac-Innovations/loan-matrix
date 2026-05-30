@@ -61,6 +61,7 @@ import {
   resolveInterestRateDisplayMode,
 } from "@/lib/interest-rate-display";
 import type { TenantSettings } from "@/shared/types/tenant";
+import { RcfDetailsTab } from "./rcf-details-tab";
 
 interface ComprehensiveLeadDetailsProps {
   leadId: string;
@@ -455,6 +456,7 @@ export function ComprehensiveLeadDetails({
   const isInvoiceDiscountingLead = lead?.facilityType === "INVOICE_DISCOUNTING";
   const showInvoiceDiscountingDetails =
     invoiceDiscountingEnabled && isInvoiceDiscountingLead;
+  const isRCF = lead?.facilityType === "REVOLVING_CREDIT";
 
   // Get loan ID from multiple sources
   const loanId = fineractLoan?.id || lead?.fineractLoanId || null;
@@ -694,10 +696,14 @@ export function ComprehensiveLeadDetails({
       <Tabs defaultValue="overview">
         <TabsList className="w-full sm:w-auto overflow-x-auto">
           <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="loan">Loan Details</TabsTrigger>
+          {isRCF ? (
+            <TabsTrigger value="loan">RCF Details</TabsTrigger>
+          ) : (
+            <TabsTrigger value="loan">Loan Details</TabsTrigger>
+          )}
           <TabsTrigger value="financial">CDE</TabsTrigger>
           <TabsTrigger value="documents">Documents</TabsTrigger>
-          {fineractLoan && (
+          {fineractLoan && !isRCF && (
             <TabsTrigger value="repayment">Repayment</TabsTrigger>
           )}
         </TabsList>
@@ -779,7 +785,10 @@ export function ComprehensiveLeadDetails({
         </TabsContent>
 
         <TabsContent value="loan" className="mt-4">
-          {showInvoiceDiscountingDetails && (
+          {isRCF ? (
+            <RcfDetailsTab leadId={leadId} />
+          ) : null}
+          {!isRCF && showInvoiceDiscountingDetails && (
             <Card className="mb-6">
               <CardHeader>
                 <CardTitle>Invoice Discounting Details</CardTitle>
@@ -908,7 +917,7 @@ export function ComprehensiveLeadDetails({
             </Card>
           )}
 
-          {lead.fineractLoanId && !fineractLoan ? (
+          {!isRCF && (lead.fineractLoanId && !fineractLoan ? (
             <Card>
               <CardContent className="py-12">
                 <div className="text-center space-y-4">
@@ -1548,7 +1557,7 @@ export function ComprehensiveLeadDetails({
                 </div>
               </CardContent>
             </Card>
-          )}
+          ))}
         </TabsContent>
 
         <TabsContent value="financial" className="mt-4">

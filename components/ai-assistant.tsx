@@ -56,15 +56,8 @@ export function AIAssistant() {
   }
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const [showTooltip, setShowTooltip] = useState(false);
-  const [tooltipIndex, setTooltipIndex] = useState(0);
   const [isPulsing, setIsPulsing] = useState(false);
-  const [hasNewSuggestion, setHasNewSuggestion] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const [shownSuggestions, setShownSuggestions] = useState<{
-    [key: string]: string[];
-  }>({});
-  const [lastPathChange, setLastPathChange] = useState<string | null>(null);
 
   // Sample documents for demonstration
   const sampleDocuments = [
@@ -233,47 +226,8 @@ export function AIAssistant() {
   };
 
   const currentContext = getCurrentContext();
-  const allSuggestions = currentContext.suggestions;
+  const hoverSuggestion = currentContext.suggestions[0];
   const quickSuggestions = currentContext.quickSuggestions;
-
-  // Get suggestions that haven't been shown yet for this path
-  const getUnshownSuggestions = () => {
-    const shown = shownSuggestions[pathname] || [];
-    return allSuggestions.filter(
-      (suggestion) => !shown.includes(suggestion.id)
-    );
-  };
-
-  // Get a random suggestion that hasn't been shown yet
-  const getNextSuggestion = () => {
-    const unshown = getUnshownSuggestions();
-
-    // If all suggestions have been shown, reset the tracking for this path
-    if (unshown.length === 0) {
-      const newShownSuggestions = { ...shownSuggestions };
-      newShownSuggestions[pathname] = [];
-      setShownSuggestions(newShownSuggestions);
-      return allSuggestions[Math.floor(Math.random() * allSuggestions.length)];
-    }
-
-    // Return a random unshown suggestion
-    return unshown[Math.floor(Math.random() * unshown.length)];
-  };
-
-  // Track that a suggestion has been shown
-  const markSuggestionAsShown = (suggestionId: string) => {
-    const newShownSuggestions = { ...shownSuggestions };
-    if (!newShownSuggestions[pathname]) {
-      newShownSuggestions[pathname] = [];
-    }
-    if (!newShownSuggestions[pathname].includes(suggestionId)) {
-      newShownSuggestions[pathname].push(suggestionId);
-    }
-    setShownSuggestions(newShownSuggestions);
-  };
-
-  // Get the current suggestion to show
-  const currentSuggestion = allSuggestions[tooltipIndex];
 
   useEffect(() => {
     if (messagesEndRef.current) {
@@ -281,82 +235,17 @@ export function AIAssistant() {
     }
   }, [currentSession.messages]);
 
-  // Track path changes
-  useEffect(() => {
-    if (lastPathChange !== pathname) {
-      setLastPathChange(pathname);
-
-      // Reset tooltip index when path changes
-      setTooltipIndex(0);
-
-      // Hide any active tooltip when changing pages
-      setShowTooltip(false);
-
-      // Schedule a delayed suggestion after path change (after 10 seconds)
-      const pathChangeTimer = setTimeout(() => {
-        if (!isOpen) {
-          const nextSuggestion = getNextSuggestion();
-          const index = allSuggestions.findIndex(
-            (s) => s.id === nextSuggestion.id
-          );
-          if (index !== -1) {
-            setTooltipIndex(index);
-            setShowTooltip(true);
-            setHasNewSuggestion(true);
-            setIsPulsing(true);
-            setTimeout(() => setIsPulsing(false), 1500);
-            markSuggestionAsShown(nextSuggestion.id);
-
-            // Hide tooltip after 5 seconds if not interacted with
-            setTimeout(() => {
-              setShowTooltip(false);
-            }, 5000);
-          }
-        }
-      }, 10000); // Delay showing suggestion after page change
-
-      return () => clearTimeout(pathChangeTimer);
-    }
-  }, [pathname, isOpen]);
-
-  // Effect for showing tooltip periodically (but not too frequently)
-  useEffect(() => {
-    const tooltipTimer = setTimeout(() => {
-      if (!isOpen && !showTooltip) {
-        const nextSuggestion = getNextSuggestion();
-        const index = allSuggestions.findIndex(
-          (s) => s.id === nextSuggestion.id
-        );
-        if (index !== -1) {
-          setTooltipIndex(index);
-          setShowTooltip(true);
-          setHasNewSuggestion(true);
-          setIsPulsing(true);
-          setTimeout(() => setIsPulsing(false), 1500);
-          markSuggestionAsShown(nextSuggestion.id);
-
-          // Hide tooltip after 5 seconds if not interacted with
-          setTimeout(() => {
-            setShowTooltip(false);
-          }, 5000);
-        }
-      }
-    }, 45000); // Show tooltip after 45 seconds of inactivity (much longer delay)
-
-    return () => clearTimeout(tooltipTimer);
-  }, [isOpen, showTooltip, pathname]);
-
-  // Periodic pulse animation to draw attention (but less frequently)
+  // Periodic pulse animation to draw attention without interrupting workflow
   useEffect(() => {
     const pulseTimer = setInterval(() => {
-      if (!isOpen && !showTooltip) {
+      if (!isOpen) {
         setIsPulsing(true);
         setTimeout(() => setIsPulsing(false), 1500);
       }
-    }, 60000); // Pulse every 60 seconds if not open or showing tooltip (reduced frequency)
+    }, 60000); // Pulse every 60 seconds only while closed
 
     return () => clearInterval(pulseTimer);
-  }, [isOpen, showTooltip]);
+  }, [isOpen]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -435,67 +324,36 @@ export function AIAssistant() {
   const handleSuggestionClick = (suggestion: string) => {
     setQuery(suggestion);
     setIsOpen(true);
-    setShowTooltip(false);
-    setHasNewSuggestion(false);
   };
 
   return (
     <>
       {/* Floating button with tooltip */}
-      <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end">
-        {/* Tooltip/suggestion bubble */}
-        {showTooltip && (
-          <div
-            className="mb-3 max-w-xs animate-fade-in rounded-lg bg-[#1e2938] p-3 text-white shadow-lg border border-[#374151] transform transition-all duration-300 ease-in-out"
-            style={{
-              animation: "fadeIn 0.3s ease-in-out",
-              transform: "scale(1)",
-              opacity: 1,
-            }}
-          >
-            <div className="flex items-center">
-              {currentSuggestion.icon}
-              <p className="text-sm">{currentSuggestion.text}</p>
-            </div>
-            <div className="mt-2 flex justify-between">
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-7 px-2 py-1 text-xs text-gray-400 hover:text-white"
-                onClick={() => setShowTooltip(false)}
-              >
-                Dismiss
-              </Button>
-              <Button
-                size="sm"
-                className="h-7 px-2 py-1 text-xs bg-blue-500 hover:bg-blue-600"
-                onClick={() => handleSuggestionClick(currentSuggestion.text)}
-              >
-                Ask
-              </Button>
-            </div>
-            <div className="absolute -bottom-2 right-4 h-3 w-3 rotate-45 bg-[#1e2938] border-r border-b border-[#374151]"></div>
-          </div>
-        )}
-
+      <div className="fixed bottom-6 right-6 z-50">
         <Button
           onClick={() => {
             setIsOpen(true);
-            setShowTooltip(false);
-            setHasNewSuggestion(false);
           }}
-          className={`h-14 w-14 rounded-full bg-blue-500 p-0 shadow-lg hover:bg-blue-600 transition-all duration-300 ${
+          className={`peer relative h-14 w-14 rounded-full bg-blue-500 p-0 text-white shadow-[0_10px_24px_rgba(59,130,246,0.35)] hover:bg-blue-600 hover:scale-105 active:scale-95 transition-all duration-300 focus-visible:ring-2 focus-visible:ring-blue-300 ${
             isPulsing ? "animate-pulse-ring" : ""
           }`}
           aria-label="Open AI Assistant"
         >
-          <Bot className="h-6 w-6" />
-          {hasNewSuggestion && (
-            <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-green-500 text-xs font-bold animate-bounce">
-              !
-            </span>
-          )}
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute -inset-1 rounded-full border border-blue-200/80 animate-soft-glow"
+          />
+          <Bot className="relative h-6 w-6 animate-soft-float" />
         </Button>
+
+        {/* Show suggestion popup only when the circle button is hovered/focused */}
+        <div className="absolute bottom-[calc(100%+12px)] right-0 w-72 max-w-[calc(100vw-3rem)] rounded-lg border border-[#374151] bg-[#1e2938] p-3 text-white shadow-lg opacity-0 translate-y-1 pointer-events-none transition-all duration-200 ease-out peer-hover:opacity-100 peer-hover:translate-y-0 peer-focus-visible:opacity-100 peer-focus-visible:translate-y-0">
+          <div className="flex items-center">
+            {hoverSuggestion.icon}
+            <p className="text-sm">{hoverSuggestion.text}</p>
+          </div>
+          <div className="absolute -bottom-2 right-4 h-3 w-3 rotate-45 bg-[#1e2938] border-r border-b border-[#374151]"></div>
+        </div>
       </div>
 
       {/* AI Assistant Dialog */}
@@ -722,6 +580,36 @@ export function AIAssistant() {
 
         .animate-fade-in {
           animation: fadeIn 0.3s ease-in-out;
+        }
+
+        @keyframes soft-glow {
+          0%,
+          100% {
+            transform: scale(1);
+            opacity: 0.45;
+          }
+          50% {
+            transform: scale(1.06);
+            opacity: 0.85;
+          }
+        }
+
+        @keyframes soft-float {
+          0%,
+          100% {
+            transform: translateY(0);
+          }
+          50% {
+            transform: translateY(-2px);
+          }
+        }
+
+        .animate-soft-glow {
+          animation: soft-glow 2.6s ease-in-out infinite;
+        }
+
+        .animate-soft-float {
+          animation: soft-float 2.2s ease-in-out infinite;
         }
       `}</style>
     </>

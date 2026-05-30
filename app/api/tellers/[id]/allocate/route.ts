@@ -164,26 +164,87 @@ export async function POST(
       }
     }
 
-    // Create allocation record in database only (no Fineract call)
-    // This is a local-only operation for teller-level tracking (vault)
-    // cashierId is null for teller vault allocations
+    // If the teller has a GL account, also post a journal entry in Fineract so the
+    // GL-sourced vault balance reflects this allocation (debit teller GL, credit bank GL).
+    // Falls back gracefully when the bank does not have a GL configured.
+    let journalTransactionId: string | null = null;
+    if (teller.glAccountId && teller.bankId && teller.bank?.glAccountId) {
+      try {
+        const today = new Date();
+        const monthNames = [
+          "January",
+          "February",
+          "March",
+          "April",
+          "May",
+          "June",
+          "July",
+          "August",
+          "September",
+          "October",
+          "November",
+          "December",
+        ];
+        const fineractDate = `${today
+          .getDate()
+          .toString()
+          .padStart(2, "0")} ${monthNames[today.getMonth()]} ${today.getFullYear()}`;
+
+        const journalResult = await fetchFineractAPI("/journalentries", {
+          method: "POST",
+          body: JSON.stringify({
+            officeId: teller.officeId,
+            transactionDate: fineractDate,
+            currencyCode: allocationCurrency,
+            debits: [
+              { glAccountId: teller.glAccountId, amount: requestedAmount },
+            ],
+            credits: [
+              { glAccountId: teller.bank.glAccountId, amount: requestedAmount },
+            ],
+            comments:
+              `Allocate to teller ${teller.name} from bank ${teller.bank.name}${
+                notes ? ` - ${notes}` : ""
+              }`.trim(),
+            referenceNumber: `TELLER-ALLOC-${teller.id}-${Date.now()}`,
+            locale: "en",
+            dateFormat: "dd MMMM yyyy",
+          }),
+        });
+        journalTransactionId =
+          journalResult?.transactionId || journalResult?.resourceId || null;
+      } catch (err) {
+        console.error(
+          "Failed to post Fineract journal entry for teller allocation; the local CashAllocation record will still be created, but GL balance will not reflect this:",
+          err
+        );
+      }
+    }
+
+    // Create allocation record in database for audit/fallback. When the teller has a
+    // GL account, the GL is the source of truth; this row stays as a local ledger trail.
     const allocation = await prisma.cashAllocation.create({
       data: {
         tenantId: tenant.id,
         tellerId: teller.id, // Use the database ID from the found teller
         cashierId: null, // null = teller vault allocation
-        fineractAllocationId: null, // No Fineract allocation for teller-level
+        fineractAllocationId: null, // No Fineract teller-allocation (we post a journal entry instead)
         amount: requestedAmount,
         currency: allocationCurrency,
         allocatedBy: session.user.id,
-        notes: teller.bankId
-          ? `${notes || ""} [From Bank: ${teller.bank?.name || teller.bankId}]`.trim()
-          : notes,
+        notes: [
+          notes,
+          teller.bankId ? `[From Bank: ${teller.bank?.name || teller.bankId}]` : null,
+          journalTransactionId ? `[GL JE: ${journalTransactionId}]` : null,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .trim(),
         status: "ACTIVE",
       },
     });
 
-    return NextResponse.json(allocation);
+    return NextResponse.json({ ...allocation, journalTransactionId });
   } catch (error) {
     console.error("Error allocating cash:", error);
     return NextResponse.json(

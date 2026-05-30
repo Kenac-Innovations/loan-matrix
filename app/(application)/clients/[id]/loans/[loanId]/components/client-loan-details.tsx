@@ -29,6 +29,7 @@ import { CreditBalanceRefundModal } from "@/app/(application)/leads/[id]/compone
 import { TransferFundsModal } from "@/app/(application)/leads/[id]/components/transfer-funds-modal";
 import { WaiveInterestModal } from "./waive-interest-modal";
 import { RescheduleModal } from "./reschedule-modal";
+import { RescheduleActionModal } from "./reschedule-action-modal";
 import { DisburseModal } from "./disburse-modal";
 import { LoanApprovalModal } from "./loan-approval-modal";
 import WriteOffModal from "@/components/WriteOffModal";
@@ -48,6 +49,7 @@ import {
   getLoanInterestRateDisplay,
   resolveInterestRateDisplayMode,
 } from "@/lib/interest-rate-display";
+import { FacilityBanner } from "@/components/credit-facility/facility-banner";
 
 interface ClientLoanDetailsProps {
   clientId: number;
@@ -60,13 +62,72 @@ type LoanDocumentDownloadItem = {
   name?: string;
 };
 
+interface ClientLoanSequenceItem {
+  id: number;
+  timeline?: {
+    submittedOnDate?: string | number[];
+    approvedOnDate?: string | number[];
+    actualDisbursementDate?: string | number[];
+    expectedDisbursementDate?: string | number[];
+  };
+}
+
+const getLoanSequenceSortTime = (loan: ClientLoanSequenceItem): number => {
+  const candidateDates = [
+    loan.timeline?.submittedOnDate,
+    loan.timeline?.approvedOnDate,
+    loan.timeline?.actualDisbursementDate,
+    loan.timeline?.expectedDisbursementDate,
+  ];
+
+  for (const value of candidateDates) {
+    if (typeof value === "string" && value) {
+      const parsed = new Date(value).getTime();
+      if (!Number.isNaN(parsed)) {
+        return parsed;
+      }
+    }
+
+    if (Array.isArray(value) && value.length === 3) {
+      const [year, month, day] = value;
+      const parsed = new Date(year, month - 1, day).getTime();
+      if (!Number.isNaN(parsed)) {
+        return parsed;
+      }
+    }
+  }
+
+  return Number.MAX_SAFE_INTEGER;
+};
+
+const formatLoanSequenceLabel = (position: number): string => {
+  const mod100 = position % 100;
+  if (mod100 >= 11 && mod100 <= 13) {
+    return `${position}th loan`;
+  }
+
+  switch (position % 10) {
+    case 1:
+      return `${position}st loan`;
+    case 2:
+      return `${position}nd loan`;
+    case 3:
+      return `${position}rd loan`;
+    default:
+      return `${position}th loan`;
+  }
+};
+
 export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) {
   const router = useRouter();
-  const { tenantSlug } = useFeatureFlags();
+  const { tenantSlug, features } = useFeatureFlags();
+  const hasCreditFacility = !!features.hasCreditFacility;
   const [client, setClient] = useState<FineractClient | null>(null);
   const [loan, setLoan] = useState<FineractLoan | null>(null);
+  const [loanSequenceLabel, setLoanSequenceLabel] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [loanProductCanTopup, setLoanProductCanTopup] = useState(false);
   const [showAddCollateral, setShowAddCollateral] = useState(false);
   const [collateralForm, setCollateralForm] = useState({
     collateralTypeId: "",
@@ -81,6 +142,10 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
   const [showReschedule, setShowReschedule] = useState(false);
   const [reschedules, setReschedules] = useState<any[]>([]);
   const [rescheduleReasons, setRescheduleReasons] = useState<any[]>([]);
+  const [rescheduleActionTarget, setRescheduleActionTarget] = useState<{
+    action: "approve" | "reject";
+    id: number;
+  } | null>(null);
   const [loadingReschedules, setLoadingReschedules] = useState(false);
   const [submittingReschedule, setSubmittingReschedule] = useState(false);
   const [documents, setDocuments] = useState<any[]>([]);
@@ -88,6 +153,7 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
   const [downloadingDocumentId, setDownloadingDocumentId] = useState<number | string | null>(null);
   const [showUploadDocuments, setShowUploadDocuments] = useState(false);
   const [submittingDocument, setSubmittingDocument] = useState(false);
+  const [isCreatingRefinanceLead, setIsCreatingRefinanceLead] = useState(false);
   const [documentForm, setDocumentForm] = useState({
     fileName: "",
     description: "",
@@ -426,6 +492,27 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
               </svg>
               Re-Amortize
             </button>
+            <button class="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 text-sm" data-action="view-statement">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                <polyline points="14,2 14,8 20,8"/>
+                <line x1="16" y1="13" x2="8" y2="13"/>
+                <line x1="16" y1="17" x2="8" y2="17"/>
+                <polyline points="10,9 9,9 8,9"/>
+              </svg>
+              View Statement
+            </button>
+            ${loanProductCanTopup ? `
+            <button class="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 text-sm" data-action="refinance">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
+                <path d="M21 3v5h-5"/>
+                <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/>
+                <path d="M3 21v-5h5"/>
+              </svg>
+              Refinance
+            </button>
+            ` : ''}
             <div class="border-t border-gray-200 dark:border-gray-700 my-2"></div>
             <div class="relative" id="payments-container">
               <button class="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center justify-between text-sm" data-action="payments" id="payments-trigger">
@@ -541,16 +628,6 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                       <polyline points="14,2 14,8 20,8"/>
                     </svg>
                     Loan Screen Report
-                  </button>
-                  <button class="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 text-sm" data-action="view-statement">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                      <polyline points="14,2 14,8 20,8"/>
-                      <line x1="16" y1="13" x2="8" y2="13"/>
-                      <line x1="16" y1="17" x2="8" y2="17"/>
-                      <polyline points="10,9 9,9 8,9"/>
-                    </svg>
-                    View Statement
                   </button>
                   <button class="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 text-sm" data-action="view-guarantors">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -715,6 +792,31 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
               }
 
               switch(action) {
+              case 'refinance':
+                setIsCreatingRefinanceLead(true);
+                fetch('/api/leads/operations', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    operation: 'createLeadForExistingClient',
+                    data: { fineractClientId: clientId },
+                  }),
+                })
+                  .then((res) => res.json())
+                  .then((result) => {
+                    if (result.leadId) {
+                      router.push(
+                        `/leads/new?id=${result.leadId}&tab=loan&refinanceLoanId=${loanId}&fineractClientId=${clientId}`
+                      );
+                    } else {
+                      toast({ title: 'Error', description: result.error || 'Could not create lead', variant: 'destructive' });
+                    }
+                  })
+                  .catch(() => {
+                    toast({ title: 'Error', description: 'Failed to initiate refinance', variant: 'destructive' });
+                  })
+                  .finally(() => setIsCreatingRefinanceLead(false));
+                break;
               case 'approve-loan':
                 setShowLoanApprovalModal(true);
                 break;
@@ -858,27 +960,76 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
         container.innerHTML = '';
       }
     };
-  }, [loan, clientId, loanId, setShowRepaymentModal]);
+  }, [loan, clientId, loanId, loanProductCanTopup, setShowRepaymentModal]);
 
   const fetchLoanData = async () => {
     try {
       setLoading(true);
       setError(null);
 
-      const clientResponse = await fetch(`/api/clients/${clientId}`);
+      const [clientResponse, loanResponse, clientLoansResponse] = await Promise.all([
+        fetch(`/api/clients/${clientId}`),
+        fetch(`/api/fineract/loans/${loanId}?associations=all&exclude=guarantors,futureSchedule`),
+        fetch(`/api/fineract/clients/${clientId}/accounts`),
+      ]);
+
       if (!clientResponse.ok) {
         throw new Error(`Failed to fetch client details: ${clientResponse.statusText}`);
       }
-      const clientData = await clientResponse.json();
-      setClient(clientData);
-
-      const loanResponse = await fetch(`/api/fineract/loans/${loanId}?associations=all&exclude=guarantors,futureSchedule`);
       if (!loanResponse.ok) {
         throw new Error(`Failed to fetch loan details: ${loanResponse.statusText}`);
       }
-      const loanData = await loanResponse.json();
 
+      const clientData = await clientResponse.json();
+      const loanData = await loanResponse.json();
+      setClient(clientData);
       setLoan(loanData);
+
+      if (loanData.loanProductId) {
+        try {
+          const productRes = await fetch(`/api/fineract/loans/product/${loanData.loanProductId}`);
+          if (productRes.ok) {
+            const productData = await productRes.json();
+            setLoanProductCanTopup(productData.canUseForTopup === true);
+          }
+        } catch {
+          // non-critical — refinance button simply won't show
+        }
+      }
+
+      if (clientLoansResponse.ok) {
+        const clientLoansData = await clientLoansResponse.json();
+        const rawClientLoans = Array.isArray(clientLoansData?.loanAccounts)
+          ? clientLoansData.loanAccounts
+          : Array.isArray(clientLoansData?.pageItems)
+            ? clientLoansData.pageItems
+            : Array.isArray(clientLoansData)
+              ? clientLoansData
+              : [];
+
+        const orderedLoans = [...rawClientLoans]
+          .filter((clientLoan: ClientLoanSequenceItem) => typeof clientLoan?.id === "number")
+          .sort((left: ClientLoanSequenceItem, right: ClientLoanSequenceItem) => {
+            const timeDiff =
+              getLoanSequenceSortTime(left) - getLoanSequenceSortTime(right);
+
+            if (timeDiff !== 0) {
+              return timeDiff;
+            }
+
+            return left.id - right.id;
+          });
+
+        const loanIndex = orderedLoans.findIndex(
+          (clientLoan: ClientLoanSequenceItem) => clientLoan.id === loanData.id
+        );
+
+        setLoanSequenceLabel(
+          loanIndex >= 0 ? formatLoanSequenceLabel(loanIndex + 1) : null
+        );
+      } else {
+        setLoanSequenceLabel(null);
+      }
 
       const payoutRes = await fetch(`/api/loans/${loanId}/payout`).catch(() => null);
       if (payoutRes?.ok) {
@@ -1214,6 +1365,11 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
       setLoadingReschedules(false);
     }
   };
+
+  const hasPendingRescheduleActions = reschedules.some(
+    (reschedule: any) =>
+      reschedule?.statusEnum?.pendingApproval || reschedule?.status?.pendingApproval
+  );
 
   // Fetch reschedule reasons template
   const fetchRescheduleTemplate = async () => {
@@ -2253,7 +2409,8 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
     setIsSubmittingUndoDisbursal(true);
     try {
       const payload = {
-        note: undoDisbursalNote.trim()
+        note: undoDisbursalNote.trim(),
+        fineractClientId: clientId,
       };
 
       const response = await fetch(`/api/fineract/loans/${loanId}/undodisbursal`, {
@@ -2792,6 +2949,14 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
             </div>
             <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
               <span>{loan.accountNo}</span>
+              {loanSequenceLabel && (
+                <>
+                  <span>&middot;</span>
+                  <Badge variant="secondary" className="text-[11px] uppercase tracking-wide">
+                    {loanSequenceLabel}
+                  </Badge>
+                </>
+              )}
               {loan.externalId && (
                 <>
                   <span>&middot;</span>
@@ -2816,6 +2981,9 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
           )}
         </div>
       </div>
+
+      {/* Credit Facility Banner */}
+      {hasCreditFacility && <FacilityBanner fineractLoanId={loanId} fineractClientId={clientId} />}
 
       {/* Quick Stats Cards */}
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
@@ -3632,36 +3800,80 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                       <TableHead>From Date</TableHead>
                       <TableHead>Reason</TableHead>
                       <TableHead>Status</TableHead>
-                      <TableHead>Actions</TableHead>
+                      {hasPendingRescheduleActions && <TableHead>Actions</TableHead>}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {reschedules && reschedules.length > 0 ? (
-                      reschedules.map((reschedule: any, index: number) => (
-                        <TableRow key={reschedule.id || index}>
-                          <TableCell>{index + 1}</TableCell>
-                          <TableCell>{formatDate(reschedule.rescheduleFromDate || reschedule.fromDate)}</TableCell>
-                          <TableCell>{reschedule.rescheduleReason?.name || reschedule.reason || "N/A"}</TableCell>
-                          <TableCell>
-                            <Badge variant={reschedule.status?.value === "Approved" ? "default" : "secondary"}>
-                              {reschedule.status?.value || reschedule.status || "Pending"}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex space-x-1">
-                              <Button variant="outline" size="sm" className="h-8 w-8 p-0">
-                                <Edit className="h-4 w-4" />
-                              </Button>
-                              <Button variant="outline" size="sm" className="h-8 w-8 p-0">
-                                <MoreVertical className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))
+                      reschedules.map((reschedule: any, index: number) => {
+                        const isPendingApproval =
+                          reschedule?.statusEnum?.pendingApproval ||
+                          reschedule?.status?.pendingApproval;
+
+                        return (
+                          <TableRow key={reschedule.id || index}>
+                            <TableCell>{index + 1}</TableCell>
+                            <TableCell>{formatDate(reschedule.rescheduleFromDate || reschedule.fromDate)}</TableCell>
+                            <TableCell>
+                              {reschedule.rescheduleReasonCodeValue?.name ||
+                                reschedule.rescheduleReason?.name ||
+                                reschedule.reason ||
+                                "N/A"}
+                            </TableCell>
+                            <TableCell>
+                              <Badge
+                                variant={
+                                  (reschedule.statusEnum?.value || reschedule.status?.value) === "Approved"
+                                    ? "default"
+                                    : "secondary"
+                                }
+                              >
+                                {reschedule.statusEnum?.value ||
+                                  reschedule.status?.value ||
+                                  reschedule.status ||
+                                  "Pending"}
+                              </Badge>
+                            </TableCell>
+                            {hasPendingRescheduleActions && (
+                              <TableCell>
+                                {isPendingApproval ? (
+                                  <div className="flex gap-2">
+                                    <Button
+                                      size="sm"
+                                      onClick={() =>
+                                        setRescheduleActionTarget({
+                                          action: "approve",
+                                          id: reschedule.id,
+                                        })
+                                      }
+                                    >
+                                      Approve
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() =>
+                                        setRescheduleActionTarget({
+                                          action: "reject",
+                                          id: reschedule.id,
+                                        })
+                                      }
+                                    >
+                                      Reject
+                                    </Button>
+                                  </div>
+                                ) : null}
+                              </TableCell>
+                            )}
+                          </TableRow>
+                        );
+                      })
                     ) : (
                       <TableRow>
-                        <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                        <TableCell
+                          colSpan={hasPendingRescheduleActions ? 5 : 4}
+                          className="text-center py-8 text-muted-foreground"
+                        >
                           <Calendar className="h-12 w-12 mx-auto mb-4 opacity-50" />
                           <p>No reschedules found for this loan</p>
                           <p className="text-sm mt-2">Click "Reschedule" to create a reschedule request</p>
@@ -5662,6 +5874,17 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
           // Optionally refresh loan data
           // You can add a refetch function here if needed
         }}
+      />
+
+      <RescheduleActionModal
+        action={rescheduleActionTarget?.action ?? null}
+        isOpen={Boolean(rescheduleActionTarget)}
+        onClose={() => setRescheduleActionTarget(null)}
+        onSuccess={() => {
+          fetchReschedules();
+          setRescheduleActionTarget(null);
+        }}
+        rescheduleId={rescheduleActionTarget?.id ?? null}
       />
     </div>
   );

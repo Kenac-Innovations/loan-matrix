@@ -1,11 +1,19 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { DollarSign, Users, CheckCircle, Edit } from "lucide-react";
+import {
+  DollarSign,
+  Users,
+  CheckCircle,
+  Edit,
+  ArrowDownLeft,
+} from "lucide-react";
 import Link from "next/link";
 import { AllocateCashModal } from "../../components/allocate-cash-modal";
 import { EditTellerModal } from "../../components/edit-teller-modal";
+import { ReturnToBankModal } from "../../components/return-to-bank-modal";
 
 interface TellerActionsProps {
   tellerId: string;
@@ -18,12 +26,45 @@ interface TellerActionsProps {
     startDate: string | Date | number[];
     endDate?: string | Date | number[] | null;
     status: string;
+    glAccountId?: number | null;
+    glAccountName?: string | null;
+    glAccountCode?: string | null;
+    bankId?: string | null;
+    bankName?: string | null;
+    bankGlAccountId?: number | null;
+    vaultBalance?: number | null;
+    vaultBalanceSource?: "fineract_gl" | "unavailable";
+    currency?: string | null;
   };
 }
 
-export function TellerActions({ tellerId, tellerName, teller }: TellerActionsProps) {
+export function TellerActions({
+  tellerId,
+  tellerName,
+  teller,
+}: TellerActionsProps) {
+  const router = useRouter();
   const [showAllocateModal, setShowAllocateModal] = useState(false);
+  const [showReturnModal, setShowReturnModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
+
+  // The destination bank is now picked inside the modal, so we only require
+  // the teller side here (GL + readable vault with funds). The modal/API will
+  // surface clearer errors if the chosen bank is missing a GL.
+  const canReturnToBank =
+    !!teller.glAccountId &&
+    teller.vaultBalanceSource === "fineract_gl" &&
+    typeof teller.vaultBalance === "number" &&
+    teller.vaultBalance > 0;
+
+  const returnDisabledReason = (() => {
+    if (!teller.glAccountId) return "Teller has no GL account configured.";
+    if (teller.vaultBalanceSource !== "fineract_gl")
+      return "Vault balance is unavailable.";
+    if (!teller.vaultBalance || teller.vaultBalance <= 0)
+      return "Teller vault is empty.";
+    return "";
+  })();
 
   return (
     <>
@@ -35,8 +76,18 @@ export function TellerActions({ tellerId, tellerName, teller }: TellerActionsPro
         <DollarSign className="h-4 w-4 mr-2" />
         Allocate Cash
       </Button>
+      <Button
+        variant="outline"
+        className="w-full mt-2"
+        onClick={() => setShowReturnModal(true)}
+        disabled={!canReturnToBank}
+        title={canReturnToBank ? undefined : returnDisabledReason}
+      >
+        <ArrowDownLeft className="h-4 w-4 mr-2" />
+        Return to Bank
+      </Button>
       <Link href={`/tellers/${tellerId}/cashiers`}>
-        <Button variant="outline" className="w-full">
+        <Button variant="outline" className="w-full mt-2">
           <Users className="h-4 w-4 mr-2" />
           Manage Cashiers
         </Button>
@@ -60,6 +111,17 @@ export function TellerActions({ tellerId, tellerName, teller }: TellerActionsPro
         tellerName={tellerName}
         open={showAllocateModal}
         onOpenChange={setShowAllocateModal}
+      />
+      <ReturnToBankModal
+        tellerId={tellerId}
+        tellerName={tellerName}
+        defaultBankId={teller.bankId ?? null}
+        defaultBankName={teller.bankName ?? null}
+        vaultBalance={teller.vaultBalance ?? null}
+        currency={teller.currency ?? null}
+        open={showReturnModal}
+        onOpenChange={setShowReturnModal}
+        onSuccess={() => router.refresh()}
       />
       <EditTellerModal
         tellerId={tellerId}

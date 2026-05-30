@@ -1514,10 +1514,45 @@ export class FineractAPIService {
   // Get staff member by user ID
   async getStaffByUserId(userId: number): Promise<any | null> {
     try {
-      // Fineract staff are linked to users, try to find staff with matching user ID
+      // Fineract staff are linked to users, but a staff record's own `id`
+      // is not the same thing as a Fineract user id. Matching `staff.id === userId`
+      // can incorrectly resolve unrelated staff when those numeric ids happen to align.
+      let userDetails: any = null;
+      try {
+        const response: AxiosResponse<any> = await this.client.get(`/users/${userId}`);
+        userDetails = response.data || null;
+      } catch (error: any) {
+        console.warn(
+          "Could not fetch Fineract user details while resolving staff:",
+          error?.message || error
+        );
+      }
+
       const allStaff = await this.getStaff();
-      // Staff might have userId property or we need to match by some other means
-      const staff = allStaff.find((s: any) => s.id === userId || s.userId === userId);
+
+      const candidateStaffIds = new Set<number>();
+      const directStaffId = Number(userDetails?.staffId);
+      const nestedStaffId = Number(userDetails?.staff?.id);
+
+      if (!Number.isNaN(directStaffId) && directStaffId > 0) {
+        candidateStaffIds.add(directStaffId);
+      }
+      if (!Number.isNaN(nestedStaffId) && nestedStaffId > 0) {
+        candidateStaffIds.add(nestedStaffId);
+      }
+
+      const staff = allStaff.find((s: any) => {
+        const staffId = Number(s?.id);
+        const linkedUserIds = [
+          Number(s?.userId),
+          Number(s?.linkedUserId),
+          Number(s?.staffUserId),
+          Number(s?.user?.id),
+        ].filter((value) => !Number.isNaN(value) && value > 0);
+
+        return candidateStaffIds.has(staffId) || linkedUserIds.includes(userId);
+      });
+
       return staff || null;
     } catch (error: any) {
       console.error("Error finding staff by user ID:", error.message);

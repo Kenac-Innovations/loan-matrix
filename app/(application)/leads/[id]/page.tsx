@@ -13,9 +13,7 @@ import { LeadDetails } from "./components/lead-details";
 import { ComprehensiveLeadDetails } from "./components/comprehensive-lead-details";
 import { LeadDocuments } from "./components/lead-documents";
 import { LeadActions } from "./components/lead-actions";
-import { LeadValidations } from "./components/lead-validations";
-import { LeadCDE } from "./components/lead-cde";
-import { LeadCommunications } from "./components/lead-communications";
+import { RcfLeadActions } from "./components/rcf-lead-actions";
 import { LeadSidebar } from "./components/lead-sidebar";
 import StateTransitionManager from "./components/state-transition-manager";
 import { LeadDetailTabs } from "./components/lead-detail-tabs";
@@ -23,17 +21,11 @@ import { LeadMoreActions } from "./components/lead-more-actions";
 import { LeadAdditionalInfo } from "./components/lead-additional-info";
 import {
   ArrowLeft,
-  FileText,
-  MessageSquare,
-  Activity,
-  ShieldCheck,
-  Calculator,
-  Info,
-  Database,
-  Users,
+  Landmark,
   UserCheck,
   UserX,
   CheckCircle2,
+  XCircle,
 } from "lucide-react";
 import Link from "next/link";
 import {
@@ -51,6 +43,8 @@ import {
   isPendingLoanApplicationEditTenant,
 } from "@/lib/pending-loan-application-edit";
 import { canPrintLoanContract } from "@/lib/loan-contract-print";
+import { getFacilityLoanLink } from "@/lib/fineract-credit-facility";
+import { isCreditFacilityEnabled } from "@/lib/tenant-features";
 
 const FINERACT_BASE_URL = process.env.FINERACT_BASE_URL || "http://10.10.0.143";
 
@@ -339,14 +333,19 @@ async function getLeadData(leadId: string) {
       where: { id: leadId },
       include: {
         currentStage: true,
+        revolving: { select: { id: true, fineractSavingsAccountId: true } },
       },
     });
 
-    // Fetch pipeline stages for the tenant
-    const stages = await prisma.pipelineStage.findMany({
-      where: { tenantId, isActive: true },
-      orderBy: { order: "asc" },
-    });
+    // Fetch pipeline stages and tenant settings in parallel
+    const [stages, tenant] = await Promise.all([
+      prisma.pipelineStage.findMany({
+        where: { tenantId, isActive: true },
+        orderBy: { order: "asc" },
+      }),
+      prisma.tenant.findFirst({ where: { id: tenantId }, select: { settings: true } }),
+    ]);
+    const hasCreditFacility = isCreditFacilityEnabled(tenant?.settings);
 
     // Fetch Fineract loan info directly from Fineract API
     // No need for internal HTTP calls - we call Fineract directly from this Server Component
@@ -388,6 +387,7 @@ async function getLeadData(leadId: string) {
       loanDocuments: fineractDocs.loanDocuments,
       datatableData,
       tenantSlug,
+      hasCreditFacility,
     };
   } catch (error) {
     console.error("Error fetching lead data:", error);
@@ -405,6 +405,7 @@ async function getLeadData(leadId: string) {
       clientDocuments: [],
       loanDocuments: [],
       tenantSlug: null,
+      hasCreditFacility: false,
     };
   }
 }
@@ -429,10 +430,15 @@ export default async function LeadDetailPage({
     clientDocuments,
     loanDocuments,
     tenantSlug,
+    hasCreditFacility,
   } = await getLeadData(id);
-  
+
   const session = await getSession();
   const currentUserId = session?.user?.id;
+
+  const facilityLink = hasCreditFacility && fineractLoanId
+    ? await getFacilityLoanLink(fineractLoanId).catch(() => null)
+    : null;
   const isAssignedUser =
     currentUserId != null &&
     lead?.assignedToUserId != null &&
@@ -477,6 +483,8 @@ export default async function LeadDetailPage({
 
   const currentStage = lead.currentStage?.name || "New Lead";
   const pageHue = getStatusPageHue(fineractLoanStatus);
+  const isRcfLead = lead.facilityType === "REVOLVING_CREDIT";
+  const rcfApproved = isRcfLead && !!(lead as any).revolving;
 
   return (
     <div className={`-m-6 p-6 min-h-screen ${pageHue}`}>
@@ -510,6 +518,15 @@ export default async function LeadDetailPage({
                 <h1 className="text-lg font-semibold truncate">
                   {clientName || "Lead Details"}
                 </h1>
+                {lead.facilityType === "REVOLVING_CREDIT" && (
+                  <Badge className="bg-emerald-600 text-white border-0 text-xs shrink-0">RCF</Badge>
+                )}
+                {lead.facilityType === "INVOICE_DISCOUNTING" && (
+                  <Badge className="bg-blue-500 text-white border-0 text-xs shrink-0">Invoice</Badge>
+                )}
+                {lead.facilityType === "TERM_LOAN" && (
+                  <Badge className="bg-gray-500 text-white border-0 text-xs shrink-0">Term Loan</Badge>
+                )}
                 {fineractLoanStatus && (
                   <Badge
                     className={`${getStatusBadgeColor(fineractLoanStatus)} text-white border-0 text-xs shrink-0`}
@@ -517,7 +534,13 @@ export default async function LeadDetailPage({
                     {fineractLoanStatus?.toLowerCase() === "active" ? "Disbursed" : fineractLoanStatus}
                   </Badge>
                 )}
-                {lead.currentStage && (
+                {rcfApproved && (
+                  <Badge className="bg-blue-600 text-white border-0 text-xs gap-1 shrink-0">
+                    <CheckCircle2 className="h-3 w-3" />
+                    Approved
+                  </Badge>
+                )}
+                {lead.currentStage && !rcfApproved && (
                   lead.currentStage.isFinalState ? (
                     lead.currentStage.fineractAction === "reject" ? (
                       <Badge className="bg-red-600 text-white border-0 text-xs gap-1 shrink-0">
@@ -541,27 +564,38 @@ export default async function LeadDetailPage({
                 )}
               </div>
               <div className="flex items-center gap-1.5 shrink-0">
-                <StateTransitionManager
-                  leadId={id}
-                  currentStage={currentStage}
-                  currentStageColor={lead.currentStage?.color}
-                  assignedToUserId={lead.assignedToUserId}
-                  currentUserId={currentUserId}
-                  isUserInStageTeam={isUserInStageTeam}
-                />
-                <LeadActions
-                  leadId={id}
-                  currentStage={currentStage}
-                  loanStatus={fineractLoanStatus}
-                  loanId={fineractLoanId}
-                  loanPrincipal={fineractLoanPrincipal}
-                  loanAccountNo={fineractLoanAccountNo}
-                  clientName={clientName}
-                  currency={fineractLoanCurrency}
-                  assignedToUserId={lead.assignedToUserId}
-                  fineractClientId={lead.fineractClientId}
-                  canViewContract={canPrintContract}
-                />
+                {!rcfApproved && (
+                  <StateTransitionManager
+                    leadId={id}
+                    currentStage={currentStage}
+                    currentStageColor={lead.currentStage?.color}
+                    assignedToUserId={lead.assignedToUserId}
+                    currentUserId={currentUserId}
+                    isUserInStageTeam={isUserInStageTeam}
+                  />
+                )}
+                {lead.facilityType === "REVOLVING_CREDIT" ? (
+                  <RcfLeadActions
+                    leadId={id}
+                    fineractClientId={lead.fineractClientId}
+                    fineractSavingsAccountId={(lead as any).revolving?.fineractSavingsAccountId ?? lead.fineractSavingsAccountId ?? null}
+                    rcfApproved={rcfApproved}
+                  />
+                ) : (
+                  <LeadActions
+                    leadId={id}
+                    currentStage={currentStage}
+                    loanStatus={fineractLoanStatus}
+                    loanId={fineractLoanId}
+                    loanPrincipal={fineractLoanPrincipal}
+                    loanAccountNo={fineractLoanAccountNo}
+                    clientName={clientName}
+                    currency={fineractLoanCurrency}
+                    assignedToUserId={lead.assignedToUserId}
+                    fineractClientId={lead.fineractClientId}
+                    canViewContract={canPrintContract}
+                  />
+                )}
                 {!isReadOnly && (
                   <LeadMoreActions
                     leadId={id}
@@ -583,6 +617,12 @@ export default async function LeadDetailPage({
               {fineractLoanId && (
                 <span>
                   Loan: <span className="font-mono font-medium text-foreground">#{fineractLoanId}</span>
+                </span>
+              )}
+              {facilityLink && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 dark:bg-blue-900/40 px-2 py-0.5 text-xs font-medium text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-700">
+                  <Landmark className="h-3 w-3" />
+                  Credit Facility
                 </span>
               )}
               {lead.clientTypeName && (
@@ -718,6 +758,8 @@ export default async function LeadDetailPage({
             loanDocuments={loanDocuments}
             readOnly={isReadOnly}
             canEditPendingLoanApplication={canEditPendingLoanTerms}
+            facilityType={lead.facilityType}
+            hasCreditFacility={hasCreditFacility}
           />
         </div>
         <div className="mt-10">

@@ -4,6 +4,7 @@ import { getTenantFromHeaders } from "@/lib/tenant-service";
 import { getSession } from "@/lib/auth";
 import { fetchFineractAPI } from "@/lib/api";
 import { getOrgDefaultCurrencyCode } from "@/lib/currency-utils";
+import { getTellerVaultDisplay } from "@/lib/gl-balance";
 
 /**
  * GET /api/banks/[id]
@@ -62,30 +63,36 @@ export async function GET(
       return true;
     };
 
+    // Sum of bank → teller allocations is still tracked from the local ledger
+    // (it represents what the bank has shipped out, regardless of GL config).
+    // Per-teller `vaultBalance` is sourced *only* from Fineract GL — `null`
+    // when not configured or Fineract is unreachable.
     let allocatedToTellers = 0;
-    const tellersWithBalances = bank.tellers.map((teller) => {
-      // Total vault balance includes all allocations (for teller display)
-      const tellerVaultBalance = teller.cashAllocations.reduce(
-        (sum, alloc) => sum + alloc.amount,
-        0
-      );
+    const tellersWithBalances = await Promise.all(
+      bank.tellers.map(async (teller) => {
+        const vaultDisplay = await getTellerVaultDisplay(teller);
 
-      const bankAllocationsOnly = teller.cashAllocations
-        .filter(isFromBank)
-        .reduce((sum, alloc) => sum + alloc.amount, 0);
+        const bankAllocationsOnly = teller.cashAllocations
+          .filter(isFromBank)
+          .reduce((sum, alloc) => sum + alloc.amount, 0);
 
-      allocatedToTellers += bankAllocationsOnly;
+        allocatedToTellers += bankAllocationsOnly;
 
-      return {
-        id: teller.id,
-        name: teller.name,
-        fineractTellerId: teller.fineractTellerId,
-        officeName: teller.officeName,
-        status: teller.status,
-        vaultBalance: tellerVaultBalance,
-        activeCashiers: teller.cashiers.length,
-      };
-    });
+        return {
+          id: teller.id,
+          name: teller.name,
+          fineractTellerId: teller.fineractTellerId,
+          officeName: teller.officeName,
+          status: teller.status,
+          glAccountId: teller.glAccountId,
+          glAccountName: teller.glAccountName,
+          glAccountCode: teller.glAccountCode,
+          vaultBalance: vaultDisplay.vaultBalance,
+          vaultBalanceSource: vaultDisplay.vaultBalanceSource,
+          activeCashiers: teller.cashiers.length,
+        };
+      })
+    );
 
     // Get bank balance from Fineract GL account if configured, otherwise use local allocations
     let totalAllocated = 0;

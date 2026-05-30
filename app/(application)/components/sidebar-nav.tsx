@@ -4,6 +4,7 @@ import Link from "next/link";
 import {
   BarChart3,
   Bot,
+  Building2,
   CreditCard,
   FileText,
   Receipt,
@@ -61,13 +62,17 @@ export function SidebarNav() {
         />
       </div>
 
-      <Link
+      <MenuItemWithSubmenu
+        icon={<CreditCard />}
+        label="Loans"
         href="/loans"
-        className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-      >
-        <CreditCard className="h-4 w-4" />
-        Loans
-      </Link>
+        subMenuItems={[
+          { label: "All Loans", href: "/loans" },
+          ...(isEnabled("hasCreditFacility")
+            ? [{ label: "Credit Facilities", href: "/credit-facilities" }]
+            : []),
+        ]}
+      />
 
       <MenuItemWithSubmenu
         icon={<Package />}
@@ -137,6 +142,15 @@ export function SidebarNav() {
           ]}
         />
       )}
+
+      <MenuItemWithSubmenu
+        icon={<Building2 />}
+        label="Organization"
+        href="/organization/payment-types"
+        subMenuItems={[
+          { label: "Payment Types", href: "/organization/payment-types" },
+        ]}
+      />
 
       {isEnabled("reports") && (
         <Link

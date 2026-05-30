@@ -75,21 +75,27 @@ export default async function TellerDetailPage({
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {teller.currentAllocation
-                ? formatCurrency(
-                    teller.currentAllocation.amount,
-                    teller.currentAllocation.currency
-                  )
-                : "No allocation"}
+              {teller.vaultBalanceSource === "fineract_gl" &&
+              teller.availableBalance != null ? (
+                formatCurrency(
+                  teller.availableBalance,
+                  teller.currency || orgCurrency
+                )
+              ) : (
+                <span className="text-muted-foreground">—</span>
+              )}
             </div>
-            {teller.vaultBalance !== undefined && (
-              <div className="text-xs text-muted-foreground mt-1">
-                Vault: {formatCurrency(teller.vaultBalance, teller.currency || orgCurrency)}
-                {teller.allocatedToCashiers > 0 && (
-                  <span className="ml-2">
-                    • Allocated: {formatCurrency(teller.allocatedToCashiers, teller.currency || orgCurrency)}
-                  </span>
-                )}
+            {teller.vaultBalanceSource === "fineract_gl" && teller.glAccountCode && (
+              <div className="text-xs text-green-700 dark:text-green-400 mt-1">
+                Sourced from GL {teller.glAccountCode}
+                {teller.glAccountName ? ` (${teller.glAccountName})` : ""}
+              </div>
+            )}
+            {teller.vaultBalanceSource !== "fineract_gl" && (
+              <div className="text-xs text-amber-600 mt-1">
+                {teller.glUnavailableReason === "fineract_unreachable"
+                  ? "Could not reach Fineract GL — balance unavailable."
+                  : "Branch Cash GL not configured — balance unavailable."}
               </div>
             )}
           </CardContent>
@@ -174,6 +180,23 @@ export default async function TellerDetailPage({
               <div>
                 <div className="text-sm text-muted-foreground">Status</div>
                 <div>{getStatusBadge(teller.status)}</div>
+              </div>
+              <div>
+                <div className="text-sm text-muted-foreground">
+                  Branch Cash GL Account
+                </div>
+                <div className="font-medium">
+                  {teller.glAccountId && teller.glAccountCode ? (
+                    <span>
+                      {teller.glAccountCode}
+                      {teller.glAccountName ? ` — ${teller.glAccountName}` : ""}
+                    </span>
+                  ) : (
+                    <span className="text-amber-600 text-sm">
+                      Not configured — vault balance unavailable
+                    </span>
+                  )}
+                </div>
               </div>
               {teller.endDate && (
                 <div>

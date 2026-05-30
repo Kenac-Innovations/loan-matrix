@@ -1,6 +1,20 @@
 import { prisma } from "./prisma";
 import { getFineractServiceWithSession } from "./fineract-api";
 import { applyTopupDisbursementCharges } from "./topup-disbursement-charge-service";
+import { isPaymentTypeCash } from "./cash-repayment-teller";
+import { resolveCurrentUserCashierContext } from "./current-user-cashier";
+import {
+  createSavingsAccount,
+  approveSavingsAccount,
+  activateSavingsAccount,
+  formatFineractDate,
+} from "./fineract-savings-service";
+import {
+  getPendingFacilityForClient,
+  getActiveFacilityForClient,
+  getFacilityLoanLink,
+  updateFacility,
+} from "./fineract-credit-facility";
 import type { AssignmentStrategy, AssignmentConfig } from "@/shared/defaults/team-config";
 
 export interface FineractOverrides {
@@ -8,6 +22,7 @@ export interface FineractOverrides {
   disbursementDate?: string;
   approvedAmount?: number;
   note?: string;
+  payoutNote?: string;
   paymentTypeId?: number;
   accountNumber?: string;
   checkNumber?: string;
@@ -45,6 +60,78 @@ export interface TeamPermissionCheck {
 }
 
 export class TeamAwareStateMachineService {
+  private static async derivePayoutMethod(
+    paymentTypeId?: number
+  ): Promise<"CASH" | "MOBILE_MONEY" | "BANK_TRANSFER" | undefined> {
+    if (!paymentTypeId) return undefined;
+
+    const paymentTypeIsCash = await isPaymentTypeCash(paymentTypeId);
+    return paymentTypeIsCash ? "CASH" : "BANK_TRANSFER";
+  }
+
+  private static async validateCombinedDisbursementPayout(
+    lead: any,
+    overrides?: FineractOverrides,
+    triggeredBy?: string
+  ): Promise<FineractOverrides | undefined> {
+    if (!overrides?.payoutMethod && overrides?.paymentTypeId) {
+      overrides = {
+        ...overrides,
+        payoutMethod: await this.derivePayoutMethod(overrides.paymentTypeId),
+      };
+    }
+
+    if (!overrides?.payoutMethod) {
+      return overrides;
+    }
+
+    if (!overrides.paymentTypeId) {
+      throw new Error("Payment type is required when combining disbursement and payout");
+    }
+
+    const paymentTypeIsCash = await isPaymentTypeCash(overrides.paymentTypeId);
+
+    if (overrides.payoutMethod === "CASH") {
+      if (!paymentTypeIsCash) {
+        throw new Error("Cash payout requires a cash disbursement payment type");
+      }
+
+      // Resolve the logged-in cashier up front so we can block before disbursement.
+      if (!overrides.tellerId || !overrides.cashierId) {
+        const cashierContext = await resolveCurrentUserCashierContext(
+          lead.tenantId,
+          triggeredBy
+        );
+
+        if (!cashierContext.isCashier) {
+          throw new Error(
+            cashierContext.reason || "Only an active cashier can process a cash payout"
+          );
+        }
+
+        if (!cashierContext.hasActiveSession) {
+          throw new Error(
+            cashierContext.reason || "Cashier must have an active session to process a cash payout"
+          );
+        }
+
+        return {
+          ...overrides,
+          tellerId: cashierContext.fineractTellerId?.toString() || cashierContext.tellerId || undefined,
+          cashierId: cashierContext.cashierId || cashierContext.fineractCashierId?.toString(),
+        };
+      }
+
+      return overrides;
+    }
+
+    if (paymentTypeIsCash) {
+      throw new Error("Non-cash payout requires a non-cash disbursement payment type");
+    }
+
+    return overrides;
+  }
+
   /**
    * Execute a full state transition: validate -> move stage -> auto-assign -> audit trail
    */
@@ -213,11 +300,23 @@ export class TeamAwareStateMachineService {
       const targetStage = await prisma.pipelineStage.findUnique({
         where: { id: request.targetStageId },
       });
-
-      let fineractResult: string | null = null;
       const currentFineractAction = lead.currentStage?.fineractAction;
       const isBackward = targetStage && lead.currentStage
         && (targetStage.order ?? 999) < (lead.currentStage.order ?? 0);
+      const combinedPayoutWithDisbursement =
+        targetStage?.fineractAction === "disburse" &&
+        !isBackward &&
+        Boolean(request.fineractOverrides?.payoutMethod);
+
+      if (combinedPayoutWithDisbursement) {
+        request.fineractOverrides = await this.validateCombinedDisbursementPayout(
+          lead,
+          request.fineractOverrides,
+          request.triggeredBy
+        );
+      }
+
+      let fineractResult: string | null = null;
 
       if (isBackward && currentFineractAction && lead.fineractLoanId) {
         console.log(`[StateTransition] Backward move detected: undoing ${currentFineractAction} for loan ${lead.fineractLoanId}`);
@@ -271,6 +370,98 @@ export class TeamAwareStateMachineService {
           return {
             success: false,
             message: `Fineract ${targetStage.fineractAction} failed: ${errorDetail}`,
+          };
+        }
+      }
+
+      // 3a-r. RCF approve — approve+activate the savings account already created at submission
+      const isRcfApprove = targetStage?.fineractAction === "approve"
+        && (lead as any).facilityType === "REVOLVING_CREDIT"
+        && (lead as any).fineractSavingsAccountId
+        && !isBackward;
+
+      if (isRcfApprove) {
+        console.log(`[StateTransition] Approving revolving credit savings account for lead ${lead.id}`);
+        try {
+          fineractResult = await this.approveRevolvingFacility(lead);
+          console.log(`[StateTransition] RCF approval succeeded: ${fineractResult}`);
+        } catch (err: any) {
+          const errorDetail =
+            err?.response?.data?.errors?.[0]?.defaultUserMessage
+            || err?.response?.data?.defaultUserMessage
+            || (err instanceof Error ? err.message : "Unknown error");
+          console.error("[StateTransition] RCF approval failed — blocking transition:", errorDetail);
+          return {
+            success: false,
+            message: `RCF savings account approval failed: ${errorDetail}`,
+          };
+        }
+      }
+
+      // 3a-r2. Revolving credit activation — no loan ID required, uses savings account
+      if (targetStage?.fineractAction === "activate_revolving" && !isBackward) {
+        console.log(`[StateTransition] Activating revolving credit facility for lead ${lead.id}`);
+        try {
+          fineractResult = await this.activateRevolvingFacility(lead);
+          console.log(`[StateTransition] Revolving activation succeeded: ${fineractResult}`);
+        } catch (err: any) {
+          const errorDetail =
+            err?.response?.data?.errors?.[0]?.defaultUserMessage
+            || err?.response?.data?.defaultUserMessage
+            || (err instanceof Error ? err.message : "Unknown error");
+          console.error("[StateTransition] Revolving activation failed — blocking transition:", errorDetail);
+          return {
+            success: false,
+            message: `Revolving facility activation failed: ${errorDetail}`,
+          };
+        }
+      }
+
+      // 3aa. Combined disbursement + payout — process payout immediately after
+      // successful disbursement so the user completes both in one action.
+      if (
+        combinedPayoutWithDisbursement &&
+        lead.fineractLoanId &&
+        request.fineractOverrides?.payoutMethod
+      ) {
+        try {
+          const payoutResult = await this.processInternalPayout(
+            lead,
+            request.fineractOverrides,
+            request.triggeredBy
+          );
+          fineractResult = fineractResult
+            ? `${fineractResult}. ${payoutResult}`
+            : payoutResult;
+        } catch (payoutError: any) {
+          const errorDetail =
+            payoutError?.response?.data?.errors?.[0]?.defaultUserMessage
+            || payoutError?.response?.data?.defaultUserMessage
+            || (payoutError instanceof Error ? payoutError.message : "Unknown error");
+
+          let rollbackMessage = "";
+          try {
+            if (lead.fineractLoanId) {
+              await this.undoFineractAction(
+                "disburse",
+                lead.fineractLoanId,
+                lead,
+                "Combined disbursement+payout failed; disbursement rolled back"
+              );
+              rollbackMessage = " Disbursement was rolled back.";
+            }
+          } catch (rollbackError: any) {
+            const rollbackDetail =
+              rollbackError?.response?.data?.errors?.[0]?.defaultUserMessage
+              || rollbackError?.response?.data?.defaultUserMessage
+              || (rollbackError instanceof Error ? rollbackError.message : "Unknown error");
+            rollbackMessage = ` Disbursement rollback also failed: ${rollbackDetail}`;
+          }
+
+          console.error("[StateTransition] Combined payout failed — blocking transition:", errorDetail);
+          return {
+            success: false,
+            message: `Payout failed after disbursement: ${errorDetail}.${rollbackMessage}`.replace(/\.\s*\./g, "."),
           };
         }
       }
@@ -784,6 +975,20 @@ export class TeamAwareStateMachineService {
           ? formatDateForFineract(overrides.approvalDate)
           : formatFineractDateArr(loanDetails?.timeline?.submittedOnDate);
         await fineract.approveLoan(fineractLoanId, approveDate);
+
+        // Activate PENDING credit facility on loan approval (non-blocking)
+        if (lead?.fineractClientId) {
+          try {
+            const pendingFacility = await getPendingFacilityForClient(lead.fineractClientId);
+            if (pendingFacility) {
+              await updateFacility(lead.fineractClientId, pendingFacility.id, { status: "ACTIVE" });
+              console.log(`[StateTransition] Credit facility ${pendingFacility.facility_ref} activated`);
+            }
+          } catch (facilityErr) {
+            console.error("[StateTransition] Failed to activate credit facility:", facilityErr);
+          }
+        }
+
         return `Fineract loan #${fineractLoanId} approved`;
       }
       case "disburse": {
@@ -814,6 +1019,27 @@ export class TeamAwareStateMachineService {
           }
         }
 
+        // Update credit facility utilization counters (non-blocking)
+        if (lead?.fineractClientId) {
+          try {
+            const facility = await getActiveFacilityForClient(lead.fineractClientId);
+            if (facility) {
+              const disbursedAmount = loanDetails?.approvedPrincipal ?? loanDetails?.principal ?? 0;
+              const newUtilized = facility.utilized_amount + disbursedAmount;
+              const newTranches = facility.disbursed_tranches + 1;
+              const shouldClose = newUtilized >= facility.credit_limit || newTranches >= facility.drawdown_tranches;
+              await updateFacility(lead.fineractClientId, facility.id, {
+                utilized_amount: newUtilized,
+                disbursed_tranches: newTranches,
+                ...(shouldClose ? { status: "CLOSED" } : {}),
+              });
+              console.log(`[StateTransition] Credit facility ${facility.facility_ref} utilization updated${shouldClose ? " — facility CLOSED (fully utilized)" : ""}`);
+            }
+          } catch (facilityErr) {
+            console.error("[StateTransition] Failed to update credit facility utilization:", facilityErr);
+          }
+        }
+
         return `Fineract loan #${fineractLoanId} disbursed`;
       }
       case "reject": {
@@ -823,10 +1049,108 @@ export class TeamAwareStateMachineService {
         await fineract.rejectLoan(fineractLoanId, rejectDate, overrides?.note);
         return `Fineract loan #${fineractLoanId} rejected`;
       }
+      case "activate_revolving": {
+        // Handled by the dedicated activateRevolvingFacility path — no-op here
+        return `Revolving activation is handled separately`;
+      }
       default:
         console.warn(`Unknown fineractAction: ${action}`);
         return `Unknown Fineract action: ${action}`;
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Revolving credit facility — approve savings account created at submission
+  // ---------------------------------------------------------------------------
+
+  private static async approveRevolvingFacility(lead: any): Promise<string> {
+    const savingsId: number = lead.fineractSavingsAccountId;
+    if (!savingsId) {
+      throw new Error("Cannot approve revolving facility: no savings account ID on lead");
+    }
+
+    const creditLimit: number = lead.requestedAmount;
+    if (!creditLimit || creditLimit <= 0) {
+      throw new Error("Cannot approve revolving facility: credit limit (requestedAmount) must be greater than 0");
+    }
+
+    const today = formatFineractDate(new Date());
+
+    await approveSavingsAccount(savingsId, today);
+    await activateSavingsAccount(savingsId, today);
+
+    const existing = await prisma.revolvingCreditFacility.findUnique({ where: { leadId: lead.id } });
+    if (!existing) {
+      await prisma.revolvingCreditFacility.create({
+        data: {
+          leadId: lead.id,
+          tenantId: lead.tenantId,
+          creditLimit,
+          availableBalance: creditLimit,
+          fineractSavingsAccountId: savingsId,
+          savingsProductId: lead.savingsProductId,
+          maxDrawdowns: (lead.stateMetadata as any)?.maxDrawdowns ?? 10,
+        },
+      });
+    }
+
+    return `RCF savings account #${savingsId} approved and activated with credit limit ${creditLimit}`;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Revolving credit facility activation (legacy path — no prior submission)
+  // ---------------------------------------------------------------------------
+
+  private static async activateRevolvingFacility(lead: any): Promise<string> {
+    if (!lead?.fineractClientId) {
+      throw new Error("Cannot activate revolving facility: lead has no Fineract client ID");
+    }
+    if (!lead?.savingsProductId) {
+      throw new Error("Cannot activate revolving facility: no savings product selected on lead");
+    }
+    const creditLimit: number = lead?.requestedAmount;
+    if (!creditLimit || creditLimit <= 0) {
+      throw new Error("Cannot activate revolving facility: credit limit (requestedAmount) must be greater than 0");
+    }
+
+    // If the savings account was already created at wizard submission time, skip creation
+    if (lead.fineractSavingsAccountId) {
+      const existing = await prisma.revolvingCreditFacility.findUnique({ where: { leadId: lead.id } });
+      if (existing) {
+        return `Revolving facility already active, savings account #${lead.fineractSavingsAccountId}`;
+      }
+    }
+
+    const today = formatFineractDate(new Date());
+
+    const { savingsId } = await createSavingsAccount({
+      clientId: lead.fineractClientId,
+      productId: lead.savingsProductId,
+      submittedOnDate: today,
+      fieldOfficerId: (lead.stateMetadata as any)?.fieldOfficerId ?? undefined,
+    });
+
+    await approveSavingsAccount(savingsId, today);
+    await activateSavingsAccount(savingsId, today);
+
+    await prisma.lead.update({
+      where: { id: lead.id },
+      data: { fineractSavingsAccountId: savingsId },
+    });
+
+    await prisma.revolvingCreditFacility.create({
+      data: {
+        leadId: lead.id,
+        tenantId: lead.tenantId,
+        creditLimit,
+        availableBalance: creditLimit,
+        fineractSavingsAccountId: savingsId,
+        savingsProductId: lead.savingsProductId,
+        maxDrawdowns: (lead.stateMetadata as any)?.maxDrawdowns ?? 10,
+      },
+    });
+
+    return `Revolving facility activated, savings account #${savingsId} opened with credit limit ${creditLimit}`;
   }
 
   // ---------------------------------------------------------------------------
@@ -854,6 +1178,28 @@ export class TeamAwareStateMachineService {
           method: "POST",
           body: JSON.stringify({ note: reason || "Disbursement undone — lead moved back" }),
         });
+
+        // Deduct from credit facility if loan was linked to one (non-blocking)
+        if (lead?.fineractClientId) {
+          try {
+            const [link, facility] = await Promise.all([
+              getFacilityLoanLink(fineractLoanId),
+              getActiveFacilityForClient(lead.fineractClientId),
+            ]);
+            if (link && facility) {
+              const loanDetails = await fetchFineractAPI(`/loans/${fineractLoanId}`);
+              const disbursedAmount = loanDetails?.approvedPrincipal ?? loanDetails?.principal ?? 0;
+              await updateFacility(lead.fineractClientId, facility.id, {
+                utilized_amount: Math.max(0, facility.utilized_amount - disbursedAmount),
+                disbursed_tranches: Math.max(0, facility.disbursed_tranches - 1),
+              });
+              console.log(`[StateTransition] Credit facility ${facility.facility_ref} utilization decremented`);
+            }
+          } catch (facilityErr) {
+            console.error("[StateTransition] Failed to decrement credit facility on undo:", facilityErr);
+          }
+        }
+
         return `Fineract loan #${fineractLoanId} disbursement undone`;
       }
       case "payout": {
@@ -1036,17 +1382,49 @@ export class TeamAwareStateMachineService {
 
     if (overrides.payoutMethod === "CASH") {
       if (!overrides.tellerId || !overrides.cashierId) {
-        throw new Error("Teller and cashier are required for cash payout");
+        const cashierContext = await resolveCurrentUserCashierContext(
+          lead.tenantId,
+          triggeredBy
+        );
+
+        if (!cashierContext.isCashier) {
+          throw new Error(
+            cashierContext.reason || "Only an active cashier can process a cash payout"
+          );
+        }
+
+        if (!cashierContext.hasActiveSession) {
+          throw new Error(
+            cashierContext.reason || "Cashier must have an active session to process a cash payout"
+          );
+        }
+
+        overrides = {
+          ...overrides,
+          tellerId:
+            cashierContext.fineractTellerId?.toString() || cashierContext.tellerId || undefined,
+          cashierId:
+            cashierContext.cashierId || cashierContext.fineractCashierId?.toString(),
+        };
       }
 
       // Resolve teller — the UI sends Fineract teller IDs
-      const fineractTellerId = Number(overrides.tellerId);
+      const fineractTellerId = Number(overrides?.tellerId);
       const teller = await prisma.teller.findFirst({
         where: {
           tenantId: lead.tenantId,
           fineractTellerId,
         },
-        include: { currentStage: true },
+      });
+
+      if (!teller) {
+        throw new Error(`Teller not found for Fineract ID ${fineractTellerId}`);
+      }
+
+      // Resolve cashier — the UI sends DB cashier IDs (dbId) or Fineract IDs
+      const cashierIdStr = String(overrides?.cashierId);
+      let cashier = await prisma.cashier.findFirst({
+        where: { id: cashierIdStr, tellerId: teller.id, tenantId: lead.tenantId },
       });
       if (!cashier) {
         const numId = Number(cashierIdStr);
@@ -1092,16 +1470,20 @@ export class TeamAwareStateMachineService {
           currency: currencyCode,
           status: "PAID",
           paymentMethod: "CASH",
+          tellerId: teller.id,
+          cashierId: cashier?.id || null,
           paidAt: new Date(),
           paidBy: triggeredBy || "system",
-          notes: overrides.note || "Cash payout via teller",
+          notes: overrides.payoutNote || overrides.note || "Cash payout via teller",
         },
         update: {
           status: "PAID",
           paymentMethod: "CASH",
+          tellerId: teller.id,
+          cashierId: cashier?.id || null,
           paidAt: new Date(),
           paidBy: triggeredBy || "system",
-          notes: overrides.note || "Cash payout via teller",
+          notes: overrides.payoutNote || overrides.note || "Cash payout via teller",
         },
       });
 

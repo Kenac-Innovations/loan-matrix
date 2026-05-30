@@ -36,6 +36,10 @@ import { CheckCircle2, AlertCircle } from "lucide-react";
 import { Calendar } from "@/components/ui/calender";
 import { cn } from "@/lib/utils";
 import { useFeatureFlags } from "@/hooks/use-feature-flags";
+import {
+  buildFineractBusinessCalendarRules,
+  type FineractBusinessCalendar,
+} from "@/lib/fineract-business-calendar";
 import { shouldAutoPopulatePrincipalAmount } from "@/lib/tenant-settings";
 import {
   recomputeTopupAwareDisbursementChargeAmounts,
@@ -45,6 +49,7 @@ import {
   type EditableLoanChargeRow,
 } from "@/lib/topup-charge-base";
 import type { TenantSettings } from "@/shared/types/tenant";
+import { FacilityToggle } from "@/components/credit-facility/facility-toggle";
 
 // Helper function to format repayment strategy name
 // Replaces "Penalties" with "Interest on Unpaid Balance" for display
@@ -144,8 +149,8 @@ function isOverdueChargeLike(charge?: {
   return !charge.chargeTimeType && charge.penalty === true;
 }
 
-const INVOICE_INCOME_CHARGE_NAME = "INVOICE_INCOME";
-const INVOICE_INCOME_CHARGE_DISPLAY_NAME = "Invoice Income";
+const INVOICE_INCOME_CHARGE_NAME = "DISCOUNT_FACTOR";
+const INVOICE_INCOME_CHARGE_DISPLAY_NAME = "Discount Factor";
 
 function getChargeDisplayName(name?: string | null, fallback = "Unknown Charge") {
   const normalizedName = name?.trim();
@@ -420,9 +425,9 @@ function buildInvoiceIncomeTemplateCharge(
         value: "Flat",
       },
       chargeTimeType: {
-        id: 2,
-        code: "chargeTimeType.specifiedDueDate",
-        value: "Specified Due Date",
+        id: 1,
+        code: "chargeTimeType.disbursement",
+        value: "Disbursement",
       },
     },
     charge: {
@@ -433,9 +438,9 @@ function buildInvoiceIncomeTemplateCharge(
         INVOICE_INCOME_CHARGE_DISPLAY_NAME
       ),
       chargeTimeType: {
-        id: 2,
-        code: "chargeTimeType.specifiedDueDate",
-        value: "Specified Due Date",
+        id: 1,
+        code: "chargeTimeType.disbursement",
+        value: "Disbursement",
       },
       chargeCalculationType: {
         id: 1,
@@ -580,6 +585,12 @@ function buildEditableCharge(
   };
 }
 
+function startOfToday() {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return today;
+}
+
 function getDefaultChargeAmount(charge: {
   amount?: number;
   percentage?: number;
@@ -617,13 +628,17 @@ interface LoanTermsFormProps {
   clientId?: number;
   productId?: number;
   leadId?: string;
+  businessCalendar?: FineractBusinessCalendar | null;
   ignoreSavedTermsOnLoad?: boolean;
+  initialLoanIdToClose?: string;
   onSubmit: (data: LoanTermsFormData) => void;
   onBack: () => void;
   onNext: () => void;
   onComplete?: () => void;
   sharedFirstRepaymentOn?: Date;
   onFirstRepaymentDateChange?: (date: Date) => void;
+  fineractClientId?: number | null;
+  onFacilityChange?: (data: import("@/components/credit-facility/facility-toggle").FacilityIntent) => void;
 }
 
 export function LoanTermsForm({
@@ -631,22 +646,35 @@ export function LoanTermsForm({
   clientId,
   productId,
   leadId,
+  businessCalendar,
   ignoreSavedTermsOnLoad = false,
+  initialLoanIdToClose,
   onSubmit,
   onBack,
   onNext,
   onComplete,
   sharedFirstRepaymentOn,
   onFirstRepaymentDateChange,
+  fineractClientId,
+  onFacilityChange,
 }: LoanTermsFormProps) {
   const { tenantSlug, features } = useFeatureFlags();
+  // Ref so the template-fetch effect can read the latest features without re-running
+  const featuresRef = useRef(features);
+  useEffect(() => { featuresRef.current = features; }, [features]);
   /** Goodfellow: only charge amounts are editable; add/remove/due dates stay fixed. */
   const isChargesStructureReadOnly = tenantSlug === "goodfellow";
   const canEditLoan = !!features.canEditLoan;
+  const hasCreditFacility = !!features.hasCreditFacility;
+  const businessCalendarRules = useMemo(
+    () => buildFineractBusinessCalendarRules(businessCalendar),
+    [businessCalendar]
+  );
 
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [facilityValid, setFacilityValid] = useState(true);
   const [loanTemplate, setLoanTemplate] = useState<LoanTemplate | null>(
     initialLoanTemplate
   );
@@ -654,6 +682,8 @@ export function LoanTermsForm({
     useState(false);
   const [invoiceIncomeChargeProduct, setInvoiceIncomeChargeProduct] =
     useState<InvoiceDiscountIncomeChargeRecord | null>(null);
+  const [invoiceDiscountingPrincipalAmount, setInvoiceDiscountingPrincipalAmount] =
+    useState<number | null>(null);
   const [invoiceDiscountingReserveAmount, setInvoiceDiscountingReserveAmount] =
     useState<number | null>(null);
   const [editableCharges, setEditableCharges] = useState<
@@ -675,6 +705,9 @@ export function LoanTermsForm({
   );
   const [isTopup, setIsTopup] = useState(false);
   const [loanIdToClose, setLoanIdToClose] = useState<string>("");
+  const [isLoadingTopupBalances, setIsLoadingTopupBalances] = useState(false);
+  const topupBalancesEnrichedRef = useRef(false);
+  const hasAppliedInitialTopup = useRef(false);
   const [sectionCompletion, setSectionCompletion] = useState({
     basicTerms: false,
     interestSchedule: false,
@@ -1009,7 +1042,64 @@ export function LoanTermsForm({
   // Fetch detailed template and product topup config when clientId and productId are available
   useEffect(() => {
     detailedTemplateFetched.current = false;
+    topupBalancesEnrichedRef.current = false;
   }, [clientId, productId]);
+
+  // Auto-enable topup when coming from the refinance shortcut
+  useEffect(() => {
+    if (
+      !initialLoanIdToClose ||
+      hasAppliedInitialTopup.current ||
+      !loanTemplate?.canUseForTopup ||
+      !loanTemplate?.clientActiveLoanOptions?.length
+    ) return;
+
+    hasAppliedInitialTopup.current = true;
+    setIsTopup(true);
+    setLoanIdToClose(initialLoanIdToClose);
+
+    if (
+      featuresRef.current.topupLoanBalanceExcludeUnrealizedInterests &&
+      !topupBalancesEnrichedRef.current
+    ) {
+      setIsLoadingTopupBalances(true);
+      const today = new Date();
+      const transactionDate = today.toLocaleDateString("en-GB", {
+        day: "2-digit",
+        month: "long",
+        year: "numeric",
+      });
+      const fcParams = new URLSearchParams({
+        command: "foreclosure",
+        locale: "en",
+        dateFormat: "dd MMMM yyyy",
+        transactionDate,
+      });
+      Promise.all(
+        loanTemplate.clientActiveLoanOptions.map(async (loan) => {
+          try {
+            const res = await fetch(
+              `/api/fineract/loans/${loan.id}/transactions/template?${fcParams}`
+            );
+            if (res.ok) {
+              const data = await res.json();
+              if (data.amount != null) return { ...loan, loanBalance: data.amount };
+            }
+          } catch {
+            // fall back to total outstanding
+          }
+          return loan;
+        })
+      ).then((enriched) => {
+        setLoanTemplate((prev) =>
+          prev ? { ...prev, clientActiveLoanOptions: enriched } : prev
+        );
+        topupBalancesEnrichedRef.current = true;
+      }).finally(() => {
+        setIsLoadingTopupBalances(false);
+      });
+    }
+  }, [initialLoanIdToClose, loanTemplate]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1070,6 +1160,7 @@ export function LoanTermsForm({
                   const activeLoans = (accountsData.loanAccounts || []).filter(
                     (la: any) => la.status?.active
                   );
+
                   detailedTemplate.clientActiveLoanOptions = activeLoans.map((la: any) => ({
                     id: la.id,
                     accountNo: la.accountNo,
@@ -1109,7 +1200,7 @@ export function LoanTermsForm({
             if (!response.ok) {
               const body = await response.json().catch(() => ({}));
               throw new Error(
-                body.error || "Failed to ensure the INVOICE_INCOME charge"
+                body.error || "Failed to ensure the DISCOUNT_FACTOR charge"
               );
             }
 
@@ -1299,6 +1390,15 @@ export function LoanTermsForm({
           savedInterestCalculationPeriodValue ||
           nextInterestCalculationPeriodValue;
 
+        const invoiceDiscountingPrincipal =
+          isInvoiceDiscountingLead
+            ? invoiceDiscountingPrincipalAmount ??
+              (savedLoanTermsData?.principal !== undefined &&
+              savedLoanTermsData?.principal !== null
+                ? Number(savedLoanTermsData.principal)
+                : undefined)
+            : undefined;
+
         if (shouldApplyTemplateDefaultsRef.current) {
           const shouldPopulatePrincipal =
             autoPopulatePrincipalAmount &&
@@ -1306,7 +1406,9 @@ export function LoanTermsForm({
             !isInvoiceDiscountingLead;
 
           form.reset({
-            principal: shouldPopulatePrincipal ? loanTemplate.principal : 0,
+            principal:
+              invoiceDiscountingPrincipal ??
+              (shouldPopulatePrincipal ? loanTemplate.principal : 0),
             loanTerm: loanTemplate.termFrequency ?? 0,
             termFrequency: resolvedTermFrequencyValue,
             numberOfRepayments: loanTemplate.numberOfRepayments ?? 0,
@@ -1328,7 +1430,9 @@ export function LoanTermsForm({
             amortization: resolvedAmortizationValue,
             isEqualAmortization: loanTemplate.isEqualAmortization ?? false,
             loanScheduleType:
-              loanTemplate.loanScheduleTypeOptions?.[0]?.value || "",
+              loanTemplate.loanScheduleTypeOptions?.[0]?.code ||
+              loanTemplate.loanScheduleTypeOptions?.[0]?.value ||
+              "",
             repaymentStrategy: resolvedRepaymentStrategyValue,
             balloonRepaymentAmount: 0,
             interestCalculationPeriod: resolvedInterestCalculationPeriodValue,
@@ -1719,6 +1823,7 @@ export function LoanTermsForm({
     autoPopulatePrincipalAmount,
     ignoreSavedTermsOnLoad,
     isInvoiceDiscountingLead,
+    invoiceDiscountingPrincipalAmount,
     loanTemplate,
     savedLoanTermsData,
     tenantSettingsLoaded,
@@ -2030,13 +2135,23 @@ export function LoanTermsForm({
                 : new Date();
 
               const initialCharges = loanTemplate.charges.map(
-                (charge: any) => ({
-                  chargeId: charge.chargeId || charge.id,
-                  name: getChargeDisplayName(charge.name),
-                  amount: charge.amount || 0,
-                  dueDate: disbursementDate,
-                  originalCharge: charge,
-                })
+                (charge: any) => {
+                  const chargeId = charge.chargeId || charge.id;
+                  const isInvoiceIncomeCharge =
+                    isInvoiceDiscountingLead &&
+                    Number.isFinite(invoiceIncomeChargeFineractId) &&
+                    Number(chargeId) === invoiceIncomeChargeFineractId;
+
+                  return {
+                    chargeId,
+                    name: getChargeDisplayName(charge.name),
+                    amount: charge.amount || 0,
+                    dueDate: isInvoiceIncomeCharge
+                      ? startOfToday()
+                      : disbursementDate,
+                    originalCharge: charge,
+                  };
+                }
               );
               setEditableCharges(initialCharges);
             }
@@ -2074,6 +2189,7 @@ export function LoanTermsForm({
 
     const loadInvoiceDiscountingReserve = async () => {
       if (!leadId || !isInvoiceDiscountingLead) {
+        setInvoiceDiscountingPrincipalAmount(null);
         setInvoiceDiscountingReserveAmount(null);
         return;
       }
@@ -2085,8 +2201,12 @@ export function LoanTermsForm({
         }
 
         const result = await response.json();
+        const principalAmount = result?.data?.totalFinancedAmount;
         const reserveAmount = result?.data?.totalReserveAmount;
         if (!cancelled) {
+          setInvoiceDiscountingPrincipalAmount(
+            principalAmount != null ? Number(principalAmount) : null
+          );
           setInvoiceDiscountingReserveAmount(
             reserveAmount != null ? Number(reserveAmount) : null
           );
@@ -2094,6 +2214,7 @@ export function LoanTermsForm({
       } catch (error) {
         console.error("Error loading invoice discounting reserve amount:", error);
         if (!cancelled) {
+          setInvoiceDiscountingPrincipalAmount(null);
           setInvoiceDiscountingReserveAmount(null);
         }
       }
@@ -2105,6 +2226,23 @@ export function LoanTermsForm({
       cancelled = true;
     };
   }, [leadId, isInvoiceDiscountingLead]);
+
+  useEffect(() => {
+    if (!isInvoiceDiscountingLead || invoiceDiscountingPrincipalAmount == null) {
+      return;
+    }
+
+    const currentPrincipal = form.getValues("principal");
+    if (currentPrincipal === invoiceDiscountingPrincipalAmount) {
+      return;
+    }
+
+    form.setValue("principal", invoiceDiscountingPrincipalAmount, {
+      shouldDirty: false,
+      shouldTouch: false,
+      shouldValidate: true,
+    });
+  }, [form, invoiceDiscountingPrincipalAmount, isInvoiceDiscountingLead]);
 
   useEffect(() => {
     if (
@@ -2247,10 +2385,14 @@ export function LoanTermsForm({
     const selectedCharge = selectedChargeToAdd;
 
     if (selectedCharge) {
+      const isInvoiceIncomeCharge =
+        isInvoiceDiscountingLead &&
+        Number.isFinite(invoiceIncomeChargeFineractId) &&
+        Number(selectedCharge.id) === invoiceIncomeChargeFineractId;
       // Check if this charge requires a due date (Specified Due Date time type)
-      const requiresDueDate = isSpecifiedDueDateCharge(
-        selectedCharge.chargeTimeType
-      );
+      const requiresDueDate =
+        !isInvoiceIncomeCharge &&
+        isSpecifiedDueDateCharge(selectedCharge.chargeTimeType);
       const resolvedAmount =
         isInvoiceDiscountingLead &&
         Number.isFinite(invoiceIncomeChargeFineractId) &&
@@ -2270,7 +2412,9 @@ export function LoanTermsForm({
           chargeId: selectedCharge.id,
           name: getChargeDisplayName(selectedCharge.name),
           amount: resolvedAmount,
-          dueDate: newChargeDueDate || new Date(), // Use current date as fallback if not required
+          dueDate: isInvoiceIncomeCharge
+            ? startOfToday()
+            : newChargeDueDate || new Date(),
           originalCharge: selectedCharge,
         },
       ]);
@@ -2695,6 +2839,10 @@ export function LoanTermsForm({
         isInvoiceDiscountingLead &&
         index === invoiceIncomeChargeIndex &&
         invoiceDiscountingReserveAmount != null;
+      const isInvoiceIncomeCharge =
+        isInvoiceDiscountingLead &&
+        index === invoiceIncomeChargeIndex &&
+        Number.isFinite(invoiceIncomeChargeFineractId);
       const isTopupLockedCharge =
         isTopup &&
         isLoanDisbursementChargeTime(charge.originalCharge?.chargeTimeType) &&
@@ -2814,7 +2962,8 @@ export function LoanTermsForm({
             </div>
             {(charge.originalCharge?.chargeTimeType?.code === "specifiedDueDate" ||
               charge.originalCharge?.chargeTimeType?.value === "Specified Due Date" ||
-              charge.originalCharge?.chargeTimeType?.id === 2) && (
+              charge.originalCharge?.chargeTimeType?.id === 2) &&
+              !isInvoiceIncomeCharge && (
               <div className="space-y-2">
                 <Label>Due Date</Label>
                 <Popover>
@@ -2987,9 +3136,55 @@ export function LoanTermsForm({
                   <div className="flex items-center gap-3 h-10">
                     <Switch
                       checked={isTopup}
-                      onCheckedChange={(checked) => {
+                      onCheckedChange={async (checked) => {
                         setIsTopup(checked);
-                        if (!checked) setLoanIdToClose("");
+                        if (!checked) {
+                          setLoanIdToClose("");
+                          return;
+                        }
+                        if (
+                          !featuresRef.current.topupLoanBalanceExcludeUnrealizedInterests ||
+                          topupBalancesEnrichedRef.current ||
+                          !loanTemplate?.clientActiveLoanOptions?.length
+                        ) return;
+
+                        setIsLoadingTopupBalances(true);
+                        try {
+                          const today = new Date();
+                          const transactionDate = today.toLocaleDateString("en-GB", {
+                            day: "2-digit",
+                            month: "long",
+                            year: "numeric",
+                          });
+                          const fcParams = new URLSearchParams({
+                            command: "foreclosure",
+                            locale: "en",
+                            dateFormat: "dd MMMM yyyy",
+                            transactionDate,
+                          });
+                          const enriched = await Promise.all(
+                            loanTemplate.clientActiveLoanOptions.map(async (loan) => {
+                              try {
+                                const res = await fetch(
+                                  `/api/fineract/loans/${loan.id}/transactions/template?${fcParams}`
+                                );
+                                if (res.ok) {
+                                  const data = await res.json();
+                                  if (data.amount != null) return { ...loan, loanBalance: data.amount };
+                                }
+                              } catch {
+                                // fall back to total outstanding
+                              }
+                              return loan;
+                            })
+                          );
+                          setLoanTemplate((prev) =>
+                            prev ? { ...prev, clientActiveLoanOptions: enriched } : prev
+                          );
+                          topupBalancesEnrichedRef.current = true;
+                        } finally {
+                          setIsLoadingTopupBalances(false);
+                        }
                       }}
                     />
                     <span className="text-sm text-muted-foreground">
@@ -3009,7 +3204,12 @@ export function LoanTermsForm({
                   The outstanding balance on the selected loan will be deducted from the new
                   disbursement. The remaining amount will be paid out to the client.
                 </p>
-                {loanTemplate.clientActiveLoanOptions &&
+                {isLoadingTopupBalances ? (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                    Loading settlement balances…
+                  </div>
+                ) : loanTemplate.clientActiveLoanOptions &&
                 loanTemplate.clientActiveLoanOptions.length > 0 ? (
                   <Select
                     value={loanIdToClose}
@@ -3039,6 +3239,128 @@ export function LoanTermsForm({
                 )}
               </div>
             )}
+          </CardContent>
+        </Card>
+
+        {/* Repayments */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Repayments</CardTitle>
+            <CardDescription>Set repayment schedule and dates</CardDescription>
+          </CardHeader>
+          <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-2">
+              <Label
+                htmlFor="numberOfRepayments"
+                className="text-sm font-medium"
+              >
+                Number of repayments <span className="text-red-500">*</span>
+              </Label>
+              <Input
+                id="numberOfRepayments"
+                type="number"
+                className="h-10"
+                disabled={!canEditLoan}
+                {...form.register("numberOfRepayments", {
+                  valueAsNumber: true,
+                })}
+              />
+              {form.formState.errors.numberOfRepayments && (
+                <p className="text-sm text-red-500">
+                  {form.formState.errors.numberOfRepayments.message}
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="firstRepaymentOn" className="text-sm font-medium">
+                First repayment on
+              </Label>
+              <Controller
+                control={form.control}
+                name="firstRepaymentOn"
+                render={({ field }) => (
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        disabled={!canEditLoan}
+                        className={cn(
+                          "h-10 w-full justify-start text-left font-normal",
+                          !canEditLoan && "cursor-not-allowed opacity-70",
+                          !field.value && "text-muted-foreground"
+                        )}
+                      >
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {field.value
+                          ? format(field.value, "PPP")
+                          : "Pick a date"}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0">
+                      <Calendar
+                        mode="single"
+                        selected={field.value}
+                        onSelect={(date) => {
+                          field.onChange(date);
+                          if (date) onFirstRepaymentDateChange?.(date);
+                        }}
+                        disabled={(date) =>
+                          date < new Date("1900-01-01") ||
+                          businessCalendarRules.isDisabled(date)
+                        }
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
+                )}
+              />
+              <p className="text-xs text-muted-foreground">
+                Also stays in sync when set on the Loan tab
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label
+                htmlFor="interestChargedFrom"
+                className="text-sm font-medium"
+              >
+                Interest charged from
+              </Label>
+              <Controller
+                control={form.control}
+                name="interestChargedFrom"
+                render={({ field }) => (
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        disabled={!canEditLoan}
+                        className={cn(
+                          "h-10 w-full justify-start text-left font-normal",
+                          !canEditLoan && "cursor-not-allowed opacity-70",
+                          !field.value && "text-muted-foreground"
+                        )}
+                      >
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {field.value
+                          ? format(field.value, "PPP")
+                          : "Pick a date"}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0">
+                      <Calendar
+                        mode="single"
+                        selected={field.value}
+                        onSelect={field.onChange}
+                        disabled={(date) => date < new Date("1900-01-01")}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
+                )}
+              />
+            </div>
           </CardContent>
         </Card>
 
@@ -3111,109 +3433,6 @@ export function LoanTermsForm({
                   {form.formState.errors.termFrequency.message}
                 </p>
               )}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Repayments */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Repayments</CardTitle>
-            <CardDescription>Set repayment schedule and dates</CardDescription>
-          </CardHeader>
-          <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-2">
-              <Label
-                htmlFor="numberOfRepayments"
-                className="text-sm font-medium"
-              >
-                Number of repayments <span className="text-red-500">*</span>
-              </Label>
-              <Input
-                id="numberOfRepayments"
-                type="number"
-                className="h-10"
-                disabled={!canEditLoan}
-                {...form.register("numberOfRepayments", {
-                  valueAsNumber: true,
-                })}
-              />
-              {form.formState.errors.numberOfRepayments && (
-                <p className="text-sm text-red-500">
-                  {form.formState.errors.numberOfRepayments.message}
-                </p>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="firstRepaymentOn" className="text-sm font-medium">
-                First repayment on
-              </Label>
-              <Controller
-                control={form.control}
-                name="firstRepaymentOn"
-                render={({ field }) => (
-                      <Button
-                        variant="outline"
-                        disabled={!canEditLoan}
-                        className={cn(
-                          "h-10 w-full justify-start text-left font-normal",
-                          !canEditLoan && "cursor-not-allowed opacity-70",
-                          !field.value && "text-muted-foreground"
-                        )}
-                      >
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {field.value
-                          ? format(field.value, "PPP")
-                      : "Set on Loan tab"}
-                      </Button>
-                )}
-              />
-              <p className="text-xs text-muted-foreground">
-                Set on the Loan tab - syncs automatically
-              </p>
-            </div>
-
-            <div className="space-y-2">
-              <Label
-                htmlFor="interestChargedFrom"
-                className="text-sm font-medium"
-              >
-                Interest charged from
-              </Label>
-              <Controller
-                control={form.control}
-                name="interestChargedFrom"
-                render={({ field }) => (
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        disabled={!canEditLoan}
-                        className={cn(
-                          "h-10 w-full justify-start text-left font-normal",
-                          !canEditLoan && "cursor-not-allowed opacity-70",
-                          !field.value && "text-muted-foreground"
-                        )}
-                      >
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {field.value
-                          ? format(field.value, "PPP")
-                          : "Pick a date"}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0">
-                      <Calendar
-                        mode="single"
-                        selected={field.value}
-                        onSelect={field.onChange}
-                        disabled={(date) => date < new Date("1900-01-01")}
-                        initialFocus
-                      />
-                    </PopoverContent>
-                  </Popover>
-                )}
-              />
             </div>
           </CardContent>
         </Card>
@@ -4172,9 +4391,11 @@ export function LoanTermsForm({
                         )}
                     </div>
                     {(() => {
-                      const requiresDueDate = isSpecifiedDueDateCharge(
-                        selectedChargeToAdd?.chargeTimeType
-                      );
+                      const requiresDueDate =
+                        !isSelectedChargeInvoiceIncome &&
+                        isSpecifiedDueDateCharge(
+                          selectedChargeToAdd?.chargeTimeType
+                        );
 
                       return requiresDueDate ? (
                         <div className="space-y-2">
@@ -4213,9 +4434,11 @@ export function LoanTermsForm({
                     type="button"
                     onClick={handleAddCharge}
                     disabled={(() => {
-                      const requiresDueDate = isSpecifiedDueDateCharge(
-                        selectedChargeToAdd?.chargeTimeType
-                      );
+                      const requiresDueDate =
+                        !isSelectedChargeInvoiceIncome &&
+                        isSpecifiedDueDateCharge(
+                          selectedChargeToAdd?.chargeTimeType
+                        );
 
                       return !canEditLoan ||
                         !selectedChargeOption ||
@@ -4397,6 +4620,19 @@ export function LoanTermsForm({
         </Card>
       </div>
 
+      {/* Credit Facility */}
+      {hasCreditFacility && onFacilityChange && (
+        <div className="pt-2">
+          <FacilityToggle
+            fineractClientId={fineractClientId}
+            loanAmount={Number(form.watch("principal") ?? 0)}
+            currencyCode={(initialLoanTemplate as any)?.currency?.code ?? "USD"}
+            onChange={onFacilityChange}
+            onValidityChange={setFacilityValid}
+          />
+        </div>
+      )}
+
       {/* Navigation Buttons */}
       <Card>
         <CardFooter className="flex justify-between border-t border-gray-200 dark:border-gray-800 pt-4">
@@ -4413,7 +4649,7 @@ export function LoanTermsForm({
           <Button
             type="submit"
             className="px-6 transition-all duration-300"
-            disabled={isLoading || isSaving}
+            disabled={isLoading || isSaving || !facilityValid}
           >
             {isSaving ? (
               <>

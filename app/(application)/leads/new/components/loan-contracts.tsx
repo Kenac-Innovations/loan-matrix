@@ -39,6 +39,11 @@ import {
   generateKeyFactsStatementHTML,
   KeyFactsData,
 } from "./key-facts-statement-template";
+import type { FacilityIntent } from "@/components/credit-facility/facility-toggle";
+import {
+  createCreditFacilityForLead,
+  linkLoanToExistingFacility,
+} from "@/app/actions/credit-facility-actions";
 
 function parseFineractErrorResponse(responseText: string): string {
   try {
@@ -100,8 +105,26 @@ interface LoanContractsProps {
   loanTerms?: any;
   loanTemplate?: any;
   contractData?: ContractData;
+  facilityIntent?: FacilityIntent;
   onComplete?: () => void;
   onBack?: () => void;
+}
+
+function resolveLoanScheduleTypeCode(
+  loanScheduleType: string | undefined,
+  options:
+    | Array<{ id?: number; code?: string; value?: string }>
+    | undefined
+) {
+  if (!loanScheduleType) return undefined;
+
+  const exactCodeMatch = options?.find((option) => option.code === loanScheduleType);
+  if (exactCodeMatch?.code) return exactCodeMatch.code;
+
+  const valueMatch = options?.find((option) => option.value === loanScheduleType);
+  if (valueMatch?.code) return valueMatch.code;
+
+  return loanScheduleType;
 }
 
 export function LoanContracts({
@@ -112,6 +135,7 @@ export function LoanContracts({
   loanTerms,
   loanTemplate,
   contractData: initialContractData,
+  facilityIntent,
   onComplete,
   onBack,
 }: LoanContractsProps) {
@@ -1999,6 +2023,10 @@ export function LoanContracts({
       const requestedCharges = Array.isArray(loanTerms.charges)
         ? loanTerms.charges.filter((charge: any) => !isOverdueChargeLike(charge))
         : [];
+      const resolvedLoanScheduleType = resolveLoanScheduleTypeCode(
+        loanTerms.loanScheduleType,
+        loanTemplate?.loanScheduleTypeOptions,
+      );
 
       const loanPayload = {
         productId: loanDetails.productId || loanDetails.product,
@@ -2052,6 +2080,19 @@ export function LoanContracts({
           ? parseInt(loanTerms.interestRateFrequency)
           : 2,
         interestRatePerPeriod: loanTerms.nominalInterestRate || 0,
+        ...(resolvedLoanScheduleType
+          ? { loanScheduleType: resolvedLoanScheduleType }
+          : {}),
+        balloonPaymentAmount: loanTerms.balloonRepaymentAmount ?? 0,
+        allowPartialPeriodInterestCalculation:
+          loanTerms.calculateInterestForExactDays ?? false,
+        allowPartialPeriodInterestCalcualtion:
+          loanTerms.calculateInterestForExactDays ?? false,
+        inArrearsTolerance: loanTerms.arrearsTolerance ?? 0,
+        graceOnInterestCharged: loanTerms.interestFreePeriod ?? 0,
+        graceOnPrincipalPayment: loanTerms.graceOnPrincipalPayment ?? 0,
+        graceOnInterestPayment: loanTerms.graceOnInterestPayment ?? 0,
+        graceOnArrearsAgeing: loanTerms.onArrearsAgeing ?? 0,
         charges: isInvoiceDiscountingLoan
           ? []
           : requestedCharges.map((charge: any) => {
@@ -2086,7 +2127,6 @@ export function LoanContracts({
         clientId: clientId,
         loanType: "individual",
         principal: loanTerms.principal || 0,
-        allowPartialPeriodInterestCalcualtion: false,
       };
 
       console.log("Creating loan with payload:", loanPayload);
@@ -2115,9 +2155,18 @@ export function LoanContracts({
         console.log("Applying invoice discounting charges via add-charge endpoint");
 
         for (const charge of requestedCharges) {
+          const calcCode: string =
+            charge.originalCharge?.chargeCalculationType?.code ?? "";
+          const isPercentage =
+            calcCode.toLowerCase().includes("percent") &&
+            typeof charge.originalCharge?.percentage === "number" &&
+            Number.isFinite(charge.originalCharge.percentage);
+
           const chargePayload: any = {
             chargeId: charge.chargeId,
-            amount: charge.amount,
+            amount: isPercentage
+              ? charge.originalCharge.percentage
+              : charge.amount,
             locale: "en",
           };
 
@@ -2168,6 +2217,30 @@ export function LoanContracts({
         } catch (err) {
           console.error("Error saving loan ID to lead:", err);
           // Don't block the flow
+        }
+
+        // Attach credit facility if officer chose to link one
+        if (facilityIntent && leadId) {
+          try {
+            if (facilityIntent.mode === "create") {
+              const facilityResult = await createCreditFacilityForLead(
+                leadId,
+                facilityIntent.facility
+              );
+              if (!facilityResult.success) {
+                console.error("Credit facility creation failed:", facilityResult.error);
+                toast({ title: "Warning", description: `Loan created, but facility setup failed: ${facilityResult.error}`, variant: "destructive" });
+              }
+            } else if (facilityIntent.mode === "link") {
+              const linkResult = await linkLoanToExistingFacility(leadId, loanPayload.principal);
+              if (!linkResult.success) {
+                console.error("Facility link failed:", linkResult.error);
+                toast({ title: "Warning", description: `Loan created, but facility link failed: ${linkResult.error}`, variant: "destructive" });
+              }
+            }
+          } catch (facilityErr) {
+            console.error("Facility operation error:", facilityErr);
+          }
         }
       }
 

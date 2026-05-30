@@ -5,6 +5,7 @@ import { upsertRepaymentCashLink } from "@/lib/repayment-cash-link";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
 import { getSession } from "@/lib/auth";
 import { getOrgRawCurrencyCode } from "@/lib/currency-utils";
+import { getGlAccountBalance } from "@/lib/gl-balance";
 
 /**
  * POST /api/tellers/[id]/cashiers/[cashierId]/allocate
@@ -198,10 +199,23 @@ export async function POST(
       },
     });
 
-    const vaultBalance = tellerVaultAllocations.reduce(
+    const localVaultBalance = tellerVaultAllocations.reduce(
       (sum, alloc) => sum + alloc.amount,
       0
     );
+
+    // Prefer Fineract GL balance for the teller's vault when a GL account is linked.
+    // Falls back to the local CashAllocation ledger if GL is not configured or Fineract is unreachable.
+    let vaultBalance = localVaultBalance;
+    if (teller.glAccountId) {
+      const glResult = await getGlAccountBalance(teller.glAccountId);
+      if (
+        glResult.source === "fineract_calculated" ||
+        glResult.source === "fineract_empty"
+      ) {
+        vaultBalance = glResult.balance;
+      }
+    }
 
     const cashierAllocsForCheck = await prisma.cashAllocation.findMany({
       where: {

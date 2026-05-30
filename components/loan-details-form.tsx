@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -51,6 +51,10 @@ import {
 import { Calendar } from "@/components/ui/calender";
 import { cn } from "@/lib/utils";
 import { formatCurrency } from "@/lib/format-currency";
+import {
+  buildFineractBusinessCalendarRules,
+  type FineractBusinessCalendar,
+} from "@/lib/fineract-business-calendar";
 
 import type { FirstRepaymentDateConfig } from "@/shared/types/tenant";
 import { InvoiceDiscountingForm } from "@/app/(application)/leads/new/components/invoice-discounting-form";
@@ -265,6 +269,7 @@ interface RepaymentSchedule {
 interface LoanDetailsFormProps {
   clientId: number;
   leadId?: string;
+  businessCalendar?: FineractBusinessCalendar | null;
   onSubmit: (data: LoanDetailsFormData) => void;
   onBack: () => void;
   onNext: (payload?: {
@@ -308,6 +313,7 @@ interface LoanDetailsFormProps {
 export function LoanDetailsForm({
   clientId,
   leadId,
+  businessCalendar,
   onSubmit,
   onBack,
   onNext,
@@ -339,6 +345,10 @@ export function LoanDetailsForm({
     loanInfo: false,
     savingsLinkage: false,
   });
+  const businessCalendarRules = useMemo(
+    () => buildFineractBusinessCalendarRules(businessCalendar),
+    [businessCalendar]
+  );
   const [isInvoiceDiscountingProduct, setIsInvoiceDiscountingProduct] = useState(false);
   const [isCheckingProduct, setIsCheckingProduct] = useState(false);
   const invoiceDiscountingSaveRef = useRef<(() => Promise<boolean>) | null>(null);
@@ -1430,7 +1440,9 @@ export function LoanDetailsForm({
                           selected={field.value}
                           onSelect={field.onChange}
                           disabled={(date) =>
-                            date > new Date() || date < new Date("1900-01-01")
+                            date > new Date() ||
+                            date < new Date("1900-01-01") ||
+                            businessCalendarRules.isDisabled(date)
                           }
                           initialFocus
                         />
@@ -1480,7 +1492,8 @@ export function LoanDetailsForm({
                           }
                           disabled={(date) =>
                             date <
-                            (watchedSubmittedOn || new Date("1900-01-01"))
+                              (watchedSubmittedOn || new Date("1900-01-01")) ||
+                            businessCalendarRules.isDisabled(date)
                           }
                           initialFocus
                         />
@@ -1536,7 +1549,8 @@ export function LoanDetailsForm({
                           }
                           disabled={(date) =>
                             date <=
-                            (watchedDisbursementOn || new Date("1900-01-01"))
+                              (watchedDisbursementOn || new Date("1900-01-01")) ||
+                            businessCalendarRules.isDisabled(date)
                           }
                           initialFocus
                         />

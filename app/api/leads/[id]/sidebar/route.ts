@@ -380,8 +380,8 @@ export async function GET(
       teamMembers,
       validations,
       stageTimes,
-      // Assignment info
-      isSubmitted: lead.loanSubmittedToFineract || false,
+      // Assignment info — RCF leads are considered "submitted" once they have a stage
+      isSubmitted: lead.loanSubmittedToFineract || lead.facilityType === "REVOLVING_CREDIT",
       assignment: {
         userId: lead.assignedToUserId,
         userName: lead.assignedToUserName,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback, ChangeEvent } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, ChangeEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm, Controller } from "react-hook-form";
@@ -112,6 +112,10 @@ import { AddOfficeDialog } from "./add-office-dialogue";
 import { submitClientForm } from "@/app/actions/submit-client-form";
 import { DynamicDatatableContent } from "@/app/(application)/clients/[id]/components/DynamicDatatableContent";
 import {
+  buildFineractBusinessCalendarRules,
+  type FineractBusinessCalendar,
+} from "@/lib/fineract-business-calendar";
+import {
   getInputErrorStyling,
   getSelectErrorStyling,
   hasFieldError,
@@ -204,6 +208,8 @@ const clientFormSchema = z
 
     // Tracking
     currentStep: z.number().default(1),
+    fineractClientId: z.string().optional(),
+    fineractAccountNo: z.string().optional(),
   })
   .refine(
     (data) => {
@@ -432,6 +438,7 @@ interface ClientRegistrationFormProps {
   leadId?: string;
   formData?: ClientFormData;
   externalForm?: any;
+  businessCalendar?: FineractBusinessCalendar | null;
   clientCreatedInFineract?: boolean;
   onClientCreated?: () => void;
   onFormSubmit?: (
@@ -446,12 +453,15 @@ interface ClientRegistrationFormProps {
   isSubmitting?: boolean;
   onAllSectionsComplete?: (isComplete: boolean) => void;
   onLeadIdChange?: (leadId: string) => void;
+  facilityType?: "TERM_LOAN" | "INVOICE_DISCOUNTING" | "REVOLVING_CREDIT";
+  draftUrlBase?: string;
 }
 
 export function ClientRegistrationForm({
   leadId,
   formData,
   externalForm,
+  businessCalendar,
   clientCreatedInFineract = false,
   onClientCreated,
   onFormSubmit,
@@ -460,6 +470,8 @@ export function ClientRegistrationForm({
   setClientCreatedInFineract,
   isSubmitting = false,
   onAllSectionsComplete,
+  facilityType,
+  draftUrlBase = "/leads/new",
 }: ClientRegistrationFormProps) {
   const {
     success,
@@ -478,6 +490,10 @@ export function ClientRegistrationForm({
   const clientSelfieOptionalForPerson =
     !!tenantLocale.clientSelfieOptionalForPerson;
   const documentsOptional = !!tenantLocale.documentsOptional;
+  const businessCalendarRules = useMemo(
+    () => buildFineractBusinessCalendarRules(businessCalendar),
+    [businessCalendar]
+  );
 
   // State for multi-step form
   const [currentStep, setCurrentStep] = useState(1);
@@ -1906,6 +1922,27 @@ export function ClientRegistrationForm({
   // Use external form if provided, otherwise use internal form
   const form = externalForm || internalForm;
 
+  useEffect(() => {
+    const effectiveLeadId = currentLeadId ?? leadId;
+    if (effectiveLeadId) {
+      return;
+    }
+
+    const currentCountryCode = form.getValues("countryCode");
+    const mobileNo = form.getValues("mobileNo");
+    const countryCodeDirty = !!form.formState.dirtyFields?.countryCode;
+
+    // Sync blank/new forms to the tenant locale once it loads,
+    // without overriding an existing lead or a user-made selection.
+    if (!mobileNo && !countryCodeDirty && currentCountryCode !== tenantLocale.countryCode) {
+      form.setValue("countryCode", tenantLocale.countryCode, {
+        shouldDirty: false,
+        shouldTouch: false,
+        shouldValidate: false,
+      });
+    }
+  }, [currentLeadId, leadId, form, tenantLocale.countryCode]);
+
   // Family member form
   const familyMemberForm = useForm<FamilyMemberValues>({
     resolver: zodResolver(familyMemberSchema) as any,
@@ -2614,6 +2651,7 @@ export function ClientRegistrationForm({
           ...formData,
           [fieldName]: value,
           fieldName: fieldName,
+          ...(facilityType ? { facilityType } : {}),
         },
         currentLeadId
       );
@@ -3558,9 +3596,18 @@ export function ClientRegistrationForm({
           });
         }, 100);
 
-        console.log("==========> Setting client lookup status to found");
-        setClientLookupStatus("found");
-        setIsFormDisabled(false);
+        const resolvedLookupClientId = fineractData?.id
+          ? Number(fineractData.id)
+          : undefined;
+
+        if (resolvedLookupClientId) {
+          console.log(
+            "==========> Storing Fineract client ID before draft save:",
+            resolvedLookupClientId
+          );
+          (window as any).fineractClientId = resolvedLookupClientId;
+          setFineractClientId(resolvedLookupClientId);
+        }
 
         // Save the populated form data as a draft in the database
         try {
@@ -3575,7 +3622,15 @@ export function ClientRegistrationForm({
           console.log("==========> Last name value:", formValues.lastname);
 
           // Save as draft which will create/update a lead in the database
-          const saveResult = await handleSaveDraft(formValues);
+          const saveResult = await handleSaveDraft({
+            ...formValues,
+            ...(resolvedLookupClientId && {
+              fineractClientId: String(resolvedLookupClientId),
+            }),
+            ...(fineractData?.accountNo && {
+              fineractAccountNo: fineractData.accountNo,
+            }),
+          } as ClientFormValues);
           console.log("==========> Save result:", saveResult);
 
           if (saveResult.success && saveResult.leadId) {
@@ -3608,15 +3663,15 @@ export function ClientRegistrationForm({
 
         // Store the Fineract client ID FIRST (before setting clientCreatedInFineract)
         // This ensures the useEffect has the client ID when it runs
-        if (fineractData?.id) {
+        if (resolvedLookupClientId) {
           console.log(
             "==========> Storing Fineract client ID:",
-            fineractData.id
+            resolvedLookupClientId
           );
           // Store in a way that can be accessed by the parent component
-          (window as any).fineractClientId = fineractData.id;
+          (window as any).fineractClientId = resolvedLookupClientId;
           // Immediately set the React state for fineractClientId
-          setFineractClientId(Number(fineractData.id));
+          setFineractClientId(resolvedLookupClientId);
           console.log(
             "==========> Stored fineractClientId in window:",
             (window as any).fineractClientId
@@ -3625,54 +3680,59 @@ export function ClientRegistrationForm({
           console.log("==========> No fineractData.id found to store");
         }
 
-        // Mark the client step as completed since we found an existing client
-        console.log("==========> Marking client step as completed");
-        if (setFormCompletionStatus) {
-          setFormCompletionStatus((prev) => ({ ...prev, client: true }));
-        }
-        if (setClientCreatedInFineract) {
-          console.log("==========> Setting clientCreatedInFineract to true");
-          setClientCreatedInFineract(true);
-        } else {
-          console.log(
-            "==========> setClientCreatedInFineract function not available"
-          );
-        }
-
-        // (fineractClientId already stored above)
-        if (!fineractData?.id) {
-          console.log(
-            "==========> No fineractData.id found, cannot store Fineract client ID"
-          );
-        }
-
-        // Determine success message based on data sources
-        const dataSources = [];
-        if (fineractData) dataSources.push("Fineract");
-        if (localData) dataSources.push("Local Database");
-
-        console.log("==========> Showing success message");
-        success({
-          title: "Client Found - Step 1 Complete",
-          description: `Found existing client: ${
-            interlacedData.firstname || ""
-          } ${interlacedData.lastname || ""} (Email: ${
-            interlacedData.emailAddress || "Not provided"
-          }). You can now update client details or proceed to Step 2: Affordability.`,
-        });
-
-        // Directly fetch additional details for the found client
         if (fineractData?.id) {
+          console.log("==========> Setting client lookup status to found");
+          setClientLookupStatus("found");
+          setIsFormDisabled(false);
+
+          // Mark the client step as completed since we found an existing client in Fineract
+          console.log("==========> Marking client step as completed");
+          if (setFormCompletionStatus) {
+            setFormCompletionStatus((prev) => ({ ...prev, client: true }));
+          }
+          if (setClientCreatedInFineract) {
+            console.log("==========> Setting clientCreatedInFineract to true");
+            setClientCreatedInFineract(true);
+          } else {
+            console.log(
+              "==========> setClientCreatedInFineract function not available"
+            );
+          }
+
+          console.log("==========> Showing success message");
+          success({
+            title: "Client Found - Step 1 Complete",
+            description: `Found existing client: ${
+              interlacedData.firstname || ""
+            } ${interlacedData.lastname || ""} (Email: ${
+              interlacedData.emailAddress || "Not provided"
+            }). You can now update client details or proceed to Step 2: Affordability.`,
+          });
+
           console.log(">>> Directly calling fetchAdditionalDetailsForClient after client lookup...");
           fetchAdditionalDetailsForClient(Number(fineractData.id)).catch((err) => {
             console.error("Error fetching additional details after client lookup:", err);
           });
+
+          console.log(
+            "==========> Client lookup completed successfully, returning"
+          );
+          return; // Exit early since we found the client in Fineract
         }
 
         console.log(
-          "==========> Client lookup completed successfully, returning"
+          "==========> Local draft data found without a Fineract client; treating this as new client flow"
         );
-        return; // Exit early since we found the client
+        setClientLookupStatus("not_found");
+        setIsFormDisabled(false);
+        form.setValue("externalId", nationalIdLookup);
+
+        success({
+          title: "Client Not Found In Fineract",
+          description:
+            "We found draft data for this ID in the current tenant, but no matching Fineract client. Review the prefilled details and continue with new client registration if needed.",
+        });
+        return;
       }
 
       // If no data found from either source
@@ -3749,6 +3809,8 @@ export function ClientRegistrationForm({
     try {
       console.log("==========> handleSaveDraft called with data:", data);
       console.log("==========> Email address in data:", data.emailAddress);
+      const resolvedFineractClientId =
+        fineractClientId || (window as any).fineractClientId || undefined;
 
       // Convert data types to match the schema expectations
       const processedData = {
@@ -3771,6 +3833,9 @@ export function ClientRegistrationForm({
         savingsProductId: data.savingsProductId
           ? Number(data.savingsProductId)
           : undefined,
+        ...(resolvedFineractClientId && {
+          fineractClientId: Number(resolvedFineractClientId),
+        }),
       };
 
       console.log("==========> Processed data before save:", processedData);
@@ -3780,7 +3845,7 @@ export function ClientRegistrationForm({
       );
       console.log("==========> Current leadId:", leadId);
 
-      const result = await saveDraft(processedData, leadId);
+      const result = await saveDraft({ ...processedData, ...(facilityType ? { facilityType } : {}) }, leadId);
 
       console.log("==========> Save draft result:", result);
 
@@ -3794,7 +3859,7 @@ export function ClientRegistrationForm({
           window.history.replaceState(
             null,
             "",
-            `/leads/new?id=${result.leadId}`
+            `${draftUrlBase}?id=${result.leadId}`
           );
         }
 
@@ -6143,7 +6208,8 @@ export function ClientRegistrationForm({
                                                 }
                                               }}
                                               disabled={(date) =>
-                                                date < new Date("1900-01-01")
+                                                date < new Date("1900-01-01") ||
+                                                businessCalendarRules.isDisabled(date)
                                               }
                                               initialFocus
                                             />
@@ -7279,16 +7345,17 @@ export function ClientRegistrationForm({
                                           className="w-auto p-0"
                                           align="start"
                                         >
-                                          <Calendar
-                                            mode="single"
-                                            selected={field.value}
-                                            onSelect={field.onChange}
-                                            disabled={(date) =>
-                                              date > new Date() ||
-                                              date < new Date("1900-01-01")
-                                            }
-                                            captionLayout="dropdown"
-                                            initialFocus
+                                            <Calendar
+                                              mode="single"
+                                              selected={field.value}
+                                              onSelect={field.onChange}
+                                              disabled={(date) =>
+                                                date > new Date() ||
+                                                date < new Date("1900-01-01") ||
+                                                businessCalendarRules.isDisabled(date)
+                                              }
+                                              captionLayout="dropdown"
+                                              initialFocus
                                           />
                                         </PopoverContent>
                                       </Popover>
@@ -7441,6 +7508,7 @@ export function ClientRegistrationForm({
                                             fineractClientId:
                                               Number(resolvedClientId),
                                           }),
+                                          ...(facilityType ? { facilityType } : {}),
                                         },
                                         currentLeadId
                                       );
@@ -7585,6 +7653,7 @@ export function ClientRegistrationForm({
                                           entityStakeholders,
                                         entityBankAccountsDraft:
                                           entityBankAccounts,
+                                        ...(facilityType ? { facilityType } : {}),
                                       };
 
                                       // Call API to create lead with client in Fineract
@@ -7662,7 +7731,7 @@ export function ClientRegistrationForm({
                                         window.history.replaceState(
                                           null,
                                           "",
-                                          `/leads/new?id=${result.leadId}`
+                                          `${draftUrlBase}?id=${result.leadId}`
                                         );
                                       }
 

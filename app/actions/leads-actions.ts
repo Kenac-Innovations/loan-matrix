@@ -388,6 +388,8 @@ export async function getLeadsData(
         id: lead.id,
         client:
           `${lead.firstname || ""} ${lead.lastname || ""}`.trim() ||
+          lead.fullname?.trim() ||
+          lead.tradingName?.trim() ||
           "Unknown Client",
         amount,
         type: loanType,
@@ -415,6 +417,7 @@ export async function getLeadsData(
         assignedToUserName: lead.assignedToUserName,
         assignedAt: lead.assignedAt,
         preferredPaymentMethod: lead.preferredPaymentMethod ?? null,
+        facilityType: (lead.facilityType as Lead["facilityType"]) ?? undefined,
         isTopup: loanTerms.isTopup || false,
       };
     });

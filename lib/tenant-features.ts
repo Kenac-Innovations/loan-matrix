@@ -12,3 +12,11 @@ export function isInvoiceDiscountingEnabled(settings: unknown): boolean {
   return getTenantFeatures(settings).hasInvoiceDiscounting === true;
 }
 
+export function isRevolvingCreditEnabled(settings: unknown): boolean {
+  return getTenantFeatures(settings).hasRevolvingCredit === true;
+}
+
+export function isCreditFacilityEnabled(settings: unknown): boolean {
+  return getTenantFeatures(settings).hasCreditFacility === true;
+}
+

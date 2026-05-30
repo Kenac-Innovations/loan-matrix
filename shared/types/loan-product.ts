@@ -715,10 +715,8 @@ export function buildFineractPayload(form: LoanProductFormData): Record<string, 
     if (form.enableAutoRepaymentForDownPayment) payload.enableAutoRepaymentForDownPayment = true;
   }
 
-  // Charges
-  if (form.charges.length) {
-    payload.charges = form.charges.map((c) => ({ id: c.id }));
-  }
+  // Charges — always send the array (empty array tells Fineract to remove all charges)
+  payload.charges = form.charges.map((c) => ({ id: c.id }));
 
   // Accounting
   if (form.accountingRule !== "") {
@@ -751,7 +749,8 @@ export function buildFineractPayload(form: LoanProductFormData): Record<string, 
     }
 
     if (form.advancedAccountingRules) {
-      payload.advancedAccountingRules = true;
+      // Fineract accepts the advanced-accounting mapping arrays, but not the
+      // UI-only toggle flag itself. Mifos UI strips this field before submit.
       if (form.paymentChannelToFundSourceMappings.length)
         payload.paymentChannelToFundSourceMappings = form.paymentChannelToFundSourceMappings;
       if (form.feeToIncomeAccountMappings.length)

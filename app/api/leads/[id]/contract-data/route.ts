@@ -38,8 +38,17 @@ type FineractLoanLike = {
   interestType?: { id?: number; value?: string };
   amortizationType?: { id?: number; value?: string };
   interestCalculationPeriodType?: { id?: number; value?: string };
+  loanScheduleType?: { id?: number; code?: string; value?: string };
   transactionProcessingStrategyCode?: string;
   transactionProcessingStrategyName?: string;
+  allowPartialPeriodInterestCalculation?: boolean;
+  allowPartialPeriodInterestCalcualtion?: boolean;
+  inArrearsTolerance?: number;
+  graceOnPrincipalPayment?: number;
+  graceOnInterestPayment?: number;
+  graceOnInterestCharged?: number;
+  graceOnArrearsAgeing?: number;
+  balloonPaymentAmount?: number;
   interestChargedFromDate?: string;
   isEqualAmortization?: boolean;
   isTopup?: boolean;
@@ -83,6 +92,23 @@ type LoanDetailsLike = {
 };
 
 type LoanTermsLike = ReturnType<typeof mapFineractLoanToLoanTerms>;
+
+function resolveLoanScheduleTypeCode(
+  loanScheduleType: string | undefined,
+  options:
+    | Array<{ id?: number; code?: string; value?: string }>
+    | undefined
+) {
+  if (!loanScheduleType) return undefined;
+
+  const exactCodeMatch = options?.find((option) => option.code === loanScheduleType);
+  if (exactCodeMatch?.code) return exactCodeMatch.code;
+
+  const valueMatch = options?.find((option) => option.value === loanScheduleType);
+  if (valueMatch?.code) return valueMatch.code;
+
+  return loanScheduleType;
+}
 
 function hasMeaningfulValue(value: unknown): boolean {
   if (value === null || value === undefined) return false;
@@ -154,21 +180,28 @@ function mapFineractLoanToLoanTerms(fineractLoan: FineractLoanLike) {
     interestMethod: fineractLoan.interestType?.id?.toString() || "1",
     amortization: fineractLoan.amortizationType?.id?.toString() || "1",
     isEqualAmortization: fineractLoan.isEqualAmortization || false,
+    loanScheduleType:
+      fineractLoan.loanScheduleType?.code ||
+      fineractLoan.loanScheduleType?.value ||
+      "",
     repaymentStrategy:
       fineractLoan.transactionProcessingStrategyCode ||
       fineractLoan.transactionProcessingStrategyName ||
       "",
     interestCalculationPeriod:
       fineractLoan.interestCalculationPeriodType?.id?.toString() || "1",
-    calculateInterestForExactDays: false,
-    arrearsTolerance: 0,
-    interestFreePeriod: 0,
-    graceOnPrincipalPayment: 0,
-    graceOnInterestPayment: 0,
-    onArrearsAgeing: 0,
+    calculateInterestForExactDays:
+      fineractLoan.allowPartialPeriodInterestCalculation ??
+      fineractLoan.allowPartialPeriodInterestCalcualtion ??
+      false,
+    arrearsTolerance: fineractLoan.inArrearsTolerance ?? 0,
+    interestFreePeriod: fineractLoan.graceOnInterestCharged ?? 0,
+    graceOnPrincipalPayment: fineractLoan.graceOnPrincipalPayment ?? 0,
+    graceOnInterestPayment: fineractLoan.graceOnInterestPayment ?? 0,
+    onArrearsAgeing: fineractLoan.graceOnArrearsAgeing ?? 0,
     firstRepaymentOn: getFirstRepaymentFromSchedule(fineractLoan.repaymentSchedule),
     interestChargedFrom: normalizeDateValue(fineractLoan.interestChargedFromDate),
-    balloonRepaymentAmount: 0,
+    balloonRepaymentAmount: fineractLoan.balloonPaymentAmount ?? 0,
     collaterals: [],
     charges: Array.isArray(fineractLoan.charges)
       ? fineractLoan.charges.map((charge) => ({
@@ -338,6 +371,8 @@ function mergeLoanTermsWithFineract(
       fineractLoan.transactionProcessingStrategyName ||
       localLoanTerms?.repaymentStrategy ||
       fineractLoanTerms.repaymentStrategy,
+    loanScheduleType:
+      localLoanTerms?.loanScheduleType || fineractLoanTerms.loanScheduleType,
     interestCalculationPeriod: hasMeaningfulValue(
       fineractLoan.interestCalculationPeriodType?.id
     )
@@ -358,7 +393,9 @@ function mergeLoanTermsWithFineract(
       localLoanTerms?.graceOnInterestPayment ??
       fineractLoanTerms.graceOnInterestPayment,
     onArrearsAgeing:
-      localLoanTerms?.onArrearsAgeing ?? fineractLoanTerms.onArrearsAgeing,
+      localLoanTerms?.onArrearsAgeing ??
+      localLoanTerms?.graceOnArrearsAgeing ??
+      fineractLoanTerms.onArrearsAgeing,
     firstRepaymentOn:
       fineractLoanTerms.firstRepaymentOn || localLoanTerms?.firstRepaymentOn || null,
     interestChargedFrom:
@@ -789,6 +826,10 @@ export async function GET(
         const disbursementDate = loanDetails.disbursementOn
           ? format(new Date(loanDetails.disbursementOn), "dd MMMM yyyy")
           : format(new Date(), "dd MMMM yyyy");
+        const resolvedLoanScheduleType = resolveLoanScheduleTypeCode(
+          loanTerms.loanScheduleType,
+          loanTemplate?.loanScheduleTypeOptions,
+        );
 
         const charges = (loanTerms.charges || [])
           .filter((charge: any) => !isOverdueChargeLike(charge))
@@ -854,6 +895,19 @@ export async function GET(
             ? parseInt(loanTerms.interestRateFrequency)
             : loanTemplate?.interestRateFrequencyType?.id || 2,
           interestRatePerPeriod: loanTerms.nominalInterestRate || 0,
+          ...(resolvedLoanScheduleType
+            ? { loanScheduleType: resolvedLoanScheduleType }
+            : {}),
+          balloonPaymentAmount: loanTerms.balloonRepaymentAmount ?? 0,
+          allowPartialPeriodInterestCalculation:
+            loanTerms.calculateInterestForExactDays ?? false,
+          allowPartialPeriodInterestCalcualtion:
+            loanTerms.calculateInterestForExactDays ?? false,
+          inArrearsTolerance: loanTerms.arrearsTolerance ?? 0,
+          graceOnInterestCharged: loanTerms.interestFreePeriod ?? 0,
+          graceOnPrincipalPayment: loanTerms.graceOnPrincipalPayment ?? 0,
+          graceOnInterestPayment: loanTerms.graceOnInterestPayment ?? 0,
+          graceOnArrearsAgeing: loanTerms.onArrearsAgeing ?? 0,
           charges: charges,
           collateral: [],
           dateFormat: "dd MMMM yyyy",
@@ -861,7 +915,6 @@ export async function GET(
           clientId: lead.fineractClientId,
           loanType: "individual",
           principal: loanTerms.principal || 0,
-          allowPartialPeriodInterestCalcualtion: false,
         };
 
         const scheduleResponse = await fetch(

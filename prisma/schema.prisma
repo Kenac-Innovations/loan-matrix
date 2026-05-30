@@ -36,10 +36,27 @@ model Tenant {
   requiredDocuments      RequiredDocument[]
   invoiceDiscountingCases InvoiceDiscountingCase[]
   invoiceDiscountingInvoices InvoiceDiscountingInvoice[]
-  chargeProducts         ChargeProduct[]
+  invoiceDiscountingCharges InvoiceDiscountingCharge[]
+  chargeProducts             ChargeProduct[]
+  revolvingCreditFacilities  RevolvingCreditFacility[]
 
   @@index([slug])
   @@index([isActive])
+}
+
+model InvoiceDiscountingCharge {
+  id              String   @id @default(cuid())
+  tenantId        String
+  chargeName      String
+  fineractChargeId Int
+  currencyCode    String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, fineractChargeId])
+  @@unique([tenantId, currencyCode])
+  @@index([tenantId])
 }
 
 enum ChargeProductType {
@@ -261,6 +278,7 @@ model Lead {
   fineractAccountNo          String?
   fineractClientId           Int?
   fineractLoanId             Int?
+  fineractSavingsAccountId   Int?
   loanSubmittedToFineract    Boolean             @default(false)
   loanSubmissionDate         DateTime?
   // Assignment tracking for submitted leads
@@ -279,6 +297,7 @@ model Lead {
   invoiceDiscountingInvoices InvoiceDiscountingInvoice[]
   stageApprovals             StageApproval[]
   stateTransitions           StateTransition[]
+  revolving                  RevolvingCreditFacility?
 
   @@index([tenantId, userId])
   @@index([tenantId, status])
@@ -290,6 +309,7 @@ model Lead {
 enum FacilityType {
   TERM_LOAN
   INVOICE_DISCOUNTING
+  REVOLVING_CREDIT
 }
 
 enum InvoiceRecourseType {
@@ -874,6 +894,9 @@ model Teller {
   officeName       String
   name             String
   description      String?
+  glAccountId      Int?             // Optional link to Fineract GL account (branch cash) for this teller's vault
+  glAccountName    String?          // Cached GL account name for display
+  glAccountCode    String?          // Cached GL account code
   status           String           @default("PENDING") // PENDING, ACTIVE, CLOSED
   startDate        DateTime
   endDate          DateTime?
@@ -1284,4 +1307,78 @@ model RepaymentCashLink {
   @@index([tenantId, transactionType])
   @@index([tenantId, isCash])
   @@index([tenantId, fineractAllocationId])
+}
+
+enum RevolvingCreditDrawdownStatus {
+  REQUESTED
+  APPROVED
+  DISBURSED
+  REJECTED
+}
+
+model RevolvingCreditFacility {
+  id                       String                    @id @default(cuid())
+  leadId                   String                    @unique
+  tenantId                 String
+  creditLimit              Float
+  availableBalance         Float
+  fineractSavingsAccountId Int
+  fineractSavingsAccountNo String?
+  savingsProductId         Int
+  maxDrawdowns             Int                       @default(10)
+  activatedAt              DateTime                  @default(now())
+  createdAt                DateTime                  @default(now())
+  updatedAt                DateTime                  @updatedAt
+  lead                     Lead                      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  tenant                   Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  drawdowns                RevolvingCreditDrawdown[]
+
+  @@index([tenantId])
+}
+
+model RevolvingCreditDrawdown {
+  id                    String                        @id @default(cuid())
+  facilityId            String
+  tenantId              String
+  requestedAmount       Float
+  approvedAmount        Float?
+  disbursedAmount       Float?
+  status                RevolvingCreditDrawdownStatus @default(REQUESTED)
+  requestedByUserId     String
+  requestedByUserName   String?
+  approvedByUserId      String?
+  approvedByUserName    String?
+  disbursedByUserId     String?
+  note                  String?
+  fineractTransactionId String?
+  requestedAt           DateTime                      @default(now())
+  approvedAt            DateTime?
+  disbursedAt           DateTime?
+  rejectedAt            DateTime?
+  rejectionReason       String?
+  createdAt             DateTime                      @default(now())
+  updatedAt             DateTime                      @updatedAt
+  facility              RevolvingCreditFacility       @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+  repayments            RevolvingCreditRepayment[]
+
+  @@index([facilityId])
+  @@index([tenantId])
+}
+
+model RevolvingCreditRepayment {
+  id                    String                  @id @default(cuid())
+  drawdownId            String
+  facilityId            String
+  tenantId              String
+  amount                Float
+  recordedByUserId      String
+  recordedByUserName    String?
+  fineractTransactionId String?
+  note                  String?
+  repaidAt              DateTime                @default(now())
+  createdAt             DateTime                @default(now())
+  drawdown              RevolvingCreditDrawdown @relation(fields: [drawdownId], references: [id], onDelete: Cascade)
+
+  @@index([facilityId])
+  @@index([drawdownId])
 }

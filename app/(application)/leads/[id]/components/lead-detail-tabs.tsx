@@ -36,6 +36,7 @@ import { LeadCommunications } from "./lead-communications";
 import { LeadCDE } from "./lead-cde";
 import { LeadNotes } from "./lead-notes";
 import { LeadAppraisals } from "./lead-appraisals";
+import { FacilityBanner } from "@/components/credit-facility/facility-banner";
 
 interface TabCheck {
   id: string;
@@ -63,6 +64,8 @@ interface LeadDetailTabsProps {
   loanDocuments: any[];
   readOnly: boolean;
   canEditPendingLoanApplication: boolean;
+  facilityType?: string | null; // kept for API compatibility; used inside ComprehensiveLeadDetails via fetch
+  hasCreditFacility?: boolean;
 }
 
 const TAB_ICON_MAP: Record<string, typeof FileText> = {
@@ -76,7 +79,7 @@ const TAB_ICON_MAP: Record<string, typeof FileText> = {
   appraisal: ClipboardCheck,
 };
 
-const TABS = [
+const BASE_TABS = [
   { value: "details", label: "Details", shortLabel: "Details" },
   { value: "additional-info", label: "Additional Info", shortLabel: "Info" },
   { value: "timeline", label: "Timeline", shortLabel: "Timeline" },
@@ -135,7 +138,9 @@ export function LeadDetailTabs({
   loanDocuments,
   readOnly,
   canEditPendingLoanApplication,
+  hasCreditFacility = false,
 }: LeadDetailTabsProps) {
+  const TABS = BASE_TABS;
   const [tabValidations, setTabValidations] = useState<
     Record<string, TabValidation>
   >({});
@@ -247,6 +252,9 @@ export function LeadDetailTabs({
 
       <TabsContent value="details" className="mt-4">
         <ValidationBanner validation={tabValidations["details"]} />
+        {hasCreditFacility && fineractLoanId && fineractClientId && (
+          <FacilityBanner fineractLoanId={fineractLoanId} fineractClientId={fineractClientId} />
+        )}
         <ComprehensiveLeadDetails
           leadId={leadId}
           canEditPendingLoanApplication={canEditPendingLoanApplication}

@@ -41,6 +41,9 @@ const clientFormSchema = z.object({
   savingsProductId: z.number().optional(),
   savingsProductName: z.string().optional(),
   currentStep: z.number().default(1),
+  fineractClientId: z.number().optional(),
+  fineractAccountNo: z.string().optional(),
+  facilityType: z.enum(["TERM_LOAN", "INVOICE_DISCOUNTING", "REVOLVING_CREDIT"]).optional(),
 });
 
 // Family member schema
@@ -88,6 +91,9 @@ export async function saveDraft(
       // Convert savingsProductId to number if it exists
       savingsProductId: data.savingsProductId
         ? Number(data.savingsProductId)
+        : undefined,
+      fineractClientId: data.fineractClientId
+        ? Number(data.fineractClientId)
         : undefined,
     };
 
@@ -152,6 +158,17 @@ export async function saveDraft(
           savingsProductId: validatedData.savingsProductId || undefined,
           savingsProductName: validatedData.savingsProductName,
           currentStep: validatedData.currentStep,
+          ...(validatedData.fineractClientId !== undefined && {
+            fineractClientId: validatedData.fineractClientId,
+            clientCreatedInFineract: true,
+            clientCreationDate: new Date(),
+          }),
+          ...(validatedData.fineractAccountNo !== undefined && {
+            fineractAccountNo: validatedData.fineractAccountNo,
+          }),
+          ...(validatedData.facilityType !== undefined && {
+            facilityType: validatedData.facilityType,
+          }),
           status: "DRAFT",
         },
       });
@@ -200,6 +217,15 @@ export async function saveDraft(
           savingsProductId: validatedData.savingsProductId || undefined,
           savingsProductName: validatedData.savingsProductName,
           currentStep: validatedData.currentStep,
+          ...(validatedData.fineractClientId !== undefined && {
+            fineractClientId: validatedData.fineractClientId,
+            clientCreatedInFineract: true,
+            clientCreationDate: new Date(),
+          }),
+          ...(validatedData.fineractAccountNo !== undefined && {
+            fineractAccountNo: validatedData.fineractAccountNo,
+          }),
+          facilityType: validatedData.facilityType ?? "TERM_LOAN",
           status: "DRAFT",
         },
       });

@@ -83,6 +83,8 @@ export async function POST(
         graceOnPrincipalPayment: data.graceOnPrincipalPayment,
         graceOnInterestPayment: data.graceOnInterestPayment,
         onArrearsAgeing: data.onArrearsAgeing,
+        graceOnArrearsAgeing:
+          data.graceOnArrearsAgeing ?? data.onArrearsAgeing,
         firstRepaymentOn: data.firstRepaymentOn,
         interestChargedFrom: data.interestChargedFrom,
         balloonRepaymentAmount: data.balloonRepaymentAmount,

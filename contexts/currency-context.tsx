@@ -33,6 +33,8 @@ export interface TenantLocale {
   clientSelfieOptionalForPerson?: boolean;
   createLeadSignaturesOnContractOptional?: boolean;
   documentsOptional?: boolean;
+  leadAffordabilityOptional?: boolean;
+  hasRevolvingCredit?: boolean;
 }
 
 const DEFAULT_LOCALE: TenantLocale = {
@@ -174,6 +176,8 @@ export function CurrencyProvider({ children }: { children: ReactNode }) {
             createLeadSignaturesOnContractOptional:
               !!localeData.createLeadSignaturesOnContractOptional,
             documentsOptional: !!localeData.documentsOptional,
+            leadAffordabilityOptional: !!localeData.leadAffordabilityOptional,
+            hasRevolvingCredit: !!localeData.hasRevolvingCredit,
           });
         } catch {
           console.error("Error parsing tenant locale");

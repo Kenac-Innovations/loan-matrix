@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getFineractServiceWithSession } from "@/lib/fineract-api";
 import { prisma } from "@/lib/prisma";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
-import { getOrgDefaultCurrencyCode, getOrgRawCurrencyCode } from "@/lib/currency-utils";
+import { getOrgDefaultCurrencyCode } from "@/lib/currency-utils";
+import { getTellerVaultDisplay } from "@/lib/gl-balance";
 
 /**
  * GET /api/tellers/[id]
@@ -132,65 +133,19 @@ export async function GET(
       return NextResponse.json({ error: "Teller not found" }, { status: 404 });
     }
 
-    // Calculate balances - available must DECREASE when loans are disbursed, and handle deposits
-    // allocatedToCashiers = cash currently in cashier tills; use netCash (current balance), not sumCashAllocation (cumulative)
-    const currency = await getOrgDefaultCurrencyCode();
-    
-    const vaultBalance = dbTeller.cashAllocations.reduce(
-      (sum, alloc) => sum + alloc.amount,
-      0
-    );
-    
-    // Compute allocatedToCashiers: always include local DB allocations so we never undercount
-    // (Fineract may return 0 due to currency/timing; local allocations are source of truth for our allocations)
-    const cashierAllocationsForTeller = await prisma.cashAllocation.findMany({
-      where: {
-        tellerId: dbTeller.id,
-        tenantId: tenant.id,
-        cashierId: { not: null },
-        status: "ACTIVE",
-        notes: { not: { contains: "Variance" } },
-      },
-    });
-    const localAllocatedToCashiers = (() => {
-      const positiveSum = cashierAllocationsForTeller.reduce(
-        (sum, alloc) => sum + (alloc.amount > 0 ? alloc.amount : 0),
-        0
-      );
-      const netSum = cashierAllocationsForTeller.reduce((sum, alloc) => sum + alloc.amount, 0);
-      return Math.max(positiveSum, netSum);
-    })();
+    // Vault & available balance come *only* from the Fineract GL account.
+    // When the GL is missing or Fineract is unreachable we return nulls so the
+    // UI can render NaN ("—") rather than a blended/local value.
+    const orgCurrency = await getOrgDefaultCurrencyCode();
+    const vaultDisplay = await getTellerVaultDisplay(dbTeller);
+    const vaultBalance = vaultDisplay.vaultBalance;
+    const availableBalance = vaultDisplay.availableBalance;
+    const vaultBalanceSource = vaultDisplay.vaultBalanceSource;
+    const currency = vaultDisplay.currency || orgCurrency;
 
-    let allocatedToCashiers = localAllocatedToCashiers;
-    if (dbTeller.fineractTellerId) {
-      try {
-        const fineractService = await getFineractServiceWithSession();
-        const fineractCashiers = await fineractService.getCashiers(dbTeller.fineractTellerId);
-        let fineractAllocated = 0;
-        for (const fc of fineractCashiers) {
-          try {
-            const rawCurrency = await getOrgRawCurrencyCode();
-            const summary = await fineractService.getCashierSummaryAndTransactions(
-              dbTeller.fineractTellerId,
-              fc.id,
-              rawCurrency
-            );
-            fineractAllocated += summary.netCash ?? summary.sumCashAllocation ?? 0;
-          } catch (err) {
-            console.error(`Error getting Fineract summary for cashier ${fc.id}:`, err);
-          }
-        }
-        // Use the larger of Fineract or local to avoid undercounting (e.g. when Fineract returns 0)
-        allocatedToCashiers = Math.max(localAllocatedToCashiers, fineractAllocated);
-      } catch (err) {
-        console.error("Error fetching Fineract cashier balances, using local DB:", err);
-        // allocatedToCashiers already set from local
-      }
-    }
-
-    const availableBalance = vaultBalance - allocatedToCashiers;
-
-    // Prepare base response with database data
+    // Prepare base response with database data.
+    // `vaultBalance`/`availableBalance` are `null` when no GL is configured or
+    // Fineract is unreachable — the UI displays "—" in that case.
     const baseResponse = {
       id: dbTeller.id,
       name: dbTeller.name,
@@ -200,13 +155,17 @@ export async function GET(
       status: dbTeller.status,
       startDate: dbTeller.startDate,
       endDate: dbTeller.endDate,
-      currentAllocation: {
-        amount: availableBalance, // Show available balance, not vault balance
-        currency: currency,
-      },
-      vaultBalance: vaultBalance,
-      availableBalance: availableBalance,
-      allocatedToCashiers: allocatedToCashiers,
+      glAccountId: dbTeller.glAccountId,
+      glAccountName: dbTeller.glAccountName,
+      glAccountCode: dbTeller.glAccountCode,
+      currentAllocation:
+        availableBalance != null
+          ? { amount: availableBalance, currency }
+          : null,
+      vaultBalance,
+      vaultBalanceSource,
+      glUnavailableReason: vaultDisplay.glUnavailableReason,
+      availableBalance,
       activeCashiers: dbTeller.cashiers.length,
       cashAllocations: dbTeller.cashAllocations,
       cashiers: dbTeller.cashiers,
@@ -232,9 +191,9 @@ export async function GET(
           officeName: fineractTeller.officeName || dbTeller.officeName,
           status: fineractTeller.status || dbTeller.status,
           vaultBalance: baseResponse.vaultBalance,
-          allocatedToCashiers: baseResponse.allocatedToCashiers,
           availableBalance: baseResponse.availableBalance,
           currentAllocation: baseResponse.currentAllocation,
+          vaultBalanceSource: baseResponse.vaultBalanceSource,
         });
       } catch (error) {
         console.error("Error fetching from Fineract:", error);
@@ -307,6 +266,12 @@ export async function PUT(
         endDate: body.endDate ? new Date(body.endDate) : null,
         status: body.status,
         isActive: body.isActive !== undefined ? body.isActive : true,
+        ...(body.bankId !== undefined && { bankId: body.bankId || null }),
+        ...(body.glAccountId !== undefined && {
+          glAccountId: body.glAccountId ? parseInt(body.glAccountId) : null,
+          glAccountName: body.glAccountName || null,
+          glAccountCode: body.glAccountCode || null,
+        }),
       },
     });
 

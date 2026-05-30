@@ -68,6 +68,8 @@ import { LoanTermsForm } from "@/app/(application)/leads/new/components/loan-ter
 import { RepaymentScheduleForm } from "@/app/(application)/leads/new/components/repayment-schedule-form";
 import { LoanContracts } from "@/app/(application)/leads/new/components/loan-contracts";
 import { toast } from "@/components/ui/use-toast";
+import type { FineractBusinessCalendar } from "@/lib/fineract-business-calendar";
+import type { FacilityIntent } from "@/components/credit-facility/facility-toggle";
 
 
 // Define the type for the client form data
@@ -250,7 +252,9 @@ export function NewLeadForm() {
   const { currencyCode, currencySymbol, locale: tenantLocale } = useCurrency();
   const skipAffordabilityForCompanies =
     !!tenantLocale.skipAffordabilityForCompanies;
+  const isAffordabilityOptional = !!tenantLocale.leadAffordabilityOptional;
   const [hideAffordability, setHideAffordability] = useState(false);
+  const [isRevolvingCredit, setIsRevolvingCredit] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [affordabilityResult, setAffordabilityResult] =
     useState<AffordabilityResult | null>(null);
@@ -275,8 +279,12 @@ export function NewLeadForm() {
   const [clientCreatedInFineract, setClientCreatedInFineract] = useState(false);
   const [fineractClientId, setFineractClientId] = useState<number | null>(null);
   const [loanProductId, setLoanProductId] = useState<number | null>(null);
+  const [refinanceLoanId, setRefinanceLoanId] = useState<string | null>(() =>
+    searchParams?.get("refinanceLoanId") || null
+  );
   const [allClientSectionsComplete, setAllClientSectionsComplete] =
     useState(false);
+  const [facilityIntent, setFacilityIntent] = useState<FacilityIntent>(null);
   const [repaymentSchedule, setRepaymentSchedule] = useState<any>(null);
   const [loanDetails, setLoanDetails] = useState<any>(null);
   const [loanTerms, setLoanTerms] = useState<any>(null);
@@ -338,10 +346,10 @@ export function NewLeadForm() {
     );
   };
 
-  const tabsCount = hideAffordability ? 5 : 6;
-  const tabsGridClass = hideAffordability
-    ? "grid-cols-5 lg:grid-cols-5"
-    : "grid-cols-6 lg:grid-cols-6";
+  const effectiveTabCount = hideAffordability
+    ? (isRevolvingCredit ? 4 : 5)
+    : (isRevolvingCredit ? 5 : 6);
+  const tabsGridClass = `grid-cols-${effectiveTabCount} lg:grid-cols-${effectiveTabCount}`;
 
   const handleWipeLead = () => {
     setCurrentLeadId(null);
@@ -369,7 +377,7 @@ export function NewLeadForm() {
 
     form.reset();
 
-    window.history.replaceState(null, "", "/leads/new");
+    window.history.replaceState(null, "", "/leads/new/loan");
 
     setShowWipeConfirm(false);
 
@@ -392,6 +400,22 @@ export function NewLeadForm() {
         console.log("Setting currentLeadId to:", leadId);
         setCurrentLeadId(leadId);
 
+        // If this is a refinance lead (created upfront), skip client/affordability steps
+        const refinanceLoanIdParam = searchParams?.get("refinanceLoanId");
+        const tabParam = searchParams?.get("tab");
+        if (refinanceLoanIdParam) {
+          setRefinanceLoanId(refinanceLoanIdParam);
+          setClientCreatedInFineract(true);
+          setFormCompletionStatus((prev) => ({
+            ...prev,
+            client: true,
+            affordability: true,
+          }));
+          if (tabParam === "loan") {
+            setActiveTab("loan");
+          }
+        }
+
         // Store fineractClientId locally for use in subsequent calls
         let loadedFineractClientId: number | null = null;
 
@@ -407,6 +431,9 @@ export function NewLeadForm() {
                 "Loaded fineractClientId from lead:",
                 leadData.fineractClientId,
               );
+            }
+            if (leadData.facilityType === "REVOLVING_CREDIT") {
+              setIsRevolvingCredit(true);
             }
             // Also check window for fineractClientId (set by client registration form)
             if ((window as any).fineractClientId) {
@@ -564,6 +591,17 @@ export function NewLeadForm() {
                       amount: charge.amount,
                       dueDate: charge.dueDate,
                     }));
+                  const resolvedLoanScheduleType = !loadedLoanTerms.loanScheduleType
+                    ? undefined
+                    : templateData?.loanScheduleTypeOptions?.find(
+                        (option: any) =>
+                          option.code === loadedLoanTerms.loanScheduleType,
+                      )?.code ||
+                      templateData?.loanScheduleTypeOptions?.find(
+                        (option: any) =>
+                          option.value === loadedLoanTerms.loanScheduleType,
+                      )?.code ||
+                      loadedLoanTerms.loanScheduleType;
 
                   const payload = {
                     productId: loadedProductId,
@@ -627,6 +665,25 @@ export function NewLeadForm() {
                         : templateData?.interestRateFrequencyType?.id || 2,
                     interestRatePerPeriod:
                       loadedLoanTerms.nominalInterestRate || 0,
+                    ...(resolvedLoanScheduleType
+                      ? { loanScheduleType: resolvedLoanScheduleType }
+                      : {}),
+                    balloonPaymentAmount:
+                      loadedLoanTerms.balloonRepaymentAmount ?? 0,
+                    allowPartialPeriodInterestCalculation:
+                      loadedLoanTerms.calculateInterestForExactDays ?? false,
+                    allowPartialPeriodInterestCalcualtion:
+                      loadedLoanTerms.calculateInterestForExactDays ?? false,
+                    inArrearsTolerance:
+                      loadedLoanTerms.arrearsTolerance ?? 0,
+                    graceOnInterestCharged:
+                      loadedLoanTerms.interestFreePeriod ?? 0,
+                    graceOnPrincipalPayment:
+                      loadedLoanTerms.graceOnPrincipalPayment ?? 0,
+                    graceOnInterestPayment:
+                      loadedLoanTerms.graceOnInterestPayment ?? 0,
+                    graceOnArrearsAgeing:
+                      loadedLoanTerms.onArrearsAgeing ?? 0,
                     charges: charges,
                     collateral: [],
                     dateFormat: "dd MMMM yyyy",
@@ -634,7 +691,6 @@ export function NewLeadForm() {
                     clientId: loadedFineractClientId,
                     loanType: "individual",
                     principal: loadedLoanTerms.principal || 0,
-                    allowPartialPeriodInterestCalcualtion: false,
                   };
 
                   const scheduleResponse = await fetch(
@@ -677,7 +733,28 @@ export function NewLeadForm() {
           }
         }
       } else {
-        console.log("No lead ID found, starting fresh lead");
+        const refinanceLoanIdParam = searchParams?.get("refinanceLoanId");
+        const fineractClientIdParam = searchParams?.get("fineractClientId");
+        const tabParam = searchParams?.get("tab");
+
+        if (refinanceLoanIdParam && fineractClientIdParam) {
+          const parsedClientId = parseInt(fineractClientIdParam, 10);
+          if (!isNaN(parsedClientId)) {
+            setRefinanceLoanId(refinanceLoanIdParam);
+            setFineractClientId(parsedClientId);
+            setClientCreatedInFineract(true);
+            setFormCompletionStatus((prev) => ({
+              ...prev,
+              client: true,
+              affordability: true,
+            }));
+            if (tabParam === "loan") {
+              setActiveTab("loan");
+            }
+          }
+        } else {
+          console.log("No lead ID found, starting fresh lead");
+        }
       }
       console.log("=== LOAD LEAD DATA END ===");
     };
@@ -695,11 +772,16 @@ export function NewLeadForm() {
       return;
     }
 
+    if (isAffordabilityOptional) {
+      setFormCompletionStatus((prev) => ({ ...prev, affordability: true }));
+      return;
+    }
+
     if (affordabilityAutoSkipped) {
       setFormCompletionStatus((prev) => ({ ...prev, affordability: false }));
       setAffordabilityAutoSkipped(false);
     }
-  }, [hideAffordability, activeTab, affordabilityAutoSkipped]);
+  }, [hideAffordability, isAffordabilityOptional, activeTab, affordabilityAutoSkipped]);
 
   // Debug state changes
   useEffect(() => {
@@ -819,6 +901,14 @@ export function NewLeadForm() {
       notes: "",
     },
   });
+  const selectedOfficeId = form.watch("officeId");
+  const businessCalendarEndpoint = selectedOfficeId
+    ? `/api/fineract/business-calendar?officeId=${encodeURIComponent(selectedOfficeId)}`
+    : null;
+  const { data: businessCalendarData } = useSWR<FineractBusinessCalendar>(
+    businessCalendarEndpoint,
+    fetcher,
+  );
 
   useEffect(() => {
     const updateAffordabilityVisibility = (legalFormId: unknown) => {
@@ -1087,7 +1177,7 @@ export function NewLeadForm() {
         console.log("==========> Updating URL with leadId:", result.leadId);
         setCurrentLeadId(result.leadId);
         // Update URL with the new lead ID using replace to avoid history clutter
-        window.history.replaceState(null, "", `/leads/new?id=${result.leadId}`);
+        window.history.replaceState(null, "", `/leads/new/loan?id=${result.leadId}`);
       } else {
         console.log("==========> Keeping existing leadId:", currentLeadId);
       }
@@ -1190,8 +1280,12 @@ export function NewLeadForm() {
   // Check if next button should be disabled
   const isNextButtonDisabled = (currentTab: string) => {
     const tabOrder = hideAffordability
-      ? ["client", "loan", "terms", "schedule", "contracts"]
-      : ["client", "affordability", "loan", "terms", "schedule", "contracts"];
+      ? (isRevolvingCredit
+          ? ["client", "loan", "terms", "contracts"]
+          : ["client", "loan", "terms", "schedule", "contracts"])
+      : (isRevolvingCredit
+          ? ["client", "affordability", "loan", "terms", "contracts"]
+          : ["client", "affordability", "loan", "terms", "schedule", "contracts"]);
     const currentIndex = tabOrder.indexOf(currentTab);
 
     // Disable if any previous tab is not completed
@@ -1361,6 +1455,7 @@ export function NewLeadForm() {
                   </Badge>
                 )}
               </TabsTrigger>
+              {!isRevolvingCredit && (
               <TabsTrigger
                 value="schedule"
                 disabled
@@ -1379,6 +1474,7 @@ export function NewLeadForm() {
                   </Badge>
                 )}
               </TabsTrigger>
+              )}
               <TabsTrigger
                 value="contracts"
                 disabled
@@ -1413,23 +1509,20 @@ export function NewLeadForm() {
                     leadId={currentLeadId || undefined}
                     formData={clientFormData}
                     externalForm={form}
+                    businessCalendar={businessCalendarData ?? null}
                     onFormSubmit={onSubmit}
                     clientCreatedInFineract={clientCreatedInFineract}
                     setFormCompletionStatus={setFormCompletionStatus}
                     setClientCreatedInFineract={setClientCreatedInFineract}
                     isSubmitting={isSubmitting}
                     onAllSectionsComplete={setAllClientSectionsComplete}
+                    draftUrlBase="/leads/new/loan"
                     onLeadIdChange={(newLeadId) => {
                       console.log(
                         "==========> Lead ID propagated from ClientRegistrationForm:",
                         newLeadId,
                       );
                       setCurrentLeadId(newLeadId);
-                      window.history.replaceState(
-                        null,
-                        "",
-                        `/leads/new?id=${newLeadId}`,
-                      );
                     }}
                     onClientCreated={() => {
                       setClientCreatedInFineract(true);
@@ -1513,6 +1606,7 @@ export function NewLeadForm() {
                       clientId={fineractClientId}
                       leadId={currentLeadId || undefined}
                       currentTermsProductId={loanProductId}
+                      businessCalendar={businessCalendarData ?? null}
                       onSubmit={(data) => {
                         console.log("Loan details submitted:", data);
                         // Handle loan details submission
@@ -1658,7 +1752,9 @@ export function NewLeadForm() {
                       clientId={fineractClientId || undefined}
                       productId={loanProductId || undefined}
                       leadId={currentLeadId || undefined}
+                      businessCalendar={businessCalendarData ?? null}
                       ignoreSavedTermsOnLoad={ignoreSavedTermsForCurrentProduct}
+                      initialLoanIdToClose={refinanceLoanId ?? undefined}
                       onSubmit={(data) => {
                         console.log("Loan terms submitted:", data);
                         // Update loanTerms state with submitted data including charges
@@ -1688,6 +1784,8 @@ export function NewLeadForm() {
                       }}
                       sharedFirstRepaymentOn={sharedFirstRepaymentOn}
                       onFirstRepaymentDateChange={setSharedFirstRepaymentOn}
+                      fineractClientId={fineractClientId}
+                      onFacilityChange={setFacilityIntent}
                     />
                   ) : (
                     <div className="text-center py-8">
@@ -1711,7 +1809,7 @@ export function NewLeadForm() {
             </TabsContent>
 
             {/* Repayment Schedule Tab */}
-            <TabsContent value="schedule" className="mt-0" forceMount>
+            {!isRevolvingCredit && <TabsContent value="schedule" className="mt-0" forceMount>
               <Card className="px-2 py-2 lg:px-6 lg:py-6">
                 <CardContent className="p-2 lg:p-6">
                   <RepaymentScheduleForm
@@ -1740,7 +1838,7 @@ export function NewLeadForm() {
                   />
                 </CardContent>
               </Card>
-            </TabsContent>
+            </TabsContent>}
 
             {/* Loan Contracts Tab */}
             <TabsContent value="contracts" className="mt-0" forceMount>
@@ -1760,6 +1858,7 @@ export function NewLeadForm() {
                       loanDetails={loanDetails}
                       loanTerms={loanTerms}
                       loanTemplate={loanTemplateData}
+                      facilityIntent={facilityIntent}
                       onBack={() => setActiveTab("schedule")}
                       onComplete={() => {
                         setFormCompletionStatus((prev) => ({

@@ -2,6 +2,39 @@ import { NextRequest, NextResponse } from "next/server";
 import { fetchFineractAPI } from "@/lib/api";
 import { hasSuperAdminServer } from "@/lib/authorization";
 
+function getErrorMessage(error: unknown, fallback: string) {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+  return fallback;
+}
+
+function getErrorStatus(error: unknown) {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "status" in error &&
+    typeof (error as { status?: unknown }).status === "number"
+  ) {
+    const status = (error as { status: number }).status;
+    if (status >= 400 && status < 600) {
+      return status;
+    }
+  }
+  return 500;
+}
+
+function getErrorDetails(error: unknown) {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "errorData" in error
+  ) {
+    return (error as { errorData?: unknown }).errorData ?? null;
+  }
+  return null;
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -14,7 +47,25 @@ export async function GET(
       return NextResponse.json({ error: "Invalid client ID" }, { status: 400 });
     }
 
-    const data = await fetchFineractAPI(`/clients/${clientId}`);
+    const searchParams = request.nextUrl.searchParams;
+    const template = searchParams.get("template");
+    const staffInSelectedOfficeOnly = searchParams.get(
+      "staffInSelectedOfficeOnly"
+    );
+
+    const query = new URLSearchParams();
+    if (template) {
+      query.set("template", template);
+    }
+    if (staffInSelectedOfficeOnly) {
+      query.set("staffInSelectedOfficeOnly", staffInSelectedOfficeOnly);
+    }
+
+    const endpoint = query.size
+      ? `/clients/${clientId}?${query.toString()}`
+      : `/clients/${clientId}`;
+
+    const data = await fetchFineractAPI(endpoint);
     return NextResponse.json(data);
   } catch (error: unknown) {
     console.error("Failed to get client:", error);
@@ -51,20 +102,12 @@ export async function PUT(
     return NextResponse.json(data);
   } catch (error: unknown) {
     console.error("Failed to update client:", error);
-    const message =
-      typeof error?.message === "string" && error.message
-        ? error.message
-        : "Failed to update client";
-    const status =
-      typeof error?.status === "number" && error.status >= 400 && error.status < 600
-        ? error.status
-        : 500;
     return NextResponse.json(
       {
-        error: message,
-        details: error?.errorData ?? null,
+        error: getErrorMessage(error, "Failed to update client"),
+        details: getErrorDetails(error),
       },
-      { status }
+      { status: getErrorStatus(error) }
     );
   }
 }

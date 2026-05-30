@@ -1,18 +1,17 @@
 "use client";
 
 import { useCurrency } from "@/contexts/currency-context";
-
 import useSWR from 'swr';
-import Link from "next/link";
 import {
   CreditCard,
   DollarSign,
   Calendar,
   AlertCircle,
   TrendingUp,
-  ExternalLink,
+  ChevronRight,
   FileText,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import {
   Card,
   CardContent,
@@ -40,19 +39,19 @@ interface FineractLoan {
   approvedPrincipal: number;
   interestRatePerPeriod: number;
   numberOfRepayments: number;
+  currency?: {
+    code: string;
+  };
   status: {
     id: number;
     code: string;
     value: string;
     active: boolean;
     closed: boolean;
-    overpaid?: boolean;
-    pendingApproval?: boolean;
-    waitingForDisbursal?: boolean;
-    closedObligationsMet?: boolean;
-    closedWrittenOff?: boolean;
-    closedRescheduled?: boolean;
   };
+  displayStatus: string;
+  chargedOff?: boolean;
+  inArrears?: boolean;
   timeline: {
     submittedOnDate: string;
     approvedOnDate?: string;
@@ -114,10 +113,42 @@ interface RawClientLoan {
   };
 }
 
+interface ClientLoanSequenceItem {
+  id: number;
+  timeline?: {
+    submittedOnDate?: string;
+    approvedOnDate?: string;
+    actualDisbursementDate?: string;
+    expectedDisbursementDate?: string;
+  };
+}
+
+const getLoanSequenceSortTime = (loan: ClientLoanSequenceItem): number => {
+  const candidateDates = [
+    loan.timeline?.submittedOnDate,
+    loan.timeline?.approvedOnDate,
+    loan.timeline?.actualDisbursementDate,
+    loan.timeline?.expectedDisbursementDate,
+  ];
+
+  for (const value of candidateDates) {
+    if (typeof value === "string" && value) {
+      const parsed = new Date(value).getTime();
+      if (!Number.isNaN(parsed)) {
+        return parsed;
+      }
+    }
+  }
+
+  return Number.MAX_SAFE_INTEGER;
+};
+
 // Simple fetcher for SWR
 const fetcher = (url: string) => fetch(url).then(res => res.json());
 
 export function ClientLoans({ clientId }: ClientLoansProps) {
+  const router = useRouter();
+
   // Use accounts endpoint to get loanAccounts for accuracy
   const { data, error, isLoading } = useSWR(`/api/fineract/clients/${clientId}/accounts`, fetcher);
 
@@ -157,50 +188,63 @@ export function ClientLoans({ clientId }: ClientLoansProps) {
       return null;
     };
 
-    // Filter by disbursement date, falling back to submission date for undisbursed loans
     return rawLoans
       .filter((loan: any) => {
         const date = parseFineractDate(loan.timeline?.actualDisbursementDate)
           ?? parseFineractDate(loan.timeline?.submittedOnDate);
         return !date || date >= CUTOFF;
       })
-      .map((loan: any) => ({
-        id: loan.id,
-        accountNo: loan.accountNo,
-        loanProductName: loan.productName || loan.loanProductName,
-        principal: loan.originalLoan || loan.principal,
-        approvedPrincipal: loan.originalLoan || loan.approvedPrincipal || loan.principal,
-        interestRatePerPeriod: loan.interestRatePerPeriod || 0,
-        numberOfRepayments: loan.numberOfRepayments || 0,
-        status: {
-          id: loan.status?.id || 0,
-          code: loan.status?.code || "",
-          value: loan.status?.value || "",
-          active: loan.status?.active || false,
-          closed: loan.status?.closed || false,
-          overpaid: loan.status?.overpaid || false,
-          pendingApproval: loan.status?.pendingApproval || false,
-          waitingForDisbursal: loan.status?.waitingForDisbursal || false,
-          closedObligationsMet: loan.status?.closedObligationsMet || false,
-          closedWrittenOff: loan.status?.closedWrittenOff || false,
-          closedRescheduled: loan.status?.closedRescheduled || false,
-        },
-        timeline: {
-          submittedOnDate: loan.timeline?.submittedOnDate || "",
-          approvedOnDate: loan.timeline?.approvedOnDate || "",
-          actualDisbursementDate: loan.timeline?.actualDisbursementDate || "",
-          expectedMaturityDate: loan.timeline?.expectedMaturityDate || "",
-        },
-        summary: {
-          principalOutstanding: loan.loanBalance || 0,
-          totalOutstanding: loan.loanBalance || 0,
-          totalOverdue: loan.inArrears ? (loan.loanBalance || 0) : 0,
-        },
-      }));
+      .map((loan) => ({
+      id: loan.id,
+      accountNo: loan.accountNo,
+      loanProductName: loan.productName || loan.loanProductName || "",
+      principal:
+        loan.originalLoan ||
+        loan.principal ||
+        loan.approvedPrincipal ||
+        0,
+      approvedPrincipal:
+        loan.originalLoan ||
+        loan.approvedPrincipal ||
+        loan.principal ||
+        0,
+      interestRatePerPeriod: loan.interestRatePerPeriod || 0,
+      numberOfRepayments: loan.numberOfRepayments || 0,
+      currency: loan.currency ? { code: loan.currency.code } : undefined,
+      status: {
+        id: loan.status?.id || 0,
+        code: loan.status?.code || "",
+        value: loan.status?.value || "",
+        active: loan.status?.active || false,
+        closed: loan.status?.closed || false,
+      },
+      displayStatus: getDisplayLoanStatus(loan),
+      chargedOff: loan.chargedOff || false,
+      inArrears: loan.inArrears || false,
+      timeline: {
+        submittedOnDate: loan.timeline?.submittedOnDate || "",
+        approvedOnDate: loan.timeline?.approvedOnDate || "",
+        actualDisbursementDate: loan.timeline?.actualDisbursementDate || "",
+        expectedMaturityDate: loan.timeline?.expectedMaturityDate || "",
+      },
+      summary: {
+        principalOutstanding:
+          loan.summary?.principalOutstanding ||
+          loan.loanBalance ||
+          0,
+        totalOutstanding:
+          loan.summary?.totalOutstanding ||
+          loan.loanBalance ||
+          0,
+        totalOverdue:
+          loan.summary?.totalOverdue ||
+          (loan.inArrears ? (loan.loanBalance || 0) : 0),
+      },
+    }));
   })();
 
   const getStatusBadge = (loan: FineractLoan) => {
-    const status = loan.displayStatus ?? loan.status?.value ?? "";
+    const status = loan.displayStatus;
     const statusLower = status.toLowerCase();
 
     if (statusLower.includes("written off") || statusLower.includes("closed")) {
@@ -245,7 +289,6 @@ export function ClientLoans({ clientId }: ClientLoansProps) {
     );
   };
 
-  // Normalize currency code - converts deprecated ZMK to current code
   const { currencyCode: orgCurrency } = useCurrency();
   const normalizeCurrencyCode = (code: string | undefined | null): string => {
     if (!code) return orgCurrency;
@@ -288,7 +331,23 @@ export function ClientLoans({ clientId }: ClientLoansProps) {
     (sum, loan) => sum + loan.summary.totalOverdue,
     0
   );
-  const activeLoans = loans.filter((loan) => loan.status.active).length;
+  const activeLoans = loans.filter((loan) => {
+    const statusLower = loan.displayStatus.toLowerCase();
+    return statusLower.includes("active") || statusLower.includes("overdue");
+  }).length;
+  const orderedLoans = [...loans].sort((left, right) => {
+    const timeDiff =
+      getLoanSequenceSortTime(left) - getLoanSequenceSortTime(right);
+
+    if (timeDiff !== 0) {
+      return timeDiff;
+    }
+
+    return left.id - right.id;
+  });
+  const loanSequenceNumbers = new Map(
+    orderedLoans.map((loan, index) => [loan.id, index + 1])
+  );
 
   // Get currency for display - use first loan's currency when all share same currency
   const summaryCurrency =
@@ -365,7 +424,7 @@ export function ClientLoans({ clientId }: ClientLoansProps) {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {formatCurrency(totalPrincipal)}
+              {formatCurrency(totalPrincipal, summaryCurrency)}
             </div>
             <p className="text-xs text-muted-foreground">Approved amount</p>
           </CardContent>
@@ -378,7 +437,7 @@ export function ClientLoans({ clientId }: ClientLoansProps) {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {formatCurrency(totalOutstanding)}
+              {formatCurrency(totalOutstanding, summaryCurrency)}
             </div>
             <p className="text-xs text-muted-foreground">Current balance</p>
           </CardContent>
@@ -395,7 +454,7 @@ export function ClientLoans({ clientId }: ClientLoansProps) {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {formatCurrency(totalOverdue)}
+              {formatCurrency(totalOverdue, summaryCurrency)}
             </div>
             <p
               className={`text-xs ${
@@ -410,28 +469,11 @@ export function ClientLoans({ clientId }: ClientLoansProps) {
 
       {/* Loans Table */}
       <Card>
-        <CardHeader className="flex flex-row items-start justify-between">
-          <div className="space-y-1">
-            <CardTitle>Loan Details</CardTitle>
-            <CardDescription>
-              Complete list of loans for this client
-            </CardDescription>
-          </div>
-          {loans.length > 0 && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() =>
-                window.open(
-                  `/api/fineract/clients/${clientId}/statement?format=html`,
-                  "_blank"
-                )
-              }
-            >
-              <FileText className="h-4 w-4 mr-2" />
-              Consolidated Statement
-            </Button>
-          )}
+        <CardHeader>
+          <CardTitle>Loan Details</CardTitle>
+          <CardDescription>
+            Complete list of loans for this client
+          </CardDescription>
         </CardHeader>
         <CardContent>
           {loans.length === 0 ? (
@@ -446,18 +488,39 @@ export function ClientLoans({ clientId }: ClientLoansProps) {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-[72px]"></TableHead>
                     <TableHead>Loan Product</TableHead>
                     <TableHead>Account No</TableHead>
                     <TableHead>Principal</TableHead>
                     <TableHead>Outstanding</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Maturity Date</TableHead>
-                    <TableHead>Actions</TableHead>
+                    <TableHead className="w-[48px] text-right">Open</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {loans.map((loan) => (
-                    <TableRow key={loan.id}>
+                  {orderedLoans.map((loan) => (
+                    <TableRow
+                      key={loan.id}
+                      className="cursor-pointer transition-colors hover:bg-muted/50"
+                      onClick={() => router.push(`/clients/${clientId}/loans/${loan.id}`)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          router.push(`/clients/${clientId}/loans/${loan.id}`);
+                        }
+                      }}
+                      tabIndex={0}
+                      role="link"
+                      aria-label={`Open loan ${loan.accountNo || loan.id} details`}
+                    >
+                      <TableCell>
+                        <div className="flex justify-center">
+                          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-100 text-sm font-semibold text-blue-700 dark:bg-blue-900 dark:text-blue-300">
+                            {loanSequenceNumbers.get(loan.id) ?? "?"}
+                          </div>
+                        </div>
+                      </TableCell>
                       <TableCell>
                         <div>
                           <div className="flex items-center gap-2">
@@ -483,17 +546,17 @@ export function ClientLoans({ clientId }: ClientLoansProps) {
                       </TableCell>
                       <TableCell>
                         <div className="font-medium">
-                          {formatCurrency(loan.principal)}
+                          {formatCurrency(loan.principal, loan.currency?.code)}
                         </div>
                       </TableCell>
                       <TableCell>
                         <div>
                           <div className="font-medium">
-                            {formatCurrency(loan.summary.totalOutstanding)}
+                            {formatCurrency(loan.summary.totalOutstanding, loan.currency?.code)}
                           </div>
                           {loan.summary.totalOverdue > 0 && (
                             <div className="text-sm text-red-500">
-                              {formatCurrency(loan.summary.totalOverdue)}{" "}
+                              {formatCurrency(loan.summary.totalOverdue, loan.currency?.code)}{" "}
                               overdue
                             </div>
                           )}
@@ -508,14 +571,8 @@ export function ClientLoans({ clientId }: ClientLoansProps) {
                             : "Not set"}
                         </div>
                       </TableCell>
-                      <TableCell>
-                        <Link
-                          href={`/clients/${clientId}/loans/${loan.id}`}
-                          className="inline-flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800"
-                        >
-                          <ExternalLink className="h-3 w-3" />
-                          View Details
-                        </Link>
+                      <TableCell className="text-right">
+                        <ChevronRight className="ml-auto h-4 w-4 text-muted-foreground" />
                       </TableCell>
                     </TableRow>
                   ))}

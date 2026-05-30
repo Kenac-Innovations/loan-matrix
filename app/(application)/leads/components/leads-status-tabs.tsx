@@ -725,6 +725,9 @@ export function LeadsStatusTabs() {
 
   // Columns that should be rendered as payment method (friendly labels)
   const PAYMENT_METHOD_COLUMNS = new Set(["payment_method", "payment_type", "payout_method", "preferredpaymentmethod", "preferredPaymentMethod"]);
+
+  // Columns that should be rendered as facility type badges
+  const FACILITY_TYPE_COLUMNS = new Set(["facility_type", "facilitytype"]);
   const PAYMENT_METHOD_LABELS: Record<string, string> = {
     CASH: "Cash",
     MOBILE_MONEY: "Mobile Money",
@@ -865,6 +868,7 @@ export function LeadsStatusTabs() {
       const isLinkColumn = LINK_COLUMNS.has(col.toLowerCase());
       const isPayoutStatusColumn = PAYOUT_STATUS_COLUMNS.has(col.toLowerCase());
       const isPaymentMethodColumn = PAYMENT_METHOD_COLUMNS.has(col.toLowerCase());
+      const isFacilityTypeColumn = FACILITY_TYPE_COLUMNS.has(col.toLowerCase());
       
       columns.push({
         id: col,
@@ -888,6 +892,29 @@ export function LeadsStatusTabs() {
             return <Badge className={`${badgeCls} text-xs`}>{label}</Badge>;
           }
           
+          // Render facility_type as badges
+          if (isFacilityTypeColumn) {
+            const raw = value ? String(value).toUpperCase() : null;
+            if (!raw || raw === "TERM_LOAN") {
+              return <span className="text-xs text-muted-foreground">Term Loan</span>;
+            }
+            if (raw === "REVOLVING_CREDIT") {
+              return (
+                <Badge className="border-emerald-500 bg-emerald-500/10 text-emerald-700 text-xs" variant="outline">
+                  RCF
+                </Badge>
+              );
+            }
+            if (raw === "INVOICE_DISCOUNTING") {
+              return (
+                <Badge className="border-blue-500 bg-blue-500/10 text-blue-700 text-xs" variant="outline">
+                  Invoice
+                </Badge>
+              );
+            }
+            return <span className="text-xs">{String(value)}</span>;
+          }
+
           // Render payout_status with colored badges
           if (isPayoutStatusColumn) {
             const status = String(value || "PENDING").toUpperCase();
@@ -1132,10 +1159,14 @@ export function LeadsStatusTabs() {
             // Set loading state
             setNavigatingRowId(leadId);
             
-            // Drafts tab → open new lead form to continue editing
-            // Other tabs (pending, approved, rejected) → open lead detail page
+            // Drafts tab → open the correct create form based on facility type
+            // Other tabs → open lead detail page
             if (report === "drafts") {
-              globalThis.location.href = `/leads/new?id=${leadId}`;
+              const facilityType = String(row.facility_type || "").toUpperCase();
+              const draftHref = facilityType === "REVOLVING_CREDIT"
+                ? `/leads/new/rcf?id=${leadId}`
+                : `/leads/new/loan?id=${leadId}`;
+              globalThis.location.href = draftHref;
             } else {
               globalThis.location.href = `/leads/${leadId}`;
             }

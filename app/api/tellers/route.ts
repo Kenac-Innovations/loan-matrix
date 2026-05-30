@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getFineractServiceWithSession } from "@/lib/fineract-api";
 import { prisma } from "@/lib/prisma";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
-import { getOrgDefaultCurrencyCode, getOrgRawCurrencyCode } from "@/lib/currency-utils";
+import { getOrgDefaultCurrencyCode } from "@/lib/currency-utils";
+import { getTellerVaultDisplay } from "@/lib/gl-balance";
 
 /**
  * GET /api/tellers
@@ -141,66 +142,31 @@ export async function GET(request: NextRequest) {
       })
     );
 
-    // Calculate balances - use max(Fineract, local) for allocatedToCashiers so we never undercount
+    // Balances come *only* from the Fineract GL account. When no GL is
+    // configured or Fineract is unreachable, vaultBalance/availableBalance
+    // are null and the UI renders "—".
     const dbTellerBalances = await Promise.all(
       dbTellers.map(async (dbTeller) => {
-        const vaultBalance = dbTeller.cashAllocations.reduce(
-          (sum, alloc) => sum + alloc.amount,
-          0
-        );
-
-        const cashierAllocations = await prisma.cashAllocation.findMany({
-          where: {
-            tellerId: dbTeller.id,
-            tenantId: tenant.id,
-            cashierId: { not: null },
-            status: "ACTIVE",
-            notes: { not: { contains: "Variance" } },
-          },
-        });
-        const localAllocated = (() => {
-          const positiveSum = cashierAllocations.reduce(
-            (sum, alloc) => sum + (alloc.amount > 0 ? alloc.amount : 0),
-            0
-          );
-          const netSum = cashierAllocations.reduce((sum, alloc) => sum + alloc.amount, 0);
-          return Math.max(positiveSum, netSum);
-        })();
-
-        let allocatedToCashiers = localAllocated;
-        const fineractCashiers = tellerCashiersMap.get(dbTeller.fineractTellerId!) || [];
-        if (fineractCashiers.length > 0) {
-          const summaries = await Promise.all(
-            fineractCashiers.map(async (fc: any) => {
-              try {
-                const rawCurrency = await getOrgRawCurrencyCode();
-                const summary = await fineractService.getCashierSummaryAndTransactions(
-                  dbTeller.fineractTellerId!,
-                  fc.id,
-                  rawCurrency
-                );
-                return summary.netCash ?? summary.sumCashAllocation ?? 0;
-              } catch (err) {
-                return 0;
-              }
-            })
-          );
-          const fineractAllocated = summaries.reduce((sum, val) => sum + val, 0);
-          allocatedToCashiers = Math.max(localAllocated, fineractAllocated);
-        }
-
-        const availableBalance = vaultBalance - allocatedToCashiers;
-        const currency = orgCurrency;
+        const vaultDisplay = await getTellerVaultDisplay(dbTeller);
+        const fineractCashiers =
+          tellerCashiersMap.get(dbTeller.fineractTellerId!) || [];
+        const currency = vaultDisplay.currency || orgCurrency;
 
         return {
           fineractTellerId: dbTeller.fineractTellerId,
           dbId: dbTeller.id,
           bankId: dbTeller.bankId,
           bank: dbTeller.bank,
-          vaultBalance,
-          availableBalance,
-          allocatedToCashiers,
-          currentAllocation: { amount: availableBalance, currency },
+          glAccountId: dbTeller.glAccountId,
+          glAccountName: dbTeller.glAccountName,
+          glAccountCode: dbTeller.glAccountCode,
+          vaultBalance: vaultDisplay.vaultBalance,
+          vaultBalanceSource: vaultDisplay.vaultBalanceSource,
+          availableBalance: vaultDisplay.availableBalance,
+          currentAllocation:
+            vaultDisplay.availableBalance != null
+              ? { amount: vaultDisplay.availableBalance, currency }
+              : null,
           activeCashiers: fineractCashiers.length,
           settlementCount: dbTeller._count.settlements,
         };
@@ -227,10 +193,13 @@ export async function GET(request: NextRequest) {
         ...(dbData && {
           bankId: dbData.bankId,
           bank: dbData.bank,
+          glAccountId: dbData.glAccountId,
+          glAccountName: dbData.glAccountName,
+          glAccountCode: dbData.glAccountCode,
           currentAllocation: dbData.currentAllocation,
           vaultBalance: dbData.vaultBalance,
+          vaultBalanceSource: dbData.vaultBalanceSource,
           availableBalance: dbData.availableBalance,
-          allocatedToCashiers: dbData.allocatedToCashiers,
           settlementCount: dbData.settlementCount,
         }),
         // Use Fineract cashier count (already set above)
@@ -263,7 +232,17 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { officeId, name, description, startDate, endDate, bankId } = body;
+    const {
+      officeId,
+      name,
+      description,
+      startDate,
+      endDate,
+      bankId,
+      glAccountId,
+      glAccountName,
+      glAccountCode,
+    } = body;
 
     if (!officeId || !name || !startDate) {
       return NextResponse.json(
@@ -322,6 +301,9 @@ export async function POST(request: NextRequest) {
         endDate: endDate ? new Date(endDate) : null,
         status: "PENDING",
         bankId: bankId || null, // Link to parent bank if provided
+        glAccountId: glAccountId ? parseInt(glAccountId) : null,
+        glAccountName: glAccountName || null,
+        glAccountCode: glAccountCode || null,
       },
     });
 
