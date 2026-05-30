@@ -1309,6 +1309,16 @@ model RepaymentCashLink {
   @@index([tenantId, fineractAllocationId])
 }
 
+model UserSignature {
+  id              String   @id @default(cuid())
+  fineractUserId  Int      @unique
+  signatureData   String   @db.Text
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([fineractUserId])
+}
+
 enum RevolvingCreditDrawdownStatus {
   REQUESTED
   APPROVED
