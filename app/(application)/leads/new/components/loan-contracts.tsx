@@ -39,6 +39,7 @@ import {
   generateKeyFactsStatementHTML,
   KeyFactsData,
 } from "./key-facts-statement-template";
+import { generateMandateFormHTML } from "./mandate-form-template";
 import { getMySignature } from "@/app/actions/user-signature-actions";
 
 interface LoanContractsProps {
@@ -90,7 +91,7 @@ export function LoanContracts({
     Array<{ id: number; name: string; url: string }>
   >([]);
   const [isLoadingSignatures, setIsLoadingSignatures] = useState(false);
-  const [showKeyFacts, setShowKeyFacts] = useState(false);
+  const [activeDoc, setActiveDoc] = useState<"kfs" | "contract" | "mandate">("contract");
   const [tenantContractHtml, setTenantContractHtml] = useState<string | null>(null);
   const [tenantLogoUrl, setTenantLogoUrl] = useState<string | null>(null);
   const { toast } = useToast();
@@ -1244,12 +1245,13 @@ export function LoanContracts({
     });
   };
 
-  const handlePrint = (printType: "kfs" | "contract" | "both" = "both") => {
+  const handlePrint = (
+    printType: "kfs" | "contract" | "mandate" | "both" = "both"
+  ) => {
     const printWindow = window.open("", "_blank");
     if (!printWindow) return;
 
     if (printType === "kfs") {
-      // Print only the Key Facts Statement
       const keyFactsData = getKeyFactsData();
       if (!keyFactsData) return;
       const kfsHTML = generateKeyFactsStatementHTML(keyFactsData, {
@@ -1259,7 +1261,6 @@ export function LoanContracts({
       });
       printWindow.document.write(kfsHTML);
     } else if (printType === "contract") {
-      // Print only the Salary Advance Contract
       const contractHTML =
         filledTenantContractHtml ||
         generateContractHTML(contractData, {
@@ -1268,16 +1269,29 @@ export function LoanContracts({
           loanOfficer: loanOfficerSignature,
         });
       printWindow.document.write(contractHTML);
-    } else {
-      // Print both - Key Facts Statement AND Salary Advance Contract
-      const keyFactsData = getKeyFactsData();
-      if (!keyFactsData) return;
-
-      const kfsHTML = generateKeyFactsStatementHTML(keyFactsData, {
+    } else if (printType === "mandate") {
+      const mandateHTML = generateMandateFormHTML(contractData, {
         borrower: borrowerSignature,
-        guarantor: guarantorSignature,
-        creditProvider: loanOfficerSignature,
       });
+      printWindow.document.write(mandateHTML);
+    } else {
+      // Print all three: KFS + Contract + Mandate
+      const extractBody = (html: string): string =>
+        html.match(/<body[^>]*>([\s\S]*)<\/body>/i)?.[1] ?? "";
+      const extractStyles = (html: string): string[] =>
+        html.match(/<style[^>]*>[\s\S]*?<\/style>/gi) ?? [];
+
+      const keyFactsData = getKeyFactsData();
+
+      const kfsSection = keyFactsData
+        ? `<div class="page-break">${extractBody(
+            generateKeyFactsStatementHTML(keyFactsData, {
+              borrower: borrowerSignature,
+              guarantor: guarantorSignature,
+              creditProvider: loanOfficerSignature,
+            })
+          )}</div>`
+        : "";
 
       const contractHTML =
         filledTenantContractHtml ||
@@ -1287,60 +1301,44 @@ export function LoanContracts({
           loanOfficer: loanOfficerSignature,
         });
 
-      // Extract body content from both HTML documents and combine them
-      const kfsBodyMatch = kfsHTML.match(/<body[^>]*>([\s\S]*)<\/body>/i);
-      const contractBodyMatch = contractHTML.match(
-        /<body[^>]*>([\s\S]*)<\/body>/i,
-      );
+      const mandateHTML = generateMandateFormHTML(contractData, {
+        borrower: borrowerSignature,
+      });
 
-      const kfsBody = kfsBodyMatch ? kfsBodyMatch[1] : "";
-      const contractBody = contractBodyMatch ? contractBodyMatch[1] : "";
-
-      // Extract styles from both documents
-      const kfsStyleMatch = kfsHTML.match(/<style[^>]*>([\s\S]*?)<\/style>/gi);
-      const contractStyleMatch = contractHTML.match(
-        /<style[^>]*>([\s\S]*?)<\/style>/gi,
-      );
+      const kfsStyles = keyFactsData
+        ? extractStyles(
+            generateKeyFactsStatementHTML(keyFactsData, {
+              borrower: borrowerSignature,
+              guarantor: guarantorSignature,
+              creditProvider: loanOfficerSignature,
+            })
+          )
+        : [];
 
       const combinedStyles = [
-        ...(kfsStyleMatch || []),
-        ...(contractStyleMatch || []),
+        ...kfsStyles,
+        ...extractStyles(contractHTML),
+        ...extractStyles(mandateHTML),
       ].join("\n");
 
-      // Create combined HTML with page break between documents
-      const combinedHTML = `
-        <!DOCTYPE html>
-        <html lang="en">
-        <head>
-          <meta charset="utf-8" />
-          <meta name="viewport" content="width=device-width, initial-scale=1" />
-          <title>GFL - Key Facts Statement & Salary Advance Contract</title>
-          ${combinedStyles}
-          <style>
-            .page-break {
-              page-break-after: always;
-              break-after: page;
-            }
-            @media print {
-              .page-break {
-                page-break-after: always;
-                break-after: page;
-              }
-            }
-          </style>
-        </head>
-        <body>
-          <!-- Key Facts Statement -->
-          <div class="page-break">
-            ${kfsBody}
-          </div>
-          <!-- Salary Advance Contract -->
-          <div>
-            ${contractBody}
-          </div>
-        </body>
-        </html>
-      `;
+      const combinedHTML = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>GFL - All Documents</title>
+  ${combinedStyles}
+  <style>
+    .page-break { page-break-after: always; break-after: page; }
+    @media print { .page-break { page-break-after: always; break-after: page; } }
+  </style>
+</head>
+<body>
+  ${kfsSection}
+  <div class="page-break">${extractBody(contractHTML)}</div>
+  <div>${extractBody(mandateHTML)}</div>
+</body>
+</html>`;
 
       printWindow.document.write(combinedHTML);
     }
@@ -1352,6 +1350,7 @@ export function LoanContracts({
 
   const handlePrintKeyFacts = () => handlePrint("kfs");
   const handlePrintContract = () => handlePrint("contract");
+  const handlePrintMandate = () => handlePrint("mandate");
   const handlePrintBoth = () => handlePrint("both");
 
   // Generate Key Facts Statement PDF (BOZ Format)
@@ -2549,28 +2548,35 @@ export function LoanContracts({
                   {isRefreshing ? "Refreshing..." : "Refresh"}
                 </Button>
               </div>
-              {!tenantContractHtml && (
-                <div className="flex gap-2">
+              <div className="flex gap-2">
+                  {!tenantContractHtml && (
+                    <Button
+                      variant={activeDoc === "kfs" ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setActiveDoc("kfs")}
+                    >
+                      Key Facts Statement
+                    </Button>
+                  )}
                   <Button
-                    variant={showKeyFacts ? "default" : "outline"}
+                    variant={activeDoc === "contract" ? "default" : "outline"}
                     size="sm"
-                    onClick={() => setShowKeyFacts(true)}
-                  >
-                    Key Facts Statement
-                  </Button>
-                  <Button
-                    variant={!showKeyFacts ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setShowKeyFacts(false)}
+                    onClick={() => setActiveDoc("contract")}
                   >
                     Loan Contract
                   </Button>
+                  <Button
+                    variant={activeDoc === "mandate" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setActiveDoc("mandate")}
+                  >
+                    Mandate Form
+                  </Button>
                 </div>
-              )}
             </div>
           </CardHeader>
           <CardContent className="p-4">
-            {showKeyFacts ? (
+            {activeDoc === "kfs" ? (
               <iframe
                 srcDoc={
                   getKeyFactsData()
@@ -2584,6 +2590,17 @@ export function LoanContracts({
                 className="w-full border rounded bg-white"
                 style={{ height: "700px", minHeight: "500px" }}
                 title="Key Facts Statement Preview"
+              />
+            ) : activeDoc === "mandate" ? (
+              <iframe
+                srcDoc={
+                  contractData
+                    ? generateMandateFormHTML(contractData, { borrower: borrowerSignature })
+                    : "<p>Loading...</p>"
+                }
+                className="w-full border rounded bg-white"
+                style={{ height: "700px", minHeight: "500px" }}
+                title="Mandate Form Preview"
               />
             ) : (
               <iframe
@@ -3231,6 +3248,10 @@ export function LoanContracts({
               <Button onClick={handlePrintContract} variant="outline" size="sm">
                 <FileText className="mr-2 h-4 w-4" />
                 Print Contract
+              </Button>
+              <Button onClick={handlePrintMandate} variant="outline" size="sm">
+                <FileText className="mr-2 h-4 w-4" />
+                Print Mandate
               </Button>
               {!tenantContractHtml && (
                 <Button onClick={handlePrintBoth} variant="outline" size="sm">
